@@ -89,6 +89,9 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to fake GPUs (using CPUs).
     # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
     "_fake_gpus": False,
+    # Switch on Trajectory View API for A2/3C by default.
+    # NOTE: Only supported for PyTorch so far.
+    "_use_trajectory_view_api": True,
 })
 
 # __sphinx_doc_end__
@@ -129,13 +132,12 @@ def validate_config(config: TrainerConfigDict) -> None:
             "function (to estimate the return at the end of the truncated "
             "trajectory). Consider setting batch_mode=complete_episodes.")
 
-    # Switch on trajectory view API by default for this algo (if None).
-    if config["_use_trajectory_view_api"] is None:
+    # Switch off trajectory view API if not torch.
+    if config["_use_trajectory_view_api"] and config["framework"] != "torch":
         logger.info(
-            "Switching on Trajectory View API for PPO by default. "
-            "Set `_use_trajectory_view_api=False` explicitly in your config "
-            "to switch this off.")
-        config["_use_trajectory_view_api"] = True
+            "Switching off Trajectory View API for TensorFlow. "
+            "Currently only supported for PyTorch.")
+        config["_use_trajectory_view_api"] = False
 
     # Multi-gpu not supported for PyTorch and tf-eager.
     if config["framework"] in ["tf2", "tfe", "torch"]:

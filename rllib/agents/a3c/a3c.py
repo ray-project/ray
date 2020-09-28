@@ -37,6 +37,9 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
+    # Switch on Trajectory View API for A2/3C by default.
+    # NOTE: Only supported for PyTorch so far.
+    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -59,13 +62,12 @@ def validate_config(config):
         logger.warning("`sample_async=True` is not supported for PyTorch! "
                        "Multithreading can lead to crashes.")
 
-    # Switch on trajectory view API by default for this algo (if None).
-    if config["_use_trajectory_view_api"] is None:
+    # Switch off trajectory view API if not torch.
+    if config["_use_trajectory_view_api"] and config["framework"] != "torch":
         logger.info(
-            "Switching on Trajectory View API for A2C/A3C by default. "
-            "Set `_use_trajectory_view_api=False` explicitly in your config "
-            "to switch this off.")
-        config["_use_trajectory_view_api"] = True
+            "Switching off Trajectory View API for TensorFlow. "
+            "Currently only supported for PyTorch.")
+        config["_use_trajectory_view_api"] = False
 
 
 def execution_plan(workers, config):

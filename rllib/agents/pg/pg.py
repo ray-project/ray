@@ -30,6 +30,9 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Learning rate.
     "lr": 0.0004,
+    # Switch on Trajectory View API for A2/3C by default.
+    # NOTE: Only supported for PyTorch so far.
+    "_use_trajectory_view_api": True,
 })
 
 # __sphinx_doc_end__
@@ -45,13 +48,12 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    # Switch on trajectory view API by default for this algo (if None).
-    if config["_use_trajectory_view_api"] is None:
+    # Switch off trajectory view API if not torch.
+    if config["_use_trajectory_view_api"] and config["framework"] != "torch":
         logger.info(
-            "Switching on Trajectory View API for PG by default. "
-            "Set `_use_trajectory_view_api=False` explicitly in your config "
-            "to switch this off.")
-        config["_use_trajectory_view_api"] = True
+            "Switching off Trajectory View API for TensorFlow. "
+            "Currently only supported for PyTorch.")
+        config["_use_trajectory_view_api"] = False
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
