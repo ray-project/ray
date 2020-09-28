@@ -1,5 +1,6 @@
 from typing import Any, List, Tuple, Dict, Optional
 
+
 class CommandRunnerInterface:
     """Interface to run commands on a remote cluster node.
 

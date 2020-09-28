@@ -22,8 +22,10 @@ try:
     import colorful as _cf
     from colorful.core import ColorfulString
 except ModuleNotFoundError:
+
     class ColorfulString:
         pass
+
     class _ColorfulMock:
         def __init__(self):
             # do not do any color work
@@ -32,15 +34,17 @@ except ModuleNotFoundError:
             self.colorful = self
             self.colormode = None
 
-            NO_COLORS = None
-            ANSI_8_COLORS = None
+            self.NO_COLORS = None
+            self.ANSI_8_COLORS = None
 
         def disable(self):
             pass
 
         def __getattr__(self, name):
             return self.identity
+
     _cf = _ColorfulMock()
+
 
 # We want to only allow specific formatting
 # to prevent people from accidentally making bad looking color schemes.
@@ -50,29 +54,31 @@ except ModuleNotFoundError:
 class _ColorfulProxy:
     _proxy_whitelist = [
         "disable",
-        "reset", "bold", "italic", "underlined",
-
+        "reset",
+        "bold",
+        "italic",
+        "underlined",
         "with_style",
 
         # used instead of `gray` as `dimmed` adapts to
         # both light and dark themes
         "dimmed",
-
-        "dodgerBlue", # group
-        "limeGreen", # success
-        "red", # error
-        "orange", # warning
-        "skyBlue" # label
+        "dodgerBlue",  # group
+        "limeGreen",  # success
+        "red",  # error
+        "orange",  # warning
+        "skyBlue"  # label
     ]
 
     def __getattr__(self, name):
         res = getattr(_cf, name)
         if callable(res) and name not in _ColorfulProxy._proxy_whitelist:
-            raise ValueError(
-                "Usage of the colorful method '" + name + "' is forbidden "
-                "by the proxy to keep a consistent color scheme. "
-                "Check `cli_logger.py` for allowed methods")
+            raise ValueError("Usage of the colorful method '" + name +
+                             "' is forbidden "
+                             "by the proxy to keep a consistent color scheme. "
+                             "Check `cli_logger.py` for allowed methods")
         return res
+
 
 cf = _ColorfulProxy()
 

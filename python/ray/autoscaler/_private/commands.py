@@ -259,9 +259,8 @@ def _bootstrap_config(config: Dict[str, Any],
 
     provider_cls = importer(config["provider"])
 
-    cli_logger.print(
-        "Checking {} environment settings",
-        _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"]))
+    cli_logger.print("Checking {} environment settings",
+                     _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"]))
     resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
