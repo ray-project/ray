@@ -219,8 +219,12 @@ def test_many_fractional_resources(shutdown_only):
     stop_time = time.time() + 10
     correct_available_resources = False
     while time.time() < stop_time:
-        if (ray.available_resources()["CPU"] == 2.0
+        available_resources = ray.available_resources()
+        if ("CPU" in available_resources
+                and ray.available_resources()["CPU"] == 2.0
+                and "GPU" in available_resources
                 and ray.available_resources()["GPU"] == 2.0
+                and "Custom" in available_resources
                 and ray.available_resources()["Custom"] == 2.0):
             correct_available_resources = True
             break
