@@ -136,13 +136,15 @@ class TrialInfo:
 
 def create_logdir(dirname, local_dir):
     local_dir = os.path.expanduser(local_dir)
-    logdir = os.path.join(local_dir, dirname)
+    subdir = "" if int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR",
+                                      0)) == 1 else date_str()
+    logdir = os.path.join(local_dir, subdir, dirname)
     if os.path.exists(logdir):
         old_dirname = dirname
         dirname += "_" + uuid.uuid4().hex[:4]
         logger.info(f"Creating a new dirname {dirname} because "
                     f"trial dirname '{old_dirname}' already exists.")
-        logdir = os.path.join(local_dir, dirname)
+        logdir = os.path.join(local_dir, subdir, dirname)
     os.makedirs(logdir, exist_ok=True)
     return logdir
 

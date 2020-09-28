@@ -579,6 +579,9 @@ These are the environment variables Ray Tune currently considers:
   ``~/ray_bootstrap_key.pem`` will be used.
 * **TUNE_DISABLE_AUTO_INIT**: Disable automatically calling ``ray.init()`` if
   not attached to a Ray session.
+* **TUNE_DISABLE_DATED_SUBDIR**: Tune automatically creates dated subdirectories in the
+  experiment directory (a subdir of ``local_dir`` passed to ``tune.run()``). Setting
+  this environment variable to ``1`` disables creating these subdirectories.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
   ``tune.report()`` and passed a ``metric`` parameter to ``tune.run()``, a scheduler,
   or a search algorithm, Tune will error

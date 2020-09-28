@@ -39,6 +39,9 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
     def setUp(self):
         self.absolute_local_dir = None
+        # Disable dated logdir creation. This test suite should only test
+        # train/restore.
+        os.environ["TUNE_DISABLE_DATED_SUBDIR"] = "1"
         ray.init(num_cpus=1, num_gpus=0, local_mode=self.local_mode)
 
     def tearDown(self):
