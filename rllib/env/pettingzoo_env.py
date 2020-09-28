@@ -156,7 +156,8 @@ class PettingZooEnv(MultiAgentEnv):
             infos (dict): Optional info values for each agent id.
         """
         stepped_agents = set()
-        while (self.aec_env.agent_selection not in stepped_agents and self.aec_env.dones[self.aec_env.agent_selection]):
+        while (self.aec_env.agent_selection not in stepped_agents
+               and self.aec_env.dones[self.aec_env.agent_selection]):
             agent = self.aec_env.agent_selection
             self.aec_env.step(None)
             stepped_agents.add(agent)
@@ -243,7 +244,7 @@ class ParallelPettingZooEnv(MultiAgentEnv):
     def step(self, action_dict):
         aobs, arew, adones, ainfo = self.par_env.step(action_dict)
         obss = {}
-        rews  = {}
+        rews = {}
         dones = {}
         infos = {}
         for agent in action_dict:
