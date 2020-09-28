@@ -1086,9 +1086,7 @@ def _process_observations_w_trajectory_view_api(
             is_done = dones[env_id]["__all__"]
             check_dones = is_done and not no_done_at_end
             _sample_collector.postprocess_episode(
-                episode,
-                is_done=is_done,
-                check_dones=check_dones)
+                episode, is_done=is_done, check_dones=check_dones)
             # We are not allowed to pack the next episode into the same
             # SampleBatch (batch_mode=complete_episodes) -> Build the
             # MultiAgentBatch from a single episode and add it to "outputs".
