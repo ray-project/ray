@@ -22,9 +22,12 @@
 .+\.py.*\[1/6\] Waiting for SSH to become available
 .+\.py.*Running `uptime` as a test\.
 .+\.py.*Fetched IP: .+
+.+\.py.*NodeUpdater: .+: Got IP  \[LogTimer=.+\]
+.+\.py.*AWSNodeProvider: Set tag ray-node-status=waiting-for-ssh on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*Running `uptime`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*Success\.
+.+\.py.*NodeUpdater: .+: Got remote shell  \[LogTimer=.+\]
 .+\.py.*Updating cluster configuration\. \[hash=.+\]
 .+\.py.*New status: syncing-files
 .+\.py.*\[3/6\] Processing file mounts
@@ -33,21 +36,25 @@
 .+\.py.*Running `rsync.+`
 .+\.py.*`rsync`ed \./ \(local\) to ~/tests/ \(remote\)
 .+\.py.*~/tests/ from \./
+.+\.py.+NodeUpdater: i-.+: Synced \./ to ~/tests/  \[LogTimer=.+\]
 .+\.py.*Running `mkdir -p ~`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*Running `rsync.+`
 .+\.py.*`rsync`ed .+/ray-bootstrap-.+ \(local\) to ~/ray_bootstrap_config\.yaml \(remote\)
 .+\.py.*~/ray_bootstrap_config\.yaml from .+ray-bootstrap-.+
+.+\.py.*NodeUpdater: i-.+: Synced .+ray-bootstrap-.+ to ~/ray_bootstrap_config\.yaml  \[LogTimer=.+\]
 .+\.py.*Running `mkdir -p ~`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*Running `rsync.+`
 .+\.py.*`rsync`ed .+__test-cli_key-1\.pem \(local\) to ~/ray_bootstrap_key\.pem \(remote\)
 .+\.py.*~/ray_bootstrap_key\.pem from .+__test-cli_key-1\.pem
+.+\.py.*NodeUpdater: i-.+: Synced .+.pem to ~/ray_bootstrap_key\.pem  \[LogTimer=.+\]
 .+\.py.*\[4/6\] No worker file mounts to sync
 .+\.py.*New status: setting-up
 .+\.py.*\[3/5\] Running initialization commands
 .+\.py.*Running `echo init`
 .+\.py.*Full command is `ssh.+`
+.+\.py.*NodeUpdater: i-.+: Initialization commands succeeded \[LogTimer=.+\]
 .+\.py.*\[4/6\] Running setup commands
 .+\.py.*\(0/4\) echo a
 .+\.py.*Running `echo a`
@@ -61,11 +68,14 @@
 .+\.py.*\(3/4\) echo head
 .+\.py.*Running `echo head`
 .+\.py.*Full command is `ssh.+`
+.+\.py.*NodeUpdater: i-.+: Setup commands succeeded \[LogTimer=.+\]
 .+\.py.*\[6/6\] Starting the Ray runtime
 .+\.py.*Running `ray stop`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*Running `ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
 .+\.py.*Full command is `ssh.+`
+.+\.py.*NodeUpdater: i-.+: Ray start commands succeeded \[LogTimer=.+\]
+.+\.py.*NodeUpdater: i-.+: Applied config .+  \[LogTimer=.+\]
 .+\.py.*New status: up-to-date
 .+\.py.*Useful commands
 .+\.py.*Monitor autoscaling with
