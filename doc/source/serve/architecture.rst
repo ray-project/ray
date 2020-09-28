@@ -2,6 +2,8 @@ Serve Architecture
 ==================
 This document provides an overview of how each component in Serve works.
 
+.. Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
+
 .. image:: architecture.svg
     :align: center
     :width: 600px

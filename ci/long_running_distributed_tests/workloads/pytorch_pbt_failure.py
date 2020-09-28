@@ -10,7 +10,7 @@ import torchvision.transforms as transforms
 
 import ray
 from ray import tune
-from ray.autoscaler.commands import kill_node
+from ray.autoscaler._private.commands import kill_node
 from ray.tune import CLIReporter
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining

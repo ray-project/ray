@@ -11,7 +11,7 @@ import time
 import traceback
 
 import ray.ray_constants as ray_constants
-import ray.services as services
+import ray._private.services as services
 import ray.utils
 
 # Logger for this module. It should be configured at the entry point
@@ -78,7 +78,7 @@ class LogMonitor:
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
-        self.redis_client = ray.services.create_redis_client(
+        self.redis_client = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
         self.log_filenames = set()
         self.open_file_infos = []
@@ -319,7 +319,7 @@ if __name__ == "__main__":
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
+        redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = (f"The log monitor on node {platform.node()} "

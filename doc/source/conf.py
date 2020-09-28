@@ -40,6 +40,7 @@ MOCK_MODULES = [
     "horovod",
     "horovod.ray",
     "kubernetes",
+    "mxnet",
     "mxnet.model",
     "psutil",
     "ray._raylet",

@@ -1,5 +1,4 @@
 import logging
-import io
 import os
 
 import torch
@@ -10,6 +9,8 @@ from ray.util.sgd.torch.utils import setup_process_group
 
 import ray
 from ray.util.sgd.torch.torch_runner import TorchRunner
+
+from ray.util.sgd.torch.utils import setup_address
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,9 @@ class DistributedTorchRunner(TorchRunner):
         self.add_dist_sampler = add_dist_sampler
         self.world_rank = None
 
+    def setup_address(self):
+        return setup_address()
+
     def setup_process_group(self, url, world_rank, world_size, timeout):
         """Connects the distributed PyTorch backend.
 
@@ -52,6 +56,7 @@ class DistributedTorchRunner(TorchRunner):
             timeout (timedelta): Seconds for process group
                 operations to timeout.
         """
+        logger.info(f"Setting up process group for: {url} [rank={world_rank}]")
         self.world_rank = world_rank
         setup_process_group(
             url, world_rank, world_size, timeout, backend=self.backend)
@@ -82,23 +87,6 @@ class DistributedTorchRunner(TorchRunner):
     def get_device_ids(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         return [0]
-
-    def load_state_stream(self, byte_obj):
-        """Loads a bytes object the training state dict.
-
-        This is needed because we don't want to deserialize the tensor
-        onto the same device (which is from the driver process). We want to
-        map it onto the actor's specific device.
-
-        From: github.com/pytorch/pytorch/issues/10622#issuecomment-474733769
-        """
-        _buffer = io.BytesIO(byte_obj)
-        to_gpu = self.use_gpu and torch.cuda.is_available()
-        state_dict = torch.load(
-            _buffer,
-            map_location=("cpu" if not to_gpu else
-                          lambda storage, loc: storage.cuda()))
-        return self.load_state_dict(state_dict)
 
     def _wrap_dataloaders(self):
         def with_sampler(loader):
@@ -196,7 +184,7 @@ def clear_dummy_actor():
 
 
 def reserve_resources(num_cpus, num_gpus, retries=20):
-    ip = ray.services.get_node_ip_address()
+    ip = ray._private.services.get_node_ip_address()
 
     reserved_cuda_device = None
 
@@ -346,10 +334,3 @@ class LocalDistributedRunner(DistributedTorchRunner):
     def is_actor(self):
         actor_id = ray.worker.global_worker.actor_id
         return actor_id != actor_id.nil()
-
-
-class DeactivatedRunner:
-    def __getattr__(self, *args, **kwargs):
-        raise RuntimeError(
-            "This TorchTrainer is not active (it is likely shutdown already). "
-            "Create a new TorchTrainer.")

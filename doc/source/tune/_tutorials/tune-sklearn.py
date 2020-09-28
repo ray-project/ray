@@ -145,11 +145,11 @@ print(tune_search.best_params_)
 #
 # Check out more detailed examples and get started with tune-sklearn!
 #
-#  * `Skorch with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/torch_nn.py>`_
-#  * `Scikit-Learn Pipelines with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/sklearn_pipeline.py>`_
-#  * `XGBoost with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/xgbclassifier.py>`_
-#  * `KerasClassifier with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/keras_example.py>`_
-#  * `LightGBM with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/lgbm.py>`_
+# * `Skorch with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/torch_nn.py>`_
+# * `Scikit-Learn Pipelines with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/sklearn_pipeline.py>`_
+# * `XGBoost with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/xgbclassifier.py>`_
+# * `KerasClassifier with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/keras_example.py>`_
+# * `LightGBM with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/lgbm.py>`_
 #
 #
 # Further Reading

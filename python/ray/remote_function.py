@@ -4,8 +4,11 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
-from ray.util.placement_group import PlacementGroup, \
-    check_placement_group_index
+from ray.util.placement_group import (
+    PlacementGroup,
+    check_placement_group_index,
+    get_current_placement_group,
+)
 import ray.signature
 
 # Default parameters for remote functions.
@@ -63,7 +66,8 @@ class RemoteFunction:
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries,
-                 placement_group, placement_group_bundle_index):
+                 placement_group, placement_group_bundle_index,
+                 placement_group_capture_child_tasks):
         self._language = language
         self._function = function
         self._function_name = (
@@ -122,23 +126,56 @@ class RemoteFunction:
             num_gpus=num_gpus,
             resources=resources)
 
-    def options(self, **options):
-        """Convenience method for executing a task with options.
+    def options(self,
+                args=None,
+                kwargs=None,
+                num_returns=None,
+                num_cpus=None,
+                num_gpus=None,
+                memory=None,
+                object_store_memory=None,
+                accelerator_type=None,
+                resources=None,
+                max_retries=None,
+                placement_group=None,
+                placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None,
+                name=""):
+        """Configures and overrides the task invocation parameters.
 
-        Same arguments as func._remote(), but returns a wrapped function
-        that a non-underscore .remote() can be called on.
+        Options are overlapping values provided by :obj:`ray.remote`.
 
         Examples:
-            # The following two calls are equivalent.
-            >>> func._remote(num_cpus=4, args=[x, y])
-            >>> func.options(num_cpus=4).remote(x, y)
+
+        .. code-block:: python
+
+            @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+            def f():
+               return 1, 2
+            # Task f will require 2 gpus instead of 1.
+            g = f.options(num_gpus=2, max_calls=None)
         """
 
         func_cls = self
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **options)
+                return func_cls._remote(
+                    args=args,
+                    kwargs=kwargs,
+                    num_returns=num_returns,
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    object_store_memory=object_store_memory,
+                    accelerator_type=accelerator_type,
+                    resources=resources,
+                    max_retries=max_retries,
+                    placement_group=placement_group,
+                    placement_group_bundle_index=placement_group_bundle_index,
+                    placement_group_capture_child_tasks=(
+                        placement_group_capture_child_tasks),
+                    name=name)
 
         return FuncWrapper()
 
@@ -155,6 +192,7 @@ class RemoteFunction:
                 max_retries=None,
                 placement_group=None,
                 placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None,
                 name=""):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
@@ -190,7 +228,15 @@ class RemoteFunction:
         if max_retries is None:
             max_retries = self._max_retries
 
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                worker.should_capture_child_tasks_in_placement_group)
+
         if placement_group is None:
+            if placement_group_capture_child_tasks:
+                placement_group = get_current_placement_group()
+
+        if not placement_group:
             placement_group = PlacementGroup.empty()
 
         check_placement_group_index(placement_group,
@@ -218,7 +264,8 @@ class RemoteFunction:
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, placement_group.id,
-                placement_group_bundle_index)
+                placement_group_bundle_index,
+                placement_group_capture_child_tasks)
 
             if len(object_refs) == 1:
                 return object_refs[0]

@@ -12,7 +12,7 @@ import math
 from contextlib import redirect_stdout, redirect_stderr
 
 import ray
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.scripts.scripts import main as ray_main
 
@@ -150,7 +150,7 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
 def kill_process_by_name(name, SIGKILL=False):
     for p in psutil.process_iter(attrs=["name"]):
-        if p.info["name"] == name + ray.services.EXE_SUFFIX:
+        if p.info["name"] == name + ray._private.services.EXE_SUFFIX:
             if SIGKILL:
                 p.kill()
             else:
