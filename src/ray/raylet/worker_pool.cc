@@ -839,6 +839,13 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end(); it++) {
+    if (it->first == worker) {
+      idle_of_all_languages_.erase(it);
+      break;
+    }
+  }
+  idle_of_all_languages_map_.erase(worker);
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
