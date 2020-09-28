@@ -127,7 +127,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(boost::asio::io_service &io_service, const ClientID &self_node_id,
+  NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_);
@@ -191,14 +191,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client_id ID of the node that created or updated resources.
   /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
-  void ResourceCreateUpdated(const ClientID &client_id,
+  void ResourceCreateUpdated(const NodeID &client_id,
                              const ResourceSet &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
   /// \param client_id ID of the node that deleted resources.
   /// \param resource_names Names of deleted resources.
   /// \return Void.
-  void ResourceDeleted(const ClientID &client_id,
+  void ResourceDeleted(const NodeID &client_id,
                        const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
@@ -226,7 +226,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param id The ID of the node manager that sent the heartbeat.
   /// \param data The heartbeat data including load information.
   /// \return Void.
-  void HeartbeatAdded(const ClientID &id, const HeartbeatTableData &data);
+  void HeartbeatAdded(const NodeID &id, const HeartbeatTableData &data);
   /// Handler for a heartbeat batch notification from the GCS
   ///
   /// \param heartbeat_batch The batch of heartbeat data.
@@ -308,7 +308,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// consider the local node manager and the node managers in the keys of the
   /// resource_map argument.
   /// \return Void.
-  void ScheduleTasks(std::unordered_map<ClientID, SchedulingResources> &resource_map);
+  void ScheduleTasks(std::unordered_map<NodeID, SchedulingResources> &resource_map);
 
   /// Make a placement decision for the resource_map and subtract original resources so
   /// that the node is ready to commit (create) placement group resources.
@@ -319,7 +319,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resource_map argument.
   /// \param bundle_spec Specification of bundle that will be prepared.
   /// \return True is resources were successfully prepared. False otherwise.
-  bool PrepareBundle(std::unordered_map<ClientID, SchedulingResources> &resource_map,
+  bool PrepareBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
                      const BundleSpecification &bundle_spec);
 
   /// Make a placement decision for the resource_map.
@@ -329,7 +329,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// consider the local node manager and the node managers in the keys of the
   /// resource_map argument.
   /// \param bundle_spec Specification of bundle that will be prepared.
-  void CommitBundle(std::unordered_map<ClientID, SchedulingResources> &resource_map,
+  void CommitBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
                     const BundleSpecification &bundle_spec);
 
   /// Handle a task whose return value(s) must be reconstructed.
@@ -346,7 +346,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task The task in question.
   /// \param node_manager_id The ID of the remote node manager.
   /// \return Void.
-  void ForwardTaskOrResubmit(const Task &task, const ClientID &node_manager_id);
+  void ForwardTaskOrResubmit(const Task &task, const NodeID &node_manager_id);
   /// Forward a task to another node to execute. The task is assumed to not be
   /// queued in local_queues_.
   ///
@@ -354,7 +354,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param node_id The ID of the node to forward the task to.
   /// \param on_error Callback on run on non-ok status.
   void ForwardTask(
-      const Task &task, const ClientID &node_id,
+      const Task &task, const NodeID &node_id,
       const std::function<void(const ray::Status &, const Task &)> &on_error);
 
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
@@ -680,8 +680,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
 
+  /// Return back all the bundle resource.
+  ///
+  /// \param bundle_spec: Specification of bundle whose resources will be returned.
+  /// \return Whether the resource is returned successfully.
+  bool ReturnBundleResources(const BundleSpecification &bundle_spec);
+
   /// ID of this node.
-  ClientID self_node_id_;
+  NodeID self_node_id_;
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
@@ -733,7 +739,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
   ResourceIdSet local_available_resources_;
-  std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
+  std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
 
   /// A pool of workers.
   WorkerPool worker_pool_;
@@ -772,7 +778,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   rpc::ClientCallManager client_call_manager_;
 
   /// Map from node ids to clients of the remote node managers.
-  std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
+  std::unordered_map<NodeID, std::unique_ptr<rpc::NodeManagerClient>>
       remote_node_manager_clients_;
 
   /// Map of workers leased out to direct call clients.
@@ -813,7 +819,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Cache for the WorkerTable in the GCS.
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
-  absl::flat_hash_set<ClientID> failed_nodes_cache_;
+  absl::flat_hash_set<NodeID> failed_nodes_cache_;
 
   /// Concurrency for the following map
   mutable absl::Mutex plasma_object_notification_lock_;

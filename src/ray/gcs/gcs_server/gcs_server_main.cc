@@ -22,7 +22,7 @@
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
-DEFINE_int32(gcs_server_port, -1, "The port of gcs server.");
+DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_password, "", "The password of redis.");
@@ -59,8 +59,10 @@ int main(int argc, char *argv[]) {
   }
 
   RayConfig::instance().initialize(config_map);
-  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "gcs_server"},
-                                            {ray::stats::VersionKey, "1.1.0.dev0"}};
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "gcs_server"},
+      {ray::stats::VersionKey, "1.1.0.dev0"},
+      {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(global_tags, metrics_agent_port);
 
   // IO Service for main loop.

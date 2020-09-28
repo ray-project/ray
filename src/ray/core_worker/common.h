@@ -76,6 +76,7 @@ struct ActorCreationOptions {
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
       std::string &name, bool is_asyncio,
       PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
+      bool placement_group_capture_child_tasks = true,
       const std::unordered_map<std::string, std::string> &override_worker_env = {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
@@ -87,6 +88,7 @@ struct ActorCreationOptions {
         name(name),
         is_asyncio(is_asyncio),
         placement_options(placement_options),
+        placement_group_capture_child_tasks(placement_group_capture_child_tasks),
         override_worker_env(override_worker_env){};
 
   /// Maximum number of times that the actor should be restarted if it dies
@@ -119,6 +121,9 @@ struct ActorCreationOptions {
   /// If the actor doesn't belong to a placement group, the placement_group_id will be
   /// nil, and the bundle_index will be -1.
   PlacementOptions placement_options;
+  /// When true, the child task will always scheduled on the same placement group
+  /// specified in the PlacementOptions.
+  bool placement_group_capture_child_tasks = true;
   // TODO(simon): document
   const std::unordered_map<std::string, std::string> override_worker_env;
 };

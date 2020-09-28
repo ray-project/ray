@@ -6,11 +6,9 @@ import time
 
 import ray
 
+from ray import gcs_utils
 from google.protobuf.json_format import MessageToDict
-from ray import (
-    gcs_utils,
-    services,
-)
+from ray._private import services
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -268,7 +266,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        node_id = ray.ClientID(hex_to_binary(node_id))
+        node_id = ray.NodeID(hex_to_binary(node_id))
         node_resource_bytes = \
             self.global_state_accessor.get_node_resource_info(node_id)
         if node_resource_bytes is None:
@@ -893,8 +891,8 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return ray.resource_spec.NODE_ID_PREFIX + ray.services.get_node_ip_address(
-    )
+    return (ray.resource_spec.NODE_ID_PREFIX +
+            ray._private.services.get_node_ip_address())
 
 
 def node_ids():

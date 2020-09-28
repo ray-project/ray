@@ -77,7 +77,7 @@ class Raylet {
   friend class TestObjectManagerIntegration;
 
   /// ID of this node.
-  ClientID self_node_id_;
+  NodeID self_node_id_;
   /// Information of this node.
   GcsNodeInfo self_node_info_;
 

@@ -40,7 +40,7 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
   MOCK_METHOD1(MarkScheduleCancelled, void(const PlacementGroupID &placement_group_id));
 
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
-      const ClientID &node_id) override {
+      const NodeID &node_id) override {
     absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles;
     bundles[group_on_dead_node_] = bundles_on_dead_node_;
     return bundles;
@@ -306,8 +306,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   ASSERT_EQ(finished_placement_group_count, 0);
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
-  placement_group->GetMutableBundle(0)->set_node_id(ClientID::FromRandom().Binary());
-  placement_group->GetMutableBundle(1)->set_node_id(ClientID::FromRandom().Binary());
+  placement_group->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
+  placement_group->GetMutableBundle(1)->set_node_id(NodeID::FromRandom().Binary());
   mock_placement_group_scheduler_->placement_groups_.pop_back();
 
   // If a node dies, we will set the bundles above it to be unplaced and reschedule the
@@ -316,7 +316,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   mock_placement_group_scheduler_->group_on_dead_node_ =
       placement_group->GetPlacementGroupID();
   mock_placement_group_scheduler_->bundles_on_dead_node_.push_back(0);
-  gcs_placement_group_manager_->OnNodeDead(ClientID::FromRandom());
+  gcs_placement_group_manager_->OnNodeDead(NodeID::FromRandom());
 
   // Trigger scheduling `RESCHEDULING` placement group.
   auto finished_group = std::make_shared<gcs::GcsPlacementGroup>(
@@ -328,8 +328,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
             placement_group->GetPlacementGroupID());
   const auto &bundles =
       mock_placement_group_scheduler_->placement_groups_[0]->GetBundles();
-  EXPECT_TRUE(ClientID::FromBinary(bundles[0]->GetMutableMessage().node_id()).IsNil());
-  EXPECT_FALSE(ClientID::FromBinary(bundles[1]->GetMutableMessage().node_id()).IsNil());
+  EXPECT_TRUE(NodeID::FromBinary(bundles[0]->GetMutableMessage().node_id()).IsNil());
+  EXPECT_FALSE(NodeID::FromBinary(bundles[1]->GetMutableMessage().node_id()).IsNil());
 
   // If `RESCHEDULING` placement group fails to create, we will schedule it again first.
   placement_group = mock_placement_group_scheduler_->placement_groups_.back();
