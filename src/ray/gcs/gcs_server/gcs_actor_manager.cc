@@ -916,8 +916,8 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
                    done](const std::unordered_map<ActorID, ActorTableData> &result) {
     std::unordered_map<NodeID, std::vector<WorkerID>> node_to_workers;
     for (auto &item : result) {
+      auto actor = std::make_shared<GcsActor>(item.second);
       if (item.second.state() != ray::rpc::ActorTableData::DEAD) {
-        auto actor = std::make_shared<GcsActor>(item.second);
         registered_actors_.emplace(item.first, actor);
 
         if (!actor->GetName().empty()) {
@@ -954,6 +954,8 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
           RAY_CHECK(!actor->GetNodeID().IsNil());
           node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
         }
+      } else {
+        destroyed_actors_.emplace(item.first, actor);
       }
     }
 
