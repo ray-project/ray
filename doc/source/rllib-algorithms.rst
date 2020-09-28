@@ -51,7 +51,7 @@ Exploration-based plug-ins (can be combined with any algo)
 Algorithm                     Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
 ============================= ========== ======================= ================== =========== =====================
 `Curiosity`_                  torch      **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
-
+============================= ========== ======================= ================== =========== =====================
 
 .. _`A2C, A3C`: rllib-algorithms.html#a3c
 .. _`APEX-DQN`: rllib-algorithms.html#apex
