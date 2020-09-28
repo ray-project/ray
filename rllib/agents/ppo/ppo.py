@@ -89,7 +89,7 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to fake GPUs (using CPUs).
     # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
     "_fake_gpus": False,
-    # Switch on Trajectory View API for A2/3C by default.
+    # Switch on Trajectory View API for PPO by default.
     # NOTE: Only supported for PyTorch so far.
     "_use_trajectory_view_api": True,
 })

@@ -30,7 +30,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Learning rate.
     "lr": 0.0004,
-    # Switch on Trajectory View API for A2/3C by default.
+    # Switch on Trajectory View API for PG by default.
     # NOTE: Only supported for PyTorch so far.
     "_use_trajectory_view_api": True,
 })
