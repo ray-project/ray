@@ -1816,13 +1816,8 @@ void NodeManager::HandlePrepareBundleResources(
   RAY_LOG(DEBUG) << "bundle prepare request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
   auto prepared = PrepareBundle(cluster_resource_map_, bundle_spec);
-  if (!prepared) {
-    reply->set_success(false);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  } else {
-    reply->set_success(true);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  }
+  reply->set_success(prepared);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
   // Call task dispatch to assign work to the new group.
   TryLocalInfeasibleTaskScheduling();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
