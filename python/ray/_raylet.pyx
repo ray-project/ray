@@ -76,7 +76,7 @@ from ray.includes.unique_ids cimport (
     CActorID,
     CActorCheckpointID,
     CObjectID,
-    CClientID,
+    CNodeID,
     CPlacementGroupID,
 )
 from ray.includes.libcoreworker cimport (
@@ -783,9 +783,18 @@ cdef class CoreWorker:
         return JobID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentJobId().Binary())
 
+    def get_current_node_id(self):
+        return NodeID(
+            CCoreWorkerProcess.GetCoreWorker().GetCurrentNodeId().Binary())
+
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
+
+    def get_placement_group_id(self):
+        return PlacementGroupID(
+            CCoreWorkerProcess.GetCoreWorker()
+            .GetCurrentPlacementGroupId().Binary())
 
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
@@ -1470,10 +1479,10 @@ cdef class CoreWorker:
                 actor_id.native(), checkpoint_id.native()))
 
     def set_resource(self, basestring resource_name,
-                     double capacity, ClientID client_id):
+                     double capacity, NodeID client_id):
         CCoreWorkerProcess.GetCoreWorker().SetResource(
             resource_name.encode("ascii"), capacity,
-            CClientID.FromBinary(client_id.binary()))
+            CNodeID.FromBinary(client_id.binary()))
 
     def force_spill_objects(self, object_refs):
         cdef c_vector[CObjectID] object_ids

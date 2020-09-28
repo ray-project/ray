@@ -252,7 +252,7 @@ class SearchSpaceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             searcher.set_search_properties("none", "max", invalid_config)
 
-        searcher = BayesOptSearch(metric="a", mode="max")
+        searcher = BayesOptSearch(metric="b", mode="max")
         analysis = tune.run(
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]

@@ -4,14 +4,14 @@ from datetime import datetime
 
 # Override global constants used in AWS autoscaler config artifact names.
 # This helps ensure that any unmocked test doesn't alter non-test artifacts.
-ray.autoscaler.aws.config.RAY = \
+ray.autoscaler._private.aws.config.RAY = \
     "ray-autoscaler-aws-test"
-ray.autoscaler.aws.config.DEFAULT_RAY_INSTANCE_PROFILE = \
-    ray.autoscaler.aws.config.RAY + "-v1"
-ray.autoscaler.aws.config.DEFAULT_RAY_IAM_ROLE = \
-    ray.autoscaler.aws.config.RAY + "-v1"
-ray.autoscaler.aws.config.SECURITY_GROUP_TEMPLATE = \
-    ray.autoscaler.aws.config.RAY + "-{}"
+ray.autoscaler._private.aws.config.DEFAULT_RAY_INSTANCE_PROFILE = \
+    ray.autoscaler._private.aws.config.RAY + "-v1"
+ray.autoscaler._private.aws.config.DEFAULT_RAY_IAM_ROLE = \
+    ray.autoscaler._private.aws.config.RAY + "-v1"
+ray.autoscaler._private.aws.config.SECURITY_GROUP_TEMPLATE = \
+    ray.autoscaler._private.aws.config.RAY + "-{}"
 
 # Default IAM instance profile to expose to tests.
 DEFAULT_INSTANCE_PROFILE = {
@@ -35,7 +35,7 @@ DEFAULT_INSTANCE_PROFILE = {
 # Default EC2 key pair to expose to tests.
 DEFAULT_KEY_PAIR = {
     "KeyFingerprint": "00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00",
-    "KeyName": ray.autoscaler.aws.config.RAY + "_us-west-2",
+    "KeyName": ray.autoscaler._private.aws.config.RAY + "_us-west-2",
 }
 
 # Primary EC2 subnet to expose to tests.
@@ -69,7 +69,8 @@ DEFAULT_CLUSTER_NAME = "test-cluster-name"
 # (prior to inbound rule configuration).
 DEFAULT_SG = {
     "Description": "Auto-created security group for Ray workers",
-    "GroupName": ray.autoscaler.aws.config.RAY + "-" + DEFAULT_CLUSTER_NAME,
+    "GroupName": ray.autoscaler._private.aws.config.RAY + "-" +
+    DEFAULT_CLUSTER_NAME,
     "OwnerId": "test-owner",
     "GroupId": "sg-1234abcd",
     "VpcId": DEFAULT_SUBNET["VpcId"],

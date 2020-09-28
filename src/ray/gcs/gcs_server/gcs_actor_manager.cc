@@ -21,12 +21,12 @@
 namespace ray {
 namespace gcs {
 
-ClientID GcsActor::GetNodeID() const {
+NodeID GcsActor::GetNodeID() const {
   const auto &raylet_id_binary = actor_table_data_.address().raylet_id();
   if (raylet_id_binary.empty()) {
-    return ClientID::Nil();
+    return NodeID::Nil();
   }
-  return ClientID::FromBinary(raylet_id_binary);
+  return NodeID::FromBinary(raylet_id_binary);
 }
 
 void GcsActor::UpdateAddress(const rpc::Address &address) {
@@ -47,8 +47,8 @@ WorkerID GcsActor::GetOwnerID() const {
   return WorkerID::FromBinary(GetOwnerAddress().worker_id());
 }
 
-ClientID GcsActor::GetOwnerNodeID() const {
-  return ClientID::FromBinary(GetOwnerAddress().raylet_id());
+NodeID GcsActor::GetOwnerNodeID() const {
+  return NodeID::FromBinary(GetOwnerAddress().raylet_id());
 }
 
 const rpc::Address &GcsActor::GetOwnerAddress() const {
@@ -425,7 +425,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
 
   const auto &owner_address = actor->GetOwnerAddress();
-  auto node_id = ClientID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
 
@@ -572,8 +572,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // Remove actor from `named_actors_` if its name is not empty.
   if (!actor->GetName().empty()) {
     auto it = named_actors_.find(actor->GetName());
-    if (it != named_actors_.end()) {
-      RAY_CHECK(it->second == actor->GetActorID());
+    if (it != named_actors_.end() && it->second == actor->GetActorID()) {
       named_actors_.erase(it);
     }
   }
@@ -650,7 +649,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
 }
 
 absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerNode(
-    const ClientID &node_id) const {
+    const NodeID &node_id) const {
   absl::flat_hash_set<ActorID> actor_ids;
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {
@@ -662,7 +661,7 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerNode(
 }
 
 absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
-    const ClientID &node_id, const WorkerID &worker_id) const {
+    const NodeID &node_id, const WorkerID &worker_id) const {
   absl::flat_hash_set<ActorID> actor_ids;
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {
@@ -674,7 +673,7 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
   return actor_ids;
 }
 
-void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
+void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id,
                                    bool intentional_exit) {
   if (intentional_exit) {
@@ -728,7 +727,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
   ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
 }
 
-void GcsActorManager::OnNodeDead(const ClientID &node_id) {
+void GcsActorManager::OnNodeDead(const NodeID &node_id) {
   RAY_LOG(WARNING) << "Node " << node_id << " failed, reconstructing actors.";
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
@@ -824,11 +823,11 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     // Remove actor from `named_actors_` if its name is not empty.
     if (!actor->GetName().empty()) {
       auto it = named_actors_.find(actor->GetName());
-      if (it != named_actors_.end()) {
-        RAY_CHECK(it->second == actor->GetActorID());
+      if (it != named_actors_.end() && it->second == actor->GetActorID()) {
         named_actors_.erase(it);
       }
     }
+
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
@@ -914,7 +913,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
   auto callback = [this,
                    done](const std::unordered_map<ActorID, ActorTableData> &result) {
-    std::unordered_map<ClientID, std::vector<WorkerID>> node_to_workers;
+    std::unordered_map<NodeID, std::vector<WorkerID>> node_to_workers;
     for (auto &item : result) {
       if (item.second.state() != ray::rpc::ActorTableData::DEAD) {
         auto actor = std::make_shared<GcsActor>(item.second);
@@ -926,7 +925,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
 
         if (item.second.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
           const auto &owner = actor->GetOwnerAddress();
-          const auto &owner_node = ClientID::FromBinary(owner.raylet_id());
+          const auto &owner_node = NodeID::FromBinary(owner.raylet_id());
           const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
           RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
                         .emplace(actor->GetActorID())
@@ -1027,7 +1026,7 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetByJobId(job_id, on_done));
 }
 
-const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
+const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
     &GcsActorManager::GetCreatedActors() const {
   return created_actors_;
 }
@@ -1044,7 +1043,7 @@ const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
 
 void GcsActorManager::RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &actor) {
   const auto &owner_address = actor->GetOwnerAddress();
-  auto node_id = ClientID::FromBinary(owner_address.raylet_id());
+  auto node_id = NodeID::FromBinary(owner_address.raylet_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {

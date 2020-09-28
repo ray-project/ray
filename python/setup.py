@@ -98,20 +98,19 @@ optional_ray_files += ray_autoscaler_files
 optional_ray_files += ray_project_files
 optional_ray_files += ray_dashboard_files
 
-if os.getenv("RAY_USE_NEW_GCS") == "on":
-    ray_files += [
-        "ray/core/src/credis/build/src/libmember.so",
-        "ray/core/src/credis/build/src/libmaster.so",
-        "ray/core/src/credis/redis/src/redis-server" + exe_suffix,
-    ]
-
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements.txt
 # in this directory
 extras = {
     "debug": [],
-    "serve": ["uvicorn", "flask", "requests", "pydantic", "dataclasses"],
-    "tune": ["tabulate", "tensorboardX", "pandas", "dataclasses"]
+    "serve": [
+        "uvicorn", "flask", "requests", "pydantic",
+        "dataclasses; python_version < '3.7'"
+    ],
+    "tune": [
+        "tabulate", "tensorboardX", "pandas",
+        "dataclasses; python_version < '3.7'"
+    ]
 }
 
 extras["rllib"] = extras["tune"] + [

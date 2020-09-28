@@ -15,7 +15,7 @@ Ray also comes packaged with several built-in machine learning libraries:
 ClassyVision |classyvision|
 ---------------------------
 
-Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions. 
+Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions.
 
 
 [`Link to integration <https://classyvision.ai/tutorials/ray_aws>`__]
@@ -32,7 +32,7 @@ Flambe |flambe|
 
 Flambé is a machine learning experimentation framework built to accelerate the entire research life cycle. Flambé’s main objective is to provide a unified interface for prototyping models, running experiments containing complex pipelines, monitoring those experiments in real-time, reporting results, and deploying a final model for inference.
 
-Github: `https://github.com/asappresearch/flambe <https://github.com/asappresearch/flambe>`_
+GitHub: `https://github.com/asappresearch/flambe <https://github.com/asappresearch/flambe>`_
 
 Horovod |horovod|
 -----------------
@@ -55,6 +55,12 @@ Analytics Zoo seamless scales TensorFlow, Keras and PyTorch to distributed big d
 
 [`Link to integration <https://analytics-zoo.github.io/master/#ProgrammingGuide/rayonspark/>`__]
 
+John Snow Labs' NLU |NLU|
+-------------------------
+The power of 350+ pre-trained NLP models, 100+ Word Embeddings, 50+ Sentence Embeddings, and 50+ Classifiers in 46 languages with 1 line of Python code.
+
+[`Link to integration <https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe>`__]
+
 MARS |mars|
 -----------
 
@@ -74,14 +80,21 @@ PyCaret |pycaret|
 
 PyCaret is an open source low-code machine learning library in Python that aims to reduce the hypothesis to insights cycle time in a ML experiment. It enables data scientists to perform end-to-end experiments quickly and efficiently.
 
-Github: `https://github.com/pycaret/pycaret/ <https://github.com/pycaret/pycaret/>`_
+GitHub: `https://github.com/pycaret/pycaret <https://github.com/pycaret/pycaret>`_
+
+RayDP |raydp|
+-------------
+
+RayDP ("Spark on Ray") enables you to easily use Spark inside a Ray program. You can use Spark to read the input data, process the data using SQL, Spark DataFrame, or Pandas (via Koalas) API, extract and transform features using Spark MLLib, and use RayDP Estimator API for distributed training on the preprocessed dataset.
+
+GitHub: `https://github.com/Intel-bigdata/oap-raydp <https://github.com/Intel-bigdata/oap-raydp>`_
 
 Seldon Alibi |seldon|
 ---------------------
 
 Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
 
-Github: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
+GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
 
 Spacy |spacy|
 -------------
@@ -125,10 +138,18 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :class: inline-figure
     :height: 30
 
+.. |raydp| image:: images/intel.png
+    :class: inline-figure
+    :height: 30
+
 .. |seldon| image:: images/seldon.png
     :class: inline-figure
     :height: 30
 
 .. |spacy| image:: images/spacy.png
+    :class: inline-figure
+    :height: 30
+
+.. |nlu| image:: images/nlu.png
     :class: inline-figure
     :height: 30

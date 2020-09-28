@@ -1,6 +1,6 @@
 import unittest
 
-from ray.autoscaler.command_runner import KUBECTL_RSYNC
+from ray.autoscaler._private.command_runner import KUBECTL_RSYNC
 from ray.tune.integration.kubernetes import KubernetesSyncer, \
     KubernetesSyncClient
 from ray.tune.syncer import NodeSyncer

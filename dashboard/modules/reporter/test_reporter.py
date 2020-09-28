@@ -81,7 +81,7 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
             assert result["result"] is True
             node_physical_stats = result["data"]["nodePhysicalStats"]
             assert len(node_physical_stats) == 1
-            current_stats = node_physical_stats[addresses["raylet_ip_address"]]
+            current_stats = node_physical_stats[addresses["node_id"]]
             # Check Actor workers
             current_actor_pids = set()
             for worker in current_stats["workers"]:

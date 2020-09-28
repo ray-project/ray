@@ -1,8 +1,13 @@
+import logging
 import pytest
+import sys
+from unittest.mock import patch
+
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler.command_runner import SSHCommandRunner, \
-    _with_environment_variables, DockerCommandRunner, KubernetesCommandRunner
-from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler.command_runner import CommandRunnerInterface
+from ray.autoscaler._private.command_runner import SSHCommandRunner, \
+    DockerCommandRunner, KubernetesCommandRunner, _with_environment_variables
+from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
 from getpass import getuser
 import hashlib
 
@@ -27,6 +32,34 @@ def test_environment_variable_encoder_dict():
     assert res == expected
 
 
+def test_command_runner_interface_abstraction_violation():
+    """Enforces the CommandRunnerInterface functions on the subclasses.
+
+    This is important to make sure the subclasses do not violate the
+    function abstractions. If you need to add a new function to one of
+    the CommandRunnerInterface subclasses, you have to add it to
+    CommandRunnerInterface and all of its subclasses.
+    """
+
+    cmd_runner_interface_public_functions = dir(CommandRunnerInterface)
+    allowed_public_interface_functions = {
+        func
+        for func in cmd_runner_interface_public_functions
+        if not func.startswith("_")
+    }
+    for subcls in [
+            SSHCommandRunner, DockerCommandRunner, KubernetesCommandRunner
+    ]:
+        subclass_available_functions = dir(subcls)
+        subclass_public_functions = {
+            func
+            for func in subclass_available_functions
+            if not func.startswith("_")
+        }
+        assert allowed_public_interface_functions == subclass_public_functions
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_ssh_command_runner():
     process_runner = MockProcessRunner()
     provider = MockProvider()
@@ -95,7 +128,8 @@ def test_ssh_command_runner():
 
 
 def test_kubernetes_command_runner():
-    process_runner = MockProcessRunner()
+    fail_cmd = "fail command"
+    process_runner = MockProcessRunner([fail_cmd])
     provider = MockProvider()
     provider.create_node({}, {}, 1)
     args = {
@@ -127,7 +161,18 @@ def test_kubernetes_command_runner():
 
     assert process_runner.calls[0] == " ".join(expected)
 
+    logger = logging.getLogger("ray.autoscaler._private.command_runner")
+    with pytest.raises(SystemExit) as pytest_wrapped_e, patch.object(
+            logger, "error") as mock_logger_error:
+        cmd_runner.run(fail_cmd, exit_on_fail=True)
 
+    failed_cmd_expected = f'prefixCommand failed: \n\n  kubectl -n namespace exec -it 0 --\'bash --login -c -i \'"\'"\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({fail_cmd})\'"\'"\'\'\n'  # noqa: E501
+    mock_logger_error.assert_called_once_with(failed_cmd_expected)
+    assert pytest_wrapped_e.type == SystemExit
+    assert pytest_wrapped_e.value.code == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_docker_command_runner():
     process_runner = MockProcessRunner()
     provider = MockProvider()
@@ -176,6 +221,7 @@ def test_docker_command_runner():
     process_runner.assert_has_call("1.2.3.4", exact=expected)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_docker_rsync():
     process_runner = MockProcessRunner()
     provider = MockProvider()

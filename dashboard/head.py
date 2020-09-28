@@ -9,7 +9,7 @@ import aiohttp.web
 from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
-import ray.services
+import ray._private.services
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 from ray.core.generated import gcs_service_pb2
@@ -42,7 +42,7 @@ class DashboardHead:
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.http_session = None
-        self.ip = ray.services.get_node_ip_address()
+        self.ip = ray._private.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
@@ -54,21 +54,17 @@ class DashboardHead:
         """Read the client table.
 
         Returns:
-            A list of information about the nodes in the cluster.
+            A dict of information about the nodes in the cluster.
         """
         request = gcs_service_pb2.GetAllNodeInfoRequest()
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(
             request, timeout=2)
         if reply.status.code == 0:
-            results = []
-            node_id_set = set()
+            result = {}
             for node_info in reply.node_info_list:
-                if node_info.node_id in node_id_set:
-                    continue
-                node_id_set.add(node_info.node_id)
                 node_info_dict = gcs_node_info_to_dict(node_info)
-                results.append(node_info_dict)
-            return results
+                result[node_info_dict["nodeId"]] = node_info_dict
+            return result
         else:
             logger.error("Failed to GetAllNodeInfo: %s", reply.status.message)
 
@@ -77,44 +73,37 @@ class DashboardHead:
             try:
                 nodes = await self._get_nodes()
 
-                # Get correct node info by state,
-                #   1. The node is ALIVE if any ALIVE node info
-                #      of the hostname exists.
-                #   2. The node is DEAD if all node info of the
-                #      hostname are DEAD.
-                hostname_to_node_info = {}
-                for node in nodes:
-                    hostname = node["nodeManagerAddress"]
+                alive_node_ids = []
+                alive_node_infos = []
+                node_id_to_ip = {}
+                node_id_to_hostname = {}
+                for node in nodes.values():
+                    node_id = node["nodeId"]
+                    ip = node["nodeManagerAddress"]
+                    hostname = node["nodeManagerHostname"]
+                    node_id_to_ip[node_id] = ip
+                    node_id_to_hostname[node_id] = hostname
                     assert node["state"] in ["ALIVE", "DEAD"]
-                    choose = hostname_to_node_info.get(hostname)
-                    if choose is not None and choose["state"] == "ALIVE":
-                        continue
-                    hostname_to_node_info[hostname] = node
-                nodes = hostname_to_node_info.values()
-
-                self._gcs_rpc_error_counter = 0
-                node_ips = [node["nodeManagerAddress"] for node in nodes]
-                node_hostnames = [
-                    node["nodeManagerHostname"] for node in nodes
-                ]
+                    if node["state"] == "ALIVE":
+                        alive_node_ids.append(node_id)
+                        alive_node_infos.append(node)
 
                 agents = dict(DataSource.agents)
-                for node in nodes:
-                    node_ip = node["nodeManagerAddress"]
-                    key = "{}{}".format(
-                        dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX, node_ip)
+                for node_id in alive_node_ids:
+                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" \
+                          f"{node_id}"
                     agent_port = await self.aioredis_client.get(key)
                     if agent_port:
-                        agents[node_ip] = json.loads(agent_port)
-                for ip in agents.keys() - set(node_ips):
-                    agents.pop(ip, None)
+                        agents[node_id] = json.loads(agent_port)
+                for node_id in agents.keys() - set(alive_node_ids):
+                    agents.pop(node_id, None)
 
+                DataSource.node_id_to_ip.reset(node_id_to_ip)
+                DataSource.node_id_to_hostname.reset(node_id_to_hostname)
                 DataSource.agents.reset(agents)
-                DataSource.nodes.reset(dict(zip(node_ips, nodes)))
-                DataSource.hostname_to_ip.reset(
-                    dict(zip(node_hostnames, node_ips)))
-                DataSource.ip_to_hostname.reset(
-                    dict(zip(node_ips, node_hostnames)))
+                DataSource.nodes.reset(nodes)
+
+                self._gcs_rpc_error_counter = 0
             except aiogrpc.AioRpcError:
                 logger.exception("Got AioRpcError when updating nodes.")
                 self._gcs_rpc_error_counter += 1

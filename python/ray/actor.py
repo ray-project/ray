@@ -402,23 +402,60 @@ class ActorClass:
         """
         return self._remote(args=args, kwargs=kwargs)
 
-    def options(self, **options):
-        """Convenience method for creating an actor with options.
+    def options(self,
+                args=None,
+                kwargs=None,
+                num_cpus=None,
+                num_gpus=None,
+                memory=None,
+                object_store_memory=None,
+                resources=None,
+                accelerator_type=None,
+                max_concurrency=None,
+                max_restarts=None,
+                max_task_retries=None,
+                name=None,
+                lifetime=None,
+                placement_group=None,
+                placement_group_bundle_index=-1):
+        """Configures and overrides the actor instantiation parameters.
 
-        Same arguments as Actor._remote(), but returns a wrapped actor class
-        that a non-underscore .remote() can be called on.
+        The arguments are the same as those that can be passed
+        to :obj:`ray.remote`.
 
         Examples:
-            # The following two calls are equivalent.
-            >>> Actor._remote(num_cpus=4, max_concurrency=8, args=[x, y])
-            >>> Actor.options(num_cpus=4, max_concurrency=8).remote(x, y)
+
+        .. code-block:: python
+
+            @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+            class Foo:
+                def method(self):
+                    return 1
+            # Class Foo will require 1 cpu instead of 2.
+            # It will also require no custom resources.
+            Bar = Foo.options(num_cpus=1, resources=None)
         """
 
         actor_cls = self
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
-                return actor_cls._remote(args=args, kwargs=kwargs, **options)
+                return actor_cls._remote(
+                    args=args,
+                    kwargs=kwargs,
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    object_store_memory=object_store_memory,
+                    resources=resources,
+                    accelerator_type=accelerator_type,
+                    max_concurrency=max_concurrency,
+                    max_restarts=max_restarts,
+                    max_task_retries=max_task_retries,
+                    name=name,
+                    lifetime=lifetime,
+                    placement_group=placement_group,
+                    placement_group_bundle_index=placement_group_bundle_index)
 
         return ActorOptionWrapper()
 
