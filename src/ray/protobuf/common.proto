@@ -188,6 +188,8 @@ message TaskSpec {
   int32 max_retries = 17;
   // Placement group that is associated with this task.
   bytes placement_group_id = 18;
+  // Whether or not this task should capture parent's placement group automatically.
+  bool placement_group_capture_child_tasks = 19;
 }
 
 message Bundle {

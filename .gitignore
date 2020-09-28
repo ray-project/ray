@@ -166,6 +166,9 @@ streaming/java/**/*.log
 # python virtual env
 venv
 
+# pyenv version file
+.python-version
+
 # Vim
 .*.swp
 *.swp

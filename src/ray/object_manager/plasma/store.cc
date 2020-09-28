@@ -227,7 +227,7 @@ Status PlasmaStore::FreeCudaMemory(int device_num, int64_t size, uint8_t* pointe
 
 // Create a new object buffer in the hash table.
 PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id,
-                                      const ClientID& owner_raylet_id,
+                                      const NodeID& owner_raylet_id,
                                       const std::string& owner_ip_address,
                                       int owner_port, const WorkerID& owner_worker_id,
                                       bool evict_if_full, int64_t data_size,
@@ -884,7 +884,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   // Process the different types of requests.
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
-      ClientID owner_raylet_id;
+      NodeID owner_raylet_id;
       std::string owner_ip_address;
       int owner_port;
       WorkerID owner_worker_id;

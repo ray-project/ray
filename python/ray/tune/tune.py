@@ -100,6 +100,7 @@ def run(
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
+        callbacks=None,
         # Deprecated args
         ray_auto_init=None,
         run_errored_only=None,
@@ -259,6 +260,9 @@ def run(
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
+        callbacks (list): List of callbacks that will be called at different
+            times in the training loop. Must be instances of the
+            ``ray.tune.trial_runner.Callback`` class.
 
 
     Returns:
@@ -374,7 +378,9 @@ def run(
         server_port=server_port,
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
-        trial_executor=trial_executor)
+        trial_executor=trial_executor,
+        callbacks=callbacks,
+        metric=metric)
 
     if not runner.resumed:
         for exp in experiments:

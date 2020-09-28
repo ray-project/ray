@@ -370,7 +370,7 @@ class ObjectInfoAccessor {
   /// \param node_id The location that will be added to GCS.
   /// \param callback Callback that will be called after object has been added to GCS.
   /// \return Status
-  virtual Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
+  virtual Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                                   const StatusCallback &callback) = 0;
 
   /// Remove location of object from GCS asynchronously.
@@ -379,7 +379,7 @@ class ObjectInfoAccessor {
   /// \param node_id The location that will be removed from GCS.
   /// \param callback Callback that will be called after the delete finished.
   /// \return Status
-  virtual Status AsyncRemoveLocation(const ObjectID &object_id, const ClientID &node_id,
+  virtual Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
                                      const StatusCallback &callback) = 0;
 
   /// Subscribe to any update of an object's location.
@@ -434,8 +434,8 @@ class NodeInfoAccessor {
 
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
-  /// \return ClientID
-  virtual const ClientID &GetSelfId() const = 0;
+  /// \return NodeID
+  virtual const NodeID &GetSelfId() const = 0;
 
   /// Get information of local node which was registered by 'RegisterSelf'.
   ///
@@ -455,7 +455,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
-  virtual Status AsyncUnregister(const ClientID &node_id,
+  virtual Status AsyncUnregister(const NodeID &node_id,
                                  const StatusCallback &callback) = 0;
 
   /// Get information of all nodes from GCS asynchronously.
@@ -472,7 +472,7 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe,
+      const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Get node information from local cache.
@@ -483,7 +483,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to look up in local cache.
   /// \return The item returned by GCS. If the item to read doesn't exist,
   /// this optional object is empty.
-  virtual boost::optional<rpc::GcsNodeInfo> Get(const ClientID &node_id) const = 0;
+  virtual boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id) const = 0;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
@@ -491,7 +491,7 @@ class NodeInfoAccessor {
   /// is called before.
   ///
   /// \return All nodes in cache.
-  virtual const std::unordered_map<ClientID, rpc::GcsNodeInfo> &GetAll() const = 0;
+  virtual const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const = 0;
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
@@ -500,7 +500,7 @@ class NodeInfoAccessor {
   ///
   /// \param node_id The id of the node to check.
   /// \return Whether the node is removed.
-  virtual bool IsRemoved(const ClientID &node_id) const = 0;
+  virtual bool IsRemoved(const NodeID &node_id) const = 0;
 
   // TODO(micafan) Define ResourceMap in GCS proto.
   typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
@@ -511,7 +511,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to lookup dynamic resources.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetResources(const ClientID &node_id,
+  virtual Status AsyncGetResources(const NodeID &node_id,
                                    const OptionalItemCallback<ResourceMap> &callback) = 0;
 
   /// Update resources of node in GCS asynchronously.
@@ -519,8 +519,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to update dynamic resources.
   /// \param resources The dynamic resources of node to be updated.
   /// \param callback Callback that will be called after update finishes.
-  virtual Status AsyncUpdateResources(const ClientID &node_id,
-                                      const ResourceMap &resources,
+  virtual Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
                                       const StatusCallback &callback) = 0;
 
   /// Delete resources of a node from GCS asynchronously.
@@ -528,7 +527,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to delete resources from GCS.
   /// \param resource_names The names of resource to be deleted.
   /// \param callback Callback that will be called after delete finishes.
-  virtual Status AsyncDeleteResources(const ClientID &node_id,
+  virtual Status AsyncDeleteResources(const NodeID &node_id,
                                       const std::vector<std::string> &resource_names,
                                       const StatusCallback &callback) = 0;
 
@@ -560,7 +559,7 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+      const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Report state of all nodes to GCS asynchronously.
