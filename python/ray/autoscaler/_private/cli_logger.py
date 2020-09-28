@@ -52,6 +52,8 @@ class _ColorfulProxy:
         "disable",
         "reset", "bold", "italic", "underlined",
 
+        "with_style",
+
         # used instead of `gray` as `dimmed` adapts to
         # both light and dark themes
         "dimmed",
