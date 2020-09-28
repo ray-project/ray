@@ -343,6 +343,7 @@ class SchedulingQueue {
 
   bool NormalTaskQueueEmpty() const { return pending_normal_tasks_.empty(); }
 
+  /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
@@ -364,7 +365,6 @@ class SchedulingQueue {
 
     if (dependencies.size() > 0) {
       waiter_.Wait(dependencies, [seq_no, this]() {
-        // RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
         auto it = pending_actor_tasks_.find(seq_no);
         if (it != pending_actor_tasks_.end()) {
           it->second.MarkDependenciesSatisfied();
@@ -378,7 +378,7 @@ class SchedulingQueue {
   void ScheduleRequests() {
     if (!NormalTaskQueueEmpty()) {
       while (!pending_normal_tasks_.empty()) {
-        auto &head = pending_normal_tasks_.begin();
+        auto &head = pending_normal_tasks_.front();
         head.Accept();
         pending_normal_tasks_.pop_front();
       }
