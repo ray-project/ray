@@ -146,22 +146,21 @@ void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request
   RAY_LOG(DEBUG) << "Getting actor info"
                  << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
-  auto on_done = [actor_id, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<ActorTableData> &result) {
-    if (result) {
-      reply->mutable_actor_table_data()->CopyFrom(*result);
+  const auto &registered_actor_iter = registered_actors_.find(actor_id);
+  if (registered_actor_iter != registered_actors_.end()) {
+    reply->mutable_actor_table_data()->CopyFrom(
+        registered_actor_iter->second->GetActorTableData());
+  } else {
+    const auto &destroyed_actor_iter = destroyed_actors_.find(actor_id);
+    if (destroyed_actor_iter != destroyed_actors_.end()) {
+      reply->mutable_actor_table_data()->CopyFrom(
+          destroyed_actor_iter->second->GetActorTableData());
     }
-    RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
-                   << ", actor id = " << actor_id << ", status = " << status;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
-
-  // Look up the actor_id in the GCS.
-  Status status = gcs_table_storage_->ActorTable().Get(actor_id, on_done);
-  if (!status.ok()) {
-    on_done(status, boost::none);
   }
+
+  RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
+                 << ", actor id = " << actor_id;
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
@@ -169,19 +168,14 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
                                             rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
 
-  auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<ActorID, ActorTableData> &result) {
-    for (auto &it : result) {
-      reply->add_actor_table_data()->CopyFrom(it.second);
-    }
-    RAY_LOG(DEBUG) << "Finished getting all actor info.";
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
-
-  Status status = gcs_table_storage_->ActorTable().GetAll(on_done);
-  if (!status.ok()) {
-    on_done(std::unordered_map<ActorID, ActorTableData>());
+  for (const auto &iter : registered_actors_) {
+    reply->add_actor_table_data()->CopyFrom(iter.second->GetActorTableData());
   }
+  for (const auto &iter : destroyed_actors_) {
+    reply->add_actor_table_data()->CopyFrom(iter.second->GetActorTableData());
+  }
+  RAY_LOG(DEBUG) << "Finished getting all actor info.";
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsActorManager::HandleGetNamedActorInfo(
@@ -190,37 +184,24 @@ void GcsActorManager::HandleGetNamedActorInfo(
   const std::string &name = request.name();
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
 
-  auto on_done = [name, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<ActorTableData> &result) {
-    if (status.ok()) {
-      if (result) {
-        reply->mutable_actor_table_data()->CopyFrom(*result);
-      }
-    } else {
-      RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString()
-                     << ", name = " << name;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
   // Try to look up the actor ID for the named actor.
   ActorID actor_id = GetActorIDByName(name);
 
+  Status status = Status::OK();
   if (actor_id.IsNil()) {
     // The named actor was not found.
     std::stringstream stream;
     stream << "Actor with name '" << name << "' was not found.";
-    on_done(Status::NotFound(stream.str()), boost::none);
+    RAY_LOG(WARNING) << stream.str();
+    status = Status::NotFound(stream.str());
   } else {
-    // Look up the actor_id in the GCS.
-    Status status = gcs_table_storage_->ActorTable().Get(actor_id, on_done);
-    if (!status.ok()) {
-      on_done(status, boost::none);
-    }
+    const auto &iter = registered_actors_.find(actor_id);
+    RAY_CHECK(iter != registered_actors_.end());
+    reply->mutable_actor_table_data()->CopyFrom(iter->second->GetActorTableData());
     RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                    << ", actor id = " << actor_id;
   }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
 }
 void GcsActorManager::HandleRegisterActorInfo(
     const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
@@ -582,6 +563,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       << "Tried to destroy actor that does not exist " << actor_id;
   const auto actor = std::move(it->second);
   registered_actors_.erase(it);
+  destroyed_actors_.emplace(it->first, it->second);
 
   // Clean up the client to the actor's owner, if necessary.
   if (!actor->IsDetached()) {
