@@ -240,6 +240,38 @@ def test_get_nodes_to_launch_with_min_workers():
     assert to_launch == [("p2.8xlarge", 1)]
 
 
+def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
+    provider = MockProvider()
+    new_types = copy.deepcopy(TYPES_A)
+    new_types["p2.8xlarge"]["min_workers"] = 2
+    scheduler = ResourceDemandScheduler(provider, new_types, 10)
+
+    provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
+
+    nodes = provider.non_terminated_nodes({})
+
+    ips = provider.non_terminated_node_ips({})
+    # 1 free p2.8xls
+    utilizations = {ip: {"GPU": 8} for ip in ips}
+    # 1 more on the way
+    pending_nodes = {"p2.8xlarge": 1}
+    # requires 2 p2.8xls (only 2 are in cluster/pending) and 1 p2.xlarge
+    demands = [{"GPU": 8}] * (len(utilizations) + 1) + [{"GPU": 1}]
+    to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
+                                              utilizations)
+    assert to_launch == [("p2.xlarge", 1)]
+
+    # 3 min_workers of p2.8xlarge covers the 2 p2.8xlarge + 1 p2.xlarge demand.
+    # 2 p2.8xlarge are running/pending. So we need 1 more p2.8xlarge only to
+    # meet the min_workers constraint and the demand.
+    new_types["p2.8xlarge"]["min_workers"] = 3
+    scheduler = ResourceDemandScheduler(provider, new_types, 10)
+    to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
+                                              utilizations)
+    # Make sure it does not return [("p2.8xlarge", 1), ("p2.xlarge", 1)]
+    assert to_launch == [("p2.8xlarge", 1)]
+
+
 def test_get_nodes_to_launch_limits():
     provider = MockProvider()
     scheduler = ResourceDemandScheduler(provider, TYPES_A, 3)
