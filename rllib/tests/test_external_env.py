@@ -117,7 +117,7 @@ class MultiServing(ExternalEnv):
 class TestExternalEnv(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(ignore_reinit_error=True, local_mode=True)#TODO
+        ray.init(ignore_reinit_error=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -208,9 +208,8 @@ class TestExternalEnv(unittest.TestCase):
     def test_train_cartpole_multi(self):
         register_env("test2",
                      lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
-        config = {"num_workers": 0,
-                  "_use_trajectory_view_api": True}#TODO
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+        config = {"num_workers": 0}
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = PGTrainer(env="test2", config=config)
             reached = False
             for i in range(80):

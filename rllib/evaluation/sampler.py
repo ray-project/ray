@@ -540,7 +540,6 @@ def _env_runner(
 
     active_episodes: Dict[str, MultiAgentEpisode] = \
         NewEpisodeDefaultDict(new_episode)
-    #eval_results = None
 
     while True:
         perf_stats.iters += 1
@@ -567,7 +566,6 @@ def _env_runner(
                     base_env=base_env,
                     policies=policies,
                     active_episodes=active_episodes,
-                    #prev_policy_outputs=eval_results,
                     unfiltered_obs=unfiltered_obs,
                     rewards=rewards,
                     dones=dones,
@@ -941,8 +939,6 @@ def _process_observations_w_trajectory_view_api(
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
         active_episodes: Dict[str, MultiAgentEpisode],
-        #prev_policy_outputs: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
-        #                                          dict]],
         unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
         rewards: Dict[EnvID, Dict[AgentID, float]],
         dones: Dict[EnvID, Dict[AgentID, bool]],
@@ -1040,23 +1036,6 @@ def _process_observations_w_trajectory_view_api(
                 _sample_collector.add_init_obs(episode, agent_id, env_id,
                                                policy_id, filtered_obs)
             else:
-                #batch_builder.add_values(
-                #    agent_id,
-                #    policy_id,
-                #    t=episode.length - 1,
-                #    eps_id=episode.episode_id,
-                #    agent_index=episode._agent_index(agent_id),
-                #    obs=last_observation,
-                #    prev_actions=episode.prev_action_for(agent_id),
-                #    prev_rewards=episode.prev_reward_for(agent_id),
-                #    dones=(False if (no_done_at_end
-                #                     or (hit_horizon and soft_horizon)) else
-                #           agent_done),
-                #    infos=infos[env_id].get(agent_id, {}),
-                #    #new_obs=filtered_obs,
-                #    #**episode.last_pi_info_for(agent_id))
-                #eval_idx = _sample_collector.agent_key_to_forward_pass_index[(
-                #    episode.episode_id, agent_id)]
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
                     "t": episode.length - 1,
@@ -1064,7 +1043,6 @@ def _process_observations_w_trajectory_view_api(
                     "env_id": env_id,
                     "agent_index": episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
-                    #"actions": prev_policy_outputs[policy_id][0][eval_idx],
                     "actions": episode.last_action_for(agent_id),
                     # Reward received after taking a at timestep t.
                     "rewards": rewards[env_id][agent_id],
@@ -1075,27 +1053,21 @@ def _process_observations_w_trajectory_view_api(
                     # Next observation.
                     "new_obs": filtered_obs,
                 }
-                # TODO: (sven) add env infos to buffers as well.
                 # Add extra-action-fetches to collectors.
                 values_dict.update(**episode.last_pi_info_for(agent_id))
-                #for k, v in prev_policy_outputs[policy_id][2].items():
-                #    values_dict[k] = v[eval_idx]
-                # Add state-outputs to collectors.
-                #for i, v in enumerate(prev_policy_outputs[policy_id][1]):
-                #    values_dict["state_out_{}".format(i)] = v[eval_idx]
                 _sample_collector.add_action_reward_next_obs(
                     episode.episode_id, agent_id, env_id, policy_id,
                     agent_done, values_dict)
 
             if not agent_done:
-                item = PolicyEvalData(env_id, agent_id, filtered_obs,
-                                      infos[env_id].get(agent_id, {}),
-                                      None if last_observation is None else episode.rnn_state_for(agent_id),
-                                      None if last_observation is None else episode.last_action_for(agent_id),
-                                      rewards[env_id][agent_id] or 0.0)
+                item = PolicyEvalData(
+                    env_id, agent_id, filtered_obs, infos[env_id].get(
+                        agent_id, {}), None if last_observation is None else
+                    episode.rnn_state_for(agent_id), None
+                    if last_observation is None else
+                    episode.last_action_for(agent_id),
+                    rewards[env_id][agent_id] or 0.0)
                 to_eval[policy_id].append(item)
-            #if not agent_done:
-            #    to_eval.add(policy_id)
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
@@ -1174,18 +1146,12 @@ def _process_observations_w_trajectory_view_api(
                     # Add initial obs to buffer.
                     _sample_collector.add_init_obs(
                         new_episode, agent_id, env_id, policy_id, filtered_obs)
-                    #to_eval.add(policy_id)
 
                     item = PolicyEvalData(
                         env_id, agent_id, filtered_obs,
                         episode.last_info_for(agent_id) or {},
-                        episode.rnn_state_for(agent_id),
-                        None, 0.0)
-                    #old-prev-actions: np.zeros_like(
-                    #        flatten_to_single_ndarray(
-                    #            policy.action_space.sample()))
+                        episode.rnn_state_for(agent_id), None, 0.0)
                     to_eval[policy_id].append(item)
-
 
     # Try to build something.
     if multiple_episodes_in_batch:
@@ -1425,13 +1391,6 @@ def _process_policy_eval_results(
             else:
                 clipped_action = action
 
-            # Trajectory View API: Do not store data directly in episode
-            #  (entire episode is stored in Trajectory and kept until
-            #  end of episode).
-            #if _use_trajectory_view_api:
-            #    (episode_id, agent_id), env_id = \
-            #        _sample_collector.forward_pass_index_info[policy_id][i]
-            #else:
             env_id: int = eval_data[i].env_id
             agent_id: AgentID = eval_data[i].agent_id
             episode: MultiAgentEpisode = active_episodes[env_id]
@@ -1441,8 +1400,8 @@ def _process_policy_eval_results(
                            for k, v in pi_info_cols.items()})
             if env_id in off_policy_actions and \
                     agent_id in off_policy_actions[env_id]:
-                episode._set_last_action(
-                    agent_id, off_policy_actions[env_id][agent_id])
+                episode._set_last_action(agent_id,
+                                         off_policy_actions[env_id][agent_id])
             else:
                 episode._set_last_action(agent_id, action)
 
