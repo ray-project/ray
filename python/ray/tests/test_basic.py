@@ -350,6 +350,9 @@ def test_ray_options(shutdown_only):
     @ray.remote(
         num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
     def foo():
+        import time
+        # Sleep for a heartbeat period to ensure resources changing reported.
+        time.sleep(0.1)
         return ray.available_resources()
 
     ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
