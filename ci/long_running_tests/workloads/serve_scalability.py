@@ -41,6 +41,7 @@ def hey(_):
     time.sleep(0.01)  # Sleep for 10ms
     return b"hey"
 
+
 # TODO(architkulkarni): implement "hey" requester actor, put one per node
 
 # The number of replicas is the number of cores remaining after accounting
@@ -48,7 +49,7 @@ def hey(_):
 # node, and the serve controller.
 num_replicas = expected_num_nodes * (cpus_per_node - 2) - 1
 client.create_backend(
-    "hey", hey, config=BackendConfig(num_replicas=num_replicas)
+    "hey", hey, config=BackendConfig(num_replicas=num_replicas))
 client.create_endpoint("hey", backend="hey", route="/hey")
 
 logger.info("Warming up for ~3 seconds")
