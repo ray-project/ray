@@ -231,7 +231,6 @@ def test_backlog_report(shutdown_only):
         return None
 
     def backlog_size_set():
-        success = False
         try:
             raw_message = client.get_message()
         except Exception:
@@ -245,19 +244,19 @@ def test_backlog_report(shutdown_only):
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
-        aggregate_resource_load = message.resource_load_by_shape.resource_demands
+        aggregate_resource_load = \
+            message.resource_load_by_shape.resource_demands
         if len(aggregate_resource_load) == 1:
             backlog_size = aggregate_resource_load[0].backlog_size
             return backlog_size == 7
         return False
 
-
     # We want this first task to finish
     refs = [foo.remote(0.1)]
     # These tasks should all start _before_ the first one finishes.
     refs.extend([foo.remote(1000) for _ in range(9)])
-    # Now there's 1 request running, 1 queued in the raylet, and 8 queued in the
-    # worker backlog.
+    # Now there's 1 request running, 1 queued in the raylet, and 8 queued in
+    # the worker backlog.
 
     ray.get(refs[0])
     # First request finishes, second request is now running, third lease
