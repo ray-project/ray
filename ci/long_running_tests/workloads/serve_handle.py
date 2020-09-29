@@ -17,14 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 def hello_world(_):
-    return "Hello World"
+    return b"Hello World"
 
 
 class ForwardActor:
     def __init__(self):
         self.handle = client.get_handle("hello_world")
 
-    def __call__(self, _):
+    async def __call__(self, _):
         return ray.get(self.handle.remote())
 
 

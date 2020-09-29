@@ -38,7 +38,7 @@ logger.info("Nodes have all joined. There are %s resources.",
 
 def hey(_):
     time.sleep(0.01)  # Sleep for 10ms
-    return "hey"
+    return b"hey"
 
 
 # TODO(architkulkarni): how many replicas?
