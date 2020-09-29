@@ -60,16 +60,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 config_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
                 with open(config_path) as f:
                     cfg = yaml.safe_load(f)
-            except yaml.YAMLError as e:
+            except yaml.YAMLError:
                 return await dashboard_utils.rest_response(
                     success=False,
                     message=f"No config found at {config_path}.",
                 )
-            except FileNotFoundError as e:
+            except FileNotFoundError:
                 return await dashboard_utils.rest_response(
                     success=False,
-                    message=f"Invalid config, could not load YAML."
-                )
+                    message=f"Invalid config, could not load YAML.")
 
             payload = {
                 "min_workers": cfg["min_workers"],
