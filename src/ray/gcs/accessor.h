@@ -173,6 +173,12 @@ class ActorInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
+  /// Check if the specified actor is unsubscribed.
+  ///
+  /// \param actor_id The ID of the actor.
+  /// \return Whether the specified actor is unsubscribed.
+  virtual bool IsActorUnsubscribed(const ActorID &actor_id) = 0;
+
  protected:
   ActorInfoAccessor() = default;
 };
@@ -337,6 +343,18 @@ class TaskInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
+  /// Check if the specified task is unsubscribed.
+  ///
+  /// \param task_id The ID of the task.
+  /// \return Whether the specified task is unsubscribed.
+  virtual bool IsTaskUnsubscribed(const TaskID &task_id) = 0;
+
+  /// Check if the specified task lease is unsubscribed.
+  ///
+  /// \param task_id The ID of the task.
+  /// \return Whether the specified task lease is unsubscribed.
+  virtual bool IsTaskLeaseUnsubscribed(const TaskID &task_id) = 0;
+
  protected:
   TaskInfoAccessor() = default;
 };
@@ -408,6 +426,12 @@ class ObjectInfoAccessor {
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
+
+  /// Check if the specified object is unsubscribed.
+  ///
+  /// \param object_id The ID of the object.
+  /// \return Whether the specified object is unsubscribed.
+  virtual bool IsObjectUnsubscribed(const ObjectID &object_id) = 0;
 
  protected:
   ObjectInfoAccessor() = default;

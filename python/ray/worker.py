@@ -156,6 +156,10 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
+    def current_node_id(self):
+        return self.core_worker.get_current_node_id()
+
+    @property
     def placement_group_id(self):
         return self.core_worker.get_placement_group_id()
 
