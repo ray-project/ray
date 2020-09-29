@@ -222,6 +222,13 @@ message ResourceTableData {
   double resource_capacity = 1;
 }
 
+message AvailableResources {
+  // Node manager client id.
+  bytes node_id = 1;
+  // Resource capacity currently available on this node manager.
+  map<string, double> resources_available = 2;
+}
+
 message GcsNodeInfo {
   // State of a node.
   enum GcsNodeState {

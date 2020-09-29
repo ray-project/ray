@@ -354,6 +354,21 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
       gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
 }
 
+void GcsNodeManager::HandleGetAllAvailableResources(
+    const rpc::GetAllAvailableResourcesRequest &request,
+    rpc::GetAllAvailableResourcesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  for (const auto &iter : GetClusterRealtimeResources()) {
+    rpc::AvailableResources resource;
+    resource.set_node_id(iter.first.Binary());
+    for (auto res : iter.second->GetResourceAmountMap()) {
+      (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
+    }
+    reply->add_resources_list()->CopyFrom(resource);
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
