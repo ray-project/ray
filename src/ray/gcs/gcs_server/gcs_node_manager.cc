@@ -87,6 +87,8 @@ void GcsNodeManager::NodeFailureDetector::DetectDeadNodes() {
 }
 
 void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
+  const bool report_worker_backlog = RayConfig::instance().report_worker_backlog();
+
   if (!heartbeat_buffer_.empty()) {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
     std::unordered_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
@@ -102,8 +104,10 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
-        aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                          demand.backlog_size());
+        if (report_worker_backlog) {
+          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                            demand.backlog_size());
+        }
       }
       heartbeat.second.clear_resource_load_by_shape();
 
@@ -116,6 +120,14 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
       for (const auto &resource_pair : demand.first.GetResourceMap()) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
       }
+    }
+
+    if (report_worker_backlog) {
+      int64_t total_backlog_size = 0;
+      for (auto &demand : aggregate_load) {
+        total_backlog_size += demand.second.backlog_size();
+      }
+      batch->set_backlog_size(total_backlog_size);
     }
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",

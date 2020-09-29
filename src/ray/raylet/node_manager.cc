@@ -163,8 +163,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
-      report_worker_backlog_(RayConfig::instance().report_worker_backlog)
-{
+      report_worker_backlog_(RayConfig::instance().report_worker_backlog()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
