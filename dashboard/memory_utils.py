@@ -101,8 +101,7 @@ class MemoryTableEntry:
         elif group_by_type == GroupByType.STACK_TRACE:
             return self.call_site
         else:
-            raise ValueError(
-                "group by type {} is invalid.".format(group_by_type))
+            raise ValueError(f"group by type {group_by_type} is invalid."
 
     def _get_reference_type(self) -> str:
         if self._is_object_ref_actor_handle():
@@ -135,7 +134,7 @@ class MemoryTableEntry:
         else:
             return False
 
-    def __dict__(self):
+    def as_dict(self):
         return {
             "object_ref": self.object_ref.hex(),
             "pid": self.pid,
@@ -156,7 +155,7 @@ class MemoryTableEntry:
         return self.__repr__()
 
     def __repr__(self):
-        return str(self.__dict__())
+        return str(self.as_dict())
 
 
 class MemoryTable:
@@ -231,8 +230,7 @@ class MemoryTable:
         elif sorting_type == SortingType.REFERENCE_TYPE:
             self.table.sort(key=lambda entry: entry.reference_type)
         else:
-            raise ValueError(
-                "Give sorting type: {} is invalid.".format(sorting_type))
+            raise ValueError(f"Give sorting type: {sorting_type} is invalid.")
         return self
 
     def _group_by(self, group_by_type: GroupByType):
