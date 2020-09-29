@@ -220,7 +220,8 @@
                 }, 
                 "disable_automatic_runtime_detection" : {
                     "type": "boolean",
-                    "description": "disable Ray from automatically using the NVIDIA runtime if available"
+                    "description": "disable Ray from automatically using the NVIDIA runtime if available",
+                    "default": false
                 }
             }
         },
