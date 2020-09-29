@@ -94,7 +94,6 @@ class DataOrganizer:
         log_info = DataSource.ip_and_pid_to_logs.get(node_physical_stats["ip"],
                                                      {})
         node_log_count = 0
-        logger.error(f"log_info={log_info}")
         for entries in log_info.values():
             node_log_count += len(entries)
         error_info = DataSource.ip_and_pid_to_errors.get(
@@ -125,14 +124,14 @@ class DataOrganizer:
             worker["logCount"] = len(log_info.get(str(worker["pid"]), []))
             worker["errorCount"] = len(error_info.get(str(worker["pid"]), []))
 
-        extracted_views = _extract_view_data(
+        ray_stats = _extract_view_data(
             node_stats["viewData"],
             {"object_store_used_memory", "object_store_available_memory"})
 
         node_info = node_physical_stats
         # Merge node stats to node physical stats under raylet
         node_info["raylet"] = node_stats
-        node_info["raylet"].update(extracted_views)
+        node_info["raylet"].update(ray_stats)
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)

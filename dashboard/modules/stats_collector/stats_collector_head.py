@@ -104,14 +104,10 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         group_by = req.query.get("group_by")
         sort_by = req.query.get("sort_by")
         kwargs = {}
-        try:
-            if group_by:
-                kwargs["group_by"] = GroupByType(group_by)
-            if sort_by:
-                kwargs["sort_by"] = SortingType(sort_by)
-        except ValueError as e:
-            return await dashboard_utils.rest_response(
-                success=False, message=str(e))
+        if group_by:
+            kwargs["group_by"] = GroupByType(group_by)
+        if sort_by:
+            kwargs["sort_by"] = SortingType(sort_by)
 
         memory_table = await DataOrganizer.get_memory_table(**kwargs)
         return await dashboard_utils.rest_response(
