@@ -230,7 +230,10 @@ class NodeProvider:
                 return self._external_ip_cache.get(ip_address)
 
         if not find_node_id():
-            self._update_ip_cache()
+            all_nodes = self.non_terminated_nodes({})
+            for node_id in all_nodes:
+                self._external_ip_cache[self.external_ip(node_id)] = node_id
+                self._internal_ip_cache[self.internal_ip(node_id)] = node_id
 
         if not find_node_id():
             if use_internal:
@@ -242,13 +245,6 @@ class NodeProvider:
             raise ValueError(f"ip {ip_address} not found. " + known_msg)
 
         return find_node_id()
-
-    def _update_ip_cache(self):
-        all_nodes = self.non_terminated_nodes({})
-
-        for node_id in all_nodes:
-            self._external_ip_cache[self.external_ip(node_id)] = node_id
-            self._internal_ip_cache[self.internal_ip(node_id)] = node_id
 
     def create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
