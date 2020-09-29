@@ -420,15 +420,13 @@ class _SimpleListCollector(_SampleCollector):
         #  batches from the same policy to the postprocess methods.
         # Build SampleBatches for the given episode.
         pre_batches = {}
-        for (episode_id, agent_id), collector in self.agent_collectors.items():
+        for (eps_id, agent_id), collector in self.agent_collectors.items():
             # Build only the given episode.
-            if episode_id != episode.episode_id:
+            if eps_id != episode.episode_id:
                 continue
             policy = self.policy_map[self.agent_to_policy[agent_id]]
-            pre_batches[(episode_id,
-                         agent_id)] = (policy,
-                                       collector.build(
-                                           policy.view_requirements))
+            pre_batches[agent_id] = (policy,
+                                     collector.build(policy.view_requirements))
 
         # Apply postprocessor.
         post_batches = {}
@@ -442,7 +440,7 @@ class _SimpleListCollector(_SampleCollector):
                     a_min=-self.clip_rewards,
                     a_max=self.clip_rewards)
 
-        for (episode_id, agent_id), (_, pre_batch) in pre_batches.items():
+        for agent_id, (_, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
             if is_done:
                 # Error if no DONE at end of this agent's trajectory.
@@ -450,7 +448,7 @@ class _SimpleListCollector(_SampleCollector):
                     raise ValueError(
                         "Episode {} terminated for all agents, but we still "
                         "don't have a last observation for agent {} (policy "
-                        "{}). ".format(episode_id, agent_id,
+                        "{}). ".format(episode.episode_id, agent_id,
                                        self.agent_to_policy[agent_id]) +
                         "Please ensure that you include the last observations "
                         "of all live agents when setting done[__all__] to "
@@ -458,10 +456,10 @@ class _SimpleListCollector(_SampleCollector):
                         "allow this.")
             # If (only this?) agent is done, erase its buffer entirely.
             if pre_batch[SampleBatch.DONES][-1]:
-                del self.agent_collectors[(episode_id, agent_id)]
+                del self.agent_collectors[(episode.episode_id, agent_id)]
 
             other_batches = pre_batches.copy()
-            del other_batches[(episode_id, agent_id)]
+            del other_batches[agent_id]
             policy = self.policy_map[self.agent_to_policy[agent_id]]
             if any(pre_batch["dones"][:-1]) or len(set(
                     pre_batch["eps_id"])) > 1:
