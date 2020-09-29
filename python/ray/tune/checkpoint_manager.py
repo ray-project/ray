@@ -44,6 +44,9 @@ class Checkpoint:
             return isinstance(self.value, str)
         return self.storage == Checkpoint.MEMORY
 
+    def __repr__(self):
+        return f"Checkpoint({self.storage}, {self.value})"
+
 
 class QueueItem:
     def __init__(self, priority, value):
@@ -52,6 +55,9 @@ class QueueItem:
 
     def __lt__(self, other):
         return self.priority < other.priority
+
+    def __repr__(self):
+        return f"QueueItem({repr(self.value)})"
 
 
 class CheckpointManager:
@@ -82,7 +88,7 @@ class CheckpointManager:
         self.delete = delete_fn
         self.newest_persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT,
                                                        None)
-        self.newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
+        self._newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
 
@@ -93,6 +99,10 @@ class CheckpointManager:
             [self.newest_persistent_checkpoint, self.newest_memory_checkpoint],
             key=lambda c: c.result.get(TRAINING_ITERATION, -1))
         return newest_checkpoint
+
+    @property
+    def newest_memory_checkpoint(self):
+        return self._newest_memory_checkpoint
 
     def on_checkpoint(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
@@ -105,7 +115,9 @@ class CheckpointManager:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
         if checkpoint.storage == Checkpoint.MEMORY:
-            self.newest_memory_checkpoint = checkpoint
+            # Forcibly remove the memory checkpoint
+            del self._newest_memory_checkpoint
+            self._newest_memory_checkpoint = checkpoint
             return
 
         old_checkpoint = self.newest_persistent_checkpoint
@@ -151,6 +163,9 @@ class CheckpointManager:
 
     def __getstate__(self):
         state = self.__dict__.copy()
+        # Avoid serializing the memory checkpoint.
+        state["_newest_memory_checkpoint"] = Checkpoint(
+            Checkpoint.MEMORY, None)
         # Avoid serializing lambda since it may capture cyclical dependencies.
         state.pop("delete")
         return state
