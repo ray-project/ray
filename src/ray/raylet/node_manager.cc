@@ -380,7 +380,10 @@ void NodeManager::Heartbeat() {
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
   if (interval > RayConfig::instance().num_heartbeats_warning() *
                      RayConfig::instance().raylet_heartbeat_timeout_milliseconds()) {
-    RAY_LOG(WARNING) << "Last heartbeat was sent " << interval << " ms ago ";
+    RAY_LOG(WARNING)
+        << "Last heartbeat was sent " << interval
+        << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
+           "lagging, this node can be marked as dead mistakenly.";
   }
   last_heartbeat_at_ms_ = now_ms;
 
@@ -497,7 +500,8 @@ void NodeManager::DoLocalGC() {
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
     all_workers.push_back(driver);
   }
-  RAY_LOG(WARNING) << "Sending local GC request to " << all_workers.size() << " workers.";
+  RAY_LOG(WARNING) << "Sending local GC request to " << all_workers.size()
+                   << " workers. It is due to memory pressure on the local node.";
   for (const auto &worker : all_workers) {
     rpc::LocalGCRequest request;
     worker->rpc_client()->LocalGC(
@@ -536,7 +540,7 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
     // the local worker.
     if (pinned_objects_.count(id) == 0) {
       RAY_LOG(WARNING) << "Requested spill for object that has not yet been marked as "
-                          "the primary copy";
+                          "the primary copy.";
     }
   }
   if (objects_ids.empty()) {
@@ -3460,7 +3464,9 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
 }
 
 void NodeManager::TriggerGlobalGC() {
-  RAY_LOG(WARNING) << "Broadcasting global GC request to all raylets.";
+  RAY_LOG(WARNING)
+      << "Broadcasting global GC request to all raylets. This is usually because "
+         "clusters have memory pressure, and ray needs to GC unused memory.";
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
   should_local_gc_ = true;

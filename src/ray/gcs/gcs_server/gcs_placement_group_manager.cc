@@ -120,8 +120,8 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
-  RAY_LOG(WARNING) << "Failed to create placement group " << placement_group->GetName()
-                   << ", try again.";
+  RAY_LOG(INFO) << "Failed to create placement group " << placement_group->GetName()
+                << ", try again.";
   // We will attempt to schedule this placement_group once an eligible node is
   // registered.
   auto state = placement_group->GetState();
@@ -219,9 +219,9 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
             RAY_LOG(INFO) << "Finished registering placement group, "
                           << placement_group->DebugString();
           } else {
-            RAY_LOG(WARNING) << "Failed to register placement group, "
-                             << placement_group->DebugString()
-                             << ", cause: " << status.message();
+            RAY_LOG(INFO) << "Failed to register placement group, "
+                          << placement_group->DebugString()
+                          << ", cause: " << status.message();
           }
           GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
         });
@@ -327,8 +327,8 @@ void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
-  RAY_LOG(WARNING) << "Node " << node_id
-                   << " failed, rescheduling the placement groups on the dead node.";
+  RAY_LOG(INFO) << "Node " << node_id
+                << " failed, rescheduling the placement groups on the dead node.";
   auto bundles = gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
   for (const auto &bundle : bundles) {
     auto iter = registered_placement_groups_.find(bundle.first);
