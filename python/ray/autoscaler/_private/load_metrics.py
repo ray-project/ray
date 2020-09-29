@@ -32,10 +32,14 @@ class LoadMetrics:
                static_resources,
                dynamic_resources,
                resource_load,
-               waiting_bundles=[],
-               infeasible_bundles=[]):
+               waiting_bundles=None,
+               infeasible_bundles=None):
         self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
+        if not waiting_bundles:
+            waiting_bundles = []
+        if not infeasible_bundles:
+            infeasible_bundles = []
 
         # We are not guaranteed to have a corresponding dynamic resource for
         # every static resource because dynamic resources are based on the
