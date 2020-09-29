@@ -192,8 +192,10 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         ]
         return remote_operator_setups
 
-    def _setup_local_rank(self, rank_counter_dict=defaultdict(int)):
+    def _setup_local_rank(self, rank_counter_dict=None):
         """Sets local rank for all workers."""
+        if rank_counter_dict is None:
+            rank_counter_dict = defaultdict(int)
         node_ips = ray.get(
             [w.get_node_ip.remote() for w in self.remote_workers])
         futures = []

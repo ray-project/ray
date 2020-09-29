@@ -66,17 +66,16 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
             return self.model
 
     def setup(self, config):
-        self._ptl = True
         # Pass in config if ptl_module accepts it.
         ptl_class = self.__class__._lightning_module_cls
+        if not issubclass(ptl_class, ptl.LightningModule):
+            raise TypeError("Argument must be subclass of "
+                            "pytorch_lightning.LightningModule. Got class {} "
+                            "instead.".format(ptl_class))
         if "config" in inspect.signature(ptl_class.__init__).parameters:
             ptl_module = ptl_class(config=config)
         else:
             ptl_module = ptl_class()
-        if not isinstance(ptl_module, ptl.LightningModule):
-            raise TypeError("Argument must be instance of "
-                            "pytorch_lightning.LightningModule. Got object "
-                            "of type {} instead.".format(type(ptl_module)))
 
         # This is needed for LightningDistributedDataParallel.
         ptl_module.testing = False
