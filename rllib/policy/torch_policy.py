@@ -483,7 +483,7 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
         return [
-            s.cpu().detach().numpy() for s in self.model.get_initial_state()
+            s.detach().cpu().numpy() for s in self.model.get_initial_state()
         ]
 
     @override(Policy)

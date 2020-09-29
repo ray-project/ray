@@ -304,8 +304,8 @@ class _SimpleListCollector(_SampleCollector):
         self.forward_pass_size = {pid: 0 for pid in policy_map.keys()}
         # Maps index from the forward pass batch to (agent_id, episode_id,
         # env_id) tuple.
-        self.forward_pass_index_info = {pid: {} for pid in policy_map.keys()}
-        self.agent_key_to_forward_pass_index = {}
+        #self.forward_pass_index_info = {pid: {} for pid in policy_map.keys()}
+        #self.agent_key_to_forward_pass_index = {}
 
         # Maps episode ID to _EpisodeRecord objects.
         self.episode_steps: Dict[EpisodeID, int] = collections.defaultdict(int)
@@ -379,7 +379,8 @@ class _SimpleListCollector(_SampleCollector):
         self.agent_collectors[agent_key].add_action_reward_next_obs(values)
 
         if agent_done:
-            del self.agent_key_to_forward_pass_index[agent_key]
+            #del self.agent_key_to_forward_pass_index[agent_key]
+            pass
         else:
             self._add_to_next_inference_call(agent_key, env_id)
 
@@ -558,8 +559,8 @@ class _SimpleListCollector(_SampleCollector):
         """
         policy_id = self.agent_to_policy[agent_key[1]]
         idx = self.forward_pass_size[policy_id]
-        self.forward_pass_index_info[policy_id][idx] = (agent_key, env_id)
-        self.agent_key_to_forward_pass_index[agent_key] = idx
+        #self.forward_pass_index_info[policy_id][idx] = (agent_key, env_id)
+        #self.agent_key_to_forward_pass_index[agent_key] = idx
         if idx == 0:
             self.forward_pass_agent_keys[policy_id].clear()
         self.forward_pass_agent_keys[policy_id].append(agent_key)
