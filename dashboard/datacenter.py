@@ -207,7 +207,7 @@ def _extract_view_data(views, data_keys):
     view_data = {}
     for view in views:
         view_name = view["viewName"]
-        if view["viewName"] in data_keys:
+        if view_name in data_keys:
             if not view.get("measures"):
                 view_data[view_name] = 0
                 continue
