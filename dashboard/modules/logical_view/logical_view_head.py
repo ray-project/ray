@@ -36,7 +36,7 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
             ip_address = req.query["ipAddress"]
             port = req.query["port"]
         except KeyError:
-            return await rest_response(success=False, message=f"Bad Request")
+            return await rest_response(success=False, message="Bad Request")
         try:
             channel = aiogrpc.insecure_channel(f"{ip_address}:{port}")
             stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
