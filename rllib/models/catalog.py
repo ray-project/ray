@@ -167,7 +167,8 @@ class ModelCatalog:
                     else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
-            dist_cls = TorchCategorical if framework == "torch" else Categorical
+            dist_cls = (
+                TorchCategorical if framework == "torch" else Categorical)
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
