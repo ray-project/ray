@@ -167,6 +167,8 @@ class MemoryTable:
         # Group is a list of memory tables grouped by a group key.
         self.group = {}
         self.summary = defaultdict(int)
+        # NOTE YOU MUST SORT TABLE BEFORE GROUPING.
+        # self._group_by(...)._sort_by(...) != self._sort_by(...)._group_by(...)
         if group_by_type and sort_by_type:
             self.setup(group_by_type, sort_by_type)
         elif group_by_type:
@@ -177,7 +179,7 @@ class MemoryTable:
     def setup(self, group_by_type: GroupByType, sort_by_type: SortingType):
         """Setup memory table.
 
-        This will sort entries first and gruop them after.
+        This will sort entries first and group them after.
         Sort order will be still kept.
         """
         self._sort_by(sort_by_type)._group_by(group_by_type)
