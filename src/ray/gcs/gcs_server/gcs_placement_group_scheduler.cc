@@ -208,8 +208,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   // If no nodes are available, scheduling fails.
   if (selected_nodes.empty()) {
-    RAY_LOG(WARNING) << "Failed to schedule placement group "
-                     << placement_group->GetName() << ", because no nodes are available.";
+    RAY_LOG(INFO) << "Failed to schedule placement group " << placement_group->GetName()
+                  << ", because no nodes are available.";
     failure_callback(placement_group);
     return;
   }
@@ -299,8 +299,8 @@ void GcsPlacementGroupScheduler::PrepareResources(
           RAY_LOG(INFO) << "Finished leasing resource from " << node_id
                         << " for bundle: " << bundle->DebugString();
         } else {
-          RAY_LOG(WARNING) << "Failed to lease resource from " << node_id
-                           << " for bundle: " << bundle->DebugString();
+          RAY_LOG(INFO) << "Failed to lease resource from " << node_id
+                        << " for bundle: " << bundle->DebugString();
         }
         callback(result);
       });
@@ -321,8 +321,8 @@ void GcsPlacementGroupScheduler::CommitResources(
           RAY_LOG(INFO) << "Finished committing resource to " << node_id
                         << " for bundle: " << bundle->DebugString();
         } else {
-          RAY_LOG(WARNING) << "Failed to commit resource to " << node_id
-                           << " for bundle: " << bundle->DebugString();
+          RAY_LOG(INFO) << "Failed to commit resource to " << node_id
+                        << " for bundle: " << bundle->DebugString();
         }
         RAY_CHECK(callback);
         callback(status);
@@ -333,10 +333,9 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
     const std::shared_ptr<BundleSpecification> &bundle_spec,
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
   if (node == nullptr) {
-    RAY_LOG(WARNING) << "Node for a placement group id "
-                     << bundle_spec->PlacementGroupId() << " and a bundle index, "
-                     << bundle_spec->Index()
-                     << " has already removed. Cancellation request will be ignored.";
+    RAY_LOG(INFO) << "Node for a placement group id " << bundle_spec->PlacementGroupId()
+                  << " and a bundle index, " << bundle_spec->Index()
+                  << " has already removed. Cancellation request will be ignored.";
     return;
   }
   auto node_id = NodeID::FromBinary(node->node_id());
