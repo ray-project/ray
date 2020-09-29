@@ -964,6 +964,9 @@ def rsync(config_file: str,
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
 
+    if ip_address and all_nodes:
+        cli_logger.abort("Cannot provide both ip_address and 'all_nodes'.")
+
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name

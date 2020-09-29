@@ -96,6 +96,8 @@ def rsync(cluster_config: Union[dict, str],
           source: str,
           target: str,
           down: bool,
+          ip_address: str = None,
+          use_internal: bool = False,
           no_config_cache: bool = False):
     """Rsyncs files to or from the cluster.
 
@@ -105,6 +107,9 @@ def rsync(cluster_config: Union[dict, str],
         source (str): rsync source argument.
         target (str): rsync target argument.
         down (bool): whether we're syncing remote -> local.
+        ip_address (str): Address of node.
+        use_internal (bool): Whether the provided ip_address is
+            public or private.
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
 
@@ -117,6 +122,8 @@ def rsync(cluster_config: Union[dict, str],
         target=target,
         override_cluster_name=None,
         down=down,
+        ip_address=ip_address,
+        use_internal=use_internal,
         no_config_cache=no_config_cache,
         all_nodes=False)
 
