@@ -397,7 +397,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &client_id) {
       if (config_.push_timeout_ms == 0) {
         // The Push request fails directly when config_.push_timeout_ms == 0.
         RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
-                         << " due to direct timeout setting. ";
+                         << " due to direct timeout setting. (0 ms timeout)";
       } else if (config_.push_timeout_ms > 0) {
         // Put the task into a queue and wait for the notification of Object added.
         timer.reset(new boost::asio::deadline_timer(*main_service_));

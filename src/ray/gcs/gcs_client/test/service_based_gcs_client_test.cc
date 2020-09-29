@@ -331,6 +331,20 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  std::vector<rpc::AvailableResources> GetAllAvailableResources() {
+    std::promise<bool> promise;
+    std::vector<rpc::AvailableResources> resources;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllAvailableResources(
+        [&resources, &promise](Status status,
+                               const std::vector<rpc::AvailableResources> &result) {
+          EXPECT_TRUE(!result.empty());
+          resources.assign(result.begin(), result.end());
+          promise.set_value(status.ok());
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return resources;
+  }
+
   bool SubscribeTask(
       const TaskID &task_id,
       const gcs::SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe) {
@@ -730,6 +744,38 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
   heartbeat->set_should_global_gc(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
   WaitForExpectedCount(heartbeat_batch_count, 1);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
+  // Subscribe batched state of all nodes from GCS.
+  std::atomic<int> heartbeat_batch_count(0);
+  auto on_subscribe =
+      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
+        ++heartbeat_batch_count;
+      };
+  ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
+
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
+  // Report heartbeat of a node to GCS.
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
+  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat->set_client_id(node_id.Binary());
+  // Set this flag because GCS won't publish unchanged heartbeat.
+  heartbeat->set_should_global_gc(true);
+  (*heartbeat->mutable_resources_available())["CPU"] = 1.0;
+  (*heartbeat->mutable_resources_available())["GPU"] = 10.0;
+  ASSERT_TRUE(ReportHeartbeat(heartbeat));
+  WaitForExpectedCount(heartbeat_batch_count, 1);
+
+  // Assert get all available resources right.
+  std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
+  EXPECT_EQ(resources.size(), 1);
+  EXPECT_EQ(resources[0].resources_available_size(), 2);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["CPU"], 1.0);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
