@@ -10,6 +10,8 @@ from ray.autoscaler._private.command_runner import \
 
 logger = logging.getLogger(__name__)
 
+# For caching provider instantiations across API calls of one python session
+_provider_instances = {}
 
 def _import_aws(provider_config):
     from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
@@ -134,13 +136,23 @@ def _load_class(path):
 
 
 def _get_node_provider(provider_config: Dict[str, Any],
-                       cluster_name: str) -> Any:
+                       cluster_name: str,
+                       use_cache: bool = True) -> Any:
     importer = _NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))
     provider_cls = importer(provider_config)
-    return provider_cls(provider_config, cluster_name)
+    provider_key = (json.dumps(provider_config, sort_keys=True), cluster_name)
+    if use_cache and provider_key in _provider_instances:
+        return _provider_instances[provider_key]
+
+    new_provider = provider_cls(provider_config, cluster_name)
+
+    if use_cache:
+        _provider_instances[provider_key] = new_provider
+
+    return new_provider
 
 
 def _get_default_config(provider_config):
@@ -204,6 +216,9 @@ class NodeProvider:
 
     def internal_ip(self, node_id):
         """Returns the internal ip (Ray ip) of the given node."""
+        raise NotImplementedError
+
+    def get_node_id(self, ip_address, use_internal=False):
         raise NotImplementedError
 
     def create_node(self, node_config, tags, count):

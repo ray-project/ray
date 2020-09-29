@@ -21,6 +21,8 @@ class CoordinatorSenderNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.coordinator_address = provider_config["coordinator_address"]
+        self._internal_ip_map = {}
+        self._external_ip_map = {}
 
     def _get_http_response(self, request):
         headers = {
@@ -80,6 +82,34 @@ class CoordinatorSenderNodeProvider(NodeProvider):
         request = {"type": "internal_ip", "args": (node_id, )}
         response = self._get_http_response(request)
         return response
+
+    def get_node_id(self, ip_address, use_internal=False):
+        def find_node_id():
+            if use_internal:
+                return self._internal_ip_map.get(ip_address)
+            else:
+                return self._external_ip_map.get(ip_address)
+
+        if not find_node_id():
+            self._update_ip_maps()
+
+        if not find_node_id():
+            if use_internal:
+                known_msg = (
+                    f"Known IP addresses: {list(self._internal_ip_map)}")
+            else:
+                known_msg = (
+                    f"Known IP addresses: {list(self._external_ip_map)}")
+            raise ValueError(f"ip {ip_address} not found. " + known_msg)
+
+        return find_node_id()
+
+    def _update_ip_maps(self):
+        all_nodes = self.non_terminated_nodes({})
+
+        for node_id in all_nodes:
+            self._external_ip_map[self.external_ip(node_id)] = node_id
+            self._internal_ip_map[self.internal_ip(node_id)] = node_id
 
     def create_node(self, node_config, tags, count):
         # Tag the newly created node with this cluster name. Helps to get

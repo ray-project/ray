@@ -943,6 +943,8 @@ def rsync(config_file: str,
           target: Optional[str],
           override_cluster_name: Optional[str],
           down: bool,
+          ip_address: Optional[str] = None,
+          use_internal_ip: bool = False,
           no_config_cache: bool = False,
           all_nodes: bool = False):
     """Rsyncs files.
@@ -974,48 +976,53 @@ def rsync(config_file: str,
                 is_file_mount = True
                 break
 
-    provider = _get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(
+        config["provider"],
+        config["cluster_name"])
+
+    def rsync_to_node(node_id):
+        updater = NodeUpdaterThread(
+            node_id=node_id,
+            provider_config=config["provider"],
+            provider=provider,
+            auth_config=config["auth"],
+            cluster_name=config["cluster_name"],
+            file_mounts=config["file_mounts"],
+            initialization_commands=[],
+            setup_commands=[],
+            ray_start_commands=[],
+            runtime_hash="",
+            file_mounts_contents_hash="",
+            is_head_node=(node_id == head_node),
+            docker_config=config.get("docker"))
+        if down:
+            rsync = updater.rsync_down
+        else:
+            rsync = updater.rsync_up
+
+        if source and target:
+            # print rsync progress for single file rsync
+            cmd_output_util.set_output_redirected(False)
+            set_rsync_silent(False)
+
+            rsync(source, target, is_file_mount)
+        else:
+            updater.sync_file_mounts(rsync)
+
+
     try:
         nodes = []
-        if all_nodes:
-            # technically we re-open the provider for no reason
-            # in get_worker_nodes but it's cleaner this way
-            # and _get_head_node does this too
-            nodes = _get_worker_nodes(config, override_cluster_name)
-
-        head_node = _get_head_node(
-            config, config_file, override_cluster_name, create_if_needed=False)
-
-        nodes += [head_node]
+        if ip_address:
+            nodes = [provider.get_node_id(ip_address, use_internal=use_internal_ip)]
+        else:
+            if all_nodes:
+                nodes = _get_worker_nodes(config, override_cluster_name)
+            head_node = _get_head_node(
+                config, config_file, override_cluster_name, create_if_needed=False)
+            nodes += [head_node]
 
         for node_id in nodes:
-            updater = NodeUpdaterThread(
-                node_id=node_id,
-                provider_config=config["provider"],
-                provider=provider,
-                auth_config=config["auth"],
-                cluster_name=config["cluster_name"],
-                file_mounts=config["file_mounts"],
-                initialization_commands=[],
-                setup_commands=[],
-                ray_start_commands=[],
-                runtime_hash="",
-                file_mounts_contents_hash="",
-                is_head_node=(node_id == head_node),
-                docker_config=config.get("docker"))
-            if down:
-                rsync = updater.rsync_down
-            else:
-                rsync = updater.rsync_up
-
-            if source and target:
-                # print rsync progress for single file rsync
-                cmd_output_util.set_output_redirected(False)
-                set_rsync_silent(False)
-
-                rsync(source, target, is_file_mount)
-            else:
-                updater.sync_file_mounts(rsync)
+            rsync_to_node(node_id)
 
     finally:
         provider.cleanup()
