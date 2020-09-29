@@ -48,8 +48,10 @@ class ResourceDemandScheduler:
 
         This method:
             (1) calculates the resources present in the cluster.
-            (2) calculates the unfulfilled resource bundles.
-            (3) calculates which nodes need to be launched to fulfill all
+            (2) calculates the remaining nodes to add to respect min_workers
+                    constraint per node type.
+            (3) calculates the unfulfilled resource bundles.
+            (4) calculates which nodes need to be launched to fulfill all
                 the bundle requests, subject to max_worker constraints.
 
         Args:
@@ -59,8 +61,13 @@ class ResourceDemandScheduler:
             usage_by_ip: Mapping from ip to available resources.
         """
 
-        node_resources, node_type_counts, min_workers_nodes_to_add = \
+        node_resources, node_type_counts = \
             self.calculate_node_resources(nodes, pending_nodes, usage_by_ip)
+
+        node_resources, node_type_counts, min_workers_nodes_to_add = \
+            _add_min_workers_nodes(
+                node_resources, node_type_counts, self.node_types)
+
         nodes_to_add_based_on_demand = []
         if resource_demands is not None:
             logger.info("Cluster resources: {}".format(node_resources))
@@ -69,20 +76,14 @@ class ResourceDemandScheduler:
                                                 resource_demands)
             logger.info("Resource demands: {}".format(resource_demands))
             logger.info("Unfulfilled demands: {}".format(unfulfilled))
-            max_to_add = self.max_workers - len(nodes) - sum(
-                pending_nodes.values()) - sum(
-                    dict(min_workers_nodes_to_add).values())
+            max_to_add = self.max_workers - sum(node_type_counts.values())
             nodes_to_add_based_on_demand = get_nodes_for(
                 self.node_types, node_type_counts, max_to_add, unfulfilled)
         # Merge nodes to add based on demand and nodes to add based on
         # min_workers constraint. We add them because nodes to add based on
         # demand was calculated after the min_workers constraint was respected.
-        total_nodes_to_add = {}
-        for node_type, count in nodes_to_add_based_on_demand + \
-                min_workers_nodes_to_add:
-            total_nodes_to_add[node_type] = total_nodes_to_add.get(
-                node_type, 0) + count
-        total_nodes_to_add = list(total_nodes_to_add.items())
+        total_nodes_to_add = nodes_to_add_based_on_demand + \
+            min_workers_nodes_to_add
         logger.info("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add
 
@@ -92,16 +93,14 @@ class ResourceDemandScheduler:
     ) -> (List[ResourceDict], Dict[NodeType, int]):
         """Returns node resource list and node type counts.
 
-           Sums the running nodes, pending nodes and nodes that need to be
-           added to respect the per node type min_workers constraint.
+           Counts the running nodes, pending nodes.
            Args:
                 nodes: Existing nodes.
                 pending_nodes: Pending nodes.
            Returns:
-                node_resources: a list of max(running+pending, min_workers)
-                    resources. E.g., [{"CPU": 4}, {"GPU": 2}].
-                node_type_counts: max(running+pending, min_workers) workers per
-                    node type.
+                node_resources: a list of running + pending resources.
+                    E.g., [{"CPU": 4}, {"GPU": 2}].
+                node_type_counts: running + pending workers per node type.
         """
 
         node_resources = []
@@ -140,56 +139,56 @@ class ResourceDemandScheduler:
             for _ in range(count):
                 add_node(node_type)
 
-        # Add here the remainder of min_workers as if they are existing
-        min_workers_nodes_to_add = _add_min_workers_nodes(
-            self.node_types, node_type_counts, [])
-        for node_type, count in min_workers_nodes_to_add:
-            for _ in range(count):
-                add_node(node_type)
-        return node_resources, node_type_counts, min_workers_nodes_to_add
+        return node_resources, node_type_counts
 
     def debug_string(self, nodes: List[NodeID],
                      pending_nodes: Dict[NodeID, int],
                      usage_by_ip: Dict[str, ResourceDict]) -> str:
         print(f"{usage_by_ip}")
-        node_resources, node_type_counts, min_workers_nodes_to_add = \
-            self.calculate_node_resources(nodes, pending_nodes, usage_by_ip)
-        min_workers_nodes_to_add_dict = dict(min_workers_nodes_to_add)
+        node_resources, node_type_counts = self.calculate_node_resources(
+            nodes, pending_nodes, usage_by_ip)
+
         out = "Worker node types:"
         for node_type, count in node_type_counts.items():
             out += "\n - {}: {}".format(node_type, count)
             if pending_nodes.get(node_type):
                 out += " ({} pending)".format(pending_nodes[node_type])
-            if min_workers_nodes_to_add_dict.get(node_type):
-                out += " ({} will be added to meet min_workers demand)".format(
-                    min_workers_nodes_to_add_dict[node_type])
+
         return out
 
 
-def _add_min_workers_nodes(node_types: Dict[NodeType, NodeTypeConfigDict],
-                           node_type_counts: Dict[NodeType, int],
-                           total_nodes_to_add: List[Tuple[NodeType, int]]
-                           ) -> List[Tuple[NodeType, int]]:
+def _add_min_workers_nodes(
+        node_resources: List[ResourceDict],
+        node_type_counts: Dict[NodeType, int],
+        node_types: Dict[NodeType, NodeTypeConfigDict],
+) -> (List[ResourceDict], Dict[NodeType, int], List[Tuple[NodeType, int]]):
     """Updates resource demands to respect the min_workers constraint.
 
     Args:
-        node_types: node types config.
-        node_type_counts: counts of existing nodes already launched/pending.
-        total_nodes_to_add: the number of nodes to add calculated based on
-            the utilization constraint.
+        node_resources: Resources of exisiting nodes already launched/pending.
+        node_type_counts: Counts of existing nodes already launched/pending.
+        node_types: Node types config.
+
     Returns:
-        total_nodes_to_add (List[Tuple[NodeType, int]]): the updated total
-            nodes to add.
+        node_resources: The updated node resources after adding min_workers
+            constraint per node type.
+        node_type_counts: The updated node counts after adding min_workers
+            constraint per node type.
+        total_nodes_to_add: The nodes to add to respect min_workers constraint.
     """
-    total_nodes_to_add_dict = dict(total_nodes_to_add)
+    total_nodes_to_add_dict = {}
     for node_type, config in node_types.items():
         existing = node_type_counts.get(node_type, 0)
         target = config.get("min_workers", 0)
-        to_add = total_nodes_to_add_dict.get(node_type, 0)
-        if existing + to_add < target:
+        if existing < target:
             total_nodes_to_add_dict[node_type] = target - existing
+            node_type_counts[node_type] = target
+            available = copy.deepcopy(node_types[node_type]["resources"])
+            node_resources.extend(
+                [available] * total_nodes_to_add_dict[node_type])
 
-    return list(total_nodes_to_add_dict.items())
+    return node_resources, node_type_counts, list(
+        total_nodes_to_add_dict.items())
 
 
 def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],

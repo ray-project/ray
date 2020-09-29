@@ -190,35 +190,39 @@ def test_add_min_workers_nodes():
             "max_workers": 99999,
         },
     }
-    assert _add_min_workers_nodes(types,
+    assert _add_min_workers_nodes([],
                                   {},
-                                  []) == \
-        [("m2.large", 50), ("gpu", 99999)]
-    assert _add_min_workers_nodes(types,
+                                  types) == \
+        ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
+            [("m2.large", 50), ("gpu", 99999)])
+
+    assert _add_min_workers_nodes([{"CPU": 2}]*5,
                                   {"m2.large": 5},
-                                  []) == \
-        [("m2.large", 45), ("gpu", 99999)]
-    assert _add_min_workers_nodes(types,
-                                  {"m2.large": 5},
-                                  [("m2.large", 2)]) == \
-        [("m2.large", 45), ("gpu", 99999)]
-    assert _add_min_workers_nodes(types,
-                                  {"m2.large": 5},
-                                  [("m2.large", 9)]) == \
-        [("m2.large", 45), ("gpu", 99999)]
-    assert _add_min_workers_nodes(types,
-                                  {"m2.large": 5},
-                                  [("m2.large", 60)]) == \
-        [("m2.large", 60), ("gpu", 99999)]
-    assert _add_min_workers_nodes(types,
-                                  {"m2.large": 5},
-                                  [("m2.large", 9), ("m4.large", 5)]) == \
-        [("m2.large", 45), ("m4.large", 5), ("gpu", 99999)]
-    assert _add_min_workers_nodes(types, {
+                                  types) == \
+        ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
+            [("m2.large", 45), ("gpu", 99999)])
+
+    assert _add_min_workers_nodes([{"CPU": 2}]*60,
+                                  {"m2.large": 60},
+                                  types) == \
+        ([{"CPU": 2}]*60+[{"GPU": 1}]*99999, {"m2.large": 60, "gpu": 99999},
+            [("gpu", 99999)])
+
+    assert _add_min_workers_nodes([{
+        "CPU": 2
+    }] * 50 + [{
+        "GPU": 1
+    }] * 99999, {
         "m2.large": 50,
-        "m4.large": 0,
         "gpu": 99999
-    }, []) == []
+    }, types) == ([{
+        "CPU": 2
+    }] * 50 + [{
+        "GPU": 1
+    }] * 99999, {
+        "m2.large": 50,
+        "gpu": 99999
+    }, [])
 
 
 def test_get_nodes_to_launch_with_min_workers():
