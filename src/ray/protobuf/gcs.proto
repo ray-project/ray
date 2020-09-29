@@ -301,8 +301,6 @@ message HeartbeatBatchTableData {
   // The total resource demand on all nodes included in the batch, sorted by
   // resource shape.
   ResourceLoad resource_load_by_shape = 2;
-  // The total known backlog size across all nodes
-  int64 backlog_size = 3;
 }
 
 // Data for a lease on task execution.

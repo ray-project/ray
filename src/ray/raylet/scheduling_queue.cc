@@ -71,7 +71,13 @@ bool TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
   total_resource_load_.AddResources(task.GetTaskSpecification().GetRequiredResources());
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   resource_load_by_shape_[scheduling_class]++;
-  request_backlog_by_shape_[scheduling_class] += task.BacklogSize();
+
+  int64_t backlog_size = task.BacklogSize();
+  if (backlog_size >= 0) {
+    request_backlog_by_shape_[scheduling_class] += task.BacklogSize();
+  } else {
+    request_backlog_by_shape_[scheduling_class] = -1;
+  }
   return true;
 }
 
@@ -91,7 +97,7 @@ bool TaskQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tas
     resource_load_by_shape_.erase(scheduling_class);
   }
   request_backlog_by_shape_[scheduling_class] -= it->BacklogSize();
-  if (request_backlog_by_shape_[scheduling_class] == 0) {
+  if (request_backlog_by_shape_[scheduling_class] <= 0) {
     request_backlog_by_shape_.erase(scheduling_class);
   }
   if (removed_tasks) {

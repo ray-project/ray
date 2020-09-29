@@ -122,14 +122,6 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
       }
     }
 
-    if (report_worker_backlog) {
-      int64_t total_backlog_size = 0;
-      for (auto &demand : aggregate_load) {
-        total_backlog_size += demand.second.backlog_size();
-      }
-      batch->set_backlog_size(total_backlog_size);
-    }
-
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
     heartbeat_buffer_.clear();

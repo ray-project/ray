@@ -213,10 +213,10 @@ def test_load_report(shutdown_only, max_shapes):
                 assert demand.num_ready_requests_queued > 0
                 assert demand.num_infeasible_requests_queued == 0
 
+
 def test_backlog_report(shutdown_only):
     cluster = ray.init(
-        num_cpus=1,
-        _system_config={
+        num_cpus=1, _system_config={
             "report_worker_backlog": True,
         })
     redis = ray._private.services.create_redis_client(
@@ -225,20 +225,10 @@ def test_backlog_report(shutdown_only):
     client = redis.pubsub(ignore_subscribe_messages=True)
     client.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
 
-    sem = ray.test_utils.Semaphore.remote(0)
-    assert ray.get(sem.locked.remote())
-
     @ray.remote(num_cpus=1)
-    def foo(sem):
-        return ray.get(sem.acquire.remote())
-
-    refs = [foo.remote(sem) for _ in range(10)]
-    # Now there's 1 request running, 1 queued in the raylet, and 8 queued in the
-    # worker backlog.
-
-    ray.get(sem.release.remote());
-    # First request finishes, second request is now running, third lease
-    # request is sent to the raylet with backlog=7
+    def foo(x):
+        time.sleep(x)
+        return None
 
     def backlog_size_set():
         success = False
@@ -255,19 +245,25 @@ def test_backlog_report(shutdown_only):
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
-        backlog_size = message.backlog_size
-        print(backlog_size)
-        return backlog_size > 0
+        aggregate_resource_load = message.resource_load_by_shape.resource_demands
+        if len(aggregate_resource_load) == 1:
+            backlog_size = aggregate_resource_load[0].backlog_size
+            return backlog_size == 7
+        return False
+
+
+    # We want this first task to finish
+    refs = [foo.remote(0.1)]
+    # These tasks should all start _before_ the first one finishes.
+    refs.extend([foo.remote(1000) for _ in range(9)])
+    # Now there's 1 request running, 1 queued in the raylet, and 8 queued in the
+    # worker backlog.
+
+    ray.get(refs[0])
+    # First request finishes, second request is now running, third lease
+    # request is sent to the raylet with backlog=7
 
     ray.test_utils.wait_for_condition(backlog_size_set)
-
-
-
-
-
-
-
-
 
 
 if __name__ == "__main__":

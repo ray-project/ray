@@ -317,9 +317,11 @@ Status raylet::RayletClient::SetResource(const std::string &resource_name,
 
 void raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
-    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
+    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+                                              const int64_t backlog_size) {
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  request.set_backlog_size(backlog_size);
   grpc_client_->RequestWorkerLease(request, callback);
 }
 

@@ -278,7 +278,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_)) {
     // The pipelines to the current workers are not full yet, so we don't need more
     // workers.
-
     return;
   }
 
@@ -333,7 +332,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                             "likely because the local raylet has crahsed.";
           RAY_LOG(FATAL) << status.ToString();
         }
-      });
+        }, task_queue.size());
   pending_lease_request = std::make_pair(lease_client, task_id);
 }
 
