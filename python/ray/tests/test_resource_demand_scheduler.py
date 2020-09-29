@@ -310,19 +310,19 @@ def test_add_min_workers_nodes():
                                   {},
                                   types) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
-            [("m2.large", 50), ("gpu", 99999)])
+            {"m2.large": 50, "gpu": 99999})
 
     assert _add_min_workers_nodes([{"CPU": 2}]*5,
                                   {"m2.large": 5},
                                   types) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
-            [("m2.large", 45), ("gpu", 99999)])
+            {"m2.large": 45, "gpu": 99999})
 
     assert _add_min_workers_nodes([{"CPU": 2}]*60,
                                   {"m2.large": 60},
                                   types) == \
         ([{"CPU": 2}]*60+[{"GPU": 1}]*99999, {"m2.large": 60, "gpu": 99999},
-            [("gpu", 99999)])
+            {"gpu": 99999})
 
     assert _add_min_workers_nodes([{
         "CPU": 2
@@ -338,7 +338,7 @@ def test_add_min_workers_nodes():
     }] * 99999, {
         "m2.large": 50,
         "gpu": 99999
-    }, [])
+    }, {})
 
 
 def test_get_nodes_to_launch_with_min_workers():
@@ -357,7 +357,7 @@ def test_get_nodes_to_launch_with_min_workers():
     to_launch = scheduler.get_nodes_to_launch(nodes, {}, [{
         "GPU": 8
     }], utilizations)
-    assert to_launch == [("p2.8xlarge", 1)]
+    assert to_launch == {"p2.8xlarge": 1}
 
 
 def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
@@ -379,7 +379,7 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     demands = [{"GPU": 8}] * (len(utilizations) + 1) + [{"GPU": 1}]
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
                                               utilizations)
-    assert to_launch == [("p2.xlarge", 1)]
+    assert to_launch == {"p2.xlarge": 1}
 
     # 3 min_workers of p2.8xlarge covers the 2 p2.8xlarge + 1 p2.xlarge demand.
     # 2 p2.8xlarge are running/pending. So we need 1 more p2.8xlarge only to
@@ -389,7 +389,7 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
                                               utilizations)
     # Make sure it does not return [("p2.8xlarge", 1), ("p2.xlarge", 1)]
-    assert to_launch == [("p2.8xlarge", 1)]
+    assert to_launch == {"p2.8xlarge": 1}
 
 
 def test_get_nodes_to_launch_limits():
