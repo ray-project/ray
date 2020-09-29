@@ -169,6 +169,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
+  /// Mark the manager that there's no more placement group scheduling going on.
+  void MarkSchedulingDone() { scheduling_in_progress_id_ = PlacementGroupID::Nil(); }
+
  private:
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
@@ -177,9 +180,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void MarkSchedulingStarted(const PlacementGroupID placement_group_id) {
     scheduling_in_progress_id_ = placement_group_id;
   }
-
-  /// Mark the manager that there's no more placement group scheduling going on.
-  void MarkSchedulingDone() { scheduling_in_progress_id_ = PlacementGroupID::Nil(); }
 
   /// Check if the placement group of a given id is scheduling.
   bool IsSchedulingInProgress(const PlacementGroupID &placement_group_id) const {
