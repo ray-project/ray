@@ -291,6 +291,7 @@
                            "type": "object",
                            "description": "Provider-specific config for the node, e.g. instance type."
                        },
+                       "min_workers": {"type": "integer"},
                        "max_workers": {"type": "integer"},
                        "resources": {
                            "type": "object",
