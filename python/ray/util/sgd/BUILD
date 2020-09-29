@@ -3,6 +3,14 @@
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
+    name = "test_ptl",
+    size = "small",
+    srcs = ["tests/test_ptl.py"],
+    tags = ["exclusive", "pytorch-lightning", "pytorch"],
+    deps = [":sgd_lib"],
+)
+
+py_test(
     name = "test_tensorflow",
     size = "small",
     srcs = ["tests/test_tensorflow.py"],

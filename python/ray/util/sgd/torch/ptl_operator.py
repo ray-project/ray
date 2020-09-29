@@ -106,21 +106,21 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
                            "implement your own custom training loop.")
 
         lr_schedulers = []
-        for i in range(len(self.scheduler_dicts)):
-            scheduler = self.scheduler_dicts[i]
+        for scheduler in self.scheduler_dicts:
             if isinstance(scheduler, dict):
                 # A scheduler dictionary is passed in.
-                if "reduce_on_plateau" in scheduler or "monitor" in scheduler:
+                if "reduce_on_plateau" in scheduler and "monitor" in \
+                        scheduler and scheduler["reduce_on_plateau"] is True:
                     logger.info(
-                        "reduce_on_plateau and/or monitor will be "
+                        "reduce_on_plateau and monitor will be "
                         "ignored "
                         "from the scheduler dict {}. To update a "
                         "ReduceLROnPlateau scheduler, you should use "
                         "TorchTrainer.update_schedulers.".format(scheduler))
-                if "frequency" in scheduler:
+                if "frequency" in scheduler and scheduler["frequency"] > 1:
                     logger.info("frequency will be ignored from the "
                                 "scheduler dict {}.".format(scheduler))
-                lr_schedulers[i] = scheduler["scheduler"]
+                lr_schedulers.append(scheduler["scheduler"])
             else:
                 lr_schedulers.append(scheduler)
 
@@ -204,9 +204,10 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
                     postfix.update(loss=batch_output["training_loss"])
                 _progress_bar.set_postfix(postfix)
 
-            for scheduler_dict in self.scheduler_dicts:
-                if scheduler_dict["interval"] == SCHEDULER_STEP_BATCH:
-                    scheduler_dict["scheduler"].step()
+            for s_dict, scheduler in zip(self.scheduler_dicts,
+                                         self.schedulers):
+                if s_dict["interval"] == SCHEDULER_STEP_BATCH:
+                    scheduler.step()
 
             self.global_step += 1
 
@@ -249,9 +250,9 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
         if self.is_function_implemented("on_train_epoch_end", model):
             model.on_train_epoch_end()
 
-        for scheduler_dict in self.schedulers:
-            if scheduler_dict["interval"] == SCHEDULER_STEP_EPOCH:
-                scheduler_dict["scheduler"].step()
+        for s_dict, scheduler in zip(self.scheduler_dicts, self.schedulers):
+            if s_dict["interval"] == SCHEDULER_STEP_EPOCH:
+                scheduler.step()
 
         return return_output
 
@@ -271,7 +272,7 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
 
         args = [batch, batch_idx]
         if len(self.optimizers) > 1:
-            if self.has_arg("trianing_step", "optimizer_idx"):
+            if self.has_arg("training_step", "optimizer_idx"):
                 args.append(0)
 
         with self.timers.record("fwd"):
@@ -414,6 +415,9 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
         if self.is_function_implemented("on_validation_epoch_end", model):
             model.on_validation_epoch_end()
 
+        # Set back to True so training will work.
+        torch.set_grad_enabled(True)
+
         return return_output
 
     def validate_batch(self, batch, batch_info):
@@ -453,7 +457,9 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
         }
 
     def state_dict(self):
-        return self.get_model().on_save_checkpoint(checkpoint={})
+        state_dict = {}
+        self.get_model().on_save_checkpoint(checkpoint=state_dict)
+        return state_dict
 
     def load_state_dict(self, state_dict):
         self.get_model().on_load_checkpoint(checkpoint=state_dict)
