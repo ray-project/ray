@@ -88,6 +88,13 @@ class GcsPubSub {
   /// \return Status
   Status Unsubscribe(const std::string &channel, const std::string &id);
 
+  /// Check if the specified ID under the specified channel is unsubscribed.
+  ///
+  /// \param channel The channel to unsubscribe from redis.
+  /// \param id The id of message to be unsubscribed from redis.
+  /// \return Whether the specified ID under the specified channel is unsubscribed.
+  bool IsUnsubscribed(const std::string &channel, const std::string &id);
+
  private:
   /// Represents a caller's command to subscribe or unsubscribe to a given
   /// channel.

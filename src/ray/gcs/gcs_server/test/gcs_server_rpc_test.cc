@@ -671,8 +671,8 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 TEST_F(GcsServerTest, TestObjectInfo) {
   // Create object table data
   ObjectID object_id = ObjectID::FromRandom();
-  ClientID node1_id = ClientID::FromRandom();
-  ClientID node2_id = ClientID::FromRandom();
+  NodeID node1_id = NodeID::FromRandom();
+  NodeID node2_id = NodeID::FromRandom();
 
   // Add object location
   rpc::AddObjectLocationRequest add_object_location_request;
@@ -720,7 +720,7 @@ TEST_F(GcsServerTest, TestTaskInfo) {
   ASSERT_TRUE(!result.has_task());
 
   // Add task lease
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
   auto task_lease_data = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   rpc::AddTaskLeaseRequest add_task_lease_request;
   add_task_lease_request.mutable_task_lease_data()->CopyFrom(*task_lease_data);
@@ -739,7 +739,7 @@ TEST_F(GcsServerTest, TestTaskInfo) {
 
 TEST_F(GcsServerTest, TestStats) {
   rpc::ProfileTableData profile_table_data;
-  profile_table_data.set_component_id(ClientID::FromRandom().Binary());
+  profile_table_data.set_component_id(NodeID::FromRandom().Binary());
   rpc::AddProfileDataRequest add_profile_data_request;
   add_profile_data_request.mutable_profile_data()->CopyFrom(profile_table_data);
   ASSERT_TRUE(AddProfileData(add_profile_data_request));
