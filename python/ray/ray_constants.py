@@ -184,6 +184,9 @@ PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
 
+WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
+WORKER_PROCESS_TYPE_IO_WORKER = "ray::object_spilling_worker"
+
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is cross language.
