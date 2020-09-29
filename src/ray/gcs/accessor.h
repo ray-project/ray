@@ -83,27 +83,6 @@ class ActorInfoAccessor {
   virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
                                   const StatusCallback &callback) = 0;
 
-  /// Register an actor to GCS asynchronously.
-  ///
-  /// \param data_ptr The actor that will be registered to the GCS.
-  /// \param callback Callback that will be called after actor has been registered
-  /// to the GCS.
-  /// \return Status
-  virtual Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                               const StatusCallback &callback) = 0;
-
-  /// Update dynamic states of actor in GCS asynchronously.
-  ///
-  /// \param actor_id ID of the actor to update.
-  /// \param data_ptr Data of the actor to update.
-  /// \param callback Callback that will be called after update finishes.
-  /// \return Status
-  /// TODO(micafan) Don't expose the whole `ActorTableData` and only allow
-  /// updating dynamic states.
-  virtual Status AsyncUpdate(const ActorID &actor_id,
-                             const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                             const StatusCallback &callback) = 0;
-
   /// Subscribe to any register or update operations of actors.
   ///
   /// \param subscribe Callback that will be called each time when an actor is registered
