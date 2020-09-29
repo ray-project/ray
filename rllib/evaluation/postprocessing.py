@@ -74,8 +74,8 @@ def compute_advantages(rollout: SampleBatch,
         rewards_plus_v = np.concatenate(
             [rollout[SampleBatch.REWARDS],
              np.array([last_r])])
-        discounted_returns = discount_cumsum(
-            rewards_plus_v, gamma)[:-1].astype(np.float32)
+        discounted_returns = discount_cumsum(rewards_plus_v,
+                                             gamma)[:-1].astype(np.float32)
 
         if use_critic:
             rollout[Postprocessing.
