@@ -562,7 +562,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   RAY_CHECK(it != registered_actors_.end())
       << "Tried to destroy actor that does not exist " << actor_id;
   registered_actors_.erase(it);
-  destroyed_actors_.emplace(it->first, it->second);
+  destroyed_actors_[it->first] = it->second;
   const auto actor = it->second;
 
   // Clean up the client to the actor's owner, if necessary.
