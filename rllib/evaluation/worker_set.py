@@ -114,8 +114,13 @@ class WorkerSet:
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
         self._remote_workers.extend([
-            self._make_worker(cls, self._env_creator, None, self._policy_class,
-                              i + 1, self._remote_config)
+            self._make_worker(
+                cls=cls,
+                env_creator=self._env_creator,
+                validate_env=None,
+                policy=self._policy_class,
+                worker_index=i + 1,
+                config=self._remote_config)
             for i in range(num_workers)
         ])
 
@@ -213,7 +218,8 @@ class WorkerSet:
         return workers
 
     def _make_worker(
-            self, cls: Callable, env_creator: Callable[[EnvContext], EnvType],
+            self, *, cls: Callable,
+            env_creator: Callable[[EnvContext], EnvType],
             validate_env: Optional[Callable[[EnvType], None]],
             policy: Type[Policy], worker_index: int,
             config: TrainerConfigDict) -> Union[RolloutWorker, "ActorHandle"]:

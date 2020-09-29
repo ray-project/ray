@@ -67,14 +67,14 @@ class StochasticSampling(Exploration):
                                                       timestep, explore)
 
     def _get_tf_exploration_action_op(self, action_dist, timestep, explore):
-        ts = timestep if timestep is not None else self.last_timestep
+        ts = timestep if timestep is not None else self.last_timestep + 1
 
         stochastic_actions = tf.cond(
-            pred=tf.convert_to_tensor(ts <= self.random_timesteps),
+            pred=tf.convert_to_tensor(ts < self.random_timesteps),
             true_fn=lambda: (
                 self.random_exploration.get_tf_exploration_action_op(
                     action_dist,
-                    explore)[0]),
+                    explore=True)[0]),
             false_fn=lambda: action_dist.sample(),
         )
         deterministic_actions = action_dist.deterministic_sample()
@@ -94,7 +94,19 @@ class StochasticSampling(Exploration):
             true_fn=lambda: action_dist.sampled_action_logp(),
             false_fn=logp_false_fn)
 
-        return action, logp
+        # Increment `last_timestep` by 1 (or set to `timestep`).
+        if self.framework in ["tf2", "tfe"]:
+            if timestep is None:
+                self.last_timestep.assign_add(1)
+            else:
+                self.last_timestep.assign(timestep)
+            return action, logp
+        else:
+            assign_op = (tf1.assign_add(self.last_timestep, 1)
+                         if timestep is None else tf1.assign(
+                             self.last_timestep, timestep))
+            with tf1.control_dependencies([assign_op]):
+                return action, logp
 
     def _get_torch_exploration_action(self, action_dist, timestep, explore):
         # Set last timestep or (if not given) increase by one.
