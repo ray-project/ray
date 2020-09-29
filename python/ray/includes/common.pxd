@@ -254,7 +254,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
             c_bool is_detached, c_string &name, c_bool is_asyncio,
-            c_pair[CPlacementGroupID, int64_t] placement_options)
+            c_pair[CPlacementGroupID, int64_t] placement_options,
+            c_bool placement_group_capture_child_tasks)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::PlacementGroupCreationOptions":

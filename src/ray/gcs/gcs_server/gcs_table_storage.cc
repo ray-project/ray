@@ -127,10 +127,10 @@ Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
 }
 
 template class GcsTable<JobID, JobTableData>;
-template class GcsTable<ClientID, GcsNodeInfo>;
-template class GcsTable<ClientID, ResourceMap>;
-template class GcsTable<ClientID, HeartbeatTableData>;
-template class GcsTable<ClientID, HeartbeatBatchTableData>;
+template class GcsTable<NodeID, GcsNodeInfo>;
+template class GcsTable<NodeID, ResourceMap>;
+template class GcsTable<NodeID, HeartbeatTableData>;
+template class GcsTable<NodeID, HeartbeatBatchTableData>;
 template class GcsTable<JobID, ErrorTableData>;
 template class GcsTable<UniqueID, ProfileTableData>;
 template class GcsTable<WorkerID, WorkerTableData>;

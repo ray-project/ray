@@ -2,7 +2,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -20,7 +19,7 @@ namespace raylet {
 /// dispatch/spillback and the callback to trigger it.
 typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
 
-typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)>
+typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
@@ -50,7 +49,7 @@ class ClusterTaskManager {
   /// \param fulfills_dependencies_func: Returns true if all of a task's
   /// dependencies are fulfilled.
   /// \param gcs_client: A gcs client.
-  ClusterTaskManager(const ClientID &self_node_id,
+  ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
                      NodeInfoGetter get_node_info);
@@ -110,7 +109,7 @@ class ClusterTaskManager {
   std::string DebugString();
 
  private:
-  const ClientID &self_node_id_;
+  const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::function<bool(const Task &)> fulfills_dependencies_func_;
   NodeInfoGetter get_node_info_;
@@ -135,7 +134,7 @@ class ClusterTaskManager {
       const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
-  void Spillback(ClientID spillback_to, std::string address, int port,
+  void Spillback(NodeID spillback_to, std::string address, int port,
                  rpc::RequestWorkerLeaseReply *reply,
                  std::function<void(void)> send_reply_callback);
 };

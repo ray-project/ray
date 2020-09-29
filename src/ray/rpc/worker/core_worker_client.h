@@ -63,7 +63,7 @@ class WorkerAddress {
       : ip_address(address.ip_address()),
         port(address.port()),
         worker_id(WorkerID::FromBinary(address.worker_id())),
-        raylet_id(ClientID::FromBinary(address.raylet_id())) {}
+        raylet_id(NodeID::FromBinary(address.raylet_id())) {}
   template <typename H>
   friend H AbslHashValue(H h, const WorkerAddress &w) {
     return H::combine(std::move(h), w.ip_address, w.port, w.worker_id, w.raylet_id);
@@ -90,7 +90,7 @@ class WorkerAddress {
   /// The unique id of the worker.
   const WorkerID worker_id;
   /// The unique id of the worker raylet.
-  const ClientID raylet_id;
+  const NodeID raylet_id;
 };
 
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
