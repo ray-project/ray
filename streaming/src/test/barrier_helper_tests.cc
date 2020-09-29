@@ -38,9 +38,9 @@ TEST_F(StreamingBarrierHelperTest, MsgIdByBarrierId) {
   ASSERT_EQ(init_msg_id + 1, msg_id);
 
   ASSERT_EQ(barrier_helper_->GetBarrierMapSize(), 2);
-  barrier_helper_->ReleaseBarrierMapMsgIdById(1);
+  barrier_helper_->ReleaseBarrierMapById(1);
   ASSERT_EQ(barrier_helper_->GetBarrierMapSize(), 1);
-  barrier_helper_->ReleaseAllBarrierMapMsgId();
+  barrier_helper_->ReleaseAllBarrierMap();
   ASSERT_EQ(barrier_helper_->GetBarrierMapSize(), 0);
 }
 
@@ -115,7 +115,7 @@ TEST(BarrierHelper, barrier_map_get_set) {
   EXPECT_TRUE(barrier_helper.Contains(1));
   EXPECT_TRUE(barrier_helper.GetBarrierMapSize() == 2);
 
-  barrier_helper.ReleaseBarrierMapMsgIdById(0);
+  barrier_helper.ReleaseBarrierMapById(0);
   EXPECT_TRUE(!barrier_helper.Contains(0));
   EXPECT_TRUE(barrier_helper.GetBarrierMapSize() == 1);
 
@@ -124,7 +124,7 @@ TEST(BarrierHelper, barrier_map_get_set) {
   std::vector<uint64_t> barrier_id_vec;
   barrier_helper.GetAllBarrier(barrier_id_vec);
   EXPECT_TRUE(barrier_id_vec.size() == 2);
-  barrier_helper.ReleaseAllBarrierMapMsgId();
+  barrier_helper.ReleaseAllBarrierMap();
   EXPECT_TRUE(barrier_helper.GetBarrierMapSize() == 0);
 }
 

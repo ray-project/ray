@@ -38,10 +38,10 @@ class StreamingBarrierHelper final {
   bool Contains(uint64_t barrier_id);
 
   /// Remove barrier info from queue-barrier map by given seq id.
-  void ReleaseBarrierMapMsgIdById(uint64_t barrier_id);
+  void ReleaseBarrierMapById(uint64_t barrier_id);
 
   /// Remove all barrier info from queue-barrier map.
-  void ReleaseAllBarrierMapMsgId();
+  void ReleaseAllBarrierMap();
 
   /// Fetch barrier id list from queue-barrier map.
   void GetAllBarrier(std::vector<uint64_t> &barrier_id_vec);
