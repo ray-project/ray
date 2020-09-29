@@ -20,7 +20,7 @@ def hello_world(_):
     return "Hello World"
 
 
-class forwardActor:
+class ForwardActor:
     def __init__(self):
         self.handle = client.get_handle("hello_world")
 
