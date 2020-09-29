@@ -5,9 +5,16 @@ import ray
 from ray import serve
 from ray.serve import BackendConfig
 import logging
+import argparse
 
-num_replicas = 3
-num_queries = 10
+parser = argparse.ArgumentParser()
+parser.add_argument("num_replicas")
+parser.add_argument("num_queries")
+
+args = parser.parse_args()
+# TODO(architkulkarni): ensure there are enough workers in cluster yaml
+num_replicas = args.num_replicas
+num_queries = args.num_queries
 
 ray.init(address="auto")
 client = serve.start()
