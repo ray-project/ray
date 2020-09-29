@@ -503,10 +503,8 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
   add_job_request.mutable_data()->CopyFrom(*job_table_data);
   ASSERT_TRUE(AddJob(add_job_request));
 
-  // Register actor for job
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
-
   // Add actor checkpoint
+  auto actor_table_data = Mocker::GenActorTableData(job_id);
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
   rpc::ActorCheckpointData checkpoint;
   checkpoint.set_actor_id(actor_table_data->actor_id());
