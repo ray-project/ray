@@ -6,8 +6,8 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray.util.placement_group import PlacementGroup, \
-    check_placement_group_index
+from ray.util.placement_group import (
+    PlacementGroup, check_placement_group_index, get_current_placement_group)
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -417,7 +417,8 @@ class ActorClass:
                 name=None,
                 lifetime=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -455,7 +456,9 @@ class ActorClass:
                     name=name,
                     lifetime=lifetime,
                     placement_group=placement_group,
-                    placement_group_bundle_index=placement_group_bundle_index)
+                    placement_group_bundle_index=placement_group_bundle_index,
+                    placement_group_capture_child_tasks=(
+                        placement_group_capture_child_tasks))
 
         return ActorOptionWrapper()
 
@@ -474,7 +477,8 @@ class ActorClass:
                 name=None,
                 lifetime=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -508,6 +512,9 @@ class ActorClass:
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
                 specify any available bundle.
+            placement_group_capture_child_tasks: Whether or not children tasks
+                of this actor should implicitly use the same placement group
+                as its parent. It is True by default.
 
         Returns:
             A handle to the newly created actor.
@@ -565,7 +572,15 @@ class ActorClass:
         else:
             raise ValueError("lifetime must be either `None` or 'detached'")
 
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                worker.should_capture_child_tasks_in_placement_group)
+
         if placement_group is None:
+            if placement_group_capture_child_tasks:
+                placement_group = get_current_placement_group()
+
+        if not placement_group:
             placement_group = PlacementGroup.empty()
 
         check_placement_group_index(placement_group,
@@ -644,6 +659,7 @@ class ActorClass:
             is_asyncio,
             placement_group.id,
             placement_group_bundle_index,
+            placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 

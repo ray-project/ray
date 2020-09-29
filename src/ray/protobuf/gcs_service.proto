@@ -263,6 +263,14 @@ message GetInternalConfigReply {
   StoredConfig config = 2;
 }
 
+message GetAllAvailableResourcesRequest {
+}
+
+message GetAllAvailableResourcesReply {
+  GcsStatus status = 1;
+  repeated AvailableResources resources_list = 2;
+}
+
 // Service for node info access.
 service NodeInfoGcsService {
   // Register a node to GCS Service.
@@ -283,6 +291,9 @@ service NodeInfoGcsService {
   rpc SetInternalConfig(SetInternalConfigRequest) returns (SetInternalConfigReply);
   // Get cluster internal config.
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
+  // Get available resources of all nodes.
+  rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
+      returns (GetAllAvailableResourcesReply);
 }
 
 message GetObjectLocationsRequest {

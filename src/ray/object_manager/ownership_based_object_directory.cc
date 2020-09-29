@@ -24,7 +24,7 @@ namespace {
 
 /// Filter out the removed clients from the object locations.
 void FilterRemovedClients(std::shared_ptr<gcs::GcsClient> gcs_client,
-                          std::unordered_set<ClientID> *node_ids) {
+                          std::unordered_set<NodeID> *node_ids) {
   for (auto it = node_ids->begin(); it != node_ids->end();) {
     if (gcs_client->Nodes().IsRemoved(*it)) {
       it = node_ids->erase(it);
@@ -64,7 +64,7 @@ std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
 }
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const ClientID &client_id,
+    const ObjectID &object_id, const NodeID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
@@ -91,7 +91,7 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
 }
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const ClientID &client_id,
+    const ObjectID &object_id, const NodeID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
@@ -126,9 +126,9 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
     return;
   }
 
-  std::unordered_set<ClientID> client_ids;
+  std::unordered_set<NodeID> client_ids;
   for (auto const &client_id : reply.client_ids()) {
-    client_ids.emplace(ClientID::FromBinary(client_id));
+    client_ids.emplace(NodeID::FromBinary(client_id));
   }
   FilterRemovedClients(gcs_client_, &client_ids);
   if (client_ids != it->second.current_object_locations) {
@@ -208,7 +208,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
                      << "LookupLocations returns an empty list of locations.";
     io_service_.post([callback, object_id]() {
-      callback(object_id, std::unordered_set<ClientID>(), "");
+      callback(object_id, std::unordered_set<NodeID>(), "");
     });
     return Status::OK();
   }
@@ -224,9 +224,9 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
                          << object_id;
         }
-        std::unordered_set<ClientID> client_ids;
+        std::unordered_set<NodeID> client_ids;
         for (auto const &client_id : reply.client_ids()) {
-          client_ids.emplace(ClientID::FromBinary(client_id));
+          client_ids.emplace(NodeID::FromBinary(client_id));
         }
         FilterRemovedClients(gcs_client_, &client_ids);
         callback(object_id, client_ids, "");

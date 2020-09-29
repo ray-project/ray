@@ -14,7 +14,7 @@ import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
@@ -65,7 +65,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         super().__init__(dashboard_agent)
         self._cpu_counts = (psutil.cpu_count(),
                             psutil.cpu_count(logical=False))
-        self._ip = ray.services.get_node_ip_address()
+        self._ip = ray._private.services.get_node_ip_address()
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)

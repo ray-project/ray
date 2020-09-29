@@ -38,12 +38,14 @@ void BuildCommonTaskSpec(
     const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id) {
+    std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id,
+    bool placement_group_capture_child_tasks) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(
-      task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
-      current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources, placement_group_id);
+  builder.SetCommonTaskSpec(task_id, name, function.GetLanguage(),
+                            function.GetFunctionDescriptor(), job_id, current_task_id,
+                            task_index, caller_id, address, num_returns,
+                            required_resources, required_placement_resources,
+                            placement_group_id, placement_group_capture_child_tasks);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -302,7 +304,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
   Status raylet_client_status;
-  ClientID local_raylet_id;
+  NodeID local_raylet_id;
   int assigned_port;
   std::unordered_map<std::string, std::string> system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
@@ -335,10 +337,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   core_worker_server_->RegisterService(grpc_service_);
   core_worker_server_->Run();
 
-  // Tell the raylet the port that we are listening on.
-  // NOTE: This also marks the worker as available in Raylet.
-  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
-
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
   rpc_address_.set_ip_address(options_.node_ip_address);
@@ -356,7 +354,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RegisterToGcs();
 
   // Register a callback to monitor removed nodes.
-  auto on_node_change = [this](const ClientID &node_id, const rpc::GcsNodeInfo &data) {
+  auto on_node_change = [this](const NodeID &node_id, const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
       OnNodeRemoved(data);
     }
@@ -399,7 +397,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
       options_.check_signals));
 
-  auto check_node_alive_fn = [this](const ClientID &node_id) {
+  auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
     if (!node) {
       return false;
@@ -504,7 +502,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           RAY_CHECK_OK(status);
           std::vector<rpc::Address> locations;
           for (const auto &loc : result->locations()) {
-            const auto &node_id = ClientID::FromBinary(loc.manager());
+            const auto &node_id = NodeID::FromBinary(loc.manager());
             auto node = gcs_client_->Nodes().Get(node_id);
             RAY_CHECK(node.has_value());
             if (node->state() == rpc::GcsNodeInfo::ALIVE) {
@@ -532,6 +530,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Start the IO thread after all other members have been initialized, in case
   // the thread calls back into any of our members.
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
+  // Tell the raylet the port that we are listening on.
+  // NOTE: This also marks the worker as available in Raylet. We do this at the
+  // very end in case there is a problem during construction.
+  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
 }
 
 void CoreWorker::Shutdown() {
@@ -617,7 +619,7 @@ void CoreWorker::RunIOService() {
 }
 
 void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
-  const auto node_id = ClientID::FromBinary(node_info.node_id());
+  const auto node_id = NodeID::FromBinary(node_info.node_id());
   RAY_LOG(INFO) << "Node failure " << node_id;
   const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
   // Delete the objects from the in-memory store to indicate that they are not
@@ -825,7 +827,7 @@ Status CoreWorker::Put(const RayObject &object,
                                    worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(
       *object_id, contained_object_ids, rpc_address_, CurrentCallSite(), object.GetSize(),
-      /*is_reconstructable=*/false, ClientID::FromBinary(rpc_address_.raylet_id()));
+      /*is_reconstructable=*/false, NodeID::FromBinary(rpc_address_.raylet_id()));
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
 }
 
@@ -884,7 +886,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
-                                       ClientID::FromBinary(rpc_address_.raylet_id()));
+                                       NodeID::FromBinary(rpc_address_.raylet_id()));
   }
   return Status::OK();
 }
@@ -1153,7 +1155,7 @@ Status CoreWorker::NotifyActorResumedFromCheckpoint(
 }
 
 Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
-                               const ClientID &client_id) {
+                               const NodeID &client_id) {
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
@@ -1167,7 +1169,7 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   }
 
   // Find the raylet that hosts the primary copy of the object.
-  ClientID pinned_at;
+  NodeID pinned_at;
   bool spilled;
   RAY_CHECK(
       reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled));
@@ -1275,7 +1277,8 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries,
-                            PlacementOptions placement_options) {
+                            PlacementOptions placement_options,
+                            bool placement_group_capture_child_tasks) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -1293,7 +1296,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
-                      placement_options.first);
+                      placement_options.first, placement_group_capture_child_tasks);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1339,7 +1342,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, &return_ids,
-                      actor_creation_options.placement_options.first);
+                      actor_creation_options.placement_options.first,
+                      actor_creation_options.placement_group_capture_child_tasks);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.max_concurrency,
@@ -1443,7 +1447,10 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, return_ids, PlacementGroupID::Nil());
+                      required_resources, return_ids, PlacementGroupID::Nil(),
+                      true /* placement_group_capture_child_tasks */);
+  // NOTE: placement_group_capture_child_tasks will be ignored in the actor because
+  // we should always follow actor's option.
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, new_cursor);
@@ -2030,7 +2037,7 @@ void CoreWorker::HandleAddObjectLocationOwner(
     return;
   }
   reference_counter_->AddObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                        ClientID::FromBinary(request.client_id()));
+                                        NodeID::FromBinary(request.client_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2043,7 +2050,7 @@ void CoreWorker::HandleRemoveObjectLocationOwner(
     return;
   }
   reference_counter_->RemoveObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                           ClientID::FromBinary(request.client_id()));
+                                           NodeID::FromBinary(request.client_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2055,7 +2062,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  std::unordered_set<ClientID> client_ids =
+  std::unordered_set<NodeID> client_ids =
       reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
   for (const auto &client_id : client_ids) {
     reply->add_client_ids(client_id.Binary());

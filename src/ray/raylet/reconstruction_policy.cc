@@ -23,7 +23,7 @@ namespace raylet {
 ReconstructionPolicy::ReconstructionPolicy(
     boost::asio::io_service &io_service,
     std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
-    int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
+    int64_t initial_reconstruction_timeout_ms, const NodeID &client_id,
     std::shared_ptr<gcs::GcsClient> gcs_client,
     std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : io_service_(io_service),
@@ -88,7 +88,7 @@ void ReconstructionPolicy::OnTaskLeaseNotification(
     return;
   }
 
-  const ClientID node_manager_id = ClientID::FromBinary(task_lease->node_manager_id());
+  const NodeID node_manager_id = NodeID::FromBinary(task_lease->node_manager_id());
   if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
     // The node manager that added the task lease is already removed. The
     // lease is considered inactive.
@@ -179,7 +179,7 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
         created_object_id, it->second.owner_addresses[created_object_id],
         [this, task_id, reconstruction_attempt](
             const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients,
+            const std::unordered_set<ray::NodeID> &clients,
             const std::string &spilled_url) {
           if (clients.empty() && spilled_url.empty()) {
             // The required object no longer exists on any live nodes. Attempt

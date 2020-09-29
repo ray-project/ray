@@ -60,7 +60,7 @@ void GcsObjectManager::HandleAddObjectLocation(
     const rpc::AddObjectLocationRequest &request, rpc::AddObjectLocationReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  ClientID node_id = ClientID::FromBinary(request.node_id());
+  NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
   AddObjectLocationInCache(object_id, node_id);
@@ -132,7 +132,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
     const rpc::RemoveObjectLocationRequest &request,
     rpc::RemoveObjectLocationReply *reply, rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  ClientID node_id = ClientID::FromBinary(request.node_id());
+  NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Removing object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
   RemoveObjectLocationInCache(object_id, node_id);
@@ -174,7 +174,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
 }
 
 void GcsObjectManager::AddObjectsLocation(
-    const ClientID &node_id, const absl::flat_hash_set<ObjectID> &object_ids) {
+    const NodeID &node_id, const absl::flat_hash_set<ObjectID> &object_ids) {
   // TODO(micafan) Optimize the lock when necessary.
   // Maybe use read/write lock. Or reduce the granularity of the lock.
   absl::MutexLock lock(&mutex_);
@@ -190,7 +190,7 @@ void GcsObjectManager::AddObjectsLocation(
 }
 
 void GcsObjectManager::AddObjectLocationInCache(const ObjectID &object_id,
-                                                const ClientID &node_id) {
+                                                const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
 
   auto *objects_on_node = GetObjectSetByNode(node_id, /* create_if_not_exist */ true);
@@ -201,7 +201,7 @@ void GcsObjectManager::AddObjectLocationInCache(const ObjectID &object_id,
   object_locations->locations.emplace(node_id);
 }
 
-absl::flat_hash_set<ClientID> GcsObjectManager::GetObjectLocations(
+absl::flat_hash_set<NodeID> GcsObjectManager::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
 
@@ -209,10 +209,10 @@ absl::flat_hash_set<ClientID> GcsObjectManager::GetObjectLocations(
   if (object_locations) {
     return object_locations->locations;
   }
-  return absl::flat_hash_set<ClientID>{};
+  return absl::flat_hash_set<NodeID>{};
 }
 
-void GcsObjectManager::OnNodeRemoved(const ClientID &node_id) {
+void GcsObjectManager::OnNodeRemoved(const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
 
   ObjectSet objects_on_node;
@@ -238,7 +238,7 @@ void GcsObjectManager::OnNodeRemoved(const ClientID &node_id) {
 }
 
 void GcsObjectManager::RemoveObjectLocationInCache(const ObjectID &object_id,
-                                                   const ClientID &node_id) {
+                                                   const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
 
   auto *object_locations = GetObjectLocationSet(object_id);
@@ -275,7 +275,7 @@ GcsObjectManager::LocationSet *GcsObjectManager::GetObjectLocationSet(
 }
 
 GcsObjectManager::ObjectSet *GcsObjectManager::GetObjectSetByNode(
-    const ClientID &node_id, bool create_if_not_exist) {
+    const NodeID &node_id, bool create_if_not_exist) {
   ObjectSet *objects_on_node = nullptr;
 
   auto it = node_to_objects_.find(node_id);
@@ -305,12 +305,23 @@ const ObjectLocationInfo GcsObjectManager::GenObjectLocationInfo(
 
 void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
+<<<<<<< HEAD
   auto callback = [this,
                    done](const std::unordered_map<ObjectID, ObjectLocationInfo> &result) {
     absl::flat_hash_map<ClientID, ObjectSet> node_to_objects;
     for (auto &item : result) {
       for (const auto &loc : item.second.locations()) {
         node_to_objects[ClientID::FromBinary(loc.manager())].insert(item.first);
+=======
+  auto callback = [this, done](
+                      const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
+    absl::flat_hash_map<NodeID, ObjectSet> node_to_objects;
+    for (auto &item : result) {
+      auto object_list = item.second;
+      for (int index = 0; index < object_list.items_size(); ++index) {
+        node_to_objects[NodeID::FromBinary(object_list.items(index).manager())].insert(
+            item.first);
+>>>>>>> 10015e60fbd9bbf68c997989071cdbcbaf199630
       }
     }
 

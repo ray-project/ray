@@ -26,8 +26,14 @@ from ray.tune.utils import flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
-MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 130))
 logger = logging.getLogger(__name__)
+if "MAX_LEN_IDENTIFIER" in os.environ:
+    logger.error(
+        "The MAX_LEN_IDENTIFIER environment variable is deprecated and will "
+        "be removed in the future. Use TUNE_MAX_LEN_IDENTIFIER instead.")
+MAX_LEN_IDENTIFIER = int(
+    os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
+                   os.environ.get("MAX_LEN_IDENTIFIER", 130)))
 
 
 def date_str():

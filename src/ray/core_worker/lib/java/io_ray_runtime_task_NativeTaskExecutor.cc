@@ -26,7 +26,7 @@
 extern "C" {
 #endif
 
-using ray::ClientID;
+using ray::NodeID;
 
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *env, jclass) {

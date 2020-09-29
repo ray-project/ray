@@ -36,13 +36,11 @@ class ReferenceCounterInterface {
                                  const std::string &call_site) = 0;
   virtual bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
                                  const rpc::Address &owner_address) = 0;
-  virtual void AddOwnedObject(const ObjectID &object_id,
-                              const std::vector<ObjectID> &contained_ids,
-                              const rpc::Address &owner_address,
-                              const std::string &call_site, const int64_t object_size,
-                              bool is_reconstructable,
-                              const absl::optional<ClientID> &pinned_at_raylet_id =
-                                  absl::optional<ClientID>()) = 0;
+  virtual void AddOwnedObject(
+      const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
+      const rpc::Address &owner_address, const std::string &call_site,
+      const int64_t object_size, bool is_reconstructable,
+      const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
   virtual bool SetDeleteCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
@@ -169,7 +167,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
       const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address, const std::string &call_site,
       const int64_t object_size, bool is_reconstructable,
-      const absl::optional<ClientID> &pinned_at_raylet_id = absl::optional<ClientID>())
+      const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>())
       LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.
@@ -321,7 +319,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] raylet_id The raylet that is now pinning the object ID.
-  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const ClientID &raylet_id)
+  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const NodeID &raylet_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Check whether the object is pinned at a remote plasma store node or
@@ -335,7 +333,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \return True if the object exists and is owned by us, false otherwise. We
   /// return false here because a borrower should not know the pinned location
   /// for an object.
-  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, ClientID *pinned_at,
+  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, NodeID *pinned_at,
                                      bool *spilled) const LOCKS_EXCLUDED(mutex_);
 
   /// Get and reset the objects that were pinned on the given node.  This
@@ -345,7 +343,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ///
   /// \param[in] node_id The node whose object store has been removed.
   /// \return The set of objects that were pinned on the given node.
-  std::vector<ObjectID> ResetObjectsOnRemovedNode(const ClientID &raylet_id);
+  std::vector<ObjectID> ResetObjectsOnRemovedNode(const NodeID &raylet_id);
 
   /// Whether we have a reference to a particular ObjectID.
   ///
@@ -364,21 +362,21 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] node_id The node to be added to the location table.
-  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+  void AddObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Remove location from the location table of the given object.
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] node_id The node to be removed from the location table.
-  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+  void RemoveObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get the locations from the location table of the given object.
   ///
   /// \param[in] object_id The object to get locations for.
   /// \return The nodes that have the object.
-  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id)
+  std::unordered_set<NodeID> GetObjectLocations(const ObjectID &object_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Handle an object has been spilled to external storage.
@@ -396,7 +394,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
     /// Constructor for a reference that we created.
     Reference(const rpc::Address &owner_address, std::string call_site,
               const int64_t object_size, bool is_reconstructable,
-              const absl::optional<ClientID> &pinned_at_raylet_id)
+              const absl::optional<NodeID> &pinned_at_raylet_id)
         : call_site(call_site),
           object_size(object_size),
           owned_by_us(true),
@@ -470,7 +468,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
     // If this object is owned by us and stored in plasma, and reference
     // counting is enabled, then some raylet must be pinning the object value.
     // This is the address of that raylet.
-    absl::optional<ClientID> pinned_at_raylet_id;
+    absl::optional<NodeID> pinned_at_raylet_id;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.
@@ -691,7 +689,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
 
-  using LocationTable = absl::flat_hash_map<ObjectID, absl::flat_hash_set<ClientID>>;
+  using LocationTable = absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>>;
 
   /// Holds the client information for the owned objects. This table is seperate from
   /// the reference table because we add object reference after putting object into the

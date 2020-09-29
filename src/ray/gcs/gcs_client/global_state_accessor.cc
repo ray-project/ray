@@ -122,7 +122,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   return object_info;
 }
 
-std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
+std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
   rpc::ResourceMap node_resource_map;
   std::promise<void> promise;
   auto on_done =
@@ -141,6 +141,16 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(node_id, on_done));
   promise.get_future().get();
   return node_resource_map.SerializeAsString();
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
+  std::vector<std::string> available_resources;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllAvailableResources(
+      TransformForMultiItemCallback<rpc::AvailableResources>(available_resources,
+                                                             promise)));
+  promise.get_future().get();
+  return available_resources;
 }
 
 std::string GlobalStateAccessor::GetInternalConfig() {

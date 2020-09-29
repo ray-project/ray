@@ -63,7 +63,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_node_manager_->AddNode(node);
     rpc::HeartbeatTableData heartbeat;
     (*heartbeat.mutable_resources_available())["CPU"] = cpu_num;
-    gcs_node_manager_->UpdateNodeRealtimeResources(ClientID::FromBinary(node->node_id()),
+    gcs_node_manager_->UpdateNodeRealtimeResources(NodeID::FromBinary(node->node_id()),
                                                    heartbeat);
   }
 
@@ -489,10 +489,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
   WaitPendingDone(success_placement_groups_, 1);
 
   auto bundles_on_node0 =
-      scheduler_->GetBundlesOnNode(ClientID::FromBinary(node0->node_id()));
+      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
   ASSERT_EQ(1, bundles_on_node0.size());
   auto bundles_on_node1 =
-      scheduler_->GetBundlesOnNode(ClientID::FromBinary(node1->node_id()));
+      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles_on_node1.size());
   // One node is dead, reschedule the placement group.
   auto bundle_on_dead_node = placement_group->GetMutableBundle(0);
@@ -543,8 +543,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
 TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
   gcs::BundleLocationIndex bundle_location_index;
   /// Generate data.
-  const auto node1 = ClientID::FromRandom();
-  const auto node2 = ClientID::FromRandom();
+  const auto node1 = NodeID::FromRandom();
+  const auto node2 = NodeID::FromRandom();
   rpc::CreatePlacementGroupRequest request_pg1 =
       Mocker::GenCreatePlacementGroupRequest("pg1");
   const auto pg1_id = PlacementGroupID::FromBinary(
@@ -614,6 +614,36 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
   ASSERT_FALSE(bundle_location_index.GetBundleLocationsOnNode(node1).has_value());
   ASSERT_TRUE(bundle_location_index.GetBundleLocations(pg2_id).value()->size() == 1);
   ASSERT_TRUE(bundle_location_index.GetBundleLocationsOnNode(node2).value()->size() == 1);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommitResources) {
+  auto node0 = Mocker::GenNodeInfo(0);
+  auto node1 = Mocker::GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+
+  // Schedule the placement group.
+  // One node is dead, so one bundle failed to schedule.
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    ASSERT_TRUE(placement_group->GetUnplacedBundles().size() == 1);
+    failure_placement_groups_.emplace_back(std::move(placement_group));
+  };
+  auto success_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    success_placement_groups_.emplace_back(std::move(placement_group));
+  };
+
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  gcs_node_manager_->RemoveNode(NodeID::FromBinary(node1->node_id()));
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(failure_placement_groups_, 1);
 }
 
 }  // namespace ray

@@ -245,7 +245,7 @@ class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
   JobID GetJobIdFromKey(const ObjectID &key) override { return key.TaskId().JobId(); }
 };
 
-class GcsNodeTable : public GcsTable<ClientID, GcsNodeInfo> {
+class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
@@ -253,7 +253,7 @@ class GcsNodeTable : public GcsTable<ClientID, GcsNodeInfo> {
   }
 };
 
-class GcsNodeResourceTable : public GcsTable<ClientID, ResourceMap> {
+class GcsNodeResourceTable : public GcsTable<NodeID, ResourceMap> {
  public:
   explicit GcsNodeResourceTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
@@ -261,7 +261,7 @@ class GcsNodeResourceTable : public GcsTable<ClientID, ResourceMap> {
   }
 };
 
-class GcsHeartbeatTable : public GcsTable<ClientID, HeartbeatTableData> {
+class GcsHeartbeatTable : public GcsTable<NodeID, HeartbeatTableData> {
  public:
   explicit GcsHeartbeatTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
@@ -277,7 +277,7 @@ class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, Schedul
   }
 };
 
-class GcsHeartbeatBatchTable : public GcsTable<ClientID, HeartbeatBatchTableData> {
+class GcsHeartbeatBatchTable : public GcsTable<NodeID, HeartbeatBatchTableData> {
  public:
   explicit GcsHeartbeatBatchTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {

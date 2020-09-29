@@ -31,7 +31,7 @@ using ray::rpc::ObjectTableData;
 /// object table entries up to but not including this notification.
 bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &location_updates,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
-                           std::unordered_set<ClientID> *node_ids,
+                           std::unordered_set<NodeID> *node_ids,
                            std::string *spilled_url) {
   // location_updates contains the updates of locations of the object.
   // with GcsChangeMode, we can determine whether the update mode is
@@ -39,7 +39,7 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
   bool isUpdated = false;
   for (const auto &update : location_updates) {
     if (update.has_data()) {
-      ClientID node_id = ClientID::FromBinary(update.data().manager());
+      NodeID node_id = NodeID::FromBinary(update.data().manager());
       if (update.is_add() && 0 == node_ids->count(node_id)) {
         node_ids->insert(node_id);
         isUpdated = true;
@@ -71,7 +71,7 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
 }  // namespace
 
 ray::Status ObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const ClientID &client_id,
+    const ObjectID &object_id, const NodeID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
   ray::Status status =
@@ -80,7 +80,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(
 }
 
 ray::Status ObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const ClientID &client_id,
+    const ObjectID &object_id, const NodeID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   ray::Status status =
@@ -92,7 +92,7 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
   auto node_info = gcs_client_->Nodes().Get(connection_info.client_id);
   if (node_info) {
-    ClientID result_node_id = ClientID::FromBinary(node_info->node_id());
+    NodeID result_node_id = NodeID::FromBinary(node_info->node_id());
     RAY_CHECK(result_node_id == connection_info.client_id);
     if (node_info->state() == GcsNodeInfo::ALIVE) {
       connection_info.ip = node_info->node_manager_address();
@@ -114,7 +114,7 @@ std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() 
   return remote_connections;
 }
 
-void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
+void ObjectDirectory::HandleClientRemoved(const NodeID &client_id) {
   for (auto &listener : listeners_) {
     const ObjectID &object_id = listener.first;
     if (listener.second.current_object_locations.count(client_id) > 0) {
@@ -252,7 +252,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
             notification.push_back(change);
           }
 
-          std::unordered_set<ClientID> node_ids;
+          std::unordered_set<NodeID> node_ids;
           std::string spilled_url;
           UpdateObjectLocations(notification, gcs_client_, &node_ids, &spilled_url);
           // It is safe to call the callback directly since this is already running
