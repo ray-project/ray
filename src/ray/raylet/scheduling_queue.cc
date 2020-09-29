@@ -171,12 +171,11 @@ ResourceSet SchedulingQueue::GetTotalResourceLoad() const {
   return load;
 }
 
-rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes) const {
+rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes, bool report_worker_backlog) const {
   std::unordered_map<SchedulingClass, rpc::ResourceDemand> load;
   auto infeasible_queue_load =
       task_queues_[static_cast<int>(TaskState::INFEASIBLE)]->GetResourceLoadByShape();
   auto ready_queue_load = ready_queue_->GetResourceLoadByShape();
-  auto backlog_size_load = ready_queue_->GetRequestBacklogByShape();
   size_t max_shapes_to_add = ready_queue_load.size() + infeasible_queue_load.size();
   if (max_shapes >= 0) {
     max_shapes_to_add = max_shapes;
@@ -217,11 +216,14 @@ rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes) co
     ready_it++;
   }
 
-  // Collect the ready queue's load.
-  auto backlog_it = backlog_size_load.begin();
-  while (backlog_it != backlog_size_load.end() && load.size() < max_shapes_to_add) {
-    load[backlog_it->first].set_backlog_size(backlog_it->second);
-    backlog_it++;
+  if (report_worker_backlog) {
+    // Collect the backlog size.
+    auto backlog_size_load = ready_queue_->GetRequestBacklogByShape();
+    auto backlog_it = backlog_size_load.begin();
+    while (backlog_it != backlog_size_load.end() && load.size() < max_shapes_to_add) {
+      load[backlog_it->first].set_backlog_size(backlog_it->second);
+      backlog_it++;
+    }
   }
 
   // Set the resource shapes.

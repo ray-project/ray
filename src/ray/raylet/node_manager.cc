@@ -162,7 +162,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           new DefaultAgentManagerServiceHandler(agent_manager_)),
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
-      new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
+      new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
+      report_worker_backlog_(RayConfig::instance().report_worker_backlog)
+{
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -1724,7 +1726,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
-  Task task(task_message, request.backlog_size());
+  auto backlog_size = -1;
+  if (report_worker_backlog_) {
+    backlog_size = request.backlog_size();
+  }
+  Task task(task_message, backlog_size);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
 

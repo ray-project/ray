@@ -227,7 +227,7 @@ class SchedulingQueue {
   ///
   /// \return A message summarizing the number of requests, sorted by shape, in
   /// the ready and infeasible queues.
-  rpc::ResourceLoad GetResourceLoadByShape(int64_t max_shapes = -1) const;
+  rpc::ResourceLoad GetResourceLoadByShape(int64_t max_shapes = -1, bool report_worker_backlog) const;
 
   /// Get the tasks in the blocked state.
   ///

@@ -785,6 +785,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
 
+  /// Whether to report the worker's backlog size in the GCS heartbeat.
+  const bool report_worker_backlog_;
+
   /// Whether to trigger global GC in the next heartbeat. This will broadcast
   /// a global GC message to all raylets except for this one.
   bool should_global_gc_ = false;
