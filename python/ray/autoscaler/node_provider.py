@@ -222,7 +222,15 @@ class NodeProvider:
         """Returns the internal ip (Ray ip) of the given node."""
         raise NotImplementedError
 
-    def get_node_id(self, ip_address, use_internal=False):
+    def get_node_id(self, ip_address, use_internal=False) -> str:
+        """Returns the node_id given an IP address.
+
+        Assumes ip-address is unique per node.
+
+        Args:
+            ip_address (str): Address of node.
+            use_internal (bool): Whether the ip address is public or private.
+        """
         def find_node_id():
             if use_internal:
                 return self._internal_ip_cache.get(ip_address)

@@ -67,14 +67,6 @@ class KubernetesNodeProvider(NodeProvider):
         return pod.status.pod_ip
 
     def get_node_id(self, ip_address, use_internal=True) -> str:
-        """Returns the node_id given an IP address.
-
-        Assumes ip-address is unique per node.
-
-        Args:
-            ip_address (str): Address of node.
-            use_internal (bool): Whether the ip address is public or private.
-        """
         if not use_internal:
             raise ValueError("Must use internal IPs with Kubernetes.")
         return super().get_node_id(ip_address, use_internal=use_internal)
