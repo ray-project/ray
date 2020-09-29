@@ -79,8 +79,6 @@ class AWSNodeProvider(NodeProvider):
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
-        self._internal_ip_map = {}
-        self._external_ip_map = {}
 
     def _node_tag_update_loop(self):
         """Update the AWS tags for a cluster periodically.
@@ -177,40 +175,6 @@ class AWSNodeProvider(NodeProvider):
             node = self._get_node(node_id)
 
         return node.public_ip_address
-
-    def get_node_id(self, ip_address, use_internal=False):
-        def find_node_id():
-            if use_internal:
-                return self._internal_ip_map.get(ip_address)
-            else:
-                return self._external_ip_map.get(ip_address)
-
-        if not find_node_id():
-            self._update_ip_maps()
-
-        if not find_node_id():
-            self._update_ip_maps(deep_update=True)
-
-        if not find_node_id():
-            if use_internal:
-                known_msg = (
-                    f"Known IP addresses: {list(self._internal_ip_map)}")
-            else:
-                known_msg = (
-                    f"Known IP addresses: {list(self._external_ip_map)}")
-            raise ValueError(f"ip {ip_address} not found. " + known_msg)
-
-        return find_node_id()
-
-    def _update_ip_maps(self, deep_update=False):
-        all_nodes = self.cached_nodes
-
-        if deep_update:
-            all_nodes = self.non_terminated_nodes({})
-
-        for node_id in all_nodes:
-            self._external_ip_map[self.external_ip(node_id)] = node_id
-            self._internal_ip_map[self.internal_ip(node_id)] = node_id
 
     def internal_ip(self, node_id):
         node = self._get_cached_node(node_id)
