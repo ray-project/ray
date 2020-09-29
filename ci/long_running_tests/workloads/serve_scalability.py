@@ -20,16 +20,17 @@ client = serve.start()
 # These numbers need to correspond with the autoscaler config file.
 # The number of remote nodes in the autoscaler should upper bound
 # these because sometimes nodes fail to update.
-num_remote_nodes = 4
-head_node_cpus = 2
-num_remote_cpus = num_remote_nodes * head_node_cpus
+num_workers = 4
+expected_num_nodes = num_workers + 1
+cpus_per_node = 2
+num_remote_cpus = expected_num_nodes * cpus_per_node
 
 # Wait until the expected number of nodes have joined the cluster.
 while True:
     num_nodes = len(ray.nodes())
     logger.info("Waiting for nodes {}/{}".format(num_nodes,
-                                                 num_remote_nodes + 1))
-    if num_nodes >= num_remote_nodes + 1:
+                                                 expected_num_nodes))
+    if num_nodes >= expected_num_nodes:
         break
     time.sleep(5)
 logger.info("Nodes have all joined. There are %s resources.",
@@ -52,6 +53,7 @@ for _ in range(5):
     logger.info("Received response \'" + resp + "\'")
     time.sleep(0.5)
 
+# TODO(architkulkarni): how many connections and threads?
 num_connections = int(num_remote_cpus * 0.75)
 num_threads = 2
 time_to_run = "10s"
