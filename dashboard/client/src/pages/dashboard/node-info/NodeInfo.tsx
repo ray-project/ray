@@ -10,7 +10,6 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
-import { RayletInfoResponse } from "../../../api";
 import SortableTableHead, {
   HeaderInfo,
 } from "../../../common/SortableTableHead";
@@ -68,24 +67,17 @@ const makeGroupedTableContents = (
   nodes: Node[],
   sortWorkerComparator: any,
   sortGroupComparator: any,
-  rayletInfo: RayletInfoResponse | null,
   nodeInfoFeatures: NodeInfoFeature[],
 ) => {
   const sortedGroups = sortGroupComparator
     ? stableSort(nodes, sortGroupComparator)
     : nodes;
   return sortedGroups.map((node) => {
-    const plasmaStats = rayletInfo?.plasmaStats?.[node.ip];
     const workerFeatureData: WorkerFeatureData[] = node.workers.map(
       (worker) => {
-        const rayletWorker =
-          rayletInfo?.nodes?.[node.ip]?.workersStats?.find(
-            (workerStats) => workerStats.pid === worker.pid,
-          ) || null;
         return {
           node,
           worker,
-          rayletWorker,
         };
       },
     );
@@ -100,7 +92,6 @@ const makeGroupedTableContents = (
         node={node}
         workerFeatureData={sortedClusterWorkers}
         features={nodeInfoFeatures}
-        plasmaStats={plasmaStats}
         initialExpanded={nodes.length <= 1}
       />
     );
@@ -110,7 +101,6 @@ const makeGroupedTableContents = (
 const makeUngroupedTableContents = (
   nodes: Node[],
   sortWorkerComparator: any,
-  rayletInfo: RayletInfoResponse | null,
   nodeInfoFeatures: NodeInfoFeature[],
 ) => {
   const workerInfoFeatures = nodeInfoFeatures.map(
@@ -118,14 +108,9 @@ const makeUngroupedTableContents = (
   );
   const allWorkerFeatures: WorkerFeatureData[] = nodes.flatMap((node) => {
     return node.workers.map((worker) => {
-      const rayletWorker =
-        rayletInfo?.nodes?.[node.ip]?.workersStats?.find(
-          (workerStats) => workerStats.pid === worker.pid,
-        ) || null;
       return {
-        node: node,
+        node,
         worker,
-        rayletWorker,
       };
     });
   });
@@ -154,13 +139,10 @@ const useNodeInfoStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-const nodeInfoSelector = (state: StoreState) => ({
-  nodeInfo: state.dashboard.nodeInfo,
-  rayletInfo: state.dashboard.rayletInfo,
-});
+const nodesSelector = (state: StoreState) => state.dashboard?.nodeInfo?.clients;
 
 type DialogState = {
-  hostname: string;
+  nodeIp: string;
   pid: number | null;
 } | null;
 
@@ -188,13 +170,11 @@ const NodeInfo: React.FC<{}> = () => {
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
   const [orderBy, setOrderBy] = React.useState<nodeInfoColumnId | null>(null);
   const classes = useNodeInfoStyles();
-  const { nodeInfo, rayletInfo } = useSelector(nodeInfoSelector);
-  if (nodeInfo === null || rayletInfo === null) {
+  const nodes = useSelector(nodesSelector);
+  if (!nodes) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
-  const clusterTotalWorkers = sum(
-    nodeInfo.clients.map((c) => c.workers.length),
-  );
+  const clusterTotalWorkers = sum(nodes.map((n) => n.workers.length));
   const nodeInfoFeatures: NodeInfoFeature[] = [
     hostFeature,
     workersFeature,
@@ -207,8 +187,8 @@ const NodeInfo: React.FC<{}> = () => {
     diskFeature,
     sentFeature,
     receivedFeature,
-    makeLogsFeature((hostname, pid) => setLogDialog({ hostname, pid })),
-    makeErrorsFeature((hostname, pid) => setErrorDialog({ hostname, pid })),
+    makeLogsFeature((nodeIp, pid) => setLogDialog({ nodeIp, pid })),
+    makeErrorsFeature((nodeIp, pid) => setErrorDialog({ nodeIp, pid })),
   ];
   const sortNodeAccessor = nodeInfoFeatures.find(
     (feature) => feature.id === orderBy,
@@ -222,18 +202,12 @@ const NodeInfo: React.FC<{}> = () => {
     sortWorkerAccessor && getFnComparator(order, sortWorkerAccessor);
   const tableContents = isGrouped
     ? makeGroupedTableContents(
-        nodeInfo.clients,
+        nodes,
         sortWorkerComparator,
         sortNodeComparator,
-        rayletInfo,
         nodeInfoFeatures,
       )
-    : makeUngroupedTableContents(
-        nodeInfo.clients,
-        sortWorkerComparator,
-        rayletInfo,
-        nodeInfoFeatures,
-      );
+    : makeUngroupedTableContents(nodes, sortWorkerComparator, nodeInfoFeatures);
   return (
     <React.Fragment>
       <FormControlLabel
@@ -265,8 +239,7 @@ const NodeInfo: React.FC<{}> = () => {
           {tableContents}
           <TotalRow
             clusterTotalWorkers={clusterTotalWorkers}
-            nodes={nodeInfo.clients}
-            plasmaStats={Object.values(rayletInfo.plasmaStats)}
+            nodes={nodes}
             features={nodeInfoFeatures.map(
               (feature) => feature.ClusterFeatureRenderFn,
             )}
@@ -276,14 +249,14 @@ const NodeInfo: React.FC<{}> = () => {
       {logDialog !== null && (
         <Logs
           clearLogDialog={() => setLogDialog(null)}
-          hostname={logDialog.hostname}
+          nodeIp={logDialog.nodeIp}
           pid={logDialog.pid}
         />
       )}
       {errorDialog !== null && (
         <Errors
           clearErrorDialog={() => setErrorDialog(null)}
-          hostname={errorDialog.hostname}
+          nodeIp={errorDialog.nodeIp}
           pid={errorDialog.pid}
         />
       )}
