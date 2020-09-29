@@ -10,7 +10,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
     TimeoutStopper
-from ray.tune.utils import detect_checkpoint_function
+from ray.tune.utils import date_str, detect_checkpoint_function
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +137,17 @@ class Experiment:
                     "within your trainable function.")
         self._run_identifier = Experiment.register_if_needed(run)
         self.name = name or self._run_identifier
+
+        # If the name has been set explicitly, we don't want to create
+        # dated directories.
+        if int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1 or name:
+            self.dir_name = self.name
+        else:
+            self.dir_name = "{}_{}".format(self.name, date_str())
+
         if upload_dir:
-            self.remote_checkpoint_dir = os.path.join(upload_dir, self.name)
+            self.remote_checkpoint_dir = os.path.join(upload_dir,
+                                                      self.dir_name)
         else:
             self.remote_checkpoint_dir = None
 
@@ -287,7 +296,7 @@ class Experiment:
     @property
     def checkpoint_dir(self):
         if self.local_dir:
-            return os.path.join(self.local_dir, self.name)
+            return os.path.join(self.local_dir, self.dir_name)
 
     @property
     def run_identifier(self):
