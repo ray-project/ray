@@ -1,6 +1,7 @@
 import ray
-from ray.new_dashboard.memory_utils import (ReferenceType, decode_object_ref_if_needed, MemoryTableEntry, MemoryTable, SortingType)
-
+from ray.new_dashboard.memory_utils import (
+    ReferenceType, decode_object_ref_if_needed, MemoryTableEntry, MemoryTable,
+    SortingType)
 """Memory Table Unit Test"""
 
 NODE_ADDRESS = "127.0.0.1"
@@ -246,4 +247,6 @@ def test_group_by():
 
 
 if __name__ == "__main__":
+    import sys
+    import pytest
     sys.exit(pytest.main(["-v", __file__]))

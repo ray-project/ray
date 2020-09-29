@@ -168,7 +168,7 @@ class MemoryTable:
         self.group = {}
         self.summary = defaultdict(int)
         # NOTE YOU MUST SORT TABLE BEFORE GROUPING.
-        # self._group_by(...)._sort_by(...) != self._sort_by(...)._group_by(...)
+        # self._group_by(..)._sort_by(..) != self._sort_by(..)._group_by(..)
         if group_by_type and sort_by_type:
             self.setup(group_by_type, sort_by_type)
         elif group_by_type:
