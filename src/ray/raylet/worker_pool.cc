@@ -677,22 +677,24 @@ void WorkerPool::TryKillingIdleWorkers() {
   }
 
   // Kill idle workers in FIFO order.
-  for (auto it = idle_of_all_languages_.begin();
-       it != idle_of_all_languages_.end() &&
-       running_size > static_cast<size_t>(num_workers_soft_limit_);
-       it++) {
-    if (now - it->second <
+  for (const auto &idle_pair : idle_of_all_languages_) {
+    if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
+      break;
+    }
+    if (now - idle_pair.second <
         RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       break;
     }
-    if (it->first->IsDead()) {
+
+    const auto &idle_worker = idle_pair.first;
+    if (idle_worker->IsDead()) {
       // This worker has already been killed.
       // This is possible because a Java worker process may hold multiple workers.
       continue;
     }
-    auto process = it->first->GetProcess();
+    auto process = idle_worker->GetProcess();
 
-    auto &worker_state = GetStateForLanguage(it->first->GetLanguage());
+    auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
     if (worker_state.starting_worker_processes.count(process) > 0) {
       // A Java worker process may hold multiple workers.
@@ -725,14 +727,15 @@ void WorkerPool::TryKillingIdleWorkers() {
       return;
     }
 
-    for (auto worker_it = workers_in_the_same_process.begin();
-         worker_it != workers_in_the_same_process.end(); worker_it++) {
+    for (const auto &worker : workers_in_the_same_process) {
       RAY_LOG(INFO) << "The worker pool has " << running_size
                     << " registered workers which exceeds the soft limit of "
-                    << num_workers_soft_limit_ << ", and worker "
-                    << (*worker_it)->WorkerId() << " with pid " << process.GetId()
+                    << num_workers_soft_limit_ << ", and worker " << worker->WorkerId()
+                    << " with pid " << process.GetId()
                     << " has been idle for a a while. Kill it.";
-      auto rpc_client = (*worker_it)->rpc_client();
+      // To avoid object lost issue caused by forcibly killing, send an RPC request to the
+      // worker to allow it to do cleanup before exiting.
+      auto rpc_client = worker->rpc_client();
       RAY_CHECK(rpc_client);
       rpc::ExitRequest request;
       rpc_client->Exit(request, [](const ray::Status &status, const rpc::ExitReply &r) {
@@ -741,9 +744,9 @@ void WorkerPool::TryKillingIdleWorkers() {
         }
       });
       // Remove the worker from the idle pool so it can't be popped anymore.
-      RemoveWorker(worker_state.idle, *worker_it);
-      if (!(*worker_it)->IsDead()) {
-        (*worker_it)->MarkDead();
+      RemoveWorker(worker_state.idle, worker);
+      if (!worker->IsDead()) {
+        worker->MarkDead();
         running_size--;
       }
     }
@@ -752,11 +755,10 @@ void WorkerPool::TryKillingIdleWorkers() {
   std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>
       new_idle_of_all_languages;
   idle_of_all_languages_map_.clear();
-  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
-       it++) {
-    if (!it->first->IsDead()) {
-      new_idle_of_all_languages.push_back(*it);
-      idle_of_all_languages_map_.emplace(*it);
+  for (const auto &idle_pair : idle_of_all_languages_) {
+    if (!idle_pair.first->IsDead()) {
+      new_idle_of_all_languages.push_back(idle_pair);
+      idle_of_all_languages_map_.emplace(idle_pair);
     }
   }
 
@@ -856,10 +858,10 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
        it++) {
     if (it->first == worker) {
       idle_of_all_languages_.erase(it);
+      idle_of_all_languages_map_.erase(worker);
       break;
     }
   }
-  idle_of_all_languages_map_.erase(worker);
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},

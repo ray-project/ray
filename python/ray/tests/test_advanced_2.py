@@ -510,6 +510,8 @@ def test_two_custom_resources(ray_start_cluster):
 
     @ray.remote
     def foo():
+        # Sleep a while to emulate a slow operation. This is needed to make
+        # sure tasks are scheduled to different nodes.
         time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
