@@ -59,7 +59,9 @@ void Profiler::FlushEvents() {
 
   if (cur_profile_data->profile_events_size() != 0) {
     if (!gcs_client_->Stats().AsyncAddProfileData(cur_profile_data, nullptr).ok()) {
-      RAY_LOG(WARNING) << "Failed to push profile events to GCS.";
+      RAY_LOG(WARNING)
+          << "Failed to push profile events to GCS. This won't affect core Ray, but you "
+             "might lose profile data, and ray timeline might not work as expected.";
     } else {
       RAY_LOG(DEBUG) << "Pushed " << cur_profile_data->profile_events_size()
                      << " events to GCS.";
