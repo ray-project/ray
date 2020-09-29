@@ -6,16 +6,17 @@ import ray
 import torch
 from ray.util.sgd.utils import BATCH_COUNT
 import torch.distributed as dist
-
-torch.manual_seed(0)
 from pytorch_lightning import LightningModule
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.torch.examples.train_example import LinearDataset, \
+from ray.util.sgd.torch.examples.train_example import \
     optimizer_creator, data_creator, scheduler_creator, model_creator
 from torch import nn
 import numpy as np
+
+torch.manual_seed(0)
 np.random.seed(0)
+
 
 @pytest.fixture
 def ray_start_2_cpus():
@@ -26,6 +27,7 @@ def ray_start_2_cpus():
     # Ensure that tests don't ALL fail
     if dist.is_initialized():
         dist.destroy_process_group()
+
 
 class PTL_Module(LightningModule):
     def __init__(self, config):
@@ -78,7 +80,9 @@ class PTL_Module(LightningModule):
     def on_load_checkpoint(self, checkpoint):
         self.rand_int = checkpoint["int"]
 
+
 Operator = TrainingOperator.from_ptl(PTL_Module)
+
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
@@ -93,6 +97,7 @@ def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
     val_metrics = trainer.validate(num_steps=1)
     assert val_metrics[BATCH_COUNT] == 1
     trainer.shutdown()
+
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
@@ -114,6 +119,7 @@ def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
     assert validation_loss2 <= validation_loss1, (validation_loss2,
                                                   validation_loss1)
     trainer.shutdown()
+
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
@@ -160,12 +166,13 @@ class CorrectnessOperator(TrainingOperator):
         scheduler = scheduler_creator(opt, config)
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(
-            models=model, optimizers=opt, criterion=nn.MSELoss(),
+                models=model, optimizers=opt, criterion=nn.MSELoss(),
                 schedulers=scheduler)
 
         train_loader, val_loader = data_creator(config)
-        self.register_data(train_loader=train_loader,
-                           validation_loader=val_loader)
+        self.register_data(
+            train_loader=train_loader, validation_loader=val_loader)
+
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
@@ -180,8 +187,7 @@ def test_correctness(ray_start_2_cpus, num_workers, use_local):
             "batch_size": 1
         },
         num_workers=num_workers,
-        use_local=use_local
-    )
+        use_local=use_local)
     train1_stats = trainer1.train()
     val1_stats = trainer1.validate()
     trainer1.shutdown()
@@ -195,8 +201,7 @@ def test_correctness(ray_start_2_cpus, num_workers, use_local):
             "batch_size": 1
         },
         num_workers=num_workers,
-        use_local=use_local
-    )
+        use_local=use_local)
     train2_stats = trainer2.train()
     val2_stats = trainer2.validate()
     trainer2.shutdown()
@@ -204,5 +209,3 @@ def test_correctness(ray_start_2_cpus, num_workers, use_local):
     assert train1_stats["train_loss"] == train2_stats["train_loss"]
     assert val1_stats["val_loss"] == val2_stats["val_loss"]
     assert val1_stats["val_acc"] == val2_stats["val_accuracy"]
-
-
