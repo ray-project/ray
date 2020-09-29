@@ -976,9 +976,7 @@ def rsync(config_file: str,
                 is_file_mount = True
                 break
 
-    provider = _get_node_provider(
-        config["provider"],
-        config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
 
     def rsync_to_node(node_id):
         updater = NodeUpdaterThread(
@@ -1009,16 +1007,20 @@ def rsync(config_file: str,
         else:
             updater.sync_file_mounts(rsync)
 
-
     try:
         nodes = []
         if ip_address:
-            nodes = [provider.get_node_id(ip_address, use_internal=use_internal_ip)]
+            nodes = [
+                provider.get_node_id(ip_address, use_internal=use_internal_ip)
+            ]
         else:
             if all_nodes:
                 nodes = _get_worker_nodes(config, override_cluster_name)
             head_node = _get_head_node(
-                config, config_file, override_cluster_name, create_if_needed=False)
+                config,
+                config_file,
+                override_cluster_name,
+                create_if_needed=False)
             nodes += [head_node]
 
         for node_id in nodes:

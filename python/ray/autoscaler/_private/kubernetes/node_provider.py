@@ -70,6 +70,7 @@ class KubernetesNodeProvider(NodeProvider):
     def get_node_id(self, ip_address, use_internal=True):
         if not use_internal:
             raise ValueError("Must use internal IPs with Kubernetes.")
+
         def find_node_id():
             return self._internal_ip_map.get(ip_address)
 
@@ -79,8 +80,7 @@ class KubernetesNodeProvider(NodeProvider):
                 self._internal_ip_map[self.internal_ip(node_id)] = node_id
 
         if not find_node_id():
-            known_msg = (
-                f"Known IP addresses: {list(self._internal_ip_map)}")
+            known_msg = (f"Known IP addresses: {list(self._internal_ip_map)}")
             raise ValueError(f"ip {ip_address} not found. " + known_msg)
 
         return find_node_id()
