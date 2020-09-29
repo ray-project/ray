@@ -25,10 +25,6 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         This dashboard module is responsible for enabling the Tune tab of
         the dashboard. To do so, it periodically scrapes Tune output logs,
         transforms them, and serves them up over an API.
-
-        Args
-            logdir (str): Directory path to save the status information of
-                            jobs and trials.
         """
         super().__init__(dashboard_head)
         self._logdir = None
@@ -46,7 +42,10 @@ class TuneController(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/tune/availability")
     async def get_availability(self, req) -> aiohttp.web.Response:
-        availability = self._get_availability()
+        availability = {
+            "available": Analysis is not None,
+            "trials_available": self._trials_available
+        }
         return await rest_response(
             success=True,
             message="Fetched tune availability",
@@ -54,11 +53,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/tune/set_experiment")
     async def set_tune_experiment(self, req) -> aiohttp.web.Response:
-        try:
-            experiment = req.query["experiment"]
-        except KeyError:
-            return await rest_response(success=False, message="Bad request")
-
+        experiment = req.query["experiment"]
         err, experiment = self.set_experiment(experiment)
         if err:
             return await rest_response(success=False, error=err)
@@ -98,9 +93,6 @@ class TuneController(dashboard_utils.DashboardHeadModule):
             tb.launch()
             self._tensor_board_dir = self._logdir
 
-    def _get_availability(self):
-        return {"available": True, "trials_available": self._trials_available}
-
     def collect_errors(self, df):
         sub_dirs = os.listdir(self._logdir)
         trial_names = filter(
@@ -118,12 +110,11 @@ class TuneController(dashboard_utils.DashboardHeadModule):
                     }
                     other_data = df[df["logdir"].str.contains(trial)]
                     if len(other_data) > 0:
-                        trial_id = other_data["trial_id"].values[0]
-                        self._errors[str(trial)]["trial_id"] = str(trial_id)
-                        if str(trial_id) in self._trial_records.keys():
-                            self._trial_records[str(trial_id)]["error"] = text
-                            self._trial_records[str(trial_id)][
-                                "status"] = "ERROR"
+                        trial_id = str(other_data["trial_id"].values[0])
+                        self._errors[str(trial)]["trial_id"] = trial_id
+                        if trial_id in self._trial_records.keys():
+                            self._trial_records[trial_id]["error"] = text
+                            self._trial_records[trial_id]["status"] = "ERROR"
 
     @async_loop_forever(tune_consts.TUNE_STATS_UPDATE_INTERVAL_SECONDS)
     async def collect(self):
@@ -134,7 +125,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         """
         self._trial_records = {}
         self._errors = {}
-        if not self._logdir:
+        if not self._logdir or not Analysis:
             return
 
         # search through all the sub_directories in log directory
@@ -175,14 +166,14 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         metric_keys = []
 
         # list of static attributes for trial
-        default_names = [
+        default_names = {
             "logdir", "time_this_iter_s", "done", "episodes_total",
             "training_iteration", "timestamp", "timesteps_total",
             "experiment_id", "date", "timestamp", "time_total_s", "pid",
             "hostname", "node_ip", "time_since_restore",
             "timesteps_since_restore", "iterations_since_restore",
             "experiment_tag", "trial_id"
-        ]
+        }
 
         # filter attributes into floats, metrics, and config variables
         for key, value in first_trial.items():
