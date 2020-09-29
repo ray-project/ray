@@ -101,7 +101,7 @@ class MemoryTableEntry:
         elif group_by_type == GroupByType.STACK_TRACE:
             return self.call_site
         else:
-            raise ValueError(f"group by type {group_by_type} is invalid."
+            raise ValueError(f"group by type {group_by_type} is invalid.")
 
     def _get_reference_type(self) -> str:
         if self._is_object_ref_actor_handle():
