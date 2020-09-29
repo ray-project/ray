@@ -768,7 +768,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     } else {
       // Find an available worker which is already assigned to this job.
       // Try to pop the most recently pushed worker.
-      RAY_LOG(ERROR) << "THERE";
       for (auto it = idle_of_all_languages.rbegin(); it != idle_of_all_languages.rend();
            it++) {
         if (task_spec.GetLanguage() != (*it)->GetLanguage() ||

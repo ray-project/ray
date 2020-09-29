@@ -124,7 +124,8 @@ struct ActorCreationOptions {
   /// When true, the child task will always scheduled on the same placement group
   /// specified in the PlacementOptions.
   bool placement_group_capture_child_tasks = true;
-  // TODO(simon): document
+  /// Environment variables to update for this actor.  Maps a variable name to its
+  /// value.  Can override existing environment variables and introduce new ones.
   const std::unordered_map<std::string, std::string> override_worker_env;
 };
 
