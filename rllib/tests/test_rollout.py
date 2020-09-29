@@ -227,6 +227,9 @@ def learn_test_multi_agent_plus_rollout(algo):
 
 
 class TestRolloutSimple(unittest.TestCase):
+    def setUp(self) -> None:
+        os.environ["TUNE_DISABLE_DATED_SUBDIR"] = "1"
+
     def test_a3c(self):
         rollout_test("A3C")
 
@@ -250,6 +253,9 @@ class TestRolloutSimple(unittest.TestCase):
 
 
 class TestRolloutLearntPolicy(unittest.TestCase):
+    def setUp(self) -> None:
+        os.environ["TUNE_DISABLE_DATED_SUBDIR"] = "1"
+
     def test_ppo_train_then_rollout(self):
         learn_test_plus_rollout("PPO")
 
