@@ -316,8 +316,9 @@ class TorchDeterministic(TorchDistributionWrapper):
     def sample(self):
         return self.deterministic_sample()
 
+    @staticmethod
     @override(ActionDistribution)
-    def required_model_output_shape(self, action_space, model_config):
+    def required_model_output_shape(action_space, model_config):
         return np.prod(action_space.shape)
 
 
