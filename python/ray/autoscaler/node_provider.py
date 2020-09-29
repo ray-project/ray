@@ -1,5 +1,6 @@
 import importlib
 import logging
+import json
 import os
 from typing import Any, Dict
 
@@ -187,7 +188,6 @@ class NodeProvider:
         self._internal_ip_cache = {}
         self._external_ip_cache = {}
 
-
     def non_terminated_nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
 
@@ -249,7 +249,6 @@ class NodeProvider:
         for node_id in all_nodes:
             self._external_ip_cache[self.external_ip(node_id)] = node_id
             self._internal_ip_cache[self.internal_ip(node_id)] = node_id
-
 
     def create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
