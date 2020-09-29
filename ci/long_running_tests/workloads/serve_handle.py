@@ -43,10 +43,10 @@ client.create_endpoint("forward", backend="forward")
 client.create_backend("hello_world", hello_world)
 client.create_endpoint("hello_world", backend="hello_world")
 
-client.create_backend("forwardActor", forwardActor, config=config)
-client.create_endpoint("forwardActor", backend="forwardActor")
+client.create_backend("ForwardActor", ForwardActor, config=config)
+client.create_endpoint("ForwardActor", backend="ForwardActor")
 
-handle = client.get_handle("forwardActor")
+handle = client.get_handle("ForwardActor")
 logger.info("Starting serve handle stress testing (actor)")
 for _ in range(num_queries):
     ray.get(handle.remote())

@@ -43,9 +43,7 @@ setup_commands:
     - pip uninstall -y dataclasses
     - apt-get install build-essential libssl-dev git -y
     # remove if you don't need to install wrk
-    - rm -r wrk || true
-    - 'git clone https://github.com/wg/wrk.git wrk' 
-    - cd wrk; make -j install
+    - rm -r wrk || true && 'git clone https://github.com/wg/wrk.git wrk' && cd wrk && make -j install
 head_setup_commands: []
 worker_setup_commands: []
 head_start_ray_commands:
