@@ -680,6 +680,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
 
+  /// Return back all the bundle resource.
+  ///
+  /// \param bundle_spec: Specification of bundle whose resources will be returned.
+  /// \return Whether the resource is returned successfully.
+  bool ReturnBundleResources(const BundleSpecification &bundle_spec);
+
   /// ID of this node.
   NodeID self_node_id_;
   boost::asio::io_service &io_service_;

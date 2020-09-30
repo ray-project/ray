@@ -19,6 +19,7 @@ import os
 import urllib
 sys.path.insert(0, os.path.abspath('.'))
 from custom_directives import CustomGalleryItemDirective
+from datetime import datetime
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
@@ -174,9 +175,9 @@ source_parsers = {
 master_doc = 'index'
 
 # General information about the project.
-project = u'Ray'
-copyright = u'2019, The Ray Team'
-author = u'The Ray Team'
+project = 'Ray'
+copyright = str(datetime.now().year) + ', The Ray Team'
+author = 'The Ray Team'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

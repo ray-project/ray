@@ -211,7 +211,7 @@ py_test(
 
 py_test(
     name = "test_var",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_var.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -219,7 +219,7 @@ py_test(
 
 py_test(
     name = "test_trial_scheduler",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_scheduler.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],

@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import pytest
+import psutil
 import ray
 
 
@@ -38,6 +39,16 @@ def test_spill_objects_manually(shutdown_only):
                 ref_to_spill = pinned_objects.pop()
                 ray.experimental.force_spill_objects([ref_to_spill])
                 spilled_objects.add(ref_to_spill)
+
+    def is_worker(cmdline):
+        return cmdline and cmdline[0].startswith("ray::")
+
+    # Make sure io workers are spawned with proper name.
+    processes = [
+        x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
+        if is_worker(x.info["cmdline"])
+    ]
+    assert ray.ray_constants.WORKER_PROCESS_TYPE_IO_WORKER in processes
 
     # Spill 2 more objects so we will always have enough space for
     # restoring objects back.

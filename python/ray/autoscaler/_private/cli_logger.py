@@ -18,8 +18,73 @@ from typing import Any, Dict, Tuple, Optional, List
 import click
 
 import colorama
-from colorful.core import ColorfulString
-import colorful as cf
+try:
+    import colorful as _cf
+    from colorful.core import ColorfulString
+except ModuleNotFoundError:
+    # We mock Colorful to restrict the colors used for consistency
+    # anyway, so we also allow for not having colorful at all.
+    # If the Ray Core dependency on colorful is ever removed,
+    # the CliLogger code will still work.
+    class ColorfulString:
+        pass
+
+    class _ColorfulMock:
+        def __init__(self):
+            # do not do any color work
+            self.identity = lambda x: x
+
+            self.colorful = self
+            self.colormode = None
+
+            self.NO_COLORS = None
+            self.ANSI_8_COLORS = None
+
+        def disable(self):
+            pass
+
+        def __getattr__(self, name):
+            return self.identity
+
+    _cf = _ColorfulMock()
+
+
+# We want to only allow specific formatting
+# to prevent people from accidentally making bad looking color schemes.
+#
+# This is especially important since most will look bad on either light
+# or dark themes.
+class _ColorfulProxy:
+    _proxy_whitelist = [
+        "disable",
+        "reset",
+        "bold",
+        "italic",
+        "underlined",
+        "with_style",
+
+        # used instead of `gray` as `dimmed` adapts to
+        # both light and dark themes
+        "dimmed",
+        "dodgerBlue",  # group
+        "limeGreen",  # success
+        "red",  # error
+        "orange",  # warning
+        "skyBlue"  # label
+    ]
+
+    def __getattr__(self, name):
+        res = getattr(_cf, name)
+        if callable(res) and name not in _ColorfulProxy._proxy_whitelist:
+            raise ValueError("Usage of the colorful method '" + name +
+                             "' is forbidden "
+                             "by the proxy to keep a consistent color scheme. "
+                             "Check `cli_logger.py` for allowed methods")
+        return res
+
+
+cf = _ColorfulProxy()
+
 colorama.init(strip=False)
 
 
@@ -152,7 +217,7 @@ def _format_msg(msg: str,
         if _no_format:
             # todo: throw if given args/kwargs?
             return numbering_str + msg + tags_str
-        return numbering_str + cf.format(msg, *args, **kwargs) + tags_str
+        return numbering_str + msg.format(*args, **kwargs) + tags_str
 
     if kwargs:
         raise ValueError("We do not support printing kwargs yet.")
@@ -372,17 +437,6 @@ class _CliLogger():
                 cli_logger.indent_level -= 1
 
         return IndentedContextManager()
-
-    def timed(self, msg: str, *args: Any, **kwargs: Any):
-        """
-        TODO: Unimplemented special type of output grouping that displays
-              a timer for its execution. The method was not removed so we
-              can mark places where this might be useful in case we ever
-              implement this.
-
-        For arguments, see `_format_msg`.
-        """
-        return self.group(msg, *args, **kwargs)
 
     def group(self, msg: str, *args: Any, **kwargs: Any):
         """Print a group title in a special color and start an indented block.
