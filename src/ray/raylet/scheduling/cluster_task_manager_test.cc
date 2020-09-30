@@ -535,7 +535,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
   {
     auto data = std::make_shared<rpc::HeartbeatTableData>();
-    task_manager_.Heartbeat(data, false);
+    task_manager_.Heartbeat(false, data);
 
     auto load = data->mutable_resource_load();
     ASSERT_EQ(load->size(), 2);
