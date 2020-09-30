@@ -295,8 +295,8 @@ class GcsServerTest : public ::testing::Test {
         request, [&object_locations, &promise](
                      const Status &status, const rpc::GetObjectLocationsReply &reply) {
           RAY_CHECK_OK(status);
-          for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
-            object_locations.push_back(reply.object_table_data_list(index));
+          for (const auto &loc : reply.location_info().locations()) {
+            object_locations.push_back(loc);
           }
           promise.set_value(true);
         });
