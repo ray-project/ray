@@ -25,21 +25,42 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_controller(self, name, controller_name):
-        assert ray.is_initialized()
-        controller = ray.get_actor(controller_name)
+    def __init__(self, name, controller_name):
+        self.name = name
+        self.controller_name = controller_name
+        self.route_table = {}
+        self.routers = {}
 
-        self.route_table = await controller.get_router_config.remote()
+    async def fetch_config_from_controller(self):
+        assert ray.is_initialized()
+        controller = ray.get_actor(self.controller_name)
+
+        await self.set_route_table(await controller.get_router_config.remote())
 
         self.request_counter = metrics.Count(
             "num_http_requests",
             description="The number of HTTP requests processed",
             tag_keys=("route", ))
 
-        self.router = Router()
-        await self.router.setup(name, controller_name)
+    async def drain_router(self, router):
+        while router.num_inflight_requests != 0:
+            asyncio.sleep(1)
 
-    def set_route_table(self, route_table):
+    async def set_route_table(self, route_table):
+        new_endpoints = set()
+        # Create routers for any new endpoints.
+        for path, (endpoint, _) in route_table.items():
+            if endpoint not in self.routers:
+                self.routers[endpoint] = Router()
+                await self.routers[endpoint].setup(endpoint, self.name,
+                                                   self.controller_name)
+            new_endpoints.add(endpoint)
+
+        # Delete routers for any endpoints that were removed.
+        for endpoint in list(self.routers.keys()):
+            if endpoint not in new_endpoints:
+                router = self.routers.pop(endpoint)
+                asyncio.get_event_loop().create_task(self.drain_router(router))
         self.route_table = route_table
 
     async def receive_http_body(self, scope, receive, send):
@@ -76,8 +97,6 @@ class HTTPProxy:
 
         error_sender = self._make_error_sender(scope, receive, send)
 
-        assert self.route_table is not None, (
-            "Route table must be set via set_route_table.")
         assert scope["type"] == "http"
         current_path = scope["path"]
 
@@ -104,19 +123,19 @@ class HTTPProxy:
             await error_sender(error_message, 405)
             return
 
+        router = self.routers[endpoint_name]
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_metadata = RequestMetadata(
-            endpoint_name,
             TaskContext.Web,
             http_method=scope["method"].upper(),
             call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
 
-        result = await self.router.enqueue_request(request_metadata, scope,
-                                                   http_body_bytes)
+        result = await router.enqueue_request(request_metadata, scope,
+                                              http_body_bytes)
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
@@ -134,12 +153,11 @@ class HTTPProxyActor:
             port,
             controller_name,
             http_middlewares: List["starlette.middleware.Middleware"] = []):
-        self.app = HTTPProxy()
         self.host = host
         self.port = port
 
-        self.app = HTTPProxy()
-        await self.app.fetch_config_from_controller(name, controller_name)
+        self.app = HTTPProxy(name, controller_name)
+        await self.app.fetch_config_from_controller()
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:
@@ -179,29 +197,30 @@ class HTTPProxyActor:
         await server.serve(sockets=[sock])
 
     async def set_route_table(self, route_table):
-        self.app.set_route_table(route_table)
+        return await self.app.set_route_table(route_table)
 
     # ------ Proxy router logic ------ #
     async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
-        return await self.app.router.add_new_worker(backend_tag, replica_tag,
-                                                    worker_handle)
+        for router in self.app.routers.values():
+            await router.add_new_worker(backend_tag, replica_tag,
+                                        worker_handle)
 
     async def set_traffic(self, endpoint, traffic_policy):
-        return await self.app.router.set_traffic(endpoint, traffic_policy)
+        await self.app.routers[endpoint].set_traffic(traffic_policy)
 
     async def set_backend_config(self, backend, config):
-        return await self.app.router.set_backend_config(backend, config)
+        for router in self.app.routers.values():
+            await router.set_backend_config(backend, config)
 
     async def remove_backend(self, backend):
-        return await self.app.router.remove_backend(backend)
-
-    async def remove_endpoint(self, endpoint):
-        return await self.app.router.remove_endpoint(endpoint)
+        for router in self.app.routers.values():
+            await router.remove_backend(backend)
 
     async def remove_worker(self, backend_tag, replica_tag):
-        return await self.app.router.remove_worker(backend_tag, replica_tag)
+        for router in self.app.routers.values():
+            await router.remove_worker(backend_tag, replica_tag)
 
-    async def enqueue_request(self, request_meta, *request_args,
+    async def enqueue_request(self, endpoint, request_meta, *request_args,
                               **request_kwargs):
-        return await self.app.router.enqueue_request(
+        return await self.app.routers[endpoint].enqueue_request(
             request_meta, *request_args, **request_kwargs)

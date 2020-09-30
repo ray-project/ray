@@ -128,9 +128,6 @@ class ServeController:
         # backends that should be removed from the router if recovering from a
         # checkpoint.
         self.backends_to_remove = list()
-        # endpoints that should be removed from the router if recovering from a
-        # checkpoint.
-        self.endpoints_to_remove = list()
         # endpoint -> TrafficPolicy
         self.traffic_policies = dict()
         # Dictionary of backend tag to dictionaries of replica tag to worker.
@@ -246,10 +243,9 @@ class ServeController:
         logger.debug("Writing checkpoint")
         start = time.time()
         checkpoint = pickle.dumps(
-            (self.routes, list(
-                self.routers.keys()), self.backends, self.traffic_policies,
-             self.replicas, self.replicas_to_start, self.replicas_to_stop,
-             self.backends_to_remove, self.endpoints_to_remove))
+            (self.routes, list(self.routers.keys()), self.backends,
+             self.traffic_policies, self.replicas, self.replicas_to_start,
+             self.replicas_to_stop, self.backends_to_remove))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -286,7 +282,6 @@ class ServeController:
             self.replicas_to_start,
             self.replicas_to_stop,
             self.backends_to_remove,
-            self.endpoints_to_remove,
         ) = pickle.loads(checkpoint_bytes)
 
         for node_id in router_node_ids:
@@ -342,9 +337,8 @@ class ServeController:
         await self._start_pending_replicas()
         await self._stop_pending_replicas()
 
-        # Remove any pending backends and endpoints.
+        # Remove any pending backends.
         await self._remove_pending_backends()
-        await self._remove_pending_endpoints()
 
         logger.info(
             "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
@@ -381,9 +375,9 @@ class ServeController:
             backend_configs[backend] = info.backend_config
         return backend_configs
 
-    def get_traffic_policies(self) -> Dict[str, TrafficPolicy]:
+    def get_traffic_policy(self, endpoint: str) -> TrafficPolicy:
         """Fetched by the router on startup."""
-        return self.traffic_policies
+        return self.traffic_policies[endpoint]
 
     def _list_replicas(self, backend_tag: str) -> List[str]:
         """Used only for testing."""
@@ -502,18 +496,6 @@ class ServeController:
             ])
         self.backends_to_remove.clear()
 
-    async def _remove_pending_endpoints(self) -> None:
-        """Removes the pending endpoints in self.endpoints_to_remove.
-
-        Clears self.endpoints_to_remove.
-        """
-        for endpoint_tag in self.endpoints_to_remove:
-            await asyncio.gather(*[
-                router.remove_endpoint.remote(endpoint_tag)
-                for router in self.routers.values()
-            ])
-        self.endpoints_to_remove.clear()
-
     def _scale_replicas(self, backend_tag: str, num_replicas: int) -> None:
         """Scale the given backend to the number of replicas.
 
@@ -622,20 +604,21 @@ class ServeController:
         traffic_policy = TrafficPolicy(traffic_dict)
         self.traffic_policies[endpoint_name] = traffic_policy
 
-        # NOTE(edoakes): we must write a checkpoint before pushing the
-        # update to avoid inconsistent state if we crash after pushing the
-        # update.
-        self._checkpoint()
-        await asyncio.gather(*[
-            router.set_traffic.remote(endpoint_name, traffic_policy)
-            for router in self.routers.values()
-        ])
-
     async def set_traffic(self, endpoint_name: str,
                           traffic_dict: Dict[str, float]) -> None:
         """Sets the traffic policy for the specified endpoint."""
         async with self.write_lock:
             await self._set_traffic(endpoint_name, traffic_dict)
+
+            # NOTE(edoakes): we must write a checkpoint before pushing the
+            # update to avoid inconsistent state if we crash after pushing the
+            # update.
+            self._checkpoint()
+            await asyncio.gather(*[
+                router.set_traffic.remote(endpoint_name,
+                                          self.traffic_policies[endpoint_name])
+                for router in self.routers.values()
+            ])
 
     async def shadow_traffic(self, endpoint_name: str, backend_tag: str,
                              proportion: float) -> None:
@@ -685,7 +668,6 @@ class ServeController:
             # TODO(edoakes): move this to client side.
             err_prefix = "Cannot create endpoint."
             if route in self.routes:
-
                 # Ensures this method is idempotent
                 if self.routes[route] == (endpoint, methods):
                     return
@@ -706,10 +688,16 @@ class ServeController:
 
             self.routes[route] = (endpoint, methods)
 
-            # NOTE(edoakes): checkpoint is written in self._set_traffic.
             await self._set_traffic(endpoint, traffic_dict)
+            self._checkpoint()
+
             await asyncio.gather(*[
                 router.set_route_table.remote(self.routes)
+                for router in self.routers.values()
+            ])
+            await asyncio.gather(*[
+                router.set_traffic.remote(endpoint,
+                                          self.traffic_policies[endpoint])
                 for router in self.routers.values()
             ])
 
@@ -737,8 +725,6 @@ class ServeController:
             if endpoint in self.traffic_policies:
                 del self.traffic_policies[endpoint]
 
-            self.endpoints_to_remove.append(endpoint)
-
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # updates to the routers to avoid inconsistent state if we crash
             # after pushing the update.
@@ -748,7 +734,6 @@ class ServeController:
                 router.set_route_table.remote(self.routes)
                 for router in self.routers.values()
             ])
-            await self._remove_pending_endpoints()
 
     async def create_backend(self, backend_tag: str,
                              backend_config: BackendConfig,

@@ -60,7 +60,6 @@ class RayServeHandle:
                 ``request.args``.
         """
         request_metadata = RequestMetadata(
-            self.endpoint_name,
             TaskContext.Python,
             call_method=self.method_name or "__call__",
             shard_key=self.shard_key,
@@ -68,7 +67,7 @@ class RayServeHandle:
             http_headers=self.http_headers or dict(),
         )
         return self.router_handle.enqueue_request.remote(
-            request_metadata, request_data, **kwargs)
+            self.endpoint_name, request_metadata, request_data, **kwargs)
 
     def options(self,
                 method_name: Optional[str] = None,

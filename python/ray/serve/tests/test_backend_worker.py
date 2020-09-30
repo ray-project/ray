@@ -45,27 +45,31 @@ def setup_worker(name,
 
 
 async def add_servable_to_router(servable, router, **kwargs):
-    worker = setup_worker("backend", servable, **kwargs)
-    await router.add_new_worker.remote("backend", "replica", worker)
-    await router.set_traffic.remote("endpoint", TrafficPolicy({
-        "backend": 1.0
-    }))
+    worker = setup_worker("test_backend", servable, **kwargs)
+    await router.add_new_worker.remote("test_backend", "replica", worker)
+    await router.set_traffic.remote(TrafficPolicy({"test_backend": 1.0}))
 
     if "backend_config" in kwargs:
-        await router.set_backend_config.remote("backend",
+        await router.set_backend_config.remote("test_backend",
                                                kwargs["backend_config"])
     return worker
 
 
 def make_request_param(call_method="__call__"):
-    return RequestMetadata(
-        "endpoint", context.TaskContext.Python, call_method=call_method)
+    return RequestMetadata(context.TaskContext.Python, call_method=call_method)
 
 
 @pytest.fixture
 def router(serve_instance):
+    def f():
+        pass
+
+    serve_instance.create_backend("backend", f)
+    serve_instance.create_endpoint("test_endpoint", backend="backend")
+
     q = ray.remote(Router).remote()
-    ray.get(q.setup.remote("", serve_instance._controller_name))
+    ray.get(
+        q.setup.remote("test_endpoint", "", serve_instance._controller_name))
     yield q
     ray.kill(q)
 

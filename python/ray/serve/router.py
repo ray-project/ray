@@ -19,7 +19,6 @@ REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
 
 @dataclass
 class RequestMetadata:
-    endpoint: str
     request_context: TaskContext
 
     call_method: str = "__call__"
@@ -69,7 +68,7 @@ class Query:
 class Router:
     """A router that routes request to available workers."""
 
-    async def setup(self, name, controller_name):
+    async def setup(self, endpoint, name, controller_name):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -80,14 +79,15 @@ class Router:
         #   handles are dequed during the second stage of flush operation,
         #   which assign queries in buffer_queue to actor handle.
 
+        self.endpoint = endpoint
         self.name = name
+        self.num_inflight_requests = 0
 
         # -- Queues -- #
 
-        # endpoint_name -> request queue
         # We use FIFO (left to right) ordering. The new items should be added
         # using appendleft. Old items should be removed via pop().
-        self.endpoint_queues: DefaultDict[deque[Query]] = defaultdict(deque)
+        self.endpoint_queue: deque[Query] = deque()
         # backend_name -> worker replica tag queue
         self.worker_queues: DefaultDict[deque[str]] = defaultdict(deque)
         # backend_name -> worker payload queue
@@ -95,8 +95,6 @@ class Router:
 
         # -- Metadata -- #
 
-        # endpoint_name -> traffic_policy
-        self.traffic = dict()
         # backend_name -> backend_config
         self.backend_info = dict()
         # replica tag -> worker_handle
@@ -122,11 +120,11 @@ class Router:
         # from failure.
         self.controller = ray.get_actor(controller_name)
 
-        traffic_policies = ray.get(
-            self.controller.get_traffic_policies.remote())
-        for endpoint, traffic_policy in traffic_policies.items():
-            await self.set_traffic(endpoint, traffic_policy)
+        await self.set_traffic(
+            ray.get(self.controller.get_traffic_policy.remote(self.endpoint)))
 
+        # TODO(edoakes): we should only fetch the backends relevant to this
+        # endpoint.
         backend_dict = ray.get(self.controller.get_all_worker_handles.remote())
         for backend_tag, replica_dict in backend_dict.items():
             for replica_tag, worker in replica_dict.items():
@@ -141,12 +139,16 @@ class Router:
             "num_router_requests",
             description="Number of requests processed by the router.",
             tag_keys=("endpoint", ))
+        self.num_router_requests.set_default_tags({"endpoint": self.endpoint})
         self.num_error_endpoint_requests = metrics.Count(
             "num_error_endpoint_requests",
             description=(
                 "Number of requests that errored when getting results "
                 "for the endpoint."),
             tag_keys=("endpoint", ))
+        self.num_error_endpoint_requests.set_default_tags({
+            "endpoint": self.endpoint
+        })
         self.num_error_backend_requests = metrics.Count(
             "num_error_backend_requests",
             description=("Number of requests that errored when getting result "
@@ -163,9 +165,10 @@ class Router:
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
-        endpoint = request_meta.endpoint
-        logger.debug("Received a request for endpoint {}".format(endpoint))
-        self.num_router_requests.record(1, tags={"endpoint": endpoint})
+        logger.debug("Received a request for endpoint {}".format(
+            self.endpoint))
+        self.num_inflight_requests += 1
+        self.num_router_requests.record(1)
 
         request_context = request_meta.request_context
         query = Query(
@@ -175,15 +178,15 @@ class Router:
             metadata=request_meta,
             async_future=asyncio.get_event_loop().create_future())
         async with self.flush_lock:
-            self.endpoint_queues[endpoint].appendleft(query)
-            self.flush_endpoint_queue(endpoint)
+            self.endpoint_queue.appendleft(query)
+            self.flush_endpoint_queue()
 
         try:
             result = await query.async_future
         except RayTaskError as e:
-            self.num_error_endpoint_requests.record(
-                1, tags={"endpoint": endpoint})
+            self.num_error_endpoint_requests.record(1)
             result = e
+        self.num_inflight_requests -= 1
         return result
 
     async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
@@ -224,21 +227,12 @@ class Router:
                 # result.
                 pass
 
-    async def set_traffic(self, endpoint, traffic_policy):
-        logger.debug("Setting traffic for endpoint %s to %s", endpoint,
+    async def set_traffic(self, traffic_policy):
+        logger.debug("Setting traffic for endpoint %s to %s", self.endpoint,
                      traffic_policy)
         async with self.flush_lock:
-            self.traffic[endpoint] = RandomEndpointPolicy(traffic_policy)
-            self.flush_endpoint_queue(endpoint)
-
-    async def remove_endpoint(self, endpoint):
-        logger.debug("Removing endpoint {}".format(endpoint))
-        async with self.flush_lock:
-            self.flush_endpoint_queue(endpoint)
-            if endpoint in self.endpoint_queues:
-                del self.endpoint_queues[endpoint]
-            if endpoint in self.traffic:
-                del self.traffic[endpoint]
+            self.traffic = RandomEndpointPolicy(traffic_policy)
+            self.flush_endpoint_queue()
 
     async def set_backend_config(self, backend, config):
         logger.debug("Setting backend config for "
@@ -257,13 +251,11 @@ class Router:
             if backend in self.backend_queues:
                 del self.backend_queues[backend]
 
-    def flush_endpoint_queue(self, endpoint):
+    def flush_endpoint_queue(self):
         """Attempt to schedule any pending requests to available backends."""
         assert self.flush_lock.locked()
-        if endpoint not in self.traffic:
-            return
-        backends_to_flush = self.traffic[endpoint].flush(
-            self.endpoint_queues[endpoint], self.backend_queues)
+        backends_to_flush = self.traffic.flush(self.endpoint_queue,
+                                               self.backend_queues)
         self.flush_backend_queues(backends_to_flush)
 
     # Flushes the specified backend queues and assigns work to workers.
