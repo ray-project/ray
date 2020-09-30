@@ -425,8 +425,8 @@ class _SimpleListCollector(_SampleCollector):
         # Build SampleBatches for the given episode.
         pre_batches = {}
         for (eps_id, agent_id), collector in self.agent_collectors.items():
-            # Build only the given episode.
-            if eps_id != episode.episode_id:
+            # Build only if there is data and agent is part of given episode.
+            if collector.count == 0 or eps_id != episode.episode_id:
                 continue
             policy = self.policy_map[self.agent_to_policy[agent_id]]
             pre_batches[agent_id] = (policy,
