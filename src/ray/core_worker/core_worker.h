@@ -890,6 +890,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                    rpc::RestoreSpilledObjectsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  // Make the this worker exit.
+  void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
+                  rpc::SendReplyCallback send_reply_callback) override;
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.

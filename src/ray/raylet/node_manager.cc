@@ -1370,11 +1370,6 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     // Call task dispatch to assign work to the new worker.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
-  if (RayConfig::instance().enable_multi_tenancy()) {
-    // We trigger killing here instead of inside `Worker::PushWorker` because we
-    // only kill an idle worker if it remains idle after scheduling.
-    worker_pool_.TryKillingIdleWorkers();
-  }
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
