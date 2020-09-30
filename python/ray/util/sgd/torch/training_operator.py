@@ -126,7 +126,6 @@ class TrainingOperator:
                  use_tqdm=False,
                  apex_args=None,
                  wrap_ddp=False,
-                 use_ddp=False,
                  add_dist_sampler=False,
                  scheduler_step_freq=None):
         # You are not expected to override this method.
@@ -143,7 +142,6 @@ class TrainingOperator:
         self.global_step = 0
         self._apex_args = apex_args if apex_args else {}
         self._wrap_ddp = wrap_ddp
-        self._use_ddp = use_ddp
         self._add_dist_sampler = add_dist_sampler
         self._scheduler_step_freq = scheduler_step_freq
 
@@ -362,38 +360,39 @@ class TrainingOperator:
         self._train_loader = train_loader
         self._validation_loader = validation_loader
 
-        if self._use_ddp:
-            logging.debug("Wrapping data loaders with DistributedSampler.")
+        def with_sampler(loader):
+            # Automatically set the DistributedSampler
+            data_loader_args = {
+                "dataset": loader.dataset,
+                "batch_size": loader.batch_size,
+                "shuffle": False,
+                "num_workers": loader.num_workers,
+                "collate_fn": loader.collate_fn,
+                "pin_memory": loader.pin_memory,
+                "drop_last": loader.drop_last,
+                "timeout": loader.timeout,
+                "worker_init_fn": loader.worker_init_fn,
+                "sampler": DistributedSampler(loader.dataset)
+            }
+            return DataLoader(**data_loader_args)
 
-            def with_sampler(loader):
-                # Automatically set the DistributedSampler
-                data_loader_args = {
-                    "dataset": loader.dataset,
-                    "batch_size": loader.batch_size,
-                    "shuffle": False,
-                    "num_workers": loader.num_workers,
-                    "collate_fn": loader.collate_fn,
-                    "pin_memory": loader.pin_memory,
-                    "drop_last": loader.drop_last,
-                    "timeout": loader.timeout,
-                    "worker_init_fn": loader.worker_init_fn,
-                    "sampler": DistributedSampler(loader.dataset)
-                }
-                return DataLoader(**data_loader_args)
+        def should_wrap_dataloader(loader):
+            return (isinstance(loader, DataLoader)
+                    and not isinstance(loader.dataset, IterableDataset))
 
-            def should_wrap_dataloader(loader):
-                return (isinstance(loader, DataLoader)
-                        and not isinstance(loader.dataset, IterableDataset))
+        if should_wrap_dataloader(self._train_loader):
+            if self._add_dist_sampler:
+                logging.debug("Wrapping train data loader with "
+                              "DistributedSampler.")
+                self._train_loader = with_sampler(self._train_loader)
 
-            if should_wrap_dataloader(self._train_loader):
-                if self._add_dist_sampler:
-                    self._train_loader = with_sampler(self._train_loader)
-
-            if self._validation_loader is not None and should_wrap_dataloader(
-                    self._validation_loader):
-                if self._add_dist_sampler:
-                    self._validation_loader = with_sampler(
-                        self._validation_loader)
+        if self._validation_loader is not None and should_wrap_dataloader(
+                self._validation_loader):
+            if self._add_dist_sampler:
+                logging.debug("Wrapping validation data loader with "
+                              "DistributedSampler.")
+                self._validation_loader = with_sampler(
+                    self._validation_loader)
 
     def train_epoch(self, iterator, info):
         """Runs one standard training pass over the training dataloader.
