@@ -998,6 +998,14 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
       RAY_CHECK_OK(
           gcs_table_storage_->ActorTable().BatchDelete(non_detached_actors, nullptr));
 
+      for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
+        if (iter->first.JobId() == job_id && !iter->second->IsDetached()) {
+          destroyed_actors_.erase(iter++);
+        } else {
+          iter++;
+        }
+      }
+
       // Get checkpoint id first from checkpoint id table and delete all checkpoints
       // related to this job
       RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(
