@@ -77,7 +77,7 @@ class BasicVariantGenerator(SearchAlgorithm):
                 self._trial_generator,
                 self._generate_trials(
                     experiment.spec.get("num_samples", 1), experiment.spec,
-                    experiment.name))
+                    experiment.dir_name))
 
     def next_trial(self):
         """Provides one Trial object to be queued into the TrialRunner.

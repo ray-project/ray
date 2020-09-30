@@ -7,7 +7,6 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
-import numpy
 import gc
 import inspect
 import threading
@@ -108,7 +107,6 @@ from ray.exceptions import (
     TaskCancelledError
 )
 from ray.utils import decode
-import gc
 import msgpack
 
 cimport cpython

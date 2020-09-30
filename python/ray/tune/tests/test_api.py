@@ -1194,6 +1194,50 @@ class TrainableFunctionApiTest(unittest.TestCase):
         # With strict metric checking disabled, this should not raise
         tune.run(train, metric="acc")
 
+    def testTrialDirCreation(self):
+        def test_trial_dir(config):
+            return 1.0
+
+        # Per default, the directory should be named `test_trial_dir_{date}`
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tune.run(test_trial_dir, local_dir=tmp_dir)
+
+            subdirs = list(os.listdir(tmp_dir))
+            self.assertNotIn("test_trial_dir", subdirs)
+            found = False
+            for subdir in subdirs:
+                if subdir.startswith("test_trial_dir_"):  # Date suffix
+                    found = True
+                    break
+            self.assertTrue(found)
+
+        # If we set an explicit name, no date should be appended
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tune.run(test_trial_dir, local_dir=tmp_dir, name="my_test_exp")
+
+            subdirs = list(os.listdir(tmp_dir))
+            self.assertIn("my_test_exp", subdirs)
+            found = False
+            for subdir in subdirs:
+                if subdir.startswith("my_test_exp_"):  # Date suffix
+                    found = True
+                    break
+            self.assertFalse(found)
+
+        # Don't append date if we set the env variable
+        os.environ["TUNE_DISABLE_DATED_SUBDIR"] = "1"
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tune.run(test_trial_dir, local_dir=tmp_dir)
+
+            subdirs = list(os.listdir(tmp_dir))
+            self.assertIn("test_trial_dir", subdirs)
+            found = False
+            for subdir in subdirs:
+                if subdir.startswith("test_trial_dir_"):  # Date suffix
+                    found = True
+                    break
+            self.assertFalse(found)
+
 
 class ShimCreationTest(unittest.TestCase):
     def testCreateScheduler(self):
