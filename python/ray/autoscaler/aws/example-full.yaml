@@ -32,8 +32,8 @@ docker:
 
     # Example of running a GPU head with CPU workers
     # head_image: "rayproject/ray:0.8.7-gpu"
-    # head_run_options:
-    #     - --runtime=nvidia
+    # Allow Ray to automatically detect GPUs
+    # disable_automatic_runtime_detection: False
 
     # worker_image: "rayproject/ray:0.8.7"
     # worker_run_options: []
