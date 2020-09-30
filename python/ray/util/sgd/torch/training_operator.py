@@ -880,6 +880,8 @@ def get_test_operator(operator_cls):
             if callable(func):
                 return func(self, iterator, info)
             return {"done": 1}
+        def validate(self, iterator, info):
+            return self.train_epoch(iterator, info)
 
     return _TestingOperator
 

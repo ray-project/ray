@@ -351,6 +351,84 @@ def test_dataset(ray_start_4_cpus, use_local):
     assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
 
+@pytest.mark.parametrize("use_local", [True, False])
+def test_num_steps(ray_start_2_cpus, use_local):
+    """Tests if num_steps continues training from the subsampled dataset."""
+    def data_creator(config):
+        train_dataset = LinearDataset(2, 5, size=config["data_size"])
+        val_dataset = LinearDataset(2, 5, size=config["data_size"])
+        return DataLoader(train_dataset, batch_size=config["batch_size"]), \
+               DataLoader(val_dataset, batch_size=config["batch_size"])
+    data_size = 10
+    batch_size = 1
+    Operator = TrainingOperator.from_creators(model_creator,
+                                                  optimizer_creator,
+                                                  data_creator)
+
+    def train_func(self, iterator, info=None):
+        s = 0
+        l = 0
+        for e, _ in iterator:
+            s += e
+            l += 1
+        return {"average": s.item()/l}
+
+    TestOperator = get_test_operator(Operator)
+    trainer = TorchTrainer(
+        training_operator_cls=TestOperator,
+        num_workers=2,
+        use_local=use_local,
+        add_dist_sampler=False,
+        config = {
+            "batch_size": batch_size,
+            "data_size": data_size,
+            "custom_func": train_func
+        }
+    )
+
+    # If num_steps not passed, should do one full epoch.
+    result = trainer.train()
+    # (0+...+9) / 10
+    assert result["average"] == 4.5
+    assert result["epoch"] == 1
+    val_result = trainer.validate()
+    assert val_result["average"] == 4.5
+
+    # Train again with num_steps.
+    result = trainer.train(num_steps=5)
+    # (0+1+2+3+4) / 5 == 2
+    assert result["average"] == 2
+    assert result["epoch"] == 2
+    val_result = trainer.validate(num_steps=5)
+    assert val_result["average"] == 2
+
+
+    # Should continue where last train run left off.
+    result = trainer.train(num_steps=3)
+    # (5+6+7) / 3 == 6
+    assert result["average"] == 6
+    assert result["epoch"] == 2
+    val_result = trainer.validate(num_steps=3)
+    assert val_result["average"] == 6
+
+    # Should continue from last train run, and cycle to beginning.
+    result = trainer.train(num_steps=5)
+    # (8+9+0+1+2) / 5 == 4
+    assert result["average"] == 4
+    assert result["epoch"] == 3
+    val_result = trainer.validate(num_steps=5)
+    assert val_result["average"] == 4
+
+    # Should continue, and since num_steps not passed in, just finishes epoch.
+    result = trainer.train()
+    # (3+...+9) / 7 == 6
+    assert result["average"] == 6
+    assert result["epoch"] == 3
+    val_result = trainer.validate()
+    assert val_result["average"] == 6
+
+    trainer.shutdown()
+
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_split_batch(ray_start_2_cpus, use_local):

@@ -45,6 +45,13 @@ class TorchRunner:
                 "https://www.github.com/nvidia/apex to use fp16 training.")
         self.scheduler_step_freq = scheduler_step_freq
 
+        # Training and Validation iterators
+        self.train_iterator = None
+        self._should_reset_train_loader = True
+
+        self.val_iterator = None
+        self._should_reset_val_loader = True
+
     def setup_operator(self):
         """Create the training operator."""
         self.training_operator = self.training_operator_cls(
@@ -55,6 +62,46 @@ class TorchRunner:
             use_tqdm=self.use_tqdm,
             apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
+
+    def get_iterator(self, training=True):
+        if training:
+            # In training.
+            if self._should_reset_train_loader:
+                self.train_iterator = iter(self.train_loader)
+                self._should_reset_train_loader = False
+                self.epochs += 1
+            return self.train_iterator
+        else:
+            # In validation.
+            if self._should_reset_val_loader:
+                self.val_iterator = iter(self.validation_loader)
+                self._should_reset_val_loader = False
+            return self.val_iterator
+
+
+    def make_iterator(self, training=True, num_steps=None):
+        steps = 0
+        while True:
+            iterator = self.get_iterator(training=training)
+            if num_steps is not None and steps >= num_steps:
+                # Stop iterating after reaching num_steps.
+                break
+            try:
+                item = next(iterator)
+                steps += 1
+                yield item
+            except StopIteration:
+                # Set should reset iterator on next cycle to True.
+                if training:
+                    self._should_reset_train_loader = True
+                else:
+                    self._should_reset_val_loader = True
+                if num_steps is None:
+                    # End after current epoch.
+                    break
+                else:
+                    # Else, start cycling through the iterator again.
+                    pass
 
     def train_epoch(self,
                     num_steps=None,
@@ -71,9 +118,7 @@ class TorchRunner:
             USE_FP16: self.use_fp16,
         })
         with self.timers.record("train_epoch"):
-            if iterator is None:
-                iterator = iter(self.train_loader)
-            else:
+            if iterator is not None:
                 # Dataset will provide us with a list of tuples but we
                 # need two lists.
                 def format_batch(batch):
@@ -81,11 +126,14 @@ class TorchRunner:
                     return torch.cat(features), torch.cat(targets)
 
                 iterator = map(format_batch, iterator)
-            if num_steps:
-                iterator = itertools.islice(iterator, num_steps)
+                if num_steps:
+                    iterator = itertools.islice(iterator, num_steps)
+                self.epochs += 1
+            else:
+                iterator = self.make_iterator(training=True,
+                                              num_steps=num_steps)
             train_stats = self.training_operator.train_epoch(iterator, info)
 
-        self.epochs += 1
         # This is so that `epochs` is first in ordering.
         stats = dict(epoch=self.epochs, **train_stats)
         if profile:
@@ -103,9 +151,7 @@ class TorchRunner:
         validation_loader = self.validation_loader
 
         with self.timers.record("validation"):
-            iterator = validation_loader
-            if num_steps:
-                iterator = itertools.islice(iterator, num_steps)
+            iterator = self.make_iterator(training=False, num_steps=num_steps)
             validation_stats = self.training_operator.validate(
                 iterator, info=info)
         if profile:
