@@ -34,8 +34,8 @@ class LoadMetrics:
                dynamic_resources,
                update_resource_load,
                resource_load,
-               waiting_bundles=[],
-               infeasible_bundles=[]):
+               waiting_bundles=None,
+               infeasible_bundles=None):
         # If light heartbeat enabled, only resources changed will be received.
         # We should update the changed part and compare static_resources with
         # dynamic_resources using those updated.
@@ -45,6 +45,11 @@ class LoadMetrics:
             self.dynamic_resources_by_ip[ip] = dynamic_resources
         if ip not in self.resource_load_by_ip or update_resource_load:
             self.resource_load_by_ip[ip] = resource_load
+
+        if not waiting_bundles:
+            waiting_bundles = []
+        if not infeasible_bundles:
+            infeasible_bundles = []
 
         # We are not guaranteed to have a corresponding dynamic resource
         # for every static resource because dynamic resources are based on
