@@ -73,7 +73,7 @@ bool TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
   resource_load_by_shape_[scheduling_class]++;
 
   int64_t backlog_size = task.BacklogSize();
-  if (backlog_size >= 0) { // Poor man's version of RayConfig::instance().report_worker_backlog()
+  if (backlog_size > 0) { // Poor man's version of RayConfig::instance().report_worker_backlog()
     request_backlog_by_shape_[scheduling_class] += task.BacklogSize();
   }
   return true;
