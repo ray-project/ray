@@ -50,10 +50,11 @@ class LoadMetrics:
         # for every static resource because dynamic resources are based on
         # the available resources in the heartbeat, which does not exist
         # if it is zero. Thus, we have to update dynamic resources here.
-        dynamic_resources_copy = self.dynamic_resources_by_ip[ip].copy()
-        for resource in self.static_resources_by_ip[ip].items():
-            dynamic_resources_copy.setdefault(resource, 0.0)
-        self.dynamic_resources_by_ip[ip] = dynamic_resources_copy
+        dynamic_resources_update = self.dynamic_resources_by_ip[ip].copy()
+        for resource_name, capacity in self.static_resources_by_ip[ip].items():
+            if resource_name not in dynamic_resources_update:
+                dynamic_resources_update[resource_name] = 0.0
+        self.dynamic_resources_by_ip[ip] = dynamic_resources_update
 
         now = time.time()
         if ip not in self.last_used_time_by_ip or \

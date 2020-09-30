@@ -324,7 +324,9 @@ class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
         lm.update(
-            "1.1.1.1", {"CPU": 2}, {"CPU": 1}, {},
+            "1.1.1.1", {"CPU": 2},
+            True, {"CPU": 1},
+            True, {},
             waiting_bundles=[{
                 "GPU": 1
             }],
@@ -492,14 +494,16 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(1)
-        lm.update(head_ip, {"CPU": 4, "GPU": 1}, {}, {})
+        lm.update(head_ip, {"CPU": 4, "GPU": 1}, True, {}, True, {})
         self.waitForNodes(1)
 
         lm.update(
             head_ip, {
                 "CPU": 4,
                 "GPU": 1
-            }, {"GPU": 0}, {},
+            },
+            True, {"GPU": 0},
+            True, {},
             waiting_bundles=[{
                 "GPU": 1
             }])
@@ -633,7 +637,9 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(0)
         autoscaler.update()
         lm.update(
-            "1.2.3.4", {}, {}, {},
+            "1.2.3.4", {},
+            True, {},
+            True, {},
             waiting_bundles=[{
                 "GPU": 1
             }],
