@@ -197,7 +197,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then . $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py; fi
         - bash ./java/build-jar-multiplatform.sh linux
       cache: false
 
@@ -496,7 +496,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh
+    script: ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py
     skip_cleanup: true
     on:
       repo: ray-project/ray
