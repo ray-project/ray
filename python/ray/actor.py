@@ -518,7 +518,9 @@ class ActorClass:
             placement_group_capture_child_tasks: Whether or not children tasks
                 of this actor should implicitly use the same placement group
                 as its parent. It is True by default.
-            override_worker_env: TODO(simon) document
+            override_worker_env: Environment variables to override and/or 
+                introduce for this actor.  This is a dictionary mapping
+                variable names to their values.
 
         Returns:
             A handle to the newly created actor.
