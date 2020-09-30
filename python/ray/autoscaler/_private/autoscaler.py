@@ -12,12 +12,12 @@ import yaml
 
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
-from ray.autoscaler.node_provider import _get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_FILE_MOUNTS_CONTENTS,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
                                  TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE,
                                  NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
+from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \

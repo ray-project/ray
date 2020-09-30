@@ -13,7 +13,7 @@ import botocore
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.tags import NODE_KIND_WORKER, NODE_KIND_HEAD
-from ray.autoscaler.node_provider import _PROVIDER_PRETTY_NAMES
+from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
     handle_boto_error
 from ray.autoscaler._private.cli_logger import cli_logger

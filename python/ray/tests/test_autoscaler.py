@@ -17,9 +17,10 @@ from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler.node_provider import _NODE_PROVIDERS, NodeProvider
+from ray.autoscaler.node_provider import NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
 
