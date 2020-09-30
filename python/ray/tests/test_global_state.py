@@ -227,6 +227,7 @@ def test_backlog_report(shutdown_only):
 
     @ray.remote(num_cpus=1)
     def foo(x):
+        print(".")
         time.sleep(x)
         return None
 
@@ -248,11 +249,12 @@ def test_backlog_report(shutdown_only):
             message.resource_load_by_shape.resource_demands
         if len(aggregate_resource_load) == 1:
             backlog_size = aggregate_resource_load[0].backlog_size
-            return backlog_size == 7
+            print(backlog_size)
+            return backlog_size == 8
         return False
 
     # We want this first task to finish
-    refs = [foo.remote(0.1)]
+    refs = [foo.remote(0.5)]
     # These tasks should all start _before_ the first one finishes.
     refs.extend([foo.remote(1000) for _ in range(9)])
     # Now there's 1 request running, 1 queued in the raylet, and 8 queued in

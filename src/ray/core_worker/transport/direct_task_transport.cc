@@ -284,9 +284,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = task_queue.front();
   TaskID task_id = resource_spec.TaskId();
+  // Subtract 1 so we don't double count the task we are requesting for.
+  int64_t queue_size = task_queue.size() - 1;
   lease_client->RequestWorkerLease(
-      resource_spec, [this, scheduling_key](const Status &status,
-                                            const rpc::RequestWorkerLeaseReply &reply) {
+      resource_spec,
+      [this, scheduling_key](const Status &status,
+                             const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
 
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -332,7 +335,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                             "likely because the local raylet has crahsed.";
           RAY_LOG(FATAL) << status.ToString();
         }
-        }, task_queue.size());
+      },
+      queue_size);
   pending_lease_request = std::make_pair(lease_client, task_id);
 }
 
