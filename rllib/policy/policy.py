@@ -260,8 +260,8 @@ class Policy(metaclass=ABCMeta):
         # `self.compute_actions()`.
         state_batches = [
             s.unsqueeze(0)
-            if torch and isinstance(s, torch.Tensor) else np.expand_dims(
-                s, 0) for k, s in input_dict.items() if k[:9] == "state_in_"
+            if torch and isinstance(s, torch.Tensor) else np.expand_dims(s, 0)
+            for k, s in input_dict.items() if k[:9] == "state_in_"
         ]
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
