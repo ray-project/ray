@@ -241,8 +241,6 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
     node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
   });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_CHANNEL, node_id.Hex(),
-                                     heartbeat_data->SerializeAsString(), nullptr));
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
