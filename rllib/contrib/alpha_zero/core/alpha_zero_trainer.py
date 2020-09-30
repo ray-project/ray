@@ -53,7 +53,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_sgd_iter": 30,
     # IN case a buffer optimizer is used
     "learning_starts": 1000,
-    "buffer_size": 10000,
+    # Size of the replay buffer in batches (not timesteps!).
+    "buffer_size": 1000,
     # Stepsize of SGD
     "lr": 5e-5,
     # Learning rate schedule

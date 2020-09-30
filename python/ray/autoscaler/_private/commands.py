@@ -1,4 +1,3 @@
-import colorful as cf
 import copy
 import hashlib
 import json
@@ -19,7 +18,7 @@ except ImportError:  # py2
     from pipes import quote
 
 from ray.experimental.internal_kv import _internal_kv_get
-import ray.services as services
+import ray._private.services as services
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
@@ -28,7 +27,7 @@ from ray.autoscaler.node_provider import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
@@ -260,10 +259,9 @@ def _bootstrap_config(config: Dict[str, Any],
 
     provider_cls = importer(config["provider"])
 
-    with cli_logger.timed(
-            "Checking {} environment settings",
-            _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
-        resolved_config = provider_cls.bootstrap_config(config)
+    cli_logger.print("Checking {} environment settings",
+                     _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"]))
+    resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
@@ -604,7 +602,7 @@ def get_or_create_head_node(config,
 
                 start = time.time()
                 head_node = None
-                with cli_logger.timed("Fetching the new head node"):
+                with cli_logger.group("Fetching the new head node"):
                     while True:
                         if time.time() - start > 50:
                             cli_logger.abort(
@@ -653,6 +651,8 @@ def get_or_create_head_node(config,
                 new_mounts[remote_path] = remote_path
             remote_config["file_mounts"] = new_mounts
             remote_config["no_restart"] = no_restart
+
+            remote_config = provider.prepare_for_head_node(remote_config)
 
             # Now inject the rewritten config and SSH key into the head node
             remote_config_file = tempfile.NamedTemporaryFile(

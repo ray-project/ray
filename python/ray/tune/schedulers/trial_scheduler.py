@@ -11,6 +11,12 @@ class TrialScheduler:
     PAUSE = "PAUSE"  #: Status for pausing trial execution
     STOP = "STOP"  #: Status for stopping trial execution
 
+    _metric = None
+
+    @property
+    def metric(self):
+        return self._metric
+
     def set_search_properties(self, metric: Optional[str],
                               mode: Optional[str]) -> bool:
         """Pass search properties to scheduler.
@@ -22,6 +28,10 @@ class TrialScheduler:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
         """
+        if self._metric and metric:
+            return False
+        if metric:
+            self._metric = metric
         return True
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",

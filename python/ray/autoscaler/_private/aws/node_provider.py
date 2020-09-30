@@ -16,8 +16,7 @@ from ray.autoscaler._private.aws.config import bootstrap_aws
 from ray.autoscaler._private.log_timer import LogTimer
 
 from ray.autoscaler._private.aws.utils import boto_exception_handler
-from ray.autoscaler._private.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 

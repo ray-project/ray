@@ -4,8 +4,11 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
-from ray.util.placement_group import PlacementGroup, \
-    check_placement_group_index
+from ray.util.placement_group import (
+    PlacementGroup,
+    check_placement_group_index,
+    get_current_placement_group,
+)
 import ray.signature
 
 # Default parameters for remote functions.
@@ -63,7 +66,8 @@ class RemoteFunction:
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries,
-                 placement_group, placement_group_bundle_index):
+                 placement_group, placement_group_bundle_index,
+                 placement_group_capture_child_tasks):
         self._language = language
         self._function = function
         self._function_name = (
@@ -135,6 +139,7 @@ class RemoteFunction:
                 max_retries=None,
                 placement_group=None,
                 placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None,
                 name=""):
         """Configures and overrides the task invocation parameters.
 
@@ -168,6 +173,8 @@ class RemoteFunction:
                     max_retries=max_retries,
                     placement_group=placement_group,
                     placement_group_bundle_index=placement_group_bundle_index,
+                    placement_group_capture_child_tasks=(
+                        placement_group_capture_child_tasks),
                     name=name)
 
         return FuncWrapper()
@@ -185,6 +192,7 @@ class RemoteFunction:
                 max_retries=None,
                 placement_group=None,
                 placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None,
                 name=""):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
@@ -220,7 +228,15 @@ class RemoteFunction:
         if max_retries is None:
             max_retries = self._max_retries
 
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                worker.should_capture_child_tasks_in_placement_group)
+
         if placement_group is None:
+            if placement_group_capture_child_tasks:
+                placement_group = get_current_placement_group()
+
+        if not placement_group:
             placement_group = PlacementGroup.empty()
 
         check_placement_group_index(placement_group,
@@ -248,7 +264,8 @@ class RemoteFunction:
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, placement_group.id,
-                placement_group_bundle_index)
+                placement_group_bundle_index,
+                placement_group_capture_child_tasks)
 
             if len(object_refs) == 1:
                 return object_refs[0]

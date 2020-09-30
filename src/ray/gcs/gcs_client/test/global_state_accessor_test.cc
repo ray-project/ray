@@ -139,7 +139,7 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
   for (int index = 0; index < node_count; ++index) {
     auto node_table_data =
         Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));
-    auto node_id = ClientID::FromBinary(node_table_data->node_id());
+    auto node_id = NodeID::FromBinary(node_table_data->node_id());
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
         *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -158,7 +158,7 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
     rpc::GcsNodeInfo node_data;
     node_data.ParseFromString(node_table[index]);
     auto resource_map_str =
-        global_state_->GetNodeResourceInfo(ClientID::FromBinary(node_data.node_id()));
+        global_state_->GetNodeResourceInfo(NodeID::FromBinary(node_data.node_id()));
     rpc::ResourceMap resource_map;
     resource_map.ParseFromString(resource_map_str);
     ASSERT_EQ(
@@ -192,10 +192,10 @@ TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
-  int profile_count = 100;
+  int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
-    auto client_id = ClientID::FromRandom();
+    auto client_id = NodeID::FromRandom();
     auto profile_table_data = Mocker::GenProfileTableData(client_id);
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
@@ -203,7 +203,8 @@ TEST_F(GlobalStateAccessorTest, TestProfileTable) {
         [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }
-  ASSERT_EQ(global_state_->GetAllProfileInfo().size(), profile_count);
+  ASSERT_EQ(global_state_->GetAllProfileInfo().size(),
+            RayConfig::instance().maximum_profile_table_rows_count());
 }
 
 TEST_F(GlobalStateAccessorTest, TestObjectTable) {
@@ -214,7 +215,7 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
   for (int index = 0; index < object_count; ++index) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.emplace_back(object_id);
-    ClientID node_id = ClientID::FromRandom();
+    NodeID node_id = NodeID::FromRandom();
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
         object_id, node_id,

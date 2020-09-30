@@ -1,8 +1,10 @@
-Implementation of the Soft Actor-Critic algorithm:
+Soft Actor Critic (SAC)
+=======================
 
-[1] Soft Actor-Critic Algorithms and Applications - T. Haarnoja, A. Zhou, K. Hartikainen, et al.
-https://arxiv.org/abs/1812.05905.pdf
+Implementations of:
 
-For supporting discrete action spaces, we implemented this patch on top of the original algorithm:
-[2] Soft Actor-Critic for Discrete Action Settings - Petros Christodoulou
-https://arxiv.org/pdf/1910.07207v2.pdf
+Soft Actor-Critic Algorithm (SAC) and a discrete action extension. 
+
+**[Detailed Documentation](https://docs.ray.io/en/latest/rllib-algorithms.html#sac)**
+
+**[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py)**

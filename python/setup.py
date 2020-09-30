@@ -103,8 +103,14 @@ optional_ray_files += ray_dashboard_files
 # in this directory
 extras = {
     "debug": [],
-    "serve": ["uvicorn", "flask", "requests", "pydantic", "dataclasses"],
-    "tune": ["tabulate", "tensorboardX", "pandas", "dataclasses"]
+    "serve": [
+        "uvicorn", "flask", "requests", "pydantic",
+        "dataclasses; python_version < '3.7'"
+    ],
+    "tune": [
+        "tabulate", "tensorboardX", "pandas",
+        "dataclasses; python_version < '3.7'"
+    ]
 }
 
 extras["rllib"] = extras["tune"] + [

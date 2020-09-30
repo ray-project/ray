@@ -3,7 +3,7 @@ import time
 
 import ray
 import numpy as np
-import ray.services as services
+import ray._private.services as services
 from ray.ray_constants import (
     MEMORY_RESOURCE_UNIT_BYTES,
     NODE_RESOURCES_TURNING_EMPTY,

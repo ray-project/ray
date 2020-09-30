@@ -84,6 +84,28 @@ def test_handle_http_args(serve_instance):
         resp["headers"]["X-Custom-Header"] == "value"
 
 
+def test_handle_inject_flask_request(serve_instance):
+    client = serve_instance
+
+    def echo_request_type(request):
+        return str(type(request))
+
+    client.create_backend("echo:v0", echo_request_type)
+    client.create_endpoint("echo", backend="echo:v0", route="/echo")
+
+    def wrapper_model(web_request):
+        handle = serve.connect().get_handle("echo")
+        return ray.get(handle.remote(web_request))
+
+    client.create_backend("wrapper:v0", wrapper_model)
+    client.create_endpoint("wrapper", backend="wrapper:v0", route="/wrapper")
+
+    for route in ["/echo", "/wrapper"]:
+        resp = requests.get(f"http://127.0.0.1:8000{route}")
+        request_type = resp.text
+        assert request_type == "<class 'flask.wrappers.Request'>"
+
+
 if __name__ == "__main__":
     import sys
     import pytest

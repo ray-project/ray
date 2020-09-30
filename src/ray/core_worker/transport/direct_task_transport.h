@@ -55,7 +55,7 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       LeaseClientFactoryFn lease_client_factory,
       std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<TaskFinisherInterface> task_finisher, ClientID local_raylet_id,
+      std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
       int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
       uint32_t max_tasks_in_flight_per_worker =
           RayConfig::instance().max_tasks_in_flight_per_worker(),
@@ -154,8 +154,8 @@ class CoreWorkerDirectTaskSubmitter {
   std::shared_ptr<WorkerLeaseInterface> local_lease_client_;
 
   /// Cache of gRPC clients to remote raylets.
-  absl::flat_hash_map<ClientID, std::shared_ptr<WorkerLeaseInterface>>
-      remote_lease_clients_ GUARDED_BY(mu_);
+  absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>> remote_lease_clients_
+      GUARDED_BY(mu_);
 
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
@@ -172,7 +172,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// The local raylet ID. Used to make sure that we use the local lease client
   /// if a remote raylet tells us to spill the task back to the local raylet.
-  const ClientID local_raylet_id_;
+  const NodeID local_raylet_id_;
 
   /// Interface for actor creation.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;

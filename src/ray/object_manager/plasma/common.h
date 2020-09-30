@@ -34,7 +34,7 @@
 namespace plasma {
 
 using ray::ObjectID;
-using ray::ClientID;
+using ray::NodeID;
 using ray::WorkerID;
 
 enum class ObjectLocation : int32_t { Local, Remote, Nonexistent };
@@ -81,7 +81,7 @@ struct ObjectTableEntry {
   /// Number of clients currently using this object.
   int ref_count;
   /// Owner's raylet ID.
-  ClientID owner_raylet_id;
+  NodeID owner_raylet_id;
   /// Owner's IP address.
   std::string owner_ip_address;
   /// Owner's port.
