@@ -1,12 +1,13 @@
 import gym
 from gym.envs.classic_control import PendulumEnv
+import numpy as np
+
 # MuJoCo may not be installed.
 HalfCheetahEnv = HopperEnv = None
 try:
     from gym.envs.mujoco import HalfCheetahEnv, HopperEnv
 except (ImportError, gym.error.DependencyNotInstalled):
     pass
-import numpy as np
 
 
 class PendulumWrapper(PendulumEnv):
@@ -36,7 +37,7 @@ if HalfCheetahEnv:
 
     class HalfCheetahWrapper(HalfCheetahEnv):
         """Wrapper for the MuJoCo HalfCheetah-v2 environment.
-    
+
         Adds an additional `reward` method for some model-based RL algos (e.g.
         MB-MPO).
         """
@@ -56,7 +57,7 @@ if HalfCheetahEnv:
 
     class HopperWrapper(HopperEnv):
         """Wrapper for the MuJoCo Hopper-v2 environment.
-    
+
         Adds an additional `reward` method for some model-based RL algos (e.g.
         MB-MPO).
         """
@@ -64,7 +65,8 @@ if HalfCheetahEnv:
         def reward(self, obs, action, obs_next):
             alive_bonus = 1.0
             assert obs.ndim == 2 and action.ndim == 2
-            assert obs.shape == obs_next.shape and action.shape[0] == obs.shape[0]
+            assert (obs.shape == obs_next.shape
+                    and action.shape[0] == obs.shape[0])
             vel = obs_next[:, 5]
             ctrl_cost = 1e-3 * np.sum(np.square(action), axis=1)
             reward = vel + alive_bonus - ctrl_cost
