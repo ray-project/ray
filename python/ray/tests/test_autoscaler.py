@@ -241,61 +241,101 @@ SMALL_CLUSTER = {
 class LoadMetricsTest(unittest.TestCase):
     def testUpdate(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {})
         assert lm.approx_workers_used() == 0.5
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
         assert lm.approx_workers_used() == 1.0
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 0}, True, {})
         assert lm.approx_workers_used() == 2.0
 
     def testLoadMessages(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {})
         self.assertEqual(lm.approx_workers_used(), 0.5)
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {"CPU": 1})
+        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {"CPU": 1})
         self.assertEqual(lm.approx_workers_used(), 1.0)
 
         # Both nodes count as busy since there is a queue on one.
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 2}, {})
+        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 2}, True, {})
         self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 0}, True, {})
         self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 1}, True, {})
         self.assertEqual(lm.approx_workers_used(), 2.0)
 
         # No queue anymore, so we're back to exact accounting.
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
         self.assertEqual(lm.approx_workers_used(), 1.5)
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {"GPU": 1})
+        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 1}, True, {"GPU": 1})
         self.assertEqual(lm.approx_workers_used(), 2.0)
 
-        lm.update("3.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("4.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("5.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("6.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("7.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("8.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("3.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("4.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("5.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("6.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("7.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("8.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
         self.assertEqual(lm.approx_workers_used(), 8.0)
 
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})  # no queue anymore
+        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 1}, True,
+                  {})  # no queue anymore
+        self.assertEqual(lm.approx_workers_used(), 4.5)
+
+    def testLoadMessagesWithLightHeartbeat(self):
+        lm = LoadMetrics()
+        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        self.assertEqual(lm.approx_workers_used(), 0.5)
+        lm.update("1.1.1.1", {}, False, {}, True, {"CPU": 1})
+        self.assertEqual(lm.approx_workers_used(), 1.0)
+
+        # Both nodes count as busy since there is a queue on one.
+        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 2}, True, {})
+        self.assertEqual(lm.approx_workers_used(), 2.0)
+        lm.update("2.2.2.2", {}, True, {"CPU": 0}, False, {})
+        self.assertEqual(lm.approx_workers_used(), 2.0)
+        lm.update("2.2.2.2", {}, True, {"CPU": 1}, False, {})
+        self.assertEqual(lm.approx_workers_used(), 2.0)
+
+        # No queue anymore, so we're back to exact accounting.
+        lm.update("1.1.1.1", {}, True, {"CPU": 0}, True, {})
+        self.assertEqual(lm.approx_workers_used(), 1.5)
+        lm.update("2.2.2.2", {}, False, {}, True, {"GPU": 1})
+        self.assertEqual(lm.approx_workers_used(), 2.0)
+
+        lm.update("3.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("4.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("5.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("6.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("7.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("8.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        self.assertEqual(lm.approx_workers_used(), 8.0)
+
+        lm.update("2.2.2.2", {}, False, {"CPU": 1}, True,
+                  {})  # no queue anymore
         self.assertEqual(lm.approx_workers_used(), 4.5)
 
     def testPruneByNodeIp(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 1}, {"CPU": 0}, {})
-        lm.update("2.2.2.2", {"CPU": 1}, {"CPU": 0}, {})
+        lm.update("1.1.1.1", {"CPU": 1}, True, {"CPU": 0}, True, {})
+        lm.update("2.2.2.2", {"CPU": 1}, True, {"CPU": 0}, True, {})
         lm.prune_active_ips({"1.1.1.1", "4.4.4.4"})
         assert lm.approx_workers_used() == 1.0
 
     def testBottleneckResource(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
-        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
+        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
+        lm.update("2.2.2.2", {
+            "CPU": 2,
+            "GPU": 16
+        }, True, {
+            "CPU": 2,
+            "GPU": 2
+        }, True, {})
         assert lm.approx_workers_used() == 1.88
 
     def testHeartbeat(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {})
         lm.mark_active("2.2.2.2")
         assert "1.1.1.1" in lm.last_heartbeat_time_by_ip
         assert "2.2.2.2" in lm.last_heartbeat_time_by_ip
@@ -303,12 +343,18 @@ class LoadMetricsTest(unittest.TestCase):
 
     def testDebugString(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
-        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
-        lm.update("3.3.3.3", {
+        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
+        lm.update("2.2.2.2", {
+            "CPU": 2,
+            "GPU": 16
+        }, True, {
+            "CPU": 2,
+            "GPU": 2
+        }, True, {})
+        lm.update("3.3.3.3", True, {
             "memory": 20,
             "object_store_memory": 40
-        }, {
+        }, True, {
             "memory": 0,
             "object_store_memory": 20
         }, {})
@@ -599,8 +645,8 @@ class AutoscalingTest(unittest.TestCase):
             tag_filters={TAG_RAY_NODE_KIND: "worker"}, )
         addrs += head_ip
         for addr in addrs:
-            lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})
-            lm.update(addr, {"CPU": 2}, {"CPU": 2}, {})
+            lm.update(addr, {"CPU": 2}, True, {"CPU": 0}, True, {})
+            lm.update(addr, {"CPU": 2}, True, {"CPU": 2}, True, {})
         assert autoscaler.bringup
         autoscaler.update()
 
@@ -609,7 +655,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(1)
 
         # All of the nodes are down. Simulate some load on the head node
-        lm.update(head_ip, {"CPU": 2}, {"CPU": 0}, {})
+        lm.update(head_ip, {"CPU": 2}, True, {"CPU": 0}, True, {})
 
         autoscaler.update()
         self.waitForNodes(6)  # expected due to batch sizes and concurrency
@@ -652,11 +698,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         # This node has num_cpus=0
-        lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {})
+        lm.update(unmanaged_ip, {"CPU": 0}, True, {"CPU": 0}, True, {})
         autoscaler.update()
         self.waitForNodes(2)
         # 1 CPU task cannot be scheduled.
-        lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {"CPU": 1})
+        lm.update(unmanaged_ip, {"CPU": 0}, True, {"CPU": 0}, True, {"CPU": 1})
         autoscaler.update()
         self.waitForNodes(3)
 
@@ -946,17 +992,18 @@ class AutoscalingTest(unittest.TestCase):
 
         # Scales up as nodes are reported as used
         local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
-        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0}, {})  # worker 1
+        lm.update(local_ip, {"CPU": 2}, True, {"CPU": 0}, True, {})  # head
+        lm.update("172.0.0.0", {"CPU": 2}, True, {"CPU": 0}, True,
+                  {})  # worker 1
         autoscaler.update()
         self.waitForNodes(3)
-        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("172.0.0.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
         autoscaler.update()
         self.waitForNodes(5)
 
         # Holds steady when load is removed
-        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2}, {})
-        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2}, {})
+        lm.update("172.0.0.0", {"CPU": 2}, True, {"CPU": 2}, True, {})
+        lm.update("172.0.0.1", {"CPU": 2}, True, {"CPU": 2}, True, {})
         autoscaler.update()
         assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 5
@@ -995,20 +1042,20 @@ class AutoscalingTest(unittest.TestCase):
 
         # Scales up as nodes are reported as used
         local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
+        lm.update(local_ip, {"CPU": 2}, True, {"CPU": 0}, True, {})  # head
         # 1.0 nodes used => target nodes = 2 => target workers = 1
         autoscaler.update()
         self.waitForNodes(1)
 
         # Make new node idle, and never used.
         # Should hold steady as target is still 2.
-        lm.update("172.0.0.0", {"CPU": 0}, {"CPU": 0}, {})
+        lm.update("172.0.0.0", {"CPU": 0}, True, {"CPU": 0}, True, {})
         lm.last_used_time_by_ip["172.0.0.0"] = 0
         autoscaler.update()
         assert len(self.provider.non_terminated_nodes({})) == 1
 
         # Reduce load on head => target nodes = 1 => target workers = 0
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 1}, {})
+        lm.update(local_ip, {"CPU": 2}, True, {"CPU": 1}, True, {})
         autoscaler.update()
         assert len(self.provider.non_terminated_nodes({})) == 0
 
