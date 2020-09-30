@@ -3,8 +3,6 @@ import os
 
 import torch
 import torch.distributed as dist
-from torch.utils.data import DataLoader, IterableDataset
-from torch.utils.data.distributed import DistributedSampler
 from ray.util.sgd.torch.utils import setup_process_group
 
 import ray
