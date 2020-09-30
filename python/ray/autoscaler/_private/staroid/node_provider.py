@@ -226,9 +226,19 @@ class StaroidNodeProvider(NodeProvider):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod(node_id, self.namespace)
-        pod.metadata.labels.update(tags)
-        core_api.patch_namespaced_pod(node_id, self.namespace, pod)
+        max_retry = 10
+        for i in range(max_retry):
+            try:
+                pod = core_api.read_namespaced_pod(node_id, self.namespace)
+                pod.metadata.labels.update(tags)
+                core_api.patch_namespaced_pod(node_id, self.namespace, pod)
+            except ApiException as e:
+                if e.status == 409 and max_retry - 1 > i:
+                    # conflict. pod modified before apply patch. retry
+                    time.sleep(0.2)
+                    continue
+
+                raise e
 
     def create_node(self, node_config, tags, count):
         instance_name = self.cluster_name
