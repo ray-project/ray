@@ -287,7 +287,6 @@ cc_test(
     deps = test_common_deps,
 )
 
-
 cc_test(
     name = "streaming_message_serialization_tests",
     srcs = [
