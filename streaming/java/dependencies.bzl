@@ -4,7 +4,6 @@ def gen_streaming_java_deps():
     maven_install(
         name = "ray_streaming_maven",
         artifacts = [
-            "com.beust:jcommander:1.72",
             "com.google.guava:guava:27.0.1-jre",
             "com.google.code.findbugs:jsr305:3.0.2",
             "com.google.code.gson:gson:2.8.5",
