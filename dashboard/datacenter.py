@@ -193,8 +193,8 @@ class DataOrganizer:
 
     @classmethod
     async def get_memory_table(cls,
-                               sort_by=memory.SortingType.OBJECT_SIZE,
-                               group_by=memory.GroupByType.STACK_TRACE):
+                               sort_by=memory_utils.SortingType.OBJECT_SIZE,
+                               group_by=memory_utils.GroupByType.STACK_TRACE):
         all_worker_stats = []
         for node_stats in DataSource.node_stats.values():
             all_worker_stats.extend(node_stats.get("workersStats", []))
