@@ -73,5 +73,5 @@ cdef class ObjectRef(BaseID):
         future = loop.create_future()
         core_worker.get_async(self, future)
         # A hack to keep a reference to the object ref for ref counting.
-        future.object_ref = object_ref
+        future.object_ref = self
         return future
