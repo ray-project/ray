@@ -250,8 +250,10 @@ class NodeProvider:
         if not find_node_id():
             all_nodes = self.non_terminated_nodes({})
             for node_id in all_nodes:
-                self._external_ip_cache[self.external_ip(node_id)] = node_id
-                self._internal_ip_cache[self.internal_ip(node_id)] = node_id
+                if use_internal_ip:
+                    self._internal_ip_cache[self.internal_ip(node_id)] = node_id
+                else:
+                    self._external_ip_cache[self.external_ip(node_id)] = node_id
 
         if not find_node_id():
             if use_internal_ip:
