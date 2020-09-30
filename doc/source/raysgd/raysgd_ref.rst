@@ -1,10 +1,13 @@
-RaySGD API Documentation
-========================
+RaySGD API Reference
+====================
+
+PyTorch
+-------
 
 .. _ref-torch-trainer:
 
 TorchTrainer
-------------
+~~~~~~~~~~~~
 
 .. autoclass:: ray.util.sgd.torch.TorchTrainer
     :members:
@@ -12,40 +15,53 @@ TorchTrainer
 .. _ref-torch-operator:
 
 PyTorch TrainingOperator
-------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.util.sgd.torch.TrainingOperator
+    :members:
+
+PyTorch Lightning PTLOperator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. autoclass:: ray.util.sgd.torch.PTLOperator
     :members:
 
 .. _BaseTorchTrainable-doc:
 
 BaseTorchTrainable
-------------------
+~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.util.sgd.torch.BaseTorchTrainable
     :members:
     :private-members:
 
+Tensorflow
+----------
+
 TFTrainer
----------
+~~~~~~~~~
 
 .. autoclass:: ray.util.sgd.tf.TFTrainer
     :members:
 
     .. automethod:: __init__
 
+Ray SGD Dataset
+---------------
+
 Dataset
--------
+~~~~~~~
 
 .. autoclass:: ray.util.sgd.data.Dataset
     :members:
 
     .. automethod:: __init__
 
+Ray SGD Utils
+-------------
 .. _ref-utils:
 
 Utils
------
+~~~~~
 
 .. autoclass:: ray.util.sgd.utils.AverageMeter
     :members:
