@@ -6,6 +6,7 @@ from ray.autoscaler._private.command_runner import \
 
 logger = logging.getLogger(__name__)
 
+
 class NodeProvider:
     """Interface for getting and returning nodes from a Cloud.
 
