@@ -260,7 +260,13 @@ class Experiment:
         elif isinstance(run_object, type) or callable(run_object):
             name = "DEFAULT"
             if hasattr(run_object, "__name__"):
-                name = run_object.__name__
+                fn_name = run_object.__name__
+                if fn_name == "<lambda>":
+                    name = "lambda"
+                elif fn_name.startswith("<"):
+                    name = "DEFAULT"
+                else:
+                    name = fn_name
             else:
                 logger.warning(
                     "No name detected on trainable. Using {}.".format(name))
