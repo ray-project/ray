@@ -60,17 +60,33 @@ void GcsObjectManager::HandleAddObjectLocation(
     const rpc::AddObjectLocationRequest &request, rpc::AddObjectLocationReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
-                 << ", object id = " << object_id << ", node id = " << node_id;
-  AddObjectLocationInCache(object_id, node_id);
 
-  auto on_done = [this, object_id, node_id, reply,
+  NodeID node_id;
+  std::string spilled_url;
+  if (!request.node_id().empty()) {
+    node_id = NodeID::FromBinary(request.node_id());
+    RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
+                   << ", object id = " << object_id << ", node id = " << node_id;
+    AddObjectLocationInCache(object_id, node_id);
+  } else {
+    absl::MutexLock lock(&mutex_);
+    object_to_locations_[object_id].spilled_url = request.spilled_url();
+    RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id;
+  }
+
+  auto on_done = [this, object_id, node_id, spilled_url, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(
-          OBJECT_CHANNEL, object_id.Hex(),
-          gcs::CreateObjectLocationChange(node_id, true)->SerializeAsString(), nullptr));
+      rpc::ObjectLocationChange notification;
+      notification.set_is_add(true);
+      if (!node_id.IsNil()) {
+        notification.set_node_id(node_id.Binary());
+      }
+      if (!spilled_url.empty()) {
+        notification.set_spilled_url(spilled_url);
+      }
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(OBJECT_CHANNEL, object_id.Hex(),
+                                         notification.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id << ", task id = " << object_id.TaskId();
@@ -86,41 +102,6 @@ void GcsObjectManager::HandleAddObjectLocation(
   };
 
   absl::MutexLock lock(&mutex_);
-  const auto object_data = GenObjectLocationInfo(object_id);
-  Status status = gcs_table_storage_->ObjectTable().Put(object_id, object_data, on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
-}
-
-void GcsObjectManager::HandleAddObjectSpilledUrl(
-    const rpc::AddObjectSpilledUrlRequest &request, rpc::AddObjectSpilledUrlReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  const auto &spilled_url = request.spilled_url();
-  RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id;
-
-  absl::MutexLock lock(&mutex_);
-  object_to_locations_[object_id].spilled_url = spilled_url;
-
-  auto on_done = [this, object_id, spilled_url, reply,
-                  send_reply_callback](const Status &status) {
-    if (status.ok()) {
-      RAY_LOG(DEBUG) << "Published object spilled location, object id = " << object_id;
-      rpc::ObjectLocationChange notification;
-      notification.set_spilled_url(spilled_url);
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(OBJECT_CHANNEL, object_id.Hex(),
-                                         notification.SerializeAsString(), nullptr));
-    } else {
-      RAY_LOG(ERROR) << "Failed to add object spilled location: " << status.ToString()
-                     << ", job id = " << object_id.TaskId().JobId()
-                     << ", object id = " << object_id;
-    }
-    // We should only reply after the update is written to storage.
-    // So, if GCS server crashes before writing storage, GCS client will retry this
-    // request.
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
   const auto object_data = GenObjectLocationInfo(object_id);
   Status status = gcs_table_storage_->ObjectTable().Put(object_id, object_data, on_done);
   if (!status.ok()) {
@@ -305,23 +286,12 @@ const ObjectLocationInfo GcsObjectManager::GenObjectLocationInfo(
 
 void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
-<<<<<<< HEAD
   auto callback = [this,
                    done](const std::unordered_map<ObjectID, ObjectLocationInfo> &result) {
-    absl::flat_hash_map<ClientID, ObjectSet> node_to_objects;
-    for (auto &item : result) {
-      for (const auto &loc : item.second.locations()) {
-        node_to_objects[ClientID::FromBinary(loc.manager())].insert(item.first);
-=======
-  auto callback = [this, done](
-                      const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
     absl::flat_hash_map<NodeID, ObjectSet> node_to_objects;
     for (auto &item : result) {
-      auto object_list = item.second;
-      for (int index = 0; index < object_list.items_size(); ++index) {
-        node_to_objects[NodeID::FromBinary(object_list.items(index).manager())].insert(
-            item.first);
->>>>>>> 10015e60fbd9bbf68c997989071cdbcbaf199630
+      for (const auto &loc : item.second.locations()) {
+        node_to_objects[NodeID::FromBinary(loc.manager())].insert(item.first);
       }
     }
 

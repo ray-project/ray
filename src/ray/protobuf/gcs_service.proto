@@ -321,17 +321,13 @@ message AddObjectLocationRequest {
   bytes object_id = 1;
   // The location that will be added to GCS Service.
   bytes node_id = 2;
+  // The spilled URL that will be added to GCS Service. Either this or the node
+  // ID should be set.
+  string spilled_url = 3;
 }
 
 message AddObjectLocationReply {
   GcsStatus status = 1;
-}
-
-message AddObjectSpilledUrlRequest {
-  // The ID of object which location will be added to GCS Service.
-  bytes object_id = 1;
-  // The spilled URL that will be added to GCS Service.
-  string spilled_url = 2;
 }
 
 message AddObjectSpilledUrlReply {
@@ -358,8 +354,6 @@ service ObjectInfoGcsService {
       returns (GetAllObjectLocationsReply);
   // Add location of object to GCS Service.
   rpc AddObjectLocation(AddObjectLocationRequest) returns (AddObjectLocationReply);
-  // Add spilled URL location of object to GCS Service.
-  rpc AddObjectSpilledUrl(AddObjectSpilledUrlRequest) returns (AddObjectSpilledUrlReply);
   // Remove location of object from GCS Service.
   rpc RemoveObjectLocation(RemoveObjectLocationRequest)
       returns (RemoveObjectLocationReply);

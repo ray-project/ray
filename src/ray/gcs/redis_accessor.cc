@@ -560,7 +560,7 @@ Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
         for (const auto &item : notification_data.GetData()) {
           rpc::ObjectLocationChange update;
           update.set_is_add(notification_data.IsAdded());
-          update.mutable_data()->CopyFrom(item);
+          update.set_node_id(item.manager());
           updates.push_back(update);
         }
         subscribe(id, updates);

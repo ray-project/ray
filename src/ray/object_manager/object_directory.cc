@@ -38,8 +38,8 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
   // addition or deletion.
   bool isUpdated = false;
   for (const auto &update : location_updates) {
-    if (update.has_data()) {
-      NodeID node_id = NodeID::FromBinary(update.data().manager());
+    if (!update.node_id().empty()) {
+      NodeID node_id = NodeID::FromBinary(update.node_id());
       if (update.is_add() && 0 == node_ids->count(node_id)) {
         node_ids->insert(node_id);
         isUpdated = true;
@@ -243,7 +243,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
           for (const auto &loc : update->locations()) {
             rpc::ObjectLocationChange change;
             change.set_is_add(true);
-            change.mutable_data()->CopyFrom(loc);
+            change.set_node_id(loc.manager());
             notification.push_back(change);
           }
           if (!update->spilled_url().empty()) {

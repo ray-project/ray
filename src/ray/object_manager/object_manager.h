@@ -188,14 +188,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
-<<<<<<< HEAD
-                         const ClientID &self_node_id, const ObjectManagerConfig &config,
+                         const NodeID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
                          RestoreSpilledObjectCallback restore_spilled_object);
-=======
-                         const NodeID &self_node_id, const ObjectManagerConfig &config,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory);
->>>>>>> 10015e60fbd9bbf68c997989071cdbcbaf199630
 
   ~ObjectManager();
 

@@ -419,7 +419,8 @@ message ObjectLocationInfo {
 // A notification message about one object's locations being changed.
 message ObjectLocationChange {
   bool is_add = 1;
-  ObjectTableData data = 2;
+  // The node manager ID that this object appeared on or was evicted by.
+  bytes node_id = 2;
   // The object has been spilled to this URL. This should be set xor the above
   // fields are set.
   string spilled_url = 3;
