@@ -954,6 +954,10 @@ def rsync(config_file: str,
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
+        ip_address (str): Address of node. Raise Exception
+            if both ip_address and 'all_nodes' are provided.
+        use_internal_ip (bool): Whether the provided ip_address is
+            public or private.
         all_nodes: whether to sync worker nodes in addition to the head node
     """
     if bool(source) != bool(target):
