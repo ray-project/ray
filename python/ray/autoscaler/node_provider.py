@@ -230,6 +230,9 @@ class NodeProvider:
         Args:
             ip_address (str): Address of node.
             use_internal (bool): Whether the ip address is public or private.
+
+        Raises:
+            ValueError if not found.
         """
         def find_node_id():
             if use_internal:

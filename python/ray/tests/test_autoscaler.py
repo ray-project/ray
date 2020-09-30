@@ -42,9 +42,9 @@ class MockNode:
 
 
 class MockProcessRunner:
-    def __init__(self, fail_cmds=[]):
+    def __init__(self, fail_cmds=None):
         self.calls = []
-        self.fail_cmds = fail_cmds
+        self.fail_cmds = fail_cmds or []
         self.call_response = {}
 
     def check_call(self, cmd, *args, **kwargs):
@@ -433,6 +433,84 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call(
             "1.2.3.4",
             pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_config.yaml")
+
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testRsyncCommandWithDocker(self):
+        assert SMALL_CLUSTER["docker"]["container_name"]
+        config_path = self.write_config(SMALL_CLUSTER)
+        self.provider = MockProvider()
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
+        self.provider.finish_starting_nodes()
+        runner = MockProcessRunner()
+        provider_path = "ray.autoscaler.node_provider._get_node_provider"
+        with patch(provider_path, self.provider):
+            rsync(
+                config_path,
+                source=config_path,
+                target="/tmp/test_path",
+                _runner=runner)
+            runner.assert_has_call("1.2.3.4", pattern="docker run")
+
+        with patch(provider_path, self.provider):
+            rsync(
+                config_path,
+                source=config_path,
+                target="/tmp/test_path",
+                ip_address="1.2.4.5",
+                _runner=runner)
+            runner.assert_has_call("1.2.4.5", pattern="docker cp")
+            runner.assert_has_call("1.2.4.5", pattern="rsync")
+
+        with patch(provider_path, self.provider):
+            rsync(
+                config_path,
+                source=config_path,
+                target="/tmp/test_path",
+                ip_address="1.2.4.5",
+                use_internal=True,
+                _runner=runner)
+            runner.assert_has_call("1.2.4.5", pattern="docker cp")
+            runner.assert_has_call("1.2.4.5", pattern="rsync")
+
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testRsyncCommandWithoutDocker(self):
+        cluster_cfg = SMALL_CLUSTER.copy()
+        cluster_cfg["docker"] = {}
+        config_path = self.write_config(cluster_cfg)
+        self.provider = MockProvider()
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
+        self.provider.finish_starting_nodes()
+        runner = MockProcessRunner()
+
+        provider_path = "ray.autoscaler.node_provider._get_node_provider"
+        with patch(provider_path, self.provider):
+            rsync(
+                config_path,
+                source=config_path,
+                target="/tmp/test_path",
+                _runner=runner)
+            runner.assert_has_call("1.2.3.4", pattern="docker run")
+
+        with patch(provider_path, self.provider):
+            rsync(
+                config_path,
+                source=config_path,
+                target="/tmp/test_path",
+                ip_address="1.2.4.5",
+                _runner=runner)
+            runner.assert_has_call("1.2.4.5", pattern="docker cp")
+            runner.assert_has_call("1.2.4.5", pattern="rsync")
+
+        with patch(provider_path, self.provider):
+            rsync(
+                config_path,
+                source=config_path,
+                target="/tmp/test_path",
+                ip_address="1.2.4.5",
+                use_internal=True,
+                _runner=runner)
+            runner.assert_has_call("1.2.4.5", pattern="docker cp")
+            runner.assert_has_call("1.2.4.5", pattern="rsync")
 
     def testScaleUp(self):
         config_path = self.write_config(SMALL_CLUSTER)
