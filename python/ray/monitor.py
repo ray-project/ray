@@ -47,6 +47,7 @@ class Monitor:
         # Keep a mapping from raylet client ID to IP address to use
         # for updating the load metrics.
         self.raylet_id_to_ip_map = {}
+        self.light_heartbeat_enabled = ray._config.light_heartbeat_enabled()
         self.load_metrics = LoadMetrics()
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
@@ -126,8 +127,6 @@ class Monitor:
             resource_load = dict(heartbeat_message.resource_load)
             total_resources = dict(heartbeat_message.resources_total)
             available_resources = dict(heartbeat_message.resources_available)
-            for resource in total_resources:
-                available_resources.setdefault(resource, 0.0)
 
             waiting_bundles, infeasible_bundles = \
                 self.parse_resource_demands(message.resource_load_by_shape)
@@ -136,9 +135,14 @@ class Monitor:
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
             if ip:
-                self.load_metrics.update(ip, total_resources,
-                                         available_resources, resource_load,
-                                         waiting_bundles, infeasible_bundles)
+                update_available_resources = not self.light_heartbeat_enabled \
+                    or heartbeat_message.resources_available_changed()
+                update_resource_load = not self.light_heartbeat_enabled \
+                    or heartbeat_message.resource_load_changed()
+                self.load_metrics.update(
+                    ip, total_resources, update_available_resources,
+                    available_resources, update_resource_load, resource_load,
+                    waiting_bundles, infeasible_bundles)
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")
