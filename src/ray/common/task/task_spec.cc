@@ -232,7 +232,7 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
 
 std::unordered_map<std::string, std::string> TaskSpecification::OverrideWorkerEnv()
     const {
-  RAY_CHECK(IsActorCreationTask());
+  RAY_CHECK(IsActorCreationTask()) << "Per worker env var is allowed only for actors.";
   return MapFromProtobuf(message_->actor_creation_task_spec().override_worker_env());
 }
 
