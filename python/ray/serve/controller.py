@@ -536,12 +536,11 @@ class ServeController:
 
         backend_info = self.backends[backend_tag]
         if delta_num_replicas > 0:
-            can_schedule = try_schedule_resources_on_nodes(
-                requirements=[
-                    backend_info.replica_config.resource_dict
-                    for _ in range(delta_num_replicas)
-                ],
-                ray_nodes=ray.nodes())
+            can_schedule = try_schedule_resources_on_nodes(requirements=[
+                backend_info.replica_config.resource_dict
+                for _ in range(delta_num_replicas)
+            ])
+
             if _RESOURCE_CHECK_ENABLED and not all(can_schedule):
                 num_possible = sum(can_schedule)
                 raise RayServeException(

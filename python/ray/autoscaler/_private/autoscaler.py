@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 import copy
 import logging
 import math
@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 import yaml
+import collections
 
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
@@ -21,7 +22,7 @@ from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \
-    ResourceDemandScheduler
+    ResourceDemandScheduler, NodeType, NodeID
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
@@ -167,7 +168,13 @@ class StandardAutoscaler:
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
         nodes_to_terminate = []
+        node_type_counts = collections.defaultdict(int)
         for node_id in nodes:
+            # Make sure to not kill idle node types if the number of workers
+            # of that type is lower/equal to the min_workers of that type.
+            if self._keep_min_worker_of_node_type(node_id, node_type_counts):
+                continue
+
             node_ip = self.provider.internal_ip(node_id)
             if (node_ip in last_used and last_used[node_ip] < horizon) and \
                     (len(nodes) - len(nodes_to_terminate)
@@ -203,16 +210,14 @@ class StandardAutoscaler:
         if self.resource_demand_scheduler:
             resource_demand_vector = self.resource_demand_vector + \
                 self.load_metrics.get_resource_demand_vector()
-            if resource_demand_vector:
-                to_launch = (
-                    self.resource_demand_scheduler.get_nodes_to_launch(
-                        self.provider.non_terminated_nodes(tag_filters={}),
-                        self.pending_launches.breakdown(),
-                        resource_demand_vector,
-                        self.load_metrics.get_resource_utilization()))
-                # TODO(ekl) also enforce max launch concurrency here?
-                for node_type, count in to_launch:
-                    self.launch_new_node(count, node_type=node_type)
+            to_launch = (self.resource_demand_scheduler.get_nodes_to_launch(
+                self.provider.non_terminated_nodes(tag_filters={}),
+                self.pending_launches.breakdown(),
+                resource_demand_vector,
+                self.load_metrics.get_resource_utilization()))
+            # TODO(ekl) also enforce max launch concurrency here?
+            for node_type, count in to_launch:
+                self.launch_new_node(count, node_type=node_type)
 
             num_pending = self.pending_launches.value
             nodes = self.workers()
@@ -273,6 +278,32 @@ class StandardAutoscaler:
         # Attempt to recover unhealthy nodes
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
+
+    def _keep_min_worker_of_node_type(self, node_id: NodeID,
+                                      node_type_counts: Dict[NodeType, int]):
+        """Returns if workers of node_type should be terminated.
+
+        Receives the counters of running nodes so far and determines if idle
+        node_id should be terminated or not. It also updates the counters
+        (node_type_counts), which is returned by reference.
+
+        Args:
+            node_type_counts(Dict[NodeType, int]): The non_terminated node
+                types counted so far.
+        Returns:
+            bool: if workers of node_types should be terminated or not.
+        """
+        if self.resource_demand_scheduler:
+            tags = self.provider.node_tags(node_id)
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                node_type_counts[node_type] += 1
+                if node_type_counts[node_type] <= \
+                        self.available_node_types[node_type].get(
+                            "min_workers", 0):
+                    return True
+
+        return False
 
     def _node_resources(self, node_id):
         node_type = self.provider.node_tags(node_id).get(

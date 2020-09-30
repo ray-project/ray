@@ -481,7 +481,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   auto iter = registered_actors_.find(actor_id);
   if (iter == registered_actors_.end()) {
-    RAY_LOG(WARNING) << "Actor " << actor_id << " may be already destroyed.";
+    RAY_LOG(INFO) << "Actor " << actor_id << " may be already destroyed.";
     return Status::Invalid("Actor may be already destroyed.");
   }
 
@@ -558,10 +558,10 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       wait_request, [this, owner_node_id, owner_id, actor_id](
                         Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(WARNING) << "Worker " << owner_id << " failed, destroying actor child.";
+          RAY_LOG(INFO) << "Worker " << owner_id << " failed, destroying actor child.";
         } else {
-          RAY_LOG(WARNING) << "Actor " << actor_id
-                           << " is out of scope,, destroying actor child.";
+          RAY_LOG(INFO) << "Actor " << actor_id
+                        << " is out of scope,, destroying actor child.";
         }
 
         auto node_it = owners_.find(owner_node_id);
@@ -699,8 +699,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
                   << " intentional exit.";
   } else {
-    RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
-                     << " failed and exited abnormally.";
+    RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
+                  << " failed and exited abnormally.";
   }
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
@@ -747,7 +747,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 }
 
 void GcsActorManager::OnNodeDead(const NodeID &node_id) {
-  RAY_LOG(WARNING) << "Node " << node_id << " failed, reconstructing actors.";
+  RAY_LOG(INFO) << "Node " << node_id << " failed, reconstructing actors.";
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
     std::vector<ActorID> children_ids;
@@ -816,9 +816,9 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     int64_t remaining = max_restarts - num_restarts;
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
   }
-  RAY_LOG(WARNING) << "Actor is failed " << actor_id << " on worker " << worker_id
-                   << " at node " << node_id << ", need_reschedule = " << need_reschedule
-                   << ", remaining_restarts = " << remaining_restarts;
+  RAY_LOG(INFO) << "Actor is failed " << actor_id << " on worker " << worker_id
+                << " at node " << node_id << ", need_reschedule = " << need_reschedule
+                << ", remaining_restarts = " << remaining_restarts;
   if (remaining_restarts != 0) {
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.
@@ -881,8 +881,6 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
   // destroyed before the actor creation is completed.
   if (registered_actors_.count(actor_id) == 0) {
-    RAY_LOG(WARNING) << "Actor is destroyed before the creation is completed, actor id = "
-                     << actor_id;
     return;
   }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
