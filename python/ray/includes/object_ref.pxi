@@ -71,7 +71,7 @@ cdef class ObjectRef(BaseID):
         core_worker = ray.worker.global_worker.core_worker
 
         future = loop.create_future()
-        core_worker.get_async(object_ref, future)
+        core_worker.get_async(self, future)
         # A hack to keep a reference to the object ref for ref counting.
         future.object_ref = object_ref
         return future
