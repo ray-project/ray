@@ -97,36 +97,6 @@ class DistributedTorchRunner(TorchRunner):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         return [0]
 
-    def _wrap_dataloaders(self):
-        def with_sampler(loader):
-            # Automatically set the DistributedSampler
-            data_loader_args = {
-                "dataset": loader.dataset,
-                "batch_size": loader.batch_size,
-                "shuffle": False,
-                "num_workers": loader.num_workers,
-                "collate_fn": loader.collate_fn,
-                "pin_memory": loader.pin_memory,
-                "drop_last": loader.drop_last,
-                "timeout": loader.timeout,
-                "worker_init_fn": loader.worker_init_fn,
-                "sampler": DistributedSampler(loader.dataset)
-            }
-            return DataLoader(**data_loader_args)
-
-        def should_wrap_dataloader(loader):
-            return (isinstance(loader, DataLoader)
-                    and not isinstance(loader.dataset, IterableDataset))
-
-        if should_wrap_dataloader(self.train_loader):
-            if self.add_dist_sampler:
-                self.train_loader = with_sampler(self.train_loader)
-
-        if self.validation_loader is not None and should_wrap_dataloader(
-                self.validation_loader):
-            if self.add_dist_sampler:
-                self.validation_loader = with_sampler(self.validation_loader)
-
     def train_epoch(self,
                     num_steps=None,
                     profile=False,
