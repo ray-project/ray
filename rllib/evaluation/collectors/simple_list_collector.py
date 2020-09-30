@@ -341,6 +341,8 @@ class _SimpleListCollector(_SampleCollector):
         else:
             assert self.agent_to_policy[agent_id] == policy_id
         policy = self.policy_map[policy_id]
+        view_reqs = policy.model.inference_view_requirements if \
+            hasattr(policy, "model") else policy.view_requirements
 
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
@@ -351,7 +353,7 @@ class _SimpleListCollector(_SampleCollector):
             agent_id=agent_id,
             env_id=env_id,
             init_obs=init_obs,
-            view_requirements=policy.model.inference_view_requirements)
+            view_requirements=view_reqs)
 
         self.episodes[episode.episode_id] = episode
 
@@ -387,7 +389,9 @@ class _SimpleListCollector(_SampleCollector):
         policy = self.policy_map[policy_id]
         keys = self.forward_pass_agent_keys[policy_id]
         buffers = {k: self.agent_collectors[k].buffers for k in keys}
-        view_reqs = policy.model.inference_view_requirements
+        view_reqs = policy.model.inference_view_requirements if \
+            hasattr(policy, "model") else policy.view_requirements
+
         input_dict = {}
         for view_col, view_req in view_reqs.items():
             # Create the batch of data from the different buffers.

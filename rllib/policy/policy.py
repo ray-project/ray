@@ -5,6 +5,7 @@ import tree
 from typing import Dict, List, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch
@@ -74,7 +75,7 @@ class Policy(metaclass=ABCMeta):
         # Child classes need to add their specific requirements here (usually
         # a combination of a Model's inference_view_- and the
         # Policy's loss function-requirements.
-        self.view_requirements = {}
+        self.view_requirements = {SampleBatch.OBS: ViewRequirement()}
 
     @abstractmethod
     @DeveloperAPI
@@ -255,7 +256,23 @@ class Policy(metaclass=ABCMeta):
                     shape like
                     {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
         """
-        raise NotImplementedError
+        # Default implementation just passes obs, prev-a/r, and states on to
+        # `self.compute_actions()`.
+        state_batches = [
+            s.unsqueeze(0)
+            if torch and isinstance(s, torch.Tensor) else np.expand_dims(
+                s, 0) for k, s in input_dict.items() if k[:9] == "state_in_"
+        ]
+        return self.compute_actions(
+            input_dict[SampleBatch.OBS],
+            state_batches,
+            prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
+            info_batch=None,
+            explore=explore,
+            timestep=timestep,
+            **kwargs,
+        )
 
     @DeveloperAPI
     def compute_log_likelihoods(
