@@ -156,6 +156,7 @@ def _get_node_provider(provider_config: Dict[str, Any],
 
     return new_provider
 
+
 def _clear_provider_cache():
     global _provider_instances
     _provider_instances = {}
@@ -226,21 +227,22 @@ class NodeProvider:
         """Returns the internal ip (Ray ip) of the given node."""
         raise NotImplementedError
 
-    def get_node_id(self, ip_address, use_internal=False) -> str:
+    def get_node_id(self, ip_address, use_internal_ip=False) -> str:
         """Returns the node_id given an IP address.
 
         Assumes ip-address is unique per node.
 
         Args:
             ip_address (str): Address of node.
-            use_internal (bool): Whether the ip address is public or private.
+            use_internal_ip (bool): Whether the ip address is
+                public or private.
 
         Raises:
             ValueError if not found.
         """
 
         def find_node_id():
-            if use_internal:
+            if use_internal_ip:
                 return self._internal_ip_cache.get(ip_address)
             else:
                 return self._external_ip_cache.get(ip_address)
@@ -252,7 +254,7 @@ class NodeProvider:
                 self._internal_ip_cache[self.internal_ip(node_id)] = node_id
 
         if not find_node_id():
-            if use_internal:
+            if use_internal_ip:
                 known_msg = (
                     f"Worker internal IPs: {list(self._internal_ip_cache)}")
             else:

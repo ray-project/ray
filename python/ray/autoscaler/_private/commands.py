@@ -1016,7 +1016,8 @@ def rsync(config_file: str,
             config, config_file, override_cluster_name, create_if_needed=False)
         if ip_address:
             nodes = [
-                provider.get_node_id(ip_address, use_internal=use_internal_ip)
+                provider.get_node_id(
+                    ip_address, use_internal_ip=use_internal_ip)
             ]
         else:
             if all_nodes:

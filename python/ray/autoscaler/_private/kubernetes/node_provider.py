@@ -66,10 +66,10 @@ class KubernetesNodeProvider(NodeProvider):
         pod = core_api().read_namespaced_pod_status(node_id, self.namespace)
         return pod.status.pod_ip
 
-    def get_node_id(self, ip_address, use_internal=True) -> str:
-        if not use_internal:
+    def get_node_id(self, ip_address, use_internal_ip=True) -> str:
+        if not use_internal_ip:
             raise ValueError("Must use internal IPs with Kubernetes.")
-        return super().get_node_id(ip_address, use_internal=use_internal)
+        return super().get_node_id(ip_address, use_internal_ip=use_internal_ip)
 
     def set_node_tags(self, node_id, tags):
         pod = core_api().read_namespaced_pod_status(node_id, self.namespace)
