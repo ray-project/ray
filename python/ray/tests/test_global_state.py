@@ -266,7 +266,7 @@ def test_placement_group_load_report(ray_start_cluster):
             pattern = message["pattern"]
             data = message["data"]
             if pattern != ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
-                return False
+                return None
             pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
             heartbeat_data = pub_message.data
             heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
