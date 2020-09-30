@@ -63,7 +63,11 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     time.sleep(0.1)
     # Kill the workers as the tasks execute.
     for pid in pids:
-        os.kill(pid, SIGKILL)
+        try:
+            os.kill(pid, SIGKILL)
+        except OSError:
+            # The process may have already exited due to worker capping.
+            pass
         time.sleep(0.1)
     # Make sure that we either get the object or we get an appropriate
     # exception.
