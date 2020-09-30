@@ -178,8 +178,7 @@ def learn_test_multi_agent_plus_rollout(algo):
             checkpoint_freq=1,
             checkpoint_at_end=True,
             local_dir=tmp_dir,
-            verbose=1,
-            name="PPO")
+            verbose=1)
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen("ls {}/PPO/*/checkpoint_*/"

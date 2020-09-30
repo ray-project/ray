@@ -259,7 +259,9 @@ class Experiment:
             return run_object
         elif isinstance(run_object, type) or callable(run_object):
             name = "DEFAULT"
-            if hasattr(run_object, "__name__"):
+            if hasattr(run_object, "_name"):
+                name = run_object._name
+            elif hasattr(run_object, "__name__"):
                 fn_name = run_object.__name__
                 if fn_name == "<lambda>":
                     name = "lambda"
