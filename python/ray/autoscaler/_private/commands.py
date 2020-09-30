@@ -946,7 +946,8 @@ def rsync(config_file: str,
           ip_address: Optional[str] = None,
           use_internal_ip: bool = False,
           no_config_cache: bool = False,
-          all_nodes: bool = False):
+          all_nodes: bool = False,
+          _runner=subprocess):
     """Rsyncs files.
 
     Arguments:
@@ -981,7 +982,7 @@ def rsync(config_file: str,
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
 
-    def rsync_to_node(node_id):
+    def rsync_to_node(node_id, is_head_node):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=config["provider"],
@@ -993,8 +994,10 @@ def rsync(config_file: str,
             setup_commands=[],
             ray_start_commands=[],
             runtime_hash="",
+            use_internal_ip=use_internal_ip,
+            process_runner=_runner,
             file_mounts_contents_hash="",
-            is_head_node=(node_id == head_node),
+            is_head_node=is_head_node,
             docker_config=config.get("docker"))
         if down:
             rsync = updater.rsync_down
@@ -1005,13 +1008,14 @@ def rsync(config_file: str,
             # print rsync progress for single file rsync
             cmd_output_util.set_output_redirected(False)
             set_rsync_silent(False)
-
             rsync(source, target, is_file_mount)
         else:
             updater.sync_file_mounts(rsync)
 
     try:
         nodes = []
+        head_node = _get_head_node(
+            config, config_file, override_cluster_name, create_if_needed=False)
         if ip_address:
             nodes = [
                 provider.get_node_id(ip_address, use_internal=use_internal_ip)
@@ -1019,15 +1023,10 @@ def rsync(config_file: str,
         else:
             if all_nodes:
                 nodes = _get_worker_nodes(config, override_cluster_name)
-            head_node = _get_head_node(
-                config,
-                config_file,
-                override_cluster_name,
-                create_if_needed=False)
             nodes += [head_node]
 
         for node_id in nodes:
-            rsync_to_node(node_id)
+            rsync_to_node(node_id, is_head_node=(node_id == head_node))
 
     finally:
         provider.cleanup()

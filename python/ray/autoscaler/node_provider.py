@@ -234,6 +234,7 @@ class NodeProvider:
         Raises:
             ValueError if not found.
         """
+
         def find_node_id():
             if use_internal:
                 return self._internal_ip_cache.get(ip_address)
