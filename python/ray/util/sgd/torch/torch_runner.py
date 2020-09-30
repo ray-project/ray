@@ -78,7 +78,6 @@ class TorchRunner:
                 self._should_reset_val_loader = False
             return self.val_iterator
 
-
     def make_iterator(self, training=True, num_steps=None):
         steps = 0
         while True:
@@ -130,8 +129,8 @@ class TorchRunner:
                     iterator = itertools.islice(iterator, num_steps)
                 self.epochs += 1
             else:
-                iterator = self.make_iterator(training=True,
-                                              num_steps=num_steps)
+                iterator = self.make_iterator(
+                    training=True, num_steps=num_steps)
             train_stats = self.training_operator.train_epoch(iterator, info)
 
         # This is so that `epochs` is first in ordering.
@@ -148,7 +147,6 @@ class TorchRunner:
                              "TrainingOperator.register_data.")
         info = info or {}
         self._toggle_profiling(profile=profile)
-        validation_loader = self.validation_loader
 
         with self.timers.record("validation"):
             iterator = self.make_iterator(training=False, num_steps=num_steps)

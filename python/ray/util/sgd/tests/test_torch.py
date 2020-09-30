@@ -351,27 +351,29 @@ def test_dataset(ray_start_4_cpus, use_local):
     assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_num_steps(ray_start_2_cpus, use_local):
     """Tests if num_steps continues training from the subsampled dataset."""
+
     def data_creator(config):
         train_dataset = LinearDataset(2, 5, size=config["data_size"])
         val_dataset = LinearDataset(2, 5, size=config["data_size"])
         return DataLoader(train_dataset, batch_size=config["batch_size"]), \
-               DataLoader(val_dataset, batch_size=config["batch_size"])
+            DataLoader(val_dataset, batch_size=config["batch_size"])
+
     data_size = 10
     batch_size = 1
-    Operator = TrainingOperator.from_creators(model_creator,
-                                                  optimizer_creator,
-                                                  data_creator)
+    Operator = TrainingOperator.from_creators(model_creator, optimizer_creator,
+                                              data_creator)
 
     def train_func(self, iterator, info=None):
-        s = 0
-        l = 0
+        total_sum = 0
+        num_items = 0
         for e, _ in iterator:
-            s += e
-            l += 1
-        return {"average": s.item()/l}
+            total_sum += e
+            num_items += 1
+        return {"average": total_sum.item() / num_items}
 
     TestOperator = get_test_operator(Operator)
     trainer = TorchTrainer(
@@ -379,12 +381,11 @@ def test_num_steps(ray_start_2_cpus, use_local):
         num_workers=2,
         use_local=use_local,
         add_dist_sampler=False,
-        config = {
+        config={
             "batch_size": batch_size,
             "data_size": data_size,
             "custom_func": train_func
-        }
-    )
+        })
 
     # If num_steps not passed, should do one full epoch.
     result = trainer.train()
@@ -401,7 +402,6 @@ def test_num_steps(ray_start_2_cpus, use_local):
     assert result["epoch"] == 2
     val_result = trainer.validate(num_steps=5)
     assert val_result["average"] == 2
-
 
     # Should continue where last train run left off.
     result = trainer.train(num_steps=3)
