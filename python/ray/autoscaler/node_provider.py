@@ -156,6 +156,10 @@ def _get_node_provider(provider_config: Dict[str, Any],
 
     return new_provider
 
+def _clear_provider_cache():
+    global _provider_instances
+    _provider_instances = {}
+
 
 def _get_default_config(provider_config):
     if provider_config["type"] == "external":

@@ -20,7 +20,8 @@ from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler.node_provider import _NODE_PROVIDERS, NodeProvider
+from ray.autoscaler.node_provider import (
+    _NODE_PROVIDERS, NodeProvider, _clear_provider_cache)
 from ray.test_utils import RayTestTimeoutException
 import pytest
 
@@ -387,6 +388,7 @@ class AutoscalingTest(unittest.TestCase):
     def tearDown(self):
         self.provider = None
         del _NODE_PROVIDERS["mock"]
+        _clear_provider_cache()
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
