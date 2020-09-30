@@ -275,3 +275,9 @@ class NodeProvider:
     def prepare_for_head_node(self, cluster_config):
         """Returns a new cluster config with custom configs for head node."""
         return cluster_config
+
+    @staticmethod
+    def fillout_available_node_types_resources(
+            self, cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Fills out missing "resources" field for available_node_types."""
+        return cluster_config
