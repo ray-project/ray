@@ -3,8 +3,9 @@ import unittest
 import socket
 import json
 
-from ray.autoscaler.node_provider import _NODE_PROVIDERS, _get_node_provider
 from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
+from ray.autoscaler._private.providers import _NODE_PROVIDERS, \
+    _get_node_provider
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider)
