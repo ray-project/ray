@@ -134,12 +134,10 @@ The ``worker_setup_commands`` field (and also the ``initialization_commands`` fi
 
 Docker Support
 ~~~~~~~~~~~~~~
-The ``worker_image`` and ``pull_before_run`` fields override the correpsonding field in the top level ``docker`` section for the node type. The ``worker_run_options`` field is combined with top level ``docker: run_options`` field to produce the docker run command for the given node_type. The following configuration is for a GPU enabled node type.
+The ``worker_image`` and ``pull_before_run`` fields override the correpsonding field in the top level ``docker`` section for the node type. The ``worker_run_options`` field is combined with top level ``docker: run_options`` field to produce the docker run command for the given node_type. The following configuration is for a GPU enabled node type. Also make sure that ``disable_automatic_runtime_detection`` is set to the default value of false.
 
 .. code::
 
     pull_before_run: True
     worker_image:
         - rayproject/ray-ml:latest-gpu
-    worker_run_options:
-        - --runtime=nvidia
