@@ -552,7 +552,7 @@ class FunctionActorManager:
             else:
                 return method(actor, *args, **kwargs)
 
-        # Set method_name and method as attributes to the executor clusore
+        # Set method_name and method as attributes to the executor closure
         # so we can make decision based on these attributes in task executor.
         # Precisely, asyncio support requires to know whether:
         # - the method is a ray internal method: starts with __ray
