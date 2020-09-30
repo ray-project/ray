@@ -139,8 +139,9 @@ class Experiment:
         self.name = name or self._run_identifier
 
         # If the name has been set explicitly, we don't want to create
-        # dated directories.
-        if int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1 or name:
+        # dated directories. The same is true for string run identifiers.
+        if int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1 or name \
+           or isinstance(run, str):
             self.dir_name = self.name
         else:
             self.dir_name = "{}_{}".format(self.name, date_str())
