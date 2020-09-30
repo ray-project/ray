@@ -215,5 +215,3 @@ MACH_PAGE_SIZE_BYTES = 4096
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
 MAX_INT64_VALUE = 9223372036854775807
-
-NODE_RESOURCES_TURNING_EMPTY = "_TURNING_EMPTY_"
