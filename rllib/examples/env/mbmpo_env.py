@@ -17,28 +17,30 @@ class PendulumWrapper(PendulumEnv):
     """
 
     def reward(self, obs, action, obs_next):
-        # obs is always: [cos(theta), sin(theta), dtheta/dt]
+        # obs = [cos(theta), sin(theta), dtheta/dt]
         # To get the angle back from obs: atan2(sin(theta), cos(theta)).
         theta = np.arctan2(obs[:, 1], obs[:, 0])
-        a = np.clip(action, -self.max_torque, self.max_torque)
+        # Do everything in (B,) space (single theta-, action- and
+        # reward values).
+        a = np.clip(action[:, 0], -self.max_torque, self.max_torque)
         r = self.angle_normalize(theta) ** 2 + \
             0.1 * obs[:, 2] ** 2 + 0.001 * (a ** 2)
-        # Remove (1,) shape of rewards.
-        return r.squeeze(-1)
+        return r
 
     @staticmethod
     def angle_normalize(x):
-        return (((x+np.pi) % (2*np.pi)) - np.pi)
+        return (((x + np.pi) % (2 * np.pi)) - np.pi)
 
 
 if HalfCheetahEnv:
+
     class HalfCheetahWrapper(HalfCheetahEnv):
         """Wrapper for the MuJoCo HalfCheetah-v2 environment.
     
         Adds an additional `reward` method for some model-based RL algos (e.g.
         MB-MPO).
         """
-    
+
         def reward(self, obs, action, obs_next):
             if obs.ndim == 2 and action.ndim == 2:
                 assert obs.shape == obs_next.shape
@@ -51,15 +53,14 @@ if HalfCheetahEnv:
                 ctrl_cost = 0.1 * np.square(action).sum()
                 reward = forward_vel - ctrl_cost
                 return np.minimum(np.maximum(-1000.0, reward), 1000.0)
-    
-    
+
     class HopperWrapper(HopperEnv):
         """Wrapper for the MuJoCo Hopper-v2 environment.
     
         Adds an additional `reward` method for some model-based RL algos (e.g.
         MB-MPO).
         """
-    
+
         def reward(self, obs, action, obs_next):
             alive_bonus = 1.0
             assert obs.ndim == 2 and action.ndim == 2

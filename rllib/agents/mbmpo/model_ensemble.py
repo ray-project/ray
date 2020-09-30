@@ -334,8 +334,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         if self.normalize_data:
             delta = denormalize(delta, self.normalizations["delta"])
         new_obs = pre_obs + delta
-        clipped_obs = np.clip(
-            new_obs, self.env_obs_space.low, self.env_obs_space.high)
+        clipped_obs = np.clip(new_obs, self.env_obs_space.low,
+                              self.env_obs_space.high)
         return clipped_obs
 
     def set_norms(self, normalization_dict):

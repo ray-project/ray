@@ -73,10 +73,12 @@ class Random(Exploration):
                         dtype=component.dtype)
                 elif isinstance(component, MultiDiscrete):
                     return tf.concat(
-                        [tf.random.uniform(
-                            shape=(batch_size, 1),
-                            maxval=n,
-                            dtype=component.dtype) for n in component.nvec],
+                        [
+                            tf.random.uniform(
+                                shape=(batch_size, 1),
+                                maxval=n,
+                                dtype=component.dtype) for n in component.nvec
+                        ],
                         axis=1)
                 elif isinstance(component, Box):
                     if component.bounded_above.all() and \
