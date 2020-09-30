@@ -1422,7 +1422,7 @@ def get(object_refs, *, timeout=None):
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.debug("Using blocking ray.get inside async actor. "
+            logger.warning("Using blocking ray.get inside async actor. "
                          "This blocks the event loop. Please use `await` "
                          "on object ref with asyncio.gather if you want to "
                          "yield execution to the event loop instead.")
