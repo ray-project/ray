@@ -118,6 +118,22 @@ class DistributedTorchRunner(TorchRunner):
             if self.add_dist_sampler:
                 self.validation_loader = with_sampler(self.validation_loader)
 
+    def get_iterator(self, training=True):
+        if training:
+            if self._should_reset_train_loader:
+                self.epochs += 1
+                # Handle sampler.set_epoch in cases when iterator cycles
+                # around in a single train_epoch call.
+                if hasattr(self.train_loader, "sampler") and hasattr(
+                        self.train_loader.sampler, "set_epoch"):
+                    self.train_loader.sampler.set_epoch(self.epochs)
+                self.train_iterator = iter(self.train_loader)
+                self._should_reset_train_loader = False
+            return self.train_iterator
+        else:
+            return super(DistributedTorchRunner,
+                         self).get_iterator(training=False)
+
     def train_epoch(self, **kwargs):
         """Runs a training epoch and updates the model parameters.
 

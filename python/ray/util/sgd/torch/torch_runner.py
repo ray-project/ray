@@ -67,9 +67,9 @@ class TorchRunner:
         if training:
             # In training.
             if self._should_reset_train_loader:
+                self.epochs += 1
                 self.train_iterator = iter(self.train_loader)
                 self._should_reset_train_loader = False
-                self.epochs += 1
             return self.train_iterator
         else:
             # In validation.
