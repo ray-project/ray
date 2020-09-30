@@ -151,7 +151,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
       &GetClusterRealtimeResources() const;
 
-  // SANG-TODO Update description
+  /// Update the placement group load information so that it will be reported through
+  /// heartbeat.
+  ///
+  /// \param placement_group_load placement group load protobuf.
   void UpdatePlacementGroupLoad(
       std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) const;
 
@@ -190,7 +193,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     void HandleHeartbeat(const NodeID &node_id,
                          const rpc::HeartbeatTableData &heartbeat_data);
 
-    // SANG-TODO Update description
+    /// Public interface to update placement group load information.
+    ///
+    /// \param placement_group_load placement group load protobuf.
     void UpdatePlacementGroupLoad(
         std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
