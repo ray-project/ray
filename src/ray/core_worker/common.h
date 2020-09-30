@@ -89,7 +89,7 @@ struct ActorCreationOptions {
         is_asyncio(is_asyncio),
         placement_options(placement_options),
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
-        override_worker_env(override_worker_env) {};
+        override_worker_env(override_worker_env){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
