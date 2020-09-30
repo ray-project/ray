@@ -1089,8 +1089,7 @@ def _process_observations_w_trajectory_view_api(
             # MultiAgentBatch from a single episode and add it to "outputs".
             if not multiple_episodes_in_batch:
                 ma_sample_batch = \
-                    _sample_collector.build_multi_agent_batch(
-                        _sample_collector.episode_steps[episode.episode_id])
+                    _sample_collector.build_multi_agent_batch(episode.length)
                 outputs.append(ma_sample_batch)
 
             # Call each policy's Exploration.on_episode_end method.
