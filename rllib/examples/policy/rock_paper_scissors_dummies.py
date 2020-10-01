@@ -1,5 +1,6 @@
 import gym
 import numpy as np
+import random
 
 from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
 from ray.rllib.policy.policy import Policy
@@ -19,6 +20,14 @@ class AlwaysSameHeuristic(Policy):
                 space=gym.spaces.Box(0, 100, shape=(), dtype=np.int32))
         })
 
+    def get_initial_state(self):
+        return [
+            random.choice([
+                RockPaperScissors.ROCK, RockPaperScissors.PAPER,
+                RockPaperScissors.SCISSORS
+            ])
+        ]
+
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -27,7 +36,10 @@ class AlwaysSameHeuristic(Policy):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        return state_batches[0][0], [s[0] for s in state_batches], {}
+        if self.config["_use_trajectory_view_api"]:
+            return state_batches[0][0], [s[0] for s in state_batches], {}
+        else:
+            return state_batches[0], state_batches, {}
 
 
 class BeatLastHeuristic(Policy):
