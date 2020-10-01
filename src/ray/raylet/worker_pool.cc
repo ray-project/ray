@@ -170,7 +170,8 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                                        const JobID &job_id,
                                        std::vector<std::string> dynamic_options) {
   rpc::JobConfig *job_config = nullptr;
-  if (RayConfig::instance().enable_multi_tenancy()) {
+  if (RayConfig::instance().enable_multi_tenancy() &&
+      worker_type != rpc::WorkerType::IO_WORKER) {
     RAY_CHECK(!job_id.IsNil());
     auto it = unfinished_jobs_.find(job_id);
     if (it == unfinished_jobs_.end()) {
@@ -211,15 +212,15 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     }
   }
 
-  if (RayConfig::instance().enable_multi_tenancy() &&
-      !job_config->jvm_options().empty()) {
-    // Note that we push the item to the front of the vector to make
-    // sure this is the freshest option than others.
-    dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
-                           job_config->jvm_options().end());
-  }
   // For non-multi-tenancy mode, job code search path is embedded in worker_command.
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
+    // Note that we push the item to the front of the vector to make
+    // sure this is the freshest option than others.
+    if (!job_config->jvm_options().empty()) {
+      dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
+                             job_config->jvm_options().end());
+    }
+
     std::string code_search_path_str;
     for (int i = 0; i < job_config->code_search_path_size(); i++) {
       auto path = job_config->code_search_path(i);
@@ -312,11 +313,11 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   }
 
   ProcessEnvironment env;
-  if (RayConfig::instance().enable_multi_tenancy()) {
+  if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
   Process proc = StartProcess(worker_command_args, env);
-  if (RayConfig::instance().enable_multi_tenancy()) {
+  if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     // If the pid is reused between processes, the old process must have exited.
     // So it's safe to bind the pid with another job ID.
     RAY_LOG(DEBUG) << "Worker process " << proc.GetId() << " is bound to job " << job_id;
@@ -462,7 +463,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   state.registered_workers.insert(worker);
 
-  if (RayConfig::instance().enable_multi_tenancy()) {
+  if (RayConfig::instance().enable_multi_tenancy() &&
+      worker->GetWorkerType() != rpc::WorkerType::IO_WORKER) {
     auto dedicated_workers_it = state.worker_pids_to_assigned_jobs.find(pid);
     RAY_CHECK(dedicated_workers_it != state.worker_pids_to_assigned_jobs.end());
     auto job_id = dedicated_workers_it->second;
