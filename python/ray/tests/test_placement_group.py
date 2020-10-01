@@ -428,6 +428,18 @@ def test_cuda_visible_devices(ray_start_cluster):
     assert devices == "0", devices
 
 
+def test_input_validation(ray_start_cluster):
+    cluster = ray_start_cluster
+    num_nodes = 1
+    for _ in range(num_nodes):
+        cluster.add_node(num_gpus=1)
+    ray.init(address=cluster.address)
+
+    g1 = ray.util.placement_group([{"CPU": 1, "GPU": 0}])
+    # Make sure the above input won't break the program.
+    ray.get(g1.ready())
+
+
 def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     @ray.remote(num_cpus=1)
     class Actor(object):
