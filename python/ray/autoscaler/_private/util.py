@@ -1,4 +1,5 @@
 import collections
+import logging
 import hashlib
 import json
 import jsonschema
@@ -11,7 +12,6 @@ import ray._private.services as services
 from ray.autoscaler._private.providers import _get_default_config, \
     _NODE_PROVIDERS
 from ray.autoscaler._private.docker import validate_docker_config
-from ray.autoscaler._private.cli_logger import cli_logger
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
@@ -20,6 +20,8 @@ RAY_SCHEMA_PATH = os.path.join(
 # Internal kv keys for storing debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+
+logger = logging.getLogger(__name__)
 
 
 class ConcurrentCounter:
@@ -102,10 +104,10 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults["auth"] = defaults.get("auth", {})
     try:
         defaults = _fillout_available_node_types_resources(defaults)
-    except Exception as e:
+    except Exception:
         # We don't want to introduce new errors with filling available node
         # types resources feature.
-        cli_logger.verbose_error("{}", str(e))
+        logger.exception("Failed to autodetect node resources")
 
     return defaults
 
