@@ -5,6 +5,7 @@ import torch
 import torch.distributed as dist
 
 import ray
+from ray.cluster_utils import Cluster
 from ray import tune
 from ray.tune.integration.torch import (DistributedTrainableCreator,
                                         distributed_checkpoint_dir,
@@ -28,6 +29,22 @@ def ray_start_4_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Ensure that tests don't ALL fail
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+@pytest.fixture
+def ray_multi_node_4_node():
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=1)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
     # Ensure that tests don't ALL fail
     if dist.is_initialized():
         dist.destroy_process_group()
@@ -62,6 +79,16 @@ def test_set_global(ray_start_2_cpus):  # noqa: F811
     trainable = trainable_cls()
     result = trainable.train()
     assert result["is_distributed"]
+
+
+def test_colocated(ray_multi_node_4_node):  # noqa: F811
+    assert ray.available_resources()["CPU"] == 4
+    trainable_cls = DistributedTrainableCreator(
+        _train_check_global, num_workers=4, workers_per_node=1)
+    trainable = trainable_cls()
+    assert ray.available_resources.get("CPU", 0) == 0
+    result = trainable.train()
+    trainer.stop()
 
 
 def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811

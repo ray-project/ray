@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 _distributed_enabled = False
 
+PG_WAIT_TIMEOUT = 120
+
 
 def is_distributed_trainable():
     """Returns True if executing within a DistributedTrainable."""
@@ -57,16 +59,17 @@ class _TorchTrainable(tune.Trainable):
     _cpus_per_worker = 1
     _workers_per_node = None
     _placement_group = None
+    _timeout_s = None
 
-    __slots__ = ["workers", "_finished", "_placement_group"]
+    __slots__ = ["workers", "_finished"]
 
     @classmethod
-    def default_process_group_parameters(self) -> Dict:
+    def default_process_group_parameters(cls) -> Dict:
         return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
 
     @property
     def worker_gpus(self) -> int:
-        if self._use_gpu:
+        if not self._use_gpu:
             return 0
         return self._gpus_per_worker
 
@@ -94,7 +97,7 @@ class _TorchTrainable(tune.Trainable):
             self._placement_group = placement_group(
                 all_bundles, strategy="STRICT_SPREAD")
             logger.debug("Waiting for placement_group to start.")
-            ray.get(self._placement_group.ready())
+            ray.get(self._placement_group.ready(), timeout=self._timeout_s)
             logger.debug("Placement_group started.")
             options["placement_group"] = self.placement_group
 
@@ -195,7 +198,8 @@ def DistributedTrainableCreator(
         backend (str): One of "gloo", "nccl".
         timeout_s (float): Seconds before the torch process group
             times out. Useful when machines are unreliable. Defaults
-            to 60 seconds.
+            to 60 seconds. This value is also reused for triggering
+            placement timeouts if forcing colocation.
 
     Returns:
         A trainable class object that can be passed to Tune. Resources
@@ -218,6 +222,14 @@ def DistributedTrainableCreator(
     if not use_gpu and gpus_per_worker:
         raise ValueError("use_gpu must be set if `resource_config."
                          "gpus_per_worker` is provided.")
+    if gpus_per_worker is None:
+        if use_gpu:
+            gpus_per_worker = 1
+        else:
+            gpus_per_worker = 0
+    elif gpus_per_worker < 1:
+        raise ValueError(
+            f"gpus_per_worker must be > 1, got f{gpus_per_worker}.")
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func
@@ -226,6 +238,7 @@ def DistributedTrainableCreator(
         _cpus_per_worker = cpus_per_worker
         _gpus_per_worker = gpus_per_worker
         _workers_per_node = workers_per_node
+        _timeout_s = timeout_s
 
         @classmethod
         def default_process_group_parameters(self) -> Dict:
@@ -235,12 +248,15 @@ def DistributedTrainableCreator(
         def default_resource_request(cls, config: Dict) -> Resources:
             num_workers_ = int(config.get("num_workers", num_workers))
             use_gpu_ = config.get("use_gpu", use_gpu)
+            extra_gpus = 0
+            if use_gpu_:
+                extra_gpus = num_workers_ * gpus_per_worker
 
             return Resources(
                 cpu=0,
                 gpu=0,
                 extra_cpu=cpus_per_worker * num_workers_,
-                extra_gpu=num_workers_ * gpus_per_worker if use_gpu_ else 0)
+                extra_gpu=extra_gpus)
 
     return WrappedDistributedTorchTrainable
 
