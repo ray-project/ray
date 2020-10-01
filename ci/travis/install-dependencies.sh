@@ -291,6 +291,11 @@ install_dependencies() {
   # Additional Tune test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+
+    # Temporary fix to support latest Ax release on Python 3.7
+    if [ "${PYTHON}" = "3.7" ]; then
+      pip install -U git+https://github.com/facebook/Ax.git@0.1.16#egg=ax-platform
+    fi
   fi
 
   # Additional Tune dependency for Horovod.
