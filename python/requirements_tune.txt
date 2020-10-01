@@ -1,4 +1,4 @@
-ax-platform==0.1.14
+ax-platform
 bayesian-optimization
 ConfigSpace==0.4.10
 dragonfly-opt
