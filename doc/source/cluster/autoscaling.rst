@@ -71,7 +71,9 @@ An example of configuring multiple node types is as follows `(full example) <htt
         cpu_4_ondemand:
             node_config:
                 InstanceType: m4.xlarge
-            resources: {"CPU": 4}  # if absent it will be autofilled for AWS instances.
+            # For AWS instances, autoscaler will automatically add the available
+            # CPUS/GPUS/accelerator_type ({"CPU": 4} for m4.xlarge) in "resources".
+            resources: {"Custom": 1}
             min_workers: 1
             max_workers: 5
         cpu_16_spot:
@@ -79,19 +81,16 @@ An example of configuring multiple node types is as follows `(full example) <htt
                 InstanceType: m4.4xlarge
                 InstanceMarketOptions:
                     MarketType: spot
-            resources: {"CPU": 16, "Custom1": 1, "is_spot": 1}
             max_workers: 10
         gpu_1_ondemand:
             node_config:
                 InstanceType: p2.xlarge
-            resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
             max_workers: 4
             worker_setup_commands:
                 - pip install tensorflow-gpu  # Example command.
         gpu_8_ondemand:
             node_config:
                 InstanceType: p2.8xlarge
-            resources: {"CPU": 32, "GPU": 8}
             max_workers: 2
             worker_setup_commands:
                 - pip install tensorflow-gpu  # Example command.

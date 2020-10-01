@@ -22,6 +22,9 @@ CONFIG_PATHS += recursive_fnmatch(
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
+            if "aws/example-multi-node-type.yaml" in config_path:
+                # This is tested in testValidateDefaultConfigAWSMultiNodeTypes.
+                continue
             with open(config_path) as f:
                 config = yaml.safe_load(f)
             config = prepare_config(config)
@@ -35,14 +38,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
         with open(aws_config_path) as f:
             config = yaml.safe_load(f)
-            orig_config = copy.deepcopy(config)
-        config = prepare_config(orig_config)
-        try:
-            validate_config(config)
-        except Exception:
-            self.fail("Config did not pass validation test!")
-
-        new_config = copy.deepcopy(orig_config)
+        new_config = copy.deepcopy(config)
         # modify it here
         new_config["available_node_types"] = {
             "cpu_4_ondemand": new_config["available_node_types"][
@@ -52,13 +48,17 @@ class AutoscalingConfigTest(unittest.TestCase):
                 "gpu_8_ondemand"]
         }
         orig_new_config = copy.deepcopy(new_config)
-        available_node_types = new_config["available_node_types"]
-        # Make sure merging user and autofill resources work. So remove part
-        # of the resources for node_type "cpu_16_spot".
-        del available_node_types["cpu_16_spot"]["resources"]["CPU"]
-        # And for the following node types we remove all resources.
-        for node_type in ["cpu_4_ondemand", "gpu_8_ondemand"]:
-            del available_node_types[node_type]["resources"]
+        expected_available_node_types = orig_new_config["available_node_types"]
+        expected_available_node_types["cpu_4_ondemand"]["resources"] = {
+            "Custom": 1,
+            "CPU": 4
+        }
+        expected_available_node_types["cpu_16_spot"]["resources"] = {"CPU": 16}
+        expected_available_node_types["gpu_8_ondemand"]["resources"] = {
+            "CPU": 32,
+            "GPU": 4,
+            "accelerator_type:V100": 1
+        }
 
         boto3_dict = {
             "InstanceTypes": [{
@@ -98,8 +98,7 @@ class AutoscalingConfigTest(unittest.TestCase):
 
         try:
             validate_config(new_config)
-            orig_new_config["available_node_types"] == new_config[
-                "available_node_types"]
+            expected_available_node_types == new_config["available_node_types"]
         except Exception:
             self.fail("Config did not pass multi node types auto fill test!")
 
