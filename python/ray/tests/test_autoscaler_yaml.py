@@ -47,19 +47,29 @@ class AutoscalingConfigTest(unittest.TestCase):
         new_config["available_node_types"] = {
             "cpu_4_ondemand": new_config["available_node_types"][
                 "cpu_4_ondemand"],
+            "cpu_16_spot": new_config["available_node_types"]["cpu_16_spot"],
             "gpu_8_ondemand": new_config["available_node_types"][
                 "gpu_8_ondemand"]
         }
-        new_config["worker_default_node_type"] = "cpu_4_ondemand"
         orig_new_config = copy.deepcopy(new_config)
         available_node_types = new_config["available_node_types"]
-        for node_type in available_node_types:
+        # Make sure merging user and autofill resources work. So remove part
+        # of the resources for node_type "cpu_16_spot".
+        del available_node_types["cpu_16_spot"]["resources"]["CPU"]
+        # And for the following node types we remove all resources.
+        for node_type in ["cpu_4_ondemand", "gpu_8_ondemand"]:
             del available_node_types[node_type]["resources"]
+
         boto3_dict = {
             "InstanceTypes": [{
                 "InstanceType": "m4.xlarge",
                 "VCpuInfo": {
                     "DefaultVCpus": 4
+                }
+            }, {
+                "InstanceType": "m4.4xlarge",
+                "VCpuInfo": {
+                    "DefaultVCpus": 16
                 }
             }, {
                 "InstanceType": "p3.8xlarge",

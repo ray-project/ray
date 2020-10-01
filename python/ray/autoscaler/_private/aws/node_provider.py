@@ -498,23 +498,27 @@ class AWSNodeProvider(NodeProvider):
         for node_type in available_node_types:
             instance_type = available_node_types[node_type]["node_config"][
                 "InstanceType"]
-            if "resources" not in available_node_types[node_type] and \
-                    instance_type in instances_dict:
+            if instance_type in instances_dict:
                 cpus = instances_dict[instance_type]["VCpuInfo"][
                     "DefaultVCpus"]
-                available_node_types[node_type]["resources"] = {"CPU": cpus}
+                autodetected_resources = {"CPU": cpus}
                 gpus = instances_dict[instance_type].get("GpuInfo",
                                                          {}).get("Gpus")
                 if gpus is not None:
                     # TODO(ameer): currently we support one gpu type per node.
                     assert len(gpus) == 1
                     gpu_name = gpus[0]["Name"]
-                    available_node_types[node_type]["resources"].update({
+                    autodetected_resources.update({
                         "GPU": gpus[0]["Count"],
                         f"accelerator_type:{gpu_name}": 1
                     })
-                cli_logger.print("Updating the resources of {} to {}.",
-                                 node_type,
-                                 available_node_types[node_type]["resources"])
+                autodetected_resources.update(
+                    available_node_types[node_type].get("resources", {}))
+                if autodetected_resources != \
+                        available_node_types[node_type].get("resources", {}):
+                    available_node_types[node_type][
+                        "resources"] = autodetected_resources
+                    cli_logger.print("Updating the resources of {} to {}.",
+                                     node_type, autodetected_resources)
 
         return cluster_config
