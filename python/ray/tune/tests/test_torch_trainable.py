@@ -33,11 +33,29 @@ def ray_start_4_cpus():
     if dist.is_initialized():
         dist.destroy_process_group()
 
+
 @pytest.fixture
-def ray_multi_node_4_node():
+def ray_4_node():
     cluster = Cluster()
     for _ in range(4):
         cluster.add_node(num_cpus=1)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
+    # Ensure that tests don't ALL fail
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+@pytest.fixture
+def ray_4_node_gpu():
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=1, num_gpus=2)
 
     ray.init(address=cluster.address)
 
@@ -81,14 +99,43 @@ def test_set_global(ray_start_2_cpus):  # noqa: F811
     assert result["is_distributed"]
 
 
-def test_colocated(ray_multi_node_4_node):  # noqa: F811
+def test_colocated(ray_4_node):  # noqa: F811
     assert ray.available_resources()["CPU"] == 4
     trainable_cls = DistributedTrainableCreator(
         _train_check_global, num_workers=4, workers_per_node=1)
     trainable = trainable_cls()
-    assert ray.available_resources.get("CPU", 0) == 0
-    result = trainable.train()
-    trainer.stop()
+    assert ray.available_resources().get("CPU", 0) == 0
+    trainable.train()
+    trainable.stop()
+
+
+def test_colocated_gpu(ray_4_node_gpu):  # noqa: F811
+    assert ray.available_resources()["GPU"] == 8
+    trainable_cls = DistributedTrainableCreator(
+        _train_check_global,
+        num_workers=4,
+        gpus_per_worker=2,
+        use_gpu=True,
+        workers_per_node=1)
+    trainable = trainable_cls()
+    assert ray.available_resources().get("GPU", 0) == 0
+    trainable.train()
+    trainable.stop()
+
+
+def test_colocated_gpu_double(ray_4_node_gpu):  # noqa: F811
+    assert ray.available_resources()["GPU"] == 8
+    trainable_cls = DistributedTrainableCreator(
+        _train_check_global,
+        num_workers=8,
+        gpus_per_worker=1,
+        cpus_per_worker=0.5,
+        use_gpu=True,
+        workers_per_node=2)
+    trainable = trainable_cls()
+    assert ray.available_resources().get("GPU", 0) == 0
+    trainable.train()
+    trainable.stop()
 
 
 def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811

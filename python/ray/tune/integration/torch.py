@@ -6,7 +6,7 @@ from functools import partial
 import logging
 import shutil
 import tempfile
-from typing import Callable, Dict, Generator, Optional, Type
+from typing import Callable, Dict, Generator, Optional, Type, Any
 
 import torch
 from datetime import timedelta
@@ -27,7 +27,20 @@ logger = logging.getLogger(__name__)
 
 _distributed_enabled = False
 
-PG_WAIT_TIMEOUT = 120
+
+def _validate_gpus(use_gpu, gpus_per_worker) -> int:
+    if not use_gpu and gpus_per_worker:
+        raise ValueError("use_gpu must be set if `resource_config."
+                         "gpus_per_worker` is provided.")
+    if gpus_per_worker is None:
+        if use_gpu:
+            gpus_per_worker = 1
+        else:
+            gpus_per_worker = 0
+    elif gpus_per_worker < 1:
+        raise ValueError(
+            f"gpus_per_worker must be > 1, got f{gpus_per_worker}.")
+    return gpus_per_worker
 
 
 def is_distributed_trainable():
@@ -74,7 +87,7 @@ class _TorchTrainable(tune.Trainable):
         return self._gpus_per_worker
 
     @property
-    def worker_cpus(self) -> int:
+    def worker_cpus(self) -> float:
         return self._cpus_per_worker
 
     @property
@@ -86,20 +99,24 @@ class _TorchTrainable(tune.Trainable):
         if self.should_colocate:
             return int(self._num_workers / self._workers_per_node)
 
-    def get_remote_worker_options(self) -> Dict[str, int]:
+    def get_remote_worker_options(self) -> Dict[str, Any]:
         options = dict(num_cpus=self.worker_cpus, num_gpus=self.worker_gpus)
         if self.should_colocate:
-            bundle = {
-                "CPU": self.worker_cpus * self._workers_per_node,
-                "GPU": self.worker_gpus * self._workers_per_node,
-            }
+            cpus_per_node = self.worker_cpus * self._workers_per_node
+            gpus_per_node = self.worker_gpus * self._workers_per_node
+            bundle = {}
+            if cpus_per_node:
+                bundle["CPU"] = cpus_per_node
+            if gpus_per_node:
+                bundle["GPU"] = gpus_per_node
+
             all_bundles = [bundle] * self.num_hosts
             self._placement_group = placement_group(
                 all_bundles, strategy="STRICT_SPREAD")
             logger.debug("Waiting for placement_group to start.")
             ray.get(self._placement_group.ready(), timeout=self._timeout_s)
             logger.debug("Placement_group started.")
-            options["placement_group"] = self.placement_group
+            options["placement_group"] = self._placement_group
 
         return options
 
@@ -219,17 +236,8 @@ def DistributedTrainableCreator(
         if num_workers % workers_per_node:
             raise ValueError("`num_workers` must be an integer multiple "
                              "of workers_per_node.")
-    if not use_gpu and gpus_per_worker:
-        raise ValueError("use_gpu must be set if `resource_config."
-                         "gpus_per_worker` is provided.")
-    if gpus_per_worker is None:
-        if use_gpu:
-            gpus_per_worker = 1
-        else:
-            gpus_per_worker = 0
-    elif gpus_per_worker < 1:
-        raise ValueError(
-            f"gpus_per_worker must be > 1, got f{gpus_per_worker}.")
+
+    gpus_per_worker = _validate_gpus(use_gpu, gpus_per_worker)
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func
@@ -246,16 +254,13 @@ def DistributedTrainableCreator(
 
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:
-            num_workers_ = int(config.get("num_workers", num_workers))
-            use_gpu_ = config.get("use_gpu", use_gpu)
-            extra_gpus = 0
-            if use_gpu_:
-                extra_gpus = num_workers_ * gpus_per_worker
+            assert gpus_per_worker is not None
+            extra_gpus = num_workers * gpus_per_worker
 
             return Resources(
                 cpu=0,
                 gpu=0,
-                extra_cpu=cpus_per_worker * num_workers_,
+                extra_cpu=cpus_per_worker * num_workers,
                 extra_gpu=extra_gpus)
 
     return WrappedDistributedTorchTrainable
