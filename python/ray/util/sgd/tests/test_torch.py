@@ -357,12 +357,11 @@ def test_num_steps(ray_start_2_cpus, use_local):
     """Tests if num_steps continues training from the subsampled dataset."""
 
     def data_creator(config):
-        train_dataset = LinearDataset(2, 5, size=config["data_size"])
-        val_dataset = LinearDataset(2, 5, size=config["data_size"])
+        train_dataset = [0] * 5 + [1] * 5
+        val_dataset = [0] * 5 + [1] * 5
         return DataLoader(train_dataset, batch_size=config["batch_size"]), \
             DataLoader(val_dataset, batch_size=config["batch_size"])
 
-    data_size = 10
     batch_size = 1
     Operator = TrainingOperator.from_creators(model_creator, optimizer_creator,
                                               data_creator)
@@ -370,7 +369,7 @@ def test_num_steps(ray_start_2_cpus, use_local):
     def train_func(self, iterator, info=None):
         total_sum = 0
         num_items = 0
-        for e, _ in iterator:
+        for e in iterator:
             total_sum += e
             num_items += 1
         return {"average": total_sum.item() / num_items}
@@ -383,49 +382,48 @@ def test_num_steps(ray_start_2_cpus, use_local):
         add_dist_sampler=False,
         config={
             "batch_size": batch_size,
-            "data_size": data_size,
             "custom_func": train_func
         })
 
     # If num_steps not passed, should do one full epoch.
     result = trainer.train()
-    # (0+...+9) / 10
-    assert result["average"] == 4.5
+    # Average of 5 0s and 5 1s
+    assert result["average"] == 0.5
     assert result["epoch"] == 1
     val_result = trainer.validate()
-    assert val_result["average"] == 4.5
+    assert val_result["average"] == 0.5
 
     # Train again with num_steps.
     result = trainer.train(num_steps=5)
-    # (0+1+2+3+4) / 5 == 2
-    assert result["average"] == 2
+    # 5 zeros
+    assert result["average"] == 0
     assert result["epoch"] == 2
     val_result = trainer.validate(num_steps=5)
-    assert val_result["average"] == 2
+    assert val_result["average"] == 0
 
     # Should continue where last train run left off.
     result = trainer.train(num_steps=3)
-    # (5+6+7) / 3 == 6
-    assert result["average"] == 6
+    # 3 ones.
+    assert result["average"] == 1
     assert result["epoch"] == 2
     val_result = trainer.validate(num_steps=3)
-    assert val_result["average"] == 6
+    assert val_result["average"] == 1
 
     # Should continue from last train run, and cycle to beginning.
     result = trainer.train(num_steps=5)
-    # (8+9+0+1+2) / 5 == 4
-    assert result["average"] == 4
+    # 2 ones and 3 zeros.
+    assert result["average"] == 0.4
     assert result["epoch"] == 3
     val_result = trainer.validate(num_steps=5)
-    assert val_result["average"] == 4
+    assert val_result["average"] == 0.4
 
     # Should continue, and since num_steps not passed in, just finishes epoch.
     result = trainer.train()
-    # (3+...+9) / 7 == 6
-    assert result["average"] == 6
+    # 2 zeros and 5 ones.
+    assert result["average"] == 5/7
     assert result["epoch"] == 3
     val_result = trainer.validate()
-    assert val_result["average"] == 6
+    assert val_result["average"] == 5/7
 
     trainer.shutdown()
 
