@@ -340,7 +340,11 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
     // Tasks of this job may already arrived but failed to pop a worker because the job
     // config is not local yet. So we trigger dispatching again here to try to
     // reschedule these tasks.
-    DispatchTasks(local_queues_.GetReadyTasksByClass());
+    if (new_scheduler_enabled_) {
+      ScheduleAndDispatch();
+    } else {
+      DispatchTasks(local_queues_.GetReadyTasksByClass());
+    }
   }
 }
 
@@ -364,15 +368,17 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
     }
   }
 
-  // Remove all tasks for this job from the scheduling queues, mark
-  // the results for these tasks as not required, cancel any attempts
-  // at reconstruction. Note that at this time the workers are likely
-  // alive because of the delay in killing workers.
-  auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
-  task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
-  // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
-  // call it last.
-  local_queues_.RemoveTasks(tasks_to_remove);
+  if (!new_scheduler_enabled_) {
+    // Remove all tasks for this job from the scheduling queues, mark
+    // the results for these tasks as not required, cancel any attempts
+    // at reconstruction. Note that at this time the workers are likely
+    // alive because of the delay in killing workers.
+    auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
+    task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
+    // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
+    // call it last.
+    local_queues_.RemoveTasks(tasks_to_remove);
+  }
 }
 
 void NodeManager::Heartbeat() {
