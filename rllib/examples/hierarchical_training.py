@@ -96,7 +96,7 @@ if __name__ == "__main__":
             "framework": "torch" if args.torch else "tf",
         }
 
-        results = tune.run("PPO", stop=stop, config=config)
+        results = tune.run("PPO", stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

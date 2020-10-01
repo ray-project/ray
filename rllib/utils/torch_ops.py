@@ -34,7 +34,7 @@ def convert_to_non_torch_type(stats):
     def mapping(item):
         if isinstance(item, torch.Tensor):
             return item.cpu().item() if len(item.size()) == 0 else \
-                item.cpu().detach().numpy()
+                item.detach().cpu().numpy()
         else:
             return item
 
