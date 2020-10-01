@@ -40,11 +40,6 @@
       <version>${project.version}</version>
     </dependency>
 <dependency>
-  <groupId>com.beust</groupId>
-  <artifactId>jcommander</artifactId>
-  <version>1.72</version>
-</dependency>
-<dependency>
   <groupId>com.google.guava</groupId>
   <artifactId>guava</artifactId>
   <version>27.0.1-jre</version>
@@ -112,7 +107,7 @@
 <dependency>
   <groupId>org.testng</groupId>
   <artifactId>testng</artifactId>
-  <version>7.1.0</version>
+  <version>7.3.0</version>
 </dependency>
 <dependency>
   <groupId>redis.clients</groupId>
