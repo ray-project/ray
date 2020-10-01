@@ -1,4 +1,5 @@
-ax-platform
+# ax-platform
+git+https://github.com/facebook/Ax.git@0.1.16
 bayesian-optimization
 ConfigSpace==0.4.10
 dragonfly-opt
