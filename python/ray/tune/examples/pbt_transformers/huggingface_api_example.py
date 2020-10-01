@@ -1,5 +1,5 @@
 """
-This example is the same as in `pbt_transformers.py` but uses the official
+This example is uses the official
 huggingface transformers `hyperparameter_search` API.
 """
 import os
