@@ -1,3 +1,7 @@
+"""
+This example is the same as in `pbt_transformers.py` but uses the official
+huggingface transformers `hyperparameter_search` API.
+"""
 import os
 
 import ray
@@ -57,15 +61,9 @@ def tune_transformer(num_samples=8,
         task_name=task_name, data_dir=task_data_dir)
 
     train_dataset = GlueDataset(
-        data_args,
-        tokenizer=tokenizer,
-        mode="train",
-        cache_dir=task_data_dir)
+        data_args, tokenizer=tokenizer, mode="train", cache_dir=task_data_dir)
     eval_dataset = GlueDataset(
-        data_args,
-        tokenizer=tokenizer,
-        mode="dev",
-        cache_dir=task_data_dir)
+        data_args, tokenizer=tokenizer, mode="dev", cache_dir=task_data_dir)
 
     training_args = TrainingArguments(
         output_dir=".",
@@ -73,8 +71,10 @@ def tune_transformer(num_samples=8,
         do_train=True,
         do_eval=True,
         evaluate_during_training=True,
-        eval_steps=(len(train_dataset) // 16) + 1 if not smoke_test else 1,  # config
-        save_steps=(len(train_dataset) // 16) + 1 if not smoke_test else 1,  # config,
+        eval_steps=(len(train_dataset) // 16) + 1
+        if not smoke_test else 1,  # config
+        save_steps=(len(train_dataset) // 16) + 1
+        if not smoke_test else 1,  # config,
         num_train_epochs=2,  # config
         max_steps=-1,
         per_device_train_batch_size=16,  # config
@@ -89,18 +89,19 @@ def tune_transformer(num_samples=8,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        compute_metrics=build_compute_metrics_fn(task_name)
-    )
+        compute_metrics=build_compute_metrics_fn(task_name))
 
     tune_config = {
         "per_device_eval_batch_size": 32,
         "per_device_train_batch_size": tune.choice([16, 32, 64]),
-        "eval_steps": tune.sample_from(lambda spec: len(train_dataset) // spec.config["per_device_train_batch_size"] + 1) if not smoke_test else 1,
+        "eval_steps": tune.sample_from(
+            lambda spec: len(train_dataset) // spec.config["per_device_train_batch_size"] + 1  # noqa: E501
+        ) if not smoke_test else 1,
         "save_steps": tune.sample_from(lambda spec: spec.config["eval_steps"]),
         "learning_rate": tune.uniform(1e-5, 5e-5),
         "weight_decay": tune.uniform(0.0, 0.3),
         "num_train_epochs": tune.choice([2, 3, 4, 5]),
-        "max_steps": 10 if smoke_test else -1,  # Used for smoke test.
+        "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
     }
 
     scheduler = PopulationBasedTraining(
@@ -136,7 +137,7 @@ def tune_transformer(num_samples=8,
         scheduler=scheduler,
         keep_checkpoints_num=3,
         checkpoint_score_attr="training_iteration",
-        stop={"training_iteration": 100} if smoke_test else None,
+        stop={"training_iteration": 1} if smoke_test else None,
         progress_reporter=reporter,
         local_dir="~/ray_results/",
         name="tune_transformer_pbt",
@@ -160,7 +161,7 @@ if __name__ == "__main__":
 
     if args.smoke_test:
         tune_transformer(
-            num_samples=4,
+            num_samples=1,
             gpus_per_trial=0,
             smoke_test=True,
             ray_address=args.ray_address)

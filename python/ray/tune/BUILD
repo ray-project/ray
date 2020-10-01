@@ -577,6 +577,15 @@ py_test(
 # )
 
 py_test(
+    name = "huggingface_api_example",
+    size = "large",
+    srcs = ["examples/pbt_transformers/huggingface_api_example.py"],
+    deps = [":tune_lib"],
+    tags = ["flaky", "exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "pbt_transformers",
     size = "large",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
