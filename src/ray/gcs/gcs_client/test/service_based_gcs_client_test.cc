@@ -1273,7 +1273,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGetActorPerf) {
-  // Create actor table data.
+  // Register actors.
   JobID job_id = JobID::FromInt(1);
   const int actor_count = 5000;
   rpc::TaskSpec task_spec;
@@ -1288,6 +1288,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGetActorPerf) {
     RegisterActor(actor_table_data, false, true);
   }
 
+  // Get all actors.
   auto condition = [this]() { return GetAllActors().size() == actor_count; };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
