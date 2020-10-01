@@ -226,7 +226,7 @@ py_test(
     name = "mnist-ptl",
     size = "small",
     srcs = ["torch/examples/pytorch-lightning/mnist-ptl.py"],
-    tags = ["exclusive", "pytorch"],
+    tags = ["exclusive", "pytorch", "pytorch-lightning"],
     deps = [":sgd_lib"],
     args = ["--smoke-test"]
 )
