@@ -136,10 +136,7 @@ def wrap_to_ray_error(exception: Exception) -> RayTaskError:
 
 
 def ensure_async(func: Callable) -> Callable:
-    if inspect.iscoroutinefunction(func):
-        return func
-    else:
-        return sync_to_async(func)
+    return sync_to_async(func)
 
 
 class RayServeWorker:

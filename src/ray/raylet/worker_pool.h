@@ -187,10 +187,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param The idle worker to add.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Try killing idle workers to ensure the running workers are in a
-  /// reasonable size.
-  void TryKillingIdleWorkers();
-
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
   ///
@@ -363,6 +359,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// started.
   void TryStartIOWorkers(const Language &language, State &state);
 
+  /// Try killing idle workers to ensure the running workers are in a
+  /// reasonable size.
+  void TryKillingIdleWorkers();
+
+  /// Schedule the periodic killing of idle workers.
+  void ScheduleIdleWorkerKilling();
+
   /// Get all workers of the given process.
   ///
   /// \param process The process of workers.
@@ -407,8 +410,17 @@ class WorkerPool : public WorkerPoolInterface {
   absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
 
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
-  /// workers in FIFO order.
-  std::list<std::shared_ptr<WorkerInterface>> idle_of_all_languages;
+  /// workers in FIFO order. The second element of std::pair is the time a worker becomes
+  /// idle.
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> idle_of_all_languages_;
+
+  /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
+  /// for lookup performance.
+  std::unordered_map<std::shared_ptr<WorkerInterface>, int64_t>
+      idle_of_all_languages_map_;
+
+  /// The timer to trigger idle worker killing.
+  boost::asio::deadline_timer kill_idle_workers_timer_;
 };
 
 }  // namespace raylet

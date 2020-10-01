@@ -118,6 +118,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
+  bool IsActorUnsubscribed(const ActorID &actor_id) override;
+
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
@@ -179,6 +181,9 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   Status AsyncGetResources(const NodeID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override;
 
   Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
@@ -299,6 +304,10 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
+  bool IsTaskUnsubscribed(const TaskID &task_id) override;
+
+  bool IsTaskLeaseUnsubscribed(const TaskID &task_id) override;
+
  private:
   /// Save the subscribe operations, so we can call them again when PubSub
   /// server restarts from a failure.
@@ -342,6 +351,8 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
+
+  bool IsObjectUnsubscribed(const ObjectID &object_id) override;
 
  private:
   // Mutex to protect the subscribe_object_operations_ field and

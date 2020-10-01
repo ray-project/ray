@@ -79,15 +79,21 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                              rpc::DeleteResourcesReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle setting internal config.
+  /// Handle set internal config.
   void HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
                                rpc::SetInternalConfigReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle getting internal config.
+  /// Handle get internal config.
   void HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
                                rpc::GetInternalConfigReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get available resources of all nodes.
+  void HandleGetAllAvailableResources(
+      const rpc::GetAllAvailableResourcesRequest &request,
+      rpc::GetAllAvailableResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Add an alive node.
   ///
