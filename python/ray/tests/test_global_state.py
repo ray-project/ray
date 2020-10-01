@@ -251,7 +251,8 @@ def test_backlog_report(shutdown_only):
             backlog_size = aggregate_resource_load[0].backlog_size
             print(backlog_size)
             # Ideally we'd want to assert backlog_size == 8, but guaranteeing
-            # the order the order that submissions will occur is too hard/flaky.
+            # the order the order that submissions will occur is too
+            # hard/flaky.
             return backlog_size > 0
         return False
 
