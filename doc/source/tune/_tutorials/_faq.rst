@@ -71,7 +71,7 @@ For **discount factors** in reinforcement learning we suggest sampling uniformly
 between 0.9 and 1.0. Depending on the problem, a much stricter range above 0.97
 or oeven above 0.99 can make sense (e.g. for Atari).
 
-How can I used nested/conditional search spaces?
+How can I use nested/conditional search spaces?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Sometimes you might need to define parameters whose value depend on the value
 of other parameters. Ray Tune offers some methods to define these.
