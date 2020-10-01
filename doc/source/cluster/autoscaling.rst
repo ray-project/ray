@@ -71,7 +71,7 @@ An example of configuring multiple node types is as follows `(full example) <htt
         cpu_4_ondemand:
             node_config:
                 InstanceType: m4.xlarge
-            resources: {"CPU": 4} # if absent it will be autofilled for AWS instances.
+            resources: {"CPU": 4}  # if absent it will be autofilled for AWS instances.
             min_workers: 1
             max_workers: 5
         cpu_16_spot:
