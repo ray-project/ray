@@ -266,7 +266,7 @@ def test_backlog_report(shutdown_only):
     # First request finishes, second request is now running, third lease
     # request is sent to the raylet with backlog=7
 
-    ray.test_utils.wait_for_condition(backlog_size_set)
+    ray.test_utils.wait_for_condition(backlog_size_set, timeout=2)
 
 
 if __name__ == "__main__":
