@@ -47,24 +47,22 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    results = tune.run(
-        "PG",
-        stop=stop,
-        config={
-            "env": "multi_agent_cartpole",
-            "multiagent": {
-                "policies": {
-                    "pg_policy": (None, obs_space, act_space, {
-                        "framework": "torch" if args.torch else "tf",
-                    }),
-                    "random": (RandomPolicy, obs_space, act_space, {}),
-                },
-                "policy_mapping_fn": (
-                    lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
+    config = {
+        "env": "multi_agent_cartpole",
+        "multiagent": {
+            "policies": {
+                "pg_policy": (None, obs_space, act_space, {
+                    "framework": "torch" if args.torch else "tf",
+                }),
+                "random": (RandomPolicy, obs_space, act_space, {}),
             },
-            "framework": "torch" if args.torch else "tf",
+            "policy_mapping_fn": (
+                lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
         },
-    )
+        "framework": "torch" if args.torch else "tf",
+    }
+
+    results = tune.run("PG", config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

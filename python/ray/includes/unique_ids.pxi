@@ -12,7 +12,7 @@ from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CActorClassID,
     CActorID,
-    CClientID,
+    CNodeID,
     CConfigID,
     CJobID,
     CFunctionID,
@@ -199,14 +199,14 @@ cdef class TaskID(BaseID):
             CTaskID.FromBinary(parent_task_id.binary()),
             parent_task_counter).Binary())
 
-cdef class ClientID(UniqueID):
+cdef class NodeID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CClientID.FromBinary(<c_string>id)
+        self.data = CNodeID.FromBinary(<c_string>id)
 
-    cdef CClientID native(self):
-        return <CClientID>self.data
+    cdef CNodeID native(self):
+        return <CNodeID>self.data
 
 
 cdef class JobID(BaseID):
@@ -373,7 +373,7 @@ _ID_TYPES = [
     ActorCheckpointID,
     ActorClassID,
     ActorID,
-    ClientID,
+    NodeID,
     JobID,
     WorkerID,
     FunctionID,

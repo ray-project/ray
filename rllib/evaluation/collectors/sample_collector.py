@@ -1,9 +1,10 @@
 from abc import abstractmethod, ABCMeta
 import logging
-from typing import Dict, Optional
+from typing import Dict, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.utils.typing import AgentID, EpisodeID, PolicyID, \
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
     TensorType
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ class _SampleCollector(metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
+    def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
                      policy_id: PolicyID, init_obs: TensorType) -> None:
         """Adds an initial obs (after reset) to this collector.
 
@@ -41,10 +42,11 @@ class _SampleCollector(metaclass=ABCMeta):
         called for that same agent/episode-pair.
 
         Args:
-            episode_id (EpisodeID): Unique id for the episode we are adding
-                values for.
+            episode (MultiAgentEpisode): The MultiAgentEpisode, for which we
+                are adding an Agent's initial observation.
             agent_id (AgentID): Unique id for the agent we are adding
                 values for.
+            env_id (EnvID): The environment index (in a vectorized setup).
             policy_id (PolicyID): Unique id for policy controlling the agent.
             init_obs (TensorType): Initial observation (after env.reset()).
 
@@ -52,7 +54,7 @@ class _SampleCollector(metaclass=ABCMeta):
             >>> obs = env.reset()
             >>> collector.add_init_obs(12345, 0, "pol0", obs)
             >>> obs, r, done, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", {
+            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done
             ... })
         """
@@ -60,7 +62,8 @@ class _SampleCollector(metaclass=ABCMeta):
 
     @abstractmethod
     def add_action_reward_next_obs(self, episode_id: EpisodeID,
-                                   agent_id: AgentID, policy_id: PolicyID,
+                                   agent_id: AgentID, env_id: EnvID,
+                                   policy_id: PolicyID, agent_done: bool,
                                    values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this collector.
 
@@ -74,7 +77,10 @@ class _SampleCollector(metaclass=ABCMeta):
                 values for.
             agent_id (AgentID): Unique id for the agent we are adding
                 values for.
+            env_id (EnvID): The environment index (in a vectorized setup).
             policy_id (PolicyID): Unique id for policy controlling the agent.
+            agent_done (bool): Whether the given agent is done with its
+                trajectory (the multi-agent episode may still be ongoing).
             values (Dict[str, TensorType]): Row of values to add for this
                 agent. This row must contain the keys SampleBatch.ACTION,
                 REWARD, NEW_OBS, and DONE.
@@ -83,9 +89,19 @@ class _SampleCollector(metaclass=ABCMeta):
             >>> obs = env.reset()
             >>> collector.add_init_obs(12345, 0, "pol0", obs)
             >>> obs, r, done, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", {
+            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done
             ... })
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def episode_step(self, episode_id: EpisodeID) -> None:
+        """Increases the episode step counter (across all agents) by one.
+
+        Args:
+            episode_id (EpisodeID): Unique id for the episode we are stepping
+                through (across all agents in that episode).
         """
         raise NotImplementedError
 
@@ -126,19 +142,11 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def has_non_postprocessed_data(self) -> bool:
-        """Returns whether there is pending, unprocessed data.
-
-        Returns:
-            bool: True if there is at least some data that has not been
-                postprocessed yet.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def postprocess_trajectories_so_far(
-            self, episode: Optional[MultiAgentEpisode] = None) -> None:
-        """Apply postprocessing to unprocessed data (in one or all episodes).
+    def postprocess_episode(self,
+                            episode: MultiAgentEpisode,
+                            is_done: bool = False,
+                            check_dones: bool = False) -> None:
+        """Postprocesses all agents' trajectories in a given episode.
 
         Generates (single-trajectory) SampleBatches for all Policies/Agents and
         calls Policy.postprocess_trajectory on each of these. Postprocessing
@@ -148,38 +156,46 @@ class _SampleCollector(metaclass=ABCMeta):
         correctly added to the buffers.
 
         Args:
-            episode (Optional[MultiAgentEpisode]): The Episode object for which
-                to post-process data. If not provided, postprocess data for all
-                episodes.
+            episode (MultiAgentEpisode): The Episode object for which
+                to post-process data.
+            is_done (bool): Whether the given episode is actually terminated
+                (all agents are done).
+            check_dones (bool): Whether we need to check that all agents'
+                trajectories have dones=True at the end.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def check_missing_dones(self, episode_id: EpisodeID) -> None:
-        """Checks whether given episode is properly terminated with done=True.
-
-        This applies to all agents in the episode.
+    def build_multi_agent_batch(self, env_steps: int) -> \
+            Union[MultiAgentBatch, SampleBatch]:
+        """Builds a MultiAgentBatch of size=env_steps from the collected data.
 
         Args:
-            episode_id (EpisodeID): The episode ID to check for proper
-                termination.
+            env_steps (int): The sum of all env-steps (across all agents) taken
+                so far.
 
-        Raises:
-            ValueError: If `episode` has no done=True at the end.
+        Returns:
+            Union[MultiAgentBatch, SampleBatch]: Returns the accumulated
+                sample batches for each policy inside one MultiAgentBatch
+                object (or a simple SampleBatch if only one policy).
         """
         raise NotImplementedError
 
     @abstractmethod
-    def get_multi_agent_batch_and_reset(self):
-        """Returns the accumulated sample batches for each policy.
+    def try_build_truncated_episode_multi_agent_batch(self) -> \
+            Union[MultiAgentBatch, SampleBatch, None]:
+        """Tries to build an MA-batch, if `rollout_fragment_length` is reached.
 
-        Any unprocessed rows will be first postprocessed with a policy
-        postprocessor. The internal state of this builder will be reset to
-        start the next batch.
+        Any unprocessed data will be first postprocessed with a policy
+        postprocessor.
         This is usually called to collect samples for policy training.
+        If not enough data has been collected yet (`rollout_fragment_length`),
+        returns None.
 
         Returns:
-            MultiAgentBatch: Returns the accumulated sample batches for each
-                policy inside one MultiAgentBatch object.
+            Union[MultiAgentBatch, SampleBatch, None]: Returns the accumulated
+                sample batches for each policy inside one MultiAgentBatch
+                object (or a simple SampleBatch if only one policy) or None
+                if `self.rollout_fragment_length` has not been reached yet.
         """
         raise NotImplementedError

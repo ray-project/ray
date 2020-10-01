@@ -94,6 +94,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_docker",
+    size = "small",
+    srcs = ["tests/test_integration_docker.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_integration_kubernetes",
     size = "small",
     srcs = ["tests/test_integration_kubernetes.py"],
@@ -202,8 +210,16 @@ py_test(
 )
 
 py_test(
-    name = "test_var",
+    name = "test_trial_runner_callbacks",
     size = "small",
+    srcs = ["tests/test_trial_runner_callbacks.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_var",
+    size = "medium",
     srcs = ["tests/test_var.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -211,7 +227,7 @@ py_test(
 
 py_test(
     name = "test_trial_scheduler",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_scheduler.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -292,14 +308,14 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "ax_example",
-    size = "medium",
-    srcs = ["examples/ax_example.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example", "py37"],
-    args = ["--smoke-test"]
-)
+# py_test(
+#     name = "ax_example",
+#     size = "medium",
+#     srcs = ["examples/ax_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example", "py37"],
+#     args = ["--smoke-test"]
+# )
 
 py_test(
     name = "bayesopt_example",
