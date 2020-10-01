@@ -1272,7 +1272,9 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   }
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestGetActorPerf) {
+// This UT is only used to test the query actor info performance.
+// We disable it by default.
+TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
   // Register actors.
   JobID job_id = JobID::FromInt(1);
   const int actor_count = 5000;
