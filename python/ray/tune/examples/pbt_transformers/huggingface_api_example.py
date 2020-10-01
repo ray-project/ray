@@ -15,8 +15,6 @@ def tune_transformer(num_samples=8,
                      gpus_per_trial=0,
                      smoke_test=False,
                      ray_address=None):
-    # os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
-
     ray.init(ray_address, log_to_driver=True)
     data_dir_name = "./data" if not smoke_test else "./test_data"
     data_dir = os.path.abspath(os.path.join(os.getcwd(), data_dir_name))
@@ -138,7 +136,7 @@ def tune_transformer(num_samples=8,
         scheduler=scheduler,
         keep_checkpoints_num=3,
         checkpoint_score_attr="training_iteration",
-        stop={"training_iteration": 10} if smoke_test else None,
+        stop={"training_iteration": 100} if smoke_test else None,
         progress_reporter=reporter,
         local_dir="~/ray_results/",
         name="tune_transformer_pbt",
