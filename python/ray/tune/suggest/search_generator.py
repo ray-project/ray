@@ -111,7 +111,7 @@ class SearchGenerator(SearchAlgorithm):
         """
         if not self.is_finished():
             return self.create_trial_if_possible(self._experiment.spec,
-                                                 self._experiment.name)
+                                                 self._experiment.dir_name)
         return None
 
     def create_trial_if_possible(self, experiment_spec: Dict,

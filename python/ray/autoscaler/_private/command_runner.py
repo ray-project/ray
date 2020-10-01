@@ -23,8 +23,7 @@ from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.subprocess_output_util import (
     run_cmd_redirected, ProcessRunnerError, is_output_redirected)
 
-from ray.autoscaler._private.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +311,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             return ip
 
         interval = 10
-        with cli_logger.timed("Waiting for IP"):
+        with cli_logger.group("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
                 cli_logger.old_info(logger, "{}Waiting for IP...",

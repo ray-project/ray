@@ -350,12 +350,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
-  ClientID GetCurrentNodeId() const {
-    return ClientID::FromBinary(rpc_address_.raylet_id());
-  }
+  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
+  }
+
+  bool ShouldCaptureChildTasksInPlacementGroup() const {
+    return worker_context_.ShouldCaptureChildTasksInPlacementGroup();
   }
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
@@ -617,10 +619,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Sets a resource with the specified capacity and client id
   /// \param[in] resource_name Name of the resource to be set.
   /// \param[in] capacity Capacity of the resource.
-  /// \param[in] client_Id ClientID where the resource is to be set.
+  /// \param[in] client_Id NodeID where the resource is to be set.
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
-                     const ClientID &client_id);
+                     const NodeID &client_id);
 
   /// Request an object to be spilled to external storage.
   /// \param[in] object_ids The objects to be spilled.
@@ -641,10 +643,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
+  /// \param[in] max_retires max number of retry when the task fails.
+  /// \param[in] placement_options placement group options.
+  /// \param[in] placement_group_capture_child_tasks whether or not the submitted task
+  /// should capture parent's placement group implicilty.
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries, PlacementOptions placement_options);
+                  int max_retries, PlacementOptions placement_options,
+                  bool placement_group_capture_child_tasks);
 
   /// Create an actor.
   ///
@@ -882,6 +889,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  // Make the this worker exit.
+  void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
+                  rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when

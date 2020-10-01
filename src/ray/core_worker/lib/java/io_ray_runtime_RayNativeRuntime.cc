@@ -252,7 +252,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEn
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
     JNIEnv *env, jclass, jstring resourceName, jdouble capacity, jbyteArray nodeId) {
-  const auto node_id = JavaByteArrayToId<ClientID>(env, nodeId);
+  const auto node_id = JavaByteArrayToId<NodeID>(env, nodeId);
   const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
 
   auto status = ray::CoreWorkerProcess::GetCoreWorker().SetResource(
