@@ -75,7 +75,14 @@ class Policy(metaclass=ABCMeta):
         # Child classes need to add their specific requirements here (usually
         # a combination of a Model's inference_view_- and the
         # Policy's loss function-requirements.
-        self.view_requirements = {SampleBatch.OBS: ViewRequirement()}
+        self.view_requirements = {
+            SampleBatch.OBS: ViewRequirement(),
+            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+            SampleBatch.REWARDS: ViewRequirement(),
+            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.EPS_ID: ViewRequirement(),
+            SampleBatch.AGENT_INDEX: ViewRequirement(),
+        }
 
     @abstractmethod
     @DeveloperAPI

@@ -429,8 +429,8 @@ class _SimpleListCollector(_SampleCollector):
             if collector.count == 0 or eps_id != episode.episode_id:
                 continue
             policy = self.policy_map[self.agent_to_policy[agent_id]]
-            pre_batches[agent_id] = (policy,
-                                     collector.build(policy.view_requirements))
+            pre_batch = collector.build(policy.view_requirements)
+            pre_batches[agent_id] = (policy, pre_batch)
 
         # Apply postprocessor.
         post_batches = {}
@@ -536,7 +536,7 @@ class _SimpleListCollector(_SampleCollector):
             # Reached the fragment-len -> We should build an MA-Batch.
             if env_steps >= self.rollout_fragment_length:
                 # If we reached the fragment-len only because of `episode_id`
-                # (still ongoing) -> postprocess that one first.
+                # (still ongoing) -> postprocess `episode_id` first.
                 if self.policy_collectors_env_steps < \
                         self.rollout_fragment_length:
                     self.postprocess_episode(
