@@ -293,7 +293,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 args.append(0)
 
         with self.timers.record("fwd"):
-            if self._use_ddp:
+            if self._is_distributed:
                 # Use the DDP wrapped model (self.model).
                 output = self.model(*args)
             elif self.use_gpu:
@@ -445,7 +445,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 batch=batch, batch_idx=batch_idx, dataloader_idx=0)
         args = [batch, batch_idx]
         with self.timers.record("eval_fwd"):
-            if self._use_ddp:
+            if self._is_distributed:
                 # Use the DDP wrapped model (self.model).
                 output = self.model(*args)
             elif self.use_gpu:

@@ -82,6 +82,7 @@ class DistributedTorchRunner(TorchRunner):
             self.config,
             world_rank=self.world_rank,
             local_rank=self.local_rank,
+            is_distributed=True,
             device_ids=device_ids,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
