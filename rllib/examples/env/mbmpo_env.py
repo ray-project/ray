@@ -20,7 +20,8 @@ class PendulumWrapper(PendulumEnv):
     def reward(self, obs, action, obs_next):
         # obs = [cos(theta), sin(theta), dtheta/dt]
         # To get the angle back from obs: atan2(sin(theta), cos(theta)).
-        theta = np.arctan2(obs[:, 1], obs[:, 0])
+        theta = np.arctan2(
+            np.clip(obs[:, 1], -1.0, 1.0), np.clip(obs[:, 0], -1.0, 1.0))
         # Do everything in (B,) space (single theta-, action- and
         # reward values).
         a = np.clip(action[:, 0], -self.max_torque, self.max_torque)
