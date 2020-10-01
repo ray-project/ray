@@ -526,15 +526,26 @@ class _SimpleListCollector(_SampleCollector):
     @override(_SampleCollector)
     def try_build_truncated_episode_multi_agent_batch(self) -> \
             Union[MultiAgentBatch, SampleBatch, None]:
-        for episode_id, count in self.episode_steps.items():
+        # Have something to loop through, even if there are currently no
+        # ongoing episodes.
+        episode_steps = self.episode_steps or {"_fake_id": 0}
+        # Loop through ongoing episodes and see whether their length plus
+        # what's already in the policy collectors reaches the fragment-len.
+        for episode_id, count in episode_steps.items():
             env_steps = self.policy_collectors_env_steps + count
+            # Reached the fragment-len -> We should build an MA-Batch.
             if env_steps >= self.rollout_fragment_length:
+                # If we reached the fragment-len only because of `episode_id`
+                # (still ongoing) -> postprocess that one first.
                 if self.policy_collectors_env_steps < \
                         self.rollout_fragment_length:
                     self.postprocess_episode(
                         self.episodes[episode_id], is_done=False)
+                # Otherwise, create MA-batch only from what's already in our
+                # policy buffers (do not include `episode_id`'s data).
                 else:
                     env_steps = self.policy_collectors_env_steps
+                # Build the MA-batch and return.
                 ma_batch = self.build_multi_agent_batch(env_steps=env_steps)
                 return ma_batch
         return None
