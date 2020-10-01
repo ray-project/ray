@@ -186,6 +186,7 @@ matrix:
     # Build Linux wheels and jars.
     - os: linux
       env:
+        - PYTHON=3.6
         - LINUX_WHEELS=1 LINUX_JARS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
