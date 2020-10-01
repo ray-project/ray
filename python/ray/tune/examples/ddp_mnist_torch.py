@@ -62,6 +62,11 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="enables multi-node tuning")
+    parser.add_argument(
+        "--workers-per-node",
+        type=int,
+        default=2,
+        help="Sets number of workers for training.")
 
     args = parser.parse_args()
 
@@ -71,5 +76,12 @@ if __name__ == "__main__":
         options = dict(num_cpus=2)
     ray.init(**options)
     trainable_cls = DistributedTrainableCreator(
-        train_mnist, num_workers=args.num_workers, use_gpu=args.use_gpu)
-    tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 10})
+        train_mnist,
+        num_workers=args.num_workers,
+        use_gpu=args.use_gpu,
+        workers_per_node=args.workers_per_node)
+    tune.run(
+        trainable_cls,
+        num_samples=4,
+        stop={"training_iteration": 10},
+        queue_trials=True)
