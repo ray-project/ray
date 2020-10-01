@@ -252,14 +252,120 @@ the parameters directly in the Ray object store. This means that you
 can pass even huge objects like datasets, and Ray makes sure that these
 are efficiently stored and retrieved on your cluster machines.
 
+How can I reproduce experiments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reproducing experiments and experiment results means that you get the exact same
+results when running an experiment again and again. To achieve this, the
+conditions have to be exactly the same each time you run the exeriment.
+In terms of ML training and tuning, this mostly concerns
+the random number generators that are used for sampling in various places of the
+training and tuning lifecycle.
+
+Random number generators are used to create randomness, for instance to sample a hyperparameter
+value for a parameter you defined. There is no true randomness in computing, rather
+there are sophisticated algorithms that generate numbers that *seem* to be random and
+fulfill all properties of a random distribution. These algorithms can be *seeded* with
+an initial state, after which the generated random numbers are always the same.
+
+.. code-block:: python
+
+    import random
+    random.seed(1234)
+    print([random.randint(0, 100) for _ in range(10)])
+
+    # The output of this will always be
+    # [99, 56, 14, 0, 11, 74, 4, 85, 88, 10]
+
+
+The most commonly used random number generators from Python libraries are those in the
+native ``random`` submodule and the ``numpy.random`` module.
+
+.. code-block:: python
+
+    # This should suffice to initialize the RNGs for most Python-based libraries
+    import random
+    import numpy as np
+    random.seed(1234)
+    np.random.seed(5678)
+
+In your tuning and training run, there are several places where randomness occurrs, and
+at all these places we will have to introduce seeds to make sure we get the same behavior.
+
+* **Search algorithm**: Search algorithms have to be seeded to generate the same
+  hyperparameter configurations in each run. Some search algorithms can be explicitly instantiated with a
+  random seed (look for a ``seed`` parameter in the constructor). For others, try to use
+  the above code block.
+* **Schedulers**: Schedulers like Population Based Training rely on resampling some
+  of the parameters, requiring randomness. Use the code block above to set the initial
+  seeds.
+* **Training function**: In addition to initializing the configurations, the training
+  functions themselves have to use seeds. This could concern e.g. the data splitting.
+  You should make sure to set the seed at the start of your training function.
+
+PyTorch and TensorFlow use their own RNGs, which have to be initialized, too:
+
+.. code-block:: python
+
+    import torch
+    torch.manual_seed(0)
+
+    import tensorflow as tf
+    tf.random.set_seed(0)
+
+You should thus seed both Ray Tune's schedulers and search algorithms, and the
+training code. The schedulers and search algorithms should always be seeded with the
+same seed. This is also true for the training code, but often it is beneficial that
+the seeds differ *between different training runs*.
+
+Here's a blueprint on how to do all this in your training code:
+
+.. code-block:: python
+
+    import random
+    import numpy as np
+    from ray import tune
+
+
+    def trainable(config):
+        # config["seed"] is set deterministically, but differs between training runs
+        random.seed(config["seed"])
+        np.random.seed(config["seed"])
+        # torch.manual_seed(config["seed"])
+        # ... training code
+
+
+    config = {
+        "seed": tune.randint(0, 10000),
+        # ...
+    }
+
+    if __name__ == "__main__":
+        # Set seed for the search algorithms/schedulers
+        random.seed(1234)
+        np.random.seed(1234)
+        # Don't forget to check if the search alg has a `seed` parameter
+        tune.run(
+            trainable,
+            config=config
+        )
+
+**Please note** that it is not always possible to control all sources of non-determinism.
+For instance, if you use schedulers like ASHA or PBT, some trials might finish earlier
+than other trials, affecting the behavior of the schedulers. Which trials finish first
+can however depend on the current system load, network communication, or other factors
+in the envrionment that we cannot control with random seeds. This is also true for search
+algorithms such as Bayesian Optimization, which take previous results into account when
+sampling new configurations. This can be tackled by
+using the **synchronous modes** of PBT and Hyperband, where the schedulers wait for all trials to
+finish an epoch before deciding which trials to promote.
+
+We strongly advise to try reproduction on smaller toy problems first before relying
+on it for larger experiments.
+
+
+
 
 Further Questions or Issues?
 ----------------------------
 
-Reach out to us if you have any questions or issues or feedback through the following channels:
-
-1. `StackOverflow`_: For questions about how to use Ray.
-2. `GitHub Issues`_: For bug reports and feature requests.
-
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. include:: /_help.rst

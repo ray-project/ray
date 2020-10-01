@@ -46,7 +46,7 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
 
   // Filter candidate nodes.
   const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
-  std::vector<std::pair<int64_t, ClientID>> candidate_nodes;
+  std::vector<std::pair<int64_t, NodeID>> candidate_nodes;
   for (auto &node : alive_nodes) {
     if (required_resources.IsSubset(*node.second)) {
       candidate_nodes.emplace_back((*context->node_to_bundles_)[node.first], node.first);
@@ -61,8 +61,8 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
 
   std::sort(
       std::begin(candidate_nodes), std::end(candidate_nodes),
-      [](const std::pair<int64_t, ClientID> &left,
-         const std::pair<int64_t, ClientID> &right) { return left.first < right.first; });
+      [](const std::pair<int64_t, NodeID> &left,
+         const std::pair<int64_t, NodeID> &right) { return left.first < right.first; });
 
   for (auto &bundle : bundles) {
     schedule_map[bundle->BundleId()] = candidate_nodes.front().second;
@@ -208,8 +208,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   // If no nodes are available, scheduling fails.
   if (selected_nodes.empty()) {
-    RAY_LOG(WARNING) << "Failed to schedule placement group "
-                     << placement_group->GetName() << ", because no nodes are available.";
+    RAY_LOG(INFO) << "Failed to schedule placement group " << placement_group->GetName()
+                  << ", because no nodes are available.";
     failure_callback(placement_group);
     return;
   }
@@ -287,7 +287,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
     const std::shared_ptr<BundleSpecification> &bundle,
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node, const StatusCallback &callback) {
   const auto lease_client = GetLeaseClientFromNode(node);
-  const auto node_id = ClientID::FromBinary(node->node_id());
+  const auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Preparing resource from node " << node_id
                 << " for a bundle: " << bundle->DebugString();
   lease_client->PrepareBundleResources(
@@ -299,8 +299,8 @@ void GcsPlacementGroupScheduler::PrepareResources(
           RAY_LOG(INFO) << "Finished leasing resource from " << node_id
                         << " for bundle: " << bundle->DebugString();
         } else {
-          RAY_LOG(WARNING) << "Failed to lease resource from " << node_id
-                           << " for bundle: " << bundle->DebugString();
+          RAY_LOG(INFO) << "Failed to lease resource from " << node_id
+                        << " for bundle: " << bundle->DebugString();
         }
         callback(result);
       });
@@ -311,7 +311,7 @@ void GcsPlacementGroupScheduler::CommitResources(
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node, const StatusCallback callback) {
   RAY_CHECK(node != nullptr);
   const auto lease_client = GetLeaseClientFromNode(node);
-  const auto node_id = ClientID::FromBinary(node->node_id());
+  const auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Committing resource to a node " << node_id
                 << " for a bundle: " << bundle->DebugString();
   lease_client->CommitBundleResources(
@@ -321,8 +321,8 @@ void GcsPlacementGroupScheduler::CommitResources(
           RAY_LOG(INFO) << "Finished committing resource to " << node_id
                         << " for bundle: " << bundle->DebugString();
         } else {
-          RAY_LOG(WARNING) << "Failed to commit resource to " << node_id
-                           << " for bundle: " << bundle->DebugString();
+          RAY_LOG(INFO) << "Failed to commit resource to " << node_id
+                        << " for bundle: " << bundle->DebugString();
         }
         RAY_CHECK(callback);
         callback(status);
@@ -333,13 +333,12 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
     const std::shared_ptr<BundleSpecification> &bundle_spec,
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
   if (node == nullptr) {
-    RAY_LOG(WARNING) << "Node for a placement group id "
-                     << bundle_spec->PlacementGroupId() << " and a bundle index, "
-                     << bundle_spec->Index()
-                     << " has already removed. Cancellation request will be ignored.";
+    RAY_LOG(INFO) << "Node for a placement group id " << bundle_spec->PlacementGroupId()
+                  << " and a bundle index, " << bundle_spec->Index()
+                  << " has already removed. Cancellation request will be ignored.";
     return;
   }
-  auto node_id = ClientID::FromBinary(node->node_id());
+  auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Cancelling the resource reserved for bundle: "
                 << bundle_spec->DebugString() << " at node " << node_id;
   const auto return_client = GetLeaseClientFromNode(node);
@@ -353,7 +352,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
 
 std::shared_ptr<ResourceReserveInterface>
 GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {
-  auto node_id = ClientID::FromBinary(raylet_address.raylet_id());
+  auto node_id = NodeID::FromBinary(raylet_address.raylet_id());
   auto iter = remote_lease_clients_.find(node_id);
   if (iter == remote_lease_clients_.end()) {
     auto lease_client = lease_client_factory_(raylet_address);
@@ -386,17 +385,23 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const auto &node = gcs_node_manager_.GetNode(node_id);
     const auto &bundle = bundle_to_commit.second.second;
 
-    // TODO(sang) Handle the case nodes are dead.
-    CommitResources(
-        bundle, node,
-        [this, lease_status_tracker, bundle, node_id, schedule_failure_handler,
-         schedule_success_handler](const Status &status) {
-          lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
-          if (lease_status_tracker->AllCommitRequestReturned()) {
-            OnAllBundleCommitRequestReturned(
-                lease_status_tracker, schedule_failure_handler, schedule_success_handler);
-          }
-        });
+    auto commit_resources_callback = [this, lease_status_tracker, bundle, node_id,
+                                      schedule_failure_handler,
+                                      schedule_success_handler](const Status &status) {
+      lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
+      if (lease_status_tracker->AllCommitRequestReturned()) {
+        OnAllBundleCommitRequestReturned(lease_status_tracker, schedule_failure_handler,
+                                         schedule_success_handler);
+      }
+    };
+
+    if (node != nullptr) {
+      CommitResources(bundle, node, commit_resources_callback);
+    } else {
+      RAY_LOG(INFO) << "Failed to commit resources because the node is dead, node id = "
+                    << node_id;
+      commit_resources_callback(Status::Interrupted("Node is dead"));
+    }
   }
 }
 
@@ -493,7 +498,7 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   committed_bundle_location_index_.AddNodes(alive_nodes);
 
-  auto node_to_bundles = std::make_shared<absl::flat_hash_map<ClientID, int64_t>>();
+  auto node_to_bundles = std::make_shared<absl::flat_hash_map<NodeID, int64_t>>();
   for (const auto &node_it : alive_nodes) {
     const auto &node_id = node_it.first;
     const auto &bundle_locations_on_node =
@@ -511,7 +516,7 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
-GcsPlacementGroupScheduler::GetBundlesOnNode(const ClientID &node_id) {
+GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles_on_node;
   const auto &maybe_bundle_locations =
       committed_bundle_location_index_.GetBundleLocationsOnNode(node_id);
@@ -540,7 +545,7 @@ void BundleLocationIndex::AddBundleLocations(
   }
 }
 
-bool BundleLocationIndex::Erase(const ClientID &node_id) {
+bool BundleLocationIndex::Erase(const NodeID &node_id) {
   const auto leased_bundles_it = node_to_leased_bundles_.find(node_id);
   if (leased_bundles_it == node_to_leased_bundles_.end()) {
     return false;
@@ -598,7 +603,7 @@ BundleLocationIndex::GetBundleLocations(const PlacementGroupID &placement_group_
 }
 
 const absl::optional<std::shared_ptr<BundleLocations> const>
-BundleLocationIndex::GetBundleLocationsOnNode(const ClientID &node_id) {
+BundleLocationIndex::GetBundleLocationsOnNode(const NodeID &node_id) {
   auto it = node_to_leased_bundles_.find(node_id);
   if (it == node_to_leased_bundles_.end()) {
     return {};
@@ -607,7 +612,7 @@ BundleLocationIndex::GetBundleLocationsOnNode(const ClientID &node_id) {
 }
 
 void BundleLocationIndex::AddNodes(
-    const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
+    const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
   for (const auto &iter : nodes) {
     if (!node_to_leased_bundles_.contains(iter.first)) {
       node_to_leased_bundles_[iter.first] = std::make_shared<BundleLocations>();
@@ -624,13 +629,13 @@ LeaseStatusTracker::LeaseStatusTracker(
 }
 
 bool LeaseStatusTracker::MarkPreparePhaseStarted(
-    const ClientID &node_id, std::shared_ptr<BundleSpecification> bundle) {
+    const NodeID &node_id, std::shared_ptr<BundleSpecification> bundle) {
   const auto &bundle_id = bundle->BundleId();
   return node_to_bundles_when_preparing_[node_id].emplace(bundle_id).second;
 }
 
 void LeaseStatusTracker::MarkPrepareRequestReturned(
-    const ClientID &node_id, const std::shared_ptr<BundleSpecification> bundle,
+    const NodeID &node_id, const std::shared_ptr<BundleSpecification> bundle,
     const Status &status) {
   RAY_CHECK(prepare_request_returned_count_ <= bundles_to_schedule_.size());
   auto leasing_bundles = node_to_bundles_when_preparing_.find(node_id);
@@ -664,7 +669,7 @@ bool LeaseStatusTracker::AllPrepareRequestsSuccessful() const {
 }
 
 void LeaseStatusTracker::MarkCommitRequestReturned(
-    const ClientID &node_id, const std::shared_ptr<BundleSpecification> bundle,
+    const NodeID &node_id, const std::shared_ptr<BundleSpecification> bundle,
     const Status &status) {
   commit_request_returned_count_ += 1;
   // If the request succeeds, record it.
@@ -682,7 +687,8 @@ bool LeaseStatusTracker::AllCommitRequestsSuccessful() const {
   // We don't check cancel state here because we shouldn't destroy bundles when
   // commit requests failed. Cancel state should be treated separately.
   return AllCommitRequestReturned() &&
-         preparing_bundle_locations_->size() == bundles_to_schedule_.size();
+         preparing_bundle_locations_->size() == bundles_to_schedule_.size() &&
+         uncommitted_bundle_locations_->empty();
 }
 
 const std::shared_ptr<GcsPlacementGroup> &LeaseStatusTracker::GetPlacementGroup() const {

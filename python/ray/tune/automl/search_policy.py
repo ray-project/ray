@@ -106,7 +106,7 @@ class AutoMLSearcher(SearchAlgorithm):
                     deep_insert(path.split("."), value, new_spec["config"])
 
                 trial = create_trial_from_spec(
-                    new_spec, exp.name, self._parser, experiment_tag=tag)
+                    new_spec, exp.dir_name, self._parser, experiment_tag=tag)
 
                 # AutoML specific fields set in Trial
                 trial.results = []

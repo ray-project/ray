@@ -13,7 +13,7 @@ typedef std::function<void(const std::shared_ptr<void>, const std::string &, int
     DispatchTaskCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
-typedef std::function<void(const ClientID &, const std::string &, int)>
+typedef std::function<void(const NodeID &, const std::string &, int)>
     SpillbackTaskCallback;
 
 typedef std::function<void()> CancelTaskCallback;

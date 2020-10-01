@@ -509,6 +509,40 @@ too.
 If ``log_to_file`` is set, Tune will automatically register a new logging handler
 for Ray's base logger and log the output to the specified stderr output file.
 
+.. _tune-callbacks:
+
+Callbacks
+---------
+
+Ray Tune supports callbacks that are called during various times of the training process.
+Callbacks can be passed as a parameter to ``tune.run()``, and the submethod will be
+invoked automatically.
+
+This simple callback just prints a metric each time a result is received:
+
+.. code-block:: python
+
+    from ray import tune
+    from ray.tune import Callback
+
+
+    class MyCallback(Callback):
+        def on_trial_result(self, iteration, trials, trial, result, **info):
+            print(f"Got result: {result['metric']}")
+
+
+    def train(config):
+        for i in range(10):
+            tune.report(metric=i)
+
+
+    tune.run(
+        train,
+        callbacks=[MyCallback()])
+
+For more details and available hooks, please :ref:`see the API docs for Ray Tune callbacks <tune-callbacks-docs>`.
+
+
 .. _tune-debugging:
 
 Debugging
@@ -535,14 +569,40 @@ By default, ``tune.run`` will continue executing until all trials have terminate
 
 This is useful when you are trying to setup a large hyperparameter experiment.
 
+Environment variables
+---------------------
+Some of Ray Tune's behavior can be configured using environment variables.
+These are the environment variables Ray Tune currently considers:
+
+* **TUNE_CLUSTER_SSH_KEY**: SSH key used by the Tune driver process to connect
+  to remote cluster machines for checkpoint syncing. If this is not set,
+  ``~/ray_bootstrap_key.pem`` will be used.
+* **TUNE_DISABLE_AUTO_INIT**: Disable automatically calling ``ray.init()`` if
+  not attached to a Ray session.
+* **TUNE_DISABLE_DATED_SUBDIR**: Tune automatically adds a date string to experiment
+  directories when the name is not specified explicitly or the trainable isn't passed
+  as a string. Setting this environment variable to ``1`` disables adding these date strings.
+* **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
+  ``tune.report()`` and passed a ``metric`` parameter to ``tune.run()``, a scheduler,
+  or a search algorithm, Tune will error
+  if the metric was not reported in the result. Setting this environment variable
+  to ``1`` will disable this check.
+* **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
+  experiment state is checkpointed. If not set this will default to ``10``.
+* **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
+  with the parameter values in them)
+* **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
+  is not set, ``~/ray_results`` will be used.
+
+
+There are some environment variables that are mostly relevant for integrated libraries:
+
+* **SIGOPT_KEY**: SigOpt API access key.
+* **WANDB_API_KEY**: Weights and Biases API key. You can also use ``wandb login``
+  instead.
+
 
 Further Questions or Issues?
 ----------------------------
 
-You can post questions or issues or feedback through the following channels:
-
-1. `StackOverflow`_: For questions about how to use Ray.
-2. `GitHub Issues`_: For bug reports and feature requests.
-
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. include:: /_help.rst

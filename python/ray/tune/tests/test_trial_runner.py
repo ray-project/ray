@@ -288,6 +288,44 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(runner.trial_executor._committed_resources.cpu, 2)
 
+    def testQueueFilling(self):
+        ray.init(num_cpus=4)
+
+        def f1(config):
+            for i in range(10):
+                yield i
+
+        tune.register_trainable("f1", f1)
+
+        search_alg = BasicVariantGenerator()
+        search_alg.add_configurations({
+            "foo": {
+                "run": "f1",
+                "num_samples": 100,
+                "config": {
+                    "a": tune.sample_from(lambda spec: 5.0 / 7),
+                    "b": tune.sample_from(lambda spec: "long" * 40)
+                },
+                "resources_per_trial": {
+                    "cpu": 2
+                }
+            }
+        })
+
+        runner = TrialRunner(search_alg=search_alg)
+
+        runner.step()
+        runner.step()
+        runner.step()
+        self.assertEqual(len(runner._trials), 3)
+
+        runner.step()
+        self.assertEqual(len(runner._trials), 3)
+
+        self.assertEqual(runner._trials[0].status, Trial.RUNNING)
+        self.assertEqual(runner._trials[1].status, Trial.RUNNING)
+        self.assertEqual(runner._trials[2].status, Trial.PENDING)
+
 
 if __name__ == "__main__":
     import pytest

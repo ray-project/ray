@@ -7,7 +7,6 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
-import numpy
 import gc
 import inspect
 import threading
@@ -76,7 +75,7 @@ from ray.includes.unique_ids cimport (
     CActorID,
     CActorCheckpointID,
     CObjectID,
-    CClientID,
+    CNodeID,
     CPlacementGroupID,
 )
 from ray.includes.libcoreworker cimport (
@@ -108,7 +107,6 @@ from ray.exceptions import (
     TaskCancelledError
 )
 from ray.utils import decode
-import gc
 import msgpack
 
 cimport cpython
@@ -784,12 +782,21 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().GetCurrentJobId().Binary())
 
     def get_current_node_id(self):
-        return ClientID(
+        return NodeID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentNodeId().Binary())
 
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
+
+    def get_placement_group_id(self):
+        return PlacementGroupID(
+            CCoreWorkerProcess.GetCoreWorker()
+            .GetCurrentPlacementGroupId().Binary())
+
+    def should_capture_child_tasks_in_placement_group(self):
+        return CCoreWorkerProcess.GetCoreWorker(
+            ).ShouldCaptureChildTasksInPlacementGroup()
 
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
@@ -998,7 +1005,8 @@ cdef class CoreWorker:
                     resources,
                     int max_retries,
                     PlacementGroupID placement_group_id,
-                    int64_t placement_group_bundle_index):
+                    int64_t placement_group_bundle_index,
+                    c_bool placement_group_capture_child_tasks):
         cdef:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
@@ -1020,7 +1028,8 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids,
                     max_retries, c_pair[CPlacementGroupID, int64_t](
-                        c_placement_group_id, placement_group_bundle_index))
+                        c_placement_group_id, placement_group_bundle_index),
+                    placement_group_capture_child_tasks)
 
             return VectorToObjectRefs(return_ids)
 
@@ -1038,6 +1047,7 @@ cdef class CoreWorker:
                      c_bool is_asyncio,
                      PlacementGroupID placement_group_id,
                      int64_t placement_group_bundle_index,
+                     c_bool placement_group_capture_child_tasks,
                      c_string extension_data
                      ):
         cdef:
@@ -1066,7 +1076,8 @@ cdef class CoreWorker:
                         dynamic_worker_options, is_detached, name, is_asyncio,
                         c_pair[CPlacementGroupID, int64_t](
                             c_placement_group_id,
-                            placement_group_bundle_index)),
+                            placement_group_bundle_index),
+                        placement_group_capture_child_tasks),
                     extension_data,
                     &c_actor_id))
 
@@ -1474,10 +1485,10 @@ cdef class CoreWorker:
                 actor_id.native(), checkpoint_id.native()))
 
     def set_resource(self, basestring resource_name,
-                     double capacity, ClientID client_id):
+                     double capacity, NodeID client_id):
         CCoreWorkerProcess.GetCoreWorker().SetResource(
             resource_name.encode("ascii"), capacity,
-            CClientID.FromBinary(client_id.binary()))
+            CNodeID.FromBinary(client_id.binary()))
 
     def force_spill_objects(self, object_refs):
         cdef c_vector[CObjectID] object_ids
