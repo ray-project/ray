@@ -93,13 +93,10 @@ def tune_transformer(num_samples=8,
 
     tune_config = {
         "per_device_eval_batch_size": 32,
-        "per_device_train_batch_size": tune.choice([16, 32, 64]),
         "eval_steps": tune.sample_from(
             lambda spec: len(train_dataset) // spec.config["per_device_train_batch_size"] + 1  # noqa: E501
         ) if not smoke_test else 1,
         "save_steps": tune.sample_from(lambda spec: spec.config["eval_steps"]),
-        "learning_rate": tune.uniform(1e-5, 5e-5),
-        "weight_decay": tune.uniform(0.0, 0.3),
         "num_train_epochs": tune.choice([2, 3, 4, 5]),
         "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
     }
