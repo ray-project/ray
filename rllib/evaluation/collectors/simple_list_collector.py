@@ -487,19 +487,20 @@ class _SimpleListCollector(_SampleCollector):
         # Append into policy batches and reset.
         from ray.rllib.evaluation.rollout_worker import get_global_worker
         for agent_id, post_batch in sorted(post_batches.items()):
+            pid = self.agent_to_policy[agent_id]
+            policy = self.policy_map[pid]
             self.callbacks.on_postprocess_trajectory(
                 worker=get_global_worker(),
                 episode=episode,
                 agent_id=agent_id,
-                policy_id=self.agent_to_policy[agent_id],
+                policy_id=pid,
                 policies=self.policy_map,
                 postprocessed_batch=post_batch,
                 original_batches=pre_batches)
             # Add the postprocessed SampleBatch to the policy collectors for
             # training.
-            self.policy_collectors[self.agent_to_policy[
-                agent_id]].add_postprocessed_batch_for_training(
-                    post_batch, policy.view_requirements)
+            self.policy_collectors[pid].add_postprocessed_batch_for_training(
+                post_batch, policy.view_requirements)
 
         env_steps = self.episode_steps[episode.episode_id]
         self.policy_collectors_env_steps += env_steps

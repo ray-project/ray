@@ -32,7 +32,7 @@ parser.add_argument("--stop-timesteps", type=int, default=100000)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(local_mode=True)#TODO
+    ray.init()
 
     # Simple environment with 4 independent cartpole entities
     register_env("multi_agent_cartpole",
@@ -57,8 +57,7 @@ if __name__ == "__main__":
                 "random": (RandomPolicy, obs_space, act_space, {}),
             },
             "policy_mapping_fn": (
-                lambda agent_id: ["pg_policy", "random"][
-                    agent_id % 2]),
+                lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
         },
         "framework": "torch" if args.torch else "tf",
     }
