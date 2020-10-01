@@ -486,6 +486,8 @@ class AWSNodeProvider(NodeProvider):
         """Fills out missing "resources" field for available_node_types."""
         if "available_node_types" not in cluster_config:
             return cluster_config
+        cluster_config = copy.deepcopy(cluster_config)
+
         instances_list = boto3.client("ec2").describe_instance_types()[
             "InstanceTypes"]
         instances_dict = {
@@ -504,7 +506,7 @@ class AWSNodeProvider(NodeProvider):
                 gpus = instances_dict[instance_type].get("GpuInfo",
                                                          {}).get("Gpus")
                 if gpus is not None:
-                    #TODO(ameer): currently we support one gpu type per node.
+                    # TODO(ameer): currently we support one gpu type per node.
                     assert len(gpus) == 1
                     gpu_name = gpus[0]["Name"]
                     available_node_types[node_type]["resources"].update({

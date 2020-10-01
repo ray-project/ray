@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Dict
 
 from ray.autoscaler._private.command_runner import \
     SSHCommandRunner, DockerCommandRunner

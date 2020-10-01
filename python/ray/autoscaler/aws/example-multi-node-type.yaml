@@ -16,6 +16,8 @@ available_node_types:
     cpu_4_ondemand:
         node_config:
             InstanceType: m4.xlarge
+        # Next line can be deleted and autoscaler will autofill the resources
+        # for AWS instances.
         resources: {"CPU": 4}
         min_workers: 1
         max_workers: 5

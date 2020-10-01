@@ -48,7 +48,7 @@ Unmanaged nodes **must have 0 resources**.
 
 If you are using the `available_node_types` field, you should create a custom node type with `resources: {}`, and `max_workers: 0` when configuring the autoscaler.
 
-The autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes. 
+The autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes.
 
 
 Multiple Node Type Autoscaling
@@ -71,7 +71,7 @@ An example of configuring multiple node types is as follows `(full example) <htt
         cpu_4_ondemand:
             node_config:
                 InstanceType: m4.xlarge
-            resources: {"CPU": 4}
+            resources: {"CPU": 4} # if absent it will be autofilled for AWS instances.
             min_workers: 1
             max_workers: 5
         cpu_16_spot:

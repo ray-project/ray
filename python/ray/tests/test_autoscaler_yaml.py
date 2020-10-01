@@ -91,7 +91,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             orig_new_config["available_node_types"] == new_config[
                 "available_node_types"]
         except Exception:
-            self.fail("Config did not multi node types auto fill test!")
+            self.fail("Config did not pass multi node types auto fill test!")
 
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \
