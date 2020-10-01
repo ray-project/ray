@@ -249,8 +249,6 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
   // Check if we can find committed bundle locations.
   const auto &maybe_bundle_locations =
       committed_bundle_location_index_.GetBundleLocations(placement_group_id);
-  // If bundle location has been already removed, it means bundles
-  // are already destroyed. Do nothing.
   if (maybe_bundle_locations.has_value()) {
     is_committed = true;
     bundle_locations = maybe_bundle_locations.value();
@@ -268,6 +266,8 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
          "committing and preparing.";
 
   // Cancel all resource reservation.
+  RAY_LOG(INFO) << "Cancelling all bundles of a placement group id, "
+                << placement_group_id;
   for (const auto &iter : *(bundle_locations)) {
     auto &bundle_spec = iter.second.second;
     auto &node_id = iter.second.first;
@@ -288,19 +288,19 @@ void GcsPlacementGroupScheduler::PrepareResources(
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node, const StatusCallback &callback) {
   const auto lease_client = GetLeaseClientFromNode(node);
   const auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO) << "Preparing resource from node " << node_id
-                << " for a bundle: " << bundle->DebugString();
+  RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
+                 << " for a bundle: " << bundle->DebugString();
   lease_client->PrepareBundleResources(
       *bundle, [node_id, bundle, callback](
                    const Status &status, const rpc::PrepareBundleResourcesReply &reply) {
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
         if (result.ok()) {
-          RAY_LOG(INFO) << "Finished leasing resource from " << node_id
-                        << " for bundle: " << bundle->DebugString();
+          RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
+                         << " for bundle: " << bundle->DebugString();
         } else {
-          RAY_LOG(INFO) << "Failed to lease resource from " << node_id
-                        << " for bundle: " << bundle->DebugString();
+          RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
+                         << " for bundle: " << bundle->DebugString();
         }
         callback(result);
       });
@@ -312,17 +312,17 @@ void GcsPlacementGroupScheduler::CommitResources(
   RAY_CHECK(node != nullptr);
   const auto lease_client = GetLeaseClientFromNode(node);
   const auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO) << "Committing resource to a node " << node_id
-                << " for a bundle: " << bundle->DebugString();
+  RAY_LOG(DEBUG) << "Committing resource to a node " << node_id
+                 << " for a bundle: " << bundle->DebugString();
   lease_client->CommitBundleResources(
       *bundle, [bundle, node_id, callback](const Status &status,
                                            const rpc::CommitBundleResourcesReply &reply) {
         if (status.ok()) {
-          RAY_LOG(INFO) << "Finished committing resource to " << node_id
-                        << " for bundle: " << bundle->DebugString();
+          RAY_LOG(DEBUG) << "Finished committing resource to " << node_id
+                         << " for bundle: " << bundle->DebugString();
         } else {
-          RAY_LOG(INFO) << "Failed to commit resource to " << node_id
-                        << " for bundle: " << bundle->DebugString();
+          RAY_LOG(DEBUG) << "Failed to commit resource to " << node_id
+                         << " for bundle: " << bundle->DebugString();
         }
         RAY_CHECK(callback);
         callback(status);
@@ -339,14 +339,14 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
     return;
   }
   auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO) << "Cancelling the resource reserved for bundle: "
-                << bundle_spec->DebugString() << " at node " << node_id;
+  RAY_LOG(DEBUG) << "Cancelling the resource reserved for bundle: "
+                 << bundle_spec->DebugString() << " at node " << node_id;
   const auto return_client = GetLeaseClientFromNode(node);
   return_client->CancelResourceReserve(
       *bundle_spec, [bundle_spec, node_id](const Status &status,
                                            const rpc::CancelResourceReserveReply &reply) {
-        RAY_LOG(INFO) << "Finished cancelling the resource reserved for bundle: "
-                      << bundle_spec->DebugString() << " at node " << node_id;
+        RAY_LOG(DEBUG) << "Finished cancelling the resource reserved for bundle: "
+                       << bundle_spec->DebugString() << " at node " << node_id;
       });
 }
 

@@ -288,7 +288,8 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
         // that the creation of placement group has failed.
         auto it = placement_group_to_register_callback_.find(placement_group_id);
         if (it != placement_group_to_register_callback_.end()) {
-          it->second(Status::NotFound("Placement group is removed before it is created"));
+          it->second(
+              Status::NotFound("Placement group is removed before it is created."));
           placement_group_to_register_callback_.erase(it);
         }
         on_placement_group_removed(status);
