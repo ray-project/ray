@@ -74,7 +74,7 @@ def test_spill_objects_manually_from_workers(shutdown_only):
 
     # Create objects of more than 200 MiB.
     replay_buffer = [ray.get(_worker.remote()) for _ in range(25)]
-    values = dict((ref, np.copy(ray.get(ref))) for ref in replay_buffer)
+    values = {ref: np.copy(ray.get(ref)) for ref in replay_buffer}
     # Randomly sample objects.
     for _ in range(100):
         ref = random.choice(replay_buffer)
@@ -201,4 +201,4 @@ def test_spill_objects_automatically(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
