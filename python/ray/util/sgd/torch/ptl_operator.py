@@ -24,8 +24,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
-                  TrainerOptimizersMixin):
+class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
+                        TrainerOptimizersMixin):
     def _configure_amp(self, amp, models, optimizers):
         assert len(models) == 1
         model = models[0]
@@ -45,21 +45,39 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
 
     @property
     def model(self):
+        """The LightningModule to use for training.
+
+        The returned model is wrapped in DDP if using distributed training.
+        """
         return self._model
 
     @property
     def scheduler_dicts(self):
+        """Returns list of scheduler dictionaries.
+
+        List is empty if no schedulers are returned in the
+        configure_optimizers method of your LightningModule. Default
+        configuration is used if configure_optimizers returns scheduler
+        objects instead of scheduler dicts. See
+        https://pytorch-lightning.readthedocs.io/en/latest/lightning_module.html#configure-optimizers
+        """
         return self._scheduler_dicts
 
     @property
     def optimizers(self):
+        """Returns list of optimizers as returned by configure_optimizers."""
         return self._optimizers
 
     @property
     def schedulers(self):
+        """Returns list of schedulers as returned by configure_optimizers.
+
+        List is empty if no schedulers are returned in configure_optimizers.
+        """
         return self._schedulers
 
     def get_model(self):
+        """Returns original LightningModule, not wrapped in DDP."""
         if isinstance(self.model, LightningDistributedDataParallel):
             return self.model.module
         else:
