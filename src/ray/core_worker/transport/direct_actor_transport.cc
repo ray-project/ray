@@ -309,11 +309,101 @@ void CoreWorkerDirectTaskReceiver::Init(
   client_pool_ = client_pool;
 }
 
-void CoreWorkerDirectTaskReceiver::EnqueuePushedTask(
+void CoreWorkerDirectTaskReceiver::HandleActorTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
+
+  // Make sure this is an actor task. ActorCreationTask(s) are normal tasks.
+  RAY_CHECK(task_spec.IsActorTask() && !task_spec.IsActorCreationTask());
+
+  // Only assign resources for non-actor tasks. Actor tasks inherit the resources
+  // assigned at initial actor creation time.
+  std::shared_ptr<ResourceMappingType> resource_ids;
+
+  auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
+    auto num_returns = task_spec.NumReturns();
+    
+    // Decrease to account for the dummy object id.
+    num_returns--;
+    
+    RAY_CHECK(num_returns >= 0);
+
+    std::vector<std::shared_ptr<RayObject>> return_objects;
+    auto status = task_handler_(task_spec, resource_ids, &return_objects,
+                                reply->mutable_borrowed_refs());
+
+    bool objects_valid = return_objects.size() == num_returns;
+    if (objects_valid) {
+      for (size_t i = 0; i < return_objects.size(); i++) {
+        auto return_object = reply->add_return_objects();
+        ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
+        return_object->set_object_id(id.Binary());
+
+        // The object is nullptr if it already existed in the object store.
+        const auto &result = return_objects[i];
+        return_object->set_size(result->GetSize());
+        if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
+          return_object->set_in_plasma(true);
+        } else {
+          if (result->GetData() != nullptr) {
+            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
+          }
+          if (result->GetMetadata() != nullptr) {
+            return_object->set_metadata(result->GetMetadata()->Data(),
+                                        result->GetMetadata()->Size());
+          }
+          for (const auto &nested_id : result->GetNestedIds()) {
+            return_object->add_nested_inlined_ids(nested_id.Binary());
+          }
+        }
+      }
+      
+    }
+    if (status.IsSystemExit()) {
+      // Don't allow the worker to be reused, even though the reply status is OK.
+      // The worker will be shutting down shortly.
+      reply->set_worker_exiting(true);
+      if (objects_valid) {
+        // This happens when max_calls is hit. We still need to return the objects.
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      } else {
+        send_reply_callback(status, nullptr, nullptr);
+      }
+    } else {
+      RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
+      send_reply_callback(status, nullptr, nullptr);
+    }
+  };
+
+  auto reject_callback = [send_reply_callback]() {
+    send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
+  };
+
+  auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
+  if (it == actor_scheduling_queues_.end()) {
+    auto result = actor_scheduling_queues_.emplace(
+        task_spec.CallerWorkerId(),
+        ActorSchedulingQueue(task_main_io_service_, *waiter_, worker_context_));
+    it = result.first;
+  }
+  auto dependencies = task_spec.GetDependencies();
+  // Pop the dummy actor dependency.
+  // TODO(swang): Remove this with legacy raylet code.
+  dependencies.pop_back();
+  it->second.Add(request.sequence_number(), request.client_processed_up_to(),
+                 accept_callback, reject_callback, dependencies);
+}
+
+void CoreWorkerDirectTaskReceiver::EnqueueNormalTask(
+    const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
+  const TaskSpecification task_spec(request.task_spec());
+
+  // This must be a normal task. ActorCreationTask(s) are normal tasks too.
+  RAY_CHECK(!task_spec.IsActorTask());
 
   // If GCS server is restarted after sending an actor creation task to this core worker,
   // the restarted GCS server will send the same actor creation task to the core worker
@@ -327,23 +417,21 @@ void CoreWorkerDirectTaskReceiver::EnqueuePushedTask(
     return;
   }
 
-  // Only assign resources for non-actor tasks. Actor tasks inherit the resources
+  // Assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
   std::shared_ptr<ResourceMappingType> resource_ids;
-  if (!task_spec.IsActorTask()) {
-    resource_ids.reset(new ResourceMappingType());
-    for (const auto &mapping : request.resource_mapping()) {
-      std::vector<std::pair<int64_t, double>> rids;
-      for (const auto &ids : mapping.resource_ids()) {
-        rids.push_back(std::make_pair(ids.index(), ids.quantity()));
-      }
-      (*resource_ids)[mapping.name()] = rids;
+  resource_ids.reset(new ResourceMappingType());
+  for (const auto &mapping : request.resource_mapping()) {
+    std::vector<std::pair<int64_t, double>> rids;
+    for (const auto &ids : mapping.resource_ids()) {
+      rids.push_back(std::make_pair(ids.index(), ids.quantity()));
     }
+    (*resource_ids)[mapping.name()] = rids;
   }
 
   auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
     auto num_returns = task_spec.NumReturns();
-    if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+    if (task_spec.IsActorCreationTask()) {
       // Decrease to account for the dummy object id.
       num_returns--;
     }
@@ -413,33 +501,21 @@ void CoreWorkerDirectTaskReceiver::EnqueuePushedTask(
   auto reject_callback = [send_reply_callback]() {
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
-
-  auto it = scheduling_queue_.find(task_spec.CallerWorkerId());
-  if (it == scheduling_queue_.end()) {
-    auto result = scheduling_queue_.emplace(
-        task_spec.CallerWorkerId(),
-        SchedulingQueue(task_main_io_service_, *waiter_, worker_context_));
-    it = result.first;
-  }
+  
   auto dependencies = task_spec.GetDependencies();
-  // Pop the dummy actor dependency.
-  if (task_spec.IsActorTask()) {
-    // TODO(swang): Remove this with legacy raylet code.
-    dependencies.pop_back();
-  }
-  it->second.Add(request.sequence_number(), request.client_processed_up_to(),
+  
+  // Add the normal task's callbacks to the non-actor scheduling queue.
+  normal_scheduling_queue_.Add(request.sequence_number(), request.client_processed_up_to(),
                  accept_callback, reject_callback, dependencies);
 }
 
-void CoreWorkerDirectTaskReceiver::RunTasksFromQueue(WorkerID caller_worker_id) {
-  auto it = scheduling_queue_.find(caller_worker_id);
-  if (it == scheduling_queue_.end()) {
+void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
+  // If the scheduling queue is empty, return.
+  if (normal_scheduling_queue_.TaskQueueEmpty()) {
     return;
   }
-  if (it->second.ActorTaskQueueEmpty() && it->second.NormalTaskQueueEmpty()) {
-    return;
-  }
-  it->second.ScheduleRequests();
+  // Execute as many tasks as there are in the queue, in sequential order.
+  normal_scheduling_queue_.ScheduleRequests();
 }
 
 }  // namespace ray
