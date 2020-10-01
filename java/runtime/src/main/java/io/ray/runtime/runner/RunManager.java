@@ -78,25 +78,14 @@ public class RunManager {
 
   public static void fillConfigForDriver(RayConfig rayConfig) {
     String script = String.format("import ray;"
-        + " print(ray.services.get_address_info_from_redis('%s', '%s', redis_password='%s'))",
+        + " print(ray.services.get_address_info_from_redis('%s', '%s', redis_password='%s', no_warning=True))",
         rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 
     String output = null;
     try {
       output = runCommand(command);
-      // Read only the last line here because we want to skip the message "Failed to get
-      // address info. Output: Some processes that the driver needs to connect to have not
-      // registered with Redis, so retrying. Have you run 'ray start' on this node?".
-      String[] lines = output.split("\\R");
-      String lastLine = "";
-      for (int i = lines.length - 1; i >= 0; i--) {
-        if (StringUtils.isNotBlank(lines[i])) {
-          lastLine = lines[i];
-          break;
-        }
-      }
-      JsonObject addressInfo = new JsonParser().parse(lastLine).getAsJsonObject();
+      JsonObject addressInfo = new JsonParser().parse(output).getAsJsonObject();
       rayConfig.rayletSocketName = addressInfo.get("raylet_socket_name").getAsString();
       rayConfig.objectStoreSocketName = addressInfo.get("object_store_address").getAsString();
       rayConfig.nodeManagerPort = addressInfo.get("node_manager_port").getAsInt();
