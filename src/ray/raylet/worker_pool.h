@@ -57,6 +57,28 @@ class WorkerPoolInterface {
   virtual ~WorkerPoolInterface(){};
 };
 
+/// \class IOWorkerPoolInterface
+///
+/// Used for object spilling manager unit tests.
+class IOWorkerPoolInterface {
+ public:
+  /// Add an idle I/O worker to the pool.
+  ///
+  /// \param worker The idle I/O worker to add.
+  virtual void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  /// Pop an idle I/O worker from the pool and trigger a callback when
+  /// an I/O worker is available.
+  /// The caller is responsible for pushing the worker back onto the
+  /// pool once the worker has completed its work.
+  ///
+  /// \param callback The callback that returns an available I/O worker.
+  virtual void PopIOWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
+  virtual ~IOWorkerPoolInterface(){};
+};
+
 class WorkerInterface;
 class Worker;
 
@@ -64,7 +86,7 @@ class Worker;
 ///
 /// The WorkerPool is responsible for managing a pool of Workers. Each Worker
 /// is a container for a unit of work.
-class WorkerPool : public WorkerPoolInterface {
+class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
  public:
   /// Create a pool and asynchronously start at least the specified number of workers per
   /// language.

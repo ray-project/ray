@@ -77,6 +77,15 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
           }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_),
+      local_object_manager_(
+          RayConfig::instance().free_objects_batch_size(),
+          RayConfig::instance().free_objects_period_milliseconds(),
+          node_manager_.GetWorkerPool(),
+          gcs_client_->Objects(),
+          worker_rpc_pool_,
+          [this](const std::vector<ObjectID> &object_ids) {
+            object_manager_.FreeObjects(object_ids, /*local_only=*/false);
+          }),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {

@@ -86,10 +86,18 @@ class Raylet {
   /// The object table. This is shared between the object manager and node
   /// manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
+  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
+  /// as well as all `CoreWorkerClient`s.
+  rpc::ClientCallManager client_call_manager_;
+  /// Pool of RPC client connections to core workers.
+  rpc::CoreWorkerClientPool worker_rpc_pool_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// Manages client requests for task submission and execution.
   NodeManager node_manager_;
+  /// Manages all local objects that are pinned (primary
+  /// copies), freed, and/or spilled.
+  LocalObjectManager local_object_manager_;
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
 
