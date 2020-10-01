@@ -364,6 +364,7 @@ class TrainingOperator:
         self._validation_loader = validation_loader
 
         if self._is_distributed:
+
             def with_sampler(loader):
                 # Automatically set the DistributedSampler
                 data_loader_args = {
@@ -395,7 +396,8 @@ class TrainingOperator:
                 if self._add_dist_sampler:
                     logging.debug("Wrapping validation data loader with "
                                   "DistributedSampler.")
-                    self._validation_loader = with_sampler(self._validation_loader)
+                    self._validation_loader = with_sampler(
+                        self._validation_loader)
 
     def train_epoch(self, iterator, info):
         """Runs one standard training pass over the training dataloader.
