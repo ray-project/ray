@@ -39,11 +39,10 @@ file_mounts_sync_continuously: true
 initialization_commands:
     - mkdir -p /tmp/ray_tmp_mount/~/blank-test-serve2
 setup_commands:
-    - pip install -U ray --pre
-    - pip uninstall -y dataclasses
+    - pip install -U ray
     - apt-get install build-essential libssl-dev git -y
     # remove if you don't need to install wrk
-    - rm -r wrk || true && 'git clone https://github.com/wg/wrk.git wrk' && cd wrk && make -j install
+    - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make && cp wrk /usr/local/bin'
 head_setup_commands: []
 worker_setup_commands: []
 head_start_ray_commands:
