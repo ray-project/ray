@@ -420,10 +420,10 @@ def test_num_steps(ray_start_2_cpus, use_local):
     # Should continue, and since num_steps not passed in, just finishes epoch.
     result = trainer.train()
     # 2 zeros and 5 ones.
-    assert result["average"] == 5/7
+    assert result["average"] == 5 / 7
     assert result["epoch"] == 3
     val_result = trainer.validate()
-    assert val_result["average"] == 5/7
+    assert val_result["average"] == 5 / 7
 
     trainer.shutdown()
 
