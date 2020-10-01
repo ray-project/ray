@@ -8,6 +8,7 @@ set -euo pipefail
 FLAKE8_VERSION_REQUIRED="3.7.7"
 YAPF_VERSION_REQUIRED="0.23.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
+MYPY_VERSION_REQUIRED="0.782"
 
 check_command_exist() {
     VERSION=""
@@ -21,6 +22,9 @@ check_command_exist() {
         shellcheck)
             VERSION=$SHELLCHECK_VERSION_REQUIRED
             ;;
+        mypy)
+            VERSION=$MYPY_VERSION_REQUIRED
+            ;;
         *)
             echo "$1 is not a required dependency"
             exit 1
@@ -33,6 +37,7 @@ check_command_exist() {
 
 check_command_exist yapf
 check_command_exist flake8
+check_command_exist mypy
 
 ver=$(yapf --version)
 if ! echo "$ver" | grep -q 0.23.0; then
@@ -46,9 +51,10 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
-FLAKE8_VERSION=$(flake8 --version | awk '{print $1}')
+FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 YAPF_VERSION=$(yapf --version | awk '{print $2}')
 SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
+MYPY_VERSION=$(mypy --version | awk '{print $2}')
 
 # params: tool name, tool version, required version
 tool_version_check() {
@@ -60,6 +66,7 @@ tool_version_check() {
 tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
 tool_version_check "yapf" "$YAPF_VERSION" "$YAPF_VERSION_REQUIRED"
 tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUIRED"
+tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
@@ -84,6 +91,12 @@ YAPF_FLAGS=(
     '--parallel'
 )
 
+# TODO(dmitri): When more of the codebase is typed properly, the mypy flags
+# should be set to do a more stringent check. 
+MYPY_FLAGS=(
+    '--follow-imports=skip'
+)
+
 YAPF_EXCLUDES=(
     '--exclude' 'python/ray/cloudpickle/*'
     '--exclude' 'python/build/*'
@@ -104,6 +117,32 @@ FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E9
 
 shellcheck_scripts() {
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
+}
+
+# Runs mypy on each argument in sequence. This is different than running mypy 
+# once on the list of arguments.
+mypy_on_each() {
+    for file in "$@"; do
+       echo "Running mypy on $file"
+       mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} "$file"
+    done
+}
+
+# Runs mypy in sequence on each changed python file that differs from the 
+# master branch. Currently invoked in format_changed AND format_all.
+mypy_on_changed() {
+    # The hideous line starting "IFS" loads the newline-separated
+    # changed_py_file_string into the array changed_py_file_array in a way
+    # compatible with macOS's old Bash.
+    local changed_py_file_string
+    local changed_py_file_array
+    MERGEBASE="$(git merge-base upstream/master HEAD)"
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
+        changed_py_file_string="$(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py')"
+        IFS=$'\n' read -rd '' -a changed_py_file_array <<< "$changed_py_file_string" || true
+        echo "Running mypy on changed python files"
+        mypy_on_each "${changed_py_file_array[@]}"
+    fi
 }
 
 # Format specified files
@@ -139,6 +178,8 @@ format_files() {
 
     if [ 0 -lt "${#python_files[@]}" ]; then
       yapf --in-place "${YAPF_FLAGS[@]}" -- "${python_files[@]}"
+      echo "Running mypy on provided python files:"
+      mypy_on_each "${python_files[@]}" 
     fi
 
     if shellcheck --shell=sh --format=diff - < /dev/null; then
@@ -154,6 +195,7 @@ format_files() {
 }
 
 # Format all files, and print the diff to stdout for travis.
+# For now, mypy only runs on changed python files.
 format_all() {
     command -v flake8 &> /dev/null;
     HAS_FLAKE8=$?
@@ -161,6 +203,8 @@ format_all() {
     echo "$(date)" "YAPF...."
     git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
+    echo "$(date)" "MYPY...."
+    mypy_on_changed
     if [ $HAS_FLAKE8 ]; then
       echo "$(date)" "Flake8...."
       git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
@@ -199,11 +243,16 @@ format_changed() {
     #
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
+    mypy_on_changed
+
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
+        echo "Running mypy on changed python files:"
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+             mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} 
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
                  flake8 --inline-quotes '"' --no-avoid-escape "$FLAKE8_EXCLUDE" "$FLAKE8_IGNORES"
