@@ -29,7 +29,6 @@ docker:
     # if no cached version is present.
     pull_before_run: True
     run_options: []  # Extra options to pass into "docker run"
-    disable_automatic_runtime_detection: False
 
     # Example of running a GPU head with CPU workers
     # head_image: "rayproject/ray:0.8.7-gpu"
