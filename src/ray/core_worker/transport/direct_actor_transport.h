@@ -326,15 +326,17 @@ class BoundedExecutor {
   boost::asio::thread_pool pool_;
 };
 
-/// Used to implement task queueing at the worker. Abstraction to provide a common interface for actor tasks as well as normal ones.
-class SchedulingQueue{
-  public:
-    virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void()> accept_request, std::function<void()> reject_request,
-           const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
-    virtual void ScheduleRequests() = 0;
-    virtual bool TaskQueueEmpty() const = 0;
-    virtual ~SchedulingQueue(){};
+/// Used to implement task queueing at the worker. Abstraction to provide a common
+/// interface for actor tasks as well as normal ones.
+class SchedulingQueue {
+ public:
+  virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
+                   std::function<void()> accept_request,
+                   std::function<void()> reject_request,
+                   const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
+  virtual void ScheduleRequests() = 0;
+  virtual bool TaskQueueEmpty() const = 0;
+  virtual ~SchedulingQueue(){};
 };
 
 /// Used to ensure serial order of task execution per actor handle.
@@ -342,8 +344,8 @@ class SchedulingQueue{
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
-                  WorkerContext &worker_context,
-                  int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
+                       WorkerContext &worker_context,
+                       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : worker_context_(worker_context),
         reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
@@ -356,10 +358,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
-    
     // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
     RAY_CHECK(seq_no != -1);
-    
+
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     if (client_processed_up_to >= next_seq_no_) {
       RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
@@ -403,7 +404,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
     }
 
     // Cancel any stale requests that the client doesn't need any longer.
-    while (!pending_actor_tasks_.empty() && pending_actor_tasks_.begin()->first < next_seq_no_) {
+    while (!pending_actor_tasks_.empty() &&
+           pending_actor_tasks_.begin()->first < next_seq_no_) {
       auto head = pending_actor_tasks_.begin();
       RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                      << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
@@ -412,7 +414,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
     }
 
     // Process as many in-order requests as we can.
-    while (!pending_actor_tasks_.empty() && pending_actor_tasks_.begin()->first == next_seq_no_ &&
+    while (!pending_actor_tasks_.empty() &&
+           pending_actor_tasks_.begin()->first == next_seq_no_ &&
            pending_actor_tasks_.begin()->second.CanExecute()) {
       auto head = pending_actor_tasks_.begin();
       auto request = head->second;
@@ -431,7 +434,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
       next_seq_no_++;
     }
 
-    if (pending_actor_tasks_.empty() || !pending_actor_tasks_.begin()->second.CanExecute()) {
+    if (pending_actor_tasks_.empty() ||
+        !pending_actor_tasks_.begin()->second.CanExecute()) {
       // No timeout for object dependency waits.
       wait_timer_.cancel();
     } else {
@@ -447,7 +451,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
       });
     }
   }
-private:
+
+ private:
   /// Called when we time out waiting for an earlier task to show up.
   void OnSequencingWaitTimeout() {
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
@@ -487,12 +492,11 @@ private:
   friend class SchedulingQueueTest;
 };
 
-
-
-/// Used to implement the non-actor task queue. These tasks do not have ordering constraints.
+/// Used to implement the non-actor task queue. These tasks do not have ordering
+/// constraints.
 class NormalSchedulingQueue : public SchedulingQueue {
  public:
-  NormalSchedulingQueue() {};
+  NormalSchedulingQueue(){};
 
   bool TaskQueueEmpty() const { return pending_normal_tasks_.empty(); }
 
@@ -500,15 +504,15 @@ class NormalSchedulingQueue : public SchedulingQueue {
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
-
     // Normal tasks should not have ordering constraints.
     RAY_CHECK(seq_no == -1);
     // Create a InboundRequest object for the new task, and add it to the queue.
-    pending_normal_tasks_.push_back(InboundRequest(accept_request, reject_request, dependencies.size() > 0));
+    pending_normal_tasks_.push_back(
+        InboundRequest(accept_request, reject_request, dependencies.size() > 0));
   }
 
   /// Schedules as many requests as possible in sequence.
-  void ScheduleRequests() { 
+  void ScheduleRequests() {
     while (!TaskQueueEmpty()) {
       auto &head = pending_normal_tasks_.front();
       head.Accept();
@@ -521,7 +525,6 @@ class NormalSchedulingQueue : public SchedulingQueue {
   std::deque<InboundRequest> pending_normal_tasks_;
   friend class SchedulingQueueTest;
 };
-
 
 class CoreWorkerDirectTaskReceiver {
  public:
@@ -552,7 +555,7 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   void HandleActorTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback);
+                       rpc::SendReplyCallback send_reply_callback);
 
   /// Enqueue a non-actor task from a `PushTask` request.
   ///

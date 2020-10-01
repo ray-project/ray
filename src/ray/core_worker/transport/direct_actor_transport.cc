@@ -324,10 +324,10 @@ void CoreWorkerDirectTaskReceiver::HandleActorTask(
 
   auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
     auto num_returns = task_spec.NumReturns();
-    
+
     // Decrease to account for the dummy object id.
     num_returns--;
-    
+
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
@@ -359,7 +359,6 @@ void CoreWorkerDirectTaskReceiver::HandleActorTask(
           }
         }
       }
-      
     }
     if (status.IsSystemExit()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
@@ -501,12 +500,13 @@ void CoreWorkerDirectTaskReceiver::EnqueueNormalTask(
   auto reject_callback = [send_reply_callback]() {
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
-  
+
   auto dependencies = task_spec.GetDependencies();
-  
+
   // Add the normal task's callbacks to the non-actor scheduling queue.
-  normal_scheduling_queue_.Add(request.sequence_number(), request.client_processed_up_to(),
-                 accept_callback, reject_callback, dependencies);
+  normal_scheduling_queue_.Add(request.sequence_number(),
+                               request.client_processed_up_to(), accept_callback,
+                               reject_callback, dependencies);
 }
 
 void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {

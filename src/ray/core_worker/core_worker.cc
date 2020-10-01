@@ -1899,8 +1899,9 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
 
   // Increment the task_queue_length
   task_queue_length_ += 1;
-  
-  // For actor tasks, we just need to post a HandleActorTask instance to the task execution service.
+
+  // For actor tasks, we just need to post a HandleActorTask instance to the task
+  // execution service.
   if (task_spec.IsActorTask()) {
     task_execution_service_.post([=] {
       // We have posted an exit task onto the main event loop,
@@ -1911,7 +1912,8 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
     return;
   }
 
-  // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to the task execution service.
+  // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to the
+  // task execution service.
   direct_task_receiver_->EnqueueNormalTask(request, reply, send_reply_callback);
   task_execution_service_.post([=] {
     // We have posted an exit task onto the main event loop,
@@ -1919,7 +1921,6 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
     if (exiting_) return;
     direct_task_receiver_->RunNormalTasksFromQueue();
   });
-  
 }
 
 void CoreWorker::HandleDirectActorCallArgWaitComplete(
