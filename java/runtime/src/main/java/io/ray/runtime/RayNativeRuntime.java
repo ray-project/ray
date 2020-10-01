@@ -86,7 +86,16 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
 
     if (rayConfig.workerMode == WorkerType.DRIVER) {
-      RunManager.fillConfigForDriver(rayConfig);
+      try {
+        RunManager.fillConfigForDriver(rayConfig);
+      } catch (Exception e) {
+        try {
+          RunManager.stopRay();
+        } catch (Exception e2) {
+          // Ignore
+        }
+        throw e;
+      }
     }
 
     gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);

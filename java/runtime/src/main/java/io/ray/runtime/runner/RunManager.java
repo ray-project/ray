@@ -56,6 +56,11 @@ public class RunManager {
       String redisAddress = matcher.group(1);
       rayConfig.setRedisAddress(redisAddress);
     } else {
+      try {
+        stopRay();
+      } catch (Exception e) {
+        // Ignore
+      }
       throw new RuntimeException("Redis address is not found. output: " + output);
     }
     LOGGER.info("Ray runtime started @ {}.", rayConfig.nodeIp);
@@ -78,7 +83,7 @@ public class RunManager {
 
   public static void fillConfigForDriver(RayConfig rayConfig) {
     String script = String.format("import ray;"
-        + " print(ray.services.get_address_info_from_redis('%s', '%s', redis_password='%s', no_warning=True))",
+        + " print(ray._private.services.get_address_info_from_redis('%s', '%s', redis_password='%s', no_warning=True))",
         rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 
