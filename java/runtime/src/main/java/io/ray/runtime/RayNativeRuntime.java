@@ -69,72 +69,74 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void start() {
-    if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getRedisAddress() == null) {
-      // Set it to true before `RunManager.startRayHead` so `Ray.shutdown()` can still kill
-      // Ray processes even if `Ray.init()` failed.
-      startRayHead = true;
-      RunManager.startRayHead(rayConfig);
-    }
-    Preconditions.checkNotNull(rayConfig.getRedisAddress());
+    try {
+      if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getRedisAddress() == null) {
+        // Set it to true before `RunManager.startRayHead` so `Ray.shutdown()` can still kill
+        // Ray processes even if `Ray.init()` failed.
+        startRayHead = true;
+        RunManager.startRayHead(rayConfig);
+      }
+      Preconditions.checkNotNull(rayConfig.getRedisAddress());
 
-    updateSessionDir();
+      updateSessionDir();
 
-    // Expose ray ABI symbols which may be depended by other shared
-    // libraries such as libstreaming_java.so.
-    // See BUILD.bazel:libcore_worker_library_java.so
-    Preconditions.checkNotNull(rayConfig.sessionDir);
-    JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+      // Expose ray ABI symbols which may be depended by other shared
+      // libraries such as libstreaming_java.so.
+      // See BUILD.bazel:libcore_worker_library_java.so
+      Preconditions.checkNotNull(rayConfig.sessionDir);
+      JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
 
-    if (rayConfig.workerMode == WorkerType.DRIVER) {
-      try {
+      if (rayConfig.workerMode == WorkerType.DRIVER) {
         RunManager.fillConfigForDriver(rayConfig);
-      } catch (Exception e) {
+      }
+
+      gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+
+      loadConfigFromGcs();
+
+      if (rayConfig.getJobId() == JobId.NIL) {
+        rayConfig.setJobId(gcsClient.nextJobId());
+      }
+      int numWorkersPerProcess =
+          rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
+
+      byte[] serializedJobConfig = null;
+      if (rayConfig.workerMode == WorkerType.DRIVER) {
+        JobConfig.Builder jobConfigBuilder =
+            JobConfig.newBuilder()
+                .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
+                .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
+                .putAllWorkerEnv(rayConfig.workerEnv)
+                .addAllCodeSearchPath(rayConfig.codeSearchPath);
+        serializedJobConfig = jobConfigBuilder.build().toByteArray();
+      }
+
+      // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
+      nativeInitialize(rayConfig.workerMode.getNumber(),
+          rayConfig.nodeIp, rayConfig.getNodeManagerPort(),
+          rayConfig.workerMode == WorkerType.DRIVER ? System.getProperty("user.dir") : "",
+          rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
+          (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
+          new GcsClientOptions(rayConfig), numWorkersPerProcess,
+          rayConfig.logDir, rayConfig.rayletConfigParameters, serializedJobConfig);
+
+      taskExecutor = new NativeTaskExecutor(this);
+      workerContext = new NativeWorkerContext();
+      objectStore = new NativeObjectStore(workerContext, shutdownLock);
+      taskSubmitter = new NativeTaskSubmitter();
+
+      LOGGER.debug("RayNativeRuntime started with store {}, raylet {}",
+          rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
+    } catch (Exception e) {
+      if (startRayHead) {
         try {
           RunManager.stopRay();
         } catch (Exception e2) {
           // Ignore
         }
-        throw e;
       }
+      throw e;
     }
-
-    gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-
-    loadConfigFromGcs();
-
-    if (rayConfig.getJobId() == JobId.NIL) {
-      rayConfig.setJobId(gcsClient.nextJobId());
-    }
-    int numWorkersPerProcess =
-        rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
-
-    byte[] serializedJobConfig = null;
-    if (rayConfig.workerMode == WorkerType.DRIVER) {
-      JobConfig.Builder jobConfigBuilder =
-          JobConfig.newBuilder()
-              .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
-              .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
-              .putAllWorkerEnv(rayConfig.workerEnv)
-              .addAllCodeSearchPath(rayConfig.codeSearchPath);
-      serializedJobConfig = jobConfigBuilder.build().toByteArray();
-    }
-
-    // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
-    nativeInitialize(rayConfig.workerMode.getNumber(),
-        rayConfig.nodeIp, rayConfig.getNodeManagerPort(),
-        rayConfig.workerMode == WorkerType.DRIVER ? System.getProperty("user.dir") : "",
-        rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
-        (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
-        new GcsClientOptions(rayConfig), numWorkersPerProcess,
-        rayConfig.logDir, rayConfig.rayletConfigParameters, serializedJobConfig);
-
-    taskExecutor = new NativeTaskExecutor(this);
-    workerContext = new NativeWorkerContext();
-    objectStore = new NativeObjectStore(workerContext, shutdownLock);
-    taskSubmitter = new NativeTaskSubmitter();
-
-    LOGGER.debug("RayNativeRuntime started with store {}, raylet {}",
-        rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
   }
 
   @Override

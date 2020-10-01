@@ -56,11 +56,6 @@ public class RunManager {
       String redisAddress = matcher.group(1);
       rayConfig.setRedisAddress(redisAddress);
     } else {
-      try {
-        stopRay();
-      } catch (Exception e) {
-        // Ignore
-      }
       throw new RuntimeException("Redis address is not found. output: " + output);
     }
     LOGGER.info("Ray runtime started @ {}.", rayConfig.nodeIp);
