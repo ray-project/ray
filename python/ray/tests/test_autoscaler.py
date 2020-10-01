@@ -93,15 +93,17 @@ class MockProcessRunner:
                 raise Exception(
                     f"Did not find [{pattern}] in [{out}] for ip={ip}."
                     f"\n\nFull output: {self.command_history()}")
-        else:
+        elif exact is not None:
+            exact_cmd = " ".join(exact)
             for cmd in self.command_history():
                 if ip in cmd:
                     out += cmd
                     out += "\n"
-                if cmd == exact:
+                if cmd == exact_cmd:
                     return True
-            raise Exception(f"Did not find [{exact}] in [{out}] for ip={ip}."
-                            f"\n\nFull output: {self.command_history()}")
+            raise Exception(
+                f"Did not find [{exact_cmd}] in [{out}] for ip={ip}."
+                f"\n\nFull output: {self.command_history()}")
 
     def assert_not_has_call(self, ip, pattern):
         out = ""
