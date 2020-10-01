@@ -363,7 +363,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         batch = ev.sample()
         self.assertEqual(batch.count, 5)
         self.assertEqual(batch.policy_batches["p0"].count, 10)
-        self.assertEqual(batch.policy_batches["p1"].count, 25)
+        self.assertEqual(batch.policy_batches["p1"].count, 30)
 
     def test_train_multi_agent_cartpole_single_policy(self):
         n = 10
