@@ -1211,8 +1211,8 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
   auto operation = [this, object_id, request,
                     callback](const SequencerDoneCallback &done_callback) {
     client_impl_->GetGcsRpcClient().AddObjectLocation(
-        request, [object_id, callback, done_callback](
-                     const Status &status, const rpc::AddObjectLocationReply &reply) {
+        request, [callback, done_callback](const Status &status,
+                                           const rpc::AddObjectLocationReply &reply) {
           if (callback) {
             callback(status);
           }

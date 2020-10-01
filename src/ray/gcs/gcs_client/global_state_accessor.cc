@@ -108,7 +108,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
     const ObjectID &object_id) {
   std::unique_ptr<std::string> object_info;
   std::promise<bool> promise;
-  auto on_done = [object_id, &object_info, &promise](
+  auto on_done = [&object_info, &promise](
                      const Status &status,
                      const boost::optional<rpc::ObjectLocationInfo> &result) {
     RAY_CHECK_OK(status);

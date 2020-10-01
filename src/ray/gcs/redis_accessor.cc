@@ -554,8 +554,7 @@ Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_CHECK(subscribe != nullptr);
   return object_sub_executor_.AsyncSubscribe(
       subscribe_id_, object_id,
-      [this, subscribe](const ObjectID &id,
-                        const ObjectChangeNotification &notification_data) {
+      [subscribe](const ObjectID &id, const ObjectChangeNotification &notification_data) {
         std::vector<rpc::ObjectLocationChange> updates;
         for (const auto &item : notification_data.GetData()) {
           rpc::ObjectLocationChange update;
