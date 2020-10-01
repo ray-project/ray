@@ -191,7 +191,8 @@ void GcsServer::InitGcsActorManager() {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_, [this](const rpc::Address &address) {
+      main_service_, scheduler, gcs_table_storage_, gcs_pub_sub_,
+      [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_node_manager_->AddNodeAddedListener(

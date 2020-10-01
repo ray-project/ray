@@ -158,10 +158,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
  public:
   /// Create a GcsActorManager
   ///
+  /// \param io_context The main event loop.
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_pub_sub Used to publish gcs message.
-  GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+  GcsActorManager(boost::asio::io_service &io_service,
+                  std::shared_ptr<GcsActorSchedulerInterface> scheduler,
                   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                   const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -359,6 +361,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param actor The actor to be killed.
   void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
 
+  /// Fire a periodic timer to clear up expired actors.
+  void PeriodicallyClearExpiredActors();
+
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
@@ -374,6 +379,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// All destroyed actors.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> destroyed_actors_;
+  // A timer used to clear up expired actors.
+  // It includes: dead actors in `destroyed_actors_` and gcs storage.
+  boost::asio::deadline_timer clear_expired_actors_timer_;
   /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The actors which dependencies have not been resolved.

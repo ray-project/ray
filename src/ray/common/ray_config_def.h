@@ -234,6 +234,10 @@ RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 10000)
+/// The interval at which the gcs server will clear up expired actors.
+RAY_CONFIG(int64_t, gcs_clear_expired_actors_interval_seconds, 600)
+/// The ttl of dead actor.
+RAY_CONFIG(int64_t, gcs_ttl_of_dead_actor_seconds, 3 * 24 * 60 * 60)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.

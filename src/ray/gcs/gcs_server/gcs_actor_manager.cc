@@ -83,15 +83,18 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+GcsActorManager::GcsActorManager(boost::asio::io_service &io_service,
+                                 std::shared_ptr<GcsActorSchedulerInterface> scheduler,
                                  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                                  const rpc::ClientFactoryFn &worker_client_factory)
-    : gcs_actor_scheduler_(std::move(scheduler)),
+    : clear_expired_actors_timer_(io_service),
+      gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory) {
   RAY_CHECK(worker_client_factory_);
+  PeriodicallyClearExpiredActors();
 }
 
 void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &request,
@@ -1104,6 +1107,30 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
     destroyed_actors_.erase(destroyed_actors_.begin());
   }
   destroyed_actors_.emplace(actor->GetActorID(), actor);
+}
+
+void GcsActorManager::PeriodicallyClearExpiredActors() {
+  // Clear up expired actors.
+  for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
+    if (current_sys_time_ms() - iter->second->GetActorTableData().timestamp() >
+        RayConfig::instance().gcs_ttl_of_dead_actor_seconds()) {
+      RAY_CHECK_OK(gcs_table_storage_->ActorTable().Delete(iter->first, nullptr));
+      destroyed_actors_.erase(iter++);
+    } else {
+      iter++;
+    }
+  }
+
+  auto clear_period = boost::posix_time::seconds(
+      RayConfig::instance().gcs_clear_expired_actors_interval_seconds());
+  clear_expired_actors_timer_.expires_from_now(clear_period);
+  clear_expired_actors_timer_.async_wait([this](const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      return;
+    }
+    RAY_CHECK(!error) << "Clearing expired actors failed with error: " << error.message();
+    PeriodicallyClearExpiredActors();
+  });
 }
 
 }  // namespace gcs
