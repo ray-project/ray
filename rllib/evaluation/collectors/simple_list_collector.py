@@ -296,8 +296,8 @@ class _SimpleListCollector(_SampleCollector):
         # _SingleTrajectoryCollector.
         self.agent_collectors: Dict[Tuple[EpisodeID, AgentID],
                                     _AgentCollector] = {}
-        # Internal agent-to-policy map.
-        self.agent_to_policy = {}
+        # Internal agent-key-to-policy map.
+        self.agent_key_to_policy = {}
 
         # Agents to collect data from for the next forward pass (per policy).
         self.forward_pass_agent_keys = {pid: [] for pid in policy_map.keys()}
@@ -336,10 +336,10 @@ class _SimpleListCollector(_SampleCollector):
                      init_obs: TensorType) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
-        if agent_key not in self.agent_to_policy:
-            self.agent_to_policy[agent_id] = policy_id
+        if agent_key not in self.agent_key_to_policy:
+            self.agent_key_to_policy[agent_key] = policy_id
         else:
-            assert self.agent_to_policy[agent_id] == policy_id
+            assert self.agent_key_to_policy[agent_key] == policy_id
         policy = self.policy_map[policy_id]
         view_reqs = policy.model.inference_view_requirements if \
             hasattr(policy, "model") else policy.view_requirements
@@ -366,7 +366,7 @@ class _SimpleListCollector(_SampleCollector):
                                    values: Dict[str, TensorType]) -> None:
         # Make sure, episode/agent already has some (at least init) data.
         agent_key = (episode_id, agent_id)
-        assert self.agent_to_policy[agent_id] == policy_id
+        assert self.agent_key_to_policy[agent_key] == policy_id
         assert agent_key in self.agent_collectors
 
         # Include the current agent id for multi-agent algorithms.
@@ -419,6 +419,8 @@ class _SimpleListCollector(_SampleCollector):
                             episode: MultiAgentEpisode,
                             is_done: bool = False,
                             check_dones: bool = False) -> None:
+        episode_id = episode.episode_id
+
         # TODO: (sven) Once we implement multi-agent communication channels,
         #  we have to resolve the restriction of only sending other agent
         #  batches from the same policy to the postprocess methods.
@@ -426,9 +428,10 @@ class _SimpleListCollector(_SampleCollector):
         pre_batches = {}
         for (eps_id, agent_id), collector in self.agent_collectors.items():
             # Build only if there is data and agent is part of given episode.
-            if collector.count == 0 or eps_id != episode.episode_id:
+            if collector.count == 0 or eps_id != episode_id:
                 continue
-            policy = self.policy_map[self.agent_to_policy[agent_id]]
+            policy = self.policy_map[self.agent_key_to_policy[(eps_id,
+                                                               agent_id)]]
             pre_batch = collector.build(policy.view_requirements)
             pre_batches[agent_id] = (policy, pre_batch)
 
@@ -452,19 +455,21 @@ class _SimpleListCollector(_SampleCollector):
                     raise ValueError(
                         "Episode {} terminated for all agents, but we still "
                         "don't have a last observation for agent {} (policy "
-                        "{}). ".format(episode.episode_id, agent_id,
-                                       self.agent_to_policy[agent_id]) +
+                        "{}). ".format(
+                            episode_id, agent_id, self.agent_key_to_policy[(
+                                episode_id, agent_id)]) +
                         "Please ensure that you include the last observations "
                         "of all live agents when setting done[__all__] to "
                         "True. Alternatively, set no_done_at_end=True to "
                         "allow this.")
             # If (only this?) agent is done, erase its buffer entirely.
             if pre_batch[SampleBatch.DONES][-1]:
-                del self.agent_collectors[(episode.episode_id, agent_id)]
+                del self.agent_collectors[(episode_id, agent_id)]
 
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
-            policy = self.policy_map[self.agent_to_policy[agent_id]]
+            policy = self.policy_map[self.agent_key_to_policy[(episode_id,
+                                                               agent_id)]]
             if any(pre_batch["dones"][:-1]) or len(set(
                     pre_batch["eps_id"])) > 1:
                 raise ValueError(
@@ -487,7 +492,7 @@ class _SimpleListCollector(_SampleCollector):
         # Append into policy batches and reset.
         from ray.rllib.evaluation.rollout_worker import get_global_worker
         for agent_id, post_batch in sorted(post_batches.items()):
-            pid = self.agent_to_policy[agent_id]
+            pid = self.agent_key_to_policy[(episode_id, agent_id)]
             policy = self.policy_map[pid]
             self.callbacks.on_postprocess_trajectory(
                 worker=get_global_worker(),
@@ -502,14 +507,14 @@ class _SimpleListCollector(_SampleCollector):
             self.policy_collectors[pid].add_postprocessed_batch_for_training(
                 post_batch, policy.view_requirements)
 
-        env_steps = self.episode_steps[episode.episode_id]
+        env_steps = self.episode_steps[episode_id]
         self.policy_collectors_env_steps += env_steps
 
         if is_done:
-            del self.episode_steps[episode.episode_id]
-            del self.episodes[episode.episode_id]
+            del self.episode_steps[episode_id]
+            del self.episodes[episode_id]
         else:
-            self.episode_steps[episode.episode_id] = 0
+            self.episode_steps[episode_id] = 0
 
     @override(_SampleCollector)
     def build_multi_agent_batch(self, env_steps: int) -> \
@@ -564,7 +569,7 @@ class _SimpleListCollector(_SampleCollector):
                 vectorized environments).
             env_id (EnvID): The environment index (in a vectorized setup).
         """
-        policy_id = self.agent_to_policy[agent_key[1]]
+        policy_id = self.agent_key_to_policy[agent_key]
         idx = self.forward_pass_size[policy_id]
         if idx == 0:
             self.forward_pass_agent_keys[policy_id].clear()
