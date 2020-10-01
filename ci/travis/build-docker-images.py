@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from typing import List
 
 # Why, because fuck bash
@@ -182,6 +183,7 @@ def push_and_tag_images(push_base_images: bool) -> None:
 # Build ray, ray-ml, autoscaler every time
 
 if __name__ == "__main__":
+    print("RUNNING WITH: ", sys.version)
     if os.environ.get("TRAVIS") == "true":
         is_docker_affected = _docker_affected()
         if _merge_build() or is_docker_affected:
