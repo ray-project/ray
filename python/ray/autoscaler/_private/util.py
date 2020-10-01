@@ -8,8 +8,10 @@ from typing import Any, Dict
 
 import ray
 import ray._private.services as services
-from ray.autoscaler.node_provider import _get_default_config, _NODE_PROVIDERS
+from ray.autoscaler._private.providers import _get_default_config, \
+    _NODE_PROVIDERS
 from ray.autoscaler._private.docker import validate_docker_config
+from ray.autoscaler._private.cli_logger import cli_logger
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
@@ -100,10 +102,10 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults["auth"] = defaults.get("auth", {})
     try:
         defaults = _fillout_available_node_types_resources(defaults)
-    except Exception:
+    except Exception as e:
         # We don't want to introduce new errors with filling available node
         # types resources feature.
-        pass
+        cli_logger.verbose_error("{}", str(e))
 
     return defaults
 
