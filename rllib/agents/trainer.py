@@ -446,9 +446,6 @@ class Trainer(Trainable):
         # in self.setup().
         config = config or {}
 
-        # Vars to synchronize to workers on each train call
-        self.global_vars = {"timestep": 0}
-
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(env or config.get("env"))
 
@@ -806,9 +803,6 @@ class Trainer(Trainable):
         filtered_obs = self.workers.local_worker().filters[policy_id](
             preprocessed, update=False)
 
-        # Figure out the current (sample) time step and pass it into Policy.
-        self.global_vars["timestep"] += 1
-
         result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
             state,
@@ -816,8 +810,7 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            explore=explore,
-            timestep=self.global_vars["timestep"])
+            explore=explore)
 
         if state or full_fetch:
             return result
@@ -883,9 +876,6 @@ class Trainer(Trainable):
             state = list(zip(*filtered_state))
             state = [np.stack(s) for s in state]
 
-        # Figure out the current (sample) time step and pass it into Policy.
-        self.global_vars["timestep"] += 1
-
         # Batch compute actions
         actions, states, infos = policy.compute_actions(
             obs_batch,
@@ -894,8 +884,7 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            explore=explore,
-            timestep=self.global_vars["timestep"])
+            explore=explore)
 
         # Unbatch actions for the environment
         atns, actions = space_utils.unbatch(actions), {}
