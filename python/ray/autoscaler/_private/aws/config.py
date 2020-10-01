@@ -591,6 +591,8 @@ def _create_security_group(config, vpc_id, group_name):
         GroupName=group_name,
         VpcId=vpc_id)
     security_group = _get_security_group(config, vpc_id, group_name)
+    cli_logger.doassert(security_group,
+                        "Failed to create security group")  # err msg
 
     cli_logger.verbose(
         "Created new security group {}",
@@ -599,9 +601,6 @@ def _create_security_group(config, vpc_id, group_name):
     cli_logger.old_info(
         logger, "_create_security_group: Created new security group {} ({})",
         security_group.group_name, security_group.id)
-
-    cli_logger.doassert(security_group,
-                        "Failed to create security group")  # err msg
     assert security_group, "Failed to create security group"
     return security_group
 
