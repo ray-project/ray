@@ -391,64 +391,70 @@ void NodeManager::Heartbeat() {
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   heartbeat_data->set_client_id(self_node_id_.Binary());
 
-  // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
-  // TODO(atumanov): implement a ResourceSet const_iterator.
-  // If light heartbeat enabled, we only set filed that represent resources changed.
-  if (light_heartbeat_enabled_) {
-    if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
-            local_resources.GetTotalResources())) {
+  if (new_scheduler_enabled_) {
+    new_resource_scheduler_->Heartbeat(light_heartbeat_enabled_, heartbeat_data);
+    cluster_task_manager_->Heartbeat(light_heartbeat_enabled_, heartbeat_data);
+  } else {
+    // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
+    // directly.
+    // TODO(atumanov): implement a ResourceSet const_iterator.
+    // If light heartbeat enabled, we only set filed that represent resources changed.
+    if (light_heartbeat_enabled_) {
+      if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
+              local_resources.GetTotalResources())) {
+        for (const auto &resource_pair :
+             local_resources.GetTotalResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
+              resource_pair.second;
+        }
+        last_heartbeat_resources_.SetTotalResources(
+            ResourceSet(local_resources.GetTotalResources()));
+      }
+
+      if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
+              local_resources.GetAvailableResources())) {
+        heartbeat_data->set_resources_available_changed(true);
+        for (const auto &resource_pair :
+             local_resources.GetAvailableResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+              resource_pair.second;
+        }
+        last_heartbeat_resources_.SetAvailableResources(
+            ResourceSet(local_resources.GetAvailableResources()));
+      }
+
+      local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
+      if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
+              local_resources.GetLoadResources())) {
+        heartbeat_data->set_resource_load_changed(true);
+        for (const auto &resource_pair :
+             local_resources.GetLoadResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+              resource_pair.second;
+        }
+        last_heartbeat_resources_.SetLoadResources(
+            ResourceSet(local_resources.GetLoadResources()));
+      }
+    } else {
+      // If light heartbeat disabled, we send whole resources information every time.
       for (const auto &resource_pair :
            local_resources.GetTotalResources().GetResourceMap()) {
         (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
             resource_pair.second;
       }
-      last_heartbeat_resources_.SetTotalResources(
-          ResourceSet(local_resources.GetTotalResources()));
-    }
 
-    if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
-            local_resources.GetAvailableResources())) {
-      heartbeat_data->set_resources_available_changed(true);
       for (const auto &resource_pair :
            local_resources.GetAvailableResources().GetResourceMap()) {
         (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
             resource_pair.second;
       }
-      last_heartbeat_resources_.SetAvailableResources(
-          ResourceSet(local_resources.GetAvailableResources()));
-    }
 
-    local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-    if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
-            local_resources.GetLoadResources())) {
-      heartbeat_data->set_resource_load_changed(true);
+      local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
       for (const auto &resource_pair :
            local_resources.GetLoadResources().GetResourceMap()) {
         (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
             resource_pair.second;
       }
-      last_heartbeat_resources_.SetLoadResources(
-          ResourceSet(local_resources.GetLoadResources()));
-    }
-  } else {
-    // If light heartbeat disabled, we send whole resources information every time.
-    for (const auto &resource_pair :
-         local_resources.GetTotalResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    for (const auto &resource_pair :
-         local_resources.GetAvailableResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-    for (const auto &resource_pair :
-         local_resources.GetLoadResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
-          resource_pair.second;
     }
   }
 
