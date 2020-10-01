@@ -27,7 +27,8 @@ def _merge_build():
 
 
 def _release_build():
-    return os.environ.get("$TRAVIS_BRANCH") != "master"
+    branch = os.environ.get("$TRAVIS_BRANCH")
+    return branch != "master" and "releases" in branch
 
 
 def _get_curr_dir():
@@ -102,11 +103,13 @@ def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
     if is_stale or is_docker_affected or _release_build():
         for image in ["base-deps", "ray-deps"]:
             _build_helper(image)
+        return True
     else:
         print("Just pulling images!")
         _subprocess_wrapper("docker pull rayproject/base-deps:nightly-cpu")
         _subprocess_wrapper("docker pull rayproject/ray-deps:nightly-gpu")
         _subprocess_wrapper("docker pull rayproject/ray-deps:nightly-cpu")
+        return False
 
 
 def build_ray() -> None:
@@ -188,7 +191,7 @@ if __name__ == "__main__":
         is_docker_affected = _docker_affected()
         if _merge_build() or is_docker_affected:
             copy_wheels()
-            build_or_pull_base_images(is_docker_affected)
+            freshly_built = build_or_pull_base_images(is_docker_affected)
             build_ray()
             build_ray_ml()
-            push_and_tag_images(is_docker_affected)
+            push_and_tag_images(freshly_built)
