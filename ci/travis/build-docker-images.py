@@ -42,15 +42,6 @@ def _get_wheel_name():
         f"basename {_get_root_dir()}/.whl/*cp37m-manylinux*")
 
 
-def _log_in():
-    global LOGGED_IN
-    if LOGGED_IN:
-        return
-    _subprocess_wrapper(f"echo \"$DOCKER_PASSWORD\" | " +
-                        "docker login -u {DOCKER_USERNAME} --password-stdin")
-    LOGGED_IN = True
-
-
 def _docker_affected():
     variable_definitions = _subprocess_wrapper(
         f"python {_get_curr_dir()}/determine_tests_to_run.py").split()
@@ -64,31 +55,29 @@ def _docker_affected():
     return affected
 
 
-def _docker_push(image):
-    if _merge_build():
-        _log_in()
-        _subprocess_wrapper(f"docker push {image}")
-    else:
-        print("Skipping docker push because it's in PR environment.")
-
-
-def _build_helper(image_name):
+def _build_helper(image_name) -> List[str]:
     built_images = []
-    for gpu in ["", "-gpu"]:
+    for gpu in ["-cpu", "-gpu"]:
         if image_name == "base-deps":
             gpu_arg = "BASE_IMAGE={}".format(
                 "nvidia/cuda:10.1-cudnn8-runtime-ubuntu18.04"
                 if gpu else "ubuntu:focal")
         else:
             gpu_arg = f"GPU={gpu}"
-        wheel_arg = "--build-arg WHEEL_PATH=.whl/" + _get_wheel_name(
-        ) if "ray" in image_name else ""
+
+        if "ray" in image_name:
+            wheel_arg = "--build-arg WHEEL_PATH=.whl/" + _get_wheel_name()
+        else:
+            wheel_arg = ""
+
+        tagged_name = f"rayproject/{image_name}:nightly:{gpu}"
         build_command = (
             f"docker build --no-cache --build-arg {gpu_arg} {wheel_arg} "
-            f"-t rayproject/{image_name}:nightly:{gpu} "
-            f"{_get_root_dir()}/docker/{image_name}")
+            f"-t {tagged_name} {_get_root_dir()}/docker/{image_name}")
+
         _subprocess_wrapper(build_command)
-        built_images.append(f"rayproject/{image_name}:nightly:{gpu}")
+        print("BUILT: ", tagged_name)
+        built_images.append(tagged_name)
     return built_images
 
 
@@ -110,23 +99,20 @@ def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
         datetime.datetime.now() - short_date) > datetime.timedelta(days=14)
 
     if is_stale or is_docker_affected or _release_build():
-        ret_list = []
         for image in ["base-deps", "ray-deps"]:
-            ret_list.extend(_build_helper(image))
-        return ret_list
+            _build_helper(image)
     else:
         print("Just pulling images!")
-        _subprocess_wrapper("docker pull rayproject/base-deps:nightly")
+        _subprocess_wrapper("docker pull rayproject/base-deps:nightly-cpu")
         _subprocess_wrapper("docker pull rayproject/ray-deps:nightly-gpu")
-        _subprocess_wrapper("docker pull rayproject/ray-deps:nightly")
-        return []
+        _subprocess_wrapper("docker pull rayproject/ray-deps:nightly-cpu")
 
 
-def build_ray() -> List[str]:
+def build_ray() -> None:
     return _build_helper("ray")
 
 
-def build_ray_ml() -> List[str]:
+def build_ray_ml() -> None:
     root_dir = _get_root_dir()
     requirement_files = _subprocess_wrapper(
         f"basename {_get_root_dir()}/python/requirements*.txt").split()
@@ -134,15 +120,26 @@ def build_ray_ml() -> List[str]:
         shutil.copy(
             os.path.join(root_dir, "python/", fl),
             os.path.join(root_dir, "docker/ray-ml/"))
-    return_list = _build_helper("ray-ml")
-    autoscaler_list = [x.replace("ray-ml", "autoscaler") for x in return_list]
-    return_list.extend(autoscaler_list)
-    return return_list
+    ray_ml_images = _build_helper("ray-ml")
+    for img in ray_ml_images:
+        _subprocess_wrapper(
+            f"docker tag {img} {img.replace('ray-ml', 'autoscaler')}")
 
 
 # For non-release builds, push "nightly" & "sha"
 # For release builds, push "nightly" & "latest" & "x.x.x"
-def push_and_tag_images(image_list) -> List[str]:
+def push_and_tag_images(push_base_images: bool) -> None:
+    if _merge_build():
+        _subprocess_wrapper(
+            f"echo \"$DOCKER_PASSWORD\" | " +
+            "docker login -u {DOCKER_USERNAME} --password-stdin")
+
+    def docker_push(image):
+        if _merge_build():
+            _subprocess_wrapper(f"docker push {image}")
+        else:
+            print(f"PR Build, would normally push: {image}")
+
     def re_tag(image, new_tag):
         return image.replace("nightly", new_tag)
 
@@ -153,17 +150,32 @@ def push_and_tag_images(image_list) -> List[str]:
                                  os.environ.get("TRAVIS_BRANCH"))
         date_tag = release_name
         sha_tag = release_name
+
+    image_list = ["ray", "ray-ml", "autoscaler"]
+    if push_base_images:
+        image_list.extend(["base-deps", "ray-deps"])
+
     for image in image_list:
-        _subprocess_wrapper(f"docker push {image}")
+        nightly_base_name = f"rayproject/{image}:nightly"
 
-        new_image = re_tag(image, date_tag if "-deps" in image else sha_tag)
-        _subprocess_wrapper(f"docker tag {image} {new_image}")
-        _subprocess_wrapper(f"docker push {new_image}")
+        _subprocess_wrapper(
+            f"docker tag {nightly_base_name}-cpu {nightly_base_name}")
+        for arch_tag in ["-cpu", "-gpu", ""]:
+            # Tag and push rayproject/<image>:nightly<arch_tag>
+            nightly_tag = f"{nightly_base_name}{arch_tag}"
+            docker_push(nightly_tag)
 
-        if _release_build():
-            latest = re_tag(image, "latest")
-            _subprocess_wrapper(f"docker tag {image} {latest}")
-            _subprocess_wrapper(f"docker push {latest}")
+            specific_image = re_tag(nightly_tag, date_tag
+                                    if "-deps" in image else sha_tag)
+            # Tag and push rayproject/<image>:<sha/date><arch_tag>
+            _subprocess_wrapper(f"docker tag {nightly_tag} {specific_image}")
+            docker_push(specific_image)
+
+            if _release_build():
+                latest = re_tag(nightly_tag, "latest")
+                # Tag and push rayproject/<image>:latest<arch_tag>
+                _subprocess_wrapper(f"docker tag {nightly_tag} {latest}")
+                docker_push(latest)
 
 
 # Build base-deps/ray-deps only on file change, 2 weeks, per release
@@ -174,8 +186,7 @@ if __name__ == "__main__":
         is_docker_affected = _docker_affected()
         if _merge_build() or is_docker_affected:
             copy_wheels()
-            images_to_tag = []
-            images_to_tag.extend(build_or_pull_base_images(is_docker_affected))
-            images_to_tag.extend(build_ray())
-            images_to_tag.extend(build_ray_ml())
-            push_and_tag_images(images_to_tag)
+            build_or_pull_base_images(is_docker_affected)
+            build_ray()
+            build_ray_ml()
+            push_and_tag_images(is_docker_affected)
