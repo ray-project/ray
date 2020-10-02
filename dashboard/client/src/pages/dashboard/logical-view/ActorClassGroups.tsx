@@ -12,7 +12,6 @@ type ActorClassGroupsProps = {
 };
 
 const ActorClassGroups: React.FC<ActorClassGroupsProps> = ({ actorGroups }) => {
-  console.log(actorGroups);
   const numInfeasible = (group: ActorGroup) =>
     group.summary.stateToCount[ActorState.Infeasible] ?? 0;
   const totalInfeasible = sum(Object.values(actorGroups).map(numInfeasible));
