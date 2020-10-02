@@ -7,7 +7,7 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters)
+                             get_random_letters, logger)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
 from ray.actor import ActorHandle
@@ -53,7 +53,13 @@ class Client:
 
     def __del__(self):
         if not self._detached:
+            logger.info("Calling shutdown because client went out of scope.")
             self.shutdown()
+
+    def __reduce__(self):
+        raise RayServeException(
+            ("Ray Serve client cannot be serialized. "
+             "Please use serve.connect() to create a new client."))
 
     def shutdown(self) -> None:
         """Completely shut down the connected Serve instance.
