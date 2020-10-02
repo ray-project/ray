@@ -3306,6 +3306,9 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     return;
   }
   for (const auto &worker : all_workers) {
+    if (worker->IsDead()) {
+      continue;
+    }
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(node_stats_request.include_memory_info());
