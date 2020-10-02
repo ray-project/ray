@@ -637,6 +637,9 @@ class Trainable:
         """
         self._result_logger.flush()
         self._result_logger.close()
+        if self._monitor.is_alive():
+            self._monitor.stop()
+            self._monitor.join()
         self.cleanup()
 
         self._close_logfiles()

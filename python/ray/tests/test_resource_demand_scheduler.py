@@ -9,7 +9,8 @@ import copy
 import ray
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
     MockProcessRunner
-from ray.autoscaler.node_provider import _NODE_PROVIDERS
+from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
+                                               _clear_provider_cache)
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.commands import get_or_create_head_node
@@ -105,34 +106,34 @@ def test_bin_pack():
 
 def test_get_nodes_packing_heuristic():
     assert get_nodes_for(TYPES_A, {}, 9999, [{"GPU": 8}]) == \
-        [("p2.8xlarge", 1)]
+        {"p2.8xlarge": 1}
     assert get_nodes_for(TYPES_A, {}, 9999, [{"GPU": 1}] * 6) == \
-        [("p2.8xlarge", 1)]
+        {"p2.8xlarge": 1}
     assert get_nodes_for(TYPES_A, {}, 9999, [{"GPU": 1}] * 4) == \
-        [("p2.xlarge", 4)]
+        {"p2.xlarge": 4}
     assert get_nodes_for(TYPES_A, {}, 9999, [{"CPU": 32, "GPU": 1}] * 3) \
-        == [("p2.8xlarge", 3)]
+        == {"p2.8xlarge": 3}
     assert get_nodes_for(TYPES_A, {}, 9999, [{"CPU": 64, "GPU": 1}] * 3) \
-        == []
+        == {}
     assert get_nodes_for(TYPES_A, {}, 9999, [{"CPU": 64}] * 3) == \
-        [("m4.16xlarge", 3)]
+        {"m4.16xlarge": 3}
     assert get_nodes_for(TYPES_A, {}, 9999, [{"CPU": 64}, {"CPU": 1}]) \
-        == [("m4.16xlarge", 1), ("m4.large", 1)]
+        == {"m4.16xlarge": 1, "m4.large": 1}
     assert get_nodes_for(
         TYPES_A, {}, 9999, [{"CPU": 64}, {"CPU": 9}, {"CPU": 9}]) == \
-        [("m4.16xlarge", 1), ("m4.4xlarge", 2)]
+        {"m4.16xlarge": 1, "m4.4xlarge": 2}
     assert get_nodes_for(TYPES_A, {}, 9999, [{"CPU": 16}] * 5) == \
-        [("m4.16xlarge", 1), ("m4.4xlarge", 1)]
+        {"m4.16xlarge": 1, "m4.4xlarge": 1}
     assert get_nodes_for(TYPES_A, {}, 9999, [{"CPU": 8}] * 10) == \
-        [("m4.16xlarge", 1), ("m4.4xlarge", 1)]
+        {"m4.16xlarge": 1, "m4.4xlarge": 1}
     assert get_nodes_for(TYPES_A, {}, 9999, [{"CPU": 1}] * 100) == \
-        [("m4.16xlarge", 1), ("m4.4xlarge", 2), ("m4.large", 2)]
+        {"m4.16xlarge": 1, "m4.4xlarge": 2, "m4.large": 2}
     assert get_nodes_for(
         TYPES_A, {}, 9999, [{"GPU": 1}] + ([{"CPU": 1}] * 64)) == \
-        [("m4.16xlarge", 1), ("p2.xlarge", 1)]
+        {"m4.16xlarge": 1, "p2.xlarge": 1}
     assert get_nodes_for(
         TYPES_A, {}, 9999, ([{"GPU": 1}] * 8) + ([{"CPU": 1}] * 64)) == \
-        [("m4.16xlarge", 1), ("p2.8xlarge", 1)]
+        {"m4.16xlarge": 1, "p2.8xlarge": 1}
 
 
 def test_get_nodes_respects_max_limit():
@@ -151,19 +152,25 @@ def test_get_nodes_respects_max_limit():
         },
     }
     assert get_nodes_for(types, {}, 2, [{"CPU": 1}] * 10) == \
-        [("m4.large", 2)]
+        {"m4.large": 2}
     assert get_nodes_for(types, {"m4.large": 9999}, 9999, [{
         "CPU": 1
-    }] * 10) == []
+    }] * 10) == {}
     assert get_nodes_for(types, {"m4.large": 0}, 9999, [{
         "CPU": 1
-    }] * 10) == [("m4.large", 5)]
+    }] * 10) == {
+        "m4.large": 5
+    }
     assert get_nodes_for(types, {"m4.large": 7}, 4, [{
         "CPU": 1
-    }] * 10) == [("m4.large", 3)]
+    }] * 10) == {
+        "m4.large": 3
+    }
     assert get_nodes_for(types, {"m4.large": 7}, 2, [{
         "CPU": 1
-    }] * 10) == [("m4.large", 2)]
+    }] * 10) == {
+        "m4.large": 2
+    }
 
 
 def test_add_min_workers_nodes():
@@ -194,19 +201,19 @@ def test_add_min_workers_nodes():
                                   {},
                                   types) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
-            [("m2.large", 50), ("gpu", 99999)])
+            {"m2.large": 50, "gpu": 99999})
 
     assert _add_min_workers_nodes([{"CPU": 2}]*5,
                                   {"m2.large": 5},
                                   types) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
-            [("m2.large", 45), ("gpu", 99999)])
+            {"m2.large": 45, "gpu": 99999})
 
     assert _add_min_workers_nodes([{"CPU": 2}]*60,
                                   {"m2.large": 60},
                                   types) == \
         ([{"CPU": 2}]*60+[{"GPU": 1}]*99999, {"m2.large": 60, "gpu": 99999},
-            [("gpu", 99999)])
+            {"gpu": 99999})
 
     assert _add_min_workers_nodes([{
         "CPU": 2
@@ -222,7 +229,7 @@ def test_add_min_workers_nodes():
     }] * 99999, {
         "m2.large": 50,
         "gpu": 99999
-    }, [])
+    }, {})
 
 
 def test_get_nodes_to_launch_with_min_workers():
@@ -241,7 +248,7 @@ def test_get_nodes_to_launch_with_min_workers():
     to_launch = scheduler.get_nodes_to_launch(nodes, {}, [{
         "GPU": 8
     }], utilizations)
-    assert to_launch == [("p2.8xlarge", 1)]
+    assert to_launch == {"p2.8xlarge": 1}
 
 
 def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
@@ -263,7 +270,7 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     demands = [{"GPU": 8}] * (len(utilizations) + 1) + [{"GPU": 1}]
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
                                               utilizations)
-    assert to_launch == [("p2.xlarge", 1)]
+    assert to_launch == {"p2.xlarge": 1}
 
     # 3 min_workers of p2.8xlarge covers the 2 p2.8xlarge + 1 p2.xlarge demand.
     # 2 p2.8xlarge are running/pending. So we need 1 more p2.8xlarge only to
@@ -273,7 +280,7 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
                                               utilizations)
     # Make sure it does not return [("p2.8xlarge", 1), ("p2.xlarge", 1)]
-    assert to_launch == [("p2.8xlarge", 1)]
+    assert to_launch == {"p2.8xlarge": 1}
 
 
 def test_get_nodes_to_launch_limits():
@@ -290,7 +297,7 @@ def test_get_nodes_to_launch_limits():
     to_launch = scheduler.get_nodes_to_launch(nodes, {"p2.8xlarge": 1}, [{
         "GPU": 8
     }] * 2, utilizations)
-    assert to_launch == []
+    assert to_launch == {}
 
 
 def test_calculate_node_resources():
@@ -311,14 +318,16 @@ def test_calculate_node_resources():
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
                                               utilizations)
 
-    assert to_launch == [("p2.8xlarge", 1)]
+    assert to_launch == {"p2.8xlarge": 1}
 
 
 class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
         lm.update(
-            "1.1.1.1", {"CPU": 2}, {"CPU": 1}, {},
+            "1.1.1.1", {"CPU": 2},
+            True, {"CPU": 1},
+            True, {},
             waiting_bundles=[{
                 "GPU": 1
             }],
@@ -342,6 +351,7 @@ class AutoscalingTest(unittest.TestCase):
     def tearDown(self):
         self.provider = None
         del _NODE_PROVIDERS["mock"]
+        _clear_provider_cache()
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
@@ -486,14 +496,16 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(1)
-        lm.update(head_ip, {"CPU": 4, "GPU": 1}, {}, {})
+        lm.update(head_ip, {"CPU": 4, "GPU": 1}, True, {}, True, {})
         self.waitForNodes(1)
 
         lm.update(
             head_ip, {
                 "CPU": 4,
                 "GPU": 1
-            }, {"GPU": 0}, {},
+            },
+            True, {"GPU": 0},
+            True, {},
             waiting_bundles=[{
                 "GPU": 1
             }])
@@ -627,7 +639,9 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(0)
         autoscaler.update()
         lm.update(
-            "1.2.3.4", {}, {}, {},
+            "1.2.3.4", {},
+            True, {},
+            True, {},
             waiting_bundles=[{
                 "GPU": 1
             }],

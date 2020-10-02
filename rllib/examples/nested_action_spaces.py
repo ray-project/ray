@@ -52,7 +52,7 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    results = tune.run(args.run, config=config, stop=stop)
+    results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

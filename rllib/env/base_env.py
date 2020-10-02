@@ -183,7 +183,8 @@ class BaseEnv:
                 reset the entire Env (i.e. all sub-envs).
 
         Returns:
-            obs (dict|None): Resetted observation or None if not supported.
+            Optional[MultiAgentDict]: Resetted (multi-agent) observation dict
+                or None if reset is not supported.
         """
         return None
 

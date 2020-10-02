@@ -89,6 +89,9 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to fake GPUs (using CPUs).
     # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
     "_fake_gpus": False,
+    # Switch on Trajectory View API for PPO by default.
+    # NOTE: Only supported for PyTorch so far.
+    "_use_trajectory_view_api": True,
 })
 
 # __sphinx_doc_end__
@@ -126,7 +129,8 @@ def validate_config(config: TrainerConfigDict) -> None:
     if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
         raise ValueError(
             "Episode truncation is not supported without a value "
-            "function. Consider setting batch_mode=complete_episodes.")
+            "function (to estimate the return at the end of the truncated "
+            "trajectory). Consider setting batch_mode=complete_episodes.")
 
     # Multi-gpu not supported for PyTorch and tf-eager.
     if config["framework"] in ["tf2", "tfe", "torch"]:
