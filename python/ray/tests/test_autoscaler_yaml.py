@@ -50,10 +50,13 @@ class AutoscalingConfigTest(unittest.TestCase):
         orig_new_config = copy.deepcopy(new_config)
         expected_available_node_types = orig_new_config["available_node_types"]
         expected_available_node_types["cpu_4_ondemand"]["resources"] = {
-            "Custom": 1,
             "CPU": 4
         }
-        expected_available_node_types["cpu_16_spot"]["resources"] = {"CPU": 16}
+        expected_available_node_types["cpu_16_spot"]["resources"] = {
+            "CPU": 16,
+            "Custom1": 1,
+            "is_spot": 1
+        }
         expected_available_node_types["gpu_8_ondemand"]["resources"] = {
             "CPU": 32,
             "GPU": 4,
