@@ -303,7 +303,7 @@ class _CliLogger():
 
     def set_format(self, format_tmpl=None):
         if not format_tmpl:
-            from ray.autoscaler.constants import LOGGER_FORMAT
+            from ray.autoscaler._private.constants import LOGGER_FORMAT
             format_tmpl = LOGGER_FORMAT
         self._formatter = logging.Formatter(format_tmpl)
 

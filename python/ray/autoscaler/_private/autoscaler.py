@@ -26,7 +26,7 @@ from ray.autoscaler._private.resource_demand_scheduler import \
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
-from ray.autoscaler.constants import \
+from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
     AUTOSCALER_HEARTBEAT_TIMEOUT_S
