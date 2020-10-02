@@ -97,6 +97,10 @@ MYPY_FLAGS=(
     '--follow-imports=skip'
 )
 
+MYPY_FILES=(
+    'python/ray/autoscaler/node_provider.py'
+)
+
 YAPF_EXCLUDES=(
     '--exclude' 'python/ray/cloudpickle/*'
     '--exclude' 'python/build/*'
@@ -128,22 +132,6 @@ mypy_on_each() {
     done
 }
 
-# Runs mypy in sequence on each changed python file that differs from the 
-# master branch. Currently invoked in format_changed AND format_all.
-mypy_on_changed() {
-    # The hideous line starting "IFS" loads the newline-separated
-    # changed_py_file_string into the array changed_py_file_array in a way
-    # compatible with macOS's old Bash.
-    local changed_py_file_string
-    local changed_py_file_array
-    MERGEBASE="$(git merge-base upstream/master HEAD)"
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        changed_py_file_string="$(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py')"
-        IFS=$'\n' read -rd '' -a changed_py_file_array <<< "$changed_py_file_string" || true
-        echo "Running mypy on changed python files"
-        mypy_on_each "${changed_py_file_array[@]}"
-    fi
-}
 
 # Format specified files
 format_files() {
@@ -195,7 +183,7 @@ format_files() {
 }
 
 # Format all files, and print the diff to stdout for travis.
-# For now, mypy only runs on changed python files.
+# Mypy is run only on files specified in the array MYPY_FILES.
 format_all() {
     command -v flake8 &> /dev/null;
     HAS_FLAKE8=$?
@@ -204,7 +192,7 @@ format_all() {
     git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
     echo "$(date)" "MYPY...."
-    mypy_on_changed
+    mypy_on_each "${MYPY_FILES[@]}"
     if [ $HAS_FLAKE8 ]; then
       echo "$(date)" "Flake8...."
       git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
@@ -243,16 +231,11 @@ format_changed() {
     #
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
-    mypy_on_changed
-
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
-        echo "Running mypy on changed python files:"
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-             mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} 
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
                  flake8 --inline-quotes '"' --no-avoid-escape "$FLAKE8_EXCLUDE" "$FLAKE8_IGNORES"
