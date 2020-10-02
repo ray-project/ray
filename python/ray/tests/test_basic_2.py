@@ -3,6 +3,7 @@ import logging
 import sys
 import threading
 import time
+import os
 
 import numpy as np
 import pytest
@@ -472,6 +473,7 @@ def test_actor_large_objects(ray_start_regular_shared):
     assert isinstance(ray.get(obj_ref), np.ndarray)
 
 
+@pytest.mark.skipif(bool(os.environ.get("NEW_SCHEDULER_ENABLED")), reason="Currently flaky")
 def test_actor_pass_by_ref(ray_start_regular_shared):
     @ray.remote
     class Actor:

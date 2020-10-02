@@ -8,6 +8,17 @@ SRCS = [] + select({
     "//conditions:default": [],
 })
 
+pyt_test_module_list(
+  file = [
+    "test_basic.py",
+    "test_basic_2.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "new_scheduler"]
+)
+
+
 py_test_module_list(
   files = [
     "test_actor_advanced.py",
