@@ -53,7 +53,8 @@ class Client:
 
     def __del__(self):
         if not self._detached:
-            logger.info("Calling shutdown because client went out of scope.")
+            logger.info("Shutting down Ray Serve because client went out of "
+                        "scope.")
             self.shutdown()
 
     def __reduce__(self):
