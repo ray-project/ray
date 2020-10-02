@@ -21,7 +21,9 @@ namespace ray {
 Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
   NodeID pinned_at;
-  bool owned_by_us = reference_counter_->IsPlasmaObjectPinned(object_id, &pinned_at);
+  bool spilled;
+  bool owned_by_us =
+      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled);
   if (!owned_by_us) {
     return Status::Invalid(
         "Object reference no longer exists or is not owned by us. Either lineage pinning "
@@ -29,7 +31,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   bool already_pending_recovery = true;
-  if (pinned_at.IsNil()) {
+  if (pinned_at.IsNil() && !spilled) {
     {
       absl::MutexLock lock(&mu_);
       // Mark that we are attempting recovery for this object to prevent
