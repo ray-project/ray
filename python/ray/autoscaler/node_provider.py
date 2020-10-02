@@ -27,6 +27,8 @@ class NodeProvider:
     def __init__(self, provider_config, cluster_name):
         self.provider_config = provider_config
         self.cluster_name = cluster_name
+        self._internal_ip_cache = {}
+        self._external_ip_cache = {}
 
     def non_terminated_nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
@@ -61,6 +63,47 @@ class NodeProvider:
     def internal_ip(self, node_id):
         """Returns the internal ip (Ray ip) of the given node."""
         raise NotImplementedError
+
+    def get_node_id(self, ip_address, use_internal_ip=False) -> str:
+        """Returns the node_id given an IP address.
+
+        Assumes ip-address is unique per node.
+
+        Args:
+            ip_address (str): Address of node.
+            use_internal_ip (bool): Whether the ip address is
+                public or private.
+
+        Raises:
+            ValueError if not found.
+        """
+
+        def find_node_id():
+            if use_internal_ip:
+                return self._internal_ip_cache.get(ip_address)
+            else:
+                return self._external_ip_cache.get(ip_address)
+
+        if not find_node_id():
+            all_nodes = self.non_terminated_nodes({})
+            for node_id in all_nodes:
+                if use_internal_ip:
+                    int_ip = self.internal_ip(node_id)
+                    self._internal_ip_cache[int_ip] = node_id
+                else:
+                    ext_ip = self.external_ip(node_id)
+                    self._external_ip_cache[ext_ip] = node_id
+
+        if not find_node_id():
+            if use_internal_ip:
+                known_msg = (
+                    f"Worker internal IPs: {list(self._internal_ip_cache)}")
+            else:
+                known_msg = (
+                    f"Worker external IP: {list(self._external_ip_cache)}")
+            raise ValueError(f"ip {ip_address} not found. " + known_msg)
+
+        return find_node_id()
 
     def create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
