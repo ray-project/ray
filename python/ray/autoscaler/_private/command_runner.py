@@ -23,8 +23,7 @@ from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.subprocess_output_util import (
     run_cmd_redirected, ProcessRunnerError, is_output_redirected)
 
-from ray.autoscaler._private.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +311,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             return ip
 
         interval = 10
-        with cli_logger.timed("Waiting for IP"):
+        with cli_logger.group("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
                 cli_logger.old_info(logger, "{}Waiting for IP...",
@@ -672,7 +671,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
             self.container_name,
             self.docker_config.get("run_options", []) + self.docker_config.get(
-                f"{'head' if as_head else 'worker'}_run_options", []))
+                f"{'head' if as_head else 'worker'}_run_options",
+                []) + self._configure_runtime())
 
         if not self._check_container_status():
             self.run(start_command, run_env="host")
@@ -715,3 +715,14 @@ class DockerCommandRunner(CommandRunnerInterface):
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True
+
+    def _configure_runtime(self):
+        if self.docker_config.get("disable_automatic_runtime_detection"):
+            return []
+
+        runtime_output = self.ssh_command_runner.run(
+            "docker info -f '{{.Runtimes}}' ",
+            with_output=True).decode().strip()
+        if "nvidia-container-runtime" in runtime_output:
+            return ["--runtime=nvidia"]
+        return []

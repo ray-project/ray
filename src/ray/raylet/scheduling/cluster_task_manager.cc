@@ -1,12 +1,13 @@
-#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include <google/protobuf/map.h>
 
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace raylet {
 
 ClusterTaskManager::ClusterTaskManager(
-    const ClientID &self_node_id,
+    const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     std::function<bool(const Task &)> fulfills_dependencies_func,
     NodeInfoGetter get_node_info)
@@ -50,7 +51,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                                  request_resources);
 
-        ClientID node_id = ClientID::FromBinary(node_id_string);
+        NodeID node_id = NodeID::FromBinary(node_id_string);
         auto node_info_opt = get_node_info_(node_id);
         // gcs_client_->Nodes().Get(node_id);
         RAY_CHECK(node_info_opt)
@@ -184,6 +185,73 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   return false;
 }
 
+void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
+                                   std::shared_ptr<HeartbeatTableData> data) const {
+  auto resource_loads = data->mutable_resource_load();
+  auto resource_load_by_shape =
+      data->mutable_resource_load_by_shape()->mutable_resource_demands();
+
+  if (light_heartbeat_enabled) {
+    RAY_CHECK(false) << "TODO";
+  } else {
+    // TODO (Alex): Implement the 1-CPU task optimization.
+    for (const auto &work : tasks_to_schedule_) {
+      const auto &task = std::get<0>(work);
+      const auto &resources =
+          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+
+      auto by_shape_entry = resource_load_by_shape->Add();
+
+      for (const auto &resource : resources) {
+        // Add to `resource_loads`.
+        const auto &label = resource.first;
+        const auto &quantity = resource.second;
+        const auto &entry = resource_loads->find(label);
+        if (entry == resource_loads->end()) {
+          (*resource_loads)[label] = quantity;
+        } else {
+          (*resource_loads)[label] = entry->second + quantity;
+        }
+
+        // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
+        // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
+        // that the entire cluster is utilized.
+        by_shape_entry->set_num_infeasible_requests_queued(1);
+      }
+    }
+
+    for (const auto &work : tasks_to_dispatch_) {
+      const auto &task = std::get<0>(work);
+      const auto &resources =
+          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+
+      auto by_shape_entry = resource_load_by_shape->Add();
+
+      for (auto to_add_it = resources.begin(); to_add_it != resources.end();
+           to_add_it++) {
+        // Add to `resource_loads`.
+        const auto &label = to_add_it->first;
+        const auto &quantity = to_add_it->second;
+        const auto &entry = resource_loads->find(label);
+        if (entry == resource_loads->end()) {
+          (*resource_loads)[label] = quantity;
+        } else {
+          (*resource_loads)[label] = entry->second + quantity;
+        }
+
+        // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
+        // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
+        // that the entire cluster is utilized.
+        by_shape_entry->set_num_ready_requests_queued(1);
+      }
+    }
+  }
+}
+
 std::string ClusterTaskManager::DebugString() {
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
@@ -260,7 +328,7 @@ void ClusterTaskManager::Dispatch(
   send_reply_callback();
 }
 
-void ClusterTaskManager::Spillback(ClientID spillback_to, std::string address, int port,
+void ClusterTaskManager::Spillback(NodeID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> send_reply_callback) {
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);

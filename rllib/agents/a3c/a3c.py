@@ -37,6 +37,9 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
+    # Switch on Trajectory View API for A2/3C by default.
+    # NOTE: Only supported for PyTorch so far.
+    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable

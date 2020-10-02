@@ -3,8 +3,6 @@ import os
 
 import torch
 import torch.distributed as dist
-from torch.utils.data import DataLoader, IterableDataset
-from torch.utils.data.distributed import DistributedSampler
 from ray.util.sgd.torch.utils import setup_process_group
 
 import ray
@@ -84,49 +82,19 @@ class DistributedTorchRunner(TorchRunner):
             self.config,
             world_rank=self.world_rank,
             local_rank=self.local_rank,
+            is_distributed=True,
             device_ids=device_ids,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
             apex_args=self.apex_args,
             wrap_ddp=self.wrap_ddp,
-            use_ddp=True,
             add_dist_sampler=self.add_dist_sampler,
             scheduler_step_freq=self.scheduler_step_freq)
 
     def get_device_ids(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         return [0]
-
-    def _wrap_dataloaders(self):
-        def with_sampler(loader):
-            # Automatically set the DistributedSampler
-            data_loader_args = {
-                "dataset": loader.dataset,
-                "batch_size": loader.batch_size,
-                "shuffle": False,
-                "num_workers": loader.num_workers,
-                "collate_fn": loader.collate_fn,
-                "pin_memory": loader.pin_memory,
-                "drop_last": loader.drop_last,
-                "timeout": loader.timeout,
-                "worker_init_fn": loader.worker_init_fn,
-                "sampler": DistributedSampler(loader.dataset)
-            }
-            return DataLoader(**data_loader_args)
-
-        def should_wrap_dataloader(loader):
-            return (isinstance(loader, DataLoader)
-                    and not isinstance(loader.dataset, IterableDataset))
-
-        if should_wrap_dataloader(self.train_loader):
-            if self.add_dist_sampler:
-                self.train_loader = with_sampler(self.train_loader)
-
-        if self.validation_loader is not None and should_wrap_dataloader(
-                self.validation_loader):
-            if self.add_dist_sampler:
-                self.validation_loader = with_sampler(self.validation_loader)
 
     def train_epoch(self,
                     num_steps=None,

@@ -85,7 +85,7 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
-    const ClientID &raylet_id, const WorkerID &worker_id, const std::string &address,
+    const NodeID &raylet_id, const WorkerID &worker_id, const std::string &address,
     int32_t port, int64_t timestamp = std::time(nullptr),
     bool intentional_disconnect = false) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
@@ -104,7 +104,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
 /// \param is_add Whether the object is appeared on the node.
 /// \return The object location change created by this method.
 inline std::shared_ptr<ray::rpc::ObjectLocationChange> CreateObjectLocationChange(
-    const ClientID &node_id, bool is_add) {
+    const NodeID &node_id, bool is_add) {
   ray::rpc::ObjectTableData object_table_data;
   object_table_data.set_manager(node_id.Binary());
   auto object_location_change = std::make_shared<ray::rpc::ObjectLocationChange>();

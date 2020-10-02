@@ -56,7 +56,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   rpc::Address CreateRandomAddress(const std::string &addr) {
     rpc::Address address;
     address.set_ip_address(addr);
-    address.set_raylet_id(ClientID::FromRandom().Binary());
+    address.set_raylet_id(NodeID::FromRandom().Binary());
     address.set_worker_id(WorkerID::FromRandom().Binary());
     return address;
   }
@@ -1986,11 +1986,11 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
 
   ObjectID borrowed_id = ObjectID::FromRandom();
   rc->AddLocalReference(borrowed_id, "");
-  ClientID pinned_at;
+  NodeID pinned_at;
   ASSERT_FALSE(rc->IsPlasmaObjectPinned(borrowed_id, &pinned_at));
 
   ObjectID id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
   rc->AddLocalReference(id, "");
   ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
@@ -2023,7 +2023,7 @@ TEST_F(ReferenceCountTest, TestFree) {
   auto callback = [&](const ObjectID &object_id) { deleted->insert(object_id); };
 
   ObjectID id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
 
   // Test free before receiving information about where the object is pinned.
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
@@ -2034,7 +2034,7 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
   ASSERT_EQ(deleted->count(id), 0);
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
-  ClientID pinned_at;
+  NodeID pinned_at;
   ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned_at));
   ASSERT_TRUE(pinned_at.IsNil());
   ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));

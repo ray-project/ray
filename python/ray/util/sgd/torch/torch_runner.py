@@ -53,6 +53,7 @@ class TorchRunner:
             self.config,
             world_rank=0,
             local_rank=0,
+            is_distributed=False,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,

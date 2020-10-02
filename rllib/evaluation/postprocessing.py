@@ -57,13 +57,13 @@ def compute_advantages(rollout: SampleBatch,
         rollout[Postprocessing.ADVANTAGES] = discount(delta_t, gamma * lambda_)
         rollout[Postprocessing.VALUE_TARGETS] = (
             rollout[Postprocessing.ADVANTAGES] +
-            rollout[SampleBatch.VF_PREDS]).copy().astype(np.float32)
+            rollout[SampleBatch.VF_PREDS]).astype(np.float32)
     else:
         rewards_plus_v = np.concatenate(
             [rollout[SampleBatch.REWARDS],
              np.array([last_r])])
         discounted_returns = discount(rewards_plus_v,
-                                      gamma)[:-1].copy().astype(np.float32)
+                                      gamma)[:-1].astype(np.float32)
 
         if use_critic:
             rollout[Postprocessing.
@@ -76,7 +76,7 @@ def compute_advantages(rollout: SampleBatch,
                 rollout[Postprocessing.ADVANTAGES])
 
     rollout[Postprocessing.ADVANTAGES] = rollout[
-        Postprocessing.ADVANTAGES].copy().astype(np.float32)
+        Postprocessing.ADVANTAGES].astype(np.float32)
 
     assert all(val.shape[0] == rollout_size for key, val in rollout.items()), \
         "Rollout stacked incorrectly!"
