@@ -211,58 +211,6 @@ Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
   return Status::OK();
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncRegister(
-    const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-    const StatusCallback &callback) {
-  ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-  RAY_LOG(DEBUG) << "Registering actor info, actor id = " << actor_id;
-  rpc::RegisterActorInfoRequest request;
-  request.mutable_actor_table_data()->CopyFrom(*data_ptr);
-
-  auto operation = [this, request, actor_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().RegisterActorInfo(
-        request, [actor_id, callback, done_callback](
-                     const Status &status, const rpc::RegisterActorInfoReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished registering actor info, status = " << status
-                         << ", actor id = " << actor_id;
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(actor_id, operation);
-  return Status::OK();
-}
-
-Status ServiceBasedActorInfoAccessor::AsyncUpdate(
-    const ActorID &actor_id, const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-    const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Updating actor info, actor id = " << actor_id;
-  rpc::UpdateActorInfoRequest request;
-  request.set_actor_id(actor_id.Binary());
-  request.mutable_actor_table_data()->CopyFrom(*data_ptr);
-
-  auto operation = [this, request, actor_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().UpdateActorInfo(
-        request, [actor_id, callback, done_callback](
-                     const Status &status, const rpc::UpdateActorInfoReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished updating actor info, status = " << status
-                         << ", actor id = " << actor_id;
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(actor_id, operation);
-  return Status::OK();
-}
-
 Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {

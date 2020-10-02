@@ -178,15 +178,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UpdateActor(const ActorID &actor_id,
-                   const std::shared_ptr<rpc::ActorTableData> &actor_table_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(
-        actor_id, actor_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   rpc::ActorTableData GetActor(const ActorID &actor_id) {
     std::promise<bool> promise;
     rpc::ActorTableData actor_table_data;
