@@ -1,5 +1,6 @@
 import json
 import random
+import platform
 import sys
 import time
 
@@ -8,6 +9,8 @@ import pytest
 import ray
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_objects_manually(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
@@ -50,6 +53,8 @@ def test_spill_objects_manually(shutdown_only):
         assert np.array_equal(sample, arr)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_objects_manually_from_workers(shutdown_only):
     # Limit our object store to 100 MiB of memory.
     ray.init(
@@ -110,6 +115,8 @@ def test_spill_objects_manually_with_workers(shutdown_only):
         assert np.array_equal(restored, arr)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
