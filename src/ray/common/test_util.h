@@ -109,6 +109,7 @@ extern std::string TEST_MOCK_WORKER_EXEC_PATH;
 class TestSetupUtil {
  public:
   static void StartUpRedisServers(const std::vector<int> &redis_server_ports);
+  static int StartUpRedisServer(const int &port);
   static void ShutDownRedisServers();
   static void FlushAllRedisServers();
 
@@ -126,7 +127,6 @@ class TestSetupUtil {
   static void StopRaylet(const std::string &raylet_socket_name);
 
  private:
-  static int StartUpRedisServer(const int &port);
   static void ShutDownRedisServer(const int &port);
   static void FlushRedisServer(const int &port);
 };

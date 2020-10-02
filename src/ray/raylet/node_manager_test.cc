@@ -22,16 +22,6 @@
 #include "ray/raylet/node_manager.h"
 #include "ray/util/filesystem.h"
 
-extern "C" {
-#include "hiredis/hiredis.h"
-}
-
-static inline void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
-  freeReplyObject(redisCommand(context, "FLUSHALL"));
-  redisFree(context);
-}
-
 namespace ray {
 
 namespace raylet {
@@ -109,13 +99,22 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
 class TestNodeManager : public ::testing::Test {
  public:
   TestNodeManager() {
-    std::vector<int> ports;
-    ports.push_back(6379);
-    TestSetupUtil::StartUpRedisServers(ports);
-    config_.heartbeat_period_ms = 100000;
+    // Start redis.
+    redis_port_ = TestSetupUtil::StartUpRedisServer(0);
+
+    // Start store.
+    store_socket_name_ = TestSetupUtil::StartObjectStore();
+
+    // Create object manager config.
   }
 
-  virtual ~TestNodeManager() { TestSetupUtil::ShutDownRedisServers(); }
+  virtual ~TestNodeManager() {
+    // Stop store.
+    TestSetupUtil::StopObjectStore(store_socket_name_);
+
+    // Stop redis.
+    TestSetupUtil::ShutDownRedisServers();
+  }
 
   void SetUp() {
     client_io_service_.reset(new boost::asio::io_service());
@@ -125,39 +124,32 @@ class TestNodeManager : public ::testing::Test {
       client_io_service_->run();
     }));
 
-    flushall_redis();
-
-    // start store
-    socket_name_1 = TestSetupUtil::StartObjectStore();
-
-    unsigned int pull_timeout_ms = 1;
-    push_timeout_ms = 1000;
-
-    // start first server
-    gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
+    // Start redis gcs client.
+    gcs::GcsClientOptions client_options("127.0.0.1", redis_port_, /*password*/ "",
                                          /*is_test_client=*/true);
-    gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
-    RAY_CHECK_OK(gcs_client_1->Connect(*client_io_service_));
+    gcs_client_ = std::make_shared<gcs::RedisGcsClient>(client_options);
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
 
     NodeID node_id = NodeID::FromRandom();
     object_directory_.reset(new MockObjectDirectory());
     io_service_.reset(new boost::asio::io_service());
-    ObjectManagerConfig om_config_1;
-    om_config_1.store_socket_name = socket_name_1;
-    om_config_1.pull_timeout_ms = pull_timeout_ms;
-    om_config_1.object_chunk_size = object_chunk_size;
-    om_config_1.push_timeout_ms = push_timeout_ms;
-    om_config_1.object_manager_port = 0;
-    om_config_1.rpc_service_threads_number = 3;
+    object_manager_config_.store_socket_name = store_socket_name_;
+    object_manager_config_.pull_timeout_ms = 1;
+    object_manager_config_.object_chunk_size = object_chunk_size;
+    object_manager_config_.push_timeout_ms = 1000;
+    object_manager_config_.object_manager_port = 0;
+    object_manager_config_.rpc_service_threads_number = 3;
     object_manager_.reset(new MockObjectManager(
-        *io_service_, node_id, om_config_1,
+        *io_service_, node_id, object_manager_config_,
         std::make_shared<ObjectDirectory>(*io_service_, gcs_client_)));
-    config_.store_socket_name = socket_name_1;
-    config_.maximum_startup_concurrency = 1;
-    config_.node_manager_address = "127.0.0.1";
-    config_.node_manager_port = 5566;
-    node_manager_.reset(new NodeManager(*io_service_, node_id, config_, *object_manager_,
-                                        gcs_client_, object_directory_));
+    node_manager_config_.heartbeat_period_ms = 100000;
+    node_manager_config_.store_socket_name = store_socket_name_;
+    node_manager_config_.maximum_startup_concurrency = 1;
+    node_manager_config_.node_manager_address = "127.0.0.1";
+    node_manager_config_.node_manager_port = 5566;
+    node_manager_.reset(new NodeManager(*io_service_, node_id, node_manager_config_,
+                                        *object_manager_, gcs_client_,
+                                        object_directory_));
     io_service_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*io_service_));
@@ -166,7 +158,8 @@ class TestNodeManager : public ::testing::Test {
 
     client_call_manager_.reset(new rpc::ClientCallManager(*client_io_service_));
     node_manager_rpc_client_ = rpc::NodeManagerWorkerClient::make(
-        config_.node_manager_address, config_.node_manager_port, *client_call_manager_);
+        node_manager_config_.node_manager_address, node_manager_config_.node_manager_port,
+        *client_call_manager_);
   }
 
   void TearDown() {
@@ -176,15 +169,14 @@ class TestNodeManager : public ::testing::Test {
 
     client_io_service_->stop();
     client_io_service_thread_->join();
-
-    TestSetupUtil::StopObjectStore(socket_name_1);
   }
 
  protected:
   std::unique_ptr<std::thread> io_service_thread_;
   std::unique_ptr<boost::asio::io_service> io_service_;
 
-  NodeManagerConfig config_;
+  ObjectManagerConfig object_manager_config_;
+  NodeManagerConfig node_manager_config_;
   std::shared_ptr<ObjectManager> object_manager_;
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
@@ -192,11 +184,11 @@ class TestNodeManager : public ::testing::Test {
 
   std::unique_ptr<std::thread> client_io_service_thread_;
   std::unique_ptr<boost::asio::io_service> client_io_service_;
-  std::shared_ptr<gcs::GcsClient> gcs_client_1;
 
-  std::string socket_name_1;
-  unsigned int push_timeout_ms;
+  std::string store_socket_name_;
   uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
+
+  int redis_port_;
 
   // Node manager rpc client.
   std::shared_ptr<rpc::NodeManagerWorkerClient> node_manager_rpc_client_;
