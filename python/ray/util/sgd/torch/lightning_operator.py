@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                         TrainerOptimizersMixin):
+    """A subclass of TrainingOperator that defines training state via a
+    Pytorch Lightning ``LightningModule``.
+    """
     def _configure_amp(self, amp, models, optimizers):
         assert len(models) == 1
         model = models[0]

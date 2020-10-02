@@ -741,7 +741,15 @@ class TrainingOperator:
                  lightning_module_cls,
                  train_dataloader=None,
                  val_dataloader=None):
-        """Creates a TrainingOperator from a Pytorch Lightning Module.
+        """A utility method to create a custom TrainingOperator class from a
+        Pytorch Lightning Module.
+
+        .. code-block:: python
+
+            MyLightningOperator = TrainingOperator.from_ptl(
+                MyLightningModule)
+            trainer = TorchTrainer(training_operator_cls=MyLightningOperator,
+                ...)
 
         Args:
             lightning_module_cls: Your LightningModule class. An object of
@@ -780,6 +788,13 @@ class TrainingOperator:
         you should subclass the class that is returned by this method instead
         of ``TrainingOperator``.
 
+        .. code-block:: python
+
+            MyCreatorOperator = TrainingOperator.from_creators(
+                model_creator, optimizer_creator)
+            trainer = TorchTrainer(training_operator_cls=MyCreatorOperator,
+                ...)
+
         Args:
             model_creator (dict -> Model(s)): Constructor function that takes
                 in config and returns the model(s) to be optimized. These
@@ -817,8 +832,8 @@ class TrainingOperator:
                 system). Defaults to True.
 
         Returns:
-            A TrainingOperator class with a ``setup`` method that utilizes
-            the passed in creator functions.
+            A CreatorOperator class- a subclass of TrainingOperator with a
+            ``setup`` method that utilizes the passed in creator functions.
         """
 
         if not (callable(model_creator) and callable(optimizer_creator)):
@@ -890,7 +905,8 @@ class TrainingOperator:
 
 class CreatorOperator(TrainingOperator):
     """A subclass of TrainingOperator specifically for defining training
-    state using creator functions.
+    state using creator functions. This allows for backwards compatibility
+    with pre Ray 1.0 versions.
     """
 
     def _validate_loaders(self, loaders):

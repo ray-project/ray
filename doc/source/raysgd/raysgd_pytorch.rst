@@ -445,6 +445,7 @@ After connecting, you can scale up the number of workers seamlessly across multi
     trainer.train()
     model = trainer.get_model()
 
+.. _raysgd-tune:
 
 Advanced: Fault Tolerance
 -------------------------

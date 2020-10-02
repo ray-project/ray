@@ -20,10 +20,22 @@ PyTorch TrainingOperator
 .. autoclass:: ray.util.sgd.torch.TrainingOperator
     :members:
 
+.. _ref-lightning-operator:
+
 Pytorch LightningOperator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.. autoclass:: ray.util.sgd.torch.PTLOperator
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.. autoclass:: ray.util.sgd.torch.lightning_operator.LightningOperator
     :members:
+
+.. _ref-creator-operator:
+
+CreatorOperator
+~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.util.sgd.torch.training_operator.CreatorOperator
+    :members:
+    :exclude-members: setup
+
 
 .. _BaseTorchTrainable-doc:
 
