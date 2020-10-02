@@ -1046,7 +1046,7 @@ def get_head_node_ip(config_file: str,
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node = _get_head_node(config, config_file, override_cluster_name)
-        if config.get("provider", {}).get("use_internal_ips", False) is True:
+        if config.get("provider", {}).get("use_internal_ips", False):
             head_node_ip = provider.internal_ip(head_node)
         else:
             head_node_ip = provider.external_ip(head_node)
