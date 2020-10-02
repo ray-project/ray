@@ -15,7 +15,7 @@ from ray.autoscaler._private.command_runner import NODE_START_WAIT_S, \
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
-from ray.autoscaler.ray_autoscaler_constants import \
+from ray.autoscaler.constants import \
      RESOURCES_ENVIRONMENT_VARIABLE
 
 logger = logging.getLogger(__name__)

@@ -4,7 +4,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler.ray_autoscaler_constants import DOCKER_MOUNT_PREFIX
+from ray.autoscaler.constants import DOCKER_MOUNT_PREFIX
 
 logger = logging.getLogger(__name__)
 

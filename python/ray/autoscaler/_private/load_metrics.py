@@ -3,7 +3,7 @@ import time
 
 import numpy as np
 import ray._private.services as services
-from ray.autoscaler.ray_autoscaler_constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.autoscaler.constants import MEMORY_RESOURCE_UNIT_BYTES
 
 logger = logging.getLogger(__name__)
 
