@@ -29,7 +29,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
         {{"ping_gcs_rpc_server_max_retries", std::to_string(60)},
-         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)}});
+         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)},
+         {"gcs_clear_expired_actors_interval_seconds", std::to_string(1)},
+         {"gcs_ttl_of_dead_actor_seconds", std::to_string(2)}});
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -1325,6 +1327,20 @@ TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDestroyedActors) {
     return GetAllActors().size() ==
            RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestPeriodicallyCleanExpiredActors) {
+  // Register actors and the actors will be destroyed.
+  JobID job_id = JobID::FromInt(1);
+  const int actor_count = 2;
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    RegisterActor(actor_table_data, false);
+  }
+
+  // Get all actors. The actors is expired, so the number of actors obtained is 0.
+  auto condition = [this]() { return GetAllActors().empty(); };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
