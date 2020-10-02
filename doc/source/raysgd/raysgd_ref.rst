@@ -20,7 +20,7 @@ PyTorch TrainingOperator
 .. autoclass:: ray.util.sgd.torch.TrainingOperator
     :members:
 
-PyTorch Lightning PTLOperator
+Pytorch LightningOperator
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. autoclass:: ray.util.sgd.torch.PTLOperator
     :members:
