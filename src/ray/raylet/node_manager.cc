@@ -177,6 +177,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
+
   if (new_scheduler_enabled_) {
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     new_resource_scheduler_ =
@@ -207,6 +208,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
+
   auto options =
       AgentManager::Options({self_node_id, ParseCommandLine(config.agent_command)});
   agent_manager_.reset(

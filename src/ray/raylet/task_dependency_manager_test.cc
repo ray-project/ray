@@ -51,10 +51,7 @@ class MockReconstructionPolicy : public ReconstructionPolicyInterface {
 class TaskDependencyManagerTest : public ::testing::Test {
  public:
   TaskDependencyManagerTest()
-      : object_manager_mock_(<#initializer#>,
-                             <#initializer#>,
-                             <#initializer#>,
-                             std::shared_ptr<ObjectDirectoryInterface>()),
+      : object_manager_mock_(),
         reconstruction_policy_mock_(),
         task_dependency_manager_(object_manager_mock_, reconstruction_policy_mock_) {}
 
