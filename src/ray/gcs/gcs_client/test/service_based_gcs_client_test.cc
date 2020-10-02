@@ -1277,7 +1277,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
 TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
   // Register actors.
   JobID job_id = JobID::FromInt(1);
-  const int actor_count = 5000;
+  int actor_count = 5000;
   rpc::TaskSpec task_spec;
   rpc::TaskArg task_arg;
   task_arg.set_data("0123456789");
@@ -1291,7 +1291,7 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
   }
 
   // Get all actors.
-  auto condition = [this]() { return GetAllActors().size() == actor_count; };
+  auto condition = [this, actor_count]() { return GetAllActors().size() == actor_count; };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
   int64_t start_time = current_time_ms();
