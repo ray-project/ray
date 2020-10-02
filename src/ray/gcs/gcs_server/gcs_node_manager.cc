@@ -367,11 +367,11 @@ void GcsNodeManager::HandleGetAllAvailableResources(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
+absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
-    return nullptr;
+    return {};
   }
 
   return iter->second;

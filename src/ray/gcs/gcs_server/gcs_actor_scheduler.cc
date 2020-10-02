@@ -277,7 +277,9 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
-    if (auto spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id)) {
+    auto maybe_spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id);
+    if (maybe_spill_back_node.has_value()) {
+      auto spill_back_node = maybe_spill_back_node.value();
       actor->UpdateAddress(retry_at_raylet_address);
       RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
                     .emplace(actor->GetActorID())
