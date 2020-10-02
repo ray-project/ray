@@ -112,8 +112,10 @@ def test_memory_table(ray_start_with_dashboard):
 
     def check_mem_table():
         resp = requests.get(f"{webui_url}/memory/memory_table")
-        resp_data = resp.json()["data"]
-        latest_memory_table = resp_data["memoryTable"]
+        resp_data = resp.json()
+        if not resp_data["result"]:
+            return False
+        latest_memory_table = resp_data["data"]["memoryTable"]
         summary = latest_memory_table["summary"]
         try:
             # 1 ref per handle and per object the actor has a ref to
@@ -136,7 +138,6 @@ def test_get_all_node_details(ray_start_with_dashboard):
     class ActorWithObjs:
         def __init__(self):
             self.obj_ref = ray.put([1, 2, 3])
-            raise Exception("Uh oh it's an error")
 
         def get_obj(self):
             return ray.get(self.obj_ref)
@@ -156,16 +157,11 @@ def test_get_all_node_details(ray_start_with_dashboard):
             assert "workers" in node
             assert "logCount" in node
             worker = node["workers"][0]
-            assert "logCount" in worker
-            # assert worker["logCount"] == 1
-            # assert node["logCount"] == 2
-            assert "errorCount" in worker
-            assert worker["errorCount"] == 1
             return True
-        except (AssertionError, KeyError):
+        except (AssertionError, KeyError, IndexError):
             return False
 
-    wait_for_condition(check_node_details, 10)
+    wait_for_condition(check_node_details, 15)
 
 
 @pytest.mark.parametrize(
