@@ -14,7 +14,7 @@ from socket import socket
 
 import ray
 import psutil
-import ray.services as services
+import ray._private.services as services
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
@@ -22,8 +22,7 @@ from ray.autoscaler._private.commands import (
 import ray.ray_constants as ray_constants
 import ray.utils
 
-from ray.autoscaler._private.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 

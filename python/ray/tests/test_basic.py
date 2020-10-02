@@ -219,8 +219,12 @@ def test_many_fractional_resources(shutdown_only):
     stop_time = time.time() + 10
     correct_available_resources = False
     while time.time() < stop_time:
-        if (ray.available_resources()["CPU"] == 2.0
+        available_resources = ray.available_resources()
+        if ("CPU" in available_resources
+                and ray.available_resources()["CPU"] == 2.0
+                and "GPU" in available_resources
                 and ray.available_resources()["GPU"] == 2.0
+                and "Custom" in available_resources
                 and ray.available_resources()["Custom"] == 2.0):
             correct_available_resources = True
             break
@@ -308,6 +312,7 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
 def test_wait_timing(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -345,6 +350,9 @@ def test_ray_options(shutdown_only):
     @ray.remote(
         num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
     def foo():
+        import time
+        # Sleep for a heartbeat period to ensure resources changing reported.
+        time.sleep(0.1)
         return ray.available_resources()
 
     ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})

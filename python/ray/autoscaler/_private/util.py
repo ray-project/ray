@@ -7,8 +7,8 @@ import threading
 from typing import Any, Dict
 
 import ray
-import ray.services as services
-from ray.autoscaler.node_provider import _get_default_config
+import ray._private.services as services
+from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
 
 REQUIRED, OPTIONAL = True, False

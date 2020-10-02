@@ -71,8 +71,8 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(std::min(
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
-      num_initial_python_workers_for_first_job_(
-          num_initial_python_workers_for_first_job) {
+      num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
+      kill_idle_workers_timer_(io_service) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -127,6 +127,8 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
   }
   if (!RayConfig::instance().enable_multi_tenancy()) {
     Start(num_workers);
+  } else {
+    ScheduleIdleWorkerKilling();
   }
 }
 
@@ -639,7 +641,9 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     if (worker->GetActorId().IsNil()) {
       state.idle.insert(worker);
       if (RayConfig::instance().enable_multi_tenancy()) {
-        idle_of_all_languages.push_back(worker);
+        int64_t now = current_time_ms();
+        idle_of_all_languages_.emplace_back(worker, now);
+        idle_of_all_languages_map_[worker] = now;
       }
     } else {
       state.idle_actor[worker->GetActorId()] = worker;
@@ -647,27 +651,50 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 }
 
+void WorkerPool::ScheduleIdleWorkerKilling() {
+  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
+    kill_idle_workers_timer_.expires_from_now(boost::posix_time::milliseconds(
+        RayConfig::instance().kill_idle_workers_interval_ms()));
+    kill_idle_workers_timer_.async_wait([this](const boost::system::error_code &error) {
+      if (error == boost::asio::error::operation_aborted) {
+        return;
+      }
+      TryKillingIdleWorkers();
+      ScheduleIdleWorkerKilling();
+    });
+  }
+}
+
 void WorkerPool::TryKillingIdleWorkers() {
+  RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+
+  int64_t now = current_time_ms();
   size_t running_size = 0;
-  for (const auto worker : GetAllRegisteredWorkers()) {
+  for (const auto &worker : GetAllRegisteredWorkers()) {
     if (!worker->IsDead()) {
       running_size++;
     }
   }
 
   // Kill idle workers in FIFO order.
-  for (auto it = idle_of_all_languages.begin();
-       it != idle_of_all_languages.end() &&
-       running_size > static_cast<size_t>(num_workers_soft_limit_);
-       it++) {
-    if ((*it)->IsDead()) {
+  for (const auto &idle_pair : idle_of_all_languages_) {
+    if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
+      break;
+    }
+    if (now - idle_pair.second <
+        RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+      break;
+    }
+
+    const auto &idle_worker = idle_pair.first;
+    if (idle_worker->IsDead()) {
       // This worker has already been killed.
       // This is possible because a Java worker process may hold multiple workers.
       continue;
     }
-    auto process = (*it)->GetProcess();
+    auto process = idle_worker->GetProcess();
 
-    auto &worker_state = GetStateForLanguage((*it)->GetLanguage());
+    auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
     if (worker_state.starting_worker_processes.count(process) > 0) {
       // A Java worker process may hold multiple workers.
@@ -680,8 +707,11 @@ void WorkerPool::TryKillingIdleWorkers() {
     auto workers_in_the_same_process = GetWorkersByProcess(process);
     bool can_be_killed = true;
     for (const auto &worker : workers_in_the_same_process) {
-      if (worker_state.idle.count(worker) == 0) {
-        // Another worker in this process isn't idle, so this process can't be killed.
+      if (worker_state.idle.count(worker) == 0 ||
+          now - idle_of_all_languages_map_[worker] <
+              RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+        // Another worker in this process isn't idle, or hasn't been idle for a while, so
+        // this process can't be killed.
         can_be_killed = false;
         break;
       }
@@ -690,31 +720,50 @@ void WorkerPool::TryKillingIdleWorkers() {
       continue;
     }
 
-    for (auto worker_it = workers_in_the_same_process.begin();
-         worker_it != workers_in_the_same_process.end(); worker_it++) {
+    if (running_size - workers_in_the_same_process.size() <
+        static_cast<size_t>(num_workers_soft_limit_)) {
+      // A Java worker process may contain multiple workers. Killing more workers than we
+      // expect may slow the job.
+      return;
+    }
+
+    for (const auto &worker : workers_in_the_same_process) {
       RAY_LOG(INFO) << "The worker pool has " << running_size
                     << " registered workers which exceeds the soft limit of "
-                    << num_workers_soft_limit_ << ", and worker "
-                    << (*worker_it)->WorkerId() << " with pid " << process.GetId()
-                    << " is idle. Kill it.";
+                    << num_workers_soft_limit_ << ", and worker " << worker->WorkerId()
+                    << " with pid " << process.GetId()
+                    << " has been idle for a a while. Kill it.";
+      // To avoid object lost issue caused by forcibly killing, send an RPC request to the
+      // worker to allow it to do cleanup before exiting.
+      auto rpc_client = worker->rpc_client();
+      RAY_CHECK(rpc_client);
+      rpc::ExitRequest request;
+      rpc_client->Exit(request, [](const ray::Status &status, const rpc::ExitReply &r) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
+        }
+      });
       // Remove the worker from the idle pool so it can't be popped anymore.
-      RemoveWorker(worker_state.idle, *worker_it);
-      if (!(*worker_it)->IsDead()) {
-        (*worker_it)->MarkDead();
+      RemoveWorker(worker_state.idle, worker);
+      if (!worker->IsDead()) {
+        worker->MarkDead();
         running_size--;
       }
     }
-    process.Kill();
   }
 
-  std::list<std::shared_ptr<WorkerInterface>> new_idle_of_all_languages;
-  for (auto it = idle_of_all_languages.begin(); it != idle_of_all_languages.end(); it++) {
-    if (!(*it)->IsDead()) {
-      new_idle_of_all_languages.push_back(*it);
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>
+      new_idle_of_all_languages;
+  idle_of_all_languages_map_.clear();
+  for (const auto &idle_pair : idle_of_all_languages_) {
+    if (!idle_pair.first->IsDead()) {
+      new_idle_of_all_languages.push_back(idle_pair);
+      idle_of_all_languages_map_.emplace(idle_pair);
     }
   }
 
-  idle_of_all_languages = std::move(new_idle_of_all_languages);
+  idle_of_all_languages_ = std::move(new_idle_of_all_languages);
+  RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
@@ -760,18 +809,19 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     } else {
       // Find an available worker which is already assigned to this job.
       // Try to pop the most recently pushed worker.
-      for (auto it = idle_of_all_languages.rbegin(); it != idle_of_all_languages.rend();
+      for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
            it++) {
-        if (task_spec.GetLanguage() != (*it)->GetLanguage() ||
-            (*it)->GetAssignedJobId() != task_spec.JobId()) {
+        if (task_spec.GetLanguage() != it->first->GetLanguage() ||
+            it->first->GetAssignedJobId() != task_spec.JobId()) {
           continue;
         }
-        state.idle.erase(*it);
+        state.idle.erase(it->first);
         // We can't erase a reverse_iterator.
         auto lit = it.base();
         lit--;
-        worker = std::move(*lit);
-        idle_of_all_languages.erase(lit);
+        worker = std::move(lit->first);
+        idle_of_all_languages_.erase(lit);
+        idle_of_all_languages_map_.erase(worker);
         break;
       }
       if (worker == nullptr) {
@@ -804,6 +854,14 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
+       it++) {
+    if (it->first == worker) {
+      idle_of_all_languages_.erase(it);
+      idle_of_all_languages_map_.erase(worker);
+      break;
+    }
+  }
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
@@ -958,7 +1016,7 @@ std::string WorkerPool::DebugString() const {
     result << "\n- num " << Language_Name(entry.first)
            << " drivers: " << entry.second.registered_drivers.size();
   }
-  result << "- num idle workers: " << idle_of_all_languages.size();
+  result << "- num idle workers: " << idle_of_all_languages_.size();
   return result.str();
 }
 

@@ -34,7 +34,7 @@ def test_submitting_many_tasks(ray_start_sharded):
         return x
 
     ray.get([g(100) for _ in range(100)])
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 def test_submitting_many_actors_to_one(ray_start_sharded):
@@ -72,7 +72,7 @@ def test_getting_and_putting(ray_start_sharded):
         for _ in range(1000):
             ray.get(x_id)
 
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 def test_getting_many_objects(ray_start_sharded):
@@ -84,7 +84,7 @@ def test_getting_many_objects(ray_start_sharded):
     lst = ray.get([f.remote() for _ in range(n)])
     assert lst == n * [1]
 
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 if __name__ == "__main__":

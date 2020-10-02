@@ -545,7 +545,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
     time.sleep(1.0)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 @pytest.mark.skip(reason="This test is too expensive to run.")
@@ -580,7 +580,7 @@ def test_move_log_files_to_old(shutdown_only):
             break
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 def test_lease_request_leak(shutdown_only):
@@ -695,12 +695,16 @@ def test_accelerator_type_api(shutdown_only):
 
     @ray.remote(accelerator_type=v100)
     def decorated_func(quantity):
-        return ray.available_resources()[resource_name] < quantity
+        wait_for_condition(
+            lambda: ray.available_resources()[resource_name] < quantity)
+        return True
 
     assert ray.get(decorated_func.remote(quantity))
 
     def via_options_func(quantity):
-        return ray.available_resources()[resource_name] < quantity
+        wait_for_condition(
+            lambda: ray.available_resources()[resource_name] < quantity)
+        return True
 
     assert ray.get(
         ray.remote(via_options_func).options(
@@ -725,13 +729,15 @@ def test_accelerator_type_api(shutdown_only):
     # Avoid a race condition where the actor hasn't been initialized and
     # claimed the resources yet.
     ray.get(decorated_actor.initialized.remote())
-    assert ray.available_resources()[resource_name] < quantity
+    wait_for_condition(
+        lambda: ray.available_resources()[resource_name] < quantity)
 
     quantity = ray.available_resources()[resource_name]
     with_options = ray.remote(ActorWithOptions).options(
         accelerator_type=v100).remote()
     ray.get(with_options.initialized.remote())
-    assert ray.available_resources()[resource_name] < quantity
+    wait_for_condition(
+        lambda: ray.available_resources()[resource_name] < quantity)
 
 
 def test_detect_docker_cpus():

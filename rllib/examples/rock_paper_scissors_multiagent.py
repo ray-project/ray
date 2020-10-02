@@ -38,7 +38,7 @@ def run_same_policy(args, stop):
         "framework": "torch" if args.torch else "tf",
     }
 
-    results = tune.run("PG", config=config, stop=stop)
+    results = tune.run("PG", config=config, stop=stop, verbose=1)
 
     if args.as_test:
         # Check vs 0.0 as we are playing a zero-sum game.

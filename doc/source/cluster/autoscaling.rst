@@ -72,6 +72,7 @@ An example of configuring multiple node types is as follows `(full example) <htt
             node_config:
                 InstanceType: m4.xlarge
             resources: {"CPU": 4}
+            min_workers: 1
             max_workers: 5
         cpu_16_spot:
             node_config:
@@ -117,10 +118,11 @@ The resources field tells the autoscaler what kinds of resources this node provi
 
     resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
 
-The ``max_workers`` field constrains the number of nodes of this type that can be launched:
+The ``min_workers`` and ``max_workers`` fields constrain the minimum and maximum number of nodes of this type to launch, respectively:
 
 .. code::
 
+    min_workers: 1
     max_workers: 4
 
 The ``worker_setup_commands`` field (and also the ``initialization_commands`` field, not shown) can be used to override the setup and initialization commands for a node type. Note that you can only override the setup for worker nodes. The head node's setup commands are always configured via the top level field in the cluster YAML:
@@ -132,12 +134,10 @@ The ``worker_setup_commands`` field (and also the ``initialization_commands`` fi
 
 Docker Support
 ~~~~~~~~~~~~~~
-The ``worker_image`` and ``pull_before_run`` fields override the correpsonding field in the top level ``docker`` section for the node type. The ``worker_run_options`` field is combined with top level ``docker: run_options`` field to produce the docker run command for the given node_type. The following configuration is for a GPU enabled node type.
+The ``worker_image`` and ``pull_before_run`` fields override the correpsonding field in the top level ``docker`` section for the node type. The ``worker_run_options`` field is combined with top level ``docker: run_options`` field to produce the docker run command for the given node_type. The following configuration is for a GPU enabled node type. Ray will automatically select the Nvidia docker runtime if it is available.
 
 .. code::
 
     pull_before_run: True
     worker_image:
         - rayproject/ray-ml:latest-gpu
-    worker_run_options:
-        - --runtime=nvidia

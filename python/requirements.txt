@@ -56,7 +56,7 @@ mypy
 networkx
 numba
 openpyxl
-pettingzoo
+pettingzoo>=1.3.2
 Pillow; platform_system != "Windows"
 pygments
 pytest==5.4.3

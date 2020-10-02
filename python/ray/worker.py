@@ -25,7 +25,7 @@ import ray.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
-import ray.services as services
+import ray._private.services as services
 import ray
 import setproctitle
 import ray.signature
@@ -156,8 +156,16 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
+    def current_node_id(self):
+        return self.core_worker.get_current_node_id()
+
+    @property
     def placement_group_id(self):
         return self.core_worker.get_placement_group_id()
+
+    @property
+    def should_capture_child_tasks_in_placement_group(self):
+        return self.core_worker.should_capture_child_tasks_in_placement_group()
 
     @property
     def current_session_and_job(self):
@@ -625,6 +633,11 @@ def init(
                 "please call ray.init() or ray.init(address=\"auto\") on the "
                 "driver.")
 
+    # Convert hostnames to numerical IP address.
+    if _node_ip_address is not None:
+        node_ip_address = services.address_to_ip(_node_ip_address)
+    raylet_ip_address = node_ip_address
+
     if address:
         redis_address, _, _ = services.validate_redis_address(address)
     else:
@@ -662,8 +675,8 @@ def init(
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
-            node_ip_address=None,
-            raylet_ip_address=None,
+            node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_worker_output=None,
@@ -727,8 +740,8 @@ def init(
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
-            node_ip_address=None,
-            raylet_ip_address=None,
+            node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
@@ -1151,7 +1164,10 @@ def connect(node,
             job_id).binary()
 
     if mode is not SCRIPT_MODE and setproctitle:
-        setproctitle.setproctitle("ray::IDLE")
+        process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
+        if mode is IO_WORKER_MODE:
+            process_name = ray_constants.WORKER_PROCESS_TYPE_IO_WORKER
+        setproctitle.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -1164,7 +1180,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray.services.check_version_info(worker.redis_client)
+        ray._private.services.check_version_info(worker.redis_client)
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
@@ -1406,10 +1422,10 @@ def get(object_refs, *, timeout=None):
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.debug("Using blocking ray.get inside async actor. "
-                         "This blocks the event loop. Please use `await` "
-                         "on object ref with asyncio.gather if you want to "
-                         "yield execution to the event loop instead.")
+            logger.warning("Using blocking ray.get inside async actor. "
+                           "This blocks the event loop. Please use `await` "
+                           "on object ref with asyncio.gather if you want to "
+                           "yield execution to the event loop instead.")
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
@@ -1666,7 +1682,8 @@ def make_decorator(num_returns=None,
                    max_task_retries=None,
                    worker=None,
                    placement_group=None,
-                   placement_group_bundle_index=-1):
+                   placement_group_bundle_index=-1,
+                   placement_group_capture_child_tasks=True):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1696,7 +1713,8 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, placement_group,
-                placement_group_bundle_index)
+                placement_group_bundle_index,
+                placement_group_capture_child_tasks)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1826,6 +1844,9 @@ def remote(*args, **kwargs):
         placement_group_bundle_index (int): The index of the bundle
             if the task belongs to a placement group, which may be
             -1 to indicate any available bundle.
+        placement_group_capture_child_tasks (bool): Default True.
+            If True, all the child tasks (including actor creation)
+            are scheduled in the same placement group.
 
     """
     worker = global_worker
@@ -1859,6 +1880,7 @@ def remote(*args, **kwargs):
             "max_retries",
             "placement_group",
             "placement_group_bundle_index",
+            "placement_group_capture_child_tasks",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
