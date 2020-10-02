@@ -156,7 +156,7 @@ def test_get_all_node_details(ray_start_with_dashboard):
             # Workers information should be in the detailed payload
             assert "workers" in node
             assert "logCount" in node
-            worker = node["workers"][0]
+            assert len(node["workers"]) == 2
             return True
         except (AssertionError, KeyError, IndexError):
             return False
