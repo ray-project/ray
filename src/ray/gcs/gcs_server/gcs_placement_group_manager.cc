@@ -362,10 +362,17 @@ void GcsPlacementGroupManager::Tick() const {
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
+  int total_cnt = 0;
+  RAY_LOG(ERROR) << "Sang, "
+                 << RayConfig::instance().max_placement_group_load_report_size();
   for (const auto pending_pg_spec : pending_placement_groups_) {
     auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
     placement_group_data->Swap(&placement_group_table_data);
+    total_cnt += 1;
+    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+      break;
+    }
   }
   gcs_node_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
 }
