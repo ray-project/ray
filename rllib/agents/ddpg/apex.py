@@ -27,7 +27,6 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     },
 )
 
-
 ApexDDPGTrainer = DDPGTrainer.with_updates(
     name="APEX_DDPG",
     default_config=APEX_DDPG_DEFAULT_CONFIG,
