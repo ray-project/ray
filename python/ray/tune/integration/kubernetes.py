@@ -1,10 +1,11 @@
+import os
 from typing import Any, Optional, Tuple
 
 import kubernetes
 import subprocess
 
 from ray import services, logger
-from ray.autoscaler.command_runner import KubernetesCommandRunner
+from ray.autoscaler._private.command_runner import KubernetesCommandRunner
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
 
@@ -23,7 +24,8 @@ def NamespacedKubernetesSyncer(namespace):
 
         from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
         tune.run(train,
-                 sync_to_driver=NamespacedKubernetesSyncer("ray"))
+                 sync_config=tune.SyncConfig(
+                     sync_to_driver=NamespacedKubernetesSyncer("ray")))
 
     """
 
@@ -130,8 +132,8 @@ class KubernetesSyncClient(SyncClient):
         target_node, target_dir = target
 
         # Add trailing slashes for rsync
-        source += "/" if not source.endswith("/") else ""
-        target_dir += "/" if not target_dir.endswith("/") else ""
+        source = os.path.join(source, "")
+        target_dir = os.path.join(target_dir, "")
 
         command_runner = self._get_command_runner(target_node)
         command_runner.run_rsync_up(source, target_dir)
@@ -142,8 +144,8 @@ class KubernetesSyncClient(SyncClient):
         source_node, source_dir = source
 
         # Add trailing slashes for rsync
-        source_dir += "/" if not source_dir.endswith("/") else ""
-        target += "/" if not target.endswith("/") else ""
+        source_dir = os.path.join(source_dir, "")
+        target = os.path.join(target, "")
 
         command_runner = self._get_command_runner(source_node)
         command_runner.run_rsync_down(source_dir, target)

@@ -63,18 +63,18 @@ class GcsActor {
     actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
     actor_table_data_.mutable_task_spec()->CopyFrom(task_spec);
 
-    actor_table_data_.mutable_address()->set_raylet_id(ClientID::Nil().Binary());
+    actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
   }
 
   /// Get the node id on which this actor is created.
-  ClientID GetNodeID() const;
+  NodeID GetNodeID() const;
   /// Get the id of the worker on which this actor is created.
   WorkerID GetWorkerID() const;
   /// Get the actor's owner ID.
   WorkerID GetOwnerID() const;
   /// Get the node ID of the actor's owner.
-  ClientID GetOwnerNodeID() const;
+  NodeID GetOwnerNodeID() const;
   /// Get the address of the actor's owner.
   const rpc::Address &GetOwnerAddress() const;
 
@@ -248,7 +248,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// owned an actor, those actors will be destroyed.
   ///
   /// \param node_id The specified node id.
-  void OnNodeDead(const ClientID &node_id);
+  void OnNodeDead(const NodeID &node_id);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other
@@ -258,7 +258,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param worker_id ID of the dead worker.
   /// \param intentional_exit Whether the death was intentional. If yes and the
   /// worker was an actor, we should not attempt to restart the actor.
-  void OnWorkerDead(const ClientID &node_id, const WorkerID &worker_id,
+  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
                     bool intentional_exit = false);
 
   /// Handle actor creation task failure. This should be called when scheduling
@@ -288,7 +288,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Get the created actors.
   ///
   /// \return The created actors.
-  const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
+  const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
       &GetCreatedActors() const;
 
   const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
@@ -317,17 +317,17 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// state associated with the actor and marks the actor as dead. For owned
   /// actors, this should be called when all actor handles have gone out of
   /// scope or the owner has died.
-  /// TODO: For detached actors, this should be called when the application
-  /// deregisters the actor.
+  /// NOTE: This method can be called multiple times in out-of-order and should be
+  /// idempotent.
   void DestroyActor(const ActorID &actor_id);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(
-      const ClientID &node_id) const;
+      const NodeID &node_id) const;
 
   /// Get unresolved actors that were submitted from the specified worker.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerWorker(
-      const ClientID &node_id, const WorkerID &worker_id) const;
+      const NodeID &node_id, const WorkerID &worker_id) const;
 
  private:
   /// Reconstruct the specified actor.
@@ -366,24 +366,25 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// All registered actors (unresoved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
+  /// All destroyed actors.
+  absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> destroyed_actors_;
   /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The actors which dependencies have not been resolved.
   /// Maps from worker ID to a client and the IDs of the actors owned by that worker.
   /// The actor whose dependencies are not resolved should be destroyed once it creator
   /// dies.
-  absl::flat_hash_map<ClientID,
-                      absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
+  absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
       unresolved_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;
   /// Map contains the relationship of node and created actors. Each node ID
   /// maps to a map from worker ID to the actor created on that worker.
-  absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;
+  absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;
   /// Map from worker ID to a client and the IDs of the actors owned by that
   /// worker. An owned actor should be destroyed once it has gone out of scope,
   /// according to its owner, or the owner dies.
-  absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, Owner>> owners_;
+  absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;

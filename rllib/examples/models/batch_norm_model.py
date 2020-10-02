@@ -180,7 +180,7 @@ class TorchBatchNormModel(TorchModelV2, nn.Module):
     def forward(self, input_dict, state, seq_lens):
         # Set the correct train-mode for our hidden module (only important
         # b/c we have some batch-norm layers).
-        self._hidden_layers.train(mode=input_dict["is_training"])
+        self._hidden_layers.train(mode=input_dict.get("is_training", False))
         self._hidden_out = self._hidden_layers(input_dict["obs"])
         logits = self._logits(self._hidden_out)
         return logits, []

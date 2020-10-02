@@ -289,7 +289,7 @@ class Trainable:
         return ""
 
     def get_current_ip(self):
-        self._local_ip = ray.services.get_node_ip_address()
+        self._local_ip = ray._private.services.get_node_ip_address()
         return self._local_ip
 
     def train(self):
@@ -637,6 +637,9 @@ class Trainable:
         """
         self._result_logger.flush()
         self._result_logger.close()
+        if self._monitor.is_alive():
+            self._monitor.stop()
+            self._monitor.join()
         self.cleanup()
 
         self._close_logfiles()

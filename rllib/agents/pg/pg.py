@@ -5,9 +5,10 @@ Policy Gradient (PG)
 This file defines the distributed Trainer class for policy gradients.
 See `pg_[tf|torch]_policy.py` for the definition of the policy loss.
 
-Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#pg
+Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#pg
 """
 
+import logging
 from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
@@ -16,6 +17,8 @@ from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict
+
+logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -27,6 +30,9 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Learning rate.
     "lr": 0.0004,
+    # Switch on Trajectory View API for PG by default.
+    # NOTE: Only supported for PyTorch so far.
+    "_use_trajectory_view_api": True,
 })
 
 # __sphinx_doc_end__

@@ -18,7 +18,7 @@ class _GroupAgentsWrapper(MultiAgentEnv):
 
         See MultiAgentEnv.with_agent_groups() for usage info.
 
-        Arguments:
+        Args:
             env (MultiAgentEnv): env to wrap
             groups (dict): Grouping spec as documented in MultiAgentEnv
             obs_space (Space): Optional observation space for the grouped

@@ -86,7 +86,7 @@ class RayTaskError(RayError):
         else:
             self.proctitle = setproctitle.getproctitle()
         self.pid = pid or os.getpid()
-        self.ip = ip or ray.services.get_node_ip_address()
+        self.ip = ip or ray._private.services.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
         self.cause_cls = cause_cls

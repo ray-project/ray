@@ -9,6 +9,7 @@ import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
+import io.ray.runtime.util.IdUtil;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -74,7 +75,7 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
         return new RayWorkerException();
       } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
-        return new RayActorException();
+        return new RayActorException(IdUtil.getActorIdFromObjectId(objectId));
       } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
         return new UnreconstructableException(objectId);
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {

@@ -5,7 +5,7 @@ import time
 import sys
 
 
-def test_was_current_actor_reconstructed():
+def test_was_current_actor_reconstructed(shutdown_only):
     ray.init()
 
     @ray.remote(max_restarts=10)
@@ -51,24 +51,30 @@ def test_was_current_actor_reconstructed():
     assert ray.get(a.get_was_reconstructed.remote()) is True
     assert ray.get(a.update_was_reconstructed.remote()) is True
 
-    ray.shutdown()
-
-
-def test_runtime_context_interface():
-    ray.init()
-
     @ray.remote(max_restarts=10)
     class A(object):
         def current_job_id(self):
-            return ray.get_runtime_context().current_job_id
+            return ray.get_runtime_context().job_id
 
         def current_actor_id(self):
-            return ray.get_runtime_context().current_actor_id
+            return ray.get_runtime_context().actor_id
+
+    @ray.remote
+    def f():
+        assert ray.get_runtime_context().actor_id is None
+        assert ray.get_runtime_context().task_id is not None
+        assert ray.get_runtime_context().node_id is not None
+        assert ray.get_runtime_context().job_id is not None
+        context = ray.get_runtime_context().get()
+        assert "actor_id" not in context
+        assert context["task_id"] == ray.get_runtime_context().task_id
+        assert context["node_id"] == ray.get_runtime_context().node_id
+        assert context["job_id"] == ray.get_runtime_context().job_id
 
     a = A.remote()
     assert ray.get(a.current_job_id.remote()) is not None
     assert ray.get(a.current_actor_id.remote()) is not None
-    ray.shutdown()
+    ray.get(f.remote())
 
 
 if __name__ == "__main__":
