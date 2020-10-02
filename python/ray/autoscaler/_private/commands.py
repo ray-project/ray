@@ -19,7 +19,8 @@ except ImportError:  # py2
 
 from ray.experimental.internal_kv import _internal_kv_get
 import ray._private.services as services
-from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+from ray.autoscaler.ray_autoscaler_constants import \
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS

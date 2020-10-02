@@ -1,6 +1,6 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
-from typing import Any, Optional, List, Union
+from typing import Any, Dict, Optional, List, Union
 import json
 import os
 import tempfile
@@ -195,6 +195,6 @@ def bootstrap_config(cluster_config: Dict[str, any],
 
 
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Fillout default values for a given cluster_config based on the provider type."""
+    """Fillout default values for a cluster_config based on the provider."""
     from ray.autoscaler._private.util import fillout_defaults
     return fillout_defaults(config)
