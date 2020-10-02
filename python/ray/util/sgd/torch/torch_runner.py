@@ -80,6 +80,8 @@ class TorchRunner:
 
     def make_iterator(self, training=True, num_steps=None):
         steps = 0
+        # Needed to make sure we don't loop forever if iterator is empty
+        has_at_least_one = False
         while True:
             iterator = self.get_iterator(training=training)
             if num_steps is not None and steps >= num_steps:
@@ -88,6 +90,8 @@ class TorchRunner:
             try:
                 item = next(iterator)
                 steps += 1
+                if not has_at_least_one:
+                    has_at_least_one = True
                 yield item
             except StopIteration:
                 # Set should reset iterator on next cycle to True.
@@ -95,8 +99,8 @@ class TorchRunner:
                     self._should_reset_train_loader = True
                 else:
                     self._should_reset_val_loader = True
-                if num_steps is None:
-                    # End after current epoch.
+                if num_steps is None or not has_at_least_one:
+                    # End after current epoch or if iterator has no elements.
                     break
                 else:
                     # Else, start cycling through the iterator again.

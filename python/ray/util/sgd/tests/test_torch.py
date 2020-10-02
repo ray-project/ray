@@ -427,7 +427,6 @@ def test_num_steps(ray_start_2_cpus, use_local):
 
     trainer.shutdown()
 
-
 @pytest.mark.parametrize("use_local", [True, False])
 def test_split_batch(ray_start_2_cpus, use_local):
     if not dist.is_available():
