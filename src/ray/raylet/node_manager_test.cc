@@ -12,16 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <iostream>
 #include <thread>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
 #include "ray/common/test_util.h"
-#include "ray/raylet/node_manager.h"
-#include "ray/raylet/raylet.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/raylet/node_manager.h"
 #include "ray/util/filesystem.h"
 
 extern "C" {
@@ -40,11 +38,10 @@ namespace raylet {
 
 class MockObjectManager : public ObjectManager {
  public:
-  MockObjectManager(boost::asio::io_service &main_service,
-                    const NodeID &self_node_id,
+  MockObjectManager(boost::asio::io_service &main_service, const NodeID &self_node_id,
                     const ObjectManagerConfig &config,
-                    std::shared_ptr<ObjectDirectoryInterface> object_directory) :
-      ObjectManager(main_service, self_node_id, config, object_directory) {}
+                    std::shared_ptr<ObjectDirectoryInterface> object_directory)
+      : ObjectManager(main_service, self_node_id, config, object_directory) {}
 
   ray::Status SubscribeObjAdded(
       std::function<void(const object_manager::protocol::ObjectInfoT &)> callback) {
@@ -93,16 +90,16 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
   MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());
   MOCK_METHOD4(SubscribeObjectLocations,
-      ray::Status(const ray::UniqueID &, const ObjectID &,
-                  const rpc::Address &owner_address, const OnLocationsFound &));
+               ray::Status(const ray::UniqueID &, const ObjectID &,
+                           const rpc::Address &owner_address, const OnLocationsFound &));
   MOCK_METHOD2(UnsubscribeObjectLocations,
-      ray::Status(const ray::UniqueID &, const ObjectID &));
+               ray::Status(const ray::UniqueID &, const ObjectID &));
   MOCK_METHOD3(ReportObjectAdded,
-      ray::Status(const ObjectID &, const NodeID &,
-                  const object_manager::protocol::ObjectInfoT &));
+               ray::Status(const ObjectID &, const NodeID &,
+                           const object_manager::protocol::ObjectInfoT &));
   MOCK_METHOD3(ReportObjectRemoved,
-      ray::Status(const ObjectID &, const NodeID &,
-                  const object_manager::protocol::ObjectInfoT &));
+               ray::Status(const ObjectID &, const NodeID &,
+                           const object_manager::protocol::ObjectInfoT &));
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
@@ -119,9 +116,7 @@ class TestNodeManager : public ::testing::Test {
     config_.heartbeat_period_ms = 100000;
   }
 
-  virtual ~TestNodeManager() {
-    TestSetupUtil::ShutDownRedisServers();
-  }
+  virtual ~TestNodeManager() { TestSetupUtil::ShutDownRedisServers(); }
 
   void SetUp() {
     client_io_service_.reset(new boost::asio::io_service());
@@ -145,7 +140,7 @@ class TestNodeManager : public ::testing::Test {
     // start first server
     RAY_LOG(INFO) << "Begin start gcs_client_1...";
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
-        /*is_test_client=*/true);
+                                         /*is_test_client=*/true);
     gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(*client_io_service_));
     RAY_LOG(INFO) << "Finish start gcs_client_1...";
@@ -163,10 +158,9 @@ class TestNodeManager : public ::testing::Test {
     om_config_1.push_timeout_ms = push_timeout_ms;
     om_config_1.object_manager_port = 0;
     om_config_1.rpc_service_threads_number = 3;
-    object_manager_.reset(new MockObjectManager(*io_service_,
-                                                node_id,
-                                                om_config_1,
-                                                std::make_shared<ObjectDirectory>(*io_service_, gcs_client_)));
+    object_manager_.reset(new MockObjectManager(
+        *io_service_, node_id, om_config_1,
+        std::make_shared<ObjectDirectory>(*io_service_, gcs_client_)));
     RAY_LOG(INFO) << "Setup 4444";
     config_.store_socket_name = socket_name_1;
     config_.maximum_startup_concurrency = 1;
@@ -182,9 +176,8 @@ class TestNodeManager : public ::testing::Test {
     }));
 
     client_call_manager_.reset(new rpc::ClientCallManager(*client_io_service_));
-    node_manager_rpc_client_ = rpc::NodeManagerWorkerClient::make(config_.node_manager_address,
-                                                                  config_.node_manager_port,
-                                                                  *client_call_manager_);
+    node_manager_rpc_client_ = rpc::NodeManagerWorkerClient::make(
+        config_.node_manager_address, config_.node_manager_port, *client_call_manager_);
   }
 
   void TearDown() {
@@ -216,14 +209,25 @@ class TestNodeManager : public ::testing::Test {
   unsigned int push_timeout_ms;
   uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 
-
   // Raylet rpc client
   std::shared_ptr<rpc::NodeManagerWorkerClient> node_manager_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 };
 
 TEST_F(TestNodeManager, BaseTest) {
-  RAY_LOG(INFO) << "Hello, i am the first testcase...";
+  rpc::Bundle message;
+  message.mutable_bundle_id()->set_placement_group_id(
+      PlacementGroupID::FromRandom().Binary());
+  message.mutable_bundle_id()->set_bundle_index(0);
+  rpc::PrepareBundleResourcesRequest request;
+  request.mutable_bundle_spec()->CopyFrom(message);
+  std::promise<bool> promise;
+  node_manager_rpc_client_->PrepareBundleResources(
+      request,
+      [&promise](const Status &status, const rpc::PrepareBundleResourcesReply &reply) {
+        promise.set_value(true);
+      });
+  promise.get_future().get();
 }
 
 }  // namespace raylet
