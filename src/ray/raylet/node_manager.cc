@@ -170,16 +170,13 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
   cluster_resource_map_.emplace(self_node_id_,
                                 SchedulingResources(config.resource_config));
 
-  RAY_LOG(INFO) << "NodeManager 1111";
   RAY_CHECK_OK(object_manager_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
         HandleObjectLocal(object_id);
       }));
-  RAY_LOG(INFO) << "NodeManager 22222";
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
-  RAY_LOG(INFO) << "NodeManager 33333";
   if (new_scheduler_enabled_) {
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     new_resource_scheduler_ =
@@ -205,14 +202,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                                fulfills_dependencies_func, get_node_info_func));
   }
 
-  RAY_LOG(INFO) << "NodeManager 44444";
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
-  RAY_LOG(INFO) << "NodeManager 5555";
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
-  RAY_LOG(INFO) << "NodeManager 6666";
   auto options =
       AgentManager::Options({self_node_id, ParseCommandLine(config.agent_command)});
   agent_manager_.reset(

@@ -51,12 +51,12 @@ class MockObjectManager : public ObjectManager {
 
 class MockObjectDirectory : public ObjectDirectoryInterface {
  public:
-  MockObjectDirectory() {}
+  MockObjectDirectory() = default;
 
   ray::Status LookupLocations(const ObjectID &object_id,
                               const rpc::Address &owner_address,
                               const OnLocationsFound &callback) override {
-    callbacks_.push_back({object_id, callback});
+    callbacks_.emplace_back(object_id, callback);
     return ray::Status::OK();
   }
 
@@ -112,7 +112,6 @@ class TestNodeManager : public ::testing::Test {
     std::vector<int> ports;
     ports.push_back(6379);
     TestSetupUtil::StartUpRedisServers(ports);
-    RAY_LOG(INFO) << "Finish StartUpRedisServers...";
     config_.heartbeat_period_ms = 100000;
   }
 
@@ -126,31 +125,23 @@ class TestNodeManager : public ::testing::Test {
       client_io_service_->run();
     }));
 
-    RAY_LOG(INFO) << "Begin Finish flushall_redis...";
     flushall_redis();
 
-    RAY_LOG(INFO) << "Begin StartObjectStore...";
     // start store
     socket_name_1 = TestSetupUtil::StartObjectStore();
-    RAY_LOG(INFO) << "Finish StartObjectStore... socket_name_1 is " << socket_name_1;
 
     unsigned int pull_timeout_ms = 1;
     push_timeout_ms = 1000;
 
     // start first server
-    RAY_LOG(INFO) << "Begin start gcs_client_1...";
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
                                          /*is_test_client=*/true);
     gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(*client_io_service_));
-    RAY_LOG(INFO) << "Finish start gcs_client_1...";
 
     NodeID node_id = NodeID::FromRandom();
-    RAY_LOG(INFO) << "Setup 11111";
     object_directory_.reset(new MockObjectDirectory());
-    RAY_LOG(INFO) << "Setup 2222";
     io_service_.reset(new boost::asio::io_service());
-    RAY_LOG(INFO) << "Setup 3333";
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = socket_name_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
@@ -161,14 +152,12 @@ class TestNodeManager : public ::testing::Test {
     object_manager_.reset(new MockObjectManager(
         *io_service_, node_id, om_config_1,
         std::make_shared<ObjectDirectory>(*io_service_, gcs_client_)));
-    RAY_LOG(INFO) << "Setup 4444";
     config_.store_socket_name = socket_name_1;
     config_.maximum_startup_concurrency = 1;
     config_.node_manager_address = "127.0.0.1";
     config_.node_manager_port = 5566;
     node_manager_.reset(new NodeManager(*io_service_, node_id, config_, *object_manager_,
                                         gcs_client_, object_directory_));
-    RAY_LOG(INFO) << "Setup 5555";
     io_service_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*io_service_));
@@ -209,7 +198,7 @@ class TestNodeManager : public ::testing::Test {
   unsigned int push_timeout_ms;
   uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 
-  // Raylet rpc client
+  // Node manager rpc client.
   std::shared_ptr<rpc::NodeManagerWorkerClient> node_manager_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 };
