@@ -73,7 +73,7 @@ class BinaryAutoregressiveDistribution(ActionDistribution):
         return a2_dist
 
     @staticmethod
-    def required_model_output_shape(self, model_config):
+    def required_model_output_shape(action_space, model_config):
         return 16  # controls model output feature vector size
 
 
@@ -143,5 +143,5 @@ class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
         return a2_dist
 
     @staticmethod
-    def required_model_output_shape(self, model_config):
+    def required_model_output_shape(action_space, model_config):
         return 16  # controls model output feature vector size

@@ -241,8 +241,6 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
     node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
   });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_CHANNEL, node_id.Hex(),
-                                     heartbeat_data->SerializeAsString(), nullptr));
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -352,6 +350,21 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
   };
   RAY_CHECK_OK(
       gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
+}
+
+void GcsNodeManager::HandleGetAllAvailableResources(
+    const rpc::GetAllAvailableResourcesRequest &request,
+    rpc::GetAllAvailableResourcesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  for (const auto &iter : GetClusterRealtimeResources()) {
+    rpc::AvailableResources resource;
+    resource.set_node_id(iter.first.Binary());
+    for (auto res : iter.second->GetResourceAmountMap()) {
+      (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
+    }
+    reply->add_resources_list()->CopyFrom(resource);
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(

@@ -25,16 +25,12 @@ autoscaling_mode: default
 docker:
     image: "rayproject/ray:0.8.7-gpu"
     container_name: "ray-nvidia-docker-test" # e.g. ray_docker
-    run_options:
-      - --runtime=nvidia
 
     # # Example of running a GPU head with CPU workers
     # head_image: "rayproject/ray:0.8.7-gpu"
-    # head_run_options:
-    #     - --runtime=nvidia
+
 
     # worker_image: "rayproject/ray:0.8.7"
-    # worker_run_options: []
 
 
 # The autoscaler will scale up the cluster to this target fraction of resource

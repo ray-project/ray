@@ -28,21 +28,22 @@ if __name__ == "__main__":
         ModelCatalog.register_custom_model("my_model", CustomTorchRPGModel)
     else:
         ModelCatalog.register_custom_model("my_model", CustomTFRPGModel)
-    tune.run(
-        "PG",
-        stop={
-            "timesteps_total": 1,
+
+    config = {
+        "framework": args.framework,
+        "env": SimpleRPG,
+        "rollout_fragment_length": 1,
+        "train_batch_size": 2,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        "num_workers": 0,
+        "model": {
+            "custom_model": "my_model",
         },
-        config={
-            "framework": args.framework,
-            "env": SimpleRPG,
-            "rollout_fragment_length": 1,
-            "train_batch_size": 2,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "num_workers": 0,
-            "model": {
-                "custom_model": "my_model",
-            },
-        },
-    )
+    }
+
+    stop = {
+        "timesteps_total": 1,
+    }
+
+    tune.run("PG", config=config, stop=stop, verbose=1)
