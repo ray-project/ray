@@ -142,6 +142,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id));
   }
 
+  void WaitForActorUnsubscribed(const ActorID &actor_id) {
+    auto condition = [this, actor_id]() {
+      return gcs_client_->Actors().IsActorUnsubscribed(actor_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
   bool SubscribeAllActors(
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
@@ -150,10 +157,24 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data) {
+  bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data,
+                     bool is_detached = true) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(
-        actor_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    rpc::TaskSpec message;
+    auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
+    message.set_job_id(actor_id.JobId().Binary());
+    message.set_type(TaskType::ACTOR_CREATION_TASK);
+    message.set_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
+    message.set_caller_id(actor_id.Binary());
+    message.set_max_retries(0);
+    message.set_num_returns(1);
+    message.set_parent_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
+    message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
+    message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
+    TaskSpecification task_spec(message);
+
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegisterActor(
+        task_spec, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -324,6 +345,20 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  std::vector<rpc::AvailableResources> GetAllAvailableResources() {
+    std::promise<bool> promise;
+    std::vector<rpc::AvailableResources> resources;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllAvailableResources(
+        [&resources, &promise](Status status,
+                               const std::vector<rpc::AvailableResources> &result) {
+          EXPECT_TRUE(!result.empty());
+          resources.assign(result.begin(), result.end());
+          promise.set_value(status.ok());
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return resources;
+  }
+
   bool SubscribeTask(
       const TaskID &task_id,
       const gcs::SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe) {
@@ -335,8 +370,21 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeTask(const TaskID &task_id) {
-    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id));
+  }
+
+  void WaitForTaskUnsubscribed(const TaskID &task_id) {
+    auto condition = [this, task_id]() {
+      return gcs_client_->Tasks().IsTaskUnsubscribed(task_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
+  void WaitForTaskLeaseUnsubscribed(const TaskID &task_id) {
+    auto condition = [this, task_id]() {
+      return gcs_client_->Tasks().IsTaskLeaseUnsubscribed(task_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
   bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
@@ -380,7 +428,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeTaskLease(const TaskID &task_id) {
-    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id));
   }
 
@@ -411,8 +458,14 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeToLocations(const ObjectID &object_id) {
-    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id));
+  }
+
+  void WaitForObjectUnsubscribed(const ObjectID &object_id) {
+    auto condition = [this, object_id]() {
+      return gcs_client_->Objects().IsObjectUnsubscribed(object_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
   bool AddLocation(const ObjectID &object_id, const NodeID &node_id) {
@@ -541,16 +594,11 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
 
   // Register an actor to GCS.
   ASSERT_TRUE(RegisterActor(actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::ALIVE);
+  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::DEPENDENCIES_UNREADY);
 
   // Cancel subscription to an actor.
   UnsubscribeActor(actor_id);
-
-  // Update dynamic states of actor in GCS.
-  actor_table_data->set_state(rpc::ActorTableData::DEAD);
-  ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::DEAD);
-  WaitForExpectedCount(actor_update_count, 1);
+  WaitForActorUnsubscribed(actor_id);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorCheckpoint) {
@@ -593,8 +641,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   ASSERT_TRUE(SubscribeAllActors(on_subscribe));
 
   // Register an actor to GCS.
-  ASSERT_TRUE(RegisterActor(actor_table_data1));
-  ASSERT_TRUE(RegisterActor(actor_table_data2));
+  ASSERT_FALSE(RegisterActor(actor_table_data1, false));
+  ASSERT_FALSE(RegisterActor(actor_table_data2, false));
   WaitForExpectedCount(actor_update_count, 2);
 }
 
@@ -706,6 +754,38 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
   WaitForExpectedCount(heartbeat_batch_count, 1);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
+  // Subscribe batched state of all nodes from GCS.
+  std::atomic<int> heartbeat_batch_count(0);
+  auto on_subscribe =
+      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
+        ++heartbeat_batch_count;
+      };
+  ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
+
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
+  // Report heartbeat of a node to GCS.
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
+  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat->set_client_id(node_id.Binary());
+  // Set this flag because GCS won't publish unchanged heartbeat.
+  heartbeat->set_should_global_gc(true);
+  (*heartbeat->mutable_resources_available())["CPU"] = 1.0;
+  (*heartbeat->mutable_resources_available())["GPU"] = 10.0;
+  ASSERT_TRUE(ReportHeartbeat(heartbeat));
+  WaitForExpectedCount(heartbeat_batch_count, 1);
+
+  // Assert get all available resources right.
+  std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
+  EXPECT_EQ(resources.size(), 1);
+  EXPECT_EQ(resources[0].resources_available_size(), 2);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["CPU"], 1.0);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::ForDriverTask(job_id);
@@ -725,6 +805,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
   // Cancel subscription to a task.
   UnsubscribeTask(task_id);
+  WaitForTaskUnsubscribed(task_id);
 
   // Add a task to GCS again.
   ASSERT_TRUE(AddTask(task_table_data));
@@ -754,6 +835,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
   // Cancel subscription to a task lease.
   UnsubscribeTaskLease(task_id);
+  WaitForTaskLeaseUnsubscribed(task_id);
 
   // Add a task lease to GCS again.
   ASSERT_TRUE(AddTaskLease(task_lease));
@@ -805,6 +887,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
 
   // Cancel subscription to any update of an object's location.
   UnsubscribeToLocations(object_id);
+  WaitForObjectUnsubscribed(object_id);
 
   // Add location of object to GCS again.
   ASSERT_TRUE(AddLocation(object_id, node_id));
@@ -905,32 +988,25 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Subscribe to updates for this actor.
   ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
 
-  ASSERT_TRUE(RegisterActor(actor_table_data));
+  ASSERT_FALSE(RegisterActor(actor_table_data, false));
 
-  // We should receive a new ALIVE notification from the subscribe channel.
+  // We should receive a new DEAD notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
   WaitForExpectedCount(num_subscribe_one_notifications, 1);
-  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::ALIVE);
-  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::ALIVE);
+  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::DEAD);
+  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::DEAD);
 
   // Restart GCS server.
   RestartGcsServer();
 
   // When GCS client detects that GCS server has restarted, but the pub-sub server
-  // didn't restart, it will fetch data again from the GCS server. So we'll receive
-  // another notification of ALIVE state.
-  WaitForExpectedCount(num_subscribe_all_notifications, 2);
-  WaitForExpectedCount(num_subscribe_one_notifications, 2);
-  CheckActorData(subscribe_all_notifications[1], rpc::ActorTableData::ALIVE);
-  CheckActorData(subscribe_one_notifications[1], rpc::ActorTableData::ALIVE);
-
-  // Update the actor state to DEAD.
-  actor_table_data->set_state(rpc::ActorTableData::DEAD);
-  ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
-
-  // We should receive a new DEAD notification from the subscribe channel.
+  // didn't restart, it will fetch data again from the GCS server. The GCS will destroy
+  // the actor because it finds that the actor is out of scope, so we'll receive another
+  // notification of DEAD state.
   WaitForExpectedCount(num_subscribe_all_notifications, 3);
   WaitForExpectedCount(num_subscribe_one_notifications, 3);
+  CheckActorData(subscribe_all_notifications[1], rpc::ActorTableData::DEAD);
+  CheckActorData(subscribe_one_notifications[1], rpc::ActorTableData::DEAD);
   CheckActorData(subscribe_all_notifications[2], rpc::ActorTableData::DEAD);
   CheckActorData(subscribe_one_notifications[2], rpc::ActorTableData::DEAD);
 }
@@ -965,7 +1041,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
 
   // Cancel subscription to any update of an object's location.
   UnsubscribeToLocations(object1_id);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  WaitForObjectUnsubscribed(object1_id);
 
   // Restart GCS.
   RestartGcsServer();
@@ -1062,6 +1138,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   WaitForExpectedCount(task_count, 1);
   WaitForExpectedCount(task_lease_count, 1);
   UnsubscribeTask(task_id);
+  WaitForTaskUnsubscribed(task_id);
 
   RestartGcsServer();
 

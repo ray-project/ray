@@ -87,6 +87,8 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
+  bool IsActorUnsubscribed(const ActorID &actor_id) override { return false; }
+
  protected:
   virtual std::vector<ActorID> GetAllActorID() const;
   virtual Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const;
@@ -244,6 +246,10 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
+  bool IsTaskUnsubscribed(const TaskID &task_id) override { return false; }
+
+  bool IsTaskLeaseUnsubscribed(const TaskID &task_id) override { return false; }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
   // Use a random NodeID for task subscription. Because:
@@ -294,6 +300,8 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
+
+  bool IsObjectUnsubscribed(const ObjectID &object_id) override { return false; }
 
  private:
   RedisGcsClient *client_impl_{nullptr};
@@ -347,6 +355,11 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   Status AsyncGetResources(const NodeID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override {
+    return Status::NotImplemented("AsyncGetAllAvailableResources not implemented");
+  }
 
   Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;

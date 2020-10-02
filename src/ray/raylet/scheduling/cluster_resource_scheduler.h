@@ -26,6 +26,12 @@
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 
+#include "src/ray/protobuf/gcs.pb.h"
+
+namespace ray {
+
+using rpc::HeartbeatTableData;
+
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
@@ -185,7 +191,7 @@ class ClusterResourceScheduler {
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources);
+  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
@@ -366,6 +372,18 @@ class ClusterResourceScheduler {
   // resources availabile at that node is 0.2 + 0.3 + 0.1 + 1. = 1.6
   void UpdateLocalAvailableResourcesFromResourceInstances();
 
+  /// Populate the relevant parts of the heartbeat table. This is intended for
+  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// resources_available and resources_total.
+  ///
+  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param Output parameter. `resources_available` and `resources_total` are the only
+  /// fields used.
+  void Heartbeat(bool light_heartbeat_enabled,
+                 std::shared_ptr<HeartbeatTableData> data) const;
+
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 };
+
+}  // end namespace ray

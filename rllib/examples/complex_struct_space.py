@@ -9,7 +9,6 @@ For PyTorch / TF eager mode, use the --torch and --eager flags.
 
 import argparse
 
-import ray
 from ray import tune
 from ray.rllib.models import ModelCatalog
 from ray.rllib.examples.env.simple_rpg import SimpleRPG
@@ -21,25 +20,25 @@ parser.add_argument(
     "--framework", choices=["tf", "tfe", "torch"], default="tf")
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
     args = parser.parse_args()
     if args.framework == "torch":
         ModelCatalog.register_custom_model("my_model", CustomTorchRPGModel)
     else:
         ModelCatalog.register_custom_model("my_model", CustomTFRPGModel)
-    tune.run(
-        "PG",
-        stop={
-            "timesteps_total": 1,
+
+    config = {
+        "framework": args.framework,
+        "env": SimpleRPG,
+        "rollout_fragment_length": 1,
+        "train_batch_size": 2,
+        "num_workers": 0,
+        "model": {
+            "custom_model": "my_model",
         },
-        config={
-            "framework": args.framework,
-            "env": SimpleRPG,
-            "rollout_fragment_length": 1,
-            "train_batch_size": 2,
-            "num_workers": 0,
-            "model": {
-                "custom_model": "my_model",
-            },
-        },
-    )
+    }
+
+    stop = {
+        "timesteps_total": 1,
+    }
+
+    tune.run("PG", config=config, stop=stop, verbose=1)

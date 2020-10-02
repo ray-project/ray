@@ -14,6 +14,8 @@
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
+namespace ray {
+
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
     : local_node_id_(local_node_id) {
@@ -294,7 +296,7 @@ bool ClusterResourceScheduler::AddNodeAvailableResources(
 }
 
 bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
-                                                NodeResources *ret_resources) {
+                                                NodeResources *ret_resources) const {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
     *ret_resources = it->second;
@@ -779,3 +781,45 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   FreeTaskResourceInstances(task_allocation);
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
+
+void ClusterResourceScheduler::Heartbeat(
+    bool light_heartbeat_enabled,
+    std::shared_ptr<HeartbeatTableData> heartbeat_data) const {
+  NodeResources resources;
+
+  RAY_CHECK(GetNodeResources(local_node_id_, &resources))
+      << "Error: Populating heartbeat failed. Please file a bug report: "
+         "https://github.com/ray-project/ray/issues/new.";
+
+  if (light_heartbeat_enabled) {
+    // TODO
+    RAY_CHECK(false) << "TODO";
+  } else {
+    for (int i = 0; i < PredefinedResources_MAX; i++) {
+      const auto &label = ResourceEnumToString((PredefinedResources)i);
+      const auto &capacity = resources.predefined_resources[i];
+      if (capacity.available != 0) {
+        (*heartbeat_data->mutable_resources_available())[label] =
+            capacity.available.Double();
+      }
+      if (capacity.total != 0) {
+        (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+      }
+    }
+    for (auto it = resources.custom_resources.begin();
+         it != resources.custom_resources.end(); it++) {
+      uint64_t custom_id = it->first;
+      const auto &capacity = it->second;
+      const auto &label = string_to_int_map_.Get(custom_id);
+      if (capacity.available != 0) {
+        (*heartbeat_data->mutable_resources_available())[label] =
+            capacity.available.Double();
+      }
+      if (capacity.total != 0) {
+        (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+      }
+    }
+  }
+}
+
+}  // namespace ray
