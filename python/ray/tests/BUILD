@@ -8,7 +8,7 @@ SRCS = [] + select({
     "//conditions:default": [],
 })
 
-pyt_test_module_list(
+py_test_module_list(
   file = [
     "test_basic.py",
     "test_basic_2.py",
