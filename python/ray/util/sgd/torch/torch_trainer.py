@@ -375,9 +375,9 @@ class TorchTrainer:
         instance preemption.
 
         Args:
-            num_steps (int): Number of batches to compute update steps on.
-                This corresponds also to the number of times
-                ``TrainingOperator.train_batch`` is called.
+            num_steps (int): Number of batches to compute update steps on
+                per worker. This corresponds also to the number of times
+                ``TrainingOperator.train_batch`` is called per worker.
             profile (bool): Returns time stats for the training procedure.
             reduce_results (bool): Whether to average all metrics across
                 all workers into one dict. If a metric is a non-numerical
@@ -437,7 +437,6 @@ class TorchTrainer:
             NUM_SAMPLES: sum(
                 stats.pop(NUM_SAMPLES, np.nan) for stats in worker_stats)
         }
-
         for stat_key in worker_stats[0]:
             if isinstance(worker_stats[0][stat_key], numbers.Number):
                 stats[stat_key] = np.nanmean(
@@ -479,9 +478,9 @@ class TorchTrainer:
         """Evaluates the model on the validation data set.
 
         Args:
-            num_steps (int): Number of batches to compute update steps on.
-                This corresponds also to the number of times
-                ``TrainingOperator.validate_batch`` is called.
+            num_steps (int): Number of batches to compute update steps on
+                per worker. This corresponds also to the number of times
+                ``TrainingOperator.validate_batch`` is called per worker.
             profile (bool): Returns time stats for the evaluation procedure.
             reduce_results (bool): Whether to average all metrics across
                 all workers into one dict. If a metric is a non-numerical
