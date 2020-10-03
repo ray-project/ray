@@ -28,7 +28,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
-        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)}});
+        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)},
+         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)}});
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -1292,7 +1293,7 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
 
   // Get all actors.
   auto condition = [this, actor_count]() {
-    return (int)GetAllActors().size() == actor_count;
+    return (int) GetAllActors().size() == actor_count;
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
@@ -1300,6 +1301,23 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
   auto actors = GetAllActors();
   RAY_LOG(INFO) << "It takes " << current_time_ms() - start_time << "ms to query "
                 << actor_count << " actors.";
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDestroyedActors) {
+  // Register actors and the actors will be destroyed.
+  JobID job_id = JobID::FromInt(1);
+  int actor_count = 20;
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    RegisterActor(actor_table_data, false);
+  }
+
+  // Get all actors.
+  auto condition = [this]() {
+    return GetAllActors().size() ==
+           RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 // TODO(sang): Add tests after adding asyncAdd
