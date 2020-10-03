@@ -125,12 +125,13 @@ class TorchSharedWeightsModel(TorchModelV2, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_,
         )
+        self._global_shared_layer = TORCH_GLOBAL_SHARED_LAYER
         self._output = None
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         out = self.first_layer(input_dict["obs"])
-        self._output = TORCH_GLOBAL_SHARED_LAYER(out)
+        self._output = self._global_shared_layer(out)
         model_out = self.last_layer(self._output)
         return model_out, []
 
