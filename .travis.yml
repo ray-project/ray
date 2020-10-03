@@ -133,8 +133,7 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-new_scheduler python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,new_scheduler python/ray/tests/...; fi
 
     - os: linux
       env:
