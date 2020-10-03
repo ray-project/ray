@@ -245,6 +245,8 @@ class TorchRunner:
 
     def shutdown(self):
         """Attempts to shut down the worker."""
+        del self.train_iterator
+        del self.val_iterator
         del self.training_operator
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
