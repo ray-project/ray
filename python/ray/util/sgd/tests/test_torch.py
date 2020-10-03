@@ -542,7 +542,7 @@ def test_metrics(ray_start_2_cpus, num_workers, use_local):
             "val_size": val_size
         })
 
-    stats = trainer.train(num_steps=num_train_steps)
+    stats = trainer.train()
     # Test that we output mean and last of custom metrics in an epoch
     assert "score" in stats
     assert stats["last_score"] == 0
