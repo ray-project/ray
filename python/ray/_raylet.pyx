@@ -7,7 +7,6 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
-import numpy
 import gc
 import inspect
 import threading
@@ -108,7 +107,6 @@ from ray.exceptions import (
     TaskCancelledError
 )
 from ray.utils import decode
-import gc
 import msgpack
 
 cimport cpython
@@ -1498,13 +1496,6 @@ cdef class CoreWorker:
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .SpillObjects(object_ids))
-
-    def force_restore_spilled_objects(self, object_refs):
-        cdef c_vector[CObjectID] object_ids
-        object_ids = ObjectRefsToVector(object_refs)
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ForceRestoreSpilledObjects(object_ids))
 
 cdef void async_set_result(shared_ptr[CRayObject] obj,
                            CObjectID object_ref,

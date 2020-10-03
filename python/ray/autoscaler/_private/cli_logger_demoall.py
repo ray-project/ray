@@ -4,12 +4,9 @@
 # function for demonstration purposes. Primarily useful for tuning color and
 # other formatting.
 
-from ray.autoscaler._private.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
-cli_logger.old_style = False
-cli_logger.verbosity = 999
-cli_logger.detect_colors()
+cli_logger.configure(log_style="auto", verbosity=999)
 
 cli_logger.print(
     cf.bold("Bold ") + cf.italic("Italic ") + cf.underlined("Underlined"))
@@ -40,7 +37,5 @@ with cli_logger.indented():
     cli_logger.print("Indented")
 with cli_logger.group("Group"):
     cli_logger.print("Group contents")
-with cli_logger.timed("Timed (unimplemented)"):
-    cli_logger.print("Timed contents")
 with cli_logger.verbatim_error_ctx("Verbtaim error"):
     cli_logger.print("Error contents")

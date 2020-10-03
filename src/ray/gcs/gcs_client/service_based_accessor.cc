@@ -211,58 +211,6 @@ Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
   return Status::OK();
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncRegister(
-    const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-    const StatusCallback &callback) {
-  ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-  RAY_LOG(DEBUG) << "Registering actor info, actor id = " << actor_id;
-  rpc::RegisterActorInfoRequest request;
-  request.mutable_actor_table_data()->CopyFrom(*data_ptr);
-
-  auto operation = [this, request, actor_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().RegisterActorInfo(
-        request, [actor_id, callback, done_callback](
-                     const Status &status, const rpc::RegisterActorInfoReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished registering actor info, status = " << status
-                         << ", actor id = " << actor_id;
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(actor_id, operation);
-  return Status::OK();
-}
-
-Status ServiceBasedActorInfoAccessor::AsyncUpdate(
-    const ActorID &actor_id, const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-    const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Updating actor info, actor id = " << actor_id;
-  rpc::UpdateActorInfoRequest request;
-  request.set_actor_id(actor_id.Binary());
-  request.mutable_actor_table_data()->CopyFrom(*data_ptr);
-
-  auto operation = [this, request, actor_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().UpdateActorInfo(
-        request, [actor_id, callback, done_callback](
-                     const Status &status, const rpc::UpdateActorInfoReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished updating actor info, status = " << status
-                         << ", actor id = " << actor_id;
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(actor_id, operation);
-  return Status::OK();
-}
-
 Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
@@ -634,6 +582,21 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
         callback(status, resource_map);
         RAY_LOG(DEBUG) << "Finished getting node resources, status = " << status
                        << ", node id = " << node_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncGetAllAvailableResources(
+    const MultiItemCallback<rpc::AvailableResources> &callback) {
+  rpc::GetAllAvailableResourcesRequest request;
+  client_impl_->GetGcsRpcClient().GetAllAvailableResources(
+      request,
+      [callback](const Status &status, const rpc::GetAllAvailableResourcesReply &reply) {
+        std::vector<rpc::AvailableResources> result =
+            VectorFromProtobuf(reply.resources_list());
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting available resources of all nodes, status = "
+                       << status;
       });
   return Status::OK();
 }
@@ -1123,19 +1086,15 @@ ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
-    const ObjectID &object_id, const MultiItemCallback<rpc::ObjectTableData> &callback) {
+    const ObjectID &object_id,
+    const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) {
   RAY_LOG(DEBUG) << "Getting object locations, object id = " << object_id;
   rpc::GetObjectLocationsRequest request;
   request.set_object_id(object_id.Binary());
   client_impl_->GetGcsRpcClient().GetObjectLocations(
       request, [object_id, callback](const Status &status,
                                      const rpc::GetObjectLocationsReply &reply) {
-        std::vector<ObjectTableData> result;
-        result.reserve((reply.object_table_data_list_size()));
-        for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
-          result.emplace_back(reply.object_table_data_list(index));
-        }
-        callback(status, result);
+        callback(status, reply.location_info());
         RAY_LOG(DEBUG) << "Finished getting object locations, status = " << status
                        << ", object id = " << object_id;
       });
@@ -1188,6 +1147,31 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
   return Status::OK();
 }
 
+Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
+    const ObjectID &object_id, const std::string &spilled_url,
+    const StatusCallback &callback) {
+  RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id
+                 << ", spilled_url = " << spilled_url;
+  rpc::AddObjectLocationRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_spilled_url(spilled_url);
+
+  auto operation = [this, request, callback](const SequencerDoneCallback &done_callback) {
+    client_impl_->GetGcsRpcClient().AddObjectLocation(
+        request, [callback, done_callback](const Status &status,
+                                           const rpc::AddObjectLocationReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(object_id, operation);
+  return Status::OK();
+}
+
 Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
     const ObjectID &object_id, const NodeID &node_id, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Removing object location, object id = " << object_id
@@ -1216,7 +1200,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
 
 Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
     const ObjectID &object_id,
-    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+    const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
@@ -1225,10 +1209,20 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                                subscribe](const StatusCallback &fetch_done) {
     auto callback = [object_id, subscribe, fetch_done](
                         const Status &status,
-                        const std::vector<rpc::ObjectTableData> &result) {
+                        const boost::optional<rpc::ObjectLocationInfo> &result) {
       if (status.ok()) {
-        gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
-                                                   result);
+        std::vector<rpc::ObjectLocationChange> notification;
+        for (const auto &loc : result->locations()) {
+          rpc::ObjectLocationChange update;
+          update.set_is_add(true);
+          update.set_node_id(loc.manager());
+          notification.push_back(update);
+        }
+        if (!result->spilled_url().empty()) {
+          rpc::ObjectLocationChange update;
+          update.set_spilled_url(result->spilled_url());
+          notification.push_back(update);
+        }
         subscribe(object_id, notification);
       }
       if (fetch_done) {
@@ -1244,13 +1238,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                                                const std::string &data) {
       rpc::ObjectLocationChange object_location_change;
       object_location_change.ParseFromString(data);
-      std::vector<rpc::ObjectTableData> object_data_vector;
-      object_data_vector.emplace_back(object_location_change.data());
-      auto change_mode = object_location_change.is_add()
-                             ? rpc::GcsChangeMode::APPEND_OR_ADD
-                             : rpc::GcsChangeMode::REMOVE;
-      gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
-      subscribe(object_id, notification);
+      subscribe(object_id, {object_location_change});
     };
     return client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
                                                   on_subscribe, subscribe_done);

@@ -28,7 +28,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
 
@@ -40,7 +40,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -55,7 +55,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -84,7 +84,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
 
@@ -97,7 +97,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -113,7 +113,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:

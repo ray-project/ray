@@ -1,5 +1,7 @@
 from ray.includes.unique_ids cimport CObjectID
 
+import asyncio
+
 import ray
 
 cdef class ObjectRef(BaseID):
@@ -62,11 +64,14 @@ cdef class ObjectRef(BaseID):
         return cls(CObjectID.FromRandom().Binary())
 
     def __await__(self):
-        # Delayed import because this can only be imported in py3.
-        from ray.async_compat import get_async
-        return get_async(self).__await__()
+        return self.as_future().__await__()
 
     def as_future(self):
-        # Delayed import because this can only be imported in py3.
-        from ray.async_compat import get_async
-        return get_async(self)
+        loop = asyncio.get_event_loop()
+        core_worker = ray.worker.global_worker.core_worker
+
+        future = loop.create_future()
+        core_worker.get_async(self, future)
+        # A hack to keep a reference to the object ref for ref counting.
+        future.object_ref = self
+        return future
