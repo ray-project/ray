@@ -9,7 +9,7 @@ Getting Started with Ray
 Check out :ref:`gentle-intro` to learn more about Ray and its ecosystem of libraries that enable things like distributed hyperparameter tuning,
 reinforcement learning, and distributed training.
 
-Ray provides Python and Java API. And Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your code.
+Ray provides Python, Java, and *Experimental* C++ API. And Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your code.
 
 .. tabs::
   .. group-tab:: Python
@@ -111,7 +111,72 @@ Ray provides Python and Java API. And Ray uses Tasks (functions) and Actors (Cla
             }
           }
         }
+  .. group-tab:: C++ (Experimental)
 
+    The C++ language API is in very early experimental stage.
+    Run the following commands to get started:
+    - Build ray from source with *bazel* as shown `here <https://docs.ray.io/en/master/development.html#building-ray-full>`__.
+    - Modify `ray/cpp/src/ray/test/cluster/cluster_mode_test.cc` or add C++ files under `ray/cpp/src/ray/test/cluster`.
+    - Run `cd ray; bazel run //cpp:cluster_mode_test`.
+    .. code-block:: C++
+        #include <gtest/gtest.h>
+        #include <ray/api.h>
+        #include <ray/api/ray_config.h>
+        #include <ray/experimental/default_worker.h>
+
+        using namespace ray::api;
+
+        /// general function of user code
+        int Plus1(int x) { return x + 1; }
+
+        /// a class of user code
+        class Counter {
+         public:
+          int count;
+
+          Counter(int init) { count = init; }
+
+          static Counter *FactoryCreate(int init) { return new Counter(init); }
+          /// non static function
+          int Add(int x) {
+            count += x;
+            return count;
+          }
+        };
+
+        TEST(RayClusterModeTest, FullTest) {
+          /// initialization to cluster mode
+          ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
+          Ray::Init();
+
+          /// put and get object
+          auto obj = Ray::Put(12345);
+          auto get_result = *(Ray::Get(obj));
+          EXPECT_EQ(12345, get_result);
+
+          auto task_obj = Ray::Task(Plus1, 5).Remote();
+          int task_result = *(Ray::Get(task_obj));
+          EXPECT_EQ(6, task_result);
+
+          ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate, 1).Remote();
+          auto actor_object = actor.Task(&Counter::Add, 5).Remote();
+          int actor_task_result = *(Ray::Get(actor_object));
+          EXPECT_EQ(6, actor_task_result);
+
+          Ray::Shutdown();
+        }
+
+        int main(int argc, char **argv) {
+          const char *default_worker_magic = "is_default_worker";
+          /// `is_default_worker` is the last arg of `argv`
+          if (argc > 1 &&
+              memcmp(argv[argc - 1], default_worker_magic, strlen(default_worker_magic)) == 0) {
+            default_worker_main(argc, argv);
+            return 0;
+          }
+          ::testing::InitGoogleTest(&argc, argv);
+          return RUN_ALL_TESTS();
+        }
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
