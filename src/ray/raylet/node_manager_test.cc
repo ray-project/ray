@@ -83,7 +83,9 @@ class TestNodeManager : public ::testing::Test {
     NodeID node_id = NodeID::FromRandom();
     object_manager_.reset(new ObjectManager(
         *server_io_service_, node_id, object_manager_config_,
-        std::make_shared<ObjectDirectory>(*server_io_service_, gcs_client_)));
+        std::make_shared<ObjectDirectory>(*server_io_service_, gcs_client_),
+        [](const ObjectID &, const std::string &,
+           const std::function<void(const ray::Status &)> &) {}));
 
     // Create node manager.
     node_manager_config_.node_manager_port = 5566;
