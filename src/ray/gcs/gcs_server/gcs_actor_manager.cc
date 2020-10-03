@@ -561,6 +561,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   auto it = registered_actors_.find(actor_id);
   RAY_CHECK(it != registered_actors_.end())
       << "Tried to destroy actor that does not exist " << actor_id;
+  it->second->GetMutableActorTableData()->mutable_task_spec()->Clear();
   destroyed_actors_.emplace(it->first, it->second);
   const auto actor = std::move(it->second);
   registered_actors_.erase(it);
