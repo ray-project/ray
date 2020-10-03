@@ -9,13 +9,14 @@ SRCS = [] + select({
 })
 
 py_test_module_list(
-  file = [
+  files = [
     "test_basic.py",
     "test_basic_2.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "new_scheduler"]
+  tags = ["exclusive", "new_scheduler"],
+  deps = ["//:ray_lib"]
 )
 
 
