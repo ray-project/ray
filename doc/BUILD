@@ -54,14 +54,14 @@ py_test(
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 
-# py_test(
-#     name = "tune_sklearn",
-#     size = "medium",
-#     main = "source/tune/_tutorials/tune-sklearn.py",
-#     srcs = ["source/tune/_tutorials/tune-sklearn.py"],
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "tune_sklearn",
+    size = "medium",
+    main = "source/tune/_tutorials/tune-sklearn.py",
+    srcs = ["source/tune/_tutorials/tune-sklearn.py"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "tune_serve_integration_mnist",
