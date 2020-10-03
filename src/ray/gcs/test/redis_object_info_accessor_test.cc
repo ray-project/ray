@@ -70,9 +70,10 @@ TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
     size_t total_size = elem.second.size();
     RAY_CHECK_OK(object_accessor.AsyncGetLocations(
         elem.first,
-        [this, total_size](Status status, const std::vector<ObjectTableData> &result) {
+        [this, total_size](Status status,
+                           const boost::optional<rpc::ObjectLocationInfo> &result) {
           RAY_CHECK_OK(status);
-          RAY_CHECK(total_size == result.size());
+          ASSERT_EQ(total_size, result->locations().size());
           --pending_count_;
         }));
   }
@@ -83,17 +84,18 @@ TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
   // subscribe && delete
   // subscribe
   std::atomic<int> sub_pending_count(0);
-  auto subscribe = [this, &sub_pending_count](const ObjectID &object_id,
-                                              const ObjectChangeNotification &result) {
+  auto subscribe = [this, &sub_pending_count](
+                       const ObjectID &object_id,
+                       const std::vector<rpc::ObjectLocationChange> &result) {
     const auto it = object_id_to_data_.find(object_id);
     ASSERT_TRUE(it != object_id_to_data_.end());
     static size_t response_count = 1;
     size_t cur_count = response_count <= object_count_ ? copy_count_ : 1;
-    ASSERT_EQ(result.GetData().size(), cur_count);
-    rpc::GcsChangeMode change_mode = response_count <= object_count_
-                                         ? rpc::GcsChangeMode::APPEND_OR_ADD
-                                         : rpc::GcsChangeMode::REMOVE;
-    ASSERT_EQ(change_mode, result.GetGcsChangeMode());
+    ASSERT_EQ(result.size(), cur_count);
+    bool change_mode = response_count <= object_count_;
+    for (const auto &res : result) {
+      ASSERT_EQ(change_mode, res.is_add());
+    }
     ++response_count;
     --sub_pending_count;
   };
@@ -128,9 +130,10 @@ TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
     size_t total_size = elem.second.size();
     RAY_CHECK_OK(object_accessor.AsyncGetLocations(
         elem.first,
-        [this, total_size](Status status, const std::vector<ObjectTableData> &result) {
+        [this, total_size](Status status,
+                           const boost::optional<rpc::ObjectLocationInfo> &result) {
           RAY_CHECK_OK(status);
-          ASSERT_EQ(total_size - 1, result.size());
+          ASSERT_EQ(total_size - 1, result->locations().size());
           --pending_count_;
         }));
   }

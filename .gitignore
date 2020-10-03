@@ -1,7 +1,6 @@
 # The build output should clearly not be checked in
 /bazel-*
 /python/ray/core
-/python/ray/pyarrow_files/
 /python/ray/pickle5_files/
 /python/ray/thirdparty_files/
 /python/ray/jars/

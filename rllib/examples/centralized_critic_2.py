@@ -12,6 +12,7 @@ modifies the policy to add a centralized value function.
 import numpy as np
 from gym.spaces import Dict, Discrete
 import argparse
+import os
 
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -87,6 +88,8 @@ if __name__ == "__main__":
         "env": TwoStepGame,
         "batch_mode": "complete_episodes",
         "callbacks": FillInActions,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "multiagent": {
             "policies": {
@@ -108,7 +111,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run("PPO", config=config, stop=stop)
+    results = tune.run("PPO", config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

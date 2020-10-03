@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import Mock
 import yaml
 import copy
 import sys
@@ -13,11 +14,12 @@ from jsonschema.exceptions import ValidationError
 import ray
 import ray._private.services as services
 from ray.autoscaler._private.util import prepare_config, validate_config
-from ray.autoscaler._private.commands import get_or_create_head_node
+from ray.autoscaler._private import commands
 from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
-from ray.autoscaler._private.providers import _NODE_PROVIDERS
+from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
+                                               _clear_provider_cache)
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.node_provider import NodeProvider
@@ -26,12 +28,16 @@ import pytest
 
 
 class MockNode:
-    def __init__(self, node_id, tags, node_config, node_type):
+    def __init__(self, node_id, tags, node_config, node_type,
+                 unique_ips=False):
         self.node_id = node_id
         self.state = "pending"
         self.tags = tags
         self.external_ip = "1.2.3.4"
         self.internal_ip = "172.0.0.{}".format(self.node_id)
+        if unique_ips:
+            self.external_ip = f"1.2.3.{self.node_id}"
+
         self.node_config = node_config
         self.node_type = node_type
 
@@ -43,9 +49,9 @@ class MockNode:
 
 
 class MockProcessRunner:
-    def __init__(self, fail_cmds=[]):
+    def __init__(self, fail_cmds=None):
         self.calls = []
-        self.fail_cmds = fail_cmds
+        self.fail_cmds = fail_cmds or []
         self.call_response = {}
 
     def check_call(self, cmd, *args, **kwargs):
@@ -77,33 +83,33 @@ class MockProcessRunner:
             "Must specify either a pattern or exact match."
         out = ""
         if pattern is not None:
-            for cmd in self.calls:
-                msg = " ".join(cmd)
-                if ip in msg:
-                    out += msg
+            for cmd in self.command_history():
+                if ip in cmd:
+                    out += cmd
                     out += "\n"
             if pattern in out:
                 return True
             else:
-                raise Exception("Did not find [{}] in [{}] for {}".format(
-                    pattern, out, ip))
-        else:
-            for cmd in self.calls:
-                msg = " ".join(cmd)
-                if ip in msg:
-                    out += msg
+                raise Exception(
+                    f"Did not find [{pattern}] in [{out}] for ip={ip}."
+                    f"\n\nFull output: {self.command_history()}")
+        elif exact is not None:
+            exact_cmd = " ".join(exact)
+            for cmd in self.command_history():
+                if ip in cmd:
+                    out += cmd
                     out += "\n"
-                if cmd == exact:
+                if cmd == exact_cmd:
                     return True
-            raise Exception("Did not find {} in {} for {}".format(
-                exact, out, ip))
+            raise Exception(
+                f"Did not find [{exact_cmd}] in [{out}] for ip={ip}."
+                f"\n\nFull output: {self.command_history()}")
 
     def assert_not_has_call(self, ip, pattern):
         out = ""
-        for cmd in self.calls:
-            msg = " ".join(cmd)
-            if ip in msg:
-                out += msg
+        for cmd in self.command_history():
+            if ip in cmd:
+                out += cmd
                 out += "\n"
         if pattern in out:
             raise Exception("Found [{}] in [{}] for {}".format(
@@ -114,12 +120,15 @@ class MockProcessRunner:
     def clear_history(self):
         self.calls = []
 
+    def command_history(self):
+        return [" ".join(cmd) for cmd in self.calls]
+
     def respond_to_call(self, pattern, response_list):
         self.call_response[pattern] = response_list
 
 
 class MockProvider(NodeProvider):
-    def __init__(self, cache_stopped=False):
+    def __init__(self, cache_stopped=False, unique_ips=False):
         self.mock_nodes = {}
         self.next_id = 0
         self.throw = False
@@ -127,10 +136,12 @@ class MockProvider(NodeProvider):
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
+        self.unique_ips = unique_ips
         # Many of these functions are called by node_launcher or updater in
         # different threads. This can be treated as a global lock for
         # everything.
         self.lock = threading.Lock()
+        super().__init__(None, None)
 
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
@@ -180,8 +191,11 @@ class MockProvider(NodeProvider):
                         node.tags.update(tags)
             for _ in range(count):
                 self.mock_nodes[self.next_id] = MockNode(
-                    self.next_id, tags.copy(), node_config,
-                    tags.get(TAG_RAY_USER_NODE_TYPE))
+                    self.next_id,
+                    tags.copy(),
+                    node_config,
+                    tags.get(TAG_RAY_USER_NODE_TYPE),
+                    unique_ips=self.unique_ips)
                 self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
@@ -377,6 +391,7 @@ class AutoscalingTest(unittest.TestCase):
     def tearDown(self):
         self.provider = None
         del _NODE_PROVIDERS["mock"]
+        _clear_provider_cache()
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
@@ -457,7 +472,7 @@ class AutoscalingTest(unittest.TestCase):
         # Two initial calls to docker cp, one before run, two final calls to cp
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "true", "true"])
-        get_or_create_head_node(
+        commands.get_or_create_head_node(
             SMALL_CLUSTER,
             config_path,
             no_restart=False,
@@ -480,6 +495,100 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call(
             "1.2.3.4",
             pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_config.yaml")
+
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testRsyncCommandWithDocker(self):
+        assert SMALL_CLUSTER["docker"]["container_name"]
+        config_path = self.write_config(SMALL_CLUSTER)
+        self.provider = MockProvider(unique_ips=True)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
+        self.provider.finish_starting_nodes()
+        ray.autoscaler.node_provider._get_node_provider = Mock(
+            return_value=self.provider)
+        ray.autoscaler._private.commands._bootstrap_config = Mock(
+            return_value=SMALL_CLUSTER)
+        runner = MockProcessRunner()
+        commands.rsync(
+            config_path,
+            source=config_path,
+            target="/tmp/test_path",
+            override_cluster_name=None,
+            down=True,
+            _runner=runner)
+        runner.assert_has_call("1.2.3.0", pattern="docker cp")
+        runner.assert_has_call("1.2.3.0", pattern="rsync")
+        runner.clear_history()
+
+        commands.rsync(
+            config_path,
+            source=config_path,
+            target="/tmp/test_path",
+            override_cluster_name=None,
+            down=True,
+            ip_address="1.2.3.5",
+            _runner=runner)
+        runner.assert_has_call("1.2.3.5", pattern="docker cp")
+        runner.assert_has_call("1.2.3.5", pattern="rsync")
+        runner.clear_history()
+
+        commands.rsync(
+            config_path,
+            source=config_path,
+            target="/tmp/test_path",
+            ip_address="172.0.0.4",
+            override_cluster_name=None,
+            down=True,
+            use_internal_ip=True,
+            _runner=runner)
+        runner.assert_has_call("172.0.0.4", pattern="docker cp")
+        runner.assert_has_call("172.0.0.4", pattern="rsync")
+
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testRsyncCommandWithoutDocker(self):
+        cluster_cfg = SMALL_CLUSTER.copy()
+        cluster_cfg["docker"] = {}
+        config_path = self.write_config(cluster_cfg)
+        self.provider = MockProvider(unique_ips=True)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
+        self.provider.finish_starting_nodes()
+        runner = MockProcessRunner()
+        ray.autoscaler.node_provider._get_node_provider = Mock(
+            return_value=self.provider)
+        ray.autoscaler._private.commands._bootstrap_config = Mock(
+            return_value=SMALL_CLUSTER)
+        commands.rsync(
+            config_path,
+            source=config_path,
+            target="/tmp/test_path",
+            override_cluster_name=None,
+            down=True,
+            _runner=runner)
+        runner.assert_has_call("1.2.3.0", pattern="rsync")
+
+        commands.rsync(
+            config_path,
+            source=config_path,
+            target="/tmp/test_path",
+            override_cluster_name=None,
+            down=True,
+            ip_address="1.2.3.5",
+            _runner=runner)
+        runner.assert_has_call("1.2.3.5", pattern="rsync")
+        runner.clear_history()
+
+        commands.rsync(
+            config_path,
+            source=config_path,
+            target="/tmp/test_path",
+            override_cluster_name=None,
+            down=True,
+            ip_address="172.0.0.4",
+            use_internal_ip=True,
+            _runner=runner)
+        runner.assert_has_call("172.0.0.4", pattern="rsync")
+        runner.clear_history()
 
     def testScaleUp(self):
         config_path = self.write_config(SMALL_CLUSTER)

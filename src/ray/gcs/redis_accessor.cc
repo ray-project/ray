@@ -82,59 +82,6 @@ Status RedisLogBasedActorInfoAccessor::AsyncCreateActor(
   return Status::Invalid(error_msg);
 }
 
-Status RedisLogBasedActorInfoAccessor::AsyncRegister(
-    const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
-  auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                               const ActorTableData &data) {
-    if (callback != nullptr) {
-      callback(Status::OK());
-    }
-  };
-
-  auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                               const ActorTableData &data) {
-    if (callback != nullptr) {
-      callback(Status::Invalid("Adding actor failed."));
-    }
-  };
-
-  ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-  return client_impl_->log_based_actor_table().AppendAt(actor_id.JobId(), actor_id,
-                                                        data_ptr, on_success, on_failure,
-                                                        /*log_length*/ 0);
-}
-
-Status RedisLogBasedActorInfoAccessor::AsyncUpdate(
-    const ActorID &actor_id, const std::shared_ptr<ActorTableData> &data_ptr,
-    const StatusCallback &callback) {
-  // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
-  // of (RESTARTING, ALIVE) entries, where N is the maximum number of
-  // reconstructions. This is followed optionally by a DEAD entry.
-  int log_length = 2 * (data_ptr->num_restarts());
-  if (data_ptr->state() != ActorTableData::ALIVE) {
-    // RESTARTING or DEAD entries have an odd index.
-    log_length += 1;
-  }
-  RAY_LOG(DEBUG) << "AsyncUpdate actor state to " << data_ptr->state()
-                 << ", actor id: " << actor_id << ", log_length: " << log_length;
-  auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                               const ActorTableData &data) {
-    if (callback != nullptr) {
-      callback(Status::OK());
-    }
-  };
-
-  auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                               const ActorTableData &data) {
-    if (callback != nullptr) {
-      callback(Status::Invalid("Updating actor failed."));
-    }
-  };
-
-  return client_impl_->log_based_actor_table().AppendAt(
-      actor_id.JobId(), actor_id, data_ptr, on_success, on_failure, log_length);
-}
-
 Status RedisLogBasedActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
@@ -283,32 +230,6 @@ Status RedisActorInfoAccessor::AsyncGetAll(
   }
 
   return Status::OK();
-}
-
-Status RedisActorInfoAccessor::AsyncRegister(
-    const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
-  auto on_register_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                                     const ActorTableData &data) {
-    if (callback != nullptr) {
-      callback(Status::OK());
-    }
-  };
-  ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-  return client_impl_->actor_table().Add(JobID::Nil(), actor_id, data_ptr,
-                                         on_register_done);
-}
-
-Status RedisActorInfoAccessor::AsyncUpdate(
-    const ActorID &actor_id, const std::shared_ptr<ActorTableData> &data_ptr,
-    const StatusCallback &callback) {
-  auto on_update_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                                   const ActorTableData &data) {
-    if (callback != nullptr) {
-      callback(Status::OK());
-    }
-  };
-  return client_impl_->actor_table().Add(JobID::Nil(), actor_id, data_ptr,
-                                         on_update_done);
 }
 
 Status RedisActorInfoAccessor::AsyncSubscribeAll(
@@ -493,11 +414,18 @@ RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), object_sub_executor_(client_impl->object_table()) {}
 
 Status RedisObjectInfoAccessor::AsyncGetLocations(
-    const ObjectID &object_id, const MultiItemCallback<ObjectTableData> &callback) {
+    const ObjectID &object_id,
+    const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
                             const std::vector<ObjectTableData> &data) {
-    callback(Status::OK(), data);
+    rpc::ObjectLocationInfo info;
+    info.set_object_id(object_id.Binary());
+    for (const auto &item : data) {
+      auto item_ptr = info.add_locations();
+      item_ptr->CopyFrom(item);
+    }
+    callback(Status::OK(), info);
   };
 
   ObjectTable &object_table = client_impl_->object_table();
@@ -542,10 +470,22 @@ Status RedisObjectInfoAccessor::AsyncRemoveLocation(const ObjectID &object_id,
 
 Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
     const ObjectID &object_id,
-    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+    const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+  return object_sub_executor_.AsyncSubscribe(
+      subscribe_id_, object_id,
+      [subscribe](const ObjectID &id, const ObjectChangeNotification &notification_data) {
+        std::vector<rpc::ObjectLocationChange> updates;
+        for (const auto &item : notification_data.GetData()) {
+          rpc::ObjectLocationChange update;
+          update.set_is_add(notification_data.IsAdded());
+          update.set_node_id(item.manager());
+          updates.push_back(update);
+        }
+        subscribe(id, updates);
+      },
+      done);
 }
 
 Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id) {
