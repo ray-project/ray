@@ -1,6 +1,6 @@
 # An unique identifier for the head node and workers of this cluster.
 # A namespace will be automatically created for each cluster_name in SKE.
-cluster_name: default
+cluster_name: default # name with 'a-z' and '-'
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
@@ -134,10 +134,12 @@ head_node:
         - name: dshm
           emptyDir:
               medium: Memory
+        - name: tmp-volume
+          emptyDir: {}
         # nfs volume provides a shared volume across all ray-nodes.
         - name: nfs-volume
           persistentVolumeClaim:
-            claimName: nfs
+              claimName: nfs
 
         containers:
         - name: ray-node
@@ -166,6 +168,8 @@ head_node:
           volumeMounts:
               - mountPath: /dev/shm
                 name: dshm
+              - mountPath: /tmp
+                name: tmp-volume
               - mountPath: /nfs
                 name: nfs-volume
           resources:
@@ -235,9 +239,11 @@ worker_nodes:
         - name: dshm
           emptyDir:
               medium: Memory
+        - name: tmp-volume
+          emptyDir: {}
         - name: nfs-volume
           persistentVolumeClaim:
-            claimName: nfs
+              claimName: nfs
         containers:
         - name: ray-node
           imagePullPolicy: Always
@@ -259,6 +265,8 @@ worker_nodes:
           volumeMounts:
               - mountPath: /dev/shm
                 name: dshm
+              - mountPath: /tmp
+                name: tmp-volume
               - mountPath: /nfs
                 name: nfs-volume
           resources:
