@@ -118,7 +118,9 @@ Ray provides Python, Java, and *Experimental* C++ API. And Ray uses Tasks (funct
     - Build ray from source with *bazel* as shown `here <https://docs.ray.io/en/master/development.html#building-ray-full>`__.
     - Modify `ray/cpp/src/ray/test/cluster/cluster_mode_test.cc` or add C++ files under `ray/cpp/src/ray/test/cluster`.
     - Run `cd ray; bazel run //cpp:cluster_mode_test`.
+
     .. code-block:: C++
+
         #include <gtest/gtest.h>
         #include <ray/api.h>
         #include <ray/api/ray_config.h>
