@@ -178,15 +178,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UpdateActor(const ActorID &actor_id,
-                   const std::shared_ptr<rpc::ActorTableData> &actor_table_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(
-        actor_id, actor_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   rpc::ActorTableData GetActor(const ActorID &actor_id) {
     std::promise<bool> promise;
     rpc::ActorTableData actor_table_data;
@@ -449,7 +440,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   bool SubscribeToLocations(
       const ObjectID &object_id,
-      const gcs::SubscribeCallback<ObjectID, gcs::ObjectChangeNotification> &subscribe) {
+      const gcs::SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncSubscribeToLocations(
         object_id, subscribe,
@@ -488,9 +480,12 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     std::promise<bool> promise;
     std::vector<rpc::ObjectTableData> locations;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(
-        object_id, [&locations, &promise](
-                       Status status, const std::vector<rpc::ObjectTableData> &result) {
-          locations = result;
+        object_id,
+        [&locations, &promise](Status status,
+                               const boost::optional<rpc::ObjectLocationInfo> &result) {
+          for (const auto &loc : result->locations()) {
+            locations.push_back(loc);
+          }
           promise.set_value(status.ok());
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
@@ -860,11 +855,11 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
   std::atomic<int> object_remove_count(0);
   auto on_subscribe = [&object_add_count, &object_remove_count](
                           const ObjectID &object_id,
-                          const gcs::ObjectChangeNotification &result) {
-    if (!result.GetData().empty()) {
-      if (result.IsAdded()) {
+                          const std::vector<rpc::ObjectLocationChange> &result) {
+    for (const auto &res : result) {
+      if (res.is_add()) {
         ++object_add_count;
-      } else if (result.IsRemoved()) {
+      } else {
         ++object_remove_count;
       }
     }
@@ -1020,16 +1015,18 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
   std::atomic<int> object1_change_count(0);
   std::atomic<int> object2_change_count(0);
   ASSERT_TRUE(SubscribeToLocations(
-      object1_id, [&object1_change_count](const ObjectID &object_id,
-                                          const gcs::ObjectChangeNotification &result) {
-        if (!result.GetData().empty()) {
+      object1_id,
+      [&object1_change_count](const ObjectID &object_id,
+                              const std::vector<rpc::ObjectLocationChange> &result) {
+        if (!result.empty()) {
           ++object1_change_count;
         }
       }));
   ASSERT_TRUE(SubscribeToLocations(
-      object2_id, [&object2_change_count](const ObjectID &object_id,
-                                          const gcs::ObjectChangeNotification &result) {
-        if (!result.GetData().empty()) {
+      object2_id,
+      [&object2_change_count](const ObjectID &object_id,
+                              const std::vector<rpc::ObjectLocationChange> &result) {
+        if (!result.empty()) {
           ++object2_change_count;
         }
       }));
@@ -1241,8 +1238,8 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
       for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
         auto object_id = ObjectID::FromRandom();
         ASSERT_TRUE(SubscribeToLocations(
-            object_id,
-            [](const ObjectID &id, const gcs::ObjectChangeNotification &result) {}));
+            object_id, [](const ObjectID &id,
+                          const std::vector<rpc::ObjectLocationChange> &result) {}));
         gcs_client_->Objects().AsyncResubscribe(false);
         UnsubscribeToLocations(object_id);
       }

@@ -60,7 +60,10 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   void LoadInitialData(const EmptyCallback &done);
 
  protected:
-  typedef absl::flat_hash_set<NodeID> LocationSet;
+  struct LocationSet {
+    absl::flat_hash_set<NodeID> locations;
+    std::string spilled_url = "";
+  };
 
   /// Add a location of objects.
   /// If the GCS server restarts, this function is used to reload data from storage.
@@ -82,7 +85,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   ///
   /// \param object_id The id of object to lookup.
   /// \return Object locations.
-  LocationSet GetObjectLocations(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  absl::flat_hash_set<NodeID> GetObjectLocations(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Handler if a node is removed.
   ///
@@ -99,8 +103,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
  private:
   typedef absl::flat_hash_set<ObjectID> ObjectSet;
 
-  std::shared_ptr<ObjectTableDataList> GenObjectTableDataList(
-      const GcsObjectManager::LocationSet &location_set) const;
+  const ObjectLocationInfo GenObjectLocationInfo(const ObjectID &object_id) const
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Get object locations by object id from map.
   /// Will create it if not exist and the flag create_if_not_exist is set to true.

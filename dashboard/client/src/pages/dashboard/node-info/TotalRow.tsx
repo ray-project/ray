@@ -7,7 +7,7 @@ import {
 } from "@material-ui/core";
 import LayersIcon from "@material-ui/icons/Layers";
 import React from "react";
-import { NodeInfoResponse, PlasmaStats } from "../../../api";
+import { NodeInfoResponse } from "../../../api";
 import { StyledTableCell } from "../../../common/TableCell";
 import { ClusterFeatureRenderFn } from "./features/types";
 
@@ -33,16 +33,11 @@ const useTotalRowStyles = makeStyles((theme: Theme) =>
 
 type TotalRowProps = {
   nodes: NodeInfoResponse["clients"];
-  plasmaStats: PlasmaStats[];
   clusterTotalWorkers: number;
   features: (ClusterFeatureRenderFn | undefined)[];
 };
 
-const TotalRow: React.FC<TotalRowProps> = ({
-  nodes,
-  features,
-  plasmaStats,
-}) => {
+const TotalRow: React.FC<TotalRowProps> = ({ nodes, features }) => {
   const classes = useTotalRowStyles();
   return (
     <TableRow hover>
@@ -52,7 +47,7 @@ const TotalRow: React.FC<TotalRowProps> = ({
       {features.map((ClusterFeature, index) =>
         ClusterFeature ? (
           <TableCell className={classes.cell} key={index}>
-            <ClusterFeature nodes={nodes} plasmaStats={plasmaStats} />
+            <ClusterFeature nodes={nodes} />
           </TableCell>
         ) : (
           <StyledTableCell key={index} />

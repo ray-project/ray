@@ -7,14 +7,19 @@ custom metric.
 from typing import Dict
 import argparse
 import numpy as np
+import os
 
 import ray
 from ray import tune
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
+from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
-from ray.rllib.agents.callbacks import DefaultCallbacks
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=2000)
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -65,8 +70,6 @@ class MyCallbacks(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--stop-iters", type=int, default=2000)
     args = parser.parse_args()
 
     ray.init()
@@ -79,7 +82,9 @@ if __name__ == "__main__":
             "env": "CartPole-v0",
             "num_envs_per_worker": 2,
             "callbacks": MyCallbacks,
-            "framework": "tf",
+            "framework": "torch" if args.torch else "tf",
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }).trials
 
     # verify custom metrics for integration tests
