@@ -7,6 +7,7 @@ via a custom training workflow.
 
 import argparse
 import gym
+import os
 
 import ray
 from ray import tune
@@ -139,6 +140,8 @@ if __name__ == "__main__":
             "policy_mapping_fn": policy_mapping_fn,
             "policies_to_train": ["dqn_policy", "ppo_policy"],
         },
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "torch" if args.torch else "tf",
     }
 

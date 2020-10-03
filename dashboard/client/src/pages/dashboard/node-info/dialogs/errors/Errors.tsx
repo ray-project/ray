@@ -7,7 +7,7 @@ import {
   WithStyles,
 } from "@material-ui/core";
 import React from "react";
-import { ErrorsResponse, getErrors } from "../../../../../api";
+import { ErrorsByPid, getErrors } from "../../../../../api";
 import DialogWithTitle from "../../../../../common/DialogWithTitle";
 import NumberedLines from "../../../../../common/NumberedLines";
 
@@ -34,12 +34,12 @@ const styles = (theme: Theme) =>
 
 type Props = {
   clearErrorDialog: () => void;
-  hostname: string;
+  nodeIp: string;
   pid: number | null;
 };
 
 type State = {
-  result: ErrorsResponse | null;
+  result: ErrorsByPid | null;
   error: string | null;
 };
 
@@ -51,16 +51,16 @@ class Errors extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   async componentDidMount() {
     try {
-      const { hostname, pid } = this.props;
-      const result = await getErrors(hostname, pid);
-      this.setState({ result, error: null });
+      const { nodeIp, pid } = this.props;
+      const result = await getErrors(nodeIp, pid);
+      this.setState({ result: result.errors, error: null });
     } catch (error) {
       this.setState({ result: null, error: error.toString() });
     }
   }
 
   render() {
-    const { classes, clearErrorDialog, hostname } = this.props;
+    const { classes, clearErrorDialog, nodeIp } = this.props;
     const { result, error } = this.state;
 
     return (
@@ -73,7 +73,7 @@ class Errors extends React.Component<Props & WithStyles<typeof styles>, State> {
           Object.entries(result).map(([pid, errors]) => (
             <React.Fragment key={pid}>
               <Typography className={classes.header}>
-                {hostname} (PID: {pid})
+                {nodeIp} (PID: {pid})
               </Typography>
               {errors.length > 0 ? (
                 errors.map(({ message, timestamp }, index) => (

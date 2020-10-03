@@ -392,7 +392,7 @@ class TorchPolicy(Policy):
 
                 grad_info["allreduce_latency"] += time.time() - start
 
-        # Step the optimizer
+        # Step the optimizers.
         for i, opt in enumerate(self._optimizers):
             opt.step()
 

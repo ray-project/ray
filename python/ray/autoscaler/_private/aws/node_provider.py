@@ -3,6 +3,7 @@ import copy
 import threading
 from collections import defaultdict
 import logging
+from typing import Any, Dict
 
 import boto3
 import botocore
@@ -478,3 +479,46 @@ class AWSNodeProvider(NodeProvider):
     @staticmethod
     def bootstrap_config(cluster_config):
         return bootstrap_aws(cluster_config)
+
+    @staticmethod
+    def fillout_available_node_types_resources(
+            cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Fills out missing "resources" field for available_node_types."""
+        if "available_node_types" not in cluster_config:
+            return cluster_config
+        cluster_config = copy.deepcopy(cluster_config)
+
+        instances_list = boto3.client("ec2").describe_instance_types()[
+            "InstanceTypes"]
+        instances_dict = {
+            instance["InstanceType"]: instance
+            for instance in instances_list
+        }
+        available_node_types = cluster_config["available_node_types"]
+        for node_type in available_node_types:
+            instance_type = available_node_types[node_type]["node_config"][
+                "InstanceType"]
+            if instance_type in instances_dict:
+                cpus = instances_dict[instance_type]["VCpuInfo"][
+                    "DefaultVCpus"]
+                autodetected_resources = {"CPU": cpus}
+                gpus = instances_dict[instance_type].get("GpuInfo",
+                                                         {}).get("Gpus")
+                if gpus is not None:
+                    # TODO(ameer): currently we support one gpu type per node.
+                    assert len(gpus) == 1
+                    gpu_name = gpus[0]["Name"]
+                    autodetected_resources.update({
+                        "GPU": gpus[0]["Count"],
+                        f"accelerator_type:{gpu_name}": 1
+                    })
+                autodetected_resources.update(
+                    available_node_types[node_type].get("resources", {}))
+                if autodetected_resources != \
+                        available_node_types[node_type].get("resources", {}):
+                    available_node_types[node_type][
+                        "resources"] = autodetected_resources
+                    cli_logger.print("Updating the resources of {} to {}.",
+                                     node_type, autodetected_resources)
+
+        return cluster_config

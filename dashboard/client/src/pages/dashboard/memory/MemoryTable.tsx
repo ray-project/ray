@@ -29,37 +29,37 @@ const useMemoryTableStyles = makeStyles((theme: Theme) =>
 );
 
 type memoryColumnId =
-  | "node_ip_address"
+  | "nodeIpAddress"
   | "pid"
   | "type"
-  | "object_ref"
-  | "object_size"
-  | "reference_type"
-  | "call_site";
+  | "objectRef"
+  | "objectSize"
+  | "referenceType"
+  | "callSite";
 
 const memoryHeaderInfo: HeaderInfo<memoryColumnId>[] = [
   {
-    id: "node_ip_address",
+    id: "nodeIpAddress",
     label: "IP Address",
     numeric: false,
     sortable: true,
   },
   { id: "pid", label: "PID", numeric: false, sortable: true },
   { id: "type", label: "Type", numeric: false, sortable: true },
-  { id: "object_ref", label: "Object Ref", numeric: false, sortable: true },
+  { id: "objectRef", label: "Object Ref", numeric: false, sortable: true },
   {
-    id: "object_size",
+    id: "objectSize",
     label: "Object Size",
     numeric: false,
     sortable: true,
   },
   {
-    id: "reference_type",
+    id: "referenceType",
     label: "Reference Type",
     numeric: false,
     sortable: true,
   },
-  { id: "call_site", label: "Call Site", numeric: false, sortable: true },
+  { id: "callSite", label: "Call Site", numeric: false, sortable: true },
 ];
 
 type MemoryTableProps = {
@@ -76,7 +76,7 @@ const MemoryTable: React.FC<MemoryTableProps> = ({ tableEntries }) => {
     ? stableSort(tableEntries, comparator)
     : tableEntries;
   const tableRows = sortedTableEntries.map((tableEntry) => (
-    <MemoryTableRow memoryTableEntry={tableEntry} key={tableEntry.object_ref} />
+    <MemoryTableRow memoryTableEntry={tableEntry} key={tableEntry.objectRef} />
   ));
   // Todo(max) add in sorting code
   return (
