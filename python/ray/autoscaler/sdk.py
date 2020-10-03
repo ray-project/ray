@@ -1,6 +1,6 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
-from typing import Optional, List, Union
+from typing import Any, Dict, Optional, List, Union
 import json
 import os
 import tempfile
@@ -186,3 +186,16 @@ def _as_config_file(cluster_config: Union[dict, str]):
     if not os.path.exists(cluster_config):
         raise ValueError("Cluster config not found {}".format(cluster_config))
     return cluster_config
+
+
+def bootstrap_config(cluster_config: Dict[str, any],
+                     no_config_cache: bool = False) -> bool:
+    """Validate and add provider-specific fields to the config. For example,
+       IAM/authentication may be added here."""
+    return commands._bootstrap_config(cluster_config, no_config_cache)
+
+
+def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Fillout default values for a cluster_config based on the provider."""
+    from ray.autoscaler._private.util import fillout_defaults
+    return fillout_defaults(config)
