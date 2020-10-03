@@ -190,7 +190,8 @@ def _as_config_file(cluster_config: Union[dict, str]):
 
 def bootstrap_config(cluster_config: Dict[str, any],
                      no_config_cache: bool = False) -> bool:
-    """Bootstrap the config file based on the NodeProvider."""
+    """Validate and add provider-specific fields to the config. For example,
+       IAM/authentication may be added here."""
     return commands._bootstrap_config(cluster_config, no_config_cache)
 
 
