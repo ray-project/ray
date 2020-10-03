@@ -363,8 +363,6 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
   int total_cnt = 0;
-  RAY_LOG(ERROR) << "Sang, "
-                 << RayConfig::instance().max_placement_group_load_report_size();
   for (const auto pending_pg_spec : pending_placement_groups_) {
     auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
