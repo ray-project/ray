@@ -9,6 +9,7 @@ SRCS = [] + select({
 })
 
 py_test_module_list(
+  identifier="new_scheduler_passing",
   files = [
     "test_basic.py",
     "test_basic_2.py",

@@ -1,9 +1,11 @@
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
-def py_test_module_list(files, size, deps, extra_srcs, **kwargs):
+def py_test_module_list(files, size, deps, extra_srcs, identifier=None, **kwargs):
     for file in files:
         # remove .py
         name = file[:-3]
+        if identifier:
+            name = identifier + name
         native.py_test(
             name = name,
             size = size,
