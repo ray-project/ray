@@ -45,6 +45,8 @@ class TestNodeManager : public ::testing::Test {
     node_manager_config_.store_socket_name = store_socket_name_;
     node_manager_config_.maximum_startup_concurrency = 1;
     node_manager_config_.node_manager_address = "127.0.0.1";
+    node_manager_config_.min_worker_port = 1000;
+    node_manager_config_.max_worker_port = 30000;
   }
 
   virtual ~TestNodeManager() {

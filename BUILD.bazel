@@ -837,9 +837,9 @@ cc_test(
     copts = COPTS,
     data = [
         "//:libray_redis_module.so",
+        "//:plasma_store_server",
         "//:redis-cli",
         "//:redis-server",
-        "//:plasma_store_server",
     ],
     deps = [
         ":raylet_lib",
