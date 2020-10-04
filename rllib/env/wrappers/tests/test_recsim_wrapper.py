@@ -17,7 +17,7 @@ class TestRecSimWrapper(unittest.TestCase):
         new_obs, _, _, _ = env.step(env.action_space.sample())
         self.assertTrue(env.observation_space.contains(new_obs))
 
-    def test_action_space_converstion(self):
+    def test_action_space_conversion(self):
         env = make_recsim_env(
             config={"convert_to_discrete_action_space": True})
         self.assertIsInstance(env.action_space, gym.spaces.Discrete)
@@ -25,7 +25,7 @@ class TestRecSimWrapper(unittest.TestCase):
         action = env.action_space.sample()
         env.step(action)
 
-    def test_double_action_space_converstion_raises_exception(self):
+    def test_double_action_space_conversion_raises_exception(self):
         env = make_recsim_env(
             config={"convert_to_discrete_action_space": True})
         with self.assertRaises(UnsupportedSpaceException):

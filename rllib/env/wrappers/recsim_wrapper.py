@@ -16,7 +16,7 @@ from ray.tune.registry import register_env
 
 
 class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
-    """Fix RecSim environments' observation space
+    """Fix RecSim environment's observation space
 
     In RecSim's observation spaces, the "doc" field is a dictionary keyed by
     document IDs. Those IDs are changing every step, thus generating a
@@ -54,7 +54,7 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
 
 
 class RecSimResetWrapper(gym.Wrapper):
-    """Fix RecSim environments' reset() function
+    """Fix RecSim environment's reset() function
 
     RecSim's reset() function returns an observation without the "response"
     field, breaking RLlib's check. This wrapper fixes that by assigning a
