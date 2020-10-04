@@ -38,9 +38,8 @@ class Metric:
         self._metric = None
 
         if not isinstance(self._tag_keys, tuple):
-            raise ValueError(
-                "tag_keys should be a tuple type, got: "
-                f"{type(self._tag_keys)}")
+            raise ValueError("tag_keys should be a tuple type, got: "
+                             f"{type(self._tag_keys)}")
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
