@@ -38,7 +38,7 @@ def test_profiling(shutdown_only):
     launch_profiling = None
     while True:
         # Sometimes some startup time is required
-        if time.time() - start_time > 10:
+        if time.time() - start_time > 15:
             raise RayTestTimeoutException(
                 "Timed out while collecting profiling stats, "
                 f"launch_profiling: {launch_profiling}")

@@ -20,6 +20,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -158,8 +159,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data,
-                     bool is_detached = true) {
-    std::promise<bool> promise;
+                     bool is_detached = true, bool skip_wait = false) {
     rpc::TaskSpec message;
     auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
     message.set_job_id(actor_id.JobId().Binary());
@@ -173,6 +173,12 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
     TaskSpecification task_spec(message);
 
+    if (skip_wait) {
+      return gcs_client_->Actors()
+          .AsyncRegisterActor(task_spec, [](Status status) {})
+          .ok();
+    }
+    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncRegisterActor(
         task_spec, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
@@ -190,6 +196,21 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actor_table_data;
+  }
+
+  std::vector<rpc::ActorTableData> GetAllActors() {
+    std::promise<bool> promise;
+    std::vector<rpc::ActorTableData> actors;
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
+        [&actors, &promise](Status status,
+                            const std::vector<rpc::ActorTableData> &result) {
+          if (!result.empty()) {
+            actors.assign(result.begin(), result.end());
+          }
+          promise.set_value(true);
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return actors;
   }
 
   bool AddCheckpoint(
@@ -1249,6 +1270,36 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
     thread->join();
     thread.reset();
   }
+}
+
+// This UT is only used to test the query actor info performance.
+// We disable it by default.
+TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
+  // Register actors.
+  JobID job_id = JobID::FromInt(1);
+  int actor_count = 5000;
+  rpc::TaskSpec task_spec;
+  rpc::TaskArg task_arg;
+  task_arg.set_data("0123456789");
+  for (int index = 0; index < 10000; ++index) {
+    task_spec.add_args()->CopyFrom(task_arg);
+  }
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    actor_table_data->mutable_task_spec()->CopyFrom(task_spec);
+    RegisterActor(actor_table_data, false, true);
+  }
+
+  // Get all actors.
+  auto condition = [this, actor_count]() {
+    return (int)GetAllActors().size() == actor_count;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  int64_t start_time = current_time_ms();
+  auto actors = GetAllActors();
+  RAY_LOG(INFO) << "It takes " << current_time_ms() - start_time << "ms to query "
+                << actor_count << " actors.";
 }
 
 // TODO(sang): Add tests after adding asyncAdd

@@ -19,7 +19,8 @@ except ImportError:  # py2
 
 from ray.experimental.internal_kv import _internal_kv_get
 import ray._private.services as services
-from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
@@ -1046,7 +1047,7 @@ def get_head_node_ip(config_file: str,
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node = _get_head_node(config, config_file, override_cluster_name)
-        if config.get("provider", {}).get("use_internal_ips", False) is True:
+        if config.get("provider", {}).get("use_internal_ips", False):
             head_node_ip = provider.internal_ip(head_node)
         else:
             head_node_ip = provider.external_ip(head_node)

@@ -269,10 +269,10 @@ class MemoryTable:
         }
 
     def get_entries(self) -> List[dict]:
-        return [entry.__dict__() for entry in self.table]
+        return [entry.as_dict() for entry in self.table]
 
     def __repr__(self):
-        return str(self.__dict__())
+        return str(self.as_dict())
 
     def __str__(self):
         return self.__repr__()
