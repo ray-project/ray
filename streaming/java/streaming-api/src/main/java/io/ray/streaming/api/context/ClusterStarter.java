@@ -63,7 +63,7 @@ class ClusterStarter {
         "ray",
         "start",
         "--head",
-        "--redis-port=6379",
+        "--port=6379",
         String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),

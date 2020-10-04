@@ -15,15 +15,15 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
 - `Ray Serve`_: Scalable and Programmable Serving
 
-There are also many `community integrations <https://docs.ray.io/en/master/oss-users.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/oss-users.html>`_.
+There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
-`Installation page <https://docs.ray.io/en/latest/installation.html>`__.
+`Installation page <https://docs.ray.io/en/master/installation.html>`__.
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
-.. _`MARS`: mars-on-ray.html
-.. _`Dask`: dask-on-ray.html
+.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
 .. _`Scikit-learn`: joblib.html
 
@@ -197,10 +197,10 @@ Ray Serve Quick Start
 
 `Ray Serve`_ is a scalable model-serving library built on Ray. It is:
 
-- Framework Agnostic: Use the same toolkit to serve everything from deep 
-  learning models built with frameworks like PyTorch or Tensorflow & Keras 
+- Framework Agnostic: Use the same toolkit to serve everything from deep
+  learning models built with frameworks like PyTorch or Tensorflow & Keras
   to Scikit-Learn models or arbitrary business logic.
-- Python First: Configure your model serving with pure Python code - no more 
+- Python First: Configure your model serving with pure Python code - no more
   YAMLs or JSON configs.
 - Performance Oriented: Turn on batching, pipelining, and GPU acceleration to
   increase the throughput of your model.
@@ -292,19 +292,16 @@ More Information
 Getting Involved
 ----------------
 
-- `ray-dev@googlegroups.com`_: For discussions about development or any general
-  questions.
-- `StackOverflow`_: For questions about how to use Ray.
-- `GitHub Issues`_: For reporting bugs and feature requests.
-- `Pull Requests`_: For submitting code contributions.
-- `Meetup Group`_: Join our meetup group.
+- `Github Discussions`_: For discussions about development, questions about usage, and feature requests.
+- `GitHub Issues`_: For reporting bugs.
 - `Community Slack`_: Join our Slack workspace.
 - `Twitter`_: Follow updates on Twitter.
+- `Meetup Group`_: Join our meetup group.
+- `StackOverflow`_: For questions about how to use Ray.
 
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`Github Discussions`: https://github.com/ray-project/ray/discussions
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`Pull Requests`: https://github.com/ray-project/ray/pulls
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Community Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
 .. _`Twitter`: https://twitter.com/raydistributed

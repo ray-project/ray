@@ -157,9 +157,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # makes it slightly harder to debug since Python code won't be evaluated
     # after the initial eager pass. Only possible if framework=tfe.
     "eager_tracing": False,
-    # Disable eager execution on workers (but allow it on the driver). This
-    # only has an effect if eager is enabled.
-    "no_eager_on_workers": False,
 
     # === Exploration Settings ===
     # Default exploration behavior, iff `explore`=None is passed into
@@ -773,7 +770,7 @@ class Trainer(Trainable):
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
-        Arguments:
+        Args:
             observation (TensorStructType): observation from the environment.
             state (List[TensorStructType]): RNN hidden state, if any. If state
                 is not None, then all of compute_single_action(...) is returned
@@ -834,7 +831,7 @@ class Trainer(Trainable):
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
-        Arguments:
+        Args:
             observation (obj): observation from the environment.
             state (dict): RNN hidden state, if any. If state is not None,
                 then all of compute_single_action(...) is returned
@@ -923,7 +920,7 @@ class Trainer(Trainable):
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
-        Arguments:
+        Args:
             policy_id (str): id of policy to return.
         """
         return self.workers.local_worker().get_policy(policy_id)
@@ -932,7 +929,7 @@ class Trainer(Trainable):
     def get_weights(self, policies: List[PolicyID] = None) -> dict:
         """Return a dictionary of policy ids to weights.
 
-        Arguments:
+        Args:
             policies (list): Optional list of policies to return weights for,
                 or None for all policies.
         """
@@ -942,7 +939,7 @@ class Trainer(Trainable):
     def set_weights(self, weights: Dict[PolicyID, dict]):
         """Set policy weights by policy id.
 
-        Arguments:
+        Args:
             weights (dict): Map of policy ids to weights to set.
         """
         self.workers.local_worker().set_weights(weights)
@@ -953,7 +950,7 @@ class Trainer(Trainable):
                             policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Export policy model with given policy_id to local directory.
 
-        Arguments:
+        Args:
             export_dir (string): Writable local directory.
             policy_id (string): Optional policy id to export.
 
@@ -972,7 +969,7 @@ class Trainer(Trainable):
                                  policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Export tensorflow policy model checkpoint to local directory.
 
-        Arguments:
+        Args:
             export_dir (string): Writable local directory.
             filename_prefix (string): file name prefix of checkpoint files.
             policy_id (string): Optional policy id to export.
@@ -992,7 +989,7 @@ class Trainer(Trainable):
                                     policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Imports a policy's model with given policy_id from a local h5 file.
 
-        Arguments:
+        Args:
             import_file (str): The h5 file to import from.
             policy_id (string): Optional policy id to import into.
 
@@ -1050,9 +1047,10 @@ class Trainer(Trainable):
     def _validate_config(config: PartialTrainerConfigDict):
         if config.get("_use_trajectory_view_api") and \
                 config.get("framework") != "torch":
-            raise ValueError(
+            logger.info(
                 "`_use_trajectory_view_api` only supported for PyTorch so "
-                "far!")
+                "far! Will run w/o.")
+            config["_use_trajectory_view_api"] = False
         elif not config.get("_use_trajectory_view_api") and \
                 config.get("model", {}).get("_time_major"):
             raise ValueError("`model._time_major` only supported "

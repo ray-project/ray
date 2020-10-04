@@ -194,6 +194,7 @@ Papers
    :caption: Overview of Ray
 
    ray-overview/index.rst
+   ray-libraries.rst
    installation.rst
 
 .. toctree::
@@ -204,6 +205,7 @@ Papers
    walkthrough.rst
    using-ray.rst
    configure.rst
+   ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
    package-ref.rst
 
@@ -282,7 +284,6 @@ Papers
    iter.rst
    dask-on-ray.rst
    mars-on-ray.rst
-   oss-users.rst
 
 .. toctree::
    :hidden:

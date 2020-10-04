@@ -79,15 +79,21 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                              rpc::DeleteResourcesReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle setting internal config.
+  /// Handle set internal config.
   void HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
                                rpc::SetInternalConfigReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle getting internal config.
+  /// Handle get internal config.
   void HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
                                rpc::GetInternalConfigReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get available resources of all nodes.
+  void HandleGetAllAvailableResources(
+      const rpc::GetAllAvailableResourcesRequest &request,
+      rpc::GetAllAvailableResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Add an alive node.
   ///
@@ -99,20 +105,20 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_id The ID of the node to be removed.
   /// \param is_intended False if this is triggered by `node_failure_detector_`, else
   /// True.
-  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const ClientID &node_id,
+  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const NodeID &node_id,
                                                bool is_intended = false);
 
   /// Get alive node by ID.
   ///
   /// \param node_id The id of the node.
-  /// \return the node if it is alive else return nullptr.
-  std::shared_ptr<rpc::GcsNodeInfo> GetNode(const ClientID &node_id) const;
+  /// \return the node if it is alive. Optional empty value if it is not alive.
+  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetNode(const NodeID &node_id) const;
 
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
-  const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
-      &GetAllAliveNodes() const {
+  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllAliveNodes()
+      const {
     return alive_nodes_;
   }
 
@@ -144,11 +150,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void StartNodeFailureDetector();
 
   // Update node realtime resources.
-  void UpdateNodeRealtimeResources(const ClientID &node_id,
+  void UpdateNodeRealtimeResources(const NodeID &node_id,
                                    const rpc::HeartbeatTableData &heartbeat);
 
   /// Get cluster realtime resources.
-  const absl::flat_hash_map<ClientID, std::shared_ptr<ResourceSet>>
+  const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
       &GetClusterRealtimeResources() const;
 
  protected:
@@ -165,7 +171,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
         boost::asio::io_service &io_service,
         std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-        std::function<void(const ClientID &)> on_node_death_callback);
+        std::function<void(const NodeID &)> on_node_death_callback);
 
     // Note: To avoid heartbeats being delayed by main thread, all public methods below
     // should be posted to its own IO service.
@@ -177,13 +183,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// Only if the node has registered, its heartbeat data will be accepted.
     ///
     /// \param node_id ID of the node to be registered.
-    void AddNode(const ClientID &node_id);
+    void AddNode(const NodeID &node_id);
 
     /// Handle a heartbeat from a Raylet.
     ///
     /// \param node_id The client ID of the Raylet that sent the heartbeat.
     /// \param heartbeat_data The heartbeat sent by the client.
-    void HandleHeartbeat(const ClientID &node_id,
+    void HandleHeartbeat(const NodeID &node_id,
                          const rpc::HeartbeatTableData &heartbeat_data);
 
    protected:
@@ -206,7 +212,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// Storage for GCS tables.
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
     /// The callback of node death.
-    std::function<void(const ClientID &)> on_node_death_callback_;
+    std::function<void(const NodeID &)> on_node_death_callback_;
     /// The number of heartbeats that can be missed before a node is removed.
     int64_t num_heartbeats_timeout_;
     // Only the changed part will be included in heartbeat if this is true.
@@ -215,9 +221,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     boost::asio::deadline_timer detect_timer_;
     /// For each Raylet that we receive a heartbeat from, the number of ticks
     /// that may pass before the Raylet will be declared dead.
-    absl::flat_hash_map<ClientID, int64_t> heartbeats_;
+    absl::flat_hash_map<NodeID, int64_t> heartbeats_;
     /// A buffer containing heartbeats received from node managers in the last tick.
-    absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
+    absl::flat_hash_map<NodeID, rpc::HeartbeatTableData> heartbeat_buffer_;
     /// A publisher for publishing gcs messages.
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
     /// Is the detect started.
@@ -232,11 +238,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// The event loop for node failure detector.
   boost::asio::io_service &node_failure_detector_service_;
   /// Alive nodes.
-  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.
-  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
   /// Cluster resources.
-  absl::flat_hash_map<ClientID, rpc::ResourceMap> cluster_resources_;
+  absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;
@@ -248,7 +254,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Cluster realtime resources.
-  absl::flat_hash_map<ClientID, std::shared_ptr<ResourceSet>> cluster_realtime_resources_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>> cluster_realtime_resources_;
 };
 
 }  // namespace gcs

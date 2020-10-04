@@ -1,17 +1,16 @@
 import functools
 import gym
+import logging
 import numpy as np
 import time
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
-import ray
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -24,12 +23,12 @@ from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
 
 torch, _ = try_import_torch()
 
+logger = logging.getLogger(__name__)
+
 
 @DeveloperAPI
 class TorchPolicy(Policy):
     """Template for a PyTorch policy and loss to use with RLlib.
-
-    This is similar to TFPolicy, but for PyTorch.
 
     Attributes:
         observation_space (gym.Space): observation space of the policy.
@@ -104,20 +103,15 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available() and ray.get_gpu_ids():
+        if torch.cuda.is_available():
+            logger.info("TorchPolicy running on GPU.")
             self.device = torch.device("cuda")
         else:
+            logger.info("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
         # Combine view_requirements for Model and Policy.
-        self.training_view_requirements = dict(
-            **{
-                SampleBatch.ACTIONS: ViewRequirement(
-                    space=self.action_space, shift=0),
-                SampleBatch.REWARDS: ViewRequirement(shift=0),
-                SampleBatch.DONES: ViewRequirement(shift=0),
-            },
-            **self.model.inference_view_requirements)
+        self.view_requirements.update(self.model.inference_view_requirements)
 
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
@@ -198,9 +192,11 @@ class TorchPolicy(Policy):
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
+            # Pack internal state inputs into (separate) list.
             state_batches = [
-                input_dict[k] for k in input_dict.keys() if "state_" in k[:6]
+                input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
             ]
+            # Calculate RNN sequence lengths.
             seq_lens = np.array([1] * len(input_dict["obs"])) \
                 if state_batches else None
 
@@ -213,7 +209,8 @@ class TorchPolicy(Policy):
                 extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)
                 extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
-            return actions, state_out, extra_fetches
+            return convert_to_non_torch_type((actions, state_out,
+                                              extra_fetches))
 
     def _compute_action_helper(self, input_dict, state_batches, seq_lens,
                                explore, timestep):
@@ -338,7 +335,6 @@ class TorchPolicy(Policy):
             max_seq_len=self.max_seq_len,
             shuffle=False,
             batch_divisibility_req=self.batch_divisibility_req,
-            _use_trajectory_view_api=self.config["_use_trajectory_view_api"],
         )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
@@ -396,7 +392,7 @@ class TorchPolicy(Policy):
 
                 grad_info["allreduce_latency"] += time.time() - start
 
-        # Step the optimizer
+        # Step the optimizers.
         for i, opt in enumerate(self._optimizers):
             opt.step()
 
@@ -475,7 +471,7 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
         return [
-            s.cpu().detach().numpy() for s in self.model.get_initial_state()
+            s.detach().cpu().numpy() for s in self.model.get_initial_state()
         ]
 
     @override(Policy)

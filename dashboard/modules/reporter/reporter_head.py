@@ -1,6 +1,7 @@
 import json
 import logging
-
+import yaml
+import os
 import aiohttp.web
 from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
@@ -9,7 +10,7 @@ import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
@@ -27,10 +28,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_stubs(self, change):
         if change.old:
-            ip, port = change.old
+            node_id, port = change.old
+            ip = DataSource.node_id_to_ip[node_id]
             self._stubs.pop(ip)
         if change.new:
-            ip, ports = change.new
+            node_id, ports = change.new
+            ip = DataSource.node_id_to_ip[node_id]
             channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
@@ -50,6 +53,49 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             message="Profiling success.",
             profiling_info=profiling_info)
 
+    @routes.get("/api/ray_config")
+    async def get_ray_config(self, req) -> aiohttp.web.Response:
+        if self._ray_config is None:
+            try:
+                config_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
+                with open(config_path) as f:
+                    cfg = yaml.safe_load(f)
+            except yaml.YAMLError:
+                return await dashboard_utils.rest_response(
+                    success=False,
+                    message=f"No config found at {config_path}.",
+                )
+            except FileNotFoundError:
+                return await dashboard_utils.rest_response(
+                    success=False,
+                    message=f"Invalid config, could not load YAML.")
+
+            payload = {
+                "min_workers": cfg["min_workers"],
+                "max_workers": cfg["max_workers"],
+                "initial_workers": cfg["initial_workers"],
+                "autoscaling_mode": cfg["autoscaling_mode"],
+                "idle_timeout_minutes": cfg["idle_timeout_minutes"],
+            }
+
+            try:
+                payload["head_type"] = cfg["head_node"]["InstanceType"]
+            except KeyError:
+                payload["head_type"] = "unknown"
+
+            try:
+                payload["worker_type"] = cfg["worker_nodes"]["InstanceType"]
+            except KeyError:
+                payload["worker_type"] = "unknown"
+
+            self._ray_config = payload
+
+        return await dashboard_utils.rest_response(
+            success=True,
+            message="Fetched ray config.",
+            **self._ray_config,
+        )
+
     async def run(self, server):
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
@@ -60,9 +106,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         async for sender, msg in receiver.iter():
             try:
-                _, data = msg
+                # The key is b'RAY_REPORTER:{node id hex}',
+                # e.g. b'RAY_REPORTER:2b4fbd406898cc86fb88fb0acfd5456b0afd87cf'
+                key, data = msg
                 data = json.loads(ray.utils.decode(data))
-                DataSource.node_physical_stats[data["ip"]] = data
+                key = key.decode("utf-8")
+                node_id = key.split(":")[-1]
+                DataSource.node_physical_stats[node_id] = data
             except Exception:
                 logger.exception(
                     "Error receiving node physical stats from reporter agent.")

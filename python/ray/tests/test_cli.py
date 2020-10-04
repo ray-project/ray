@@ -34,7 +34,7 @@ from click.testing import CliRunner
 from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
-import ray.autoscaler.aws.config as aws_config
+import ray.autoscaler._private.aws.config as aws_config
 import ray.scripts.scripts as scripts
 
 
@@ -158,9 +158,9 @@ DEFAULT_TEST_CONFIG_PATH = str(
     reason=("Mac builds don't provide proper locale support"))
 def test_ray_start(configure_lang):
     runner = CliRunner()
-    result = runner.invoke(
-        scripts.start,
-        ["--head", "--log-style=pretty", "--log-color", "False"])
+    result = runner.invoke(scripts.start, [
+        "--head", "--log-style=pretty", "--log-color", "False", "--port", "0"
+    ])
     _die_on_error(runner.invoke(scripts.stop))
 
     _check_output_via_pattern("test_ray_start.txt", result)

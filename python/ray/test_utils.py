@@ -12,7 +12,7 @@ import math
 from contextlib import redirect_stdout, redirect_stderr
 
 import ray
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.scripts.scripts import main as ray_main
 
@@ -150,7 +150,7 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
 def kill_process_by_name(name, SIGKILL=False):
     for p in psutil.process_iter(attrs=["name"]):
-        if p.info["name"] == name + ray.services.EXE_SUFFIX:
+        if p.info["name"] == name + ray._private.services.EXE_SUFFIX:
             if SIGKILL:
                 p.kill()
             else:
@@ -207,10 +207,13 @@ def run_string_as_driver_nonblocking(driver_script):
     return proc
 
 
-def wait_for_num_actors(num_actors, timeout=10):
+def wait_for_num_actors(num_actors, state=None, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if len(ray.actors()) >= num_actors:
+        if len([
+                _ for _ in ray.actors().values()
+                if state is None or _["State"] == state
+        ]) >= num_actors:
             return
         time.sleep(0.1)
     raise RayTestTimeoutException("Timed out while waiting for global state.")

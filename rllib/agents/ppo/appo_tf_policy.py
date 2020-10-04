@@ -91,7 +91,7 @@ def appo_surrogate_loss(
     Args:
         policy (Policy): The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
-        dist_class (Type[ActionDistribution]: The action distr. class.
+        dist_class (Type[ActionDistribution]): The action distr. class.
         train_batch (SampleBatch): The training data.
 
     Returns:

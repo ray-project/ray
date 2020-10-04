@@ -25,7 +25,7 @@ import ray.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
-import ray.services as services
+import ray._private.services as services
 import ray
 import setproctitle
 import ray.signature
@@ -154,6 +154,18 @@ class Worker:
     @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
+
+    @property
+    def current_node_id(self):
+        return self.core_worker.get_current_node_id()
+
+    @property
+    def placement_group_id(self):
+        return self.core_worker.get_placement_group_id()
+
+    @property
+    def should_capture_child_tasks_in_placement_group(self):
+        return self.core_worker.should_capture_child_tasks_in_placement_group()
 
     @property
     def current_session_and_job(self):
@@ -621,6 +633,11 @@ def init(
                 "please call ray.init() or ray.init(address=\"auto\") on the "
                 "driver.")
 
+    # Convert hostnames to numerical IP address.
+    if _node_ip_address is not None:
+        node_ip_address = services.address_to_ip(_node_ip_address)
+    raylet_ip_address = node_ip_address
+
     if address:
         redis_address, _, _ = services.validate_redis_address(address)
     else:
@@ -658,8 +675,8 @@ def init(
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
-            node_ip_address=None,
-            raylet_ip_address=None,
+            node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_worker_output=None,
@@ -723,8 +740,8 @@ def init(
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
-            node_ip_address=None,
-            raylet_ip_address=None,
+            node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
@@ -753,7 +770,8 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
-    return _global_node.address_info
+    node_id = global_worker.core_worker.get_current_node_id()
+    return dict(_global_node.address_info, node_id=node_id.hex())
 
 
 # Functions to run as callback after a successful ray init.
@@ -1147,7 +1165,10 @@ def connect(node,
             job_id).binary()
 
     if mode is not SCRIPT_MODE and setproctitle:
-        setproctitle.setproctitle("ray::IDLE")
+        process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
+        if mode is IO_WORKER_MODE:
+            process_name = ray_constants.WORKER_PROCESS_TYPE_IO_WORKER
+        setproctitle.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -1160,7 +1181,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray.services.check_version_info(worker.redis_client)
+        ray._private.services.check_version_info(worker.redis_client)
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
@@ -1402,10 +1423,10 @@ def get(object_refs, *, timeout=None):
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.debug("Using blocking ray.get inside async actor. "
-                         "This blocks the event loop. Please use `await` "
-                         "on object ref with asyncio.gather if you want to "
-                         "yield execution to the event loop instead.")
+            logger.warning("Using blocking ray.get inside async actor. "
+                           "This blocks the event loop. Please use `await` "
+                           "on object ref with asyncio.gather if you want to "
+                           "yield execution to the event loop instead.")
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
@@ -1662,7 +1683,8 @@ def make_decorator(num_returns=None,
                    max_task_retries=None,
                    worker=None,
                    placement_group=None,
-                   placement_group_bundle_index=-1):
+                   placement_group_bundle_index=-1,
+                   placement_group_capture_child_tasks=True):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1692,7 +1714,8 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, placement_group,
-                placement_group_bundle_index)
+                placement_group_bundle_index,
+                placement_group_capture_child_tasks)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1723,7 +1746,7 @@ def make_decorator(num_returns=None,
 
 
 def remote(*args, **kwargs):
-    """Define a remote function or an actor class.
+    """Defines a remote function or an actor class.
 
     This can be used with no arguments to define a remote function or actor as
     follows:
@@ -1739,50 +1762,7 @@ def remote(*args, **kwargs):
             def method(self):
                 return 1
 
-    It can also be used with specific keyword arguments:
-
-    * **num_returns:** This is only for *remote functions*. It specifies
-      the number of object refs returned by the remote function invocation.
-    * **num_cpus:** The quantity of CPU cores to reserve for this task or for
-      the lifetime of the actor.
-    * **num_gpus:** The quantity of GPUs to reserve for this task or for the
-      lifetime of the actor.
-    * **resources:** The quantity of various custom resources to reserve for
-      this task or for the lifetime of the actor. This is a dictionary mapping
-      strings (resource names) to numbers.
-    * **accelerator_type:** If specified, requires that the task or actor run
-      on a node with the specified type of accelerator. See `ray.accelerators`
-      for accelerator types.
-    * **max_calls:** Only for *remote functions*. This specifies the maximum
-      number of times that a given worker can execute the given remote function
-      before it must exit (this can be used to address memory leaks in
-      third-party libraries or to reclaim resources that cannot easily be
-      released, e.g., GPU memory that was acquired by TensorFlow). By
-      default this is infinite.
-    * **max_restarts**: Only for *actors*. This specifies the maximum
-      number of times that the actor should be restarted when it dies
-      unexpectedly. The minimum valid value is 0 (default), which indicates
-      that the actor doesn't need to be restarted. A value of -1
-      indicates that an actor should be restarted indefinitely.
-    * **max_task_retries**: Only for *actors*. How many times to retry an actor
-      task if the task fails due to a system error, e.g., the actor has died.
-      If set to -1, the system will retry the failed task until the task
-      succeeds, or the actor has reached its max_restarts limit. If set to n >
-      0, the system will retry the failed task up to n times, after which the
-      task will throw a `RayActorError` exception upon `ray.get`. Note that
-      Python exceptions are not considered system errors and will not trigger
-      retries.
-    * **max_retries**: Only for *remote functions*. This specifies the maximum
-      number of times that the remote function should be rerun when the worker
-      process executing it crashes unexpectedly. The minimum valid value is 0,
-      the default is 4 (default), and a value of -1 indicates infinite retries.
-    * **placement_group**: the placement group this task belongs to,
-        or None if it doesn't belong to any group.
-    * **placement_group_bundle_index**: the index of the bundle
-        if the task belongs to a placement group, which may be -1 to indicate
-        any available bundle.
-
-    This can be done as follows:
+    It can also be used with specific keyword arguments as follows:
 
     .. code-block:: python
 
@@ -1816,6 +1796,59 @@ def remote(*args, **kwargs):
     in Python is deleted, which will cause them to complete any outstanding
     work and then shut down. If you want to kill them immediately, you can
     also call ``ray.kill(actor)``.
+
+    Args:
+        num_returns (int): This is only for *remote functions*. It specifies
+            the number of object refs returned by
+            the remote function invocation.
+        num_cpus (float): The quantity of CPU cores to reserve
+            for this task or for the lifetime of the actor.
+        num_gpus (int): The quantity of GPUs to reserve
+            for this task or for the lifetime of the actor.
+        resources (Dict[str, float]): The quantity of various custom resources
+            to reserve for this task or for the lifetime of the actor.
+            This is a dictionary mapping strings (resource names) to floats.
+        accelerator_type: If specified, requires that the task or actor run
+            on a node with the specified type of accelerator.
+            See `ray.accelerators` for accelerator types.
+        max_calls (int): Only for *remote functions*. This specifies the
+            maximum number of times that a given worker can execute
+            the given remote function before it must exit
+            (this can be used to address memory leaks in third-party
+            libraries or to reclaim resources that cannot easily be
+            released, e.g., GPU memory that was acquired by TensorFlow).
+            By default this is infinite.
+        max_restarts (int): Only for *actors*. This specifies the maximum
+            number of times that the actor should be restarted when it dies
+            unexpectedly. The minimum valid value is 0 (default),
+            which indicates that the actor doesn't need to be restarted.
+            A value of -1 indicates that an actor should be restarted
+            indefinitely.
+        max_task_retries (int): Only for *actors*. How many times to
+            retry an actor task if the task fails due to a system error,
+            e.g., the actor has died. If set to -1, the system will
+            retry the failed task until the task succeeds, or the actor
+            has reached its max_restarts limit. If set to `n > 0`, the
+            system will retry the failed task up to n times, after which the
+            task will throw a `RayActorError` exception upon :obj:`ray.get`.
+            Note that Python exceptions are not considered system errors
+            and will not trigger retries.
+        max_retries (int): Only for *remote functions*. This specifies
+            the maximum number of times that the remote function
+            should be rerun when the worker process executing it
+            crashes unexpectedly. The minimum valid value is 0,
+            the default is 4 (default), and a value of -1 indicates
+            infinite retries.
+        placement_group (:obj:`PlacementGroup`): The placement group
+            this task belongs to, or ``None`` if it doesn't belong
+            to any group.
+        placement_group_bundle_index (int): The index of the bundle
+            if the task belongs to a placement group, which may be
+            -1 to indicate any available bundle.
+        placement_group_capture_child_tasks (bool): Default True.
+            If True, all the child tasks (including actor creation)
+            are scheduled in the same placement group.
+
     """
     worker = global_worker
 
@@ -1848,6 +1881,7 @@ def remote(*args, **kwargs):
             "max_retries",
             "placement_group",
             "placement_group_bundle_index",
+            "placement_group_capture_child_tasks",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None

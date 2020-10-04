@@ -166,7 +166,8 @@ class TestSAC(unittest.TestCase):
 
             # Set all weights (of all nets) to fixed values.
             if weights_dict is None:
-                assert fw in ["tf", "tfe"]  # Start with the tf vars-dict.
+                # Start with the tf vars-dict.
+                assert fw in ["tf2", "tf", "tfe"]
                 weights_dict = policy.get_weights()
                 if fw == "tfe":
                     log_alpha = weights_dict[10]

@@ -861,6 +861,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":ray_util",
+        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1344,7 +1345,9 @@ cc_library(
         ":sha256",
         "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
+        "@boost//:property_tree",
         "@com_github_google_glog//:glog",
+        "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -1598,27 +1601,6 @@ cc_test(
 )
 
 cc_test(
-    name = "subscription_executor_test",
-    srcs = ["src/ray/gcs/test/subscription_executor_test.cc"],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:libray_redis_module.so",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    deps = [
-        ":gcs",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "redis_job_info_accessor_test",
     srcs = ["src/ray/gcs/test/redis_job_info_accessor_test.cc"],
     args = [
@@ -1794,6 +1776,7 @@ filegroup(
     srcs = glob([
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
+        "python/ray/autoscaler/_private/*.py",
         "python/ray/autoscaler/aws/example-full.yaml",
         "python/ray/autoscaler/azure/example-full.yaml",
         "python/ray/autoscaler/gcp/example-full.yaml",

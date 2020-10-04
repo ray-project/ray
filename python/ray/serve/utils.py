@@ -6,7 +6,7 @@ import logging
 import random
 import string
 import time
-from typing import List
+from typing import List, Dict
 import io
 import os
 from ray.serve.exceptions import RayServeException
@@ -15,6 +15,7 @@ from collections import UserDict
 import requests
 import numpy as np
 import pydantic
+import flask
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
@@ -88,8 +89,15 @@ def parse_request_item(request_item):
         asgi_scope, body_bytes = request_item.args
         return build_flask_request(asgi_scope, io.BytesIO(body_bytes))
     else:
+        arg = request_item.args[0] if len(request_item.args) == 1 else None
+
+        # If the input data from handle is web request, we don't need to wrap
+        # it in ServeRequest.
+        if isinstance(arg, flask.Request):
+            return arg
+
         return ServeRequest(
-            request_item.args[0] if len(request_item.args) == 1 else None,
+            arg,
             request_item.kwargs,
             headers=request_item.metadata.http_headers,
             method=request_item.metadata.http_method,
@@ -229,27 +237,23 @@ def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
 
 def try_schedule_resources_on_nodes(
         requirements: List[dict],
-        ray_nodes: List = None,
+        ray_resource: Dict[str, Dict] = None,
 ) -> List[bool]:
     """Test given resource requirements can be scheduled on ray nodes.
 
     Args:
         requirements(List[dict]): The list of resource requirements.
-        ray_nodes(Optional[List]): The list of nodes. By default it reads from
-            ``ray.nodes()``.
+        ray_nodes(Optional[Dict[str, Dict]]): The resource dictionary keyed by
+            node id. By default it reads from
+            ``ray.state.state._available_resources_per_node()``.
     Returns:
         successfully_scheduled(List[bool]): A list with the same length as
             requirements. Each element indicates whether or not the requirement
             can be satisied.
     """
 
-    if ray_nodes is None:
-        ray_nodes = ray.nodes()
-
-    node_to_resources = {
-        node["NodeID"]: node["Resources"]
-        for node in ray_nodes if node["Alive"]
-    }
+    if ray_resource is None:
+        ray_resource = ray.state.state._available_resources_per_node()
 
     successfully_scheduled = []
 
@@ -257,7 +261,7 @@ def try_schedule_resources_on_nodes(
         # Filter out zero value
         resource_dict = {k: v for k, v in resource_dict.items() if v > 0}
 
-        for node_id, node_resource in node_to_resources.items():
+        for node_id, node_resource in ray_resource.items():
             # Check if we can schedule on this node
             feasible = True
             for key, count in resource_dict.items():
@@ -266,7 +270,6 @@ def try_schedule_resources_on_nodes(
 
             # If we can, schedule it on this node
             if feasible:
-                node_resource = node_to_resources[node_id]
                 for key, count in resource_dict.items():
                     node_resource[key] -= count
 

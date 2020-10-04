@@ -69,6 +69,9 @@ class Exploration:
         """
         pass
 
+    # yapf: disable
+    # __sphinx_doc_begin_get_exploration_action__
+
     @DeveloperAPI
     def get_exploration_action(self,
                                *,
@@ -97,6 +100,9 @@ class Exploration:
             - The log-likelihood of the exploration action.
         """
         pass
+
+    # __sphinx_doc_end_get_exploration_action__
+    # yapf: enable
 
     @DeveloperAPI
     def on_episode_start(self,

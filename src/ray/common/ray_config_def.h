@@ -205,8 +205,11 @@ RAY_CONFIG(int, num_workers_per_process_cpp, 1)
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
-/// Maximum number of items in one batch to scan from GCS storage.
-RAY_CONFIG(uint32_t, maximum_gcs_scan_batch_size, 1000)
+/// Maximum number of items in one batch to scan/get/delete from GCS storage.
+RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
+
+/// Maximum number of rows in GCS profile table.
+RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
@@ -284,7 +287,16 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable multi tenancy features.
-RAY_CONFIG(bool, enable_multi_tenancy, false)
+RAY_CONFIG(bool, enable_multi_tenancy,
+           getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
+               getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
+
+/// The interval of periodic idle worker killing. A negative value means worker capping is
+/// disabled.
+RAY_CONFIG(int64_t, kill_idle_workers_interval_ms, 200)
+
+/// The idle time threshold for an idle worker to be killed.
+RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)

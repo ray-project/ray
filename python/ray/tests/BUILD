@@ -52,10 +52,10 @@ py_test_module_list(
     "test_multiprocessing.py",
     "test_object_manager.py",
     "test_output.py",
-    "test_placement_group.py",
     "test_reconstruction.py",
     "test_reference_counting_2.py",
     "test_reference_counting.py",
+    "test_serialization.py",
     "test_stress.py",
     "test_stress_sharded.py",
     "test_unreconstructable_errors.py",
@@ -91,7 +91,6 @@ py_test_module_list(
     "test_numba.py",
     "test_queue.py",
     "test_ray_init.py",
-    "test_serialization.py",
     "test_tempfile.py",
     "test_webui.py",
   ],
@@ -104,7 +103,8 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_stress_failure.py",
-    "test_failure.py"
+    "test_failure.py",
+    "test_placement_group.py",
   ],
   size = "large",
   extra_srcs = SRCS,

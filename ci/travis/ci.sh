@@ -122,10 +122,10 @@ test_core() {
       args+=(
         -//:redis_gcs_client_test
         -//:core_worker_test
+        -//:event_test
         -//:gcs_pub_sub_test
         -//:gcs_server_test
         -//:gcs_server_rpc_test
-        -//:subscription_executor_test
       )
       ;;
   esac
@@ -143,7 +143,8 @@ test_python() {
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
-      -python/ray/tests:test_cython
+      -python/ray/tests:test_basic_2  # hangs on shared cluster tests
+      -python/ray/tests:test_cli
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
