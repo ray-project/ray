@@ -25,7 +25,7 @@ class TestRecSimWrapper(unittest.TestCase):
         action = env.action_space.sample()
         env.step(action)
 
-    def test_double_action_space_converstion_raises_execption(self):
+    def test_double_action_space_converstion_raises_exception(self):
         env = make_recsim_env(
             config={"convert_to_discrete_action_space": True})
         with self.assertRaises(UnsupportedSpaceException):
