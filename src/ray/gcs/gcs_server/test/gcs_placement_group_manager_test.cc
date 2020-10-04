@@ -55,9 +55,13 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
  public:
   GcsPlacementGroupManagerTest()
       : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()) {
+    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
-        io_service_, mock_placement_group_scheduler_, gcs_table_storage_));
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        io_service_, io_service_, gcs_pub_sub_, gcs_table_storage_);
+    gcs_placement_group_manager_.reset(
+        new gcs::GcsPlacementGroupManager(io_service_, mock_placement_group_scheduler_,
+                                          gcs_table_storage_, *gcs_node_manager_));
   }
 
   void SetUp() override {
@@ -81,6 +85,9 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   boost::asio::io_service io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
+  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::RedisClient> redis_client_;
 };
 
 TEST_F(GcsPlacementGroupManagerTest, TestBasic) {

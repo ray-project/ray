@@ -281,6 +281,11 @@ message ResourceLoad {
   repeated ResourceDemand resource_demands = 1;
 }
 
+message PlacementGroupLoad {
+  // The list of pending placement group specifications.
+  repeated PlacementGroupTableData placement_group_data = 1;
+}
+
 message HeartbeatTableData {
   // Node manager client id
   bytes client_id = 1;
@@ -309,6 +314,8 @@ message HeartbeatBatchTableData {
   // The total resource demand on all nodes included in the batch, sorted by
   // resource shape.
   ResourceLoad resource_load_by_shape = 2;
+  // The pending list of placement groups.
+  PlacementGroupLoad placement_group_load = 3;
 }
 
 // Data for a lease on task execution.
