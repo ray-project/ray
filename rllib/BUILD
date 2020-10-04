@@ -222,6 +222,18 @@ py_test(
     args = ["--yaml-dir=tuned_examples/impala", "--torch"]
 )
 
+# Working, but takes a long time to learn (>15min).
+## MB-MPO
+#py_test(
+#    name = "run_regression_tests_pendulum_mbmpo_torch",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/mbmpo/pendulum-mbmpo.yaml"],
+#    args = ["--torch", "--yaml-dir=tuned_examples/mbmpo"]
+#)
+
 # PG
 py_test(
     name = "run_regression_tests_cartpole_pg_tf",

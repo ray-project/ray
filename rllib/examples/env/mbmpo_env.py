@@ -24,10 +24,10 @@ class PendulumWrapper(PendulumEnv):
             np.clip(obs[:, 1], -1.0, 1.0), np.clip(obs[:, 0], -1.0, 1.0))
         # Do everything in (B,) space (single theta-, action- and
         # reward values).
-        a = np.clip(action[:, 0], -self.max_torque, self.max_torque)
-        r = self.angle_normalize(theta) ** 2 + \
+        a = np.clip(action, -self.max_torque, self.max_torque)[0]
+        costs = self.angle_normalize(theta) ** 2 + \
             0.1 * obs[:, 2] ** 2 + 0.001 * (a ** 2)
-        return r
+        return -costs
 
     @staticmethod
     def angle_normalize(x):

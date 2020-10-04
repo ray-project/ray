@@ -347,7 +347,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 not model_config.get("custom_preprocessor") and \
                 preprocessor_pref == "deepmind":
 
-            # Deepmind wrappers already handle all preprocessing
+            # Deepmind wrappers already handle all preprocessing.
             self.preprocessing_enabled = False
 
             # If clip_rewards not explicitly set to False, switch it

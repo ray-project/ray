@@ -17,7 +17,7 @@ pendulum-mbmpo:
         clip_param: 0.5
         kl_target: 0.003
         kl_coeff: 0.0000000001
-        num_workers: 14
+        num_workers: 10
         num_gpus: 0
         inner_lr: 0.001
         clip_actions: False
