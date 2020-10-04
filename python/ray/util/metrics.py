@@ -37,10 +37,10 @@ class Metric:
         # The Cython metric class. This should be set in the child class.
         self._metric = None
 
-        if type(self._tag_keys) != tuple:
+        if not isinstance(self._tag_keys, tuple):
             raise ValueError(
-                "tag_keys should be a tuple type, "
-                f"but {type(self._tag_keys)} type was specified instead.")
+                "tag_keys should be a tuple type, got: "
+                f"{type(self._tag_keys)}")
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
