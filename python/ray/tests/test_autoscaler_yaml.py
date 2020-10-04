@@ -34,8 +34,9 @@ class AutoscalingConfigTest(unittest.TestCase):
                 self.fail("Config did not pass validation test!")
 
     def testValidateDefaultConfigAWSMultiNodeTypes(self):
-        aws_config_path = os.path.join(
-            RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
+        aws_config_path = recursive_fnmatch(
+            os.path.join(RAY_PATH, "autoscaler"),
+            "aws/example-multi-node-type.yaml")[0]
         with open(aws_config_path) as f:
             config = yaml.safe_load(f)
         new_config = copy.deepcopy(config)
