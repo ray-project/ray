@@ -6,7 +6,8 @@ from typing import Dict, Tuple
 import gym
 import ray
 from ray.rllib.agents.dqn.simple_q_tf_policy import (
-    build_q_models, compute_q_values, get_distribution_inputs_and_class)
+    build_q_models, compute_q_values, get_distribution_inputs_and_class,
+    view_requirements_fn_dqn)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDistributionWrapper
@@ -137,4 +138,5 @@ SimpleQTorchPolicy = build_torch_policy(
     mixins=[TargetNetworkMixin],
     action_distribution_fn=get_distribution_inputs_and_class,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
+    view_requirements_fn=view_requirements_fn_dqn,
 )

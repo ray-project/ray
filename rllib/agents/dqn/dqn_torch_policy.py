@@ -8,6 +8,7 @@ from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS, Q_SCOPE, Q_TARGET_SCOPE, postprocess_nstep_and_prio)
 from ray.rllib.agents.dqn.dqn_torch_model import DQNTorchModel
+from ray.rllib.agents.dqn.simple_q_tf_policy import view_requirements_fn_dqn
 from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -17,6 +18,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
@@ -48,7 +50,8 @@ class QLoss:
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
-            z = torch.range(0.0, num_atoms - 1, dtype=torch.float32)
+            z = torch.range(0.0, num_atoms - 1, dtype=torch.float32).to(
+                rewards.device)
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
@@ -401,4 +404,6 @@ DQNTorchPolicy = build_torch_policy(
         TargetNetworkMixin,
         ComputeTDErrorMixin,
         LearningRateSchedule,
-    ])
+    ],
+    view_requirements_fn=view_requirements_fn_dqn,
+)

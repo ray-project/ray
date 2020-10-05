@@ -170,8 +170,8 @@ class TorchPolicy(Policy):
 
             # Action-logp and action-prob.
             if logp is not None:
-                logp = convert_to_non_torch_type(logp)
-                extra_fetches[SampleBatch.ACTION_PROB] = np.exp(logp)
+                extra_fetches[SampleBatch.ACTION_PROB] = \
+                    torch.exp(logp.float())
                 extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
             return convert_to_non_torch_type((actions, state_out,
@@ -206,7 +206,8 @@ class TorchPolicy(Policy):
 
             # Leave outputs as is (torch.Tensors): Action-logp and action-prob.
             if logp is not None:
-                extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)
+                extra_fetches[SampleBatch.ACTION_PROB] = \
+                    torch.exp(logp.float())
                 extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
             return convert_to_non_torch_type((actions, state_out,

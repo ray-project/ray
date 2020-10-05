@@ -7,7 +7,8 @@ import numpy as np
 import ray
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
-from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin, \
+    view_requirements_fn_dqn
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -449,4 +450,6 @@ DQNTFPolicy = build_tf_policy(
         TargetNetworkMixin,
         ComputeTDErrorMixin,
         LearningRateSchedule,
-    ])
+    ],
+    view_requirements_fn=view_requirements_fn_dqn,
+)

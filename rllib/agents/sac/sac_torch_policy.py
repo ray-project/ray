@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
+from ray.rllib.agents.dqn.simple_q_tf_policy import view_requirements_fn_dqn
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
@@ -487,4 +488,5 @@ SACTorchPolicy = build_torch_policy(
     make_model_and_action_dist=build_sac_model_and_action_dist,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,
+    view_requirements_fn=view_requirements_fn_dqn,
 )

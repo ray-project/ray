@@ -182,6 +182,7 @@ def build_eager_tf_policy(name,
                           action_sampler_fn=None,
                           action_distribution_fn=None,
                           mixins=None,
+                          view_requirements_fn=None,
                           obs_include_prev_action_reward=True,
                           get_batch_divisibility_req=None):
     """Build an eager TF policy.
@@ -237,6 +238,14 @@ def build_eager_tf_policy(name,
                     config["model"],
                     framework=self.framework,
                 )
+            # Combine view_requirements for Model and Policy.
+            self.view_requirements.update(
+                self.model.inference_view_requirements)
+
+            # Update this Policy's ViewRequirements (if function given).
+            if callable(view_requirements_fn):
+                self.view_requirements.update(view_requirements_fn(self))
+
             self.exploration = self._create_exploration()
             self._state_in = [
                 tf.convert_to_tensor([s])

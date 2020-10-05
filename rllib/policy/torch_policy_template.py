@@ -228,6 +228,7 @@ def build_torch_policy(
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
 
+            # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
                 self.view_requirements.update(view_requirements_fn(self))
 

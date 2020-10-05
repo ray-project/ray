@@ -1,7 +1,7 @@
 """TensorFlow policy class used for Simple Q-Learning"""
 
 import logging
-from typing import List, Tuple, Type
+from typing import Dict, List, Tuple, Type
 
 import gym
 import ray
@@ -15,6 +15,7 @@ from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
@@ -203,6 +204,26 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
+def view_requirements_fn_dqn(policy: Policy) -> Dict[str, ViewRequirement]:
+    """Function defining the view requirements for training/postprocessing.
+
+    These go on top of the Policy's Model's own view requirements used for
+    the action computing forward passes.
+
+    Args:
+        policy (Policy): The Policy that requires the returned
+            ViewRequirements.
+
+    Returns:
+        Dict[str, ViewRequirement]: The Policy's view requirements.
+    """
+    ret = {
+        # Next obs are needed for DQN loss function.
+        SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
+    }
+    return ret
+
+
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
 # above.
 SimpleQTFPolicy: DynamicTFPolicy = build_tf_policy(
@@ -215,4 +236,6 @@ SimpleQTFPolicy: DynamicTFPolicy = build_tf_policy(
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
-    mixins=[TargetNetworkMixin])
+    mixins=[TargetNetworkMixin],
+    view_requirements_fn=view_requirements_fn_dqn,
+)
