@@ -11,7 +11,7 @@ def py_test_module_list(files, size, deps, extra_srcs, **kwargs):
             test_modules[name] = {
                 "size": size,
                 "srcs": srcs + [file],
-                "kwargs": **kwargs
+                **kwargs
             }
 
 def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
@@ -29,7 +29,7 @@ def add_tags(files, tags):
         # remove .py
         name = file[:-3]
         if name not in test_modules:
-            raise ValueError(f"name {name} doesn't exist. Cannot add tags {tags}")
+            fail("name {name} doesn't exist. Cannot add tags {tags}".format(name, tags))
             if "tags" not in test_modules[name]:
                 test_modules[name]["tags"] = []
         test_modules[name]["tags"] += tags
