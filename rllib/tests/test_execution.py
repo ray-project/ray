@@ -274,9 +274,10 @@ def test_all_straggler_rollouts(ray_start_regular_shared):
     counters = a.shared_metrics.get().counters
     assert counters["num_steps_sampled"] == 100, counters
     # given that we have to poll 7 times to get one sample
-    # and the rollout fragment is 100, we expect more than
-    # 600 StopIteration signals.
-    assert tries > 600 and tries < 700
+    # the rollout fragment is 100, and we are in async mode,
+    # we expect around the process to run faster than bulk-sync
+    # around 300 StopIteration signals should be enough.
+    assert tries > 200 and tries < 400
     workers.stop()
 
 

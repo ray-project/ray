@@ -1,12 +1,15 @@
 from contextlib import contextmanager
 import collections
+import logging
 import random
 import threading
 import time
-from typing import TypeVar, Generic, Iterable, List, Callable, Any
+from typing import TypeVar, Generic, Iterable, List, Callable, Any, Iterator
 
 import ray
 from ray.util.iter_metrics import MetricsContext, SharedMetrics
+
+logger = logging.getLogger(__name__)
 
 # The type of an iterator element.
 T = TypeVar("T")
@@ -30,7 +33,8 @@ def from_items(items: List[T], num_shards: int = 2,
     name = "from_items[{}, {}, shards={}{}]".format(
         items and type(items[0]).__name__ or "None", len(items), num_shards,
         ", repeat=True" if repeat else "")
-    return from_iterators(shards, repeat=repeat, name=name)
+    return from_iterators(shards, repeat=repeat, name=name,
+                          is_infinite_sequence=False)
 
 
 def from_range(n: int, num_shards: int = 2,
@@ -479,15 +483,24 @@ class ParallelIterator(Generic[T]):
                 except TimeoutError:
                     yield _NextValueNotReady()
                 except StopIteration:
-                    # Find and remove the actor that produced StopIteration.
+                    # If we are streaming (infinite sequence) then
+                    # we want to try again as long as at least one
+                    # actor is able to produce items. If not
+                    # find and remove the actor that produced StopIteration.
                     results = []
+                    stoped_actors = []
                     for a, f in zip(list(active), futures):
                         try:
                             results.append(ray.get(f))
                         except StopIteration:
-                            active.remove(a)
+                            if self.is_infinite_sequence:
+                                stoped_actors.append(a)
+                            else:
+                                active.remove(a)
                     if results:
                         yield results
+                    elif self.is_infinite_sequence and len(stoped_actors) == len(active):
+                        raise
                     futures = [a.par_iter_next.remote() for a in active]
 
         name = "{}.batch_across_shards()".format(self)
@@ -536,6 +549,7 @@ class ParallelIterator(Generic[T]):
             for _ in range(num_async):
                 for a in all_actors:
                     futures[a.par_iter_next_batch.remote(batch_ms)] = a
+            active_actors = set(all_actors)
             while futures:
                 pending = list(futures)
                 if timeout is None:
@@ -555,12 +569,22 @@ class ParallelIterator(Generic[T]):
                         batch = ray.get(obj_id)
                         futures[actor.par_iter_next_batch.remote(
                             batch_ms)] = actor
+                        active_actors.add(actor)
                         for item in batch:
                             yield item
-                    except ForceIteratorStopIteration:
-                        raise
                     except StopIteration:
-                        pass
+                        # If we are streaming (infinite sequence) then
+                        # we want to try again as long as at least one
+                        # actor is able to produce items.
+                        if self.is_infinite_sequence:
+                            futures[actor.par_iter_next_batch.remote(
+                                batch_ms)] = actor
+                            if actor in active_actors:
+                                active_actors.remove(actor)
+                            if len(active_actors) == 0:
+                                raise
+                        else:
+                            pass
                 # Always yield after each round of wait with timeout.
                 if timeout is not None:
                     yield _NextValueNotReady()
@@ -1130,8 +1154,6 @@ class LocalIterator(Generic[T]):
                                 if yield_counts[i] >= expected_yield_counts:
                                     pull_counts[i] = 0
                                 yield item
-                    except ForceIteratorStopIteration:
-                        raise
                     except StopIteration:
                         fix_weights = [
                             w != "*" for w in round_robin_weights
@@ -1180,6 +1202,9 @@ class ParallelIteratorWorker(object):
             seen as a "no items available" message.
         """
 
+        logger.info("Creating ParallelIteratorWorker with repeat {} and "
+                    "is_infinite_sequence {}".format(repeat, is_infinite_sequence))
+
         def make_iterator():
             if callable(item_generator):
                 return item_generator()
@@ -1187,20 +1212,39 @@ class ParallelIteratorWorker(object):
                 return item_generator
 
         if repeat:
+            class _GeneratorWrapper(Iterator[Any]):
+                def __init__(self):
+                    self.inner_iterator = None
+                    self._make_inner_iterator()
 
-            def cycle():
-                while True:
-                    it = iter(make_iterator())
-                    if it is item_generator:
+                def _make_inner_iterator(self):
+                    self.inner_iterator = iter(make_iterator())
+                    if self.inner_iterator is item_generator:
                         raise ValueError(
                             "Cannot iterate over {} multiple times." +
                             "Please pass in the base iterable or" +
                             "lambda: {} instead.".format(
                                 item_generator, item_generator))
-                    for item in it:
-                        yield item
 
-            self.item_generator = cycle()
+                def __iter__(self) -> Iterator[Any]:
+                    return self
+
+                def __next__(self) -> Any:
+                    try:
+                        return next(self.inner_iterator)
+                    except StopIteration:
+                        self._make_inner_iterator()
+                        # If we have an infinite sequence means that we have an stream
+                        # but the stream is not able to produce items at the moment
+                        # we notified that up and wait for the next call
+                        # If we are not in an infinite sequence, we just retry immediately
+                        # with the new iterator
+                        if is_infinite_sequence:
+                            raise
+                        else:
+                            return next(self.inner_iterator)
+
+            self.item_generator = _GeneratorWrapper()
         else:
             self.item_generator = make_iterator()
 
@@ -1312,10 +1356,3 @@ class _ActorSet(object):
 
     def with_transform(self, fn):
         return _ActorSet(self.actors, self.transforms + [fn])
-
-
-class ForceIteratorStopIteration(StopIteration):
-    """
-    Indicates that the iterator should stop yielding regardless of which at point
-    is located.
-    """
