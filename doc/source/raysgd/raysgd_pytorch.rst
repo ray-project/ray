@@ -1,3 +1,5 @@
+.. _torch-guide:
+
 Distributed PyTorch
 ===================
 
