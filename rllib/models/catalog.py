@@ -8,6 +8,7 @@ from typing import List
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.tf.recurrent_net import LSTMWrapper
@@ -122,7 +123,7 @@ class ModelCatalog:
             config (Optional[dict]): Optional model config.
             dist_type (Optional[str]): Identifier of the action distribution
                 interpreted as a hint.
-            framework (str): One of "tf", "tfe", or "torch".
+            framework (str): One of "tf2", "tf", "tfe", "torch", or "jax".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
 
@@ -166,7 +167,8 @@ class ModelCatalog:
                     else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
-            dist = TorchCategorical if framework == "torch" else Categorical
+            dist = TorchCategorical if framework == "torch" else \
+                JAXCategorical if framework == "jax" else Categorical
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
@@ -274,7 +276,7 @@ class ModelCatalog:
                 unflatten the tensor into a ragged tensor.
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
-            framework (str): One of "tf", "tfe", or "torch".
+            framework (str): One of "tf2", "tf", "tfe", "torch", or "jax".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
@@ -286,7 +288,6 @@ class ModelCatalog:
         """
 
         if model_config.get("custom_model"):
-
             # Allow model kwargs to be overriden / augmented by
             # custom_model_config.
             customized_model_kwargs = dict(
@@ -350,7 +351,7 @@ class ModelCatalog:
                         "model.register_variables() on the variables in "
                         "question?".format(not_registered, instance,
                                            registered))
-            else:
+            elif framework == "torch":
                 # PyTorch automatically tracks nn.Modules inside the parent
                 # nn.Module's constructor.
                 # Try calling with kwargs first (custom ModelV2 should
@@ -373,8 +374,14 @@ class ModelCatalog:
                     # Other error -> re-raise.
                     else:
                         raise e
+            else:
+                raise NotImplementedError(
+                    "`framework` must be 'tf2|tf|tfe|torch', but is "
+                    "{}!".format(framework))
+
             return instance
 
+        # Find a default TFModelV2 and wrap with model_interface.
         if framework in ["tf", "tfe", "tf2"]:
             v2_class = None
             # Try to get a default v2 model.
@@ -396,6 +403,8 @@ class ModelCatalog:
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
+
+        # Find a default TorchModelV2 and wrap with model_interface.
         elif framework == "torch":
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
@@ -408,6 +417,18 @@ class ModelCatalog:
                 v2_class = ModelCatalog._wrap_if_needed(
                     wrapped_cls, TorchLSTMWrapper)
                 v2_class._wrapped_forward = forward
+            # Wrap in the requested interface.
+            wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
+            return wrapper(obs_space, action_space, num_outputs, model_config,
+                           name, **model_kwargs)
+
+        # Find a default JAXModelV2 and wrap with model_interface.
+        elif framework == "jax":
+            v2_class = \
+                default_model or ModelCatalog._get_v2_model_class(
+                    obs_space, model_config, framework=framework)
+            if model_config.get("use_lstm"):
+                raise NotImplementedError("JAXModel's not LSTM-wrappable yet!")
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
@@ -531,16 +552,26 @@ class ModelCatalog:
 
     @staticmethod
     def _get_v2_model_class(input_space, model_config, framework="tf"):
-        if framework == "torch":
-            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
-                                                      FCNet)
-            from ray.rllib.models.torch.visionnet import (VisionNetwork as
-                                                          VisionNet)
-        else:
+
+        VisionNet = None
+
+        if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
                 FullyConnectedNetwork as FCNet
             from ray.rllib.models.tf.visionnet import \
                 VisionNetwork as VisionNet
+        elif framework == "torch":
+            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
+                                                      FCNet)
+            from ray.rllib.models.torch.visionnet import (VisionNetwork as
+                                                          VisionNet)
+        elif framework == "jax":
+            from ray.rllib.models.jax.fcnet import (FullyConnectedNetwork as
+                                                    FCNet)
+        else:
+            raise ValueError(
+                "framework={} not supported in `ModelCatalog._get_v2_model_"
+                "class`!".format(framework))
 
         # Discrete/1D obs-spaces.
         if isinstance(input_space, gym.spaces.Discrete) or \
@@ -548,4 +579,6 @@ class ModelCatalog:
             return FCNet
         # Default Conv2D net.
         else:
+            if framework == "jax":
+                raise NotImplementedError("No Conv2D default net for JAX yet!")
             return VisionNet

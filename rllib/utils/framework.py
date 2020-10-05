@@ -14,6 +14,30 @@ TensorType = TensorType
 TensorStructType = TensorStructType
 
 
+def try_import_jax(error=False):
+    """Tries importing JAX and returns the module (or None).
+
+    Args:
+        error (bool): Whether to raise an error if JAX cannot be imported.
+
+    Returns:
+        The jax module.
+
+    Raises:
+        ImportError: If error=True and JAX is not installed.
+    """
+    if "RLLIB_TEST_NO_JAX_IMPORT" in os.environ:
+        logger.warning("Not importing JAX for test purposes.")
+        return None
+
+    try:
+        import jax
+    except ImportError as e:
+        if error:
+            raise e
+        return None
+
+
 def try_import_tf(error=False):
     """Tries importing tf and returns the module (or None).
 

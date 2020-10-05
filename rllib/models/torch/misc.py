@@ -106,7 +106,7 @@ class SlimFC(nn.Module):
                  bias_init=0.0):
         super(SlimFC, self).__init__()
         layers = []
-        # Actual Conv2D layer (including correct initialization logic).
+        # Actual nn.Linear layer (including correct initialization logic).
         linear = nn.Linear(in_size, out_size, bias=use_bias)
         if initializer:
             initializer(linear.weight)
