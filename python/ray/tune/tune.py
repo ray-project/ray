@@ -18,7 +18,6 @@ from ray.tune.schedulers import _SCHEDULERS
 
 logger = logging.getLogger(__name__)
 
-
 try:
     class_name = get_ipython().__class__.__name__
     IS_NOTEBOOK = True if "Terminal" not in class_name else False
