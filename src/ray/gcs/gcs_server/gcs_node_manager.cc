@@ -63,6 +63,11 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   }
 }
 
+void GcsNodeManager::NodeFailureDetector::UpdatePlacementGroupLoad(
+    std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
+  placement_group_load_ = absl::make_optional(placement_group_load);
+}
+
 /// A periodic timer that checks for timed out clients.
 void GcsNodeManager::NodeFailureDetector::Tick() {
   DetectDeadNodes();
@@ -114,6 +119,15 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
       for (const auto &resource_pair : demand.first.GetResourceMap()) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
       }
+    }
+
+    // Update placement group load to heartbeat batch.
+    // This is updated only one per second.
+    if (placement_group_load_.has_value()) {
+      auto placement_group_load = placement_group_load_.value();
+      auto placement_group_load_proto = batch->mutable_placement_group_load();
+      placement_group_load_proto->Swap(placement_group_load.get());
+      placement_group_load_.reset();
     }
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
@@ -241,8 +255,6 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
     node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
   });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_CHANNEL, node_id.Hex(),
-                                     heartbeat_data->SerializeAsString(), nullptr));
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -354,11 +366,26 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
       gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
 }
 
-std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
+void GcsNodeManager::HandleGetAllAvailableResources(
+    const rpc::GetAllAvailableResourcesRequest &request,
+    rpc::GetAllAvailableResourcesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  for (const auto &iter : GetClusterRealtimeResources()) {
+    rpc::AvailableResources resource;
+    resource.set_node_id(iter.first.Binary());
+    for (auto res : iter.second->GetResourceAmountMap()) {
+      (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
+    }
+    reply->add_resources_list()->CopyFrom(resource);
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
-    return nullptr;
+    return {};
   }
 
   return iter->second;
@@ -405,7 +432,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       std::ostringstream error_message;
       error_message << "The node with node id " << node_id
                     << " has been marked dead because the detector"
-                    << " has missed too many heartbeats from it.";
+                    << " has missed too many heartbeats from it. This can happen when a "
+                       "raylet crashes unexpectedly or has lagging heartbeats.";
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, node_id.Hex(),
@@ -470,6 +498,15 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
 const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
     &GcsNodeManager::GetClusterRealtimeResources() const {
   return cluster_realtime_resources_;
+}
+
+void GcsNodeManager::UpdatePlacementGroupLoad(
+    std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) const {
+  // Node failure detector code should be running in a separate thread to avoid heartbeat
+  // lagging.
+  node_failure_detector_service_.post([this, placement_group_load] {
+    node_failure_detector_->UpdatePlacementGroupLoad(move(placement_group_load));
+  });
 }
 
 }  // namespace gcs

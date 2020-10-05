@@ -366,6 +366,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// All registered actors (unresoved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
+  /// All destroyed actors.
+  absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> destroyed_actors_;
   /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The actors which dependencies have not been resolved.

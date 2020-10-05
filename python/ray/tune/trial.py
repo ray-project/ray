@@ -3,7 +3,6 @@ from typing import Sequence
 import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
-from datetime import datetime
 import logging
 import platform
 import shutil
@@ -22,7 +21,7 @@ from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.trainable import TrainableUtil
-from ray.tune.utils import flatten_dict
+from ray.tune.utils import date_str, flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -34,10 +33,6 @@ if "MAX_LEN_IDENTIFIER" in os.environ:
 MAX_LEN_IDENTIFIER = int(
     os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
                    os.environ.get("MAX_LEN_IDENTIFIER", 130)))
-
-
-def date_str():
-    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 class Location:

@@ -295,8 +295,8 @@ class GcsServerTest : public ::testing::Test {
         request, [&object_locations, &promise](
                      const Status &status, const rpc::GetObjectLocationsReply &reply) {
           RAY_CHECK_OK(status);
-          for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
-            object_locations.push_back(reply.object_table_data_list(index));
+          for (const auto &loc : reply.location_info().locations()) {
+            object_locations.push_back(loc);
           }
           promise.set_value(true);
         });
@@ -457,23 +457,6 @@ TEST_F(GcsServerTest, TestActorInfo) {
   JobID job_id = JobID::FromInt(1);
   auto actor_table_data = Mocker::GenActorTableData(job_id);
 
-  // Register actor
-  rpc::RegisterActorInfoRequest register_actor_info_request;
-  register_actor_info_request.mutable_actor_table_data()->CopyFrom(*actor_table_data);
-  ASSERT_TRUE(RegisterActorInfo(register_actor_info_request));
-  boost::optional<rpc::ActorTableData> result =
-      GetActorInfo(actor_table_data->actor_id());
-  ASSERT_TRUE(result->state() == rpc::ActorTableData::ALIVE);
-
-  // Update actor state
-  rpc::UpdateActorInfoRequest update_actor_info_request;
-  actor_table_data->set_state(rpc::ActorTableData::DEAD);
-  update_actor_info_request.set_actor_id(actor_table_data->actor_id());
-  update_actor_info_request.mutable_actor_table_data()->CopyFrom(*actor_table_data);
-  ASSERT_TRUE(UpdateActorInfo(update_actor_info_request));
-  result = GetActorInfo(actor_table_data->actor_id());
-  ASSERT_TRUE(result->state() == rpc::ActorTableData::DEAD);
-
   // Add actor checkpoint
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
   rpc::ActorCheckpointData checkpoint;
@@ -520,16 +503,8 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
   add_job_request.mutable_data()->CopyFrom(*job_table_data);
   ASSERT_TRUE(AddJob(add_job_request));
 
-  // Register actor for job
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
-  rpc::RegisterActorInfoRequest register_actor_info_request;
-  register_actor_info_request.mutable_actor_table_data()->CopyFrom(*actor_table_data);
-  ASSERT_TRUE(RegisterActorInfo(register_actor_info_request));
-  boost::optional<rpc::ActorTableData> actor_result =
-      GetActorInfo(actor_table_data->actor_id());
-  ASSERT_TRUE(actor_result->state() == rpc::ActorTableData::ALIVE);
-
   // Add actor checkpoint
+  auto actor_table_data = Mocker::GenActorTableData(job_id);
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
   rpc::ActorCheckpointData checkpoint;
   checkpoint.set_actor_id(actor_table_data->actor_id());
@@ -551,13 +526,6 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
   // Register detached actor for job
   auto detached_actor_table_data = Mocker::GenActorTableData(job_id);
   detached_actor_table_data->set_is_detached(true);
-  rpc::RegisterActorInfoRequest register_detached_actor_info_request;
-  register_detached_actor_info_request.mutable_actor_table_data()->CopyFrom(
-      *detached_actor_table_data);
-  ASSERT_TRUE(RegisterActorInfo(register_detached_actor_info_request));
-  boost::optional<rpc::ActorTableData> detached_actor_result =
-      GetActorInfo(detached_actor_table_data->actor_id());
-  ASSERT_TRUE(detached_actor_result->state() == rpc::ActorTableData::ALIVE);
 
   // Add checkpoint for detached actor
   ActorCheckpointID detached_checkpoint_id = ActorCheckpointID::FromRandom();
@@ -592,20 +560,6 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
     return !GetActorInfo(actor_table_data->actor_id()).has_value();
   };
   ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
-
-  condition_func = [this, &actor_table_data, &checkpoint_id]() -> bool {
-    return !GetActorCheckpoint(actor_table_data->actor_id(), checkpoint_id.Binary())
-                .has_value();
-  };
-  ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
-
-  condition_func = [this, &actor_table_data]() -> bool {
-    return !GetActorCheckpointID(actor_table_data->actor_id()).has_value();
-  };
-  ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
-
-  detached_actor_result = GetActorInfo(detached_actor_table_data->actor_id());
-  ASSERT_TRUE(detached_actor_result->state() == rpc::ActorTableData::ALIVE);
 
   detached_checkpoint_result = GetActorCheckpoint(detached_actor_table_data->actor_id(),
                                                   detached_checkpoint_id.Binary());

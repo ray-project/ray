@@ -156,6 +156,10 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
+    def current_node_id(self):
+        return self.core_worker.get_current_node_id()
+
+    @property
     def placement_group_id(self):
         return self.core_worker.get_placement_group_id()
 
@@ -1160,7 +1164,10 @@ def connect(node,
             job_id).binary()
 
     if mode is not SCRIPT_MODE and setproctitle:
-        setproctitle.setproctitle("ray::IDLE")
+        process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
+        if mode is IO_WORKER_MODE:
+            process_name = ray_constants.WORKER_PROCESS_TYPE_IO_WORKER
+        setproctitle.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -1415,10 +1422,10 @@ def get(object_refs, *, timeout=None):
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.debug("Using blocking ray.get inside async actor. "
-                         "This blocks the event loop. Please use `await` "
-                         "on object ref with asyncio.gather if you want to "
-                         "yield execution to the event loop instead.")
+            logger.warning("Using blocking ray.get inside async actor. "
+                           "This blocks the event loop. Please use `await` "
+                           "on object ref with asyncio.gather if you want to "
+                           "yield execution to the event loop instead.")
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):

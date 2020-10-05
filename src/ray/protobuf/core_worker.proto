@@ -312,6 +312,12 @@ message RestoreSpilledObjectsRequest {
 message RestoreSpilledObjectsReply {
 }
 
+message ExitRequest {
+}
+
+message ExitReply {
+}
+
 service CoreWorkerService {
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
@@ -357,4 +363,6 @@ service CoreWorkerService {
       returns (RestoreSpilledObjectsReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
+  // Request for a worker to exit.
+  rpc Exit(ExitRequest) returns (ExitReply);
 }

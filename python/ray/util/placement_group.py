@@ -51,7 +51,7 @@ class PlacementGroup:
         resource_name, value = self._get_none_zero_resource(bundle)
         num_cpus = 0
         num_gpus = 0
-        resources = None
+        resources = {}
         if resource_name == "CPU":
             num_cpus = value
         elif resource_name == "GPU":
