@@ -296,7 +296,6 @@ Getting Involved
 ----------------
 
 - `Community Slack`_: Join our Slack workspace.
-
 - `GitHub Discussions`_: For discussions about development, questions about usage, and feature requests.
 - `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
