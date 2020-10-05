@@ -341,11 +341,6 @@ class RayletClient : public PinObjectsInterface,
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
-  /// Restore spilled objects from external storage.
-  /// \param object_ids The IDs of objects to be restored.
-  /// \return ray::Status
-  ray::Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
-
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,

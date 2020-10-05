@@ -19,7 +19,7 @@ import {
   getMemoryTable,
   MemoryGroupByKey,
   MemoryTableResponse,
-  stopMemoryTableCollection,
+  setMemoryTableCollection,
 } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
@@ -68,11 +68,7 @@ const useMemoryInfoStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-const memoryInfoSelector = (state: StoreState) => ({
-  tab: state.dashboard.tab,
-  memoryTable: state.dashboard.memoryTable,
-  shouldObtainMemoryTable: state.dashboard.shouldObtainMemoryTable,
-});
+const memoryTableSelector = (state: StoreState) => state.dashboard.memoryTable;
 
 const fetchMemoryTable = (
   groupByKey: MemoryGroupByKey,
@@ -85,7 +81,7 @@ const fetchMemoryTable = (
 };
 
 const MemoryInfo: React.FC<{}> = () => {
-  const { memoryTable } = useSelector(memoryInfoSelector);
+  const memoryTable = useSelector(memoryTableSelector);
   const dispatch = useDispatch();
 
   const [paused, setPaused] = useState(false);
@@ -94,6 +90,13 @@ const MemoryInfo: React.FC<{}> = () => {
   const classes = useMemoryInfoStyles();
   const [groupBy, setGroupBy] = useState<MemoryGroupByKey>("node");
 
+  // Turn memory collection on render
+  useEffect(() => {
+    setMemoryTableCollection(true);
+    return () => {
+      setMemoryTableCollection(false);
+    };
+  }, []);
   // Set up polling memory data
   const fetchData = useCallback(
     fetchMemoryTable(groupBy, (resp) =>
@@ -118,8 +121,13 @@ const MemoryInfo: React.FC<{}> = () => {
 
   if (!memoryTable) {
     return (
-      <Typography variant="h5" align="center">
-        Loading memory information
+      <Typography color="textSecondary">Loading memory information</Typography>
+    );
+  }
+  if (Object.keys(memoryTable.group).length === 0) {
+    return (
+      <Typography color="textSecondary">
+        Finished loading, but have found no memory data yet.
       </Typography>
     );
   }
@@ -162,9 +170,7 @@ const MemoryInfo: React.FC<{}> = () => {
         color="primary"
         className={classes.pauseButton}
         onClick={() => {
-          if (!paused) {
-            stopMemoryTableCollection();
-          }
+          setMemoryTableCollection(!paused);
           setPaused(!paused);
         }}
       >

@@ -1,13 +1,16 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import {
+  ActorGroup,
+  ActorsResponse,
+  MemoryTable,
   MemoryTableResponse,
   NodeInfoResponse,
   RayConfigResponse,
-  RayletInfoResponse,
+  TuneAvailability,
   TuneAvailabilityResponse,
+  TuneJob,
   TuneJobResponse,
 } from "../../api";
-import { filterObj } from "../../common/util";
 
 const name = "dashboard";
 
@@ -15,20 +18,20 @@ type State = {
   tab: number;
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
-  rayletInfo: RayletInfoResponse | null;
-  tuneInfo: TuneJobResponse | null;
-  tuneAvailability: TuneAvailabilityResponse | null;
+  actorGroups: { [key: string]: ActorGroup } | null;
+  tuneInfo: TuneJob | null;
+  tuneAvailability: TuneAvailability | null;
   lastUpdatedAt: number | null;
   error: string | null;
-  memoryTable: MemoryTableResponse | null;
+  memoryTable: MemoryTable | null;
   shouldObtainMemoryTable: boolean;
 };
 
 const initialState: State = {
+  actorGroups: null,
   tab: 0,
   rayConfig: null,
   nodeInfo: null,
-  rayletInfo: null,
   tuneInfo: null,
   tuneAvailability: null,
   lastUpdatedAt: null,
@@ -47,95 +50,40 @@ const slice = createSlice({
     setRayConfig: (state, action: PayloadAction<RayConfigResponse>) => {
       state.rayConfig = action.payload;
     },
-    setNodeAndRayletInfo: (
+    setNodeInfo: (
       state,
       action: PayloadAction<{
         nodeInfo: NodeInfoResponse;
-        rayletInfo: RayletInfoResponse;
       }>,
     ) => {
-      state.rayletInfo = action.payload.rayletInfo;
-      state.nodeInfo = filterNonClusterWorkerInfo(
-        action.payload.rayletInfo,
-        action.payload.nodeInfo,
-      );
+      state.nodeInfo = action.payload.nodeInfo;
       state.lastUpdatedAt = Date.now();
     },
+    setActorGroups: (state, action: PayloadAction<ActorsResponse>) => {
+      state.actorGroups = action.payload.actorGroups;
+    },
     setTuneInfo: (state, action: PayloadAction<TuneJobResponse>) => {
-      state.tuneInfo = action.payload;
+      state.tuneInfo = action.payload.result;
       state.lastUpdatedAt = Date.now();
     },
     setTuneAvailability: (
       state,
       action: PayloadAction<TuneAvailabilityResponse>,
     ) => {
-      state.tuneAvailability = action.payload;
+      state.tuneAvailability = action.payload.result;
       state.lastUpdatedAt = Date.now();
     },
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
     },
-    setMemoryTable: (
-      state,
-      action: PayloadAction<MemoryTableResponse | null>,
-    ) => {
-      state.memoryTable = action.payload;
+    setMemoryTable: (state, action: PayloadAction<MemoryTableResponse>) => {
+      state.memoryTable = action.payload.memoryTable;
     },
     setShouldObtainMemoryTable: (state, action: PayloadAction<boolean>) => {
       state.shouldObtainMemoryTable = action.payload;
     },
   },
 });
-
-const clusterWorkerPids = (
-  rayletInfo: RayletInfoResponse,
-): Map<string, Set<number>> => {
-  // Groups PIDs registered with the raylet by node IP address
-  // This is used to filter out processes belonging to other ray clusters.
-  const nodeMap = new Map();
-  const workerPids = new Set();
-  for (const [nodeIp, { workersStats }] of Object.entries(rayletInfo.nodes)) {
-    for (const worker of workersStats) {
-      if (!worker.isDriver) {
-        workerPids.add(worker.pid);
-      }
-    }
-    nodeMap.set(nodeIp, workerPids);
-  }
-  return nodeMap;
-};
-
-const filterNonClusterWorkerInfo = (
-  rayletInfo: RayletInfoResponse,
-  nodeInfo: NodeInfoResponse,
-) => {
-  // The back-end that generates the NodeInfoResponse does not remove worker
-  // information of workers that belong to other clusters, so we do it here.
-  const workerPidsByIP = clusterWorkerPids(rayletInfo);
-  const filteredClients = nodeInfo.clients.map((client) => {
-    const workerPids = workerPidsByIP.get(client.ip);
-    const workers = client.workers.filter((worker) =>
-      workerPids?.has(worker.pid),
-    );
-    const logs = client.log_count
-      ? filterObj(client.log_count, ([pid, _]: [string, any]) =>
-          workerPids?.has(parseInt(pid)),
-        )
-      : {};
-    const errors = client.error_count
-      ? filterObj(client.error_count, ([pid, _]: [string, any]) =>
-          workerPids?.has(parseInt(pid)),
-        )
-      : {};
-    client.workers = workers;
-    client.log_count = logs;
-    client.error_count = errors;
-    return client;
-  });
-  return {
-    clients: filteredClients,
-  };
-};
 
 export const dashboardActions = slice.actions;
 export const dashboardReducer = slice.reducer;

@@ -423,7 +423,7 @@ class TestDistributions(unittest.TestCase):
     def test_gumbel_softmax(self):
         """Tests the GumbelSoftmax ActionDistribution (tf + eager only)."""
         for fw, sess in framework_iterator(
-                frameworks=["tf", "tfe"], session=True):
+                frameworks=("tf2", "tf", "tfe"), session=True):
             batch_size = 1000
             num_categories = 5
             input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))

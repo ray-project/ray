@@ -54,7 +54,8 @@ class MockServer {
         config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, node_id_, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_),
+                        nullptr) {
     RAY_CHECK_OK(RegisterGcs(main_service));
   }
 

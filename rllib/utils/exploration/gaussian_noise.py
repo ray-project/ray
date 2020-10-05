@@ -75,7 +75,7 @@ class GaussianNoise(Exploration):
             0, framework=self.framework, tf_name="timestep")
 
         # Build the tf-info-op.
-        if self.framework in ["tf", "tfe"]:
+        if self.framework in ["tf2", "tf", "tfe"]:
             self._tf_info_op = self.get_info()
 
     @override(Exploration)
