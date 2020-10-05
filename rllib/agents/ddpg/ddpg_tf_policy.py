@@ -10,7 +10,7 @@ from ray.rllib.agents.ddpg.ddpg_tf_model import DDPGTFModel
 from ray.rllib.agents.ddpg.ddpg_torch_model import DDPGTorchModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
-    PRIO_WEIGHTS
+    PRIO_WEIGHTS, view_requirements_fn_dqn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Deterministic
@@ -418,4 +418,6 @@ DDPGTFPolicy = build_tf_policy(
     mixins=[
         TargetNetworkMixin,
         ComputeTDErrorMixin,
-    ])
+    ],
+    view_requirements_fn=view_requirements_fn_dqn,
+)

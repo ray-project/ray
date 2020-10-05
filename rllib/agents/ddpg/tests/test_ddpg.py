@@ -291,7 +291,7 @@ class TestDDPG(unittest.TestCase):
                 ]
                 for tf_g, torch_g in zip(tf_a_grads, torch_a_grads):
                     if tf_g.shape != torch_g.shape:
-                        check(tf_g, np.transpose(torch_g))
+                        check(tf_g, np.transpose(torch_g.cpu()))
                     else:
                         check(tf_g, torch_g)
 
@@ -313,7 +313,7 @@ class TestDDPG(unittest.TestCase):
                 torch_c_grads = [v.grad for v in policy.model.q_variables()]
                 for tf_g, torch_g in zip(tf_c_grads, torch_c_grads):
                     if tf_g.shape != torch_g.shape:
-                        check(tf_g, np.transpose(torch_g))
+                        check(tf_g, np.transpose(torch_g.cpu()))
                     else:
                         check(tf_g, torch_g)
                 # Compare (unchanged(!) actor grads) with tf ones.
@@ -322,7 +322,7 @@ class TestDDPG(unittest.TestCase):
                 ]
                 for tf_g, torch_g in zip(tf_a_grads, torch_a_grads):
                     if tf_g.shape != torch_g.shape:
-                        check(tf_g, np.transpose(torch_g))
+                        check(tf_g, np.transpose(torch_g.cpu()))
                     else:
                         check(tf_g, torch_g)
 
@@ -379,7 +379,9 @@ class TestDDPG(unittest.TestCase):
                         else:
                             torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), atol=0.1)
+                            check(tf_var,
+                                  np.transpose(torch_var.cpu()),
+                                  atol=0.1)
                         else:
                             check(tf_var, torch_var, atol=0.1)
 
@@ -516,6 +518,8 @@ class TestDDPG(unittest.TestCase):
             for k, v in weights_dict.items() if re.search(
                 "default_policy/(actor_(hidden_0|out)|sequential(_1)?)/", k)
         }
+        model_dict["low_action"] = convert_to_torch_tensor(np.array([0.0]))
+        model_dict["action_range"] = convert_to_torch_tensor(np.array([1.0]))
         return model_dict
 
 
