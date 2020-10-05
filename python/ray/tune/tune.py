@@ -14,17 +14,10 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
-from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
-                                 FIFOScheduler, MedianStoppingRule)
+from ray.tune.schedulers import _SCHEDULERS
 
 logger = logging.getLogger(__name__)
 
-_SCHEDULERS = {
-    "FIFO": FIFOScheduler,
-    "MedianStopping": MedianStoppingRule,
-    "HyperBand": HyperBandScheduler,
-    "AsyncHyperBand": AsyncHyperBandScheduler,
-}
 
 try:
     class_name = get_ipython().__class__.__name__

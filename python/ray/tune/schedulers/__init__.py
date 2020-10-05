@@ -76,3 +76,12 @@ __all__ = [
     "PopulationBasedTraining", "PopulationBasedTrainingReplay",
     "HyperBandForBOHB"
 ]
+
+_SCHEDULERS = {name: globals()[name] for name in __all__}
+_SCHEDULERS.update({
+    "FIFO": FIFOScheduler,
+    "MedianStopping": MedianStoppingRule,
+    "HyperBand": HyperBandScheduler,
+    "AsyncHyperBand": AsyncHyperBandScheduler,
+    "PBT": PopulationBasedTraining,
+})
