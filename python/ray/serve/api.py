@@ -54,13 +54,14 @@ class Client:
     def __del__(self):
         if not self._detached:
             logger.info("Shutting down Ray Serve because client went out of "
-                        "scope.")
+                        "scope. To prevent this, either keep a reference to "
+                        "the client object or use serve.start(detached=True).")
             self.shutdown()
 
     def __reduce__(self):
         raise RayServeException(
-            ("Ray Serve client cannot be serialized. "
-             "Please use serve.connect() to create a new client."))
+            ("Ray Serve client cannot be serialized. Please use "
+             "serve.connect() to get a client from within a backend."))
 
     def shutdown(self) -> None:
         """Completely shut down the connected Serve instance.
