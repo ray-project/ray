@@ -68,7 +68,7 @@ def _build_helper(image_name) -> List[str]:
             gpu_arg = f"GPU={gpu}"
 
         if "ray" in image_name:
-            wheel_arg = "--build-arg WHEEL_PATH=.whl/" + _get_wheel_name()
+            wheel_arg = f"--build-arg WHEEL_PATH=.whl/{_get_wheel_name()}"
         else:
             wheel_arg = ""
 
