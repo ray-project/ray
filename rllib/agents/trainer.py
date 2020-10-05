@@ -215,8 +215,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Experimental flag to speed up sampling and use "trajectory views" as
     # generic ModelV2 `input_dicts` that can be requested by the model to
     # contain different information on the ongoing episode.
-    # NOTE: Only supported for PyTorch so far.
-    "_use_trajectory_view_api": False,
+    "_use_trajectory_view_api": True,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
@@ -1045,13 +1044,7 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
-        if config.get("_use_trajectory_view_api") and \
-                config.get("framework") != "torch":
-            logger.info(
-                "`_use_trajectory_view_api` only supported for PyTorch so "
-                "far! Will run w/o.")
-            config["_use_trajectory_view_api"] = False
-        elif not config.get("_use_trajectory_view_api") and \
+        if not config.get("_use_trajectory_view_api") and \
                 config.get("model", {}).get("_time_major"):
             raise ValueError("`model._time_major` only supported "
                              "iff `_use_trajectory_view_api` is True!")
