@@ -70,6 +70,10 @@ class SearchGenerator(SearchAlgorithm):
         self._total_samples = 0  # int: total samples to evaluate.
         self._finished = False
 
+    @property
+    def metric(self):
+        return self.searcher.metric
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         return self.searcher.set_search_properties(metric, mode, config)
@@ -107,7 +111,7 @@ class SearchGenerator(SearchAlgorithm):
         """
         if not self.is_finished():
             return self.create_trial_if_possible(self._experiment.spec,
-                                                 self._experiment.name)
+                                                 self._experiment.dir_name)
         return None
 
     def create_trial_if_possible(self, experiment_spec: Dict,

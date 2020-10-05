@@ -10,10 +10,11 @@ import time
 import urllib
 import urllib.parse
 import yaml
+from socket import socket
 
 import ray
 import psutil
-import ray.services as services
+import ray._private.services as services
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
@@ -21,8 +22,7 @@ from ray.autoscaler._private.commands import (
 import ray.ray_constants as ray_constants
 import ray.utils
 
-from ray.autoscaler._private.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 
@@ -160,11 +160,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     "--address", required=False, type=str, help="the address to use for Ray")
 @click.option(
     "--port",
+    type=int,
     required=False,
-    type=str,
-    help="the port of the head ray process. If not provided, tries to use "
-    "{0}, falling back to a random port if {0} is "
-    "not available".format(ray_constants.DEFAULT_PORT))
+    help=f"the port of the head ray process. If not provided, defaults to "
+    f"{ray_constants.DEFAULT_PORT}; if port is set to 0, we will"
+    f" allocate an available port.")
 @click.option(
     "--redis-password",
     required=False,
@@ -368,7 +368,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
-
     if gcs_server_port and not head:
         raise ValueError(
             "gcs_server_port can be only assigned when you specify --head.")
@@ -381,7 +380,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     if address is not None:
         (redis_address, redis_address_ip,
          redis_address_port) = services.validate_redis_address(address)
-
     try:
         resources = json.loads(resources)
     except Exception:
@@ -430,6 +428,15 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port)
     if head:
+        # Use default if port is none, allocate an available port if port is 0
+        if port is None:
+            port = ray_constants.DEFAULT_PORT
+
+        if port == 0:
+            with socket() as s:
+                s.bind(("", 0))
+                port = s.getsockname()[1]
+
         num_redis_shards = None
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -447,9 +454,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                             "started, so a Redis address should not be "
                             "provided.")
 
+        node_ip_address = services.get_node_ip_address()
+
         # Get the node IP address if one is not provided.
-        ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address())
+        ray_params.update_if_absent(node_ip_address=node_ip_address)
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
         cli_logger.old_info(logger, "Using IP address {} for this node.",
                             ray_params.node_ip_address)
@@ -461,6 +469,16 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             redis_max_clients=None,
             autoscaling_config=autoscaling_config,
         )
+
+        # Fail early when starting a new cluster when one is already running
+        if address is None:
+            default_address = f"{node_ip_address}:{port}"
+            redis_addresses = services.find_redis_address(default_address)
+            if len(redis_addresses) > 0:
+                raise ConnectionError(
+                    f"Ray is already running at {default_address}. "
+                    f"Please specify a different port using the `--port`"
+                    f" command to `ray start`.")
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
@@ -525,9 +543,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--port"), cf.bold("--head"))
 
-            raise Exception(
-                "If --head is not passed in, --port and --redis-port are not "
-                "allowed.")
+            raise Exception("If --head is not passed in, --port is not "
+                            "allowed.")
         if redis_shard_ports is not None:
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--redis-shard-ports"), cf.bold("--head"))

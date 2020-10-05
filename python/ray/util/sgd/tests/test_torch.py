@@ -98,6 +98,24 @@ def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
+def test_apply_all_workers(ray_start_2_cpus, num_workers, use_local):
+    def fn():
+        return 1
+
+    trainer = TorchTrainer(
+        training_operator_cls=Operator,
+        num_workers=num_workers,
+        use_local=use_local,
+        use_gpu=False)
+
+    results = trainer.apply_all_workers(fn)
+    assert all(x == 1 for x in results)
+
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
+@pytest.mark.parametrize("use_local", [True, False])
 def test_multi_model(ray_start_2_cpus, num_workers, use_local):
     def train(*, model=None, criterion=None, optimizer=None, iterator=None):
         model.train()
@@ -353,6 +371,82 @@ def test_dataset(ray_start_4_cpus, use_local):
 
 
 @pytest.mark.parametrize("use_local", [True, False])
+def test_num_steps(ray_start_2_cpus, use_local):
+    """Tests if num_steps continues training from the subsampled dataset."""
+
+    def data_creator(config):
+        train_dataset = [0] * 5 + [1] * 5
+        val_dataset = [0] * 5 + [1] * 5
+        return DataLoader(train_dataset, batch_size=config["batch_size"]), \
+            DataLoader(val_dataset, batch_size=config["batch_size"])
+
+    batch_size = 1
+    Operator = TrainingOperator.from_creators(model_creator, optimizer_creator,
+                                              data_creator)
+
+    def train_func(self, iterator, info=None):
+        total_sum = 0
+        num_items = 0
+        for e in iterator:
+            total_sum += e
+            num_items += 1
+        return {"average": total_sum.item() / num_items}
+
+    TestOperator = get_test_operator(Operator)
+    trainer = TorchTrainer(
+        training_operator_cls=TestOperator,
+        num_workers=2,
+        use_local=use_local,
+        add_dist_sampler=False,
+        config={
+            "batch_size": batch_size,
+            "custom_func": train_func
+        })
+
+    # If num_steps not passed, should do one full epoch.
+    result = trainer.train()
+    # Average of 5 0s and 5 1s
+    assert result["average"] == 0.5
+    assert result["epoch"] == 1
+    val_result = trainer.validate()
+    assert val_result["average"] == 0.5
+
+    # Train again with num_steps.
+    result = trainer.train(num_steps=5)
+    # 5 zeros
+    assert result["average"] == 0
+    assert result["epoch"] == 2
+    val_result = trainer.validate(num_steps=5)
+    assert val_result["average"] == 0
+
+    # Should continue where last train run left off.
+    result = trainer.train(num_steps=3)
+    # 3 ones.
+    assert result["average"] == 1
+    assert result["epoch"] == 2
+    val_result = trainer.validate(num_steps=3)
+    assert val_result["average"] == 1
+
+    # Should continue from last train run, and cycle to beginning.
+    result = trainer.train(num_steps=5)
+    # 2 ones and 3 zeros.
+    assert result["average"] == 0.4
+    assert result["epoch"] == 3
+    val_result = trainer.validate(num_steps=5)
+    assert val_result["average"] == 0.4
+
+    # Should continue, and since num_steps not passed in, just finishes epoch.
+    result = trainer.train()
+    # 2 zeros and 5 ones.
+    assert result["average"] == 5 / 7
+    assert result["epoch"] == 3
+    val_result = trainer.validate()
+    assert val_result["average"] == 5 / 7
+
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("use_local", [True, False])
 def test_split_batch(ray_start_2_cpus, use_local):
     if not dist.is_available():
         return
@@ -449,7 +543,7 @@ def test_metrics(ray_start_2_cpus, num_workers, use_local):
             "val_size": val_size
         })
 
-    stats = trainer.train(num_steps=num_train_steps)
+    stats = trainer.train()
     # Test that we output mean and last of custom metrics in an epoch
     assert "score" in stats
     assert stats["last_score"] == 0

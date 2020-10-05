@@ -56,7 +56,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   rpc::Address CreateRandomAddress(const std::string &addr) {
     rpc::Address address;
     address.set_ip_address(addr);
-    address.set_raylet_id(ClientID::FromRandom().Binary());
+    address.set_raylet_id(NodeID::FromRandom().Binary());
     address.set_worker_id(WorkerID::FromRandom().Binary());
     return address;
   }
@@ -1986,22 +1986,23 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
 
   ObjectID borrowed_id = ObjectID::FromRandom();
   rc->AddLocalReference(borrowed_id, "");
-  ClientID pinned_at;
-  ASSERT_FALSE(rc->IsPlasmaObjectPinned(borrowed_id, &pinned_at));
+  NodeID pinned_at;
+  bool spilled;
+  ASSERT_FALSE(rc->IsPlasmaObjectPinnedOrSpilled(borrowed_id, &pinned_at, &spilled));
 
   ObjectID id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
   rc->AddLocalReference(id, "");
   ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
-  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned_at));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
   ASSERT_TRUE(pinned_at.IsNil());
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
-  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned_at));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
   ASSERT_FALSE(pinned_at.IsNil());
 
   rc->RemoveLocalReference(id, nullptr);
-  ASSERT_FALSE(rc->IsPlasmaObjectPinned(id, &pinned_at));
+  ASSERT_FALSE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
   ASSERT_TRUE(deleted->count(id) > 0);
   deleted->clear();
 
@@ -2012,7 +2013,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   auto objects = rc->ResetObjectsOnRemovedNode(node_id);
   ASSERT_EQ(objects.size(), 1);
   ASSERT_EQ(objects[0], id);
-  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned_at));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
   ASSERT_TRUE(pinned_at.IsNil());
   ASSERT_TRUE(deleted->count(id) > 0);
   deleted->clear();
@@ -2023,7 +2024,7 @@ TEST_F(ReferenceCountTest, TestFree) {
   auto callback = [&](const ObjectID &object_id) { deleted->insert(object_id); };
 
   ObjectID id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
 
   // Test free before receiving information about where the object is pinned.
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
@@ -2034,8 +2035,9 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
   ASSERT_EQ(deleted->count(id), 0);
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
-  ClientID pinned_at;
-  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned_at));
+  NodeID pinned_at;
+  bool spilled;
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
   ASSERT_TRUE(pinned_at.IsNil());
   ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
   rc->RemoveLocalReference(id, nullptr);
@@ -2050,7 +2052,7 @@ TEST_F(ReferenceCountTest, TestFree) {
   rc->FreePlasmaObjects({id});
   ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
   ASSERT_TRUE(deleted->count(id) > 0);
-  ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned_at));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
   ASSERT_TRUE(pinned_at.IsNil());
   rc->RemoveLocalReference(id, nullptr);
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));

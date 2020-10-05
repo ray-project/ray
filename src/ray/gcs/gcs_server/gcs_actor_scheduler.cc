@@ -89,7 +89,7 @@ void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
   }
 }
 
-std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
+std::vector<ActorID> GcsActorScheduler::CancelOnNode(const NodeID &node_id) {
   // Remove all the actors from the map associated with this node, and return them as they
   // will be reconstructed later.
   std::vector<ActorID> actor_ids;
@@ -124,8 +124,7 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
   return actor_ids;
 }
 
-void GcsActorScheduler::CancelOnLeasing(const ClientID &node_id,
-                                        const ActorID &actor_id) {
+void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id) {
   // NOTE: This method does not currently cancel the outstanding lease request.
   // It only removes leasing information from the internal state so that
   // RequestWorkerLease ignores the response from raylet.
@@ -134,7 +133,7 @@ void GcsActorScheduler::CancelOnLeasing(const ClientID &node_id,
   node_it->second.erase(actor_id);
 }
 
-ActorID GcsActorScheduler::CancelOnWorker(const ClientID &node_id,
+ActorID GcsActorScheduler::CancelOnWorker(const NodeID &node_id,
                                           const WorkerID &worker_id) {
   // Remove the worker from creating map and return ID of the actor associated with the
   // removed worker if exist, else return NilID.
@@ -156,7 +155,7 @@ ActorID GcsActorScheduler::CancelOnWorker(const ClientID &node_id,
 }
 
 void GcsActorScheduler::ReleaseUnusedWorkers(
-    const std::unordered_map<ClientID, std::vector<WorkerID>> &node_to_workers) {
+    const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) {
   // The purpose of this function is to release leased workers that may be leaked.
   // When GCS restarts, it doesn't know which workers it has leased in the previous
   // lifecycle. In this case, GCS will send a list of worker ids that are still needed.
@@ -192,7 +191,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
                                             std::shared_ptr<rpc::GcsNodeInfo> node) {
   RAY_CHECK(actor && node);
 
-  auto node_id = ClientID::FromBinary(node->node_id());
+  auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Start leasing worker from node " << node_id << " for actor "
                 << actor->GetActorID();
 
@@ -277,8 +276,10 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // The worker did not succeed in the lease, but the specified node returned a new
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
-    auto spill_back_node_id = ClientID::FromBinary(retry_at_raylet_address.raylet_id());
-    if (auto spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id)) {
+    auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
+    auto maybe_spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id);
+    if (maybe_spill_back_node.has_value()) {
+      auto spill_back_node = maybe_spill_back_node.value();
       actor->UpdateAddress(retry_at_raylet_address);
       RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
                     .emplace(actor->GetActorID())
@@ -410,7 +411,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const 
 
 std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient(
     const rpc::Address &raylet_address) {
-  auto node_id = ClientID::FromBinary(raylet_address.raylet_id());
+  auto node_id = NodeID::FromBinary(raylet_address.raylet_id());
   auto iter = remote_lease_clients_.find(node_id);
   if (iter == remote_lease_clients_.end()) {
     auto lease_client = lease_client_factory_(raylet_address);

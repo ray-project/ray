@@ -14,6 +14,10 @@ cdef class Config:
         return RayConfig.instance().raylet_heartbeat_timeout_milliseconds()
 
     @staticmethod
+    def light_heartbeat_enabled():
+        return RayConfig.instance().light_heartbeat_enabled()
+
+    @staticmethod
     def debug_dump_period_milliseconds():
         return RayConfig.instance().debug_dump_period_milliseconds()
 

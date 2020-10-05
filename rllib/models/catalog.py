@@ -215,7 +215,7 @@ class ModelCatalog:
         """
 
         if isinstance(action_space, gym.spaces.Discrete):
-            return (tf.int64, (None, ))
+            return (action_space.dtype, (None, ))
         elif isinstance(action_space, (gym.spaces.Box, Simplex)):
             return (tf.float32, (None, ) + action_space.shape)
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
@@ -307,7 +307,7 @@ class ModelCatalog:
             model_cls = ModelCatalog._wrap_if_needed(model_cls,
                                                      model_interface)
 
-            if framework in ["tf", "tfe"]:
+            if framework in ["tf2", "tf", "tfe"]:
                 # Track and warn if vars were created but not registered.
                 created = set()
 

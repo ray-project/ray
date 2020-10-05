@@ -1,6 +1,6 @@
 from getpass import getuser
 from shlex import quote
-from typing import Any, List, Tuple, Dict, Optional
+from typing import Dict
 import click
 import hashlib
 import json
@@ -11,6 +11,7 @@ import sys
 import time
 import warnings
 
+from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
@@ -22,8 +23,7 @@ from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.subprocess_output_util import (
     run_cmd_redirected, ProcessRunnerError, is_output_redirected)
 
-from ray.autoscaler._private.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 
@@ -100,84 +100,6 @@ def _with_interactive(cmd):
     return ["bash", "--login", "-c", "-i", quote(force_interactive)]
 
 
-class CommandRunnerInterface:
-    """Interface to run commands on a remote cluster node.
-
-    Command runner instances are returned by provider.get_command_runner()."""
-
-    def run(
-            self,
-            cmd: str = None,
-            timeout: int = 120,
-            exit_on_fail: bool = False,
-            port_forward: List[Tuple[int, int]] = None,
-            with_output: bool = False,
-            environment_variables: Dict[str, object] = None,
-            run_env: str = "auto",
-            ssh_options_override_ssh_key: str = "",
-            shutdown_after_run: bool = False,
-    ) -> str:
-        """Run the given command on the cluster node and optionally get output.
-
-        WARNING: the cloudgateway needs arguments of "run" function to be json
-            dumpable to send them over HTTP requests.
-
-        Args:
-            cmd (str): The command to run.
-            timeout (int): The command timeout in seconds.
-            exit_on_fail (bool): Whether to sys exit on failure.
-            port_forward (list): List of (local, remote) ports to forward, or
-                a single tuple.
-            with_output (bool): Whether to return output.
-            environment_variables (Dict[str, str | int | Dict[str, str]):
-                Environment variables that `cmd` should be run with.
-            run_env (str): Options: docker/host/auto. Used in
-                DockerCommandRunner to determine the run environment.
-            ssh_options_override_ssh_key (str): if provided, overwrites
-                SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
-            shutdown_after_run (bool): if provided, shutdowns down the machine
-            after executing the command with `sudo shutdown -h now`.
-        """
-        raise NotImplementedError
-
-    def run_rsync_up(self,
-                     source: str,
-                     target: str,
-                     options: Optional[Dict[str, Any]] = None) -> None:
-        """Rsync files up to the cluster node.
-
-        Args:
-            source (str): The (local) source directory or file.
-            target (str): The (remote) destination path.
-        """
-        raise NotImplementedError
-
-    def run_rsync_down(self,
-                       source: str,
-                       target: str,
-                       options: Optional[Dict[str, Any]] = None) -> None:
-        """Rsync files down from the cluster node.
-
-        Args:
-            source (str): The (remote) source directory or file.
-            target (str): The (local) destination path.
-        """
-        raise NotImplementedError
-
-    def remote_shell_command_str(self) -> str:
-        """Return the command the user can use to open a shell."""
-        raise NotImplementedError
-
-    def run_init(self, *, as_head: bool, file_mounts: Dict[str, str]) -> None:
-        """Used to run extra initialization commands.
-
-        Args:
-            as_head (bool): Run as head image or worker.
-            file_mounts (dict): Files to copy to the head and worker nodes.
-        """
-        pass
-
-
 class KubernetesCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, namespace, node_id, auth_config,
                  process_runner):
@@ -235,6 +157,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             if environment_variables:
                 cmd = _with_environment_variables(cmd, environment_variables)
             cmd = _with_interactive(cmd)
+            cmd_prefix = " ".join(final_cmd)
             final_cmd += cmd
             # `kubectl exec` + subprocess w/ list of args has unexpected
             # side-effects.
@@ -248,8 +171,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                     self.process_runner.check_call(final_cmd, shell=True)
             except subprocess.CalledProcessError:
                 if exit_on_fail:
-                    quoted_cmd = " ".join(final_cmd[:-1] +
-                                          [quote(final_cmd[-1])])
+                    quoted_cmd = cmd_prefix + quote(" ".join(cmd))
                     logger.error(
                         self.log_prefix +
                         "Command failed: \n\n  {}\n".format(quoted_cmd))
@@ -389,7 +311,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             return ip
 
         interval = 10
-        with cli_logger.timed("Waiting for IP"):
+        with cli_logger.group("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
                 cli_logger.old_info(logger, "{}Waiting for IP...",
@@ -749,7 +671,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
             self.container_name,
             self.docker_config.get("run_options", []) + self.docker_config.get(
-                f"{'head' if as_head else 'worker'}_run_options", []))
+                f"{'head' if as_head else 'worker'}_run_options",
+                []) + self._configure_runtime())
 
         if not self._check_container_status():
             self.run(start_command, run_env="host")
@@ -792,3 +715,14 @@ class DockerCommandRunner(CommandRunnerInterface):
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True
+
+    def _configure_runtime(self):
+        if self.docker_config.get("disable_automatic_runtime_detection"):
+            return []
+
+        runtime_output = self.ssh_command_runner.run(
+            "docker info -f '{{.Runtimes}}' ",
+            with_output=True).decode().strip()
+        if "nvidia-container-runtime" in runtime_output:
+            return ["--runtime=nvidia"]
+        return []

@@ -47,6 +47,10 @@ const PlacementGroupID TaskSpecification::PlacementGroupId() const {
   return PlacementGroupID::FromBinary(message_->placement_group_id());
 }
 
+bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
+  return message_->placement_group_capture_child_tasks();
+}
+
 void TaskSpecification::ComputeResources() {
   auto required_resources = MapFromProtobuf(message_->required_resources());
   auto required_placement_resources =

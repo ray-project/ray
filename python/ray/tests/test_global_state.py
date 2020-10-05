@@ -142,7 +142,7 @@ def test_load_report(shutdown_only, max_shapes):
         _system_config={
             "max_resource_shapes_per_load_report": max_shapes,
         })
-    redis = ray.services.create_redis_client(
+    redis = ray._private.services.create_redis_client(
         cluster["redis_address"],
         password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     client = redis.pubsub(ignore_subscribe_messages=True)
@@ -212,6 +212,87 @@ def test_load_report(shutdown_only, max_shapes):
             else:
                 assert demand.num_ready_requests_queued > 0
                 assert demand.num_infeasible_requests_queued == 0
+    client.close()
+
+
+def test_placement_group_load_report(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Add a head node that doesn't have gpu resource.
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+    redis = ray._private.services.create_redis_client(
+        cluster.address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    redis = ray._private.services.create_redis_client(
+        cluster.address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    client = redis.pubsub(ignore_subscribe_messages=True)
+    client.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+
+    class PgLoadChecker:
+        def nothing_is_ready(self):
+            heartbeat = self._read_heartbeat()
+            if not heartbeat:
+                return False
+            if heartbeat.HasField("placement_group_load"):
+                pg_load = heartbeat.placement_group_load
+                return len(pg_load.placement_group_data) == 2
+            return False
+
+        def only_first_one_ready(self):
+            heartbeat = self._read_heartbeat()
+            if not heartbeat:
+                return False
+            if heartbeat.HasField("placement_group_load"):
+                pg_load = heartbeat.placement_group_load
+                return len(pg_load.placement_group_data) == 1
+            return False
+
+        def two_infeasible_pg(self):
+            heartbeat = self._read_heartbeat()
+            if not heartbeat:
+                return False
+            if heartbeat.HasField("placement_group_load"):
+                pg_load = heartbeat.placement_group_load
+                return len(pg_load.placement_group_data) == 2
+            return False
+
+        def _read_heartbeat(self):
+            try:
+                message = client.get_message()
+            except redis.exceptions.ConnectionError:
+                pass
+            if message is None:
+                return None
+
+            pattern = message["pattern"]
+            data = message["data"]
+            if pattern != ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
+                return None
+            pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+            heartbeat_data = pub_message.data
+            heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+                heartbeat_data)
+            return heartbeat
+
+    checker = PgLoadChecker()
+
+    # Create 2 placement groups that are infeasible.
+    pg_feasible = ray.util.placement_group([{"A": 1}])
+    pg_infeasible = ray.util.placement_group([{"B": 1}])
+    _, unready = ray.wait(
+        [pg_feasible.ready(), pg_infeasible.ready()], timeout=0)
+    assert len(unready) == 2
+    ray.test_utils.wait_for_condition(checker.nothing_is_ready)
+
+    # Add a node that makes pg feasible. Make sure load include this change.
+    cluster.add_node(resources={"A": 1})
+    ray.get(pg_feasible.ready())
+    ray.test_utils.wait_for_condition(checker.only_first_one_ready)
+    # Create one more infeasible pg and make sure load is properly updated.
+    pg_infeasible_second = ray.util.placement_group([{"C": 1}])
+    _, unready = ray.wait([pg_infeasible_second.ready()], timeout=0)
+    assert len(unready) == 1
+    ray.test_utils.wait_for_condition(checker.two_infeasible_pg)
+    client.close()
 
 
 if __name__ == "__main__":

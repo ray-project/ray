@@ -221,7 +221,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
       ray_function, task_args, task_options, &return_ids,
       /*max_retries=*/0,
       /*placement_options=*/
-      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0));
+      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0), true);
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
