@@ -135,8 +135,8 @@ def build_ray_ml() -> None:
 def push_and_tag_images(push_base_images: bool) -> None:
     if _merge_build():
         _subprocess_wrapper(
-            f"echo \"$DOCKER_PASSWORD\" | " +
-            "docker login -u {DOCKER_USERNAME} --password-stdin")
+            "echo \"$DOCKER_PASSWORD\" | " +
+            f"docker login -u {DOCKER_USERNAME} --password-stdin")
 
     def docker_push(image):
         if _merge_build():
