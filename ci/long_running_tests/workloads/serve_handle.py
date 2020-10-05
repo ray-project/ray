@@ -29,8 +29,8 @@ from ray.serve import BackendConfig
 import logging
 import time
 
-# ray.init(address="auto")
-ray.init()
+ray.init(address="auto")
+
 client = serve.start()
 
 logging.basicConfig(level=logging.INFO)
