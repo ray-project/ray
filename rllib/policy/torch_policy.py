@@ -493,7 +493,8 @@ class TorchPolicy(Policy):
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
-                optim_state_dict = convert_to_torch_tensor(s, device=self.device)
+                optim_state_dict = convert_to_torch_tensor(
+                    s, device=self.device)
                 o.load_state_dict(optim_state_dict)
         # Then the Policy's (NN) weights.
         super().set_state(state)
