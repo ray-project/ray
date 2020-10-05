@@ -242,15 +242,16 @@ def build_eager_tf_policy(name,
             self.view_requirements.update(
                 self.model.inference_view_requirements)
 
-            # Update this Policy's ViewRequirements (if function given).
-            if callable(view_requirements_fn):
-                self.view_requirements.update(view_requirements_fn(self))
-
             self.exploration = self._create_exploration()
             self._state_in = [
                 tf.convert_to_tensor([s])
                 for s in self.model.get_initial_state()
             ]
+
+            # Update this Policy's ViewRequirements (if function given).
+            if callable(view_requirements_fn):
+                self.view_requirements.update(view_requirements_fn(self))
+
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),

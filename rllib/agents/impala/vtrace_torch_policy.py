@@ -3,6 +3,7 @@ import logging
 import numpy as np
 
 import ray
+from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_pg
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.impala.vtrace_tf_policy import postprocess_trajectory
 import ray.rllib.agents.impala.vtrace_torch as vtrace
@@ -272,4 +273,6 @@ VTraceTorchPolicy = build_torch_policy(
     optimizer_fn=choose_optimizer,
     before_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
-    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])
+    view_requirements_fn=view_requirements_fn_pg,
+    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"],
+)

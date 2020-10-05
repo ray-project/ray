@@ -5,6 +5,7 @@ TensorFlow policy class used for PG.
 from typing import List, Type, Union
 
 import ray
+from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_pg
 from ray.rllib.agents.pg.utils import post_process_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.action_dist import ActionDistribution
@@ -52,5 +53,7 @@ def pg_tf_loss(
 PGTFPolicy = build_tf_policy(
     name="PGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
+    loss_fn=pg_tf_loss,
     postprocess_fn=post_process_advantages,
-    loss_fn=pg_tf_loss)
+    view_requirements_fn=view_requirements_fn_pg,
+)

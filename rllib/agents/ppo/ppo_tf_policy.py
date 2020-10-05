@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import view_requirements_fn
+from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_a3c
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
