@@ -137,7 +137,11 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
         # boundaries. TODO(ekl) this is kind of a hack
         T = policy.config["rollout_fragment_length"]
         B = tf.shape(tensor)[0] // T
+    #try:
     rs = tf.reshape(tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
+    #except Exception as e:
+    #    print(end="")
+    #    raise e
 
     # swap B and T axes
     res = tf.transpose(

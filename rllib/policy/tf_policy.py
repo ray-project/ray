@@ -796,8 +796,12 @@ class TFPolicy(Policy):
 
         # Build the feed dict from the batch.
         feed_dict = {}
-        for k, ph in self._loss_inputs:
-            feed_dict[ph] = batch[k]
+        try:
+            for k, ph in self._loss_inputs:
+                feed_dict[ph] = batch[k]
+        except Exception as e:
+            print(end="")
+            raise e #TODO
 
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))

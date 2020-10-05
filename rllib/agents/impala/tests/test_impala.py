@@ -12,7 +12,7 @@ tf1, tf, tfv = try_import_tf()
 class TestIMPALA(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
