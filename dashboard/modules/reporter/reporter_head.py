@@ -24,6 +24,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._stubs = {}
+        self._ray_config = None
         DataSource.agents.signal.append(self._update_stubs)
 
     async def _update_stubs(self, change):

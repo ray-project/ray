@@ -99,7 +99,7 @@ class DataOrganizer:
                 actor_table_data["actorClass"] = actor_class
                 actor_table_data.update(worker_stats["coreWorkerStats"])
                 node_actors[actor_id] = actor_table_data
-            actor_table_data["gpus"] = worker_id_to_process_info.get(worker_id, [])
+            actor_table_data["gpus"] = worker_id_to_gpu_stats.get(worker_id, [])
             actor_table_data["processStats"] = worker_id_to_process_info.get(worker_id, {})
         return node_actors
 
