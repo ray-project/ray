@@ -88,8 +88,9 @@ class DataOrganizer:
             worker_id = actor_table_data["address"]["workerId"]
             if worker_id in worker_id_to_raylet_info:
                 worker_raylet_stats = worker_id_to_raylet_info[worker_id]
-                actor_constructor = worker_raylet_stats.get("coreWorkerStats", {})\
-                    .get("actorTitle", "Unknown actor constructor")
+                core_worker = worker_raylet_stats.get("coreWorkerStats", {})
+                actor_constructor = core_worker.get(
+                    "actorTitle", "Unknown actor constructor")
 
                 actor_table_data["actorConstructor"] = actor_constructor
 
@@ -97,7 +98,7 @@ class DataOrganizer:
                     actor_table_data.get("taskSpec", {}))
 
                 actor_table_data["actorClass"] = actor_class
-                actor_table_data.update(worker_raylet_stats["coreWorkerStats"])
+                actor_table_data.update(core_worker)
                 node_actors[actor_id] = actor_table_data
             actor_table_data["gpus"] = worker_id_to_gpu_stats.get(
                 worker_id, [])
