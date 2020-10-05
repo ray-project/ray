@@ -1037,12 +1037,7 @@ def start_dashboard(require_dashboard,
             raise ValueError(
                 f"The given dashboard port {port} is already in use")
 
-    if "RAY_USE_NEW_DASHBOARD" in os.environ:
-        dashboard_dir = "new_dashboard"
-    else:
-        dashboard_dir = "dashboard"
-        logdir = None
-
+    dashboard_dir = "new_dashboard"
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
     command = [
         sys.executable,
