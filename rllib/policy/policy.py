@@ -76,7 +76,7 @@ class Policy(metaclass=ABCMeta):
         # a combination of a Model's inference_view_- and the
         # Policy's loss function-requirements.
         self.view_requirements = {
-            SampleBatch.OBS: ViewRequirement(),
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
             SampleBatch.REWARDS: ViewRequirement(),
             SampleBatch.DONES: ViewRequirement(),

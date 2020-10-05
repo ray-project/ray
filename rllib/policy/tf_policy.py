@@ -270,13 +270,11 @@ class TFPolicy(Policy):
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
-        # TODO(sven/ekl): Deprecate support for v1 models.
-        if hasattr(self, "model") and isinstance(self.model, ModelV2):
+        if hasattr(self, "model"):
+            assert isinstance(self.model, ModelV2), \
+                "Model classes other than `ModelV2` not allowed!"
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self._sess, self.variables())
-        else:
-            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-                self._loss, self._sess)
 
         # gather update ops for any batch norm layers
         if not self._update_ops:

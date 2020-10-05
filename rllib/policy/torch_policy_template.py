@@ -64,7 +64,7 @@ def build_torch_policy(
         apply_gradients_fn: Optional[Callable[
             [Policy, "torch.optim.Optimizer"], None]] = None,
         mixins: Optional[List[type]] = None,
-        view_requirements_fn: Optional[Callable[[], Dict[
+        view_requirements_fn: Optional[Callable[[Policy], Dict[
             str, ViewRequirement]]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
 ) -> Type[TorchPolicy]:
@@ -160,7 +160,7 @@ def build_torch_policy(
         mixins (Optional[List[type]]): Optional list of any class mixins for
             the returned policy class. These mixins will be applied in order
             and will have higher precedence than the TorchPolicy class.
-        view_requirements_fn (Callable[[],
+        view_requirements_fn (Callable[[Policy],
             Dict[str, ViewRequirement]]): An optional callable to retrieve
             additional train view requirements for this policy.
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
