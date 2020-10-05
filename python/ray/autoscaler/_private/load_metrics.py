@@ -122,9 +122,13 @@ class LoadMetrics:
         return self.static_resources_by_ip.values()
 
     def get_resource_utilization(self):
+        """Get the amount of resouces available by IP.
+
+        Ie. the used resources subtracted from the resource capacity.
+        """
         return self.dynamic_resources_by_ip
 
-    def _get_resource_usage(self):
+    def get_resource_usage(self):
         num_nodes = 0
         nodes_used = 0.0
         num_nonidle = 0
@@ -178,8 +182,7 @@ class LoadMetrics:
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
 
     def _info(self):
-        nodes_used, resources_used, resources_total = self._get_resource_usage(
-        )
+        nodes_used, resources_used, resources_total = self.get_resource_usage()
 
         now = time.time()
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]

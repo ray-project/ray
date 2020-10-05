@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List
 import copy
 import logging
 import math
@@ -20,7 +20,7 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
-from ray.autoscaler._private.node_launcher import NodeLauncher
+from ray.autoscaler._private.node_launcher import NodeLauncher, ResourceLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \
     ResourceDemandScheduler, NodeType, NodeID
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
@@ -104,6 +104,19 @@ class StandardAutoscaler:
             node_launcher.daemon = True
             node_launcher.start()
 
+        # Resource launcher
+        self.resource_launch_queue = queue.Queue()
+        self.pending_cpu = ConcurrentCounter()
+        for i in range(int(max_batches)):
+            resource_launcher = ResourceLauncher(
+                self.provider,
+                self.resource_launch_queue,
+                self.pending_cpu,
+                i
+            )
+            resource_launcher.daemon = True
+            resource_launcher.start()
+
         # Expand local file_mounts to allow ~ in the paths. This can't be done
         # earlier when the config is written since we might be on different
         # platform and the expansion would result in wrong path.
@@ -138,15 +151,7 @@ class StandardAutoscaler:
                                 "Too many errors, abort.")
                 raise e
 
-    def _update(self):
-        now = time.time()
-
-        # Throttle autoscaling updates to this interval to avoid exceeding
-        # rate limits on API calls.
-        if now - self.last_update_time < self.update_interval_s:
-            return
-
-        self.last_update_time = now
+    def _terminate_and_launch(self, now):
         nodes = self.workers()
         # Check pending nodes immediately after fetching the number of running
         # nodes to minimize chance number of pending nodes changing after
@@ -235,10 +240,94 @@ class StandardAutoscaler:
             self.launch_new_node(num_launches,
                                  self.config.get("worker_default_node_type"))
             nodes = self.workers()
-            self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
             self.bringup = False
-            self.log_info_string(nodes, target_workers)
+
+        self.log_info_string(nodes, target_workers)
+
+        return nodes, target_workers
+
+    def _cpu_resource_for_nodes(self, node_ids: List[str]):
+        return sum(self.load_metrics.static_resources_by_ip[
+                   self.provider.internal_ip(node_id)]["CPU"]
+                   for node_id in node_ids)
+
+    def _terminate_and_launch_fleet(self, now):
+        nodes = self.workers()
+        # Check pending nodes immediately after fetching the number of running
+        # nodes to minimize chance number of pending nodes changing after
+        # additional nodes (managed and unmanaged) are launched.
+        self.load_metrics.prune_active_ips([
+            self.provider.internal_ip(node_id)
+            for node_id in self.all_workers()
+        ])
+
+        target_cpu = self.target_cpu()
+        current_cpu = self.provider.non_terminated_cpu(
+            {TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+
+        if current_cpu > target_cpu:
+            if "CPU" in self.resource_requests:
+                del self.resource_requests["CPU"]
+
+        self.log_info_string_cpu(nodes, current_cpu, target_cpu)
+
+        # Terminate any idle or out of date nodes
+        last_used = self.load_metrics.last_used_time_by_ip
+        horizon = now - (60 * self.config["idle_timeout_minutes"])
+
+        nodes_to_terminate = []
+        for node_id in nodes:
+            node_ip = self.provider.internal_ip(node_id)
+            cpu_to_terminate = self._cpu_resource_for_nodes(nodes_to_terminate)
+            if ((node_ip in last_used and last_used[node_ip] < horizon) and
+                    (current_cpu - cpu_to_terminate > target_cpu)):
+                logger.info("StandardAutoscaler: "
+                            "{}: Terminating idle node".format(node_id))
+                nodes_to_terminate.append(node_id)
+            elif not self.launch_config_ok(node_id):
+                logger.info("StandardAutoscaler: "
+                            "{}: Terminating outdated node".format(node_id))
+                nodes_to_terminate.append(node_id)
+
+        if nodes_to_terminate:
+            self.provider.terminate_nodes(nodes_to_terminate)
+            nodes = self.workers()
+            self.log_info_string_cpu(nodes, current_cpu, target_cpu)
+
+        cpu_to_launch = target_cpu - current_cpu - self.pending_cpu.value
+        if cpu_to_launch > 0:
+            logger.info("StandardAutoscaler: Launching %s CPU. "
+                        "(target: %s, current: %s, pending: %s)",
+                        cpu_to_launch,
+                        target_cpu, current_cpu, self.pending_cpu.value)
+            self.launch_cpu(cpu_to_launch)
+            self.log_info_string_cpu(nodes, current_cpu, target_cpu)
+        else:
+            self.bringup = False
+
+        self.log_info_string_cpu(nodes, current_cpu, target_cpu)
+
+        return nodes, current_cpu, target_cpu
+
+    def _update(self):
+        now = time.time()
+
+        # Throttle autoscaling updates to this interval to avoid exceeding
+        # rate limits on API calls.
+        if now - self.last_update_time < self.update_interval_s:
+            return
+
+        self.last_update_time = now
+
+        fleet_mode = self.config.get("fleet", {}).get("enabled", False)
+
+        if fleet_mode:
+            nodes, current_cpu, target_cpu = (
+                self._terminate_and_launch_fleet(now)
+            )
+        else:
+            nodes, target_workers = self._terminate_and_launch(now)
 
         # Process any completed updates
         completed = []
@@ -256,7 +345,10 @@ class StandardAutoscaler:
             # immediately trying to restart Ray on the new node.
             self.load_metrics.mark_active(self.provider.internal_ip(node_id))
             nodes = self.workers()
-            self.log_info_string(nodes, target_workers)
+            if fleet_mode:
+                self.log_info_string_cpu(nodes, current_cpu, target_cpu)
+            else:
+                self.log_info_string(nodes, target_workers)
 
         # Update nodes with out-of-date files.
         # TODO(edoakes): Spawning these threads directly seems to cause
@@ -368,6 +460,21 @@ class StandardAutoscaler:
             else:
                 logger.exception("StandardAutoscaler: "
                                  "Error parsing config.")
+
+    def target_cpu(self):
+        nodes_used, resources_used, resources_total = (
+            self.load_metrics.get_resource_usage()
+        )
+        cpu_used = resources_used.get("CPU", 0)
+
+        target_frac = self.config["target_utilization_fraction"]
+        ideal_cpu = int(np.ceil(cpu_used / float(target_frac)))
+
+        if "CPU" in self.resource_requests:
+            requested_cpu = self.resource_requests["CPU"]
+            ideal_cpu = max(requested_cpu, ideal_cpu)
+
+        return ideal_cpu
 
     def target_num_workers(self):
         target_frac = self.config["target_utilization_fraction"]
@@ -565,6 +672,13 @@ class StandardAutoscaler:
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, node_type))
 
+    def launch_cpu(self, count: int) -> None:
+        logger.info(
+            "StandardAutoscaler: Queue {} new CPUs for launch".format(count))
+        self.pending_cpu.inc(None, count)
+        config = copy.deepcopy(self.config)
+        self.resource_launch_queue.put((config, count))
+
     def all_workers(self):
         return self.workers() + self.unmanaged_workers()
 
@@ -576,9 +690,19 @@ class StandardAutoscaler:
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
-    def log_info_string(self, nodes, target):
+    def log_info_string_cpu(self, nodes, current_cpu, target_cpu):
         tmp = "Cluster status: "
-        tmp += self.info_string(nodes, target)
+        tmp += self.info_string_cpu(current_cpu, target_cpu)
+        tmp += "\n"
+        tmp += self.load_metrics.info_string()
+        tmp += "\n"
+        if _internal_kv_initialized():
+            _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
+        logger.info(tmp)
+
+    def log_info_string(self, nodes, target_workers):
+        tmp = "Cluster status: "
+        tmp += self.info_string(nodes, target_workers)
         tmp += "\n"
         tmp += self.load_metrics.info_string()
         tmp += "\n"
@@ -590,7 +714,7 @@ class StandardAutoscaler:
             _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
         logger.info(tmp)
 
-    def info_string(self, nodes, target):
+    def _info_string(self, current, target, cpu=False):
         suffix = ""
         if self.pending_launches:
             suffix += " ({} pending)".format(self.pending_launches.value)
@@ -602,7 +726,18 @@ class StandardAutoscaler:
         if self.bringup:
             suffix += " (bringup=True)"
 
-        return "{}/{} target nodes{}".format(len(nodes), target, suffix)
+        return "{}/{} target {}{}".format(
+            current,
+            target,
+            "cpu" if cpu else "nodes",
+            suffix
+        )
+
+    def info_string(self, nodes, target_workers):
+        return self._info_string(len(nodes), target_workers)
+
+    def info_string_cpu(self, current_cpu, target_cpu):
+        return self._info_string(current_cpu, target_cpu, cpu=True)
 
     def request_resources(self, resources):
         """Called by monitor to request resources (EXPERIMENTAL).

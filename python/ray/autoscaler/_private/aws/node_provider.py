@@ -1,10 +1,12 @@
 import random
 import copy
 import threading
-from collections import defaultdict
+import time
+import uuid
 import logging
 import time
 from typing import Any, Dict
+from collections import defaultdict
 
 import boto3
 import botocore
@@ -12,9 +14,9 @@ from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler._private.constants import BOTO_MAX_RETRIES, \
-    BOTO_CREATE_MAX_RETRIES
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE, \
+    TAG_RAY_FLEET_CPU, TAG_RAY_FLEET_LAUNCH_SPEC
+from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler._private.aws.config import bootstrap_aws
 from ray.autoscaler._private.log_timer import LogTimer
 
@@ -87,6 +89,47 @@ class AWSNodeProvider(NodeProvider):
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
+
+    def _node_tag_update_loop(self):
+        """Update the AWS tags for a cluster periodically.
+
+        The purpose of this loop is to avoid excessive EC2 calls when a large
+        number of nodes are being launched simultaneously.
+        """
+        while True:
+            self.tag_cache_update_event.wait()
+            self.tag_cache_update_event.clear()
+
+            batch_updates = defaultdict(list)
+
+            with self.tag_cache_lock:
+                for node_id, tags in self.tag_cache_pending.items():
+                    for x in tags.items():
+                        batch_updates[x].append(node_id)
+                    self.tag_cache[node_id].update(tags)
+
+                self.tag_cache_pending = {}
+
+            for (k, v), node_ids in batch_updates.items():
+                m = "Set tag {}={} on {}".format(k, v, node_ids)
+                with LogTimer("AWSNodeProvider: {}".format(m)):
+                    if k == TAG_RAY_NODE_NAME:
+                        k = "Name"
+                    self.ec2.meta.client.create_tags(
+                        Resources=node_ids,
+                        Tags=[{
+                            "Key": k,
+                            "Value": v
+                        }],
+                    )
+
+            self.tag_cache_kill_event.wait(timeout=5)
+            if self.tag_cache_kill_event.is_set():
+                return
+
+    def non_terminated_cpu(self, tag_filters):
+        return sum(int(self.node_tags(node_id)[TAG_RAY_FLEET_CPU])
+                   for node_id in self.non_terminated_nodes(tag_filters))
 
     def non_terminated_nodes(self, tag_filters):
         # Note that these filters are acceptable because they are set on
@@ -206,6 +249,70 @@ class AWSNodeProvider(NodeProvider):
                         "Value": v
                     }],
                 )
+
+    def create_cpu(self, fleet_config, tags, cpu_to_launch):
+        token = str(uuid.uuid4())
+
+        tags = {**to_aws_format(tags),
+                TAG_RAY_CLUSTER_NAME: self.cluster_name,
+                }
+
+        def make_tags(launch_spec_id, launch_spec):
+            tag_dict = {**tags,
+                        TAG_RAY_FLEET_CPU: str(launch_spec["cpu"]),
+                        TAG_RAY_FLEET_LAUNCH_SPEC: launch_spec_id}
+            return [{"Key": k, "Value": v} for k, v in tag_dict.items()]
+
+        sfr_config = {
+            'Type': 'request',
+            'ClientToken': token,
+            'ExcessCapacityTerminationPolicy': 'default',
+            'IamFleetRole': fleet_config["iam_fleet_role"],
+            'AllocationStrategy': fleet_config["allocation_strategy"],
+            'InstancePoolsToUseCount': fleet_config["instance_pools_to_use"],
+            'TargetCapacity': cpu_to_launch,
+            'OnDemandTargetCapacity': 0,
+            'TerminateInstancesWithExpiration': True,
+            'LaunchSpecifications': [
+                {
+                    **fleet_config["base_launch_spec"],
+                    **launch_spec["launch_spec_overrides"],
+                    "WeightedCapacity": launch_spec["cpu"],
+                    "TagSpecifications": [{
+                        "ResourceType": "instance",
+                        "Tags": make_tags(launch_spec_id, launch_spec)
+                    }]
+                }
+                for launch_spec_id, launch_spec in
+                fleet_config["launch_specs"].items()
+            ]
+        }
+
+        logger.debug('Requesting spot fleet with config %s', sfr_config)
+        resp = self.ec2_fail_fast.meta.client.request_spot_fleet(
+            SpotFleetRequestConfig=sfr_config
+        )
+        logger.debug('Spot fleet request response: %s', resp)
+
+        sfr_id = resp['SpotFleetRequestId']
+
+        cli_logger.print("Created spot fleet request {}", sfr_id)
+
+        for i in range(100):
+            sfrs = self.ec2.meta.client.describe_spot_fleet_requests(
+                SpotFleetRequestIds=[sfr_id]
+            )
+
+            fulfilled_cpu = (sfrs['SpotFleetRequestConfigs'][0]
+                             ['SpotFleetRequestConfig']['FulfilledCapacity'])
+
+            cli_logger.print("{}: {} / {} fulfilled",
+                             sfr_id, fulfilled_cpu, cpu_to_launch)
+            if fulfilled_cpu >= cpu_to_launch:
+                break
+            time.sleep(5)
+        else:
+            raise Exception("Spot fleet request not completed")
 
     def create_node(self, node_config, tags, count):
         tags = copy.deepcopy(tags)

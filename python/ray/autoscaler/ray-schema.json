@@ -54,6 +54,17 @@
             "type": "integer",
             "minimum": 0
         },
+        "fleet": {
+            "type": "object",
+            "required": [ "enabled" ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Enable fleet mode",
+                    "default": false
+                }
+            }
+        },
         "provider": {
             "type": "object",
             "description": "Cloud-provider specific configuration.",

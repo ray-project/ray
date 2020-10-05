@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 from subprocess import CalledProcessError
@@ -21,10 +22,14 @@ from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE, \
+    TAG_RAY_FLEET_CPU, TAG_RAY_FLEET_LAUNCH_SPEC
 from ray.autoscaler.node_provider import NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
+
+
+logger = logging.getLogger(__name__)
 
 
 class MockNode:
@@ -137,11 +142,19 @@ class MockProvider(NodeProvider):
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
         self.unique_ips = unique_ips
+        self.launch_specs_to_launch = {}
         # Many of these functions are called by node_launcher or updater in
         # different threads. This can be treated as a global lock for
         # everything.
         self.lock = threading.Lock()
         super().__init__(None, None)
+
+    def non_terminated_cpu(self, tag_filters):
+        logger.debug("Mock non-terminated CPU = %s",
+                     {node_id: self.node_tags(node_id)[TAG_RAY_FLEET_CPU]
+                      for node_id in self.non_terminated_nodes(tag_filters)})
+        return sum(int(self.node_tags(node_id)[TAG_RAY_FLEET_CPU])
+                   for node_id in self.non_terminated_nodes(tag_filters))
 
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
@@ -177,6 +190,48 @@ class MockProvider(NodeProvider):
 
     def external_ip(self, node_id):
         return self.mock_nodes[node_id].external_ip
+
+    def add_launch_spec_to_launch(self, launch_spec_id, count):
+        with self.lock:
+            if launch_spec_id not in self.launch_specs_to_launch:
+                self.launch_specs_to_launch[launch_spec_id] = 0
+            self.launch_specs_to_launch[launch_spec_id] += count
+            logger.debug("Added launch specs to launch: %s",
+                         self.launch_specs_to_launch)
+
+    def create_cpu(self, fleet_config, tags, cpu_to_launch):
+        base_launch_spec = fleet_config['base_launch_spec']
+        launch_specs = fleet_config['launch_specs']
+
+        with self.lock:
+            logger.debug("create_cpu called")
+
+            total_cpu_launched = 0
+            for launch_spec_id, count in self.launch_specs_to_launch.items():
+                for _ in range(count):
+                    launch_spec = launch_specs[launch_spec_id]
+
+                    total_cpu_launched += launch_spec["cpu"]
+                    tags = {**tags,
+                            TAG_RAY_FLEET_CPU: launch_spec["cpu"],
+                            TAG_RAY_FLEET_LAUNCH_SPEC: launch_spec_id}
+
+                    full_launch_spec = {
+                        **base_launch_spec,
+                        **launch_spec['launch_spec_overrides']
+                    }
+
+                    logger.info("Creating mock node of type %s",
+                                full_launch_spec["InstanceType"])
+                    self.mock_nodes[self.next_id] = MockNode(
+                        self.next_id, tags, {},
+                        full_launch_spec["InstanceType"]
+                    )
+                    self.next_id += 1
+
+            assert total_cpu_launched == cpu_to_launch
+            self.launch_specs_to_launch = {}
+            logger.debug("launch_specs_to_launch reset")
 
     def create_node(self, node_config, tags, count):
         self.ready_to_create.wait()
@@ -223,6 +278,64 @@ SMALL_CLUSTER = {
     "autoscaling_mode": "default",
     "target_utilization_fraction": 0.8,
     "idle_timeout_minutes": 5,
+    "provider": {
+        "type": "mock",
+        "region": "us-east-1",
+        "availability_zone": "us-east-1a",
+    },
+    "docker": {
+        "image": "example",
+        "container_name": "mock",
+    },
+    "auth": {
+        "ssh_user": "ubuntu",
+        "ssh_private_key": os.devnull,
+    },
+    "head_node": {
+        "TestProp": 1,
+    },
+    "worker_nodes": {
+        "TestProp": 2,
+    },
+    "file_mounts": {},
+    "cluster_synced_files": [],
+    "initialization_commands": ["init_cmd"],
+    "setup_commands": ["setup_cmd"],
+    "head_setup_commands": ["head_setup_cmd"],
+    "worker_setup_commands": ["worker_setup_cmd"],
+    "head_start_ray_commands": ["start_ray_head"],
+    "worker_start_ray_commands": ["start_ray_worker"],
+}
+
+
+SMALL_FLEET_CLUSTER = {
+    "cluster_name": "default",
+    "min_workers": 2,
+    "max_workers": 2,
+    "initial_workers": 0,
+    "autoscaling_mode": "default",
+    "target_utilization_fraction": 0.5,
+    "idle_timeout_minutes": 5,
+    "fleet": {
+        "enabled": True,
+        "iam_fleet_role": "<iam fleet role here>",
+        "base_launch_spec": {
+        },
+        "launch_specs": {
+            "ls-t1.micro": {
+                "cpu": 1,
+                "launch_spec_overrides": {
+                    "InstanceType": "t1.micro"
+                },
+            },
+            "ls-t2.large": {
+                "cpu": 2,
+                "launch_spec_overrides": {
+                    "InstanceType": "t2.large"
+                },
+            }
+        }
+    },
     "provider": {
         "type": "mock",
         "region": "us-east-1",
@@ -402,6 +515,20 @@ class AutoscalingTest(unittest.TestCase):
             time.sleep(.1)
         raise RayTestTimeoutException(
             "Timed out waiting for {}".format(condition))
+
+    def waitForResource(self, expected, comparison=None, tag_filters={}):
+        MAX_ITER = 50
+        for i in range(MAX_ITER):
+            n = self.provider.non_terminated_cpu(tag_filters)
+            if comparison is None:
+                comparison = self.assertEqual
+            try:
+                comparison(n, expected)
+                return
+            except Exception:
+                if i == MAX_ITER - 1:
+                    raise
+            time.sleep(.1)
 
     def waitForNodes(self, expected, comparison=None, tag_filters={}):
         MAX_ITER = 50
@@ -624,6 +751,36 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         autoscaler.update()
         self.waitForNodes(2)
+
+    def testFleetAutoscaling(self):
+        config_path = self.write_config(SMALL_FLEET_CLUSTER)
+
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_launch_batch=5,
+            max_concurrent_launches=5,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert self.provider.non_terminated_cpu({}) == 0
+
+        autoscaler.update()
+        self.waitForResource(0)
+
+        autoscaler.request_resources({"CPU": 5})
+        self.provider.add_launch_spec_to_launch('ls-t1.micro', 3)
+        self.provider.add_launch_spec_to_launch('ls-t2.large', 1)
+        autoscaler.update()
+        self.waitForResource(5)
+
+        autoscaler.request_resources({"CPU": 10})
+        self.provider.add_launch_spec_to_launch('ls-t1.micro', 5)
+        autoscaler.update()
+        self.waitForResource(10)
 
     def testManualAutoscaling(self):
         config = SMALL_CLUSTER.copy()
@@ -1143,6 +1300,27 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         autoscaler.update()
         self.waitFor(lambda: len(runner.calls) > 0)
+
+    def testFleetScaleUpBasedOnLoad(self):
+        config_path = self.write_config(SMALL_FLEET_CLUSTER)
+        self.provider = MockProvider()
+        lm = LoadMetrics()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert self.provider.non_terminated_cpu({}) == 0
+
+        local_ip = services.get_node_ip_address()
+        lm.update(local_ip, {"CPU": 10}, {"CPU": 9}, {})  # head
+        # Usage of 1, which should two CPUs worth of worker to come up.
+        self.provider.add_launch_spec_to_launch('ls-t1.micro', 1)
+        self.provider.add_launch_spec_to_launch('ls-t1.micro', 1)
+        autoscaler.update()
+        self.waitForResource(2)
 
     def testScaleUpBasedOnLoad(self):
         config = SMALL_CLUSTER.copy()

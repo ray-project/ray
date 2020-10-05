@@ -35,3 +35,9 @@ TAG_RAY_RUNTIME_CONFIG = "ray-runtime-config"
 # if the node is a worker, this also hashes content of the directories
 # specified by the cluster_synced_files config
 TAG_RAY_FILE_MOUNTS_CONTENTS = "ray-file-mounts-contents"
+
+# Tag used to identify the launch spec.  This must be one of the keys of the autoscaler_config["fleet"]["launch_spec"]
+# dict
+TAG_RAY_FLEET_LAUNCH_SPEC = "ray-fleet-launch-spec"
+TAG_RAY_FLEET_CPU = "ray-fleet-cpu"
+
