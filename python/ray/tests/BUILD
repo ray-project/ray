@@ -9,19 +9,6 @@ SRCS = [] + select({
 })
 
 py_test_module_list(
-  identifier="new_scheduler_passing",
-  files = [
-    "test_basic.py",
-    "test_basic_2.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "new_scheduler"],
-  deps = ["//:ray_lib"]
-)
-
-
-py_test_module_list(
   files = [
     "test_actor_advanced.py",
     "test_actor_failures.py",
@@ -143,3 +130,13 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+add_tags(
+  files = [
+    "test_basic.py",
+    "test_basic_2.py",
+  ],
+  tags = ["new_scheduler"],
+)
+
+build()
