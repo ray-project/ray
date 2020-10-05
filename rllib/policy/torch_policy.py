@@ -262,7 +262,7 @@ class TorchPolicy(Policy):
             extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
         return convert_to_non_torch_type((actions, state_out,
-                                          extra_fetches, logp))
+                                          extra_fetches))
 
     @override(Policy)
     @DeveloperAPI
