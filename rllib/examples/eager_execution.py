@@ -1,4 +1,5 @@
 import argparse
+import os
 import random
 
 import ray
@@ -58,12 +59,14 @@ MyTrainer = build_trainer(
 )
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
     args = parser.parse_args()
     ModelCatalog.register_custom_model("eager_model", EagerModel)
 
     config = {
         "env": "CartPole-v0",
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "model": {
             "custom_model": "eager_model"
@@ -76,7 +79,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, stop=stop, config=config)
+    results = tune.run(MyTrainer, stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

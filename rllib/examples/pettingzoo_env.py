@@ -1,15 +1,13 @@
 from copy import deepcopy
-import ray
-try:
-    from ray.rllib.agents.agent import get_agent_class
-except ImportError:
-    from ray.rllib.agents.registry import get_agent_class
-from ray.tune.registry import register_env
-from ray.rllib.env import PettingZooEnv
+from numpy import float32
+import os
 from pettingzoo.butterfly import pistonball_v0
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 
-from numpy import float32
+import ray
+from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.env import PettingZooEnv
+from ray.tune.registry import register_env
 
 if __name__ == "__main__":
     """For this script, you need:
@@ -37,7 +35,7 @@ if __name__ == "__main__":
     config = deepcopy(get_agent_class(alg_name)._default_config)
 
     # 2. Set environment config. This will be passed to
-    # the env_creator function via the register env lambda below
+    # the env_creator function via the register env lambda below.
     config["env_config"] = {"local_ratio": 0.5}
 
     # 3. Register env
@@ -58,6 +56,8 @@ if __name__ == "__main__":
         "policy_mapping_fn": lambda agent_id: "av"
     }
 
+    # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+    config["num_gpus"] = int(os.environ.get("RLLIB_NUM_GPUS", "0"))
     config["log_level"] = "DEBUG"
     config["num_workers"] = 1
     # Fragment length, collected at once from each worker and for each agent!

@@ -40,10 +40,10 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   auto node_id = NodeID::FromBinary(node->node_id());
 
   node_manager.AddNode(node);
-  ASSERT_EQ(node, node_manager.GetNode(node_id));
+  ASSERT_EQ(node, node_manager.GetNode(node_id).value());
 
   node_manager.RemoveNode(node_id);
-  ASSERT_EQ(nullptr, node_manager.GetNode(node_id));
+  ASSERT_TRUE(!node_manager.GetNode(node_id).has_value());
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {

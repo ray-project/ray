@@ -264,8 +264,9 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   virtual ~RedisObjectInfoAccessor() {}
 
-  Status AsyncGetLocations(const ObjectID &object_id,
-                           const MultiItemCallback<ObjectTableData> &callback) override;
+  Status AsyncGetLocations(
+      const ObjectID &object_id,
+      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncGetAll(
       const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override {
@@ -275,12 +276,18 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                           const StatusCallback &callback) override;
 
+  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const StatusCallback &callback) override {
+    return Status::NotImplemented("AsyncAddSpilledUrl not implemented");
+  }
+
   Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
                              const StatusCallback &callback) override;
 
   Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;

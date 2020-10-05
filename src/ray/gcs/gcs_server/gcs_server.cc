@@ -243,7 +243,7 @@ void GcsServer::InitGcsPlacementGroupManager() {
       });
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
-      main_service_, scheduler, gcs_table_storage_);
+      main_service_, scheduler, gcs_table_storage_, *gcs_node_manager_);
 }
 
 std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
