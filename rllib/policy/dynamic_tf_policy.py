@@ -192,7 +192,15 @@ class DynamicTFPolicy(TFPolicy):
                     for s in self.model.get_initial_state()
                 ]
 
-        self.view_requirements = self.model.inference_view_requirements
+        self.view_requirements = {
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+            SampleBatch.REWARDS: ViewRequirement(),
+            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.EPS_ID: ViewRequirement(),
+            SampleBatch.AGENT_INDEX: ViewRequirement(),
+        }
+        self.view_requirements.update(self.model.inference_view_requirements)
         if callable(view_requirements_fn):
             self.view_requirements.update(view_requirements_fn(self))
 
@@ -254,8 +262,10 @@ class DynamicTFPolicy(TFPolicy):
                 obs_batch=self._input_dict[SampleBatch.CUR_OBS],
                 state_batches=self._state_inputs,
                 seq_lens=self._seq_lens,
-                prev_action_batch=self._input_dict[SampleBatch.PREV_ACTIONS],
-                prev_reward_batch=self._input_dict[SampleBatch.PREV_REWARDS],
+                prev_action_batch=self._input_dict.get(
+                    SampleBatch.PREV_ACTIONS),
+                prev_reward_batch=self._input_dict.get(
+                    SampleBatch.PREV_REWARDS),
                 explore=explore,
                 is_training=self._input_dict["is_training"])
         else:
@@ -267,10 +277,10 @@ class DynamicTFPolicy(TFPolicy):
                         obs_batch=self._input_dict[SampleBatch.CUR_OBS],
                         state_batches=self._state_inputs,
                         seq_lens=self._seq_lens,
-                        prev_action_batch=self._input_dict[
-                            SampleBatch.PREV_ACTIONS],
-                        prev_reward_batch=self._input_dict[
-                            SampleBatch.PREV_REWARDS],
+                        prev_action_batch=self._input_dict.get(
+                            SampleBatch.PREV_ACTIONS),
+                        prev_reward_batch=self._input_dict.get(
+                            SampleBatch.PREV_REWARDS),
                         explore=explore,
                         is_training=self._input_dict["is_training"])
             # Default distribution generation behavior:
@@ -386,7 +396,7 @@ class DynamicTFPolicy(TFPolicy):
         input_dict = {}
         dummy_batch = {}
         for col, view_req in self.view_requirements.items():
-            dummy_batch[col] = view_req.space.sample()
+            dummy_batch[col] = np.zeros_like([view_req.space.sample()])
             input_dict[col] = tf1.placeholder(
                 shape=(None, ) + view_req.space.shape,
                 dtype=view_req.space.dtype,

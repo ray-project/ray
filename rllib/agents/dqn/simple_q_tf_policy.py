@@ -219,7 +219,10 @@ def view_requirements_fn_dqn(policy: Policy) -> Dict[str, ViewRequirement]:
     """
     ret = {
         # Next obs are needed for DQN loss function.
-        SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
+        SampleBatch.NEXT_OBS: ViewRequirement(
+            data_col=SampleBatch.OBS,
+            shift=1,
+            space=policy.observation_space),
     }
     return ret
 
