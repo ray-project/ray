@@ -1,7 +1,7 @@
 cluster_name: default
-min_workers: 30
-max_workers: 30
-initial_workers: 30
+min_workers: 22
+max_workers: 22
+initial_workers: 22
 autoscaling_mode: default
 docker:
     image: 'anyscale/ray-ml:latest'
@@ -16,7 +16,7 @@ provider:
 auth:
     ssh_user: ubuntu
 head_node:
-    InstanceType: m5.large
+    InstanceType: m5.xlarge
     ImageId: ami-0a2363a9cff180a64
     BlockDeviceMappings:
         -
@@ -24,7 +24,7 @@ head_node:
             Ebs:
                 VolumeSize: 100
 worker_nodes:
-    InstanceType: m5.large
+    InstanceType: m5.xlarge
     ImageId: ami-0a2363a9cff180a64
     InstanceMarketOptions:
         MarketType: spot

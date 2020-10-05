@@ -6,6 +6,7 @@
 # running on each node.
 #
 # Sample output:
+# Results for node 1 of 20:
 # Running 10s test @ http://127.0.0.1:8000/hey
 #   2 threads and 100 connections
 #   Thread Stats   Avg      Stdev     Max   +/- Stdev
@@ -19,6 +20,7 @@
 #   22917 requests in 10.04s, 3.56MB read
 # Requests/sec:   2283.17
 # Transfer/sec:    363.43KB
+# ...
 
 import logging
 import time
@@ -29,11 +31,11 @@ import ray
 from ray import serve
 from ray.serve import BackendConfig
 
-from ray.util.placement_group import placement_group
-
+from ray.util.placement_group import (placement_group, remove_placement_group)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+ray.shutdown()
 ray.init(address="auto")
 client = serve.start()
 
@@ -42,7 +44,7 @@ client = serve.start()
 # these because sometimes nodes fail to update.
 num_workers = 20
 expected_num_nodes = num_workers + 1
-cpus_per_node = 2
+cpus_per_node = 4
 num_remote_cpus = expected_num_nodes * cpus_per_node
 
 # Wait until the expected number of nodes have joined the cluster.
@@ -62,40 +64,54 @@ def hey(_):
     return b"hey"
 
 
-# The number of replicas is the number of cores remaining after accounting
-# for the one HTTP proxy actor on each node, the "hey" requester task on each
-# node, and the serve controller.
-num_replicas = expected_num_nodes * (cpus_per_node - 2) - 1
-client.create_backend(
-    "hey", hey, config=BackendConfig(num_replicas=num_replicas))
-client.create_endpoint("hey", backend="hey", route="/hey")
-
-logger.info("Warming up for ~3 seconds")
-for _ in range(5):
-    resp = requests.get("http://127.0.0.1:8000/hey").text
-    logger.info("Received response \'" + resp + "\'")
-    time.sleep(0.5)
-
 # TODO(architkulkarni): how many connections and threads?
 num_connections = int(num_remote_cpus * 0.75)
 num_threads = 2
 time_to_run = "10s"
 
 pg = placement_group(
-    [{"CPU: 1"} for _ in range(expected_num_nodes)], strategy="STRICT_SPREAD")
+    [{
+        "CPU": 1
+    } for _ in range(expected_num_nodes)], strategy="STRICT_SPREAD")
 ray.get(pg.ready())
+
+# The number of replicas is the number of cores remaining after accounting
+# for the one HTTP proxy actor on each node, the "hey" requester task on each
+# node, and the serve controller.
+# num_replicas = expected_num_nodes * (cpus_per_node - 2) - 1
+num_replicas = ray.available_resources()["CPU"]
+logger.info("Starting %i replicas", num_replicas)
+client.create_backend(
+    "hey", hey, config=BackendConfig(num_replicas=num_replicas))
+client.create_endpoint("hey", backend="hey", route="/hey")
 
 
 @ray.remote
 def run_wrk():
+    logger.info("Warming up for ~3 seconds")
+    for _ in range(5):
+        resp = requests.get("http://127.0.0.1:8000/hey").text
+        logger.info("Received response \'" + resp + "\'")
+        time.sleep(0.5)
+
     result = subprocess.run(
         [
             "wrk", "-c",
             str(num_connections), "-t",
-            str(num_threads), "-s", time_to_run, "http://127.0.0.1:8000/hey"
+            str(num_threads), "-d", time_to_run, "http://127.0.0.1:8000/hey"
         ],
         stdout=subprocess.PIPE)
-    logger.info(result.stdout.decode())
+    return result.stdout.decode()
 
 
-run_wrk.options(placement_group=pg).remote()
+results = ray.get([
+    run_wrk.options(placement_group=pg,
+                    placement_group_bundle_index=i).remote()
+    for i in range(expected_num_nodes)
+])
+
+for i in range(expected_num_nodes):
+    logger.info("Results for node %i of %i:", i + 1, expected_num_nodes)
+    logger.info(results[i])
+
+remove_placement_group(pg)
