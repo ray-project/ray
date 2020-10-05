@@ -1,3 +1,7 @@
+# Runs several scenarios with varying max batch size, max concurrent queries,
+# number of replicas, and with intermediate serve handles (to simulate ensemble
+# models) either on or off.
+
 import aiohttp
 import asyncio
 import time
