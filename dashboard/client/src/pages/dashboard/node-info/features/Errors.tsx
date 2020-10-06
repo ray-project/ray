@@ -5,7 +5,6 @@ import { Accessor } from "../../../../common/tableUtils";
 import { sum } from "../../../../common/util";
 import {
   ClusterFeatureRenderFn,
-  Node,
   NodeFeatureData,
   NodeFeatureRenderFn,
   NodeInfoFeature,
@@ -13,11 +12,8 @@ import {
   WorkerFeatureRenderFn,
 } from "./types";
 
-const nodeErrCount = (node: Node) =>
-  node.error_count ? sum(Object.values(node.error_count)) : 0;
-
 const ClusterErrors: ClusterFeatureRenderFn = ({ nodes }) => {
-  const totalErrCount = sum(nodes.map(nodeErrCount));
+  const totalErrCount = sum(nodes.map((node) => node.errorCount));
   return totalErrCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
@@ -31,30 +27,28 @@ const ClusterErrors: ClusterFeatureRenderFn = ({ nodes }) => {
 };
 
 const makeNodeErrors = (
-  setErrorDialog: (hostname: string, pid: number | null) => void,
+  setErrorDialog: (nodeIp: string, pid: number | null) => void,
 ): NodeFeatureRenderFn => ({ node }) => {
-  const nodeErrorCount = nodeErrCount(node);
-  return nodeErrorCount === 0 ? (
+  return node.errorCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
   ) : (
-    <SpanButton onClick={() => setErrorDialog(node.hostname, null)}>
-      View all errors ({nodeErrorCount.toLocaleString()})
+    <SpanButton onClick={() => setErrorDialog(node.ip, null)}>
+      View all errors ({node.errorCount.toLocaleString()})
     </SpanButton>
   );
 };
 
 const nodeErrorsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
-  nodeErrCount(node);
+  node.errorCount;
 
 const makeWorkerErrors = (
-  setErrorDialog: (hostname: string, pid: number | null) => void,
+  setErrorDialog: (nodeIp: string, pid: number | null) => void,
 ): WorkerFeatureRenderFn => ({ node, worker }) => {
-  const workerErrorCount = node.error_count?.[worker.pid] || 0;
-  return workerErrorCount !== 0 ? (
-    <SpanButton onClick={() => setErrorDialog(node.hostname, worker.pid)}>
-      View errors ({workerErrorCount.toLocaleString()})
+  return worker.errorCount !== 0 ? (
+    <SpanButton onClick={() => setErrorDialog(node.ip, worker.pid)}>
+      View errors ({worker.errorCount.toLocaleString()})
     </SpanButton>
   ) : (
     <Typography color="textSecondary" component="span" variant="inherit">
@@ -63,11 +57,11 @@ const makeWorkerErrors = (
   );
 };
 
-const workerErrorsAccessor: Accessor<WorkerFeatureData> = ({ node, worker }) =>
-  node.error_count?.[worker.pid] || 0;
+const workerErrorsAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
+  worker.errorCount;
 
 const makeErrorsFeature = (
-  setErrorDialog: (hostname: string, pid: number | null) => void,
+  setErrorDialog: (nodeIp: string, pid: number | null) => void,
 ): NodeInfoFeature => ({
   id: "errors",
   ClusterFeatureRenderFn: ClusterErrors,

@@ -177,7 +177,7 @@ class Tune extends React.Component<
   render() {
     const { classes, tuneInfo, tuneAvailability } = this.props;
 
-    if (tuneAvailability && !tuneAvailability.trials_available) {
+    if (tuneAvailability && !tuneAvailability.trialsAvailable) {
       return this.experimentChoice(true);
     }
 

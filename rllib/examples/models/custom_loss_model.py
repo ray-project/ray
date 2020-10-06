@@ -116,7 +116,7 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
 
         # Define a secondary loss by building a graph copy with weight sharing.
         obs = restore_original_dimensions(
-            torch.from_numpy(batch["obs"]).float(),
+            torch.from_numpy(batch["obs"]).float().to(policy_loss[0].device),
             self.obs_space,
             tensorlib="torch")
         logits, _ = self.forward({"obs": obs}, [], None)
@@ -130,8 +130,8 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
 
         # Compute the IL loss.
         action_dist = TorchCategorical(logits, self.model_config)
-        imitation_loss = torch.mean(
-            -action_dist.logp(torch.from_numpy(batch["actions"])))
+        imitation_loss = torch.mean(-action_dist.logp(
+            torch.from_numpy(batch["actions"]).to(policy_loss[0].device)))
         self.imitation_loss_metric = imitation_loss.item()
         self.policy_loss_metric = np.mean([l.item() for l in policy_loss])
 

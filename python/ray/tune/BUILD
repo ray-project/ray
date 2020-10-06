@@ -308,14 +308,14 @@ py_test(
     args = ["--smoke-test"]
 )
 
-# py_test(
-#     name = "ax_example",
-#     size = "medium",
-#     srcs = ["examples/ax_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example", "py37"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "ax_example",
+    size = "medium",
+    srcs = ["examples/ax_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "py37"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "bayesopt_example",

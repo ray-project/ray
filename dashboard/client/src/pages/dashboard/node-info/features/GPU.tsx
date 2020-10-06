@@ -1,6 +1,6 @@
 import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
-import { GPUStats, RayletWorkerStats, ResourceSlot } from "../../../../api";
+import { GPUStats, ResourceSlot, Worker } from "../../../../api";
 import { RightPaddedTypography } from "../../../../common/CustomTypography";
 import { Accessor } from "../../../../common/tableUtils";
 
@@ -35,7 +35,7 @@ const nodeGPUUtilization = (node: Node): number => {
   if (!node.gpus || node.gpus.length === 0) {
     return NaN;
   }
-  const utilizationSum = sum(node.gpus.map((gpu) => gpu.utilization_gpu));
+  const utilizationSum = sum(node.gpus.map((gpu) => gpu.utilizationGpu));
   const avgUtilization = utilizationSum / node.gpus.length;
   return avgUtilization;
 };
@@ -88,8 +88,8 @@ const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
       </Tooltip>
       <UsageBar
-        percent={gpu.utilization_gpu}
-        text={`${gpu.utilization_gpu.toFixed(1)}%`}
+        percent={gpu.utilizationGpu}
+        text={`${gpu.utilizationGpu.toFixed(1)}%`}
       />
     </Box>
   );
@@ -119,8 +119,8 @@ const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({ resourceSlot }) => {
   );
 };
 
-const WorkerGPU: WorkerFeatureRenderFn = ({ rayletWorker }) => {
-  const workerRes = rayletWorker?.coreWorkerStats.usedResources;
+const WorkerGPU: WorkerFeatureRenderFn = ({ worker }) => {
+  const workerRes = worker.coreWorkerStats[0].usedResources;
   const workerUsedGPUResources = workerRes?.["GPU"];
   let message;
   if (workerUsedGPUResources === undefined) {
@@ -147,8 +147,8 @@ const WorkerGPU: WorkerFeatureRenderFn = ({ rayletWorker }) => {
   return <div style={{ minWidth: 60 }}>{message}</div>;
 };
 
-const workerGPUUtilization = (rayletWorker: RayletWorkerStats | null) => {
-  const workerRes = rayletWorker?.coreWorkerStats.usedResources;
+const workerGPUUtilization = (worker: Worker | null) => {
+  const workerRes = worker?.coreWorkerStats[0].usedResources;
   const workerUsedGPUResources = workerRes?.["GPU"];
   return (
     workerUsedGPUResources &&
@@ -160,8 +160,8 @@ const workerGPUUtilization = (rayletWorker: RayletWorkerStats | null) => {
   );
 };
 
-const workerGPUAccessor: Accessor<WorkerFeatureData> = ({ rayletWorker }) => {
-  return workerGPUUtilization(rayletWorker) ?? 0;
+const workerGPUAccessor: Accessor<WorkerFeatureData> = ({ worker }) => {
+  return workerGPUUtilization(worker) ?? 0;
 };
 
 const gpuFeature: NodeInfoFeature = {
