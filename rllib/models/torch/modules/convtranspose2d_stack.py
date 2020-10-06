@@ -44,18 +44,21 @@ class ConvTranspose2DStack(nn.Module):
             # Map from 1D-input vector to correct initial size for the
             # Conv2DTransposed stack.
             nn.Linear(input_size, in_channels),
-            # Reshape into image format (channels first).
+            # Reshape from the incoming 1D vector (input_size) to 1x1 image
+            # format (channels first).
             Reshape([-1, in_channels, 1, 1]),
         ]
-        for out_channels, kernel, stride in filters:
+        for i, (_, kernel, stride) in enumerate(filters):
+            out_channels = filters[i + 1][0] if i < len(filters) - 1 else \
+                output_shape[0]
             conv_transp = nn.ConvTranspose2d(
                 in_channels, out_channels, kernel, stride)
             # Apply initializer.
             initializer(conv_transp.weight)
             nn.init.constant_(conv_transp.bias, bias_init)
             self.layers.append(conv_transp)
-            # Apply activation function, if any.
-            if self.activation is not None:
+            # Apply activation function, if provided and if not last layer.
+            if self.activation is not None and i < len(filters) - 1:
                 self.layers.append(self.activation())
 
             # num-outputs == num-inputs for next layer.
@@ -65,11 +68,10 @@ class ConvTranspose2DStack(nn.Module):
 
     def forward(self, x):
         # x is [batch, hor_length, input_size]
-        orig_shape = list(x.size())
-        x = self._model(x)
+        batch_dims = x.shape[:-1]
+        model_out = self._model(x)
 
-        reshape_size = orig_shape[:-1] + self.output_shape
-        mean = x.view(*reshape_size)
-
-        # Equivalent to making a multivariate diag
+        # Equivalent to making a multivariate diag.
+        reshape_size = batch_dims + self.output_shape
+        mean = model_out.view(*reshape_size)
         return td.Independent(td.Normal(mean, 1), len(self.output_shape))
