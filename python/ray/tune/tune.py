@@ -1,5 +1,6 @@
 import logging
 import sys
+import time
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -271,6 +272,7 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+    all_start = time.time()
     if global_checkpoint_period:
         raise ValueError("global_checkpoint_period is deprecated. Set env var "
                          "'TUNE_GLOBAL_CHECKPOINT_S' instead.")
@@ -420,10 +422,12 @@ def run(
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
+    tune_start = time.time()
     while not runner.is_finished():
         runner.step()
         if verbose:
             _report_progress(runner, progress_reporter)
+    tune_taken = time.time() - tune_start
 
     try:
         runner.checkpoint(force=True)
@@ -446,6 +450,10 @@ def run(
             raise TuneError("Trials did not complete", incomplete_trials)
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
+
+    all_taken = time.time() - all_start
+    logger.info(f"Total run time: {all_taken:.2f} seconds "
+                f"({tune_taken:.2f} seconds after initialization).")
 
     trials = runner.get_trials()
     return ExperimentAnalysis(
