@@ -160,6 +160,7 @@ message ErrorTableData {
 
 message PlacementGroupTableData {
   // State of a placement group.
+  // Keep this synchronized with python/ray/autoscaler/_private/placement_group_load.py
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;

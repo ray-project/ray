@@ -9,7 +9,7 @@ import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.placement_group_load import STRICT_PACK, STRICT_SPREAD, PACK, SPREAD, PlacementGroupLoad
+from ray.autoscaler._private.placement_group_load import strategy_enum_to_string, PlacementGroupLoad
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
@@ -104,9 +104,18 @@ class Monitor:
         placement_group_load = []
         try:
             for placement_group_data_pb in list(placement_group_load_pb.placement_group_data):
-                print(f"Strategy ({type(placement_group_data_pb.strategy)}): {placement_group_data_pb.strategy}")
-                if placement_group_data_pb.strategy == "STRICT_PACK":
-                    print("strategy was strict pack")
+                strategy = placement_group_data_pb.strategy
+                state = placement_group_data_pb.state
+                print(f"Strategy: {strategy_enum_to_string(strategy)}")
+                print(f"State: {state_enum_to_string(state)}")
+
+                shapes = []
+                for bundle_pb in list(placement_group_data_pb.bundles):
+                    shape = dict(bundle_pb.unit_resources)
+                    shapes.append(shape)
+
+
+
 
         except Exception as e:
             logger.exception(e)

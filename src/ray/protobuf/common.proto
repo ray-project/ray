@@ -45,6 +45,7 @@ enum TaskType {
 }
 
 // Type of placement group strategy.
+// Keep this synchronized with python/ray/autoscaler/_private/placement_group_load.py
 enum PlacementStrategy {
   // Packs Bundles into as few nodes as possible.
   PACK = 0;
