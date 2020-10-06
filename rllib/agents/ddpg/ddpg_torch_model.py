@@ -53,10 +53,12 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                                       self.action_space.bounded_below).any()
         low_action = nn.Parameter(
             torch.from_numpy(self.action_space.low).float())
+        low_action.requires_grad = False
         self.register_parameter("low_action", low_action)
         action_range = nn.Parameter(
             torch.from_numpy(self.action_space.high -
                              self.action_space.low).float())
+        action_range.requires_grad = False
         self.register_parameter("action_range", action_range)
         self.action_dim = np.product(self.action_space.shape)
 
