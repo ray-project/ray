@@ -59,8 +59,9 @@ class ObjectDirectoryInterface {
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
   /// Callback for object location notifications.
-  using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
-                                              const std::unordered_set<ray::NodeID> &)>;
+  using OnLocationsFound =
+      std::function<void(const ray::ObjectID &object_id,
+                         const std::unordered_set<ray::NodeID> &, const std::string &)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
@@ -182,6 +183,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<NodeID> current_object_locations;
+    /// The location where this object has been spilled, if any.
+    std::string spilled_url = "";
     /// This flag will get set to true if received any notification of the object.
     /// It means current_object_locations is up-to-date with GCS. It
     /// should never go back to false once set to true. If this is true, and
