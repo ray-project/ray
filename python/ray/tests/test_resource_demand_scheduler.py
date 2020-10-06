@@ -17,6 +17,7 @@ from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, _add_min_workers_nodes, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
+from ray.autoscaler._private.placement_group_load_util import RESCHEDULING, PACK, STRICT_PACK, SPREAD, STRICT_SPREAD, PlacementGroupData
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER
 from ray.test_utils import same_elements
@@ -324,6 +325,28 @@ def test_calculate_node_resources():
                                               utilizations, [])
 
     assert to_launch == {"p2.8xlarge": 1}
+
+
+def test_placement_group_scaling():
+    provider = MockProvider()
+    scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
+
+    provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
+    # At this point our cluster has 2 p2.8xlarge instances (16 GPUs) and is
+    # fully idle.
+    nodes = provider.non_terminated_nodes({})
+
+    resource_demands = [{"GPU": 4}] * 2
+    placement_group_load = [
+        PlacementGroupData(state=RESCHEDULING, strategy=STRICT_SPREAD, shapes=[{"GPU": 2}, {"GPU": 2}, {"GPU": 2}]),
+        PlacementGroupData(state=RESCHEDULING, strategy=STRICT_PACK, shapes=([{"GPU": 2}] * 4)),
+        PlacementGroupData(state=RESCHEDULING, strategy=PACK, shapes=([{"GPU": 2}] * 2)),
+        PlacementGroupData(state=RESCHEDULING, strategy=SPREAD, shapes=([{"GPU": 2}] * 2)),
+    ]
+    to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands,
+                                              {}, placement_group_load)
+    assert to_launch == {"p2.8xlarge": 2}
+
 
 
 class LoadMetricsTest(unittest.TestCase):

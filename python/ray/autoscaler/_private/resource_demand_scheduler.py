@@ -90,9 +90,9 @@ class ResourceDemandScheduler:
         # min_workers constraint. We add them because nodes to add based on
         # demand was calculated after the min_workers constraint was respected.
         total_nodes_to_add = {}
+        nodes_to_add_sources = [min_workers_nodes_to_add, placement_group_nodes_to_add, nodes_to_add_based_on_demand]
         for node_type in self.node_types:
-            nodes_to_add = nodes_to_add_based_on_demand.get(node_type, 0) + \
-                min_workers_nodes_to_add.get(node_type, 0)
+            nodes_to_add = sum([x.get(node_type, 0) for x in nodes_to_add_sources])
             if nodes_to_add > 0:
                 total_nodes_to_add[node_type] = nodes_to_add
 
