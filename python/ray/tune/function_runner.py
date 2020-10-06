@@ -135,6 +135,13 @@ class StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
 
+    def reset(self, trial_name=None, trial_id=None, logdir=None):
+        self._trial_name = trial_name
+        self._trial_id = trial_id
+        self._logdir = logdir
+        self._last_checkpoint = None
+        self._fresh_checkpoint = False
+
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
 
@@ -379,7 +386,7 @@ class FunctionRunner(Trainable):
         # This keyword appears if the train_func using the Function API
         # finishes without "done=True". This duplicates the last result, but
         # the TrialRunner will not log this result again.
-        if "__duplicate__" in result:
+        if RESULT_DUPLICATE in result:
             new_result = self._last_result.copy()
             new_result.update(result)
             result = new_result
@@ -479,15 +486,32 @@ class FunctionRunner(Trainable):
                          self.temp_checkpoint_dir)
 
     def reset_config(self, new_config):
-        self._last_result = None
         if self._runner and self._runner.is_alive():
             self._continue_event.clear()
             self._continue_semaphore.release()
             # Wait for thread termination so it is save to re-use the same
             # actor.
             self._continue_event.wait()
-            self._runner = None
-            self._error_queue.empty()
+
+        self._runner = None
+
+        # Reset Trainable attributes
+        self._iteration = 0
+        self._time_total = 0.0
+        self._timesteps_total = None
+        self._episodes_total = None
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
+        self._restored = False
+
+        self._last_result = {}
+
+        self._status_reporter.reset(
+            trial_name=self.trial_name,
+            trial_id=self.trial_id,
+            logdir=self.logdir)
+
         return True
 
     def _report_thread_runner_error(self, block=False):

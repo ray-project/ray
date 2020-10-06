@@ -724,7 +724,6 @@ class TrialRunner:
         """
         try:
             result = self.trial_executor.fetch_result(trial)
-
             is_duplicate = RESULT_DUPLICATE in result
             force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
             # TrialScheduler and SearchAlgorithm still receive a
