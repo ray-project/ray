@@ -6,50 +6,49 @@ torch, nn = try_import_torch()
 
 
 # Custom initialization for different types of layers
-class Linear(nn.Linear):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight)
-        if self.bias is not None:
-            nn.init.zeros_(self.bias)
-
-
-class Conv2d(nn.Conv2d):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight)
-        if self.bias is not None:
-            nn.init.zeros_(self.bias)
-
-
-class ConvTranspose2d(nn.ConvTranspose2d):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight)
-        if self.bias is not None:
-            nn.init.zeros_(self.bias)
-
-
-class GRUCell(nn.GRUCell):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight_ih)
-        nn.init.orthogonal_(self.weight_hh)
-        nn.init.zeros_(self.bias_ih)
-        nn.init.zeros_(self.bias_hh)
-
-
-# Custom Tanh Bijector due to big gradients through Dreamer Actor
 if torch:
+    class Linear(nn.Linear):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+    
+        def reset_parameters(self):
+            nn.init.xavier_uniform_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
+    
+    
+    class Conv2d(nn.Conv2d):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+    
+        def reset_parameters(self):
+            nn.init.xavier_uniform_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
+    
+    
+    class ConvTranspose2d(nn.ConvTranspose2d):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+    
+        def reset_parameters(self):
+            nn.init.xavier_uniform_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
+    
+    
+    class GRUCell(nn.GRUCell):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+    
+        def reset_parameters(self):
+            nn.init.xavier_uniform_(self.weight_ih)
+            nn.init.orthogonal_(self.weight_hh)
+            nn.init.zeros_(self.bias_ih)
+            nn.init.zeros_(self.bias_hh)
 
+
+    # Custom Tanh Bijector due to big gradients through Dreamer Actor
     class TanhBijector(torch.distributions.Transform):
         def __init__(self):
             super().__init__()
