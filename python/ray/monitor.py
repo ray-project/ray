@@ -103,7 +103,8 @@ class Monitor:
 
         placement_group_load = []
         try:
-            for placement_group_data_pb in list(placement_group_load_pb.placement_group_data):
+            for placement_group_data_pb in list(
+                    placement_group_load_pb.placement_group_data):
                 strategy = placement_group_data_pb.strategy
                 state = placement_group_data_pb.state
 
@@ -112,7 +113,9 @@ class Monitor:
                     shape = dict(bundle_pb.unit_resources)
                     shapes.append(shape)
 
-                placement_group_load.append(PlacementGroupLoad(strategy=strategy, state=state, shapes=shapes))
+                placement_group_load.append(
+                    PlacementGroupLoad(
+                        strategy=strategy, state=state, shapes=shapes))
 
         except Exception as e:
             logger.exception(e)
@@ -160,7 +163,8 @@ class Monitor:
             waiting_bundles, infeasible_bundles = \
                 self.parse_resource_demands(message.resource_load_by_shape)
 
-            placement_group_load = self.parse_placement_group_loads(message.placement_group_load)
+            placement_group_load = self.parse_placement_group_loads(
+                message.placement_group_load)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)

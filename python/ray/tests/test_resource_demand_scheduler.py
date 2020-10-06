@@ -98,14 +98,40 @@ def test_bin_pack():
         [{"GPU": 2}, {"GPU": 2}]
     assert get_bin_pack_residual([{"GPU": 2}], [{"GPU": 2}, {"GPU": 2}])[0] == \
         [{"GPU": 2}]
-    assert get_bin_pack_residual([{"GPU": 4}], [{"GPU": 2}, {"GPU": 2}])[0] == []
+    assert get_bin_pack_residual([{
+        "GPU": 4
+    }], [{
+        "GPU": 2
+    }, {
+        "GPU": 2
+    }])[0] == []
     arg = [{"GPU": 2}, {"GPU": 2, "CPU": 2}]
     assert get_bin_pack_residual(arg, [{"GPU": 2}, {"GPU": 2}])[0] == []
     arg = [{"CPU": 2}, {"GPU": 2}]
-    assert get_bin_pack_residual(arg, [{"GPU": 2}, {"GPU": 2}])[0] == [{"GPU": 2}]
+    assert get_bin_pack_residual(arg, [{
+        "GPU": 2
+    }, {
+        "GPU": 2
+    }])[0] == [{
+        "GPU": 2
+    }]
     arg = [{"GPU": 3}]
-    assert get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=False)[0] == []
-    assert get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=True) == ([{"GPU": 1}], [{"GPU": 2}])
+    assert get_bin_pack_residual(
+        arg, [{
+            "GPU": 1
+        }, {
+            "GPU": 1
+        }], strict_spread=False)[0] == []
+    assert get_bin_pack_residual(
+        arg, [{
+            "GPU": 1
+        }, {
+            "GPU": 1
+        }], strict_spread=True) == ([{
+            "GPU": 1
+        }], [{
+            "GPU": 2
+        }])
 
 
 def test_get_nodes_packing_heuristic():
@@ -138,8 +164,18 @@ def test_get_nodes_packing_heuristic():
     assert get_nodes_for(
         TYPES_A, {}, 9999, ([{"GPU": 1}] * 8) + ([{"CPU": 1}] * 64)) == \
         {"m4.16xlarge": 1, "p2.8xlarge": 1}
-    assert get_nodes_for(TYPES_A, {}, 9999, [{"GPU": 1}] * 8, strict_spread=False) == {"p2.8xlarge": 1}
-    assert get_nodes_for(TYPES_A, {}, 9999, [{"GPU": 1}] * 8, strict_spread=True) == {"p2.xlarge": 8}
+    assert get_nodes_for(
+        TYPES_A, {}, 9999, [{
+            "GPU": 1
+        }] * 8, strict_spread=False) == {
+            "p2.8xlarge": 1
+        }
+    assert get_nodes_for(
+        TYPES_A, {}, 9999, [{
+            "GPU": 1
+        }] * 8, strict_spread=True) == {
+            "p2.xlarge": 8
+        }
 
 
 def test_get_nodes_respects_max_limit():
@@ -338,15 +374,40 @@ def test_placement_group_scaling():
 
     resource_demands = [{"GPU": 4}] * 2
     placement_group_load = [
-        PlacementGroupData(state=RESCHEDULING, strategy=STRICT_SPREAD, shapes=[{"GPU": 2}, {"GPU": 2}, {"GPU": 2}]),
-        PlacementGroupData(state=RESCHEDULING, strategy=STRICT_PACK, shapes=([{"GPU": 2}] * 4)),
-        PlacementGroupData(state=RESCHEDULING, strategy=PACK, shapes=([{"GPU": 2}] * 2)),
-        PlacementGroupData(state=RESCHEDULING, strategy=SPREAD, shapes=([{"GPU": 2}] * 2)),
+        PlacementGroupData(  # <= Requires a new node (only uses 2 GPUs on it though).
+            state=RESCHEDULING,
+            strategy=STRICT_SPREAD,
+            shapes=[{
+                "GPU": 2
+            }, {
+                "GPU": 2
+            }, {
+                "GPU": 2
+            }]),
+        PlacementGroupData(  # <= Requires a new node (uses the whole node).
+            state=RESCHEDULING,
+            strategy=STRICT_PACK,
+            shapes=([{
+                "GPU": 2
+            }] * 4)),
+        PlacementGroupData(  # <= Fits across the machines that strict spread
+            # runs on.
+            state=RESCHEDULING,
+            strategy=PACK,
+            shapes=([{
+                "GPU": 2
+            }] * 2)),
+        PlacementGroupData(  # <= Fits across the machines that strict spread
+            # runs on.
+            state=RESCHEDULING,
+            strategy=SPREAD,
+            shapes=([{
+                "GPU": 2
+            }] * 2)),
     ]
-    to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands,
-                                              {}, placement_group_load)
+    to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands, {},
+                                              placement_group_load)
     assert to_launch == {"p2.8xlarge": 2}
-
 
 
 class LoadMetricsTest(unittest.TestCase):
@@ -367,6 +428,25 @@ class LoadMetricsTest(unittest.TestCase):
         }, {
             "GPU": 1
         }])
+
+    def testPlacementGroupLoad(self):
+        lm = LoadMetrics()
+        placement_group_load = [
+            PlacementGroupData(
+                state=RESCHEDULING, strategy=PACK, shapes=([{
+                    "GPU": 2
+                }] * 2)),
+            PlacementGroupData(
+                state=RESCHEDULING, strategy=SPREAD, shapes=([{
+                    "GPU": 2
+                }] * 2)),
+        ]
+        lm.update(
+            "1.1.1.1", {},
+            True, {},
+            True, {},
+            placement_group_load=placement_group_load)
+        assert lm.get_placement_group_load() == placement_group_load
 
 
 class AutoscalingTest(unittest.TestCase):
@@ -448,6 +528,77 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         autoscaler.update()
         self.waitForNodes(2)
+
+    def testPlacementGroup(self):
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["min_workers"] = 0
+        config["max_workers"] = 999
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: "m4.4xlarge"
+        }, 1)
+        head_ip = self.provider.non_terminated_node_ips({})[0]
+        assert len(self.provider.non_terminated_nodes({})) == 1
+        autoscaler.update()
+        self.waitForNodes(1)
+
+        placement_group_load = [
+            PlacementGroupData(
+                state=RESCHEDULING,
+                strategy=STRICT_SPREAD,
+                shapes=[{
+                    "GPU": 2
+                }, {
+                    "GPU": 2
+                }, {
+                    "GPU": 2
+                }]),
+            PlacementGroupData(
+                state=RESCHEDULING, strategy=PACK, shapes=([{
+                    "GPU": 2
+                }] * 5)),
+        ]
+
+        lm.update(
+            head_ip, {"CPU": 16},
+            True, {"CPU": 16},
+            False, {},
+            infeasible_bundles=[{
+                "GPU": 1
+            }],
+            placement_group_load=placement_group_load)
+        # import pdb; pdb.set_trace()
+        autoscaler.update()
+        sleep(1)
+        print([node.node_type for node in self.provider.mock_nodes.values()])
+        self.waitForNodes(4)
+        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
+
+        placement_group_load = [
+            PlacementGroupData(  # <= Requires a new node (uses the whole node).
+                state=RESCHEDULING,
+                strategy=STRICT_PACK,
+                shapes=([{
+                    "GPU": 2
+                }] * 4)),
+            PlacementGroupData(  # <= Fits across the machines that strict spread
+                # runs on.
+                state=RESCHEDULING,
+                strategy=SPREAD,
+                shapes=([{
+                    "GPU": 2
+                }] * 2)),
+        ]
 
     def testScaleUpMinWorkers(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)

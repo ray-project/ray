@@ -164,6 +164,9 @@ class LoadMetrics:
     def get_resource_demand_vector(self):
         return self.waiting_bundles + self.infeasible_bundles
 
+    def get_placement_group_load(self):
+        return self.placement_group_load
+
     def info_string(self):
         return " - " + "\n - ".join(
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
