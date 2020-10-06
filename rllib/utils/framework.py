@@ -219,6 +219,7 @@ def get_variable(value,
     return value
 
 
+# TODO: (sven) move to models/utils.py
 def get_activation_fn(name, framework="tf"):
     """Returns a framework specific activation function, given a name string.
 
