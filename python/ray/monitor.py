@@ -117,6 +117,7 @@ class Monitor:
                 print(f"State: {state_enum_to_string(state)}")
                 print(f"Shapes: {shapes}")
                 print("==================================================")
+                placement_group_load.append(PlacementGroupLoad(strategy=strategy, state=state, shapes=shapes))
 
         except Exception as e:
             logger.exception(e)

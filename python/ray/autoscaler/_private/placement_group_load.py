@@ -24,5 +24,6 @@ def state_enum_to_string(state_pb):
 
 @dataclass
 class PlacementGroupLoad:
-    strategy: str
+    strategy: int
+    state: int
     shapes: List[Dict[str, Number]]
