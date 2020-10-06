@@ -33,32 +33,12 @@ def create_scheduler(
         >>> scheduler = tune.create_scheduler('pbt')
     """
 
-    def _import_async_hyperband_scheduler():
-        from ray.tune.schedulers import AsyncHyperBandScheduler
-        return AsyncHyperBandScheduler
-
-    def _import_median_stopping_rule_scheduler():
-        from ray.tune.schedulers import MedianStoppingRule
-        return MedianStoppingRule
-
-    def _import_hyperband_scheduler():
-        from ray.tune.schedulers import HyperBandScheduler
-        return HyperBandScheduler
-
-    def _import_hb_bohb_scheduler():
-        from ray.tune.schedulers import HyperBandForBOHB
-        return HyperBandForBOHB
-
-    def _import_pbt_search():
-        from ray.tune.schedulers import PopulationBasedTraining
-        return PopulationBasedTraining
-
     SCHEDULER_IMPORT = {
-        "async_hyperband": _import_async_hyperband_scheduler,
-        "median_stopping_rule": _import_median_stopping_rule_scheduler,
-        "hyperband": _import_hyperband_scheduler,
-        "hb_bohb": _import_hb_bohb_scheduler,
-        "pbt": _import_pbt_search,
+        "async_hyperband": AsyncHyperBandScheduler,
+        "median_stopping_rule": MedianStoppingRule,
+        "hyperband": HyperBandScheduler,
+        "hb_bohb": HyperBandForBOHB,
+        "pbt": PopulationBasedTraining,
     }
     scheduler = scheduler.lower()
     if scheduler not in SCHEDULER_IMPORT:
@@ -66,7 +46,7 @@ def create_scheduler(
             f"Search alg must be one of {list(SCHEDULER_IMPORT)}. "
             f"Got: {scheduler}")
 
-    SchedulerClass = SCHEDULER_IMPORT[scheduler]()
+    SchedulerClass = SCHEDULER_IMPORT[scheduler]
     return SchedulerClass(metric=metric, mode=mode, **kwargs)
 
 
@@ -76,12 +56,3 @@ __all__ = [
     "PopulationBasedTraining", "PopulationBasedTrainingReplay",
     "HyperBandForBOHB"
 ]
-
-_SCHEDULERS = {name: globals()[name] for name in __all__}
-_SCHEDULERS.update({
-    "FIFO": FIFOScheduler,
-    "MedianStopping": MedianStoppingRule,
-    "HyperBand": HyperBandScheduler,
-    "AsyncHyperBand": AsyncHyperBandScheduler,
-    "PBT": PopulationBasedTraining,
-})
