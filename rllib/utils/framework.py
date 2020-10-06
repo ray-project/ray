@@ -223,7 +223,7 @@ def get_activation_fn(name, framework="tf"):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (str): One of "relu" (default), "tanh", or "linear".
+        name (str): One of "relu" (default), "tanh", "swish", or "linear".
         framework (str): One of "tf" or "torch".
 
     Returns:

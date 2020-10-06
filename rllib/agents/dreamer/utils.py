@@ -1,56 +1,50 @@
-from ray.rllib.utils.framework import try_import_torch
 import numpy as np
+
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
+
 # Custom initialization for different types of layers
-if torch:
+class Linear(nn.Linear):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    class Linear(nn.Linear):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-
-        def reset_parameters(self):
-            nn.init.xavier_uniform_(self.weight)
-            if self.bias is not None:
-                nn.init.zeros_(self.bias)
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.weight)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
 
 
-if torch:
+class Conv2d(nn.Conv2d):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    class Conv2d(nn.Conv2d):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-
-        def reset_parameters(self):
-            nn.init.xavier_uniform_(self.weight)
-            if self.bias is not None:
-                nn.init.zeros_(self.bias)
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.weight)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
 
 
-if torch:
+class ConvTranspose2d(nn.ConvTranspose2d):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    class ConvTranspose2d(nn.ConvTranspose2d):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-
-        def reset_parameters(self):
-            nn.init.xavier_uniform_(self.weight)
-            if self.bias is not None:
-                nn.init.zeros_(self.bias)
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.weight)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
 
 
-if torch:
+class GRUCell(nn.GRUCell):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    class GRUCell(nn.GRUCell):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-
-        def reset_parameters(self):
-            nn.init.xavier_uniform_(self.weight_ih)
-            nn.init.orthogonal_(self.weight_hh)
-            nn.init.zeros_(self.bias_ih)
-            nn.init.zeros_(self.bias_hh)
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.weight_ih)
+        nn.init.orthogonal_(self.weight_hh)
+        nn.init.zeros_(self.bias_ih)
+        nn.init.zeros_(self.bias_hh)
 
 
 # Custom Tanh Bijector due to big gradients through Dreamer Actor
