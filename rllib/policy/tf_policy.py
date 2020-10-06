@@ -330,6 +330,9 @@ class TFPolicy(Policy):
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
 
+        # Update our global timestep by the batch size.
+        self.global_timestep += fetched[0].shape[0]
+
         return fetched
 
     @override(Policy)

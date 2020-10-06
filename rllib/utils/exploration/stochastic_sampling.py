@@ -90,7 +90,7 @@ class StochasticSampling(Exploration):
 
         logp = tf.cond(
             tf.math.logical_and(
-                explore, tf.convert_to_tensor(ts > self.random_timesteps)),
+                explore, tf.convert_to_tensor(ts >= self.random_timesteps)),
             true_fn=lambda: action_dist.sampled_action_logp(),
             false_fn=logp_false_fn)
 
