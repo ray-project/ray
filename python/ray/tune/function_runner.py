@@ -121,14 +121,14 @@ class StatusReporter:
     def __init__(self,
                  result_queue,
                  continue_semaphore,
-                 continue_event,
+                 end_event,
                  trial_name=None,
                  trial_id=None,
                  logdir=None):
         self._queue = result_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
-        self._continue_event = continue_event
+        self._end_event = end_event
         self._trial_name = trial_name
         self._trial_id = trial_id
         self._logdir = logdir
@@ -182,9 +182,8 @@ class StatusReporter:
         self._continue_semaphore.acquire()
 
         # If the trial should be terminated, exit gracefully.
-        if not self._continue_event.is_set():
-            # Set the continue switch so the function runner can wait for it.
-            self._continue_event.set()
+        if self._end_event.is_set():
+            self._end_event.clear()
             sys.exit(0)
 
     def make_checkpoint_dir(self, step):
@@ -281,10 +280,8 @@ class FunctionRunner(Trainable):
         self._continue_semaphore = threading.Semaphore(0)
 
         # Event for notifying the reporter to exit gracefully, terminating
-        # the thread. This is set per default, meaning the thread should
-        # continue. Clearing the evnt will lead to shutdown.
-        self._continue_event = threading.Event()
-        self._continue_event.set()
+        # the thread.
+        self._end_event = threading.Event()
 
         # Queue for passing results between threads
         self._results_queue = queue.Queue(1)
@@ -297,7 +294,7 @@ class FunctionRunner(Trainable):
         self._status_reporter = StatusReporter(
             self._results_queue,
             self._continue_semaphore,
-            self._continue_event,
+            self._end_event,
             trial_name=self.trial_name,
             trial_id=self.trial_id,
             logdir=self.logdir)
@@ -465,7 +462,7 @@ class FunctionRunner(Trainable):
 
     def cleanup(self):
         # Trigger thread termination
-        self._continue_event.clear()
+        self._end_event.set()
         self._continue_semaphore.release()
         # Do not wait for thread termination here.
 
@@ -487,11 +484,14 @@ class FunctionRunner(Trainable):
 
     def reset_config(self, new_config):
         if self._runner and self._runner.is_alive():
-            self._continue_event.clear()
+            self._end_event.set()
             self._continue_semaphore.release()
             # Wait for thread termination so it is save to re-use the same
             # actor.
-            self._continue_event.wait()
+            self._runner.join(timeout=1)
+            if self._runner.is_alive():
+                # Did not finish within timeout, reset unsuccessful.
+                return False
 
         self._runner = None
 
