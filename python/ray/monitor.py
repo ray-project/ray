@@ -104,6 +104,7 @@ class Monitor:
         placement_group_load = []
         try:
             for placement_group_data_pb in placement_group_load_pb:
+                print(f"Strategy ({type(placement_group_data_pb.strategy)}): {placement_group_data_pb.strategy}")
                 if placement_group_data_pb.strategy == "STRICT_PACK":
                     print("strategy was strict pack")
 
