@@ -82,10 +82,6 @@ class ResourceDemandScheduler:
         placement_group_nodes_to_add, node_resources, node_type_counts = self.reserve_and_allocate_spread(
             strict_spreads, node_resources, node_type_counts)
 
-        print(f"Placement group nodes to add: {placement_group_nodes_to_add}")
-        print(f"node resources: {node_resources}")
-        print(f"node type counts: {node_type_counts}")
-
         unfulfilled, _ = get_bin_pack_residual(node_resources,
                                                resource_demands)
         logger.info("Resource demands: {}".format(resource_demands))
