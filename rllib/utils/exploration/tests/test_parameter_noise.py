@@ -186,8 +186,14 @@ class TestParameterNoise(unittest.TestCase):
 
     def _get_current_weight(self, policy, fw):
         weights = policy.get_weights()
-        key = 0 if fw in ["tf2", "tfe"] else \
-            list(weights.keys())[2 if fw == "torch" else 0]
+        if fw == "torch":
+            # DQN model.
+            if "_hidden_layers.0._model.0.weight" in weights:
+                return weights["_hidden_layers.0._model.0.weight"][0][0]
+            # DDPG model.
+            else:
+                return weights["policy_model.action_0._model.0.weight"][0][0]
+        key = 0 if fw in ["tf2", "tfe"] else list(weights.keys())[0]
         return weights[key][0][0]
 
 
