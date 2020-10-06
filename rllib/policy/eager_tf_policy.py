@@ -394,7 +394,7 @@ def build_eager_tf_policy(name,
                 extra_fetches.update(extra_action_fetches_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += actions.shape.as_list()[0]
+            self.global_timestep += len(obs_batch)
 
             return actions, state_out, extra_fetches
 
