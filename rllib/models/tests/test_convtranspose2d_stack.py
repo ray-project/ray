@@ -36,8 +36,6 @@ class TestConvTranspose2DStack(unittest.TestCase):
                 np.random.normal(0.0, 1.0, (batch_size, input_size))).float()
             distribution = module(inputs)
             # Construct a loss.
-            #predictions = distribution.rsample()
-            #loss = torch.mean(torch.pow(predictions - imgs, 2.0))
             loss = -torch.mean(distribution.log_prob(imgs))
             if init_loss is None:
                 init_loss = loss
