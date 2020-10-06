@@ -403,8 +403,8 @@ def build_eager_tf_policy(name,
             if extra_action_fetches_fn:
                 extra_fetches.update(extra_action_fetches_fn(self))
 
-            # Increase our global sampling timestep counter by 1.
-            self.global_timestep += 1
+            # Update our global timestep by the batch size.
+            self.global_timestep += len(obs_batch)
 
             return actions, state_out, extra_fetches
 
@@ -677,6 +677,8 @@ def build_eager_tf_policy(name,
                 dummy_batch.get(SampleBatch.PREV_ACTIONS),
                 dummy_batch.get(SampleBatch.PREV_REWARDS),
                 explore=False)
+            # Got to reset global_timestep again after this fake run-through.
+            self.global_timestep = 0
             dummy_batch.update(fetches)
 
             postprocessed_batch = self.postprocess_trajectory(

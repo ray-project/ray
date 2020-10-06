@@ -65,7 +65,7 @@ class ParameterNoise(Exploration):
         # This excludes any variable, whose name contains "LayerNorm" (those
         # are BatchNormalization layers, which should not be perturbed).
         self.model_variables = [
-            v for k, v in self.model.variables(as_dict=True).items()
+            v for k, v in self.model.trainable_variables(as_dict=True).items()
             if "LayerNorm" not in k
         ]
         # Our noise to be added to the weights. Each item in `self.noise`
@@ -296,7 +296,8 @@ class ParameterNoise(Exploration):
         else:
             for i in range(len(self.noise)):
                 self.noise[i] = torch.normal(
-                    mean=torch.zeros(self.noise[i].size()), std=self.stddev)
+                    mean=torch.zeros(self.noise[i].size()),
+                    std=self.stddev).to(self.device)
 
     def _tf_sample_new_noise_op(self):
         added_noises = []
@@ -343,9 +344,11 @@ class ParameterNoise(Exploration):
         elif self.framework in ["tf2", "tfe"]:
             self._tf_add_stored_noise_op()
         else:
-            for i in range(len(self.noise)):
+            for var, noise in zip(self.model_variables, self.noise):
                 # Add noise to weights in-place.
-                self.model_variables[i].add_(self.noise[i])
+                var.requires_grad = False
+                var.add_(noise)
+                var.requires_grad = True
 
         self.weights_are_currently_noisy = True
 
@@ -383,7 +386,9 @@ class ParameterNoise(Exploration):
         else:
             for var, noise in zip(self.model_variables, self.noise):
                 # Remove noise from weights in-place.
+                var.requires_grad = False
                 var.add_(-noise)
+                var.requires_grad = True
 
         self.weights_are_currently_noisy = False
 

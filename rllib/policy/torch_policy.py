@@ -261,6 +261,9 @@ class TorchPolicy(Policy):
                 torch.exp(logp.float())
             extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
+        # Update our global timestep by the batch size.
+        self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
+
         return convert_to_non_torch_type((actions, state_out,
                                           extra_fetches))
 
