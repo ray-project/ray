@@ -22,6 +22,8 @@ import "src/ray/protobuf/common.proto";
 message RequestWorkerLeaseRequest {
   // TaskSpec containing the requested resources.
   TaskSpec resource_spec = 1;
+  // Worker's backlog size for this spec's shape.
+  int64 backlog_size = 2;
 }
 
 message RequestWorkerLeaseReply {
