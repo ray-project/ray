@@ -1026,6 +1026,13 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
+py_test(
+    name = "env/wrappers/tests/test_recsim_wrapper",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
