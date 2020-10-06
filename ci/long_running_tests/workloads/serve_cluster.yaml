@@ -17,7 +17,6 @@ auth:
     ssh_user: ubuntu
 head_node:
     InstanceType: m5.xlarge
-    ImageId: ami-0a2363a9cff180a64
     BlockDeviceMappings:
         -
             DeviceName: /dev/sda1
@@ -25,9 +24,6 @@ head_node:
                 VolumeSize: 100
 worker_nodes:
     InstanceType: m5.xlarge
-    ImageId: ami-0a2363a9cff180a64
-    InstanceMarketOptions:
-        MarketType: spot
 file_mounts: {}
 cluster_synced_files:
     - /tmp/ray_tmp_mount/~/blank-serve-test
@@ -36,6 +32,7 @@ initialization_commands: []
 setup_commands:
     - apt-get install build-essential libssl-dev git -y
     - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make && cp wrk /usr/local/bin'
+    - python -c 'import sys;sys.exit(0) if 6 >= sys.version_info.minor else sys.exit(1)' && echo 'keep dataclasses package installed in python < 3.6.x' || pip uninstall --yes dataclasses
 head_setup_commands: []
 worker_setup_commands: []
 head_start_ray_commands:

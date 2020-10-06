@@ -26,15 +26,14 @@
 import ray
 from ray import serve
 from ray.serve import BackendConfig
-import logging
+from ray.serve.utils import logger
 import time
+
+num_queries = 2000
 
 ray.init(address="auto")
 
 client = serve.start()
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 def hello_world(_):
@@ -75,12 +74,11 @@ def run_test(num_replicas, num_forwarders):
 
     # real test
     start = time.time()
-    count = 0
-    while time.time() - start < 1:
-        ray.get(handle.remote())
-        count += 1
+    ray.get([handle.remote() for _ in range(num_queries)])
+    qps = num_queries / (time.time() - start)
+
     logger.info("{} forwarders and {} worker replicas: {} requests/s".format(
-        num_forwarders, num_replicas, count))
+        num_forwarders, num_replicas, qps))
 
 
 for num_forwarders in [0, 1, 2]:

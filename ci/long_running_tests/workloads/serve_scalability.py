@@ -22,7 +22,6 @@
 # Transfer/sec:    363.43KB
 # ...
 
-import logging
 import time
 import subprocess
 import requests
@@ -30,10 +29,9 @@ import requests
 import ray
 from ray import serve
 from ray.serve import BackendConfig
+from ray.serve.utils import logger
 
 from ray.util.placement_group import (placement_group, remove_placement_group)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 ray.shutdown()
 ray.init(address="auto")
