@@ -9,6 +9,7 @@ SPREAD = 4
 _strat_enum_to_string = ["PACK", "SPREAD", "STRICT_PACK", "STRICT_SPREAD"]
 def strategy_enum_to_string(strat_pb):
     assert strat_pb < len(_strat_enum_to_string)
+    return _strat_enum_to_string[strat_pb]
 
 
 PENDING = 0

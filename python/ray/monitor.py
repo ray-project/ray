@@ -106,16 +106,17 @@ class Monitor:
             for placement_group_data_pb in list(placement_group_load_pb.placement_group_data):
                 strategy = placement_group_data_pb.strategy
                 state = placement_group_data_pb.state
-                print(f"Strategy: {strategy_enum_to_string(strategy)}")
-                print(f"State: {state_enum_to_string(state)}")
 
                 shapes = []
                 for bundle_pb in list(placement_group_data_pb.bundles):
                     shape = dict(bundle_pb.unit_resources)
                     shapes.append(shape)
 
-
-
+                print("==================================================")
+                print(f"Strategy: {strategy_enum_to_string(strategy)}")
+                print(f"State: {state_enum_to_string(state)}")
+                print(f"Shapes: {shapes}")
+                print("==================================================")
 
         except Exception as e:
             logger.exception(e)
