@@ -9,6 +9,7 @@ import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.placement_group_load import STRICT_PACK, STRICT_SPREAD, PACK, SPREAD, PlacementGroupLoad
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
@@ -88,6 +89,27 @@ class Monitor:
             Exception: An exception is raised if the subscription fails.
         """
         self.primary_subscribe_client.psubscribe(pattern)
+
+    def parse_placement_group_loads(self, placement_group_load_pb):
+        """Handle the message.placement_group_load protobuf for the demand
+        based autoscaling. Catch and log all exceptions so this doesn't
+        interfere with the utilization based autoscaler until we're confident
+        this is stable.
+
+        Args:
+            placement_group_load_pb (pb2.gcs.PlacementGroupLoad): The resource demands
+                in protobuf form or None.
+        """
+
+        placement_group_load = []
+        try:
+            for placement_group_data_pb in placement_group_load_pb:
+                if placement_group_data_pb.strategy == "STRICT_PACK":
+                    print("strategy was strict pack")
+
+        except Exception as e:
+            logger.exception(e)
+        return placement_group_load
 
     def parse_resource_demands(self, resource_load_by_shape):
         """Handle the message.resource_load_by_shape protobuf for the demand
