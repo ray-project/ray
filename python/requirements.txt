@@ -10,6 +10,7 @@ aioredis
 click >= 7.0
 colorama
 colorful
+dataclasses
 filelock
 google
 gpustat

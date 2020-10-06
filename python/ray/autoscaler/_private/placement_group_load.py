@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from numbers import Number
+from types import Dict, List
 
 STRICT_PACK = "STRICT_PACK"
 STRICT_SPREAD = "STRICT_SPREAD"
