@@ -211,11 +211,13 @@ class StandardAutoscaler:
         if self.resource_demand_scheduler:
             resource_demand_vector = self.resource_demand_vector + \
                 self.load_metrics.get_resource_demand_vector()
-            to_launch = (self.resource_demand_scheduler.get_nodes_to_launch(
+            to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
                 self.provider.non_terminated_nodes(tag_filters={}),
                 self.pending_launches.breakdown(),
                 resource_demand_vector,
-                self.load_metrics.get_resource_utilization()))
+                self.load_metrics.get_resource_utilization(),
+                []
+            )
             # TODO(ekl) also enforce max launch concurrency here?
             for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)

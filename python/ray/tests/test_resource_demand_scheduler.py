@@ -93,15 +93,18 @@ def test_util_score():
 
 
 def test_bin_pack():
-    assert get_bin_pack_residual([], [{"GPU": 2}, {"GPU": 2}]) == \
+    assert get_bin_pack_residual([], [{"GPU": 2}, {"GPU": 2}])[0] == \
         [{"GPU": 2}, {"GPU": 2}]
-    assert get_bin_pack_residual([{"GPU": 2}], [{"GPU": 2}, {"GPU": 2}]) == \
+    assert get_bin_pack_residual([{"GPU": 2}], [{"GPU": 2}, {"GPU": 2}])[0] == \
         [{"GPU": 2}]
-    assert get_bin_pack_residual([{"GPU": 4}], [{"GPU": 2}, {"GPU": 2}]) == []
+    assert get_bin_pack_residual([{"GPU": 4}], [{"GPU": 2}, {"GPU": 2}])[0] == []
     arg = [{"GPU": 2}, {"GPU": 2, "CPU": 2}]
-    assert get_bin_pack_residual(arg, [{"GPU": 2}, {"GPU": 2}]) == []
+    assert get_bin_pack_residual(arg, [{"GPU": 2}, {"GPU": 2}])[0] == []
     arg = [{"CPU": 2}, {"GPU": 2}]
-    assert get_bin_pack_residual(arg, [{"GPU": 2}, {"GPU": 2}]) == [{"GPU": 2}]
+    assert get_bin_pack_residual(arg, [{"GPU": 2}, {"GPU": 2}])[0] == [{"GPU": 2}]
+    arg = [{"GPU": 3}]
+    assert get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=False)[0] == []
+    assert get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=True) == ([{"GPU": 1}], [{"GPU": 2}])
 
 
 def test_get_nodes_packing_heuristic():
@@ -134,6 +137,8 @@ def test_get_nodes_packing_heuristic():
     assert get_nodes_for(
         TYPES_A, {}, 9999, ([{"GPU": 1}] * 8) + ([{"CPU": 1}] * 64)) == \
         {"m4.16xlarge": 1, "p2.8xlarge": 1}
+    assert get_nodes_for(TYPES_A, {}, 9999, [{"GPU": 1}] * 8, strict_spread=False) == {"p2.8xlarge": 1}
+    assert get_nodes_for(TYPES_A, {}, 9999, [{"GPU": 1}] * 8, strict_spread=True) == {"p2.xlarge": 8}
 
 
 def test_get_nodes_respects_max_limit():
@@ -247,7 +252,7 @@ def test_get_nodes_to_launch_with_min_workers():
 
     to_launch = scheduler.get_nodes_to_launch(nodes, {}, [{
         "GPU": 8
-    }], utilizations)
+    }], utilizations, [])
     assert to_launch == {"p2.8xlarge": 1}
 
 
@@ -269,7 +274,7 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     # requires 2 p2.8xls (only 2 are in cluster/pending) and 1 p2.xlarge
     demands = [{"GPU": 8}] * (len(utilizations) + 1) + [{"GPU": 1}]
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
-                                              utilizations)
+                                              utilizations, [])
     assert to_launch == {"p2.xlarge": 1}
 
     # 3 min_workers of p2.8xlarge covers the 2 p2.8xlarge + 1 p2.xlarge demand.
@@ -278,7 +283,7 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     new_types["p2.8xlarge"]["min_workers"] = 3
     scheduler = ResourceDemandScheduler(provider, new_types, 10)
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
-                                              utilizations)
+                                              utilizations, [])
     # Make sure it does not return [("p2.8xlarge", 1), ("p2.xlarge", 1)]
     assert to_launch == {"p2.8xlarge": 1}
 
@@ -296,7 +301,7 @@ def test_get_nodes_to_launch_limits():
 
     to_launch = scheduler.get_nodes_to_launch(nodes, {"p2.8xlarge": 1}, [{
         "GPU": 8
-    }] * 2, utilizations)
+    }] * 2, utilizations, [])
     assert to_launch == {}
 
 
@@ -316,7 +321,7 @@ def test_calculate_node_resources():
     # requires 4 p2.8xls (only 3 are in cluster/pending)
     demands = [{"GPU": 8}] * (len(utilizations) + 2)
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
-                                              utilizations)
+                                              utilizations, [])
 
     assert to_launch == {"p2.8xlarge": 1}
 

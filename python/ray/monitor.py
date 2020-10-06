@@ -9,7 +9,7 @@ import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.placement_group_load import state_enum_to_string, strategy_enum_to_string, PlacementGroupLoad
+from ray.autoscaler._private.placement_group_load_util import state_enum_to_string, strategy_enum_to_string, PlacementGroupLoad
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
@@ -112,11 +112,6 @@ class Monitor:
                     shape = dict(bundle_pb.unit_resources)
                     shapes.append(shape)
 
-                print("==================================================")
-                print(f"Strategy: {strategy_enum_to_string(strategy)}")
-                print(f"State: {state_enum_to_string(state)}")
-                print(f"Shapes: {shapes}")
-                print("==================================================")
                 placement_group_load.append(PlacementGroupLoad(strategy=strategy, state=state, shapes=shapes))
 
         except Exception as e:
@@ -178,7 +173,7 @@ class Monitor:
                 self.load_metrics.update(
                     ip, total_resources, update_available_resources,
                     available_resources, update_resource_load, resource_load,
-                    waiting_bundles, infeasible_bundles)
+                    waiting_bundles, infeasible_bundles, placement_group_load)
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")
