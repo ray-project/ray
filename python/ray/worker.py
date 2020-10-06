@@ -1365,7 +1365,7 @@ def show_in_dashboard(message, key="", dtype="text"):
         message (str): Message to be displayed.
         key (str): The key name for the message. Multiple message under
             different keys will be displayed at the same time. Messages
-            under the same key will be overriden.
+            under the same key will be overridden.
         data_type (str): The type of message for rendering. One of the
             following: text, html.
     """
