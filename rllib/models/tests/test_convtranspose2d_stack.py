@@ -30,7 +30,7 @@ class TestConvTranspose2DStack(unittest.TestCase):
         imgs = (imgs / 255.0) * 2.0 - 1.0
         imgs = torch.from_numpy(imgs)
         init_loss = loss = None
-        for _ in range(1000):
+        for _ in range(10):
             # Random inputs.
             inputs = torch.from_numpy(
                 np.random.normal(0.0, 1.0, (batch_size, input_size))).float()
