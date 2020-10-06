@@ -453,7 +453,7 @@ def run(
 
     all_taken = time.time() - all_start
     logger.info(f"Total run time: {all_taken:.2f} seconds "
-                f"({tune_taken:.2f} seconds after initialization).")
+                f"({tune_taken:.2f} seconds for the tuning loop).")
 
     trials = runner.get_trials()
     return ExperimentAnalysis(
