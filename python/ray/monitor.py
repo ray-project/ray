@@ -360,7 +360,7 @@ if __name__ == "__main__":
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
         raise e
 
-def parse_resource_demands(self, resource_load_by_shape):
+def parse_resource_demands(resource_load_by_shape):
     """Handle the message.resource_load_by_shape protobuf for the demand
     based autoscaling. Catch and log all exceptions so this doesn't
     interfere with the utilization based autoscaler until we're confident
@@ -386,14 +386,16 @@ def parse_resource_demands(self, resource_load_by_shape):
             for _ in range(
                     resource_demand_pb.num_infeasible_requests_queued):
                 infeasible_bundles.append(request_shape)
+
+            # Infeasible and ready states for tasks are (logically)
+            # mutually exclusive.
+            if resource_demand_pb.num_infeasible_requests_queued > 0:
+                backlog_queue = infeasible_bundles
+            else:
+                backlog_queue = waiting_bundles
             for _ in range(
                     resource_demand_pb.backlog_size):
-                # Infeasible and ready states for tasks are (logically)
-                # mutually exclusive.
-                if resource_demand_pb.num_infeasible_requests_queued > 0:
-                    infeasible_bundles.append(request_shape)
-                else:
-                    waiting_bundles.append(request_shape)
+                backlog_queue.append(request_shape)
     except Exception as e:
         logger.exception(e)
     return waiting_bundles, infeasible_bundles
