@@ -1,5 +1,6 @@
 import logging
 import time
+from typing import Dict, List
 
 import numpy as np
 import ray._private.services as services
@@ -27,7 +28,7 @@ class LoadMetrics:
         ) if local_ip is None else local_ip
         self.waiting_bundles = []
         self.infeasible_bundles = []
-        self.placement_group_load = []
+        self.pending_placement_groups = []
 
     def update(self,
                ip: str,
@@ -38,7 +39,7 @@ class LoadMetrics:
                resource_load: Dict[str, Dict],
                waiting_bundles: List[Dict[str, float]] = None,
                infeasible_bundles: List[Dict[str, float]] = None,
-               placement_group_load: List[PlacementGroupTableData] = None):
+               pending_placement_groups: List[PlacementGroupTableData] = None):
         # If light heartbeat enabled, only resources changed will be received.
         # We should update the changed part and compare static_resources with
         # dynamic_resources using those updated.
@@ -53,8 +54,8 @@ class LoadMetrics:
             waiting_bundles = []
         if not infeasible_bundles:
             infeasible_bundles = []
-        if not placement_group_load:
-            placement_group_load = []
+        if not pending_placement_groups:
+            pending_placement_groups = []
 
         # We are not guaranteed to have a corresponding dynamic resource
         # for every static resource because dynamic resources are based on
@@ -74,7 +75,7 @@ class LoadMetrics:
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
         self.infeasible_bundles = infeasible_bundles
-        self.placement_group_load = placement_group_load
+        self.pending_placement_groups = pending_placement_groups
 
     def mark_active(self, ip):
         assert ip is not None, "IP should be known at this time"
@@ -165,8 +166,8 @@ class LoadMetrics:
     def get_resource_demand_vector(self):
         return self.waiting_bundles + self.infeasible_bundles
 
-    def get_placement_group_load(self):
-        return self.placement_group_load
+    def get_pending_placement_groups(self):
+        return self.pending_placement_groups
 
     def info_string(self):
         return " - " + "\n - ".join(

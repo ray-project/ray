@@ -45,7 +45,7 @@ class ResourceDemandScheduler:
     def get_nodes_to_launch(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeType, int],
             resource_demands: List[ResourceDict],
-            usage_by_ip: Dict[str, ResourceDict], placement_group_load: List[
+            usage_by_ip: Dict[str, ResourceDict], pending_placement_groups: List[
                 PlacementGroupTableData]
     ) -> Dict[NodeType, int]:
         """Given resource demands, return node types to add to the cluster.
@@ -67,6 +67,8 @@ class ResourceDemandScheduler:
             usage_by_ip: Mapping from ip to available resources.
         """
 
+        node_resources: List[ResourceDict]
+        node_type_counts: Dict[NodeType, int]
         node_resources, node_type_counts = \
             self.calculate_node_resources(nodes, pending_nodes, usage_by_ip)
 
@@ -78,9 +80,9 @@ class ResourceDemandScheduler:
                 node_resources, node_type_counts, self.node_types)
 
         # Step 3: add nodes for strict spread groups
-        logger.info(f"Placement group demands: {placement_group_load}")
+        logger.info(f"Placement group demands: {pending_placement_groups}")
         placement_group_demand_vector, strict_spreads = \
-            placement_groups_to_resource_demands(placement_group_load)
+            placement_groups_to_resource_demands(pending_placement_groups)
         resource_demands.extend(placement_group_demand_vector)
         placement_group_nodes_to_add, node_resources, node_type_counts = \
             self.reserve_and_allocate_spread(
@@ -98,13 +100,11 @@ class ResourceDemandScheduler:
         # min_workers constraint. We add them because nodes to add based on
         # demand was calculated after the min_workers constraint was respected.
         total_nodes_to_add = {}
-        nodes_to_add_sources = [
-            min_workers_nodes_to_add, placement_group_nodes_to_add,
-            nodes_to_add_based_on_demand
-        ]
         for node_type in self.node_types:
-            nodes_to_add = sum(
-                source.get(node_type, 0) for source in nodes_to_add_sources)
+            nodes_to_add = (min_workers_nodes_to_add.get(node_type, 0) +
+                            placement_group_nodes_to_add.get(node_type, 0) +
+                            nodes_to_add_based_on_demand.get(node_type, 0)
+                            )
             if nodes_to_add > 0:
                 total_nodes_to_add[node_type] = nodes_to_add
 
@@ -284,9 +284,12 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
             This sets constraints on the number of new nodes to add.
         max_to_add: global constraint on nodes to add.
         resources: resource demands to fulfill.
+        strict_spread: If true, each element in `resources` must be placed on a
+            different node.
 
     Returns:
         Dict of count to add for each node type.
+
     """
     nodes_to_add = collections.defaultdict(int)
 
@@ -298,6 +301,8 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
                 continue
             node_resources = node_types[node_type]["resources"]
             if strict_spread:
+                # If handling strict spread, only one bundle can be placed on
+                # the node.
                 score = _utilization_score(node_resources, [resources[0]])
             else:
                 score = _utilization_score(node_resources, resources)
@@ -307,7 +312,8 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
         # Give up, no feasible node.
         if not utilization_scores:
             # TODO (Alex): We will hit this case every time a placement group
-            # starts up. This will behave properly with the current utilization
+            # starts up because placement groups are scheduled via custom
+            # resources. This will behave properly with the current utilization
             # score heuristic, but it's a little dangerous and misleading.
             logger.info(
                 "No feasible node type to add for {}".format(resources))
@@ -363,9 +369,12 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
         node_resources (List[ResourceDict]): List of resources per node.
         resource_demands (List[ResourceDict]): List of resource bundles that
             need to be bin packed onto the nodes.
+        strict_spread (bool): If true, each element in resource_demands must be
+            placed on a different entry in `node_resources`.
 
     Returns:
         List[ResourceDict] the residual list resources that do not fit.
+
     """
 
     unfulfilled = []
@@ -380,6 +389,7 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
             node = nodes[i]
             if _fits(node, demand):
                 found = True
+                # In the strict_spread case, we can't reuse nodes.
                 if strict_spread:
                     used.append(node)
                     del nodes[i]
@@ -413,7 +423,7 @@ def _inplace_add(a: collections.defaultdict, b: Dict) -> None:
         a[k] += v
 
 
-def placement_groups_to_resource_demands(placement_group_load: List[
+def placement_groups_to_resource_demands(pending_placement_groups: List[
         PlacementGroupTableData]):
     """Preprocess placement group requests into regular resource demand vectors
     when possible. The policy is:
@@ -423,7 +433,7 @@ def placement_groups_to_resource_demands(placement_group_load: List[
         * SPREAD - Flatten into a resource demand vector.
 
     Args:
-        placement_group_load (List[PlacementGroupData]): List of
+        pending_placement_groups (List[PlacementGroupData]): List of
         PlacementGroupLoad's.
 
     Returns:
@@ -432,7 +442,7 @@ def placement_groups_to_resource_demands(placement_group_load: List[
     """
     resource_demand_vector = []
     unconverted = []
-    for placement_group in placement_group_load:
+    for placement_group in pending_placement_groups:
         shapes = [dict(bundle.unit_resources) for bundle in placement_group.bundles]
         if (placement_group.strategy == PlacementStrategy.PACK or
                 placement_group.strategy == PlacementStrategy.SPREAD):
@@ -451,3 +461,4 @@ def placement_groups_to_resource_demands(placement_group_load: List[
                 f"Unknown placement group request type: {placement_group}. "
                 f"Please file a bug report "
                 f"https://github.com/ray-project/ray/issues/new.")
+    return resource_demand_vector, unconverted

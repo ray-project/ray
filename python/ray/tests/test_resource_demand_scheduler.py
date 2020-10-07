@@ -374,7 +374,7 @@ def test_placement_group_scaling():
     nodes = provider.non_terminated_nodes({})
 
     resource_demands = [{"GPU": 4}] * 2
-    placement_group_load = [
+    pending_placement_groups = [
         # Requires a new node (only uses 2 GPUs on it though).
         PlacementGroupTableData(
             state=PlacementGroupTableData.PENDING,
@@ -411,7 +411,7 @@ def test_placement_group_scaling():
             })] * 2)),
     ]
     to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands, {},
-                                              placement_group_load)
+                                              pending_placement_groups)
     assert to_launch == {"p2.8xlarge": 2}
 
 
@@ -436,7 +436,7 @@ class LoadMetricsTest(unittest.TestCase):
 
     def testPlacementGroupLoad(self):
         lm = LoadMetrics()
-        placement_group_load = [
+        pending_placement_groups = [
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING, strategy=PlacementStrategy.PACK, bundles=([Bundle(unit_resources={
                     "GPU": 2
@@ -450,8 +450,8 @@ class LoadMetricsTest(unittest.TestCase):
             "1.1.1.1", {},
             True, {},
             True, {},
-            placement_group_load=placement_group_load)
-        assert lm.get_placement_group_load() == placement_group_load
+            pending_placement_groups=pending_placement_groups)
+        assert lm.get_pending_placement_groups() == pending_placement_groups
 
 
 class AutoscalingTest(unittest.TestCase):
@@ -557,7 +557,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(1)
 
-        placement_group_load = [
+        pending_placement_groups = [
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.STRICT_SPREAD,
@@ -585,14 +585,14 @@ class AutoscalingTest(unittest.TestCase):
             waiting_bundles=[{
                 "GPU": 8
             }],
-            placement_group_load=placement_group_load)
+            pending_placement_groups=pending_placement_groups)
         autoscaler.update()
         self.waitForNodes(5)
 
         for i in range(1, 5):
             assert self.provider.mock_nodes[i].node_type == "p2.8xlarge"
 
-        placement_group_load = [
+        pending_placement_groups = [
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.STRICT_PACK,
