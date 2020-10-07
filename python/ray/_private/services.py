@@ -1280,8 +1280,11 @@ def start_raylet(redis_address,
         cpp_worker_command = []
 
     # Create the command that the Raylet will use to start workers.
+    # We want Raylet to choose the Python executable in PATH, which
+    # might not be sys.executable.
+    python_executable = os.path.split(sys.executable)[1]
     start_worker_command = [
-        sys.executable, worker_path, f"--node-ip-address={node_ip_address}",
+        python_executable, worker_path, f"--node-ip-address={node_ip_address}",
         f"--node-manager-port={node_manager_port}",
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}", f"--redis-address={redis_address}",
