@@ -4,6 +4,7 @@ import time
 import numpy as np
 import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.gcs_utils import PlacementGroupTableData
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +30,15 @@ class LoadMetrics:
         self.placement_group_load = []
 
     def update(self,
-               ip,
-               static_resources,
-               update_dynamic_resources,
-               dynamic_resources,
-               update_resource_load,
-               resource_load,
-               waiting_bundles=None,
-               infeasible_bundles=None,
-               placement_group_load=None):
+               ip: str,
+               static_resources: Dict[str, Dict],
+               update_dynamic_resources: bool,
+               dynamic_resources: Dict[str, Dict],
+               update_resource_load: bool,
+               resource_load: Dict[str, Dict],
+               waiting_bundles: List[Dict[str, float]] = None,
+               infeasible_bundles: List[Dict[str, float]] = None,
+               placement_group_load: List[PlacementGroupTableData] = None):
         # If light heartbeat enabled, only resources changed will be received.
         # We should update the changed part and compare static_resources with
         # dynamic_resources using those updated.

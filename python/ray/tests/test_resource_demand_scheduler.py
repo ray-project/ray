@@ -17,8 +17,6 @@ from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, _add_min_workers_nodes, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
-# from ray.autoscaler._private.placement_group_load_util import RESCHEDULING, \
-#     PACK, STRICT_PACK, SPREAD, STRICT_SPREAD, PlacementGroupData
 from ray.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \

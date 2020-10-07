@@ -54,7 +54,7 @@ class ResourceDemandScheduler:
             (1) calculates the resources present in the cluster.
             (2) calculates the remaining nodes to add to respect min_workers
                 constraint per node type.
-            (3) for each strict spread placement group, reserve space on a
+            (3) for each strict spread placement group, reserve space on
                 available nodes and launch new nodes if necessary.
             (4) calculates the unfulfilled resource bundles.
             (5) calculates which nodes need to be launched to fulfill all
@@ -102,7 +102,7 @@ class ResourceDemandScheduler:
         ]
         for node_type in self.node_types:
             nodes_to_add = sum(
-                x.get(node_type, 0) for x in nodes_to_add_sources)
+                source.get(node_type, 0) for source in nodes_to_add_sources)
             if nodes_to_add > 0:
                 total_nodes_to_add[node_type] = nodes_to_add
 
@@ -167,6 +167,22 @@ class ResourceDemandScheduler:
                                     strict_spreads: List[List[ResourceDict]],
                                     node_resources: List[ResourceDict],
                                     node_type_counts: Dict[NodeType, int]):
+        """For each strict spread, attempt to reserve as much space as possible on the
+           node, then allocate new nodes for the unfulfilled portion.
+
+        Args:
+            strict_spreads (List[List[ResourceDict]]): A list of placement
+                groups which must be spread out.
+            node_resources (List[ResourceDict]): Available node resources in
+                the cluster.
+            node_type_counts (Dict[NodeType, int]): The amount of each type of node
+                pending or in the cluster.
+
+        Returns:
+            Dict[NodeType, int]: Nodes to add.
+            List[ResourceDict]: The updated node_resources after the method.
+            Dict[NodeType, int]: The updated node_type_counts.
+        """
         to_add = collections.defaultdict(int)
         for bundles in strict_spreads:
             unfulfilled, node_resources = get_bin_pack_residual(
@@ -206,6 +222,7 @@ class ResourceDemandScheduler:
 def _node_type_counts_to_node_resources(
         node_types: Dict[NodeType, NodeTypeConfigDict],
         node_type_counts: Dict[NodeType, int]) -> List[ResourceDict]:
+    """Converts a node_type_counts dict into a list of node_resources."""
     resources = []
     for node_type, count in node_type_counts.items():
         # Be careful, each entry in the list must be deep copied!
@@ -353,7 +370,6 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
     for demand in resource_demands:
         found = False
         node = None
-        i = -1
         for i in range(len(nodes)):
             node = nodes[i]
             if _fits(node, demand):
@@ -384,7 +400,9 @@ def _inplace_subtract(node: ResourceDict, resources: ResourceDict) -> None:
         assert node[k] >= 0.0, (node, k, v)
 
 
-def _inplace_add(a: Dict, b: Dict) -> None:
+def _inplace_add(a: collections.defaultdict, b: Dict) -> None:
+    """Generically adds values in `b` to `a`.
+    a[k] should be defined for all k in b.keys()"""
     for k, v in b.items():
         a[k] += v
 
@@ -392,18 +410,19 @@ def _inplace_add(a: Dict, b: Dict) -> None:
 def placement_groups_to_resource_demands(placement_group_load: List[
         PlacementGroupTableData]):
     """Preprocess placement group requests into regular resource demand vectors
-    when possible.
+    when possible. The policy is:
+        * STRICT_PACK - Convert to a single bundle.
+        * PACK - Flatten into a resource demand vector.
+        * STRICT_SPREAD - Cannot be converted.
+        * SPREAD - Flatten into a resource demand vector.
 
     Args:
         placement_group_load (List[PlacementGroupData]): List of
         PlacementGroupLoad's.
 
     Returns:
-        (resource_demand_vector: List[ResourceDict], unconverted:
-        List[List[ResourceDict]]) Converts PACK, SPREAD, and STRICT_PACK
-        placement groups to resource demands. STRICT_SPREAD is not equivalent
-        to a resource demand so it can't be converted.
-
+        List[ResourceDict]: The placement groups which were converted to a resource demand vector.
+        List[List[ResourceDict]]: The placement groups which should be strictly spread.
     """
     resource_demand_vector = []
     unconverted = []
@@ -426,4 +445,3 @@ def placement_groups_to_resource_demands(placement_group_load: List[
                 f"Unknown placement group request type: {placement_group}. "
                 f"Please file a bug report "
                 f"https://github.com/ray-project/ray/issues/new.")
-    return resource_demand_vector, unconverted

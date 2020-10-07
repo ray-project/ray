@@ -79,8 +79,10 @@ message GcsEntry {
 }
 
 message ObjectTableData {
+  // The size of the object.
+  uint64 object_size = 1;
   // The node manager ID that this object appeared on or was evicted by.
-  bytes manager = 1;
+  bytes manager = 2;
 }
 
 message TaskReconstructionData {
@@ -160,7 +162,6 @@ message ErrorTableData {
 
 message PlacementGroupTableData {
   // State of a placement group.
-  // Keep this synchronized with python/ray/autoscaler/_private/placement_group_load.py
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
@@ -273,9 +274,6 @@ message ResourceDemand {
   // The number of requests for which there is no node that is a superset of
   // the requested resource shape.
   uint64 num_infeasible_requests_queued = 3;
-  // The number of requests of this shape still queued in CoreWorkers that this
-  // raylet knows about.
-  int64 backlog_size = 4;
 }
 
 // Represents the demand sorted by resource shape.
@@ -283,11 +281,6 @@ message ResourceLoad {
   // A list of all resource demands. The resource shape in each demand is
   // unique.
   repeated ResourceDemand resource_demands = 1;
-}
-
-message PlacementGroupLoad {
-  // The list of pending placement group specifications.
-  repeated PlacementGroupTableData placement_group_data = 1;
 }
 
 message HeartbeatTableData {
@@ -318,8 +311,6 @@ message HeartbeatBatchTableData {
   // The total resource demand on all nodes included in the batch, sorted by
   // resource shape.
   ResourceLoad resource_load_by_shape = 2;
-  // The pending list of placement groups.
-  PlacementGroupLoad placement_group_load = 3;
 }
 
 // Data for a lease on task execution.
@@ -419,22 +410,19 @@ message StoredConfig {
   map<string, string> config = 1;
 }
 
+message ObjectTableDataList {
+  repeated ObjectTableData items = 1;
+}
+
 message ObjectLocationInfo {
   bytes object_id = 1;
   repeated ObjectTableData locations = 2;
-  // For objects that have been spilled to external storage, the URL from which
-  // they can be retrieved.
-  string spilled_url = 3;
 }
 
 // A notification message about one object's locations being changed.
 message ObjectLocationChange {
   bool is_add = 1;
-  // The node manager ID that this object appeared on or was evicted by.
-  bytes node_id = 2;
-  // The object has been spilled to this URL. This should be set xor the above
-  // fields are set.
-  string spilled_url = 3;
+  ObjectTableData data = 2;
 }
 
 // A notification message about one node's resources being changed.
