@@ -17,7 +17,8 @@ from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, _add_min_workers_nodes, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
-from ray.autoscaler._private.placement_group_load_util import RESCHEDULING, PACK, STRICT_PACK, SPREAD, STRICT_SPREAD, PlacementGroupData
+from ray.autoscaler._private.placement_group_load_util import RESCHEDULING, \
+    PACK, STRICT_PACK, SPREAD, STRICT_SPREAD, PlacementGroupData
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER
 from ray.test_utils import same_elements
@@ -96,8 +97,8 @@ def test_util_score():
 def test_bin_pack():
     assert get_bin_pack_residual([], [{"GPU": 2}, {"GPU": 2}])[0] == \
         [{"GPU": 2}, {"GPU": 2}]
-    assert get_bin_pack_residual([{"GPU": 2}], [{"GPU": 2}, {"GPU": 2}])[0] == \
-        [{"GPU": 2}]
+    assert get_bin_pack_residual([{"GPU": 2}], [{"GPU": 2}, {"GPU": 2}])[0] \
+        == [{"GPU": 2}]
     assert get_bin_pack_residual([{
         "GPU": 4
     }], [{
@@ -374,7 +375,8 @@ def test_placement_group_scaling():
 
     resource_demands = [{"GPU": 4}] * 2
     placement_group_load = [
-        PlacementGroupData(  # <= Requires a new node (only uses 2 GPUs on it though).
+        # Requires a new node (only uses 2 GPUs on it though).
+        PlacementGroupData(
             state=RESCHEDULING,
             strategy=STRICT_SPREAD,
             shapes=[{
@@ -384,20 +386,23 @@ def test_placement_group_scaling():
             }, {
                 "GPU": 2
             }]),
-        PlacementGroupData(  # <= Requires a new node (uses the whole node).
+        # Requires a new node (uses the whole node).
+        PlacementGroupData(
             state=RESCHEDULING,
             strategy=STRICT_PACK,
             shapes=([{
                 "GPU": 2
             }] * 4)),
-        PlacementGroupData(  # <= Fits across the machines that strict spread
+        # Fits across the machines that strict spread.
+        PlacementGroupData(
             # runs on.
             state=RESCHEDULING,
             strategy=PACK,
             shapes=([{
                 "GPU": 2
             }] * 2)),
-        PlacementGroupData(  # <= Fits across the machines that strict spread
+        # Fits across the machines that strict spread.
+        PlacementGroupData(
             # runs on.
             state=RESCHEDULING,
             strategy=SPREAD,
@@ -585,14 +590,13 @@ class AutoscalingTest(unittest.TestCase):
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
 
         placement_group_load = [
-            PlacementGroupData(  # <= Requires a new node (uses the whole node).
+            PlacementGroupData(
                 state=RESCHEDULING,
                 strategy=STRICT_PACK,
                 shapes=([{
                     "GPU": 2
                 }] * 4)),
-            PlacementGroupData(  # <= Fits across the machines that strict spread
-                # runs on.
+            PlacementGroupData(
                 state=RESCHEDULING,
                 strategy=SPREAD,
                 shapes=([{

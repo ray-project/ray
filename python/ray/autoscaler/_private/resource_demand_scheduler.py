@@ -76,11 +76,12 @@ class ResourceDemandScheduler:
             _add_min_workers_nodes(
                 node_resources, node_type_counts, self.node_types)
 
-        placement_group_demand_vector, strict_spreads = placement_groups_to_resource_demands(
-            placement_group_load)
+        placement_group_demand_vector, strict_spreads = \
+            placement_groups_to_resource_demands(placement_group_load)
         resource_demands += placement_group_demand_vector
-        placement_group_nodes_to_add, node_resources, node_type_counts = self.reserve_and_allocate_spread(
-            strict_spreads, node_resources, node_type_counts)
+        placement_group_nodes_to_add, node_resources, node_type_counts = \
+            self.reserve_and_allocate_spread(
+                strict_spreads, node_resources, node_type_counts)
 
         unfulfilled, _ = get_bin_pack_residual(node_resources,
                                                resource_demands)
@@ -99,7 +100,7 @@ class ResourceDemandScheduler:
         ]
         for node_type in self.node_types:
             nodes_to_add = sum(
-                [x.get(node_type, 0) for x in nodes_to_add_sources])
+                x.get(node_type, 0) for x in nodes_to_add_sources)
             if nodes_to_add > 0:
                 total_nodes_to_add[node_type] = nodes_to_add
 
@@ -389,19 +390,21 @@ def placement_groups_to_resource_demands(placement_group_load: List[
     when possible.
 
     Args:
-        placement_group_load (List[PlacementGroupData]): List of PlacementGroupLoad's.
+        placement_group_load (List[PlacementGroupData]): List of
+        PlacementGroupLoad's.
 
     Returns:
         (resource_demand_vector: List[ResourceDict], unconverted:
-        List[List[ResourceDict]]) Converts PACK, SPREAD, and STRICT_PACK placement
-        groups to resource demands. STRICT_SPREAD is not equivalent to a
-        resource demand so it can't be converted.
+        List[List[ResourceDict]]) Converts PACK, SPREAD, and STRICT_PACK
+        placement groups to resource demands. STRICT_SPREAD is not equivalent
+        to a resource demand so it can't be converted.
 
     """
     resource_demand_vector = []
     unconverted = []
     for placement_group in placement_group_load:
-        if placement_group.strategy == placement_group_load_util.PACK or placement_group.strategy == placement_group_load_util.SPREAD:
+        if (placement_group.strategy == placement_group_load_util.PACK or
+                placement_group.strategy == placement_group_load_util.SPREAD):
             resource_demand_vector.extend(placement_group.shapes)
         elif placement_group.strategy == placement_group_load_util.STRICT_PACK:
             combined = collections.defaultdict(float)
@@ -409,10 +412,13 @@ def placement_groups_to_resource_demands(placement_group_load: List[
                 for label, quantity in shape.items():
                     combined[label] += quantity
             resource_demand_vector.append(combined)
-        elif placement_group.strategy == placement_group_load_util.STRICT_SPREAD:
+        elif (placement_group.strategy ==
+              placement_group_load_util.STRICT_SPREAD):
             unconverted.append(placement_group.shapes)
         else:
             logger.error(
-                f"Unknown placement group request type: {placement_group}. Please file a bug report https://github.com/ray-project/ray/issues/new."
+                f"Unknown placement group request type: {placement_group}. "
+                f"Please file a bug report "
+                f"https://github.com/ray-project/ray/issues/new."
             )
     return resource_demand_vector, unconverted
