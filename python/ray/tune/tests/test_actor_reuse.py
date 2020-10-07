@@ -91,20 +91,25 @@ class ActorReuseTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def testTrialReuseDisabled(self):
+    def _run_trials_with_frequent_pauses(self, trainable, reuse=False):
         trials = run_experiments(
             {
                 "foo": {
-                    "run": create_resettable_class(),
+                    "run": trainable,
                     "num_samples": 1,
                     "config": {
                         "id": tune.grid_search([0, 1, 2, 3])
                     },
                 }
             },
-            reuse_actors=False,
+            reuse_actors=reuse,
             scheduler=FrequentPausesScheduler(),
             verbose=0)
+        return trials
+
+    def testTrialReuseDisabled(self):
+        trials = self._run_trials_with_frequent_pauses(
+            create_resettable_class(), reuse=False)
         self.assertEqual([t.last_result["id"] for t in trials], [0, 1, 2, 3])
         self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
         self.assertEqual([t.last_result["num_resets"] for t in trials],
@@ -112,38 +117,16 @@ class ActorReuseTest(unittest.TestCase):
 
     def testTrialReuseDisabledFunction(self):
         num_resets = defaultdict(lambda: 0)
-        trials = run_experiments(
-            {
-                "foo": {
-                    "run": create_resettable_function(num_resets),
-                    "num_samples": 1,
-                    "config": {
-                        "id": tune.grid_search([0, 1, 2, 3])
-                    },
-                }
-            },
-            reuse_actors=False,
-            scheduler=FrequentPausesScheduler(),
-            verbose=0)
+        trials = self._run_trials_with_frequent_pauses(
+            create_resettable_function(num_resets), reuse=False)
         self.assertEqual([t.last_result["id"] for t in trials], [0, 1, 2, 3])
         self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
         self.assertEqual([num_resets[t.trial_id] for t in trials],
                          [0, 0, 0, 0])
 
     def testTrialReuseEnabled(self):
-        trials = run_experiments(
-            {
-                "foo": {
-                    "run": create_resettable_class(),
-                    "num_samples": 1,
-                    "config": {
-                        "id": tune.grid_search([0, 1, 2, 3])
-                    }
-                }
-            },
-            reuse_actors=True,
-            scheduler=FrequentPausesScheduler(),
-            verbose=0)
+        trials = self._run_trials_with_frequent_pauses(
+            create_resettable_class(), reuse=True)
         self.assertEqual([t.last_result["id"] for t in trials], [0, 1, 2, 3])
         self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
         self.assertEqual([t.last_result["num_resets"] for t in trials],
@@ -151,20 +134,8 @@ class ActorReuseTest(unittest.TestCase):
 
     def testTrialReuseEnabledFunction(self):
         num_resets = defaultdict(lambda: 0)
-
-        trials = run_experiments(
-            {
-                "foo": {
-                    "run": create_resettable_function(num_resets),
-                    "num_samples": 1,
-                    "config": {
-                        "id": tune.grid_search([0, 1, 2, 3])
-                    },
-                }
-            },
-            reuse_actors=True,
-            scheduler=FrequentPausesScheduler(),
-            verbose=0)
+        trials = self._run_trials_with_frequent_pauses(
+            create_resettable_function(num_resets), reuse=True)
         self.assertEqual([t.last_result["id"] for t in trials], [0, 1, 2, 3])
         self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
         self.assertEqual([num_resets[t.trial_id] for t in trials],
