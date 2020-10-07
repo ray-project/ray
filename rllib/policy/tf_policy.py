@@ -329,7 +329,8 @@ class TFPolicy(Policy):
         fetched = builder.get(to_fetch)
 
         # Update our global timestep by the batch size.
-        self.global_timestep += fetched[0].shape[0]
+        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
+            else obs_batch.shape[0]
 
         return fetched
 

@@ -138,7 +138,10 @@ def view_requirements_fn_pg(policy: Policy) -> Dict[str, ViewRequirement]:
     ret = {
         # Next obs are needed for PPO postprocessing, but not in loss.
         SampleBatch.NEXT_OBS: ViewRequirement(
-            SampleBatch.OBS, shift=1, used_for_training=False),
+            data_col=SampleBatch.OBS,
+            space=policy.observation_space,
+            shift=1,
+            used_for_training=False),
         # Created during postprocessing.
         Postprocessing.ADVANTAGES: ViewRequirement(shift=0),
         Postprocessing.VALUE_TARGETS: ViewRequirement(shift=0),

@@ -205,40 +205,32 @@ class DynamicTFPolicy(TFPolicy):
             self.view_requirements.update(view_requirements_fn(self))
 
         # Setup standard placeholders
-        prev_actions = None
-        prev_rewards = None
         if existing_inputs is not None:
-            obs = existing_inputs[SampleBatch.CUR_OBS]
-            if self._obs_include_prev_action_reward:
-                prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
-                prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
-            action_input = existing_inputs[SampleBatch.ACTIONS]
-            explore = existing_inputs["is_exploring"]
             timestep = existing_inputs["timestep"]
+            explore = existing_inputs["is_exploring"]
+            self._input_dict, self._dummy_batch = \
+                self._get_input_dict_and_dummy_batch(
+                    self.view_requirements, existing_inputs)
         else:
-            # Actions placeholder for `self.compute_log_likelihoods()`.
-            action_input = ModelCatalog.get_action_placeholder(action_space)
-            # All other placeholders: Observation, prev-a/r, etc..
             if self.config["_use_trajectory_view_api"]:
                 self._input_dict, self._dummy_batch = \
                     self._get_input_dict_and_dummy_batch(
-                        self.view_requirements)
-                obs = self._input_dict[SampleBatch.OBS]
+                        self.view_requirements, {SampleBatch.ACTIONS: ModelCatalog.get_action_placeholder(action_space)})
             else:
-                obs = tf1.placeholder(
-                    tf.float32,
-                    shape=[None] + list(obs_space.shape),
-                    name="observation")
-                if self._obs_include_prev_action_reward:
-                    prev_actions = ModelCatalog.get_action_placeholder(
-                        action_space, "prev_action")
-                    prev_rewards = tf1.placeholder(
-                        tf.float32, [None], name="prev_reward")
                 self._input_dict = {
-                    SampleBatch.CUR_OBS: obs,
-                    SampleBatch.PREV_ACTIONS: prev_actions,
-                    SampleBatch.PREV_REWARDS: prev_rewards,
+                    SampleBatch.CUR_OBS: tf1.placeholder(
+                        tf.float32,
+                        shape=[None] + list(obs_space.shape),
+                        name="observation")
                 }
+                if self._obs_include_prev_action_reward:
+                    self._input_dict.update({
+                        SampleBatch.PREV_ACTIONS:
+                            ModelCatalog.get_action_placeholder(action_space,
+                                                                "prev_action"),
+                        SampleBatch.PREV_REWARDS: tf1.placeholder(
+                            tf.float32, [None], name="prev_reward"),
+                    })
             # Placeholder for (sampling steps) timestep (int).
             timestep = tf1.placeholder(tf.int32, (), name="timestep")
             # Placeholder for `is_exploring` flag.
@@ -297,6 +289,13 @@ class DynamicTFPolicy(TFPolicy):
                     action_distribution=action_dist,
                     timestep=timestep,
                     explore=explore)
+            if self.config["_use_trajectory_view_api"]:
+                self._dummy_batch[SampleBatch.ACTION_DIST_INPUTS] = \
+                    np.zeros(
+                        [1 if not s else s for s in
+                         dist_inputs.shape.as_list()])
+            self._input_dict[SampleBatch.ACTION_DIST_INPUTS] = \
+                tf1.placeholder(shape=dist_inputs.shape.as_list(), dtype=tf.float32)
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session()
@@ -310,8 +309,8 @@ class DynamicTFPolicy(TFPolicy):
             action_space=action_space,
             config=config,
             sess=sess,
-            obs_input=obs,
-            action_input=action_input,  # for logp calculations
+            obs_input=self._input_dict[SampleBatch.OBS],
+            action_input=self._input_dict[SampleBatch.ACTIONS],
             sampled_action=sampled_action,
             sampled_action_logp=sampled_action_logp,
             dist_inputs=dist_inputs,
@@ -321,8 +320,8 @@ class DynamicTFPolicy(TFPolicy):
             model=self.model,
             state_inputs=self._state_inputs,
             state_outputs=self._state_out,
-            prev_action_input=prev_actions,
-            prev_reward_input=prev_rewards,
+            prev_action_input=self._input_dict.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_input=self._input_dict.get(SampleBatch.PREV_REWARDS),
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req,
@@ -392,15 +391,26 @@ class DynamicTFPolicy(TFPolicy):
         else:
             return []
 
-    def _get_input_dict_and_dummy_batch(self, view_requirements):
+    def _get_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
         input_dict = {}
         dummy_batch = {}
-        for col, view_req in self.view_requirements.items():
-            dummy_batch[col] = np.zeros_like([view_req.space.sample()])
-            input_dict[col] = tf1.placeholder(
-                shape=(None, ) + view_req.space.shape,
-                dtype=view_req.space.dtype,
-            )
+        for view_col, view_req in view_requirements.items():
+            # Skip action dist inputs placeholder (do later).
+            if view_col == SampleBatch.ACTION_DIST_INPUTS:
+                continue
+            elif view_col in existing_inputs:
+                input_dict[view_col] = existing_inputs[view_col]
+                dummy_batch[view_col] = np.zeros(
+                    shape=[1 if s is None else s
+                           for s in existing_inputs[view_col].shape.as_list()],
+                    dtype=np.float32)
+            # All others.
+            else:
+                input_dict[view_col] = tf1.placeholder(
+                    shape=(None, ) + view_req.space.shape,
+                    dtype=view_req.space.dtype,
+                )
+                dummy_batch[view_col] = np.zeros_like([view_req.space.sample()])
         return input_dict, dummy_batch
 
     def _initialize_loss_dynamically(self):
@@ -446,39 +456,47 @@ class DynamicTFPolicy(TFPolicy):
         # overwrite any tensor state from that call).
         self.model(self._input_dict, self._state_inputs, self._seq_lens)
 
-        if self._obs_include_prev_action_reward:
-            train_batch = UsageTrackingDict({
-                SampleBatch.PREV_ACTIONS: self._prev_action_input,
-                SampleBatch.PREV_REWARDS: self._prev_reward_input,
-                SampleBatch.CUR_OBS: self._obs_input,
-            })
-            loss_inputs = [
-                (SampleBatch.PREV_ACTIONS, self._prev_action_input),
-                (SampleBatch.PREV_REWARDS, self._prev_reward_input),
-                (SampleBatch.CUR_OBS, self._obs_input),
-            ]
+        if not self.config["_use_trajectory_view_api"]:
+            if self._obs_include_prev_action_reward:
+                train_batch = UsageTrackingDict({
+                    SampleBatch.PREV_ACTIONS: self._prev_action_input,
+                    SampleBatch.PREV_REWARDS: self._prev_reward_input,
+                    SampleBatch.CUR_OBS: self._obs_input,
+                })
+                loss_inputs = [
+                    (SampleBatch.PREV_ACTIONS, self._prev_action_input),
+                    (SampleBatch.PREV_REWARDS, self._prev_reward_input),
+                    (SampleBatch.CUR_OBS, self._obs_input),
+                ]
+            else:
+                train_batch = UsageTrackingDict({
+                    SampleBatch.CUR_OBS: self._obs_input,
+                })
+                loss_inputs = [
+                    (SampleBatch.CUR_OBS, self._obs_input),
+                ]
+
+            for k, v in postprocessed_batch.items():
+                if k in train_batch:
+                    continue
+                elif v.dtype == np.object:
+                    continue  # can't handle arbitrary objects in TF
+                elif k == "seq_lens" or k.startswith("state_in_"):
+                    continue
+                shape = (None, ) + v.shape[1:]
+                dtype = np.float32 if v.dtype == np.float64 else v.dtype
+                placeholder = tf1.placeholder(dtype, shape=shape, name=k)
+                train_batch[k] = placeholder
+
+            for i, si in enumerate(self._state_inputs):
+                train_batch["state_in_{}".format(i)] = si
         else:
-            train_batch = UsageTrackingDict({
-                SampleBatch.CUR_OBS: self._obs_input,
-            })
             loss_inputs = [
-                (SampleBatch.CUR_OBS, self._obs_input),
+                (k, v) for k, v in self._input_dict.items() if
+                k in self.view_requirements and
+                self.view_requirements[k].used_for_training
             ]
-
-        for k, v in postprocessed_batch.items():
-            if k in train_batch:
-                continue
-            elif v.dtype == np.object:
-                continue  # can't handle arbitrary objects in TF
-            elif k == "seq_lens" or k.startswith("state_in_"):
-                continue
-            shape = (None, ) + v.shape[1:]
-            dtype = np.float32 if v.dtype == np.float64 else v.dtype
-            placeholder = tf1.placeholder(dtype, shape=shape, name=k)
-            train_batch[k] = placeholder
-
-        for i, si in enumerate(self._state_inputs):
-            train_batch["state_in_{}".format(i)] = si
+            train_batch = UsageTrackingDict(self._input_dict)
         train_batch["seq_lens"] = self._seq_lens
 
         if log_once("loss_init"):
