@@ -318,6 +318,7 @@ class StandardAutoscaler:
                     running_nodes[node_type] += 1
                 else:
                     pending_nodes[node_type] += 1
+        # TODO(ameer): Consider making frac configurable.
         frac = 1
         updated_nodes_to_launch = {}
         for node_type in to_launch:
