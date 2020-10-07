@@ -62,7 +62,6 @@ def hey(_):
     return b"hey"
 
 
-# TODO(architkulkarni): how many connections and threads?
 num_connections = int(num_remote_cpus * 0.75)
 num_threads = 2
 time_to_run = "10s"
