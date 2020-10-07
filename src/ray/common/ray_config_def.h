@@ -285,7 +285,7 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
 /// If true, the worker's queue backlog size will be propagated to the heartbeat batch
 /// data.
-RAY_CONFIG(bool, report_worker_backlog, true)
+RAY_CONFIG(bool, report_worker_backlog, false)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
