@@ -14,7 +14,7 @@
 #   2307 requests in 10.00s, 315.66KB read
 # Requests/sec:    230.61
 # Transfer/sec:     31.55KB
-# 
+#
 # Results for node 2 of 21:
 # Running 10s test @ http://127.0.0.1:8000/hey
 #   2 threads and 63 connections
