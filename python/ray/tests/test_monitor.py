@@ -1,5 +1,5 @@
 import ray
-from ray.monitor import Monitor
+from ray.monitor import parse_resource_demands
 
 def test_parse_resource_demands():
     resource_load_by_shape = ray.gcs_utils.ResourceLoad(resource_demands=[
@@ -29,9 +29,8 @@ def test_parse_resource_demands():
         ),
     ])
 
-    monitor = Monitor(None, None, _testing=True)
     waiting, infeasible = \
-        monitor.parse_resource_demands(resource_load_by_shape)
+        parse_resource_demands(resource_load_by_shape)
 
     assert waiting.count({"CPU": 1}) == 1
     assert waiting.count({"CPU": 2}) == 2

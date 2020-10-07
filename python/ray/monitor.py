@@ -31,9 +31,7 @@ class Monitor:
             This is used to receive notifications about failed components.
     """
 
-    def __init__(self, redis_address, autoscaling_config, redis_password=None, _testing=False):
-        if _testing:
-            return
+    def __init__(self, redis_address, autoscaling_config, redis_password=None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
@@ -91,43 +89,6 @@ class Monitor:
         """
         self.primary_subscribe_client.psubscribe(pattern)
 
-    def parse_resource_demands(self, resource_load_by_shape):
-        """Handle the message.resource_load_by_shape protobuf for the demand
-        based autoscaling. Catch and log all exceptions so this doesn't
-        interfere with the utilization based autoscaler until we're confident
-        this is stable. Worker queue backlogs are added to the appropriate
-        resource demand vector.
-
-        Args:
-            resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
-                in protobuf form or None.
-
-        Returns:
-            List[ResourceDict]: Waiting bundles (ready and feasible).
-            List[ResourceDict]: Infeasible bundles.
-        """
-        waiting_bundles, infeasible_bundles = [], []
-        try:
-            for resource_demand_pb in list(
-                    resource_load_by_shape.resource_demands):
-                request_shape = dict(resource_demand_pb.shape)
-                for _ in range(
-                        resource_demand_pb.num_ready_requests_queued):
-                    waiting_bundles.append(request_shape)
-                for _ in range(
-                        resource_demand_pb.num_infeasible_requests_queued):
-                    infeasible_bundles.append(request_shape)
-                for _ in range(
-                        resource_demand_pb.backlog_size):
-                    # Infeasible and ready states for tasks are (logically)
-                    # mutually exclusive.
-                    if resource_demand_pb.num_infeasible_requests_queued > 0:
-                        infeasible_bundles.append(request_shape)
-                    else:
-                        waiting_bundles.append(request_shape)
-        except Exception as e:
-            logger.exception(e)
-        return waiting_bundles, infeasible_bundles
 
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
@@ -143,7 +104,7 @@ class Monitor:
             available_resources = dict(heartbeat_message.resources_available)
 
             waiting_bundles, infeasible_bundles = \
-                self.parse_resource_demands(message.resource_load_by_shape)
+                parse_resource_demands(message.resource_load_by_shape)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
@@ -398,3 +359,41 @@ if __name__ == "__main__":
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
         raise e
+
+def parse_resource_demands(self, resource_load_by_shape):
+    """Handle the message.resource_load_by_shape protobuf for the demand
+    based autoscaling. Catch and log all exceptions so this doesn't
+    interfere with the utilization based autoscaler until we're confident
+    this is stable. Worker queue backlogs are added to the appropriate
+    resource demand vector.
+
+    Args:
+        resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
+            in protobuf form or None.
+
+    Returns:
+        List[ResourceDict]: Waiting bundles (ready and feasible).
+        List[ResourceDict]: Infeasible bundles.
+    """
+    waiting_bundles, infeasible_bundles = [], []
+    try:
+        for resource_demand_pb in list(
+                resource_load_by_shape.resource_demands):
+            request_shape = dict(resource_demand_pb.shape)
+            for _ in range(
+                    resource_demand_pb.num_ready_requests_queued):
+                waiting_bundles.append(request_shape)
+            for _ in range(
+                    resource_demand_pb.num_infeasible_requests_queued):
+                infeasible_bundles.append(request_shape)
+            for _ in range(
+                    resource_demand_pb.backlog_size):
+                # Infeasible and ready states for tasks are (logically)
+                # mutually exclusive.
+                if resource_demand_pb.num_infeasible_requests_queued > 0:
+                    infeasible_bundles.append(request_shape)
+                else:
+                    waiting_bundles.append(request_shape)
+    except Exception as e:
+        logger.exception(e)
+    return waiting_bundles, infeasible_bundles
