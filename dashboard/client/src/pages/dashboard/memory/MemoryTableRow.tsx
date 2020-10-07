@@ -11,17 +11,17 @@ type Props = {
 export const MemoryTableRow = (props: Props) => {
   const { memoryTableEntry } = props;
   const object_size =
-    memoryTableEntry.object_size === -1
+    memoryTableEntry.objectSize === -1
       ? "?"
-      : formatByteAmount(memoryTableEntry.object_size, "mebibyte");
+      : formatByteAmount(memoryTableEntry.objectSize, "mebibyte");
   const memoryTableEntryValues = [
-    memoryTableEntry.node_ip_address,
+    memoryTableEntry.nodeIpAddress,
     memoryTableEntry.pid,
     memoryTableEntry.type,
-    memoryTableEntry.object_ref,
+    memoryTableEntry.objectRef,
     object_size,
-    memoryTableEntry.reference_type,
-    memoryTableEntry.call_site,
+    memoryTableEntry.referenceType,
+    memoryTableEntry.callSite,
   ];
   return (
     <TableRow hover>

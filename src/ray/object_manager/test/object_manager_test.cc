@@ -50,7 +50,8 @@ class MockServer {
         config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, node_id_, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_),
+                        nullptr) {
     RAY_CHECK_OK(RegisterGcs(main_service));
   }
 
@@ -262,9 +263,9 @@ class TestObjectManager : public TestObjectManagerBase {
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1, rpc::Address(),
-        [this, sub_id, object_1, object_2](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::NodeID> &clients) {
+        [this, sub_id, object_1, object_2](const ray::ObjectID &object_id,
+                                           const std::unordered_set<ray::NodeID> &clients,
+                                           const std::string &spilled_url) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }

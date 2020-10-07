@@ -56,9 +56,12 @@ class GaussianNoise(Exploration):
         super().__init__(
             action_space, model=model, framework=framework, **kwargs)
 
+        # Create the Random exploration module (used for the first n
+        # timesteps).
         self.random_timesteps = random_timesteps
         self.random_exploration = Random(
             action_space, model=self.model, framework=self.framework, **kwargs)
+
         self.stddev = stddev
         # The `scale` annealing schedule.
         self.scale_schedule = scale_schedule or PiecewiseSchedule(
@@ -72,7 +75,7 @@ class GaussianNoise(Exploration):
             0, framework=self.framework, tf_name="timestep")
 
         # Build the tf-info-op.
-        if self.framework in ["tf", "tfe"]:
+        if self.framework in ["tf2", "tf", "tfe"]:
             self._tf_info_op = self.get_info()
 
     @override(Exploration)
@@ -104,7 +107,7 @@ class GaussianNoise(Exploration):
             self.random_exploration.get_tf_exploration_action_op(
                 action_dist, explore)
         stochastic_actions = tf.cond(
-            pred=tf.convert_to_tensor(ts <= self.random_timesteps),
+            pred=tf.convert_to_tensor(ts < self.random_timesteps),
             true_fn=lambda: random_actions,
             false_fn=lambda: tf.clip_by_value(
                 deterministic_actions + gaussian_sample,
@@ -144,7 +147,7 @@ class GaussianNoise(Exploration):
         # Apply exploration.
         if explore:
             # Random exploration phase.
-            if self.last_timestep <= self.random_timesteps:
+            if self.last_timestep < self.random_timesteps:
                 action, _ = \
                     self.random_exploration.get_torch_exploration_action(
                         action_dist, explore=True)

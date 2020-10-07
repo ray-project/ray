@@ -41,7 +41,7 @@ pushd python/ray/dashboard/client
 popd
 set -x
 
-mkdir .whl
+mkdir -p .whl
 for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   PYTHON=${PYTHONS[i]}
   NUMPY_VERSION=${NUMPY_VERSIONS[i]}

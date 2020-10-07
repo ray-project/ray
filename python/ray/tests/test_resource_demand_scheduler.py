@@ -9,7 +9,8 @@ import copy
 import ray
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
     MockProcessRunner
-from ray.autoscaler._private.providers import _NODE_PROVIDERS
+from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
+                                               _clear_provider_cache)
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.commands import get_or_create_head_node
@@ -350,6 +351,7 @@ class AutoscalingTest(unittest.TestCase):
     def tearDown(self):
         self.provider = None
         del _NODE_PROVIDERS["mock"]
+        _clear_provider_cache()
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 

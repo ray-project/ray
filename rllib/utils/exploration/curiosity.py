@@ -211,7 +211,7 @@ class Curiosity(Exploration):
         })
         phi, next_phi = torch.chunk(phis, 2)
         actions_tensor = torch.from_numpy(
-            sample_batch[SampleBatch.ACTIONS]).long()
+            sample_batch[SampleBatch.ACTIONS]).long().to(policy.device)
 
         # Predict next phi with forward model.
         predicted_next_phi = self.model._curiosity_forward_fcnet(
