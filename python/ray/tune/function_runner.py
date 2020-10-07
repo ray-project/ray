@@ -488,7 +488,9 @@ class FunctionRunner(Trainable):
             self._continue_semaphore.release()
             # Wait for thread termination so it is save to re-use the same
             # actor.
-            self._runner.join(timeout=1)
+            thread_timeout = int(
+                os.environ.get("TUNE_FUNCTION_THREAD_TIMEOUT_S", 2))
+            self._runner.join(timeout=thread_timeout)
             if self._runner.is_alive():
                 # Did not finish within timeout, reset unsuccessful.
                 return False

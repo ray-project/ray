@@ -608,6 +608,8 @@ These are the environment variables Ray Tune currently considers:
   or a search algorithm, Tune will error
   if the metric was not reported in the result. Setting this environment variable
   to ``1`` will disable this check.
+* **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
+  for threads to finish after instructing them to comlplete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
   experiment state is checkpointed. If not set this will default to ``10``.
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
