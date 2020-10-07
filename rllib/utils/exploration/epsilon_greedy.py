@@ -28,7 +28,7 @@ class EpsilonGreedy(Exploration):
                  initial_epsilon: float = 1.0,
                  final_epsilon: float = 0.05,
                  epsilon_timesteps: int = int(1e5),
-                 epsilon_schedule: Optional[Schedule]=None,
+                 epsilon_schedule: Optional[Schedule] = None,
                  **kwargs):
         """Create an EpsilonGreedy exploration class.
 
@@ -75,8 +75,7 @@ class EpsilonGreedy(Exploration):
             return self._get_torch_exploration_action(q_values, explore,
                                                       timestep)
 
-    def _get_tf_exploration_action_op(self,
-                                      q_values: TensorType,
+    def _get_tf_exploration_action_op(self, q_values: TensorType,
                                       explore: Union[bool, TensorType],
                                       timestep: Union[int, TensorType]):
         """TF method to produce the tf op for an epsilon exploration action.
@@ -122,8 +121,7 @@ class EpsilonGreedy(Exploration):
             with tf1.control_dependencies([assign_op]):
                 return action, tf.zeros_like(action, dtype=tf.float32)
 
-    def _get_torch_exploration_action(self,
-                                      q_values: TensorType,
+    def _get_torch_exploration_action(self, q_values: TensorType,
                                       explore: bool,
                                       timestep: Union[int, TensorType]):
         """Torch method to produce an epsilon exploration action.

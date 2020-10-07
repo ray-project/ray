@@ -110,8 +110,7 @@ class StochasticSampling(Exploration):
             with tf1.control_dependencies([assign_op]):
                 return action, logp
 
-    def _get_torch_exploration_action(self,
-                                      action_dist: ActionDistribution,
+    def _get_torch_exploration_action(self, action_dist: ActionDistribution,
                                       timestep: Union[TensorType, int],
                                       explore: Union[TensorType, bool]):
         # Set last timestep or (if not given) increase by one.

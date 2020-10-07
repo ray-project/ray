@@ -165,8 +165,7 @@ class ParameterNoise(Exploration):
             self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
-    def get_exploration_action(self,
-                               *,
+    def get_exploration_action(self, *,
                                action_distribution: ActionDistribution,
                                timestep: Union[TensorType, int],
                                explore: Union[TensorType, bool]):

@@ -16,8 +16,12 @@ class SoftQ(StochasticSampling):
     output divided by the temperature. Returns the argmax iff explore=False.
     """
 
-    def __init__(self, action_space: Space, *, framework: Optional[str],
-                 temperature: float = 1.0, **kwargs):
+    def __init__(self,
+                 action_space: Space,
+                 *,
+                 framework: Optional[str],
+                 temperature: float = 1.0,
+                 **kwargs):
         """Initializes a SoftQ Exploration object.
 
         Args:

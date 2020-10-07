@@ -55,9 +55,9 @@ class Random(Exploration):
             return self.get_torch_exploration_action(action_distribution,
                                                      explore)
 
-    def get_tf_exploration_action_op(self,
-                                     action_dist: ActionDistribution,
-                                     explore: Optional[Union[bool, TensorType]]):
+    def get_tf_exploration_action_op(
+            self, action_dist: ActionDistribution,
+            explore: Optional[Union[bool, TensorType]]):
         def true_fn():
             batch_size = 1
             req = force_tuple(
@@ -115,8 +115,7 @@ class Random(Exploration):
         logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
         return action, logp
 
-    def get_torch_exploration_action(self,
-                                     action_dist: ActionDistribution,
+    def get_torch_exploration_action(self, action_dist: ActionDistribution,
                                      explore: bool):
         if explore:
             req = force_tuple(

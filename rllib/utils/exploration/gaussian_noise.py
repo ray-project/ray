@@ -34,7 +34,7 @@ class GaussianNoise(Exploration):
                  initial_scale: float = 1.0,
                  final_scale: float = 0.02,
                  scale_timesteps: int = 10000,
-                 scale_schedule: Optional[Schedule]=None,
+                 scale_schedule: Optional[Schedule] = None,
                  **kwargs):
         """Initializes a GaussianNoise Exploration object.
 
@@ -94,8 +94,7 @@ class GaussianNoise(Exploration):
             return self._get_tf_exploration_action_op(action_distribution,
                                                       explore, timestep)
 
-    def _get_tf_exploration_action_op(self,
-                                      action_dist: ActionDistribution,
+    def _get_tf_exploration_action_op(self, action_dist: ActionDistribution,
                                       explore: bool,
                                       timestep: Union[int, TensorType]):
         ts = timestep if timestep is not None else self.last_timestep
@@ -144,8 +143,7 @@ class GaussianNoise(Exploration):
             with tf1.control_dependencies([assign_op]):
                 return action, logp
 
-    def _get_torch_exploration_action(self,
-                                      action_dist: ActionDistribution,
+    def _get_torch_exploration_action(self, action_dist: ActionDistribution,
                                       explore: bool,
                                       timestep: Union[int, TensorType]):
         # Set last timestep or (if not given) increase by one.
