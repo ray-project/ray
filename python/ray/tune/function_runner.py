@@ -496,17 +496,6 @@ class FunctionRunner(Trainable):
                 return False
 
         self._runner = None
-
-        # Reset Trainable attributes
-        self._iteration = 0
-        self._time_total = 0.0
-        self._timesteps_total = None
-        self._episodes_total = None
-        self._time_since_restore = 0.0
-        self._timesteps_since_restore = 0
-        self._iterations_since_restore = 0
-        self._restored = False
-
         self._last_result = {}
 
         self._status_reporter.reset(
