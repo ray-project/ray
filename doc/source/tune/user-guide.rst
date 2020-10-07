@@ -131,12 +131,36 @@ You can log arbitrary values and metrics in both training APIs:
             # don't call report here!
             return dict(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
+.. _tune-autofilled-metrics:
+
+Auto-filled Metrics
+-------------------
+
 During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
 
-.. literalinclude:: ../../../python/ray/tune/result.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+* ``config``: The hyperparameter configuration
+* ``date``: String-formatted date and time when the result was processed
+* ``done``: True if the trial has been finished, False otherwise
+* ``episodes_total``: Total number of episodes (for RLLib trainables)
+* ``experiment_id``: Unique experiment ID
+* ``experiment_tag``: Unique experiment tag (includes parameter values)
+* ``hostname``: Hostname of the worker
+* ``iterations_since_restore``: The number of times ``tune.report()/trainable.train()`` has been
+  called after restoring the worker from a checkpoint
+* ``node_ip``: Host IP of the worker
+* ``pid``: Process ID (PID) of the worker process
+* ``time_since_restore``: Time in seconds since restoring from a checkpoint.
+* ``time_this_iter_s``: Runtime of the current training iteration in seconds (i.e.
+  one call to the trainable function or to ``_train()`` in the class API.
+* ``time_total_s``: Total runtime in seconds.
+* ``timestamp``: Timestamp when the result was processed
+* ``timesteps_since_restore``: Number of timesteps since restoring from a checkpoint
+* ``timesteps_total``: Total number of timesteps
+* ``training_iteration``: The number of times ``tune.report()`` has been
+  called
+* ``trial_id``: Unique trial ID
+
+All of these metrics can be seen in the ``Trial.last_result`` dictionary.
 
 .. _tune-checkpoint:
 

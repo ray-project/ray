@@ -396,6 +396,45 @@ def diagnose_serialization(trainable):
         return failure_set
 
 
+def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
+    """Checks if a given GPU has freed memory.
+
+    Requires `gputil` to be installed.
+
+    Args:
+        retry (int): Number of times to check GPU limit. Sleeps 5
+            seconds between checks.
+        gpu_id (Optional[str]): GPU id to check. Must be found
+            within GPUtil.getGPUs(). If none, resorts to
+            the first item returned from `ray.get_gpu_ids()`.
+        gpu_memory_limit (float): If memory usage is below
+            this quantity, the check will break.
+
+    Raises:
+        RuntimeError if GPUtil is not found, if no GPUs are detected
+            or if the check fails.
+    """
+    if GPUtil is None:
+        raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
+    if not gpu_id:
+        gpu_id_list = ray.get_gpu_ids()
+        if not gpu_id_list:
+            raise RuntimeError(
+                f"No GPU ids found from {ray.get_gpu_ids()}. "
+                "Did you set Tune resources correctly?")
+        gpu_id = gpu_id_list[0]
+    gpu_object = GPUtil.getGPUs()[gpu_id]
+    for i in range(int(retry)):
+        if gpu_object.memoryUsed > gpu_memory_limit:
+            logger.info(
+               f"Waiting for GPU {gpu_id} memory to free. "
+               f"Mem: {gpu_object.memoryUsed:0.3f}")
+            time.sleep(5)
+        else:
+            return True
+    raise RuntimeError("GPU memory was not freed.")
+
+
 def validate_save_restore(trainable_cls,
                           config=None,
                           num_gpus=0,

@@ -17,7 +17,7 @@ For the sake of example, let's maximize this objective function:
 Function API
 ------------
 
-Here is a simple example of using the function API. You can report intermediate metrics by simply calling ``tune.report`` within the provided function.
+With the Function API, you can report intermediate metrics by simply calling ``tune.report`` within the provided function.
 
 .. code-block:: python
 
@@ -39,6 +39,8 @@ Here is a simple example of using the function API. You can report intermediate 
 .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 Tune will run this function on a separate thread in a Ray actor process.
+
+You'll notice that Ray Tune will output extra values in addition to the user reported metrics, such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
 .. tip:: If you want to leverage multi-node data parallel training with PyTorch while using parallel hyperparameter tuning, check out our :ref:`PyTorch <tune-pytorch-cifar>` user guide and Tune's :ref:`distributed pytorch integrations <tune-integration-torch>`.
 
@@ -182,6 +184,7 @@ As a subclass of ``tune.Trainable``, Tune will create a ``Trainable`` object on 
 
 .. tip:: As a rule of thumb, the execution time of ``step`` should be large enough to avoid overheads (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
 
+You'll notice that Ray Tune will output extra values in addition to the user reported metrics, such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
 .. _tune-trainable-save-restore:
 
