@@ -13,15 +13,15 @@
 # 2k qps?
 #
 # Sample output:
-# INFO:__main__:0 forwarders and 1 worker replicas: 534 requests/s
-# INFO:__main__:0 forwarders and 5 worker replicas: 508 requests/s
-# INFO:__main__:0 forwarders and 10 worker replicas: 466 requests/s
-# INFO:__main__:1 forwarders and 1 worker replicas: 273 requests/s
-# INFO:__main__:1 forwarders and 5 worker replicas: 258 requests/s
-# INFO:__main__:1 forwarders and 10 worker replicas: 254 requests/s
-# INFO:__main__:2 forwarders and 1 worker replicas: 268 requests/s
-# INFO:__main__:2 forwarders and 5 worker replicas: 250 requests/s
-# INFO:__main__:2 forwarders and 10 worker replicas: 250 requests/s
+# 0 forwarders and 1 worker replicas: 1282 requests/s
+# 0 forwarders and 5 worker replicas: 1375 requests/s
+# 0 forwarders and 10 worker replicas: 1362 requests/s
+# 1 forwarders and 1 worker replicas: 608 requests/s
+# 1 forwarders and 5 worker replicas: 626 requests/s
+# 1 forwarders and 10 worker replicas: 627 requests/s
+# 2 forwarders and 1 worker replicas: 609 requests/s
+# 2 forwarders and 5 worker replicas: 620 requests/s
+# 2 forwarders and 10 worker replicas: 609 requests/s
 
 import ray
 from ray import serve

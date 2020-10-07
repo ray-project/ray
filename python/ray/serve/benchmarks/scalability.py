@@ -5,22 +5,27 @@
 # Test will measure latency and throughput under a high load using `wrk`
 # running on each node.
 #
-# Sample output:
-# Results for node 1 of 20:
+# Results for node 1 of 21:
 # Running 10s test @ http://127.0.0.1:8000/hey
-#   2 threads and 100 connections
+#   2 threads and 63 connections
 #   Thread Stats   Avg      Stdev     Max   +/- Stdev
-#     Latency    44.14ms   11.24ms 151.03ms   94.78%
-#     Req/Sec     1.15k   185.88     1.36k    91.50%
-#   Latency Distribution
-#      50%   42.10ms
-#      75%   44.78ms
-#      90%   49.40ms
-#      99%  106.94ms
-#   22917 requests in 10.04s, 3.56MB read
-# Requests/sec:   2283.17
-# Transfer/sec:    363.43KB
-# ...
+#     Latency   263.96ms   96.29ms 506.39ms   69.14%
+#     Req/Sec   115.63     79.29   650.00     75.40%
+#   2307 requests in 10.00s, 315.66KB read
+# Requests/sec:    230.61
+# Transfer/sec:     31.55KB
+# 
+# Results for node 2 of 21:
+# Running 10s test @ http://127.0.0.1:8000/hey
+#   2 threads and 63 connections
+#   Thread Stats   Avg      Stdev     Max   +/- Stdev
+#     Latency   282.79ms   75.00ms 500.26ms   63.32%
+#     Req/Sec   108.20     60.17   240.00     58.92%
+#   2159 requests in 10.02s, 295.42KB read
+# Requests/sec:    215.47
+# Transfer/sec:     29.48KB
+#
+# [...] similar results for remaining nodes
 
 import time
 import subprocess

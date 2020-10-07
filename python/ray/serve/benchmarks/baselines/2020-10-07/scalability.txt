@@ -1,0 +1,209 @@
+2020-10-07 09:15:57,387	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 1 of 21:
+2020-10-07 09:15:57,388	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   263.96ms   96.29ms 506.39ms   69.14%
+    Req/Sec   115.63     79.29   650.00     75.40%
+  2307 requests in 10.00s, 315.66KB read
+Requests/sec:    230.61
+Transfer/sec:     31.55KB
+
+2020-10-07 09:15:57,388	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 2 of 21:
+2020-10-07 09:15:57,389	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   282.79ms   75.00ms 500.26ms   63.32%
+    Req/Sec   108.20     60.17   240.00     58.92%
+  2159 requests in 10.02s, 295.42KB read
+Requests/sec:    215.47
+Transfer/sec:     29.48KB
+
+2020-10-07 09:15:57,389	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 3 of 21:
+2020-10-07 09:15:57,390	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   284.60ms   75.70ms 505.43ms   63.33%
+    Req/Sec   108.37     59.15   240.00     63.39%
+  2149 requests in 10.00s, 294.43KB read
+Requests/sec:    214.80
+Transfer/sec:     29.43KB
+
+2020-10-07 09:15:57,390	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 4 of 21:
+2020-10-07 09:15:57,391	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   282.22ms   77.38ms 508.22ms   65.28%
+    Req/Sec   108.98     61.47   250.00     62.98%
+  2163 requests in 10.03s, 295.97KB read
+Requests/sec:    215.60
+Transfer/sec:     29.50KB
+
+2020-10-07 09:15:57,392	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 5 of 21:
+2020-10-07 09:15:57,392	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   278.77ms   79.19ms 509.73ms   64.19%
+    Req/Sec   109.77     62.22   303.00     67.03%
+  2195 requests in 10.01s, 300.35KB read
+Requests/sec:    219.32
+Transfer/sec:     30.01KB
+
+2020-10-07 09:15:57,395	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 6 of 21:
+2020-10-07 09:15:57,396	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   267.82ms   93.51ms 500.75ms   67.95%
+    Req/Sec   114.75     72.64   480.00     69.57%
+  2281 requests in 10.01s, 312.35KB read
+Requests/sec:    227.96
+Transfer/sec:     31.22KB
+
+2020-10-07 09:15:57,396	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 7 of 21:
+2020-10-07 09:15:57,397	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   285.04ms   75.40ms 492.30ms   63.57%
+    Req/Sec   108.51     61.33   242.00     58.06%
+  2144 requests in 10.00s, 293.50KB read
+Requests/sec:    214.32
+Transfer/sec:     29.34KB
+
+2020-10-07 09:15:57,397	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 8 of 21:
+2020-10-07 09:15:57,398	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   271.42ms   89.56ms 508.15ms   68.90%
+    Req/Sec   113.23     66.06   340.00     65.95%
+  2254 requests in 10.01s, 308.16KB read
+Requests/sec:    225.13
+Transfer/sec:     30.78KB
+
+2020-10-07 09:15:57,399	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 9 of 21:
+2020-10-07 09:15:57,400	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   269.81ms   91.28ms 500.31ms   68.51%
+    Req/Sec   113.60     72.20   410.00     64.17%
+  2255 requests in 10.01s, 308.67KB read
+Requests/sec:    225.38
+Transfer/sec:     30.85KB
+
+2020-10-07 09:15:57,400	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 10 of 21:
+2020-10-07 09:15:57,401	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   283.93ms   74.67ms 507.84ms   64.11%
+    Req/Sec   108.93     55.89   242.00     62.09%
+  2154 requests in 10.01s, 294.86KB read
+Requests/sec:    215.24
+Transfer/sec:     29.46KB
+
+2020-10-07 09:15:57,401	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 11 of 21:
+2020-10-07 09:15:57,402	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   282.35ms   75.86ms 495.90ms   63.86%
+    Req/Sec   108.15     59.10   222.00     60.22%
+  2158 requests in 10.00s, 295.41KB read
+Requests/sec:    215.72
+Transfer/sec:     29.53KB
+
+2020-10-07 09:15:57,402	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 12 of 21:
+2020-10-07 09:15:57,403	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   283.37ms   75.04ms 499.01ms   63.79%
+    Req/Sec   108.77     61.15   262.00     60.00%
+  2157 requests in 10.01s, 295.03KB read
+Requests/sec:    215.55
+Transfer/sec:     29.48KB
+
+2020-10-07 09:15:57,406	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 13 of 21:
+2020-10-07 09:15:57,406	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   273.55ms   86.08ms 504.93ms   66.70%
+    Req/Sec   112.26     64.36   272.00     60.33%
+  2234 requests in 10.01s, 305.93KB read
+Requests/sec:    223.25
+Transfer/sec:     30.57KB
+
+2020-10-07 09:15:57,407	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 14 of 21:
+2020-10-07 09:15:57,407	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   279.76ms   78.28ms 506.39ms   65.57%
+    Req/Sec   109.14     62.56   272.00     60.75%
+  2181 requests in 10.00s, 298.93KB read
+Requests/sec:    218.03
+Transfer/sec:     29.88KB
+
+2020-10-07 09:15:57,408	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 15 of 21:
+2020-10-07 09:15:57,408	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   285.56ms   75.73ms 493.67ms   63.94%
+    Req/Sec   108.23     58.97   240.00     61.41%
+  2149 requests in 10.04s, 294.43KB read
+Requests/sec:    214.12
+Transfer/sec:     29.34KB
+
+2020-10-07 09:15:57,409	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 16 of 21:
+2020-10-07 09:15:57,410	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   275.84ms   83.78ms 504.36ms   66.76%
+    Req/Sec   110.52     61.73   290.00     63.64%
+  2208 requests in 10.00s, 302.00KB read
+Requests/sec:    220.72
+Transfer/sec:     30.19KB
+
+2020-10-07 09:15:57,410	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 17 of 21:
+2020-10-07 09:15:57,411	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   277.22ms   82.84ms 501.03ms   66.64%
+    Req/Sec   110.92     59.32   240.00     63.78%
+  2206 requests in 10.04s, 301.60KB read
+Requests/sec:    219.78
+Transfer/sec:     30.05KB
+
+2020-10-07 09:15:57,411	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 18 of 21:
+2020-10-07 09:15:57,412	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   282.49ms   76.79ms 495.28ms   64.60%
+    Req/Sec   108.16     61.20   250.00     61.62%
+  2161 requests in 10.04s, 296.44KB read
+Requests/sec:    215.19
+Transfer/sec:     29.52KB
+
+2020-10-07 09:15:57,414	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 19 of 21:
+2020-10-07 09:15:57,414	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   281.33ms   77.56ms 504.81ms   65.10%
+    Req/Sec   108.46     61.28   252.00     60.44%
+  2166 requests in 10.01s, 296.50KB read
+Requests/sec:    216.46
+Transfer/sec:     29.63KB
+
+2020-10-07 09:15:57,415	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 20 of 21:
+2020-10-07 09:15:57,416	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   284.18ms   74.78ms 506.23ms   62.89%
+    Req/Sec   109.16     60.05   240.00     59.46%
+  2153 requests in 10.01s, 294.85KB read
+Requests/sec:    215.16
+Transfer/sec:     29.47KB
+
+2020-10-07 09:15:57,417	INFO <ipython-input-1-1b7ee15d465b>:111 -- Results for node 21 of 21:
+2020-10-07 09:15:57,417	INFO <ipython-input-1-1b7ee15d465b>:112 -- Running 10s test @ http://127.0.0.1:8000/hey
+  2 threads and 63 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   281.58ms   78.06ms 499.69ms   65.93%
+    Req/Sec   108.51     60.56   260.00     64.29%
+  2163 requests in 10.01s, 296.09KB read
+Requests/sec:    216.12
+Transfer/sec:     29.59KB
