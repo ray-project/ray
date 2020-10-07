@@ -72,19 +72,21 @@ class ResourceDemandScheduler:
 
         logger.info("Cluster resources: {}".format(node_resources))
         logger.info("Node counts: {}".format(node_type_counts))
-
+        # Step 2: add nodes to add to satisfy min_workers for each type
         node_resources, node_type_counts, min_workers_nodes_to_add = \
             _add_min_workers_nodes(
                 node_resources, node_type_counts, self.node_types)
 
+        # Step 3: add nodes for strict spread groups
         logger.info(f"Placement group demands: {placement_group_load}")
         placement_group_demand_vector, strict_spreads = \
             placement_groups_to_resource_demands(placement_group_load)
-        resource_demands += placement_group_demand_vector
+        resource_demands.extend(placement_group_demand_vector)
         placement_group_nodes_to_add, node_resources, node_type_counts = \
             self.reserve_and_allocate_spread(
                 strict_spreads, node_resources, node_type_counts)
 
+        # Step 4/5: add nodes for pending tasks, actors, and non-strict spread groups
         unfulfilled, _ = get_bin_pack_residual(node_resources,
                                                resource_demands)
         logger.info("Resource demands: {}".format(resource_demands))
@@ -185,9 +187,12 @@ class ResourceDemandScheduler:
         """
         to_add = collections.defaultdict(int)
         for bundles in strict_spreads:
+            # Try to pack as many bundles of this group as possible on existing nodes.
+            # The remaining will be allocated on new nodes.
             unfulfilled, node_resources = get_bin_pack_residual(
                 node_resources, bundles, strict_spread=True)
             max_to_add = self.max_workers - sum(node_type_counts.values())
+            # Allocate new nodes for the remaining bundles that don't fit.
             to_launch = get_nodes_for(
                 self.node_types,
                 node_type_counts,
@@ -198,6 +203,7 @@ class ResourceDemandScheduler:
             _inplace_add(to_add, to_launch)
             new_node_resources = _node_type_counts_to_node_resources(
                 self.node_types, to_launch)
+            # Update node resources to include newly launched nodes and their bundles.
             unfulfilled, including_reserved = get_bin_pack_residual(
                 new_node_resources, unfulfilled, strict_spread=True)
             assert not unfulfilled
