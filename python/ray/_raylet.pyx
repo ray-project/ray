@@ -1519,6 +1519,7 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
         # If this future has result set already, we just need to
         # skip the set result/exception procedure.
         if py_future.done():
+            cpython.Py_DECREF(py_future)
             return
 
         if isinstance(result, RayTaskError):
