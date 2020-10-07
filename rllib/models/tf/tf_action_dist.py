@@ -425,8 +425,8 @@ class MultiActionDistribution(TFActionDistribution):
 
         self.action_space_struct = get_base_struct_from_space(action_space)
 
-        input_lens = np.array(input_lens, dtype=np.int32)
-        split_inputs = tf.split(inputs, input_lens, axis=1)
+        self.input_lens = np.array(input_lens, dtype=np.int32)
+        split_inputs = tf.split(inputs, self.input_lens, axis=1)
         self.flat_child_distributions = tree.map_structure(
             lambda dist, input_: dist(input_, model), child_distributions,
             split_inputs)
@@ -491,6 +491,10 @@ class MultiActionDistribution(TFActionDistribution):
         for c in self.flat_child_distributions[1:]:
             p += c.sampled_action_logp()
         return p
+
+    @override(ActionDistribution)
+    def required_model_output_shape(self, action_space, model_config):
+        return np.sum(self.input_lens)
 
 
 class Dirichlet(TFActionDistribution):
