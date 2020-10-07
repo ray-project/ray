@@ -422,6 +422,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
 
     def testGetConcurrentResourceDemandToLaunch(self):
+
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["min_workers"] = 2
         config["max_workers"] = 100
@@ -430,9 +431,10 @@ class AutoscalingTest(unittest.TestCase):
         config["available_node_types"]["p2.8xlarge"]["max_workers"] = 10
         config["available_node_types"]["m4.large"]["min_workers"] = 2
         config["available_node_types"]["m4.large"]["max_workers"] = 100
-
         config_path = self.write_config(config)
         self.provider = MockProvider()
+        scheduler = ResourceDemandScheduler(
+            self.provider, config["available_node_types"], 200)
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -445,7 +447,7 @@ class AutoscalingTest(unittest.TestCase):
 
         # Sanity check.
         updated_to_launch = \
-            autoscaler._get_concurrent_resource_demand_to_launch({}, [], {})
+            scheduler._get_concurrent_resource_demand_to_launch({}, [], {})
         assert updated_to_launch == {}
 
         # Make sure min workers get started always.
@@ -471,7 +473,7 @@ class AutoscalingTest(unittest.TestCase):
         non_terminated_nodes = self.provider.non_terminated_nodes({})
         pending_launches_nodes = {"p2.8xlarge": 1, "m4.large": 1}
         updated_to_launch = \
-            autoscaler._get_concurrent_resource_demand_to_launch(
+            scheduler._get_concurrent_resource_demand_to_launch(
                 to_launch, non_terminated_nodes, pending_launches_nodes)
         # Note: we have 2 pending/launching gpus, 3 pending/launching cpus,
         # 0 running gpu, and 0 running cpus.
@@ -482,7 +484,7 @@ class AutoscalingTest(unittest.TestCase):
         # which is "launching".
         self.provider.finish_starting_nodes()
         updated_to_launch = \
-            autoscaler._get_concurrent_resource_demand_to_launch(
+            scheduler._get_concurrent_resource_demand_to_launch(
                 to_launch, non_terminated_nodes, pending_launches_nodes)
         # Note that here we have 1 launching gpu, 1 launching cpu,
         # 1 running gpu, and 2 running cpus.
@@ -503,7 +505,7 @@ class AutoscalingTest(unittest.TestCase):
         to_launch = {"m4.large": 36}  # No more gpus are necessary
         pending_launches_nodes = {}  # No pending launches
         updated_to_launch = \
-            autoscaler._get_concurrent_resource_demand_to_launch(
+            scheduler._get_concurrent_resource_demand_to_launch(
                 to_launch, non_terminated_nodes, pending_launches_nodes)
         # Note: we have 5 pending cpus. So we are not allowed to start any.
         # Still only 2 running cpus.
@@ -511,7 +513,7 @@ class AutoscalingTest(unittest.TestCase):
 
         self.provider.finish_starting_nodes()
         updated_to_launch = \
-            autoscaler._get_concurrent_resource_demand_to_launch(
+            scheduler._get_concurrent_resource_demand_to_launch(
                 to_launch, non_terminated_nodes, pending_launches_nodes)
         # Note: that here we have 7 running cpus and nothing pending/launching.
         assert updated_to_launch == {"m4.large": 7}
@@ -527,7 +529,7 @@ class AutoscalingTest(unittest.TestCase):
         to_launch = {"m4.large": 29}
         pending_launches_nodes = {"m4.large": 1}
         updated_to_launch = \
-            autoscaler._get_concurrent_resource_demand_to_launch(
+            scheduler._get_concurrent_resource_demand_to_launch(
                 to_launch, non_terminated_nodes, pending_launches_nodes)
         # Note: we have 8 pending/launching cpus and only 7 running.
         # So we should not launch anything (8 < 7).
@@ -535,7 +537,7 @@ class AutoscalingTest(unittest.TestCase):
 
         self.provider.finish_starting_nodes()
         updated_to_launch = \
-            autoscaler._get_concurrent_resource_demand_to_launch(
+            scheduler._get_concurrent_resource_demand_to_launch(
                 to_launch, non_terminated_nodes, pending_launches_nodes)
         # Note: that here we have 14 running cpus and 1 launching.
         assert updated_to_launch == {"m4.large": 13}

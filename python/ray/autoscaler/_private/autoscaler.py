@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict
 import copy
 import logging
 import math
@@ -211,17 +211,13 @@ class StandardAutoscaler:
         if self.resource_demand_scheduler:
             resource_demand_vector = self.resource_demand_vector + \
                 self.load_metrics.get_resource_demand_vector()
-            non_terminated_nodes = self.provider.non_terminated_nodes(
-                tag_filters={})
-            pending_launches_nodes = self.pending_launches.breakdown()
             to_launch = (self.resource_demand_scheduler.get_nodes_to_launch(
-                non_terminated_nodes, pending_launches_nodes,
+                self.provider.non_terminated_nodes(tag_filters={}),
+                self.pending_launches.breakdown(),
                 resource_demand_vector,
                 self.load_metrics.get_resource_utilization()))
 
-            updated_to_launch = self._get_concurrent_resource_demand_to_launch(
-                to_launch, non_terminated_nodes, pending_launches_nodes)
-            for node_type, count in updated_to_launch.items():
+            for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
 
             num_pending = self.pending_launches.value
@@ -283,63 +279,6 @@ class StandardAutoscaler:
         # Attempt to recover unhealthy nodes
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
-
-    def _get_concurrent_resource_demand_to_launch(
-            self, to_launch: Dict[NodeType, int],
-            non_terminated_nodes: List[NodeID],
-            pending_launches_nodes: Dict[NodeType, int]
-    ) -> Dict[NodeType, int]:
-        """Updates the max concurrent resources to launch for each node type.
-
-        Given the current nodes that should be launched, the non terminated
-        nodes (running and pending) and the pending to be launched nodes. This
-        method calculates the maximum number of nodes to launch concurrently
-        for each node type as follows:
-            1) Calculates the running nodes.
-            2) Calculates the pending nodes and gets the launching nodes.
-            3) Limits the total number of pending + currently-launching +
-               to-be-launched nodes to max(5, frac * running_nodes[node_type]).
-
-        Args:
-            to_launch: Number of nodes to launch based on resource demand.
-            non_terminated_nodes: Non terminated nodes (pending/running).
-            pending_launches_nodes: Nodes that are in the launch queue.
-        Returns:
-            Dict[NodeType, int]: Maximum number of nodes to launch for each
-                node type.
-        """
-        running_nodes = collections.defaultdict(int)
-        pending_nodes = collections.defaultdict(int)
-        for node_id in non_terminated_nodes:
-            tags = self.provider.node_tags(node_id)
-            if TAG_RAY_USER_NODE_TYPE in tags:
-                node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                if self.provider.is_running(node_id):
-                    running_nodes[node_type] += 1
-                else:
-                    pending_nodes[node_type] += 1
-        # TODO(ameer): Consider making frac configurable.
-        frac = 1
-        updated_nodes_to_launch = {}
-        for node_type in to_launch:
-            # Enforce here max allowed pending nodes to be frac of total
-            # running nodes.
-            max_allowed_pending_nodes = max(
-                5, int(frac * running_nodes[node_type]))
-            total_pending_nodes = pending_launches_nodes.get(
-                node_type, 0) + pending_nodes[node_type]
-
-            # Allow more nodes if this is to respect min_workers constraint.
-            nodes_to_add = max(
-                max_allowed_pending_nodes - total_pending_nodes,
-                self.available_node_types[node_type].get("min_workers", 0) -
-                total_pending_nodes - running_nodes[node_type])
-
-            if nodes_to_add > 0:
-                updated_nodes_to_launch[node_type] = min(
-                    nodes_to_add, to_launch[node_type])
-
-        return updated_nodes_to_launch
 
     def _keep_min_worker_of_node_type(self, node_id: NodeID,
                                       node_type_counts: Dict[NodeType, int]):
