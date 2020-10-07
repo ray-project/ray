@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from ray.rllib.models.torch.modules.reshape import Reshape
+from ray.rllib.models.torch.misc import Reshape
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
@@ -74,4 +74,4 @@ class ConvTranspose2DStack(nn.Module):
         # Equivalent to making a multivariate diag.
         reshape_size = batch_dims + self.output_shape
         mean = model_out.view(*reshape_size)
-        return td.Independent(td.Normal(mean, 1), len(self.output_shape))
+        return td.Independent(td.Normal(mean, 1.0), len(self.output_shape))
