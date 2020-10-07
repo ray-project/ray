@@ -76,6 +76,7 @@ class ResourceDemandScheduler:
             _add_min_workers_nodes(
                 node_resources, node_type_counts, self.node_types)
 
+        logger.info(f"Placement group demands: {placement_group_load}")
         placement_group_demand_vector, strict_spreads = \
             placement_groups_to_resource_demands(placement_group_load)
         resource_demands += placement_group_demand_vector
