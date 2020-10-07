@@ -14,7 +14,8 @@ import collections
 from typing import List, Dict
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED, \
+    STATUS_UPDATE_FAILED, STATUS_UP_TO_DATE, TAG_RAY_NODE_STATUS
 
 logger = logging.getLogger(__name__)
 
@@ -125,9 +126,10 @@ class ResourceDemandScheduler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                if self.provider.is_running(node_id):
+                status = tags.get(TAG_RAY_NODE_STATUS)
+                if status == STATUS_UP_TO_DATE:
                     running_nodes[node_type] += 1
-                else:
+                elif status != STATUS_UPDATE_FAILED:
                     pending_nodes[node_type] += 1
         # TODO(ameer): Consider making frac configurable.
         frac = 1

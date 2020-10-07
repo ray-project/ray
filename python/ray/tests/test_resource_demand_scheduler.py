@@ -18,7 +18,8 @@ from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, _add_min_workers_nodes, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
-                                NODE_KIND_WORKER
+                                NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
+                                STATUS_UP_TO_DATE, STATUS_UNINITIALIZED
 from ray.test_utils import same_elements
 
 from time import sleep
@@ -459,14 +460,6 @@ class AutoscalingTest(unittest.TestCase):
             self.provider.mock_nodes[1].node_type,
             self.provider.mock_nodes[2].node_type
         } == {"p2.8xlarge", "m4.large", "m4.large"}
-        autoscaler.update()
-        self.waitForNodes(3)
-        assert len(self.provider.mock_nodes) == 3
-        assert {
-            self.provider.mock_nodes[0].node_type,
-            self.provider.mock_nodes[1].node_type,
-            self.provider.mock_nodes[2].node_type
-        } == {"p2.8xlarge", "m4.large", "m4.large"}
 
         # All nodes so far are pending/launching here.
         to_launch = {"p2.8xlarge": 4, "m4.large": 40}
@@ -482,7 +475,9 @@ class AutoscalingTest(unittest.TestCase):
         # This starts the min workers only, so we have no more pending workers.
         # The workers here are either running or in pending_launches_nodes,
         # which is "launching".
-        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            3, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         updated_to_launch = \
             scheduler._get_concurrent_resource_demand_to_launch(
                 to_launch, non_terminated_nodes, pending_launches_nodes)
@@ -493,11 +488,13 @@ class AutoscalingTest(unittest.TestCase):
         # Launch the nodes. Note, after create_node the node is pending.
         self.provider.create_node({}, {
             TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
-            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
         }, 5)
         self.provider.create_node({}, {
             TAG_RAY_USER_NODE_TYPE: "m4.large",
-            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
         }, 5)
 
         # Continue scaling.
@@ -511,7 +508,12 @@ class AutoscalingTest(unittest.TestCase):
         # Still only 2 running cpus.
         assert updated_to_launch == {}
 
-        self.provider.finish_starting_nodes()
+        for node_id in non_terminated_nodes:
+            self.provider.set_node_tags(
+                node_id, {TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        self.waitForNodes(
+            13,  # 7 CPUs, 6 GPUs
+            tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         updated_to_launch = \
             scheduler._get_concurrent_resource_demand_to_launch(
                 to_launch, non_terminated_nodes, pending_launches_nodes)
@@ -521,7 +523,8 @@ class AutoscalingTest(unittest.TestCase):
         # Launch the nodes. Note, after create_node the node is pending.
         self.provider.create_node({}, {
             TAG_RAY_USER_NODE_TYPE: "m4.large",
-            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
         }, 7)
 
         # Continue scaling.
@@ -535,7 +538,12 @@ class AutoscalingTest(unittest.TestCase):
         # So we should not launch anything (8 < 7).
         assert updated_to_launch == {}
 
-        self.provider.finish_starting_nodes()
+        for node_id in non_terminated_nodes:
+            self.provider.set_node_tags(
+                node_id, {TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        self.waitForNodes(
+            20,  # 14 CPU, 7 GPUs
+            tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         updated_to_launch = \
             scheduler._get_concurrent_resource_demand_to_launch(
                 to_launch, non_terminated_nodes, pending_launches_nodes)
