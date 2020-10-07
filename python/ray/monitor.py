@@ -396,6 +396,6 @@ def parse_resource_demands(resource_load_by_shape):
             for _ in range(
                     resource_demand_pb.backlog_size):
                 backlog_queue.append(request_shape)
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Failed to parse resource demands.")
     return waiting_bundles, infeasible_bundles
