@@ -84,10 +84,14 @@ rpc::Bundle *GcsPlacementGroup::GetMutableBundle(int bundle_index) {
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     boost::asio::io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+    GcsNodeManager &gcs_node_manager)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
-      gcs_table_storage_(std::move(gcs_table_storage)) {}
+      gcs_table_storage_(std::move(gcs_table_storage)),
+      gcs_node_manager_(gcs_node_manager) {
+  Tick();
+}
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
@@ -165,6 +169,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
 }
 
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
+  // Update the placement group load to report load information to the autoscaler.
   if (pending_placement_groups_.empty() || IsSchedulingInProgress()) {
     return;
   }
@@ -347,6 +352,27 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   }
 
   SchedulePendingPlacementGroups();
+}
+
+void GcsPlacementGroupManager::Tick() const {
+  UpdatePlacementGroupLoad();
+  execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+}
+
+void GcsPlacementGroupManager::UpdatePlacementGroupLoad() const {
+  std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
+      std::make_shared<rpc::PlacementGroupLoad>();
+  int total_cnt = 0;
+  for (const auto &pending_pg_spec : pending_placement_groups_) {
+    auto placement_group_data = placement_group_load->add_placement_group_data();
+    auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
+    placement_group_data->Swap(&placement_group_table_data);
+    total_cnt += 1;
+    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+      break;
+    }
+  }
+  gcs_node_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
 }
 
 }  // namespace gcs

@@ -148,7 +148,6 @@ class ResourceDemandScheduler:
     def debug_string(self, nodes: List[NodeID],
                      pending_nodes: Dict[NodeID, int],
                      usage_by_ip: Dict[str, ResourceDict]) -> str:
-        print(f"{usage_by_ip}")
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes, usage_by_ip)
 

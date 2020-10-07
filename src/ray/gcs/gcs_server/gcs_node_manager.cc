@@ -63,6 +63,11 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   }
 }
 
+void GcsNodeManager::NodeFailureDetector::UpdatePlacementGroupLoad(
+    std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
+  placement_group_load_ = absl::make_optional(placement_group_load);
+}
+
 /// A periodic timer that checks for timed out clients.
 void GcsNodeManager::NodeFailureDetector::Tick() {
   DetectDeadNodes();
@@ -102,6 +107,10 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
+        if (RayConfig::instance().report_worker_backlog()) {
+          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                            demand.backlog_size());
+        }
       }
       heartbeat.second.clear_resource_load_by_shape();
 
@@ -114,6 +123,15 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
       for (const auto &resource_pair : demand.first.GetResourceMap()) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
       }
+    }
+
+    // Update placement group load to heartbeat batch.
+    // This is updated only one per second.
+    if (placement_group_load_.has_value()) {
+      auto placement_group_load = placement_group_load_.value();
+      auto placement_group_load_proto = batch->mutable_placement_group_load();
+      placement_group_load_proto->Swap(placement_group_load.get());
+      placement_group_load_.reset();
     }
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
@@ -484,6 +502,15 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
 const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
     &GcsNodeManager::GetClusterRealtimeResources() const {
   return cluster_realtime_resources_;
+}
+
+void GcsNodeManager::UpdatePlacementGroupLoad(
+    std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) const {
+  // Node failure detector code should be running in a separate thread to avoid heartbeat
+  // lagging.
+  node_failure_detector_service_.post([this, placement_group_load] {
+    node_failure_detector_->UpdatePlacementGroupLoad(move(placement_group_load));
+  });
 }
 
 }  // namespace gcs
