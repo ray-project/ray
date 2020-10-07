@@ -36,11 +36,8 @@ def test_parse_resource_demands():
     assert waiting.count({"CPU": 1}) == 1
     assert waiting.count({"CPU": 2}) == 2
     assert infeasible.count({"CPU": 3}) == 3
-
     # The {"CPU": 4} case here is inconsistent, but could happen. Since the
     # heartbeats are eventually consistent, we won't worry about whether it's
     # counted as infeasible or waiting, as long as it's accounted for and
     # doesn't cause an error.
     assert len(waiting+infeasible) == 10
-
-
