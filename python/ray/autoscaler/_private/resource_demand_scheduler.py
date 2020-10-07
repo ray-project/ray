@@ -16,7 +16,8 @@ from typing import List, Dict
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED
-from ray.autoscaler._private import placement_group_load_util
+from ray.gcs_utils import PlacementGroupTableData
+from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class ResourceDemandScheduler:
             self, nodes: List[NodeID], pending_nodes: Dict[NodeType, int],
             resource_demands: List[ResourceDict],
             usage_by_ip: Dict[str, ResourceDict], placement_group_load: List[
-                placement_group_load_util.PlacementGroupData]
+                PlacementGroupTableData]
     ) -> Dict[NodeType, int]:
         """Given resource demands, return node types to add to the cluster.
 
@@ -389,7 +390,7 @@ def _inplace_add(a: Dict, b: Dict) -> None:
 
 
 def placement_groups_to_resource_demands(placement_group_load: List[
-        placement_group_load_util.PlacementGroupData]):
+        PlacementGroupTableData]):
     """Preprocess placement group requests into regular resource demand vectors
     when possible.
 
@@ -407,18 +408,19 @@ def placement_groups_to_resource_demands(placement_group_load: List[
     resource_demand_vector = []
     unconverted = []
     for placement_group in placement_group_load:
-        if (placement_group.strategy == placement_group_load_util.PACK or
-                placement_group.strategy == placement_group_load_util.SPREAD):
-            resource_demand_vector.extend(placement_group.shapes)
-        elif placement_group.strategy == placement_group_load_util.STRICT_PACK:
+        shapes = [dict(bundle.unit_resources) for bundle in placement_group.bundles]
+        if (placement_group.strategy == PlacementStrategy.PACK or
+                placement_group.strategy == PlacementStrategy.SPREAD):
+            resource_demand_vector.extend(shapes)
+        elif placement_group.strategy == PlacementStrategy.STRICT_PACK:
             combined = collections.defaultdict(float)
-            for shape in placement_group.shapes:
+            for shape in shapes:
                 for label, quantity in shape.items():
                     combined[label] += quantity
             resource_demand_vector.append(combined)
         elif (placement_group.strategy ==
-              placement_group_load_util.STRICT_SPREAD):
-            unconverted.append(placement_group.shapes)
+              PlacementStrategy.STRICT_SPREAD):
+            unconverted.append(shapes)
         else:
             logger.error(
                 f"Unknown placement group request type: {placement_group}. "

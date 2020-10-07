@@ -9,7 +9,6 @@ import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.placement_group_load_util import state_enum_to_string, strategy_enum_to_string, PlacementGroupData
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
@@ -90,37 +89,6 @@ class Monitor:
         """
         self.primary_subscribe_client.psubscribe(pattern)
 
-    def parse_placement_group_loads(self, placement_group_load_pb):
-        """Handle the message.placement_group_load protobuf for the demand
-        based autoscaling. Catch and log all exceptions so this doesn't
-        interfere with the utilization based autoscaler until we're confident
-        this is stable.
-
-        Args:
-            placement_group_load_pb (pb2.gcs.PlacementGroupLoad): The resource demands
-                in protobuf form or None.
-        """
-
-        placement_group_load = []
-        try:
-            for placement_group_data_pb in list(
-                    placement_group_load_pb.placement_group_data):
-                strategy = placement_group_data_pb.strategy
-                state = placement_group_data_pb.state
-
-                shapes = []
-                for bundle_pb in list(placement_group_data_pb.bundles):
-                    shape = dict(bundle_pb.unit_resources)
-                    shapes.append(shape)
-
-                placement_group_load.append(
-                    PlacementGroupData(
-                        strategy=strategy, state=state, shapes=shapes))
-
-        except Exception as e:
-            logger.exception(e)
-        return placement_group_load
-
     def parse_resource_demands(self, resource_load_by_shape):
         """Handle the message.resource_load_by_shape protobuf for the demand
         based autoscaling. Catch and log all exceptions so this doesn't
@@ -163,8 +131,7 @@ class Monitor:
             waiting_bundles, infeasible_bundles = \
                 self.parse_resource_demands(message.resource_load_by_shape)
 
-            placement_group_load = self.parse_placement_group_loads(
-                message.placement_group_load)
+            placement_group_load = list(message.placement_group_load)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)

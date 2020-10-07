@@ -17,8 +17,10 @@ from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, _add_min_workers_nodes, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
-from ray.autoscaler._private.placement_group_load_util import RESCHEDULING, \
-    PACK, STRICT_PACK, SPREAD, STRICT_SPREAD, PlacementGroupData
+# from ray.autoscaler._private.placement_group_load_util import RESCHEDULING, \
+#     PACK, STRICT_PACK, SPREAD, STRICT_SPREAD, PlacementGroupData
+from ray.gcs_utils import PlacementGroupTableData
+from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER
 from ray.test_utils import same_elements
@@ -376,39 +378,39 @@ def test_placement_group_scaling():
     resource_demands = [{"GPU": 4}] * 2
     placement_group_load = [
         # Requires a new node (only uses 2 GPUs on it though).
-        PlacementGroupData(
-            state=RESCHEDULING,
-            strategy=STRICT_SPREAD,
-            shapes=[{
+        PlacementGroupTableData(
+            state=PlacementGroupTableData.PENDING,
+            strategy=PlacementStrategy.STRICT_SPREAD,
+            bundles=[Bundle(unit_resources={
                 "GPU": 2
-            }, {
+            }), Bundle(unit_resources={
                 "GPU": 2
-            }, {
+            }), Bundle(unit_resources={
                 "GPU": 2
-            }]),
+            })]),
         # Requires a new node (uses the whole node).
-        PlacementGroupData(
-            state=RESCHEDULING,
-            strategy=STRICT_PACK,
-            shapes=([{
+        PlacementGroupTableData(
+            state=PlacementGroupTableData.PENDING,
+            strategy=PlacementStrategy.STRICT_PACK,
+            bundles=([Bundle(unit_resources={
                 "GPU": 2
-            }] * 4)),
+            })] * 4)),
         # Fits across the machines that strict spread.
-        PlacementGroupData(
+        PlacementGroupTableData(
             # runs on.
-            state=RESCHEDULING,
-            strategy=PACK,
-            shapes=([{
+            state=PlacementGroupTableData.PENDING,
+            strategy=PlacementStrategy.PACK,
+            bundles=([Bundle(unit_resources={
                 "GPU": 2
-            }] * 2)),
+            })] * 2)),
         # Fits across the machines that strict spread.
-        PlacementGroupData(
+        PlacementGroupTableData(
             # runs on.
-            state=RESCHEDULING,
-            strategy=SPREAD,
-            shapes=([{
+            state=PlacementGroupTableData.PENDING,
+            strategy=PlacementStrategy.SPREAD,
+            bundles=([Bundle(unit_resources={
                 "GPU": 2
-            }] * 2)),
+            })] * 2)),
     ]
     to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands, {},
                                               placement_group_load)
@@ -437,14 +439,14 @@ class LoadMetricsTest(unittest.TestCase):
     def testPlacementGroupLoad(self):
         lm = LoadMetrics()
         placement_group_load = [
-            PlacementGroupData(
-                state=RESCHEDULING, strategy=PACK, shapes=([{
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.RESCHEDULING, strategy=PlacementStrategy.PACK, bundles=([Bundle(unit_resources={
                     "GPU": 2
-                }] * 2)),
-            PlacementGroupData(
-                state=RESCHEDULING, strategy=SPREAD, shapes=([{
+                })] * 2)),
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.RESCHEDULING, strategy=PlacementStrategy.SPREAD, bundles=([Bundle(unit_resources={
                     "GPU": 2
-                }] * 2)),
+                })] * 2)),
         ]
         lm.update(
             "1.1.1.1", {},
@@ -558,20 +560,16 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(1)
 
         placement_group_load = [
-            PlacementGroupData(
-                state=RESCHEDULING,
-                strategy=STRICT_SPREAD,
-                shapes=[{
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.RESCHEDULING,
+                strategy=PlacementStrategy.STRICT_SPREAD,
+                bundles=[Bundle(unit_resources={
                     "GPU": 2
-                }, {
+                })]*3),
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.RESCHEDULING, strategy=PlacementStrategy.PACK, bundles=([Bundle(unit_resources={
                     "GPU": 2
-                }, {
-                    "GPU": 2
-                }]),
-            PlacementGroupData(
-                state=RESCHEDULING, strategy=PACK, shapes=([{
-                    "GPU": 2
-                }] * 5)),
+                })] * 5)),
         ]
         # Since placement groups are implemented with custom resources, this is
         # an example of the accompanying resource demands. Note the resource
@@ -590,26 +588,23 @@ class AutoscalingTest(unittest.TestCase):
                 "GPU": 8
             }],
             placement_group_load=placement_group_load)
-        # import pdb; pdb.set_trace()
         autoscaler.update()
-        sleep(1)
-        print([node.node_type for node in self.provider.mock_nodes.values()])
         self.waitForNodes(5)
 
         for i in range(1, 5):
             assert self.provider.mock_nodes[i].node_type == "p2.8xlarge"
 
         placement_group_load = [
-            PlacementGroupData(
-                state=RESCHEDULING,
-                strategy=STRICT_PACK,
-                shapes=([{
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.RESCHEDULING,
+                strategy=PlacementStrategy.STRICT_PACK,
+                bundles=([Bundle(unit_resources={
                     "GPU": 2
-                }] * 4)),
-            PlacementGroupData(
-                state=RESCHEDULING, strategy=SPREAD, shapes=([{
+                })] * 4)),
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.RESCHEDULING, strategy=PlacementStrategy.SPREAD, bundles=([Bundle(unit_resources={
                     "GPU": 2
-                }] * 2)),
+                })] * 2)),
         ]
 
     def testScaleUpMinWorkers(self):
