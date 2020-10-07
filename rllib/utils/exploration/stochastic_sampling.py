@@ -1,3 +1,4 @@
+import gym
 import tree
 from typing import Union
 
@@ -23,7 +24,7 @@ class StochasticSampling(Exploration):
     """
 
     def __init__(self,
-                 action_space,
+                 action_space: gym.spaces.Space,
                  *,
                  framework: str,
                  model: ModelV2,
@@ -32,7 +33,8 @@ class StochasticSampling(Exploration):
         """Initializes a StochasticSampling Exploration object.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
+            action_space (gym.spaces.Space): The gym action space used by the
+                environment.
             framework (str): One of None, "tf", "torch".
             model (ModelV2): The ModelV2 used by the owning Policy.
             random_timesteps (int): The number of timesteps for which to act
@@ -108,7 +110,9 @@ class StochasticSampling(Exploration):
             with tf1.control_dependencies([assign_op]):
                 return action, logp
 
-    def _get_torch_exploration_action(self, action_dist, timestep, explore):
+    def _get_torch_exploration_action(self, action_dist: ActionDistribution,
+                                      timestep: Union[TensorType, int],
+                                      explore: Union[TensorType, bool]):
         # Set last timestep or (if not given) increase by one.
         self.last_timestep = timestep if timestep is not None else \
             self.last_timestep + 1

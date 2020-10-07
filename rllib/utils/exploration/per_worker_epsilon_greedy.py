@@ -1,3 +1,6 @@
+from gym.spaces import Space
+from typing import Optional
+
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.schedules import ConstantSchedule
 
@@ -10,7 +13,8 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
     See Ape-X paper.
     """
 
-    def __init__(self, action_space, *, framework, num_workers, worker_index,
+    def __init__(self, action_space: Space, *, framework: str,
+                 num_workers: Optional[int], worker_index: Optional[int],
                  **kwargs):
         """Create a PerWorkerEpsilonGreedy exploration class.
 
