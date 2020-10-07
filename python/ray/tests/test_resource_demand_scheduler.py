@@ -363,56 +363,107 @@ def test_calculate_node_resources():
 
     assert to_launch == {"p2.8xlarge": 1}
 
+class TestPlacementGroupScaling:
+    def test_strategies(self):
+        provider = MockProvider()
+        scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
 
-def test_placement_group_scaling():
-    provider = MockProvider()
-    scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
+        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
+        # At this point our cluster has 2 p2.8xlarge instances (16 GPUs) and is
+        # fully idle.
+        nodes = provider.non_terminated_nodes({})
 
-    provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
-    # At this point our cluster has 2 p2.8xlarge instances (16 GPUs) and is
-    # fully idle.
-    nodes = provider.non_terminated_nodes({})
+        resource_demands = [{"GPU": 4}] * 2
+        pending_placement_groups = [
+            # Requires a new node (only uses 2 GPUs on it though).
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.PENDING,
+                strategy=PlacementStrategy.STRICT_SPREAD,
+                bundles=[Bundle(unit_resources={
+                    "GPU": 2
+                }), Bundle(unit_resources={
+                    "GPU": 2
+                }), Bundle(unit_resources={
+                    "GPU": 2
+                })]),
+            # Requires a new node (uses the whole node).
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.PENDING,
+                strategy=PlacementStrategy.STRICT_PACK,
+                bundles=([Bundle(unit_resources={
+                    "GPU": 2
+                })] * 4)),
+            # Fits across the machines that strict spread.
+            PlacementGroupTableData(
+                # runs on.
+                state=PlacementGroupTableData.PENDING,
+                strategy=PlacementStrategy.PACK,
+                bundles=([Bundle(unit_resources={
+                    "GPU": 2
+                })] * 2)),
+            # Fits across the machines that strict spread.
+            PlacementGroupTableData(
+                # runs on.
+                state=PlacementGroupTableData.PENDING,
+                strategy=PlacementStrategy.SPREAD,
+                bundles=([Bundle(unit_resources={
+                    "GPU": 2
+                })] * 2)),
+        ]
+        to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands, {},
+                                                pending_placement_groups)
+        assert to_launch == {"p2.8xlarge": 2}
 
-    resource_demands = [{"GPU": 4}] * 2
-    pending_placement_groups = [
-        # Requires a new node (only uses 2 GPUs on it though).
-        PlacementGroupTableData(
-            state=PlacementGroupTableData.PENDING,
-            strategy=PlacementStrategy.STRICT_SPREAD,
-            bundles=[Bundle(unit_resources={
-                "GPU": 2
-            }), Bundle(unit_resources={
-                "GPU": 2
-            }), Bundle(unit_resources={
-                "GPU": 2
-            })]),
-        # Requires a new node (uses the whole node).
-        PlacementGroupTableData(
-            state=PlacementGroupTableData.PENDING,
-            strategy=PlacementStrategy.STRICT_PACK,
-            bundles=([Bundle(unit_resources={
-                "GPU": 2
-            })] * 4)),
-        # Fits across the machines that strict spread.
-        PlacementGroupTableData(
-            # runs on.
-            state=PlacementGroupTableData.PENDING,
-            strategy=PlacementStrategy.PACK,
-            bundles=([Bundle(unit_resources={
-                "GPU": 2
-            })] * 2)),
-        # Fits across the machines that strict spread.
-        PlacementGroupTableData(
-            # runs on.
-            state=PlacementGroupTableData.PENDING,
-            strategy=PlacementStrategy.SPREAD,
-            bundles=([Bundle(unit_resources={
-                "GPU": 2
-            })] * 2)),
-    ]
-    to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands, {},
-                                              pending_placement_groups)
-    assert to_launch == {"p2.8xlarge": 2}
+
+    def test_many_strict_spreads(self):
+        provider = MockProvider()
+        scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
+
+        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
+        # At this point our cluster has 2 p2.8xlarge instances (16 GPUs) and is
+        # fully idle.
+        nodes = provider.non_terminated_nodes({})
+
+        resource_demands = [{"GPU": 1}] * 6
+        pending_placement_groups = [
+            # Requires a new node (only uses 2 GPUs on it though).
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.PENDING,
+                strategy=PlacementStrategy.STRICT_SPREAD,
+                bundles=[Bundle(unit_resources={
+                    "GPU": 2
+                })]*3),
+        ]
+        # Each placement group will take up 2 GPUs per node, but the distinct
+        # placement groups should still reuse the same nodes.
+        pending_placement_groups = pending_placement_groups * 3
+        to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands, {},
+                                                pending_placement_groups)
+        assert to_launch == {"p2.8xlarge": 1}
+
+    def test_packing(self):
+        provider = MockProvider()
+        scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
+
+        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
+        # At this point our cluster has 1 p2.8xlarge instances (8 GPUs) and is
+        # fully idle.
+        nodes = provider.non_terminated_nodes({})
+
+        resource_demands = [{"GPU": 1}] * 2
+        pending_placement_groups = [
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.PENDING,
+                strategy=PlacementStrategy.STRICT_PACK,
+                bundles=[Bundle(unit_resources={
+                    "GPU": 2
+                })]*3),
+        ]
+        # The 2 resource demand gpus should still be packed onto the same node
+        # as the 6 GPU placement group.
+        to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands, {},
+                                                pending_placement_groups)
+        assert to_launch == {}
 
 
 class LoadMetricsTest(unittest.TestCase):
@@ -535,6 +586,8 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
 
     def testPlacementGroup(self):
+        # Note this is mostly an integration test. See
+        # testPlacementGroupScaling for more comprehensive tests.
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["min_workers"] = 0
         config["max_workers"] = 999
