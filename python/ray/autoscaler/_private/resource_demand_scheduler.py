@@ -282,6 +282,9 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
 
         # Give up, no feasible node.
         if not utilization_scores:
+            # TODO (Alex): We will hit this case every time a placement group
+            # starts up. This will behave properly with the current utilization
+            # score heuristic, but it's a little dangerous and misleading.
             logger.info(
                 "No feasible node type to add for {}".format(resources))
             break
