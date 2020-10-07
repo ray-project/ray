@@ -163,7 +163,6 @@ class Gauge(Metric):
         name(str): Name of the metric.
         description(str): Description of the metric.
         tag_keys(tuple): Tag keys of the metric.
-        tags(dict): Dictionary of default tag values.
     """
 
     def __init__(self,
