@@ -9,7 +9,7 @@ import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.placement_group_load_util import state_enum_to_string, strategy_enum_to_string, PlacementGroupLoad
+from ray.autoscaler._private.placement_group_load_util import state_enum_to_string, strategy_enum_to_string, PlacementGroupData
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
@@ -114,7 +114,7 @@ class Monitor:
                     shapes.append(shape)
 
                 placement_group_load.append(
-                    PlacementGroupLoad(
+                    PlacementGroupData(
                         strategy=strategy, state=state, shapes=shapes))
 
         except Exception as e:
