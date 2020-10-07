@@ -335,6 +335,17 @@ tune.Trainable (Class API)
     :private-members:
     :members:
 
+.. _tune-util-ref:
+
+Utilities
+---------
+
+.. autofunction:: ray.tune.utils.wait_for_gpu
+
+.. autofunction:: ray.tune.utils.diagnose_serialization
+
+.. autofunction:: ray.tune.utils.validate_save_restore
+
 
 .. _tune-ddp-doc:
 

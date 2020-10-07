@@ -9,18 +9,14 @@ These pages will demonstrate the various features and configurations of Tune.
 
 This document provides an overview of the core concepts as well as some of the configurations for running Tune.
 
-.. contents:: :local:
-
 .. _tune-parallelism:
 
-Parallelism / GPUs
-------------------
+Resources (Parallelism, GPUs, Distributed)
+------------------------------------------
 
 .. tip:: To run everything sequentially, use :ref:`Ray Local Mode <tune-debugging>`.
 
 Parallelism is determined by ``resources_per_trial`` (defaulting to 1 CPU, 0 GPU per trial) and the resources available to Tune (``ray.cluster_resources()``).
-
-Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial. A trial will not be scheduled unless at least that amount of resources is available, preventing the cluster from being overloaded.
 
 By default, Tune automatically runs N concurrent trials, where N is the number of CPUs (cores) on your machine.
 
@@ -42,7 +38,13 @@ You can override this parallelism with ``resources_per_trial``:
     # Fractional values are also supported, (i.e., {"cpu": 0.5}).
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 0.5})
 
-To leverage GPUs, you must set ``gpu`` in ``resources_per_trial``. This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
+
+Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial. A trial will not be scheduled unless at least that amount of resources is available, preventing the cluster from being overloaded.
+
+Using GPUs
+~~~~~~~~~~
+
+To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial={})``. This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
 
 .. code-block:: python
 
@@ -56,6 +58,35 @@ You can find an example of this in the :doc:`Keras MNIST example </tune/examples
 
 .. warning:: If 'gpu' is not set, ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
 
+**Troubleshooting**: Occasionally, you may run into GPU memory issues when running a new trial. This may be
+due to the previous trial not cleaning up its GPU state fast enough. To avoid this,
+you can use ``tune.utils.wait_for_gpu`` - see :ref:`docstring <tune-util-ref>`.
+
+
+Concurrent samples
+~~~~~~~~~~~~~~~~~~
+
+If using a :ref:`search algorithm <tune-search-alg>`, you may want to limit the number of trials that are being evaluated. For example, you may want to serialize the evaluation of trials to do sequential optimization.
+
+In this case, ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency:
+
+.. code-block:: python
+
+    algo = BayesOptSearch(utility_kwargs={
+        "kind": "ucb",
+        "kappa": 2.5,
+        "xi": 0.0
+    })
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+    scheduler = AsyncHyperBandScheduler()
+
+See :ref:`limiter` for more details.
+
+
+
+Distributed Tuning
+~~~~~~~~~~~~~~~~~~
+
 To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :ref:`start-ray-cli` for more information about ``ray.init``:
 
 .. code-block:: python
@@ -64,7 +95,7 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :re
     ray.init(address=<ray_address>)
     tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
 
-
+Read more in the Tune :ref:`distributed experiments guide <tune-distributed>`.
 
 .. _tune-default-search-space:
 
@@ -106,35 +137,25 @@ By default, each random variable and grid search point is sampled once. To take 
 
 Note that search spaces may not be interoperable across different search algorithms. For example, for many search algorithms, you will not be able to use a ``grid_search`` parameter. Read about this in the :ref:`Search Space API <tune-search-space>` page.
 
-Reporting Metrics
------------------
+.. _tune-autofilled-metrics:
+
+Auto-filled Metrics
+-------------------
 
 You can log arbitrary values and metrics in both training APIs:
 
 .. code-block:: python
 
     def trainable(config):
-        num_epochs = 100
         for i in range(num_epochs):
-            accuracy = model.train()
-            metric_1 = f(model)
-            metric_2 = model.get_loss()
+            ...
             tune.report(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
     class Trainable(tune.Trainable):
-        ...
-
-        def step(self):  # this is called iteratively
-            accuracy = self.model.train()
-            metric_1 = f(self.model)
-            metric_2 = self.model.get_loss()
+        def step(self):
+            ...
             # don't call report here!
             return dict(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
-
-.. _tune-autofilled-metrics:
-
-Auto-filled Metrics
--------------------
 
 During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
 
@@ -402,14 +423,7 @@ If using TF2, Tune also automatically generates TensorBoard HParams output, as s
 Console Output
 --------------
 
-The following fields will automatically show up on the console output, if provided:
-
-1. ``episode_reward_mean``
-2. ``mean_loss``
-3. ``mean_accuracy``
-4. ``timesteps_this_iter`` (aggregated into ``timesteps_total``).
-
-Below is an example of the console output:
+User-provided fields will be outputted automatically on a best-effort basis. You can use a :ref:`Reporter <tune-reporter-doc>` object to customize the console output.
 
 .. code-block:: bash
 
@@ -428,7 +442,6 @@ Below is an example of the console output:
     | MyTrainable_a826b7bc | RUNNING  | 10.234.98.164:31112 | 0.729127  | 0.0748 | 0.1797 |        7.05715 |    14 |
     +----------------------+----------+---------------------+-----------+--------+--------+----------------+-------+
 
-You can use a :ref:`Reporter <tune-reporter-doc>` object to customize the console output.
 
 
 Uploading Results
