@@ -577,15 +577,18 @@ class AutoscalingTest(unittest.TestCase):
         # an example of the accompanying resource demands. Note the resource
         # demand autoscaler will be unable to fulfill these demands, but we
         # should still handle the other infeasible/waiting bundles.
-        placement_group_resource_demands = [
-            {"GPU_group_0_6c2506ac733bc37496295b02c4fad446": 0.0101,
-             "GPU_group_6c2506ac733bc37496295b02c4fad446": 0.0101}]
+        placement_group_resource_demands = [{
+            "GPU_group_0_6c2506ac733bc37496295b02c4fad446": 0.0101,
+            "GPU_group_6c2506ac733bc37496295b02c4fad446": 0.0101
+        }]
         lm.update(
             head_ip, {"CPU": 16},
             True, {"CPU": 16},
             False, {},
             infeasible_bundles=placement_group_resource_demands,
-            waiting_bundles=[{"GPU": 8}],
+            waiting_bundles=[{
+                "GPU": 8
+            }],
             placement_group_load=placement_group_load)
         # import pdb; pdb.set_trace()
         autoscaler.update()
@@ -593,7 +596,7 @@ class AutoscalingTest(unittest.TestCase):
         print([node.node_type for node in self.provider.mock_nodes.values()])
         self.waitForNodes(5)
 
-        for i in range(1,5):
+        for i in range(1, 5):
             assert self.provider.mock_nodes[i].node_type == "p2.8xlarge"
 
         placement_group_load = [
@@ -604,9 +607,7 @@ class AutoscalingTest(unittest.TestCase):
                     "GPU": 2
                 }] * 4)),
             PlacementGroupData(
-                state=RESCHEDULING,
-                strategy=SPREAD,
-                shapes=([{
+                state=RESCHEDULING, strategy=SPREAD, shapes=([{
                     "GPU": 2
                 }] * 2)),
         ]

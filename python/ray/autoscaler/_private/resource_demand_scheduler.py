@@ -423,6 +423,5 @@ def placement_groups_to_resource_demands(placement_group_load: List[
             logger.error(
                 f"Unknown placement group request type: {placement_group}. "
                 f"Please file a bug report "
-                f"https://github.com/ray-project/ray/issues/new."
-            )
+                f"https://github.com/ray-project/ray/issues/new.")
     return resource_demand_vector, unconverted
