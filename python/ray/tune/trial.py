@@ -3,13 +3,11 @@ from typing import Sequence
 import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
-from datetime import datetime
 import logging
 import platform
 import shutil
 import uuid
 import time
-import tempfile
 import os
 from numbers import Number
 from ray.tune import TuneError
@@ -23,16 +21,18 @@ from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.trainable import TrainableUtil
-from ray.tune.utils import flatten_dict
+from ray.tune.utils import date_str, flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
-MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 130))
 logger = logging.getLogger(__name__)
-
-
-def date_str():
-    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+if "MAX_LEN_IDENTIFIER" in os.environ:
+    logger.error(
+        "The MAX_LEN_IDENTIFIER environment variable is deprecated and will "
+        "be removed in the future. Use TUNE_MAX_LEN_IDENTIFIER instead.")
+MAX_LEN_IDENTIFIER = int(
+    os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
+                   os.environ.get("MAX_LEN_IDENTIFIER", 130)))
 
 
 class Location:
@@ -129,6 +129,19 @@ class TrialInfo:
         return self._trial_id
 
 
+def create_logdir(dirname, local_dir):
+    local_dir = os.path.expanduser(local_dir)
+    logdir = os.path.join(local_dir, dirname)
+    if os.path.exists(logdir):
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
+        logdir = os.path.join(local_dir, dirname)
+    os.makedirs(logdir, exist_ok=True)
+    return logdir
+
+
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -176,6 +189,7 @@ class Trial:
                  export_formats=None,
                  restore_path=None,
                  trial_name_creator=None,
+                 trial_dirname_creator=None,
                  loggers=None,
                  log_to_file=None,
                  sync_to_driver_fn=None,
@@ -243,7 +257,9 @@ class Trial:
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
+        self.trial_name_creator = trial_name_creator
         self.custom_trial_name = None
+        self.custom_dirname = None
 
         # Checkpointing fields
         self.saving_to = None
@@ -253,6 +269,8 @@ class Trial:
             self.remote_checkpoint_dir_prefix = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
+        self.keep_checkpoints_num = keep_checkpoints_num
+        self.checkpoint_score_attr = checkpoint_score_attr
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
@@ -279,6 +297,12 @@ class Trial:
         ]
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
+
+        if trial_dirname_creator:
+            self.custom_dirname = trial_dirname_creator(self)
+            if os.path.sep in self.custom_dirname:
+                raise ValueError(f"Trial dirname must not contain '/'. "
+                                 "Got {self.custom_dirname}")
 
     @property
     def node_ip(self):
@@ -311,21 +335,37 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
-    @classmethod
-    def create_logdir(cls, identifier, local_dir):
-        local_dir = os.path.expanduser(local_dir)
-        os.makedirs(local_dir, exist_ok=True)
-        return tempfile.mkdtemp(
-            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
-            dir=local_dir)
+    def reset(self):
+        return Trial(
+            self.trainable_name,
+            config=self.config,
+            trial_id=None,
+            local_dir=self.local_dir,
+            evaluated_params=self.evaluated_params,
+            experiment_tag=self.experiment_tag,
+            resources=self.resources,
+            stopping_criterion=self.stopping_criterion,
+            remote_checkpoint_dir=self.remote_checkpoint_dir,
+            checkpoint_freq=self.checkpoint_freq,
+            checkpoint_at_end=self.checkpoint_at_end,
+            sync_on_checkpoint=self.sync_on_checkpoint,
+            keep_checkpoints_num=self.keep_checkpoints_num,
+            checkpoint_score_attr=self.checkpoint_score_attr,
+            export_formats=self.export_formats,
+            restore_path=self.restore_path,
+            trial_name_creator=self.trial_name_creator,
+            loggers=self.loggers,
+            log_to_file=self.log_to_file,
+            sync_to_driver_fn=self.sync_to_driver_fn,
+            max_failures=self.max_failures,
+        )
 
     def init_logger(self):
         """Init logger."""
         if not self.result_logger:
             if not self.logdir:
-                self.logdir = Trial.create_logdir(
-                    self._trainable_name() + "_" + self.experiment_tag,
-                    self.local_dir)
+                self.logdir = create_logdir(self._generate_dirname(),
+                                            self.local_dir)
             else:
                 os.makedirs(self.logdir, exist_ok=True)
 
@@ -564,6 +604,15 @@ class Trial:
             identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
 
+    def _generate_dirname(self):
+        if self.custom_dirname:
+            generated_dirname = self.custom_dirname
+        else:
+            generated_dirname = f"{str(self)}_{self.experiment_tag}"
+            generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
+            generated_dirname += f"_{date_str()}"
+        return generated_dirname.replace("/", "_")
+
     def __getstate__(self):
         """Memento generator for Trial.
 
@@ -579,6 +628,7 @@ class Trial:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
+        state["location"] = Location()
         state["result_logger"] = None
         # Avoid waiting for events that will never occur on resume.
         state["resuming_from"] = None

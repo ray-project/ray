@@ -1,7 +1,12 @@
+"""PyTorch model for DQN"""
+
+from typing import Sequence
+import gym
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.modules.noisy_layer import NoisyLayer
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import ModelConfigDict
 
 torch, nn = try_import_torch()
 
@@ -12,29 +17,29 @@ class DQNTorchModel(TorchModelV2, nn.Module):
 
     def __init__(
             self,
-            obs_space,
-            action_space,
-            num_outputs,
-            model_config,
-            name,
+            obs_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            num_outputs: int,
+            model_config: ModelConfigDict,
+            name: str,
             *,
-            q_hiddens=(256, ),
-            dueling=False,
-            dueling_activation="relu",
-            num_atoms=1,
-            use_noisy=False,
-            v_min=-10.0,
-            v_max=10.0,
-            sigma0=0.5,
+            q_hiddens: Sequence[int] = (256, ),
+            dueling: bool = False,
+            dueling_activation: str = "relu",
+            num_atoms: int = 1,
+            use_noisy: bool = False,
+            v_min: float = -10.0,
+            v_max: float = 10.0,
+            sigma0: float = 0.5,
             # TODO(sven): Move `add_layer_norm` into ModelCatalog as
             #  generic option, then error if we use ParameterNoise as
             #  Exploration type and do not have any LayerNorm layers in
             #  the net.
-            add_layer_norm=False):
+            add_layer_norm: bool = False):
         """Initialize variables of this model.
 
         Extra model kwargs:
-            q_hiddens (List[int]): List of layer-sizes after(!) the
+            q_hiddens (Sequence[int]): List of layer-sizes after(!) the
                 Advantages(A)/Value(V)-split. Hence, each of the A- and V-
                 branches will have this structure of Dense layers. To define
                 the NN before this A/V-split, use - as always -
@@ -72,12 +77,16 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                 advantage_module.add_module(
                     "dueling_A_{}".format(i),
                     NoisyLayer(
-                        ins, n, sigma0=self.sigma0,
+                        ins,
+                        n,
+                        sigma0=self.sigma0,
                         activation=dueling_activation))
                 value_module.add_module(
                     "dueling_V_{}".format(i),
                     NoisyLayer(
-                        ins, n, sigma0=self.sigma0,
+                        ins,
+                        n,
+                        sigma0=self.sigma0,
                         activation=dueling_activation))
             else:
                 advantage_module.add_module(
@@ -88,25 +97,26 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                     SlimFC(ins, n, activation_fn=dueling_activation))
                 # Add LayerNorm after each Dense.
                 if add_layer_norm:
-                    advantage_module.add_module(
-                        "LayerNorm_A_{}".format(i), nn.LayerNorm(n))
-                    value_module.add_module(
-                        "LayerNorm_V_{}".format(i), nn.LayerNorm(n))
+                    advantage_module.add_module("LayerNorm_A_{}".format(i),
+                                                nn.LayerNorm(n))
+                    value_module.add_module("LayerNorm_V_{}".format(i),
+                                            nn.LayerNorm(n))
             ins = n
 
         # Actual Advantages layer (nodes=num-actions).
         if use_noisy:
-            advantage_module.add_module("A", NoisyLayer(
-                ins,
-                self.action_space.n * self.num_atoms,
-                sigma0,
-                activation=None))
+            advantage_module.add_module(
+                "A",
+                NoisyLayer(
+                    ins,
+                    self.action_space.n * self.num_atoms,
+                    sigma0,
+                    activation=None))
         elif q_hiddens:
             advantage_module.add_module(
                 "A",
                 SlimFC(
-                    ins, action_space.n * self.num_atoms,
-                    activation_fn=None))
+                    ins, action_space.n * self.num_atoms, activation_fn=None))
 
         self.advantage_module = advantage_module
 
@@ -139,7 +149,7 @@ class DQNTorchModel(TorchModelV2, nn.Module):
             support_logits_per_action = torch.reshape(
                 action_scores, shape=(-1, self.action_space.n, self.num_atoms))
             support_prob_per_action = nn.functional.softmax(
-                support_logits_per_action)
+                support_logits_per_action, dim=-1)
             action_scores = torch.sum(z * support_prob_per_action, dim=-1)
             logits = support_logits_per_action
             probs = support_prob_per_action

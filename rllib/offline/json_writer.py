@@ -16,10 +16,12 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import pack, compression_supported
-from ray.rllib.utils.types import FileType, SampleBatchType
+from ray.rllib.utils.typing import FileType, SampleBatchType
 from typing import Any, List
 
 logger = logging.getLogger(__name__)
+
+WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
 
 
 @PublicAPI
@@ -34,7 +36,7 @@ class JsonWriter(OutputWriter):
                  compress_columns: List[str] = frozenset(["obs", "new_obs"])):
         """Initialize a JsonWriter.
 
-        Arguments:
+        Args:
             path (str): a path/URI of the output directory to save files in.
             ioctx (IOContext): current IO context object.
             max_file_size (int): max size of single files before rolling over.
@@ -44,7 +46,7 @@ class JsonWriter(OutputWriter):
         self.ioctx = ioctx or IOContext()
         self.max_file_size = max_file_size
         self.compress_columns = compress_columns
-        if urlparse(path).scheme not in ["", "c"]:
+        if urlparse(path).scheme not in [""] + WINDOWS_DRIVES:
             self.path_is_uri = True
         else:
             path = os.path.abspath(os.path.expanduser(path))

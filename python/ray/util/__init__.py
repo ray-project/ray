@@ -2,14 +2,11 @@ from ray.util import iter
 from ray.util.actor_pool import ActorPool
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
-from ray.util.named_actors import get_actor, register_actor
+from ray.util.placement_group import (placement_group, placement_group_table,
+                                      remove_placement_group)
 
 __all__ = [
-    "ActorPool",
-    "disable_log_once_globally",
-    "enable_periodic_logging",
-    "get_actor",
-    "iter",
-    "log_once",
-    "register_actor",
+    "ActorPool", "disable_log_once_globally", "enable_periodic_logging",
+    "iter", "log_once", "placement_group", "placement_group_table",
+    "remove_placement_group"
 ]

@@ -15,7 +15,14 @@ Java demo code in this documentation can be found `here <https://github.com/ray-
 Installation
 ------------
 
-To run this walkthrough, install Ray with ``pip install -U ray``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
+.. tabs::
+  .. group-tab:: Python
+
+    To run this walkthrough, install Ray with ``pip install -U ray``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
+
+  .. group-tab:: Java
+
+    To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. Snapshot versions can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`_.
 
 Starting Ray
 ------------
@@ -35,14 +42,14 @@ You can start Ray on a single machine by adding this to your code.
 
   .. code-tab:: java
 
-    import io.ray.Ray;
+    import io.ray.api.Ray;
 
     public class MyRayApp {
 
       public static void main(String[] args) {
         // Start Ray runtime. If you're connecting to an existing cluster, you can set
-        // the `-Dray.redis.address=<cluster-address>` java system property.
-        Ray.init()
+        // the `-Dray.address=<cluster-address>` java system property.
+        Ray.init();
         ...
       }
     }
@@ -172,6 +179,7 @@ Note the following behaviors:
      first task (the value corresponding to ``obj_ref1/objRef1``) will be sent over the
      network to the machine where the second task is scheduled.
 
+.. _resource-requirements:
 
 Specifying required resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -253,7 +261,7 @@ Multiple returns
 
     .. code-block:: python
 
-      @ray.remote(num_return_vals=3)
+      @ray.remote(num_returns=3)
       def return_multiple():
           return 1, 2, 3
 
@@ -341,7 +349,7 @@ If the current node's object store does not contain the object, the object is do
       assert ray.get([ray.put(i) for i in range(3)]) == [0, 1, 2]
 
       # You can also set a timeout to return early from a ``get`` that's blocking for too long.
-      from ray.exceptions import RayTimeoutError
+      from ray.exceptions import GetTimeoutError
 
       @ray.remote
       def long_running_function()
@@ -350,7 +358,7 @@ If the current node's object store does not contain the object, the object is do
       obj_ref = long_running_function.remote()
       try:
           ray.get(obj_ref, timeout=4)
-      except RayTimeoutError:
+      except GetTimeoutError:
           print("`get` timed out.")
 
   .. group-tab:: Java
@@ -427,7 +435,7 @@ Actors extend the Ray API from functions (tasks) to classes. An actor is essenti
 
   .. group-tab:: Java
 
-    ``Ray.actor`` is used to create actors from regular Java classes. Unlike Python, multiple Java actors may share one JVM process, in order to reduce JVM's memory overhead. But this is transparent to normal users.
+    ``Ray.actor`` is used to create actors from regular Java classes.
 
     .. code-block:: java
 

@@ -6,7 +6,7 @@
   <parent>
     <groupId>io.ray</groupId>
     <artifactId>ray-superpom</artifactId>
-    <version>0.9.0-SNAPSHOT</version>
+    <version>1.1.0-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
@@ -42,6 +42,11 @@
   <version>27.0.1-jre</version>
 </dependency>
 <dependency>
+  <groupId>com.google.protobuf</groupId>
+  <artifactId>protobuf-java</artifactId>
+  <version>3.8.0</version>
+</dependency>
+<dependency>
   <groupId>com.sun.xml.bind</groupId>
   <artifactId>jaxb-core</artifactId>
   <version>2.3.0</version>
@@ -74,7 +79,7 @@
 <dependency>
   <groupId>org.testng</groupId>
   <artifactId>testng</artifactId>
-  <version>7.1.0</version>
+  <version>7.3.0</version>
 </dependency>
   </dependencies>
   <build>

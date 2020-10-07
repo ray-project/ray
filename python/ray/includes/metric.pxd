@@ -11,13 +11,13 @@ cdef extern from "opencensus/tags/tag_key.h" nogil:
 cdef extern from "ray/stats/metric.h" nogil:
     cdef cppclass CMetric "ray::stats::Metric":
         CMetric(const c_string &name,
-               const c_string &description,
-               const c_string &unit,
-               const c_vector[CTagKey] &tag_keys)
+                const c_string &description,
+                const c_string &unit,
+                const c_vector[CTagKey] &tag_keys)
         c_string GetName() const
         void Record(double value)
-        void Record(double value, 
-                unordered_map[c_string, c_string] &tags)
+        void Record(double value,
+                    unordered_map[c_string, c_string] &tags)
 
     cdef cppclass CGauge "ray::stats::Gauge":
         CGauge(const c_string &name,

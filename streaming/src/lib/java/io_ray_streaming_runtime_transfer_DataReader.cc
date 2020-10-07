@@ -1,6 +1,7 @@
 #include "io_ray_streaming_runtime_transfer_DataReader.h"
 
 #include <cstdlib>
+
 #include "data_reader.h"
 #include "runtime_context.h"
 #include "streaming_jni_common.h"
@@ -11,15 +12,13 @@ using namespace ray::streaming;
 JNIEXPORT jlong JNICALL
 Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
     JNIEnv *env, jclass, jobject streaming_queue_initial_parameters,
-    jobjectArray input_channels, jlongArray seq_id_array, jlongArray msg_id_array,
-    jlong timer_interval, jboolean isRecreate, jbyteArray config_bytes,
-    jboolean is_mock) {
+    jobjectArray input_channels, jlongArray msg_id_array, jlong timer_interval,
+    jobject creation_status, jbyteArray config_bytes, jboolean is_mock) {
   STREAMING_LOG(INFO) << "[JNI]: create DataReader.";
   std::vector<ray::streaming::ChannelCreationParameter> parameter_vec;
   ParseChannelInitParameters(env, streaming_queue_initial_parameters, parameter_vec);
   std::vector<ray::ObjectID> input_channels_ids =
       jarray_to_object_id_vec(env, input_channels);
-  std::vector<uint64_t> seq_ids = LongVectorFromJLongArray(env, seq_id_array).data;
   std::vector<uint64_t> msg_ids = LongVectorFromJLongArray(env, msg_id_array).data;
 
   auto ctx = std::make_shared<RuntimeContext>();
@@ -31,8 +30,24 @@ Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
   if (is_mock) {
     ctx->MarkMockTest();
   }
+
+  // init reader
   auto reader = new DataReader(ctx);
-  reader->Init(input_channels_ids, parameter_vec, seq_ids, msg_ids, timer_interval);
+  std::vector<TransferCreationStatus> creation_status_vec;
+  reader->Init(input_channels_ids, parameter_vec, msg_ids, creation_status_vec,
+               timer_interval);
+
+  // add creation status to Java's List
+  jclass array_list_cls = env->GetObjectClass(creation_status);
+  jclass integer_cls = env->FindClass("java/lang/Integer");
+  jmethodID array_list_add =
+      env->GetMethodID(array_list_cls, "add", "(Ljava/lang/Object;)Z");
+  for (auto &status : creation_status_vec) {
+    jmethodID integer_init = env->GetMethodID(integer_cls, "<init>", "(I)V");
+    jobject integer_obj =
+        env->NewObject(integer_cls, integer_init, static_cast<int>(status));
+    env->CallBooleanMethod(creation_status, array_list_add, integer_obj);
+  }
   STREAMING_LOG(INFO) << "create native DataReader succeed";
   return reinterpret_cast<jlong>(reader);
 }
@@ -50,8 +65,6 @@ JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBund
   } else if (StreamingStatus::GetBundleTimeOut == status) {
   } else if (StreamingStatus::InitQueueFailed == status) {
     throwRuntimeException(env, "init channel failed");
-  } else if (StreamingStatus::WaitQueueTimeOut == status) {
-    throwRuntimeException(env, "wait channel object timeout");
   }
 
   if (StreamingStatus::OK != status) {
@@ -86,4 +99,35 @@ Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *env,
                                                                     jobject thisObj,
                                                                     jlong ptr) {
   delete reinterpret_cast<DataReader *>(ptr);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_streaming_runtime_transfer_DataReader_getOffsetsInfoNative(JNIEnv *env,
+                                                                       jobject thisObj,
+                                                                       jlong ptr) {
+  auto reader = reinterpret_cast<ray::streaming::DataReader *>(ptr);
+  std::unordered_map<ray::ObjectID, ConsumerChannelInfo> *offset_map = nullptr;
+  reader->GetOffsetInfo(offset_map);
+  STREAMING_CHECK(offset_map);
+  // queue nums + (queue id + seq id + message id) * queue nums
+  int offset_data_size =
+      sizeof(uint32_t) + (kUniqueIDSize + sizeof(uint64_t) * 2) * offset_map->size();
+  jbyteArray offsets_info = env->NewByteArray(offset_data_size);
+  int offset = 0;
+  // total queue nums
+  auto queue_nums = static_cast<uint32_t>(offset_map->size());
+  env->SetByteArrayRegion(offsets_info, offset, sizeof(uint32_t),
+                          reinterpret_cast<jbyte *>(&queue_nums));
+  offset += sizeof(uint32_t);
+  // queue name & offset
+  for (auto &p : *offset_map) {
+    env->SetByteArrayRegion(offsets_info, offset, kUniqueIDSize,
+                            reinterpret_cast<const jbyte *>(p.first.Data()));
+    offset += kUniqueIDSize;
+    // msg_id
+    env->SetByteArrayRegion(offsets_info, offset, sizeof(uint64_t),
+                            reinterpret_cast<jbyte *>(&p.second.current_message_id));
+    offset += sizeof(uint64_t);
+  }
+  return offsets_info;
 }

@@ -68,20 +68,26 @@ class SlimConv2d(nn.Module):
             bias_init=0):
         super(SlimConv2d, self).__init__()
         layers = []
+        # Padding layer.
         if padding:
             layers.append(nn.ZeroPad2d(padding))
+        # Actual Conv2D layer (including correct initialization logic).
         conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
         if initializer:
             if initializer == "default":
                 initializer = nn.init.xavier_uniform_
             initializer(conv.weight)
         nn.init.constant_(conv.bias, bias_init)
-
         layers.append(conv)
-        if activation_fn:
+        # Activation function (if any; default=ReLu).
+        if isinstance(activation_fn, str):
             if activation_fn == "default":
                 activation_fn = nn.ReLU
+            else:
+                activation_fn = get_activation_fn(activation_fn, "torch")
+        if activation_fn is not None:
             layers.append(activation_fn())
+        # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -100,16 +106,19 @@ class SlimFC(nn.Module):
                  bias_init=0.0):
         super(SlimFC, self).__init__()
         layers = []
+        # Actual Conv2D layer (including correct initialization logic).
         linear = nn.Linear(in_size, out_size, bias=use_bias)
         if initializer:
             initializer(linear.weight)
         if use_bias is True:
             nn.init.constant_(linear.bias, bias_init)
         layers.append(linear)
+        # Activation function (if any; default=None (linear)).
         if isinstance(activation_fn, str):
             activation_fn = get_activation_fn(activation_fn, "torch")
         if activation_fn is not None:
             layers.append(activation_fn())
+        # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
     def forward(self, x):

@@ -31,8 +31,8 @@ using rpc::GcsNodeInfo;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
+using rpc::ObjectLocationInfo;
 using rpc::ObjectTableData;
-using rpc::ObjectTableDataList;
 using rpc::PlacementGroupTableData;
 using rpc::ProfileTableData;
 using rpc::ResourceMap;
@@ -234,7 +234,7 @@ class GcsTaskReconstructionTable
   JobID GetJobIdFromKey(const TaskID &key) override { return key.ActorId().JobId(); }
 };
 
-class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectTableDataList> {
+class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
  public:
   explicit GcsObjectTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTableWithJobId(store_client) {
@@ -245,7 +245,7 @@ class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectTableDataList> {
   JobID GetJobIdFromKey(const ObjectID &key) override { return key.TaskId().JobId(); }
 };
 
-class GcsNodeTable : public GcsTable<ClientID, GcsNodeInfo> {
+class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
@@ -253,7 +253,7 @@ class GcsNodeTable : public GcsTable<ClientID, GcsNodeInfo> {
   }
 };
 
-class GcsNodeResourceTable : public GcsTable<ClientID, ResourceMap> {
+class GcsNodeResourceTable : public GcsTable<NodeID, ResourceMap> {
  public:
   explicit GcsNodeResourceTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
@@ -261,7 +261,7 @@ class GcsNodeResourceTable : public GcsTable<ClientID, ResourceMap> {
   }
 };
 
-class GcsHeartbeatTable : public GcsTable<ClientID, HeartbeatTableData> {
+class GcsHeartbeatTable : public GcsTable<NodeID, HeartbeatTableData> {
  public:
   explicit GcsHeartbeatTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
@@ -277,7 +277,7 @@ class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, Schedul
   }
 };
 
-class GcsHeartbeatBatchTable : public GcsTable<ClientID, HeartbeatBatchTableData> {
+class GcsHeartbeatBatchTable : public GcsTable<NodeID, HeartbeatBatchTableData> {
  public:
   explicit GcsHeartbeatBatchTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
@@ -396,8 +396,8 @@ class GcsTableStorage {
   }
 
   GcsInternalConfigTable &InternalConfigTable() {
-    RAY_CHECK(internal_config_table_ != nullptr);
-    return *internal_config_table_;
+    RAY_CHECK(system_config_table_ != nullptr);
+    return *system_config_table_;
   }
 
  protected:
@@ -418,7 +418,7 @@ class GcsTableStorage {
   std::unique_ptr<GcsHeartbeatBatchTable> heartbeat_batch_table_;
   std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
-  std::unique_ptr<GcsInternalConfigTable> internal_config_table_;
+  std::unique_ptr<GcsInternalConfigTable> system_config_table_;
 };
 
 /// \class RedisGcsTableStorage
@@ -447,7 +447,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
-    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
+    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 
@@ -475,7 +475,7 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
-    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
+    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 

@@ -2,7 +2,7 @@ aiohttp
 blist
 boto3
 cython==0.29.0
-dataclasses
+dataclasses; python_version < '3.7'
 dm-tree
 feather-format
 flask
@@ -12,7 +12,7 @@ kubernetes
 lxml
 networkx
 numba
-opencv-python-headless
+opencv-python-headless==4.3.0.36
 openpyxl
 pandas==0.24.2
 Pillow

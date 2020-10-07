@@ -4,8 +4,19 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
-def discount(x: np.ndarray, gamma: float):
-    return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
+def discount_cumsum(x: np.ndarray, gamma: float) -> float:
+    """Calculates the discounted cumulative sum over a reward sequence `x`.
+
+    y[t] - discount*y[t+1] = x[t]
+    reversed(y)[t] - discount*reversed(y)[t-1] = reversed(x)[t]
+
+    Args:
+        gamma (float): The discount factor gamma.
+
+    Returns:
+        float: The discounted cumulative sum over the reward sequence `x`.
+    """
+    return scipy.signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]
 
 
 class Postprocessing:
@@ -23,16 +34,16 @@ def compute_advantages(rollout: SampleBatch,
                        use_gae: bool = True,
                        use_critic: bool = True):
     """
-    Given a rollout, compute its value targets and the advantage.
+    Given a rollout, compute its value targets and the advantages.
 
     Args:
-        rollout (SampleBatch): SampleBatch of a single trajectory
-        last_r (float): Value estimation for last observation
+        rollout (SampleBatch): SampleBatch of a single trajectory.
+        last_r (float): Value estimation for last observation.
         gamma (float): Discount factor.
-        lambda_ (float): Parameter for GAE
-        use_gae (bool): Using Generalized Advantage Estimation
+        lambda_ (float): Parameter for GAE.
+        use_gae (bool): Using Generalized Advantage Estimation.
         use_critic (bool): Whether to use critic (value estimates). Setting
-                           this to False will use 0 as baseline.
+            this to False will use 0 as baseline.
 
     Returns:
         SampleBatch (SampleBatch): Object with experience from rollout and
@@ -54,16 +65,17 @@ def compute_advantages(rollout: SampleBatch,
             rollout[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1])
         # This formula for the advantage comes from:
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
-        rollout[Postprocessing.ADVANTAGES] = discount(delta_t, gamma * lambda_)
+        rollout[Postprocessing.ADVANTAGES] = discount_cumsum(
+            delta_t, gamma * lambda_)
         rollout[Postprocessing.VALUE_TARGETS] = (
             rollout[Postprocessing.ADVANTAGES] +
-            rollout[SampleBatch.VF_PREDS]).copy().astype(np.float32)
+            rollout[SampleBatch.VF_PREDS]).astype(np.float32)
     else:
         rewards_plus_v = np.concatenate(
             [rollout[SampleBatch.REWARDS],
              np.array([last_r])])
-        discounted_returns = discount(rewards_plus_v,
-                                      gamma)[:-1].copy().astype(np.float32)
+        discounted_returns = discount_cumsum(rewards_plus_v,
+                                             gamma)[:-1].astype(np.float32)
 
         if use_critic:
             rollout[Postprocessing.
@@ -76,7 +88,7 @@ def compute_advantages(rollout: SampleBatch,
                 rollout[Postprocessing.ADVANTAGES])
 
     rollout[Postprocessing.ADVANTAGES] = rollout[
-        Postprocessing.ADVANTAGES].copy().astype(np.float32)
+        Postprocessing.ADVANTAGES].astype(np.float32)
 
     assert all(val.shape[0] == rollout_size for key, val in rollout.items()), \
         "Rollout stacked incorrectly!"

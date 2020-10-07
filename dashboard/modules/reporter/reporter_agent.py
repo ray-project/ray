@@ -6,6 +6,7 @@ import os
 import socket
 import subprocess
 import sys
+import traceback
 
 import aioredis
 
@@ -13,13 +14,21 @@ import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+from ray.metrics_agent import MetricsAgent
 import psutil
 
 logger = logging.getLogger(__name__)
+
+try:
+    import gpustat.core as gpustat
+except ImportError:
+    gpustat = None
+    logger.warning(
+        "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
 
 
 def recursive_asdict(o):
@@ -56,34 +65,77 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         super().__init__(dashboard_agent)
         self._cpu_counts = (psutil.cpu_count(),
                             psutil.cpu_count(logical=False))
-        self._ip = ray.services.get_node_ip_address()
+        self._ip = ray._private.services.get_node_ip_address()
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
+        self._metrics_agent = MetricsAgent(dashboard_agent.metrics_export_port)
+        self._key = f"{reporter_consts.REPORTER_PREFIX}" \
+                    f"{self._dashboard_agent.node_id}"
 
     async def GetProfilingStats(self, request, context):
         pid = request.pid
         duration = request.duration
         profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
-                                           "{}_profiling.txt".format(pid))
-        process = subprocess.Popen(
-            "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
-            .format(profiling_file_path, pid, duration),
+                                           f"{pid}_profiling.txt")
+        sudo = "sudo" if ray.utils.get_user() != "root" else ""
+        process = await asyncio.create_subprocess_shell(
+            f"{sudo} $(which py-spy) record "
+            f"-o {profiling_file_path} -p {pid} -d {duration} -f speedscope",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=True)
-        stdout, stderr = process.communicate()
+        stdout, stderr = await process.communicate()
         if process.returncode != 0:
             profiling_stats = ""
         else:
             with open(profiling_file_path, "r") as f:
                 profiling_stats = f.read()
         return reporter_pb2.GetProfilingStatsReply(
-            profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
+            profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
+
+    async def ReportMetrics(self, request, context):
+        # NOTE: Exceptions are not propagated properly
+        # when we don't catch them here.
+        try:
+            metrcs_description_required = (
+                self._metrics_agent.record_metrics_points(
+                    request.metrics_points))
+        except Exception as e:
+            logger.error(e)
+            logger.error(traceback.format_exc())
+
+        # If metrics description is missing, we should notify cpp processes
+        # that we need them. Cpp processes will then report them to here.
+        # We need it when (1) a new metric is reported (application metric)
+        # (2) a reporter goes down and restarted (currently not implemented).
+        return reporter_pb2.ReportMetricsReply(
+            metrcs_description_required=metrcs_description_required)
 
     @staticmethod
     def _get_cpu_percent():
         return psutil.cpu_percent()
+
+    @staticmethod
+    def _get_gpu_usage():
+        if gpustat is None:
+            return []
+        gpu_utilizations = []
+        gpus = []
+        try:
+            gpus = gpustat.new_query().gpus
+        except Exception as e:
+            logger.debug(
+                "gpustat failed to retrieve GPU information: {}".format(e))
+        for gpu in gpus:
+            # Note the keys in this dict have periods which throws
+            # off javascript so we change .s to _s
+            gpu_data = {
+                "_".join(key.split(".")): val
+                for key, val in gpu.entry.items()
+            }
+            gpu_utilizations.append(gpu_data)
+        return gpu_utilizations
 
     @staticmethod
     def _get_boot_time():
@@ -136,12 +188,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_raylet_cmdline():
-        curr_proc = psutil.Process()
-        parent = curr_proc.parent()
-        if parent.pid == 1:
-            return ""
-        else:
-            return parent.cmdline()
+        try:
+            curr_proc = psutil.Process()
+            parent = curr_proc.parent()
+            if parent.pid == 1:
+                return []
+            else:
+                return parent.cmdline()
+        except (psutil.AccessDenied, ProcessLookupError):
+            return []
 
     def _get_load_avg(self):
         if sys.platform == "win32":
@@ -173,6 +228,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
             "disk": self._get_disk_usage(),
+            "gpus": self._get_gpu_usage(),
             "net": netstats,
             "cmdline": self._get_raylet_cmdline(),
         }
@@ -186,11 +242,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         while True:
             try:
                 stats = self._get_all_stats()
-                await aioredis_client.publish(
-                    "{}{}".format(reporter_consts.REPORTER_PREFIX,
-                                  self._hostname), jsonify_asdict(stats))
-            except Exception as ex:
-                logger.exception(ex)
+                await aioredis_client.publish(self._key, jsonify_asdict(stats))
+            except Exception:
+                logger.exception("Error publishing node physical stats.")
             await asyncio.sleep(
                 reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 

@@ -1,0 +1,18 @@
+Local node IP: .+
+
+--------------------
+Ray runtime started.
+--------------------
+
+Next steps
+  To connect to this Ray runtime from another node, run
+    ray start --address='.+' --redis-password='.+'
+
+  Alternatively, use the following Python code:
+    import ray
+    ray\.init\(address='auto', _redis_password='.+'\)
+
+  If connection fails, check your firewall settings and network configuration.
+
+  To terminate the Ray runtime, run
+    ray stop

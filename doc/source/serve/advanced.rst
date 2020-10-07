@@ -21,11 +21,11 @@ To scale out a backend to multiple workers, simplify configure the number of rep
 .. code-block:: python
 
   config = {"num_replicas": 10}
-  serve.create_backend("my_scaled_endpoint_backend", handle_request, config=config)
+  client.create_backend("my_scaled_endpoint_backend", handle_request, config=config)
 
   # scale it back down...
   config = {"num_replicas": 2}
-  serve.update_backend_config("my_scaled_endpoint_backend", config)
+  client.update_backend_config("my_scaled_endpoint_backend", config)
 
 This will scale up or down the number of workers that can accept requests.
 
@@ -42,7 +42,7 @@ following:
 .. code-block:: python
 
   config = {"num_gpus": 1}
-  serve.create_backend("my_gpu_backend", handle_request, ray_actor_options=config)
+  client.create_backend("my_gpu_backend", handle_request, ray_actor_options=config)
 
 Configuring Parallelism with OMP_NUM_THREADS
 --------------------------------------------
@@ -64,7 +64,7 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
           os.environ["OMP_NUM_THREADS"] = parallelism
           # Download model weights, initialize model, etc.
 
-  serve.create_backend("parallel_backend", MyBackend, 12)
+  client.create_backend("parallel_backend", MyBackend, 12)
 
 .. _serve-batching:
 
@@ -90,8 +90,8 @@ You can also have Ray Serve batch requests for performance. In order to do use t
           return responses
 
   config = {"max_batch_size": 5}
-  serve.create_backend("counter1", BatchingExample, config=config)
-  serve.create_endpoint("counter1", backend="counter1", route="/increment")
+  client.create_backend("counter1", BatchingExample, config=config)
+  client.create_endpoint("counter1", backend="counter1", route="/increment")
 
 Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
 dive.
@@ -102,17 +102,17 @@ Splitting Traffic Between Backends
 ==================================
 
 At times it may be useful to expose a single endpoint that is served by multiple backends.
-You can do this by splitting the traffic for an endpoint between backends using :mod:`set_traffic <ray.serve.set_traffic>`.
-When calling :mod:`set_traffic <ray.serve.set_traffic>`, you provide a dictionary of backend name to a float value that will be used to randomly route that portion of traffic (out of a total of 1.0) to the given backend.
+You can do this by splitting the traffic for an endpoint between backends using :mod:`client.set_traffic <ray.serve.api.Client.set_traffic>`.
+When calling :mod:`client.set_traffic <ray.serve.api.Client.set_traffic>`, you provide a dictionary of backend name to a float value that will be used to randomly route that portion of traffic (out of a total of 1.0) to the given backend.
 For example, here we split traffic 50/50 between two backends:
 
 .. code-block:: python
 
-  serve.create_backend("backend1", MyClass1)
-  serve.create_backend("backend2", MyClass2)
+  client.create_backend("backend1", MyClass1)
+  client.create_backend("backend2", MyClass2)
 
-  serve.create_endpoint("fifty-fifty", backend="backend1", route="/fifty")
-  serve.set_traffic("fifty-fifty", {"backend1": 0.5, "backend2": 0.5})
+  client.create_endpoint("fifty-fifty", backend="backend1", route="/fifty")
+  client.set_traffic("fifty-fifty", {"backend1": 0.5, "backend2": 0.5})
 
 Each request is routed randomly between the backends in the traffic dictionary according to the provided weights.
 Please see :ref:`session-affinity` for details on how to ensure that clients or users are consistently mapped to the same backend.
@@ -120,52 +120,52 @@ Please see :ref:`session-affinity` for details on how to ensure that clients or 
 Canary Deployments
 ------------------
 
-:mod:`set_traffic <ray.serve.set_traffic>` can be used to implement canary deployments, where one backend serves the majority of traffic, while a small fraction is routed to a second backend. This is especially useful for "canary testing" a new model on a small percentage of users, while the tried and true old model serves the majority. Once you are satisfied with the new model, you can reroute all traffic to it and remove the old model:
+:mod:`client.set_traffic <ray.serve.api.Client.set_traffic>` can be used to implement canary deployments, where one backend serves the majority of traffic, while a small fraction is routed to a second backend. This is especially useful for "canary testing" a new model on a small percentage of users, while the tried and true old model serves the majority. Once you are satisfied with the new model, you can reroute all traffic to it and remove the old model:
 
 .. code-block:: python
 
-  serve.create_backend("default_backend", MyClass)
+  client.create_backend("default_backend", MyClass)
 
   # Initially, set all traffic to be served by the "default" backend.
-  serve.create_endpoint("canary_endpoint", backend="default_backend", route="/canary-test")
+  client.create_endpoint("canary_endpoint", backend="default_backend", route="/canary-test")
 
   # Add a second backend and route 1% of the traffic to it.
-  serve.create_backend("new_backend", MyNewClass)
-  serve.set_traffic("canary_endpoint", {"default_backend": 0.99, "new_backend": 0.01})
+  client.create_backend("new_backend", MyNewClass)
+  client.set_traffic("canary_endpoint", {"default_backend": 0.99, "new_backend": 0.01})
 
   # Add a third backend that serves another 1% of the traffic.
-  serve.create_backend("new_backend2", MyNewClass2)
-  serve.set_traffic("canary_endpoint", {"default_backend": 0.98, "new_backend": 0.01, "new_backend2": 0.01})
+  client.create_backend("new_backend2", MyNewClass2)
+  client.set_traffic("canary_endpoint", {"default_backend": 0.98, "new_backend": 0.01, "new_backend2": 0.01})
 
   # Route all traffic to the new, better backend.
-  serve.set_traffic("canary_endpoint", {"new_backend": 1.0})
+  client.set_traffic("canary_endpoint", {"new_backend": 1.0})
 
   # Or, if not so succesful, revert to the "default" backend for all traffic.
-  serve.set_traffic("canary_endpoint", {"default_backend": 1.0})
+  client.set_traffic("canary_endpoint", {"default_backend": 1.0})
 
 Incremental Rollout
 -------------------
 
-:mod:`set_traffic <ray.serve.set_traffic>` can also be used to implement incremental rollout.
+:mod:`client.set_traffic <ray.serve.api.Client.set_traffic>` can also be used to implement incremental rollout.
 Here, we want to replace an existing backend with a new implementation by gradually increasing the proportion of traffic that it serves.
 In the example below, we do this repeatedly in one script, but in practice this would likely happen over time across multiple scripts.
 
 .. code-block:: python
 
-  serve.create_backend("existing_backend", MyClass)
+  client.create_backend("existing_backend", MyClass)
 
   # Initially, all traffic is served by the existing backend.
-  serve.create_endpoint("incremental_endpoint", backend="existing_backend", route="/incremental")
+  client.create_endpoint("incremental_endpoint", backend="existing_backend", route="/incremental")
 
   # Then we can slowly increase the proportion of traffic served by the new backend.
-  serve.create_backend("new_backend", MyNewClass)
-  serve.set_traffic("incremental_endpoint", {"existing_backend": 0.9, "new_backend": 0.1})
-  serve.set_traffic("incremental_endpoint", {"existing_backend": 0.8, "new_backend": 0.2})
-  serve.set_traffic("incremental_endpoint", {"existing_backend": 0.5, "new_backend": 0.5})
-  serve.set_traffic("incremental_endpoint", {"new_backend": 1.0})
+  client.create_backend("new_backend", MyNewClass)
+  client.set_traffic("incremental_endpoint", {"existing_backend": 0.9, "new_backend": 0.1})
+  client.set_traffic("incremental_endpoint", {"existing_backend": 0.8, "new_backend": 0.2})
+  client.set_traffic("incremental_endpoint", {"existing_backend": 0.5, "new_backend": 0.5})
+  client.set_traffic("incremental_endpoint", {"new_backend": 1.0})
 
   # At any time, we can roll back to the existing backend.
-  serve.set_traffic("incremental_endpoint", {"existing_backend": 1.0})
+  client.set_traffic("incremental_endpoint", {"existing_backend": 1.0})
 
 .. _session-affinity:
 
@@ -175,7 +175,7 @@ Session Affinity
 Splitting traffic randomly among backends for each request is is general and simple, but it can be an issue when you want to ensure that a given user or client is served by the same backend repeatedly.
 To address this, Serve offers a "shard key" can be specified for each request that will deterministically map to a backend.
 In practice, this should be something that uniquely identifies the entity that you want to consistently map, like a client ID or session ID.
-The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or ``handle.options(shard_key="key")``.
+The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or :mod:`handle.options(shard_key="key") <ray.serve.handle.RayServeHandle.options>`.
 
 .. note:: The mapping from shard key to backend may change when you update the traffic policy for an endpoint.
 
@@ -185,40 +185,44 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   requests.get("127.0.0.1:8000/api", headers={"X-SERVE-SHARD-KEY": session_id})
 
   # Specifying the shard key in a call made via serve handle.
-  handle = serve.get_handle("api_endpoint")
+  handle = client.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
+
+.. _serve-shadow-testing:
 
 Shadow Testing
 --------------
 
 Sometimes when deploying a new backend, you may want to test it out without affecting the results seen by users.
-You can do this with :mod:`shadow_traffic <ray.serve.shadow_traffic>`, which allows you to duplicate requests to multiple backends for testing while still having them served by the set of backends specified via :mod:`set_traffic <ray.serve.set_traffic>`.
+You can do this with :mod:`client.shadow_traffic <ray.serve.api.Client.shadow_traffic>`, which allows you to duplicate requests to multiple backends for testing while still having them served by the set of backends specified via :mod:`client.set_traffic <ray.serve.api.Client.set_traffic>`.
 Metrics about these requests are recorded as usual so you can use them to validate model performance.
 This is demonstrated in the example below, where we create an endpoint serviced by a single backend but shadow traffic to two other backends for testing.
 
 .. code-block:: python
 
-  serve.create_backend("existing_backend", MyClass)
+  client.create_backend("existing_backend", MyClass)
 
   # All traffic is served by the existing backend.
-  serve.create_endpoint("shadowed_endpoint", backend="existing_backend", route="/shadow")
+  client.create_endpoint("shadowed_endpoint", backend="existing_backend", route="/shadow")
 
   # Create two new backends that we want to test.
-  serve.create_backend("new_backend_1", MyNewClass)
-  serve.create_backend("new_backend_2", MyNewClass)
+  client.create_backend("new_backend_1", MyNewClass)
+  client.create_backend("new_backend_2", MyNewClass)
 
   # Shadow traffic to the two new backends. This does not influence the result
   # of requests to the endpoint, but a proportion of requests are
   # *additionally* sent to these backends.
 
   # Send 50% of all queries to the endpoint new_backend_1.
-  serve.shadow_traffic("shadowed_endpoint", "new_backend_1", 0.5)
+  client.shadow_traffic("shadowed_endpoint", "new_backend_1", 0.5)
   # Send 10% of all queries to the endpoint new_backend_2.
-  serve.shadow_traffic("shadowed_endpoint", "new_backend_2", 0.1)
+  client.shadow_traffic("shadowed_endpoint", "new_backend_2", 0.1)
 
   # Stop shadowing traffic to the backends.
-  serve.shadow_traffic("shadowed_endpoint", "new_backend_1", 0)
-  serve.shadow_traffic("shadowed_endpoint", "new_backend_2", 0)
+  client.shadow_traffic("shadowed_endpoint", "new_backend_1", 0)
+  client.shadow_traffic("shadowed_endpoint", "new_backend_2", 0)
+
+.. _serve-model-composition:
 
 Composing Multiple Models
 =========================
@@ -245,66 +249,10 @@ That's it. Let's take a look at an example:
 Monitoring
 ==========
 
-Ray Serve exposes system metrics like number of requests through Python API
-``serve.stat`` and HTTP ``/-/metrics`` API. By default, it uses a custom
-structured format for easy parsing and debugging.
-
-Via python:
-
-.. code-block:: python
-
-  serve.stat()
-  """
-    [..., {
-          "info": {
-              "name": "num_http_requests",
-              "route": "/-/routes",
-              "type": "MetricType.COUNTER"
-          },
-          "value": 1
-      },
-      {
-          "info": {
-              "name": "num_http_requests",
-              "route": "/echo",
-              "type": "MetricType.COUNTER"
-          },
-          "value": 10
-      }, ...]
-  """
-
-Via HTTP:
-
-.. code-block::
-
-  curl http://localhost:8000/-/metrics
-  # Returns the same output as above in JSON format.
-
-You can also access the result in `Prometheus <https://prometheus.io/>`_ format,
-by setting the ``metric_exporter`` option in :mod:`serve.init <ray.serve.init>`.
-
-.. code-block:: python
-
-  from ray.serve.metric import PrometheusExporter
-  serve.init(metric_exporter=PrometheusExporter)
-
-.. code-block::
-
-  curl http://localhost:8000/-/metrics
-
-  # HELP backend_request_counter_total Number of queries that have been processed in this replica
-  # TYPE backend_request_counter_total counter
-  backend_request_counter_total{backend="echo:v1"} 5.0
-  backend_request_counter_total{backend="echo:v2"} 5.0
-  ...
-
-The metric exporter is extensible and you can customize it for your own metric
-infrastructure. We are gathering feedback and welcome contribution! Feel free
-to submit a github issue to chat with us in #serve channel in `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_.
-
-Here's an simple example of a dummy exporter that writes metrics to file:
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_metric_export.py
+Ray Serve exposes important system metrics like the number of successful and
+errored requests through the Ray metrics monitoring infrastructure. By default,
+the metrics are exposed in Prometheus format on each node. See the
+`Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
 
 .. _serve-faq:
 
@@ -319,31 +267,35 @@ See :doc:`deployment` for information about how to deploy serve.
 How do I delete backends and endpoints?
 ---------------------------------------
 
-To delete a backend, you can use :mod:`serve.delete_backend <ray.serve.delete_backend>`.
+To delete a backend, you can use :mod:`client.delete_backend <ray.serve.api.Client.delete_backend>`.
 Note that the backend must not be use by any endpoints in order to be delete.
 Once a backend is deleted, its tag can be reused.
 
 .. code-block:: python
 
-  serve.delete_backend("simple_backend")
+  client.delete_backend("simple_backend")
 
 
-To delete a endpoint, you can use :mod:`serve.delete_endpoint <ray.serve.delete_endpoint>`.
+To delete a endpoint, you can use :mod:`client.delete_endpoint <ray.serve.api.Client.delete_endpoint>`.
 Note that the endpoint will no longer work and return a 404 when queried.
 Once a endpoint is deleted, its tag can be reused.
 
 .. code-block:: python
 
-  serve.delete_endpoint("simple_endpoint")
+  client.delete_endpoint("simple_endpoint")
 
 How do I call an endpoint from Python code?
 -------------------------------------------
 
-use the following  to get a "handle" to that endpoint.
+Use :mod:`client.get_handle <ray.serve.api.Client.get_handle>` to get a handle to the endpoint,
+then use :mod:`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to that
+endpoint. This returns a Ray ObjectRef whose result can be waited for or retrieved using
+``ray.wait`` or ``ray.get``, respectively.
 
 .. code-block:: python
-    
-    handle = serve.get_handle("api_endpoint")
+
+    handle = client.get_handle("api_endpoint")
+    ray.get(handle.remote(request))
 
 
 How do I call a method on my backend class besides __call__?
@@ -351,7 +303,7 @@ How do I call a method on my backend class besides __call__?
 
 To call a method via HTTP use the header field ``X-SERVE-CALL-METHOD``.
 
-To call a method via Python, do the following:
+To call a method via Python, use :mod:`handle.options <ray.serve.handle.RayServeHandle.options>`:
 
 .. code-block:: python
 
@@ -366,5 +318,107 @@ To call a method via Python, do the following:
             self.count += inc
             return True
 
-    handle = serve.get_handle("backend_name")
+    handle = client.get_handle("backend_name")
     handle.options(method_name="other_method").remote(5)
+
+How do I enable CORS and other HTTP features?
+---------------------------------------------
+
+Serve supports arbitrary `Starlette middlewares <https://www.starlette.io/middleware/>`_
+and custom middlewares in Starlette format. The example below shows how to enable
+`Cross-Origin Resource Sharing (CORS) <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`_.
+You can follow the same pattern for other Starlette middlewares.
+
+.. note::
+
+  Serve does not list ``Starlette`` as one of its dependencies. To utilize this feature,
+  you will need to:
+
+  .. code-block:: bash
+
+    pip install starlette
+
+.. code-block:: python
+
+    from starlette.middleware import Middleware
+    from starlette.middleware.cors import CORSMiddleware
+
+    client = serve.start(
+        http_middlewares=[
+            Middleware(
+                CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+        ])
+
+
+.. _serve-handle-explainer:
+
+How do ``ServeHandle`` and ``ServeRequest`` work?
+---------------------------------------------------
+
+Ray Serve enables you to query models both from HTTP and Python. This feature
+enables seamless :ref:`model composition<serve-model-composition>`. You can
+get a ``ServeHandle`` corresponding to an ``endpoint``, similar how you can
+reach an endpoint through HTTP via a specific route. When you issue a request
+to an endpoint through ``ServeHandle``, the request goes through the same code
+path as an HTTP request would: choosing backends through :ref:`traffic
+policies <serve-split-traffic>`, finding the next available replica, and
+batching requests together.
+
+When the request arrives in the model, you can access the data similarly to how
+you would with HTTP request. Here are some examples how ServeRequest mirrors Flask.Request:
+
+.. list-table::
+   :header-rows: 1
+
+   * - HTTP
+     - ServeHandle
+     - | Request
+       | (Flask.Request and ServeRequest)
+   * - ``requests.get(..., headers={...})``
+     - ``handle.options(http_headers={...})``
+     - ``request.headers``
+   * - ``requests.post(...)``
+     - ``handle.options(http_method="POST")``
+     - ``requests.method``
+   * - ``request.get(..., json={...})``
+     - ``handle.remote({...})``
+     - ``request.json``
+   * - ``request.get(..., form={...})``
+     - ``handle.remote({...})``
+     - ``request.form``
+   * - ``request.get(..., params={"a":"b"})``
+     - ``handle.remote(a="b")``
+     - ``request.args``
+   * - ``request.get(..., data="long string")``
+     - ``handle.remote("long string")``
+     - ``request.data``
+   * - ``N/A``
+     - ``handle.remote(python_object)``
+     - ``request.data``
+
+.. note::
+
+    You might have noticed that the last row of the table shows that ServeRequest supports
+    Python object pass through the handle. This is not possible in HTTP. If you
+    need to distinguish if the origin of the request is from Python or HTTP, you can do an ``isinstance``
+    check:
+
+    .. code-block:: python
+
+        import flask
+
+        if isinstance(request, flask.Request):
+            print("Request coming from web!")
+        elif isinstance(request, ServeRequest):
+            print("Request coming from Python!")
+
+.. note::
+
+    Once special case is when you pass a web request to a handle.
+
+    .. code-block:: python
+
+        handle.remote(flask_request)
+
+    In this case, Serve will `not` wrap it in ServeRequest. You can directly
+    process the request as a ``flask.Request``.

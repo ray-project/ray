@@ -2,6 +2,7 @@
 #include "local_mode_ray_runtime.h"
 
 #include <ray/api.h>
+
 #include "../util/address_helper.h"
 #include "./object/local_mode_object_store.h"
 #include "./object/object_store.h"

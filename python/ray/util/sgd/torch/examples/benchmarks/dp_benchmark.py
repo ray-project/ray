@@ -77,7 +77,7 @@ def benchmark_step():
     optimizer.step()
 
 
-print("Model: %s" % args.model)
+print(f"Model: {args.model}")
 print("Batch size: %d" % args.batch_size)
 device = "GPU"
 print("Number of %ss: %d" % (device, args.num_gpus))
@@ -98,7 +98,7 @@ for x in range(args.num_iters):
 # Results
 img_sec_mean = np.mean(img_secs)
 img_sec_conf = 1.96 * np.std(img_secs)
-print("Img/sec per %s: %.1f +-%.1f" % (device, img_sec_mean, img_sec_conf))
+print(f"Img/sec per {device}: {img_sec_mean:.1f} +-{img_sec_conf:.1f}")
 print("Total img/sec on %d %s(s): %.1f +-%.1f" % (
     args.num_gpus,
     device,

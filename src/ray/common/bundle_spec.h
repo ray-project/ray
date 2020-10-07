@@ -95,11 +95,16 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
 
 /// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         PlacementGroupID group_id, int64_t bundle_index);
+                                         const PlacementGroupID &group_id,
+                                         int64_t bundle_index = -1);
 
 /// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const BundleSpecification &bundle_spec);
+
+/// Return whether a formatted resource is a bundle of the given index.
+bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
+                   const int bundle_index);
 
 /// Return the original resource name of the placement group resource.
 std::string GetOriginalResourceName(const std::string &resource);

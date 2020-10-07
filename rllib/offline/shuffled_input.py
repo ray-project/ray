@@ -3,7 +3,7 @@ import random
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class ShuffledInput(InputReader):
     def __init__(self, child: InputReader, n: int = 0):
         """Initialize a MixedInput.
 
-        Arguments:
+        Args:
             child (InputReader): child input reader to shuffle.
             n (int): if positive, shuffle input over this many batches.
         """

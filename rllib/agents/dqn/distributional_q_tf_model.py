@@ -1,6 +1,12 @@
+"""Tensorflow model for DQN"""
+
+from typing import List
+
+import gym
 from ray.rllib.models.tf.layers import NoisyLayer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -20,23 +26,23 @@ class DistributionalQTFModel(TFModelV2):
 
     def __init__(
             self,
-            obs_space,
-            action_space,
-            num_outputs,
-            model_config,
-            name,
+            obs_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            num_outputs: int,
+            model_config: ModelConfigDict,
+            name: str,
             q_hiddens=(256, ),
-            dueling=False,
-            num_atoms=1,
-            use_noisy=False,
-            v_min=-10.0,
-            v_max=10.0,
-            sigma0=0.5,
+            dueling: bool = False,
+            num_atoms: int = 1,
+            use_noisy: bool = False,
+            v_min: float = -10.0,
+            v_max: float = 10.0,
+            sigma0: float = 0.5,
             # TODO(sven): Move `add_layer_norm` into ModelCatalog as
             #  generic option, then error if we use ParameterNoise as
             #  Exploration type and do not have any LayerNorm layers in
             #  the net.
-            add_layer_norm=False):
+            add_layer_norm: bool = False):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -60,7 +66,6 @@ class DistributionalQTFModel(TFModelV2):
         only defines the layers for the Q head. Those layers for forward()
         should be defined in subclasses of DistributionalQModel.
         """
-
         super(DistributionalQTFModel, self).__init__(
             obs_space, action_space, num_outputs, model_config, name)
 
@@ -68,14 +73,14 @@ class DistributionalQTFModel(TFModelV2):
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
 
-        def build_action_value(prefix, model_out):
+        def build_action_value(prefix: str,
+                               model_out: TensorType) -> List[TensorType]:
             if q_hiddens:
                 action_out = model_out
                 for i in range(len(q_hiddens)):
                     if use_noisy:
                         action_out = NoisyLayer(
-                            "{}hidden_{}".format(prefix, i),
-                            q_hiddens[i],
+                            "{}hidden_{}".format(prefix, i), q_hiddens[i],
                             sigma0)(action_out)
                     elif add_layer_norm:
                         action_out = tf.keras.layers.Dense(
@@ -130,13 +135,13 @@ class DistributionalQTFModel(TFModelV2):
                 dist = tf.expand_dims(tf.ones_like(action_scores), -1)
                 return [action_scores, logits, dist]
 
-        def build_state_score(prefix, model_out):
+        def build_state_score(prefix: str,
+                              model_out: TensorType) -> TensorType:
             state_out = model_out
             for i in range(len(q_hiddens)):
                 if use_noisy:
                     state_out = NoisyLayer(
-                        "{}dueling_hidden_{}".format(prefix, i),
-                        q_hiddens[i],
+                        "{}dueling_hidden_{}".format(prefix, i), q_hiddens[i],
                         sigma0)(state_out)
                 else:
                     state_out = tf.keras.layers.Dense(
@@ -160,27 +165,26 @@ class DistributionalQTFModel(TFModelV2):
         self.register_variables(self.q_value_head.variables)
 
         if dueling:
-            state_out = build_state_score(
-                name + "/state_value/", self.model_out)
+            state_out = build_state_score(name + "/state_value/",
+                                          self.model_out)
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
 
-    def get_q_value_distributions(self, model_out):
+    def get_q_value_distributions(self,
+                                  model_out: TensorType) -> List[TensorType]:
         """Returns distributional values for Q(s, a) given a state embedding.
 
         Override this in your custom model to customize the Q output head.
 
-        Arguments:
+        Args:
             model_out (Tensor): embedding from the model layers
 
         Returns:
             (action_scores, logits, dist) if num_atoms == 1, otherwise
             (action_scores, z, support_logits_per_action, logits, dist)
         """
-
         return self.q_value_head(model_out)
 
-    def get_state_value(self, model_out):
+    def get_state_value(self, model_out: TensorType) -> TensorType:
         """Returns the state value prediction for the given state embedding."""
-
         return self.state_value_head(model_out)

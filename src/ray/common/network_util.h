@@ -19,6 +19,15 @@
 #include <boost/bind.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/system/error_code.hpp>
+#include <string>
+
+#ifndef _WIN32
+
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+
+#endif
 
 #include "ray/common/constants.h"
 
@@ -112,7 +121,7 @@ class AsyncClient {
 ///
 /// \param port The port that the local ip is listening on.
 /// \param timeout_ms The maximum wait time in milliseconds.
-/// \return A valid local ip.
+/// \return a valid local ip.
 std::string GetValidLocalIp(int port, int64_t timeout_ms);
 
 /// A helper function to test whether target rpc server is valid.
@@ -124,3 +133,51 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms);
 bool Ping(const std::string &ip, int port, int64_t timeout_ms);
 
 bool CheckFree(int port);
+
+/// \namespace NetIf
+///
+/// Namespace with implementations of helper function to get valid IPs
+/// from network interfaces
+namespace NetIf {
+/// Priority of a IPs from a given interface to be chosen to serve something
+enum class Priority { kVeryHigh, kHigh, kNormal, kExclude };
+
+/// To keep one IP and its interface
+typedef std::pair<std::string, std::string> NameAndIp;
+
+/// To keep interface names prefixes and its priorities
+typedef std::pair<std::string, Priority> PrefixAndPriority;
+
+/// Interface name prefix and its priority
+extern std::vector<PrefixAndPriority> prefixes_and_priorities;
+
+/// A helper function to get IPs from local interfaces.
+/// It also filters out IPs from interfaces with priority Priority::kExclude
+/// and sort the IPs based on its interfaces priority.
+/// If running on Windows, uses boost to try to resolve hostname
+/// and don't filter candidates.
+///
+/// \return a vector with valid local IP candidates that were not filtered out
+std::vector<boost::asio::ip::address> GetValidLocalIpCandidates();
+
+/// Based on the prefix of the interface name, returns a level of priority.
+///
+/// \param if_name the name of the interface to be tested.
+/// \return the priority of the interface.
+Priority GetPriority(const std::string &if_name);
+
+/// Helper function to be used with std::sort.
+/// Lowest priority comes first
+bool CompNamesAndIps(const NameAndIp &left, const NameAndIp &right);
+
+/// Helper function to be used with std::sort.
+/// Biggest prefix comes first
+bool CompPrefixLen(const PrefixAndPriority &left, const PrefixAndPriority &right);
+
+/// A helper tiny function to check if the interface name has a given prefix.
+///
+/// \param name the interface name to be checked.
+/// \param prefix the prefix that will be looked in 'name'.
+/// \return true if 'name' starts with 'prefix'.
+bool NameStartsWith(const std::string &name, const std::string &prefix);
+}  // namespace NetIf

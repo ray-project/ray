@@ -28,13 +28,14 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers)   \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
-  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)            \
   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
   RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
-  RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReserve) \
-  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)
+  RPC_SERVICE_HANDLER(NodeManagerService, PrepareBundleResources) \
+  RPC_SERVICE_HANDLER(NodeManagerService, CommitBundleResources)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -66,19 +67,20 @@ class NodeManagerServiceHandler {
                                        rpc::CancelWorkerLeaseReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRequestResourceReserve(
-      const rpc::RequestResourceReserveRequest &request,
-      rpc::RequestResourceReserveReply *reply,
+  virtual void HandlePrepareBundleResources(
+      const rpc::PrepareBundleResourcesRequest &request,
+      rpc::PrepareBundleResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCommitBundleResources(
+      const rpc::CommitBundleResourcesRequest &request,
+      rpc::CommitBundleResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelResourceReserve(
       const rpc::CancelResourceReserveRequest &request,
       rpc::CancelResourceReserveReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleForwardTask(const ForwardTaskRequest &request,
-                                 ForwardTaskReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandlePinObjectIDs(const PinObjectIDsRequest &request,
                                   PinObjectIDsReply *reply,
@@ -94,6 +96,10 @@ class NodeManagerServiceHandler {
   virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,
                                             FormatGlobalMemoryInfoReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRequestObjectSpillage(const RequestObjectSpillageRequest &request,
+                                           RequestObjectSpillageReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

@@ -3,10 +3,11 @@ package io.ray.runtime.object;
 import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
-import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.exception.RayException;
+import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -96,8 +97,13 @@ public abstract class ObjectStore {
       NativeRayObject dataAndMeta = dataAndMetaList.get(i);
       Object object = null;
       if (dataAndMeta != null) {
-        object = ObjectSerializer
+        try {
+          ObjectSerializer.setOuterObjectId(ids.get(i));
+          object = ObjectSerializer
             .deserialize(dataAndMeta, ids.get(i), elementType);
+        } finally {
+          ObjectSerializer.resetOuterObjectId();
+        }
       }
       if (object instanceof RayException) {
         // If the object is a `RayException`, it means that an error occurred during task
@@ -160,8 +166,7 @@ public abstract class ObjectStore {
    * Delete a list of objects from the object store.
    *
    * @param objectIds IDs of the objects to delete.
-   * @param localOnly Whether only delete the objects in local node, or all nodes in the
-   *     cluster.
+   * @param localOnly Whether only delete the objects in local node, or all nodes in the cluster.
    * @param deleteCreatingTasks Whether also delete the tasks that created these objects.
    */
   public abstract void delete(List<ObjectId> objectIds, boolean localOnly,
@@ -169,6 +174,7 @@ public abstract class ObjectStore {
 
   /**
    * Increase the local reference count for this object ID.
+   *
    * @param workerId The ID of the worker to increase on.
    * @param objectId The object ID to increase the reference count for.
    */
@@ -176,8 +182,34 @@ public abstract class ObjectStore {
 
   /**
    * Decrease the reference count for this object ID.
+   *
    * @param workerId The ID of the worker to decrease on.
    * @param objectId The object ID to decrease the reference count for.
    */
   public abstract void removeLocalReference(UniqueId workerId, ObjectId objectId);
+
+  public abstract Address getOwnerAddress(ObjectId id);
+
+  /**
+   * Promote the given object to the underlying object store, and get the ownership info.
+   *
+   * @param objectId The ID of the object to promote
+   * @return the serialized ownership address
+   */
+  public abstract byte[] promoteAndGetOwnershipInfo(ObjectId objectId);
+
+  /**
+   * Add a reference to an ObjectID that will deserialized. This will also start the process to
+   * resolve the future. Specifically, we will periodically contact the owner, until we learn that
+   * the object has been created or the owner is no longer reachable. This will then unblock any
+   * Gets or submissions of tasks dependent on the object.
+   *
+   * @param objectId The object ID to deserialize.
+   * @param outerObjectId The object ID that contained objectId, if any. This may be nil if the
+   *                      object ID was inlined directly in a task spec or if it was passed
+   *                      out-of-band by the application (deserialized from a byte string).
+   * @param ownerAddress The address of the object's owner.
+   */
+  public abstract void registerOwnershipInfoAndResolveFuture(ObjectId objectId,
+      ObjectId outerObjectId, byte[] ownerAddress);
 }

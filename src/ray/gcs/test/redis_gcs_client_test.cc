@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gtest/gtest.h"
+#include "ray/gcs/redis_gcs_client.h"
 
+#include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
 
 extern "C" {
@@ -70,7 +70,7 @@ class TestGcs : public ::testing::Test {
 };
 
 TestGcs *test;
-ClientID local_client_id = ClientID::FromRandom();
+NodeID local_client_id = NodeID::FromRandom();
 
 class TestGcsWithAsio : public TestGcs {
  public:
@@ -666,7 +666,7 @@ class SetTestHelper {
     // subscribed, we will append to the key several times and check that we get
     // notified for each.
     RAY_CHECK_OK(client->object_table().Subscribe(
-        job_id, ClientID::Nil(), notification_callback, subscribe_callback));
+        job_id, NodeID::Nil(), notification_callback, subscribe_callback));
 
     // Run the event loop. The loop will only stop if the registered subscription
     // callback is called (or an assertion failure).
@@ -1005,7 +1005,7 @@ class LogSubscribeTestHelper {
     // subscribed, we will append to the key several times and check that we get
     // notified for each.
     RAY_CHECK_OK(client->job_table().Subscribe(
-        job_id, ClientID::Nil(), notification_callback, subscribe_callback));
+        job_id, NodeID::Nil(), notification_callback, subscribe_callback));
 
     // Run the event loop. The loop will only stop if the registered subscription
     // callback is called (or an assertion failure).
@@ -1187,16 +1187,16 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeCancel) {
 class ClientTableTestHelper {
  public:
   static void ClientTableNotification(std::shared_ptr<gcs::RedisGcsClient> client,
-                                      const ClientID &client_id, const GcsNodeInfo &data,
+                                      const NodeID &client_id, const GcsNodeInfo &data,
                                       bool is_alive) {
-    ClientID added_id = local_client_id;
+    NodeID added_id = local_client_id;
     ASSERT_EQ(client_id, added_id);
-    ASSERT_EQ(ClientID::FromBinary(data.node_id()), added_id);
+    ASSERT_EQ(NodeID::FromBinary(data.node_id()), added_id);
     ASSERT_EQ(data.state() == GcsNodeInfo::ALIVE, is_alive);
 
     GcsNodeInfo cached_client;
     ASSERT_TRUE(client->client_table().GetClient(added_id, &cached_client));
-    ASSERT_EQ(ClientID::FromBinary(cached_client.node_id()), added_id);
+    ASSERT_EQ(NodeID::FromBinary(cached_client.node_id()), added_id);
     ASSERT_EQ(cached_client.state() == GcsNodeInfo::ALIVE, is_alive);
   }
 
@@ -1205,7 +1205,7 @@ class ClientTableTestHelper {
     // Subscribe to a node gets added and removed. The latter
     // event will stop the event loop.
     RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
-        [client](const ClientID &id, const GcsNodeInfo &data) {
+        [client](const NodeID &id, const GcsNodeInfo &data) {
           // TODO(micafan)
           RAY_LOG(INFO) << "Test alive=" << data.state() << " id=" << id;
           if (data.state() == GcsNodeInfo::ALIVE) {
@@ -1231,7 +1231,7 @@ class ClientTableTestHelper {
     // Register callbacks for when a client gets added and removed. The latter
     // event will stop the event loop.
     RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
-        [client](const ClientID &id, const GcsNodeInfo &data) {
+        [client](const NodeID &id, const GcsNodeInfo &data) {
           if (data.state() == GcsNodeInfo::ALIVE) {
             ClientTableNotification(client, id, data, /*is_insertion=*/true);
             // Disconnect from the client table. We should receive a notification
@@ -1260,7 +1260,7 @@ class ClientTableTestHelper {
     // Register callbacks for when a client gets added and removed. The latter
     // event will stop the event loop.
     RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
-        [client](const ClientID &id, const GcsNodeInfo &data) {
+        [client](const NodeID &id, const GcsNodeInfo &data) {
           if (data.state() == GcsNodeInfo::ALIVE) {
             ClientTableNotification(client, id, data, true);
           } else {
@@ -1291,14 +1291,14 @@ class ClientTableTestHelper {
     // Connect to the client table to start receiving notifications.
     RAY_CHECK_OK(client->client_table().Connect(local_node_info));
     // Mark a different client as dead.
-    ClientID dead_client_id = ClientID::FromRandom();
+    NodeID dead_client_id = NodeID::FromRandom();
     RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_client_id, nullptr));
     // Make sure we only get a notification for the removal of the client we
     // marked as dead.
     RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
         [dead_client_id](const UniqueID &id, const GcsNodeInfo &data) {
           if (data.state() == GcsNodeInfo::DEAD) {
-            ASSERT_EQ(ClientID::FromBinary(data.node_id()), dead_client_id);
+            ASSERT_EQ(NodeID::FromBinary(data.node_id()), dead_client_id);
             test->Stop();
           }
         },
@@ -1332,7 +1332,7 @@ class HashTableTestHelper {
   static void TestHashTable(const JobID &job_id,
                             std::shared_ptr<gcs::RedisGcsClient> client) {
     uint64_t expected_count = 14;
-    ClientID client_id = ClientID::FromRandom();
+    NodeID client_id = NodeID::FromRandom();
     // Prepare the first resource map: data_map1.
     DynamicResourceTable::DataMap data_map1;
     auto cpu_data = std::make_shared<ResourceTableData>();
@@ -1370,7 +1370,7 @@ class HashTableTestHelper {
     };
     auto notification_callback =
         [data_map1, data_map2, compare_test, expected_count](
-            RedisGcsClient *client, const ClientID &id,
+            RedisGcsClient *client, const NodeID &id,
             const std::vector<ResourceChangeNotification> &result) {
           RAY_CHECK(result.size() == 1);
           const ResourceChangeNotification &notification = result.back();
@@ -1399,13 +1399,13 @@ class HashTableTestHelper {
         };
     // Step 0: Subscribe the change of the hash table.
     RAY_CHECK_OK(client->resource_table().Subscribe(
-        job_id, ClientID::Nil(), notification_callback, subscribe_callback));
+        job_id, NodeID::Nil(), notification_callback, subscribe_callback));
     RAY_CHECK_OK(client->resource_table().RequestNotifications(job_id, client_id,
                                                                local_client_id, nullptr));
 
     // Step 1: Add elements to the hash table.
     auto update_callback1 = [data_map1, compare_test](
-                                RedisGcsClient *client, const ClientID &id,
+                                RedisGcsClient *client, const NodeID &id,
                                 const DynamicResourceTable::DataMap &callback_data) {
       compare_test(data_map1, callback_data);
       test->IncrementNumCallbacks();
@@ -1413,7 +1413,7 @@ class HashTableTestHelper {
     RAY_CHECK_OK(
         client->resource_table().Update(job_id, client_id, data_map1, update_callback1));
     auto lookup_callback1 = [data_map1, compare_test](
-                                RedisGcsClient *client, const ClientID &id,
+                                RedisGcsClient *client, const NodeID &id,
                                 const DynamicResourceTable::DataMap &callback_data) {
       compare_test(data_map1, callback_data);
       test->IncrementNumCallbacks();
@@ -1423,14 +1423,14 @@ class HashTableTestHelper {
     // Step 2: Decrease one element, increase one and add a new one.
     RAY_CHECK_OK(client->resource_table().Update(job_id, client_id, data_map2, nullptr));
     auto lookup_callback2 = [data_map2, compare_test](
-                                RedisGcsClient *client, const ClientID &id,
+                                RedisGcsClient *client, const NodeID &id,
                                 const DynamicResourceTable::DataMap &callback_data) {
       compare_test(data_map2, callback_data);
       test->IncrementNumCallbacks();
     };
     RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback2));
     std::vector<std::string> delete_keys({"GPU", "CUSTOM", "None-Existent"});
-    auto remove_callback = [delete_keys](RedisGcsClient *client, const ClientID &id,
+    auto remove_callback = [delete_keys](RedisGcsClient *client, const NodeID &id,
                                          const std::vector<std::string> &callback_data) {
       for (size_t i = 0; i < callback_data.size(); ++i) {
         // All deleting keys exist in this argument even if the key doesn't exist.
@@ -1444,7 +1444,7 @@ class HashTableTestHelper {
     data_map3.erase("GPU");
     data_map3.erase("CUSTOM");
     auto lookup_callback3 = [data_map3, compare_test](
-                                RedisGcsClient *client, const ClientID &id,
+                                RedisGcsClient *client, const NodeID &id,
                                 const DynamicResourceTable::DataMap &callback_data) {
       compare_test(data_map3, callback_data);
       test->IncrementNumCallbacks();
@@ -1455,7 +1455,7 @@ class HashTableTestHelper {
     RAY_CHECK_OK(
         client->resource_table().Update(job_id, client_id, data_map1, update_callback1));
     auto lookup_callback4 = [data_map1, compare_test](
-                                RedisGcsClient *client, const ClientID &id,
+                                RedisGcsClient *client, const NodeID &id,
                                 const DynamicResourceTable::DataMap &callback_data) {
       compare_test(data_map1, callback_data);
       test->IncrementNumCallbacks();
@@ -1466,7 +1466,7 @@ class HashTableTestHelper {
     RAY_CHECK_OK(client->resource_table().RemoveEntries(
         job_id, client_id, {"GPU", "CPU", "CUSTOM", "None-Existent"}, nullptr));
     auto lookup_callback5 = [expected_count](
-                                RedisGcsClient *client, const ClientID &id,
+                                RedisGcsClient *client, const NodeID &id,
                                 const DynamicResourceTable::DataMap &callback_data) {
       ASSERT_EQ(callback_data.size(), 0);
       test->IncrementNumCallbacks();

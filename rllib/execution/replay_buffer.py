@@ -5,20 +5,43 @@ import platform
 import random
 from typing import List
 
-import ray
+# Import ray before psutil will make sure we use psutil's bundled version
+import ray  # noqa F401
+import psutil  # noqa E402
+
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.util.iter import ParallelIteratorWorker
+from ray.util.debug import log_once
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"
 
 logger = logging.getLogger(__name__)
+
+
+def warn_replay_buffer_size(*, item: SampleBatchType, num_items: int) -> None:
+    """Warn if the configured replay buffer size is too large."""
+    if log_once("replay_buffer_size"):
+        item_size = item.size_bytes()
+        psutil_mem = psutil.virtual_memory()
+        total_gb = psutil_mem.total / 1e9
+        mem_size = num_items * item_size / 1e9
+        msg = ("Estimated max memory usage for replay buffer is {} GB "
+               "({} batches of size {}, {} bytes each), "
+               "available system memory is {} GB".format(
+                   mem_size, num_items, item.count, item_size, total_gb))
+        if mem_size > total_gb:
+            raise ValueError(msg)
+        elif mem_size > 0.2 * total_gb:
+            logger.warning(msg)
+        else:
+            logger.info(msg)
 
 
 @DeveloperAPI
@@ -28,15 +51,16 @@ class ReplayBuffer:
         """Create Prioritized Replay buffer.
 
         Args:
-            size (int): Max number of items to store in the FIFO buffer.
+            size (int): Max number of timesteps to store in the FIFO buffer.
         """
         self._storage = []
         self._maxsize = size
         self._next_idx = 0
         self._hit_count = np.zeros(size)
         self._eviction_started = False
-        self._num_added = 0
-        self._num_sampled = 0
+        self._num_timesteps_added = 0
+        self._num_timesteps_added_wrap = 0
+        self._num_timesteps_sampled = 0
         self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
         self._est_size_bytes = 0
 
@@ -45,17 +69,26 @@ class ReplayBuffer:
 
     @DeveloperAPI
     def add(self, item: SampleBatchType, weight: float):
+        warn_replay_buffer_size(
+            item=item, num_items=self._maxsize / item.count)
         assert item.count > 0, item
-        self._num_added += 1
+        self._num_timesteps_added += item.count
+        self._num_timesteps_added_wrap += item.count
 
         if self._next_idx >= len(self._storage):
             self._storage.append(item)
             self._est_size_bytes += item.size_bytes()
         else:
             self._storage[self._next_idx] = item
-        if self._next_idx + 1 >= self._maxsize:
+
+        # Wrap around storage as a circular buffer once we hit maxsize.
+        if self._num_timesteps_added_wrap >= self._maxsize:
             self._eviction_started = True
-        self._next_idx = (self._next_idx + 1) % self._maxsize
+            self._num_timesteps_added_wrap = 0
+            self._next_idx = 0
+        else:
+            self._next_idx += 1
+
         if self._eviction_started:
             self._evicted_hit_stats.push(self._hit_count[self._next_idx])
             self._hit_count[self._next_idx] = 0
@@ -85,8 +118,8 @@ class ReplayBuffer:
     @DeveloperAPI
     def stats(self, debug=False):
         data = {
-            "added_count": self._num_added,
-            "sampled_count": self._num_sampled,
+            "added_count": self._num_timesteps_added,
+            "sampled_count": self._num_timesteps_sampled,
             "est_size_bytes": self._est_size_bytes,
             "num_entries": len(self._storage),
         }
@@ -155,7 +188,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 transition and original idxes in buffer of sampled experiences.
         """
         assert beta >= 0.0
-        self._num_sampled += num_items
 
         idxes = self._sample_proportional(num_items)
 
@@ -170,6 +202,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             count = self._storage[idx].count
             weights.extend([weight / max_weight] * count)
             batch_indexes.extend([idx] * count)
+            self._num_timesteps_sampled += count
         batch = self._encode_sample(idxes)
 
         # Note: prioritization is not supported in lockstep replay mode.
@@ -227,10 +260,10 @@ class LocalReplayBuffer(ParallelIteratorWorker):
     may be created to increase parallelism."""
 
     def __init__(self,
-                 num_shards,
-                 learning_starts,
-                 buffer_size,
-                 replay_batch_size,
+                 num_shards=1,
+                 learning_starts=1000,
+                 buffer_size=10000,
+                 replay_batch_size=1,
                  prioritized_replay_alpha=0.6,
                  prioritized_replay_beta=0.4,
                  prioritized_replay_eps=1e-6,

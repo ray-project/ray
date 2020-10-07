@@ -36,7 +36,9 @@ REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
 
+DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
+PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
@@ -128,40 +130,16 @@ DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 
 # Used in gpu detection
-RESOURCE_CONSTRAINT_PREFIX = "GPUType:"
+RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
-# Abort autoscaling if more than this number of errors are encountered. This
-# is a safety feature to prevent e.g. runaway node launches.
-AUTOSCALER_MAX_NUM_FAILURES = env_integer("AUTOSCALER_MAX_NUM_FAILURES", 5)
-
-# The maximum number of nodes to launch in a single request.
-# Multiple requests may be made for this batch size, up to
-# the limit of AUTOSCALER_MAX_CONCURRENT_LAUNCHES.
-AUTOSCALER_MAX_LAUNCH_BATCH = env_integer("AUTOSCALER_MAX_LAUNCH_BATCH", 5)
-
-# Max number of nodes to launch at a time.
-AUTOSCALER_MAX_CONCURRENT_LAUNCHES = env_integer(
-    "AUTOSCALER_MAX_CONCURRENT_LAUNCHES", 10)
-
-# Interval at which to perform autoscaling updates.
-AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
-
-# The autoscaler will attempt to restart Ray on nodes it hasn't heard from
-# in more than this interval.
-AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
-                                             30)
+RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
-# Max number of retries to AWS (default is 5, time increases exponentially)
-BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
-# Max number of retries to create an EC2 node (retry different subnet)
-BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
-
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
-LOGGER_FORMAT_HELP = "The logging format. default='{}'".format(LOGGER_FORMAT)
+LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
@@ -180,6 +158,9 @@ PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
 
+WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
+WORKER_PROCESS_TYPE_IO_WORKER = "ray::IOWorker"
+
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is cross language.
@@ -188,6 +169,13 @@ OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
 OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 # A constant used as object metadata to indicate the object is raw bytes.
 OBJECT_METADATA_TYPE_RAW = b"RAW"
+
+# A constant used as object metadata to indicate the object is an actor handle.
+# This value should be synchronized with the Java definition in
+# ObjectSerializer.java
+# TODO(fyrestone): Serialize the ActorHandle via the custom type feature
+# of XLANG.
+OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 

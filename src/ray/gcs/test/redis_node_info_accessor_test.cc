@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <memory>
+
 #include "gtest/gtest.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -22,12 +23,12 @@ namespace ray {
 
 namespace gcs {
 
-class NodeDynamicResourceTest : public AccessorTestBase<ClientID, ResourceTableData> {
+class NodeDynamicResourceTest : public AccessorTestBase<NodeID, ResourceTableData> {
  protected:
   typedef NodeInfoAccessor::ResourceMap ResourceMap;
   virtual void GenTestData() {
     for (size_t node_index = 0; node_index < node_number_; ++node_index) {
-      ClientID id = ClientID::FromRandom();
+      NodeID id = NodeID::FromRandom();
       ResourceMap resource_map;
       for (size_t rs_index = 0; rs_index < resource_type_number_; ++rs_index) {
         std::shared_ptr<ResourceTableData> rs_data =
@@ -43,7 +44,7 @@ class NodeDynamicResourceTest : public AccessorTestBase<ClientID, ResourceTableD
     }
   }
 
-  std::unordered_map<ClientID, ResourceMap> id_to_resource_map_;
+  std::unordered_map<NodeID, ResourceMap> id_to_resource_map_;
 
   size_t node_number_{100};
   size_t resource_type_number_{5};
@@ -58,7 +59,7 @@ TEST_F(NodeDynamicResourceTest, UpdateAndGet) {
   NodeInfoAccessor &node_accessor = gcs_client_->Nodes();
   for (const auto &node_rs : id_to_resource_map_) {
     ++pending_count_;
-    const ClientID &id = node_rs.first;
+    const NodeID &id = node_rs.first;
     // Update
     Status status = node_accessor.AsyncUpdateResources(
         node_rs.first, node_rs.second, [this, &node_accessor, id](Status status) {
@@ -94,7 +95,7 @@ TEST_F(NodeDynamicResourceTest, Delete) {
 
   for (const auto &node_rs : id_to_resource_map_) {
     ++pending_count_;
-    const ClientID &id = node_rs.first;
+    const NodeID &id = node_rs.first;
     // Delete
     Status status = node_accessor.AsyncDeleteResources(
         id, resource_to_delete_, [this, &node_accessor, id](Status status) {
@@ -127,7 +128,7 @@ TEST_F(NodeDynamicResourceTest, Subscribe) {
   WaitPendingDone(wait_pending_timeout_);
 
   auto subscribe = [this](const rpc::NodeResourceChange &notification) {
-    auto id = ClientID::FromBinary(notification.node_id());
+    auto id = NodeID::FromBinary(notification.node_id());
     RAY_LOG(INFO) << "receive client id=" << id;
     auto it = id_to_resource_map_.find(id);
     ASSERT_TRUE(it != id_to_resource_map_.end());

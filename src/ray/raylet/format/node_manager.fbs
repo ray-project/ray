@@ -55,22 +55,6 @@ enum MessageType:int {
   NotifyDirectCallTaskBlocked,
   // Notify the current worker is unblocked. This is only used by direct task calls.
   NotifyDirectCallTaskUnblocked,
-  // A request to get the task frontier for an actor, called by the actor when
-  // saving a checkpoint.
-  GetActorFrontierRequest,
-  // The ActorFrontier response to a GetActorFrontierRequest. The raylet
-  // returns the actor's per-handle task counts and execution dependencies,
-  // which can later be used as the argument to SetActorFrontier
-  // when resuming from the checkpoint.
-  GetActorFrontierReply,
-  // A request to set the task frontier for an actor, called when resuming from
-  // a checkpoint. The raylet will update the actor's per-handle task
-  // counts and execution dependencies, discard any tasks that already executed
-  // before the checkpoint, and make any tasks on the frontier runnable by
-  // making their execution dependencies available.
-  SetActorFrontier,
-  // A node manager request to process a task forwarded from another node manager.
-  ForwardTaskRequest,
   // Wait for objects to be ready either from local or remote Plasma stores.
   WaitRequest,
   // The response message to WaitRequest; replies with the objects found and objects
@@ -142,8 +126,9 @@ table ResourceIdSetInfos {
 // This struct is used to register a new worker with the raylet.
 // It is shipped as part of raylet_connect.
 table RegisterClientRequest {
-  // True if the client is a worker and false if the client is a driver.
-  is_worker: bool;
+  // Type of the worker.
+  // TODO(suquark): Use `WorkerType` in `common.proto`.
+  worker_type: int;
   // The ID of the worker or driver.
   worker_id: string;
   // The process ID of this worker.
@@ -162,14 +147,18 @@ table RegisterClientRequest {
 }
 
 table RegisterClientReply {
-  // GCS ClientID of the local node manager.
+  // Whether the registration succeeded.
+  success: bool;
+  // The reason of registration failure.
+  failure_reason: string;
+  // GCS NodeID of the local node manager.
   raylet_id: string;
   // Port that this worker should listen on.
   port: int;
   // Keys for internal config options.
-  internal_config_keys: [string];
+  system_config_keys: [string];
   // Values for internal config options corresponding to keys above.
-  internal_config_values: [string];
+  system_config_values: [string];
 }
 
 table AnnounceWorkerPort {
@@ -180,14 +169,6 @@ table AnnounceWorkerPort {
 table RegisterNodeManagerRequest {
   // GCS ClientID of the connecting node manager.
   client_id: string;
-}
-
-table ForwardTaskRequest {
-  // The ID of the task to be forwarded.
-  task_id: string;
-  // The tasks in the uncommitted lineage of the forwarded task. This
-  // should include task_id.
-  uncommitted_tasks: [Task];
 }
 
 // Mimics the Address protobuf.
@@ -315,4 +296,12 @@ table SetResourceRequest {
 table SubscribePlasmaReady {
   // ObjectID to wait for
   object_id: string;
+}
+
+table ForceSpillObjectsRequest {
+  // List of object IDs to be spilled to external storage.
+  object_ids: [string];
+}
+
+table ForceSpillObjectsReply {
 }

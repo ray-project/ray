@@ -27,6 +27,7 @@
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -53,26 +54,26 @@ class GcsActorSchedulerInterface {
   ///
   /// \param node_id ID of the node where the worker is located.
   /// \return ID list of actors associated with the specified node id.
-  virtual std::vector<ActorID> CancelOnNode(const ClientID &node_id) = 0;
+  virtual std::vector<ActorID> CancelOnNode(const NodeID &node_id) = 0;
 
   /// Cancel a outstanding leasing request to raylets.
   ///
   /// \param node_id ID of the node where the actor leasing request has been sent.
   /// \param actor_id ID of an actor.
-  virtual void CancelOnLeasing(const ClientID &node_id, const ActorID &actor_id) = 0;
+  virtual void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id) = 0;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
   /// \param node_id ID of the node where the worker is located.
   /// \param worker_id ID of the worker that the actor is creating on.
   /// \return ID of actor associated with the specified node id and worker id.
-  virtual ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id) = 0;
+  virtual ActorID CancelOnWorker(const NodeID &node_id, const WorkerID &worker_id) = 0;
 
   /// Notify raylets to release unused workers.
   ///
   /// \param node_to_workers Workers used by each node.
   virtual void ReleaseUnusedWorkers(
-      const std::unordered_map<ClientID, std::vector<WorkerID>> &node_to_workers) = 0;
+      const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
 
   virtual ~GcsActorSchedulerInterface() {}
 };
@@ -119,7 +120,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param node_id ID of the node where the worker is located.
   /// \return ID list of actors associated with the specified node id.
-  std::vector<ActorID> CancelOnNode(const ClientID &node_id) override;
+  std::vector<ActorID> CancelOnNode(const NodeID &node_id) override;
 
   /// Cancel a outstanding leasing request to raylets.
   ///
@@ -129,20 +130,20 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param node_id ID of the node where the actor leasing request has been sent.
   /// \param actor_id ID of an actor.
-  void CancelOnLeasing(const ClientID &node_id, const ActorID &actor_id) override;
+  void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id) override;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
   /// \param node_id ID of the node where the worker is located.
   /// \param worker_id ID of the worker that the actor is creating on.
   /// \return ID of actor associated with the specified node id and worker id.
-  ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id) override;
+  ActorID CancelOnWorker(const NodeID &node_id, const WorkerID &worker_id) override;
 
   /// Notify raylets to release unused workers.
   ///
   /// \param node_to_workers Workers used by each node.
-  void ReleaseUnusedWorkers(const std::unordered_map<ClientID, std::vector<WorkerID>>
-                                &node_to_workers) override;
+  void ReleaseUnusedWorkers(
+      const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -177,7 +178,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
     WorkerID GetWorkerID() const { return WorkerID::FromBinary(address_.worker_id()); }
 
     /// Get the NodeID of this leased worker.
-    ClientID GetNodeID() const { return ClientID::FromBinary(address_.raylet_id()); }
+    NodeID GetNodeID() const { return NodeID::FromBinary(address_.raylet_id()); }
 
     /// Get the id of the actor which is assigned to this leased worker.
     ActorID GetAssignedActorID() const { return assigned_actor_id_; }
@@ -259,10 +260,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
 
-  /// Get or create CoreWorkerClient to communicate with the remote leased worker.
-  std::shared_ptr<rpc::CoreWorkerClientInterface> GetOrConnectCoreWorkerClient(
-      const rpc::Address &worker_address);
-
  protected:
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
@@ -272,19 +269,15 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Map from node ID to the set of actors for whom we are trying to acquire a lease from
   /// that node. This is needed so that we can retry lease requests from the node until we
   /// receive a reply or the node is removed.
-  absl::flat_hash_map<ClientID, absl::flat_hash_set<ActorID>>
-      node_to_actors_when_leasing_;
+  absl::flat_hash_map<NodeID, absl::flat_hash_set<ActorID>> node_to_actors_when_leasing_;
   /// Map from node ID to the workers on which we are trying to create actors. This is
   /// needed so that we can cancel actor creation requests if the worker is removed.
-  absl::flat_hash_map<ClientID,
+  absl::flat_hash_map<NodeID,
                       absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
       node_to_workers_when_creating_;
   /// The cached node clients which are used to communicate with raylet to lease workers.
-  absl::flat_hash_map<ClientID, std::shared_ptr<WorkerLeaseInterface>>
+  absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>>
       remote_lease_clients_;
-  /// The cached core worker clients which are used to communicate with leased worker.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      core_worker_clients_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
   /// A publisher for publishing gcs messages.
@@ -295,10 +288,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
   /// The nodes which are releasing unused workers.
-  absl::flat_hash_set<ClientID> nodes_of_releasing_unused_workers_;
+  absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
+  /// The cached core worker clients which are used to communicate with leased worker.
+  rpc::CoreWorkerClientPool core_worker_clients_;
 };
 
 }  // namespace gcs

@@ -15,6 +15,7 @@
 #pragma once
 
 #include <grpcpp/grpcpp.h>
+
 #include <boost/asio.hpp>
 
 #include "ray/common/grpc_util.h"

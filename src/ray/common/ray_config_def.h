@@ -131,11 +131,12 @@ RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
 // of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
-/// The initial period for a task execution lease. The lease will expire this
-/// many milliseconds after the first acquisition of the lease. Nodes that
-/// require an object will not try to reconstruct the task until at least
-/// this many milliseconds.
-RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
+/// When trying to resolve an object, the initial period that the raylet will
+/// wait before contacting the object's owner to check if the object is still
+/// available. This is a lower bound on the time to report the loss of an
+/// object stored in the distributed object store in the case that the worker
+/// that created the original ObjectRef dies.
+RAY_CONFIG(int64_t, object_timeout_milliseconds, 100)
 
 /// The maximum duration that workers can hold on to another worker's lease
 /// for direct task submission until it must be returned to the raylet.
@@ -151,15 +152,6 @@ RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
 
-/// This is used to bound the size of the Raylet's lineage cache. This is
-/// the maximum uncommitted lineage size that any remote task in the cache
-/// can have before eviction will be attempted.
-RAY_CONFIG(uint64_t, max_lineage_size, 100)
-
-/// This is a temporary constant used by actors to determine how many dummy
-/// objects to store.
-RAY_CONFIG(int64_t, actor_max_dummy_objects, 1000)
-
 /// Number of times raylet client tries connecting to a raylet.
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
 RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
@@ -169,61 +161,17 @@ RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 /// the number of missing task dependencies.
 RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
 
-/// The duration that the raylet will wait between initiating
-/// reconstruction calls for missing task dependencies. If there are many
-/// missing task dependencies, we will only iniate reconstruction calls for
-/// some of them each time.
-RAY_CONFIG(int64_t, raylet_reconstruction_timeout_milliseconds, 1000)
-
-/// The maximum number of objects that the raylet will issue
-/// reconstruct calls for in a single pass through the reconstruct object
-/// timeout handler.
-RAY_CONFIG(int64_t, max_num_to_reconstruct, 10000)
-
-/// The maximum number of objects to include in a single fetch request in the
-/// regular raylet fetch timeout handler.
-RAY_CONFIG(int64_t, raylet_fetch_request_size, 10000)
-
-/// The maximum number of active object IDs to report in a heartbeat.
-/// # NOTE: currently disabled by default.
-RAY_CONFIG(size_t, raylet_max_active_object_ids, 0)
-
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 
-/// The duration that we wait after the worekr is launched before the
+/// The duration that we wait after the worker is launched before the
 /// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
-
-/// This is a timeout used to cause failures in the plasma manager and raylet
-/// when certain event loop handlers take too long.
-RAY_CONFIG(int64_t, max_time_for_handler_milliseconds, 1000)
-
-/// This is used to cause failures when a certain loop in redis.cc which
-/// synchronously looks up object manager addresses in redis is slow.
-RAY_CONFIG(int64_t, max_time_for_loop, 1000)
 
 /// Allow up to 5 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
-
-/// TODO(rkn): These constants are currently unused.
-RAY_CONFIG(int64_t, plasma_default_release_delay, 64)
-RAY_CONFIG(int64_t, L3_cache_size_bytes, 100000000)
-
-/// Constants for the spillback scheduling policy.
-RAY_CONFIG(int64_t, max_tasks_to_spillback, 10)
-
-/// Every time an actor creation task has been spilled back a number of times
-/// that is a multiple of this quantity, a warning will be pushed to the
-/// corresponding driver. Since spillback currently occurs on a 100ms timer,
-/// a value of 100 corresponds to a warning every 10 seconds.
-RAY_CONFIG(int64_t, actor_creation_num_spillbacks_warning, 100)
-
-/// If a node manager attempts to forward a task to another node manager and
-/// the forward fails, then it will resubmit the task after this duration.
-RAY_CONFIG(int64_t, node_manager_forward_task_retry_timeout_milliseconds, 1000)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
 /// ObjectManager.
@@ -249,22 +197,19 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
 RAY_CONFIG(int, num_workers_per_process_python, 1)
 
 /// Number of workers per Java worker process
-RAY_CONFIG(int, num_workers_per_process_java, 10)
+RAY_CONFIG(int, num_workers_per_process_java, 1)
 
-/// Maximum timeout in milliseconds within which a task lease must be renewed.
-RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000)
-
-/// Maximum number of checkpoints to keep in GCS for an actor.
-/// Note: this number should be set to at least 2. Because saving a application
-/// checkpoint isn't atomic with saving the backend checkpoint, and it will break
-/// if this number is set to 1 and users save application checkpoints in place.
-RAY_CONFIG(int32_t, num_actor_checkpoints_to_keep, 20)
+/// Number of workers per CPP worker process
+RAY_CONFIG(int, num_workers_per_process_cpp, 1)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
-/// Maximum number of items in one batch to scan from GCS storage.
-RAY_CONFIG(uint32_t, maximum_gcs_scan_batch_size, 1000)
+/// Maximum number of items in one batch to scan/get/delete from GCS storage.
+RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
+
+/// Maximum number of rows in GCS profile table.
+RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
@@ -285,6 +230,8 @@ RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
+/// Duration to wait between retries for creating placement group in gcs server.
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -303,7 +250,7 @@ RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, plasma_store_as_thread, false)
@@ -311,10 +258,6 @@ RAY_CONFIG(bool, plasma_store_as_thread, false)
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
-
-RAY_CONFIG(bool, gcs_actor_service_enabled,
-           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == nullptr ||
-               getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))
 
 /// The batch size for metrics export.
 RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
@@ -325,18 +268,53 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
-/// Metric agent port for reporting, default -1 means no such agent will be
-/// listening.
-RAY_CONFIG(int, metrics_agent_port, -1)
-
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
+/// Interval to restart dashboard agent after the process exit.
+RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
+
+/// Wait timeout for dashboard agent register.
+RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
+
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
+/// If true, the worker's queue backlog size will be propagated to the heartbeat batch
+/// data.
+RAY_CONFIG(bool, report_worker_backlog, true)
+
+/// The timeout for synchronous GCS requests in seconds.
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
+
 /// Whether to enable multi tenancy features.
-RAY_CONFIG(bool, enable_multi_tenancy, false)
+RAY_CONFIG(bool, enable_multi_tenancy,
+           getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
+               getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
+
+/// The interval of periodic idle worker killing. A negative value means worker capping is
+/// disabled.
+RAY_CONFIG(int64_t, kill_idle_workers_interval_ms, 200)
+
+/// The idle time threshold for an idle worker to be killed.
+RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
+
+// The interval where metrics are exported in milliseconds.
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
+
+/// The maximum number of I/O worker that raylet starts.
+RAY_CONFIG(int, max_io_workers, 1)
+
+/// Enable the task timeline. If this is enabled, certain events such as task
+/// execution are profiled and sent to the GCS.
+RAY_CONFIG(bool, enable_timeline, true)
+
+/// The maximum number of pending placement group entries that are reported to monitor to
+/// autoscale the cluster.
+RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)

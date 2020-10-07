@@ -1,5 +1,7 @@
 #pragma once
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -17,7 +19,7 @@ namespace raylet {
 /// dispatch/spillback and the callback to trigger it.
 typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
 
-typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)>
+typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
@@ -29,9 +31,11 @@ typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)
 /// 3. If a task has unresolved dependencies, set it aside to wait for
 ///    dependencies to be resolved.
 /// 4. When a task is ready to be dispatched, ensure that the local node is
-///    still capable of running the task.
+///    still capable of running the task, then dispatch it.
 ///     * Step 4 should be run any time there is a new task to dispatch *or*
 ///       there is a new worker which can dispatch the tasks.
+/// 5. When a worker finishes executing its task(s), the requester will return
+///    it and we should release the resources in our view of the node's state.
 class ClusterTaskManager {
  public:
   /// fullfills_dependencies_func Should return if all dependencies are
@@ -45,7 +49,7 @@ class ClusterTaskManager {
   /// \param fulfills_dependencies_func: Returns true if all of a task's
   /// dependencies are fulfilled.
   /// \param gcs_client: A gcs client.
-  ClusterTaskManager(const ClientID &self_node_id,
+  ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
                      NodeInfoGetter get_node_info);
@@ -79,8 +83,33 @@ class ClusterTaskManager {
   /// \param readyIds: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> ready_ids);
 
+  /// (Step 5) Call once a task finishes (i.e. a worker is returned).
+  ///
+  /// \param worker: The worker which was running the task.
+  void HandleTaskFinished(std::shared_ptr<WorkerInterface> worker);
+
+  /// Attempt to cancel an already queued task.
+  ///
+  /// \param task_id: The id of the task to remove.
+  ///
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
+  bool CancelTask(const TaskID &task_id);
+
+  /// Populate the relevant parts of the heartbeat table. This is intended for
+  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// resource_load and resource_load_by_shape.
+  ///
+  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  /// fields used.
+  void Heartbeat(bool light_heartbeat_enabled,
+                 std::shared_ptr<HeartbeatTableData> data) const;
+
+  std::string DebugString();
+
  private:
-  const ClientID &self_node_id_;
+  const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::function<bool(const Task &)> fulfills_dependencies_func_;
   NodeInfoGetter get_node_info_;
@@ -105,7 +134,7 @@ class ClusterTaskManager {
       const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
-  void Spillback(ClientID spillback_to, std::string address, int port,
+  void Spillback(NodeID spillback_to, std::string address, int port,
                  rpc::RequestWorkerLeaseReply *reply,
                  std::function<void(void)> send_reply_callback);
 };

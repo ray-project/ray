@@ -65,8 +65,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
             torch.normal(
                 mean=torch.zeros(policy_tp1.size()),
                 std=policy.config["target_noise"]).to(policy_tp1.device),
-            -target_noise_clip,
-            target_noise_clip)
+            -target_noise_clip, target_noise_clip)
 
         policy_tp1_smoothed = torch.min(
             torch.max(
@@ -125,7 +124,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if twin_q:
         td_error = q_t_selected - q_t_selected_target
         twin_td_error = twin_q_t_selected - q_t_selected_target
-        td_error = td_error + twin_td_error
         if use_huber:
             errors = huber_loss(td_error, huber_threshold) \
                 + huber_loss(twin_td_error, huber_threshold)

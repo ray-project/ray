@@ -9,7 +9,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.types import GradInfoDict, LearnerStatsDict, ResultDict
+from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ def summarize_episodes(
 ) -> ResultDict:
     """Summarizes a set of episode metrics tuples.
 
-    Arguments:
+    Args:
         episodes: smoothed set of episodes including historical ones
         new_episodes: just the new episodes in this iteration. This must be
             a subset of `episodes`. If None, assumes all episodes are new.

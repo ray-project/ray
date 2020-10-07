@@ -1,28 +1,25 @@
-from datetime import timedelta
+import time
+
 import numpy as np
 import logging
 import os
 import numbers
 import tempfile
-import time
 import torch
 import torch.distributed as dist
 
 import ray
-from ray.exceptions import RayActorError
 from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.tune.utils.util import merge_dicts
-from ray.util.sgd.torch.distributed_torch_runner import (
-    DistributedTorchRunner, LocalDistributedRunner, DeactivatedRunner)
-from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
-from ray.util.sgd.torch.torch_runner import TorchRunner
+from ray.util import log_once
+from ray.util.sgd.torch.worker_group import LocalWorkerGroup, \
+    RemoteWorkerGroup, DeactivatedWorkerGroup
+from ray.util.sgd.utils import NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NCCL_TIMEOUT_S
-from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.data import Dataset
 
 logger = logging.getLogger(__name__)
-RESIZE_COOLDOWN_S = 10
 
 
 def _validate_scheduler_step_freq(scheduler_step_freq):
@@ -49,83 +46,53 @@ class TorchTrainer:
 
     .. code-block:: python
 
-        def model_creator(config):
-            return nn.Linear(1, 1)
+        class MyTrainingOperator(TrainingOperator):
 
+            def setup(self, config):
+                model = nn.Linear(1, 1)
+                optimizer = torch.optim.SGD(
+                    model.parameters(), lr=config.get("lr", 1e-4))
+                loss = torch.nn.MSELoss()
 
-        def optimizer_creator(model, config):
-            return torch.optim.SGD(
-                model.parameters(), lr=config.get("lr", 1e-4))
+                batch_size = config["batch_size"]
+                train_data, val_data = LinearDataset(2, 5), LinearDataset(2, 5)
+                train_loader = DataLoader(train_data, batch_size=batch_size)
+                val_loader = DataLoader(val_data, batch_size=batch_size)
 
+                self.model, self.optimizer = self.register(
+                    models=model,
+                    optimizers=optimizer,
+                    criterion=loss)
 
-        def data_creator(config):
-            batch_size = config["batch_size"]
-            train_data, val_data = LinearDataset(2, 5), LinearDataset(2, 5)
-            train_loader = DataLoader(train_data, batch_size=batch_size)
-            val_loader = DataLoader(val_data, batch_size=batch_size)
-            return train_loader, val_loader
+                self.register_data(
+                    train_loader=train_loader,
+                    validation_loader=val_loader)
 
 
         trainer = TorchTrainer(
-            model_creator=model_creator,
-            data_creator=data_creator,
-            optimizer_creator=optimizer_creator,
-            loss_creator=nn.MSELoss,
+            training_operator_cls=MyTrainingOperator,
             config={"batch_size": 32},
             use_gpu=True
         )
         for i in range(4):
             trainer.train()
 
-    The creator functions will execute before distributed coordination and
-    training is setup. This is so that creator functions that download
-    large datasets will not trigger any timeouts.
-
-    The order of operations for creator functions are:
-
-    ``data_creator`` -> ``model_creator`` -> ``optimizer_creator`` ->
-    ``scheduler_creator`` -> ``loss_creator``.
-
     Args:
-        model_creator (dict -> Model(s)): Constructor function that takes in
-            config and returns the model(s) to be optimized. These must be
-            ``torch.nn.Module`` objects. If multiple models are returned,
-            a ``training_operator_cls`` must be specified. You do not need to
-            handle GPU/devices in this function; RaySGD will do that under
-            the hood.
-        data_creator (dict -> Iterable(s)): Constructor function
-            that takes in the passed config and returns one or
-            two Iterable objects. Note that even though two Iterable objects
-            can be returned, only one will be used for training, and the
-            other will be used for validation. If not provided, you must
-            provide a custom TrainingOperator.
-        optimizer_creator ((models, dict) -> optimizers): Constructor
-            function that takes in the return values from
-            ``model_creator`` and the passed config and returns One or
-            more Torch optimizer objects. You do not need to handle
-            GPU/devices in this function; ``RaySGD`` will do that for you.
-        loss_creator (torch.nn.*Loss class | dict -> loss): A constructor
-            function for the training loss. This can be either a function that
-            takes in the provided config for customization or a subclass
-            of ``torch.nn.modules.loss._Loss``, which is most Pytorch
-            loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
-            If not provided, you must provide a custom TrainingOperator.
-        scheduler_creator ((optimizers, dict) -> scheduler):
-            A constructor function for the torch scheduler. This is
-            a function that takes in the generated optimizers (from
-            ``optimizer_creator``) provided config for customization.
-            Be sure to set ``scheduler_step_freq`` to increment the
-            scheduler correctly.
         training_operator_cls (type): Custom training operator class
             that subclasses the TrainingOperator class. This class
             will be copied onto all remote workers and used to specify
-            custom training and validation operations. Defaults to
-            TrainingOperator.
+            training components and custom training and validation operations.
+        initialization_hook (function): A function to call on all training
+            workers when they are first initialized. This could be useful to
+            set environment variables for all the worker processes.
         config (dict): Custom configuration value to be passed to
-            all creator and operator constructors.
+            all operator constructors.
         num_workers (int): the number of workers used in distributed
             training. If 1, the worker will not be wrapped with
-            DistributedDataParallel.
+            DistributedDataParallel. TorchTrainer will scale down the number
+            of workers if enough resources are not available, and will scale
+            back up once they are. The total number of
+            workers will never exceed `num_workers` amount.
         num_cpus_per_worker (int): Sets the cpu requirement for each worker.
         use_gpu (bool): Sets resource allocation for workers to 1 GPU
             if true, and automatically moves both the model and optimizer
@@ -134,10 +101,6 @@ class TorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
-        serialize_data_creation (bool): A filelock will be used
-            to ensure no race conditions in data downloading among
-            different workers on the same node (using the local file system).
-            Defaults to True.
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
         timeout_s (float): Seconds before the torch process group
@@ -158,9 +121,13 @@ class TorchTrainer:
             ``step`` will be called after every optimizer step. If "epoch",
             ``step`` will be called after one pass of the DataLoader. If
             "manual", the scheduler will not be incremented automatically -
-            you are expected to call ``trainer.update_schedulers`` manually.
+            you are expected to call ``trainer.update_scheduler`` manually.
             If a scheduler is passed in, this value is expected to not be None.
-
+        use_local (bool): If True, 1 worker will be a local worker running
+            on the driver process, and all other workers will be remote. If
+            False, all workers will be remote. Set this to True for easy
+            debugging of worker on driver process, but could also
+            lead to issues with Cuda devices. Defaults to False.
     """
 
     # TODO: Implement autoscaling. If num_workers=-1, the trainer will use as
@@ -171,12 +138,7 @@ class TorchTrainer:
     def __init__(
             self,
             *,
-            model_creator,
-            data_creator,
-            optimizer_creator,
-            loss_creator=None,
-            scheduler_creator=None,
-            training_operator_cls=None,
+            training_operator_cls,
             initialization_hook=None,
             config=None,
             num_workers=1,
@@ -185,26 +147,47 @@ class TorchTrainer:
             backend="auto",
             wrap_ddp=True,
             timeout_s=NCCL_TIMEOUT_S,
-            serialize_data_creation=True,
             use_fp16=False,
             use_tqdm=False,
             apex_args=None,
             add_dist_sampler=True,
             scheduler_step_freq=None,
+            use_local=False,
+            # Deprecated Args.
             num_replicas=None,
             batch_size=None,
+            model_creator=None,
+            data_creator=None,
+            optimizer_creator=None,
+            scheduler_creator=None,
+            loss_creator=None,
+            serialize_data_creation=None,
             data_loader_args=None,
     ):
+        if (model_creator or data_creator or optimizer_creator
+                or scheduler_creator or loss_creator):
+            raise DeprecationWarning(
+                "Creator functions are deprecated. You should create a "
+                "custom TrainingOperator, override setup, and register all "
+                "training state there. See TrainingOperator for more info. "
+                "If you would still like to use creator functions, you can "
+                "do CustomOperator = TrainingOperator.from_creators("
+                "model_creator, ...) and pass in CustomOperator into "
+                "TorchTrainer.")
+
+        if use_local and log_once("use_local"):
+            logger.warning("use_local is set to True. This could lead to "
+                           "issues with Cuda devices. If you are seeing this "
+                           "issue, try setting use_local to False. For more "
+                           "information, see "
+                           "https://github.com/ray-project/ray/issues/9202.")
+
         if num_workers > 1 and not dist.is_available():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
                  "To run without distributed PyTorch, set 'num_workers=1'. "
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
-
-        if not (callable(model_creator) and callable(optimizer_creator)):
-            raise ValueError(
-                "Must provide a callable model_creator and optimizer_creator.")
 
         if num_replicas is not None:
             raise DeprecationWarning(
@@ -217,23 +200,22 @@ class TorchTrainer:
                 "config={ray.util.sgd.utils.BATCH_SIZE: N} to specify a "
                 "batch size to be used across all workers.")
 
+        if serialize_data_creation is True:
+            if log_once("serialize_data_creation"):
+                logging.warning(
+                    "serialize_data_creation is deprecated and will be "
+                    "ignored. If you require serialized data loading you "
+                    "should implement this in TrainingOperator.setup. "
+                    "You may find FileLock useful here.")
+
         if data_loader_args:
-            raise ValueError(
+            raise DeprecationWarning(
                 "data_loader_args is deprecated. You can return a "
                 "torch.utils.data.DataLoader in data_creator. Ray will "
                 "automatically set a DistributedSampler if a DataLoader is "
                 "returned and num_workers > 1.")
 
-        self.model_creator = model_creator
-        self.optimizer_creator = optimizer_creator
-        self.loss_creator = loss_creator
-        self.data_creator = data_creator
-        self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls
-
-        if not training_operator_cls and not loss_creator:
-            raise ValueError("If a loss_creator is not provided, you must "
-                             "provide a custom training operator.")
 
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
@@ -245,7 +227,7 @@ class TorchTrainer:
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
-        logger.debug("Using {} as backend.".format(backend))
+        logger.debug(f"Using {backend} as backend.")
         self.backend = backend
         self.num_cpus_per_worker = num_cpus_per_worker
         self.use_gpu = use_gpu
@@ -257,6 +239,7 @@ class TorchTrainer:
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
         self.add_dist_sampler = add_dist_sampler
+        self.use_local = use_local
 
         if apex_args and not isinstance(apex_args, dict):
             raise ValueError("apex_args needs to be a dict object.")
@@ -266,10 +249,7 @@ class TorchTrainer:
         self._num_failures = 0
         self._last_resize = float("-inf")
 
-        self.local_worker = DeactivatedRunner()
-        self.remote_workers = []
-
-        if scheduler_creator:
+        if scheduler_step_freq:
             _validate_scheduler_step_freq(scheduler_step_freq)
 
         self.scheduler_step_freq = scheduler_step_freq
@@ -302,18 +282,11 @@ class TorchTrainer:
         return batch_size_per_worker
 
     def _start_workers(self, num_workers):
-        logger.debug(f"start_workers: Setting %d workers." % num_workers)
         worker_config = self.config.copy()
         batch_size_per_worker = self._configure_and_split_batch(num_workers)
         if batch_size_per_worker:
             worker_config[BATCH_SIZE] = batch_size_per_worker
-
         params = dict(
-            model_creator=self.model_creator,
-            data_creator=self.data_creator,
-            optimizer_creator=self.optimizer_creator,
-            loss_creator=self.loss_creator,
-            scheduler_creator=self.scheduler_creator,
             training_operator_cls=self.training_operator_cls,
             config=worker_config,
             serialize_data_creation=self.serialize_data_creation,
@@ -323,66 +296,68 @@ class TorchTrainer:
             apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
 
-        if num_workers == 1:
-            # Start local worker
-            self.local_worker = TorchRunner(**params)
-            if self.initialization_hook:
-                self.apply_all_workers(self.initialization_hook)
-            self.local_worker.setup()
+        dist_params = dict(
+            backend=self.backend,
+            add_dist_sampler=self.add_dist_sampler,
+            wrap_ddp=self.wrap_ddp)
+
+        worker_args = {
+            "max_workers": num_workers,
+            "params": params,
+            "dist_params": dist_params,
+            "initialization_hook": self.initialization_hook,
+            "num_cpus_per_worker": self.num_cpus_per_worker,
+            "use_gpu": self.use_gpu,
+            "timeout_s": self.timeout_s
+        }
+
+        if self.use_local:
+            self.worker_group = LocalWorkerGroup(**worker_args)
         else:
-            params.update(
-                backend=self.backend,
-                add_dist_sampler=self.add_dist_sampler,
-                wrap_ddp=self.wrap_ddp)
+            self.worker_group = RemoteWorkerGroup(**worker_args)
 
-            # Start local worker
-            self.local_worker = LocalDistributedRunner(
-                num_cpus=self.num_cpus_per_worker,
-                num_gpus=int(self.use_gpu),
-                **params)
+        # TODO(amogkam): If not enough resources are available to create
+        #  num_workers workers, this command will hang. Instead,
+        #  start_workers should take into account available resources when
+        #  determining how many workers to create.
+        self.worker_group.start_workers(num_workers)
 
-            # Generate actor class
-            RemoteRunner = ray.remote(
-                num_cpus=self.num_cpus_per_worker,
-                num_gpus=int(self.use_gpu))(DistributedTorchRunner)
-            # Start workers
-            self.remote_workers = [
-                RemoteRunner.remote(**params) for i in range(num_workers - 1)
-            ]
-            if self.initialization_hook:
-                self.apply_all_workers(self.initialization_hook)
+    def _resize_worker_group(self, max_retries=10):
+        """Resizes the number of remote workers based on available resources.
+        Total number of workers will never exceed `num_workers` amount.
 
-            # Compute URL for initializing distributed PyTorch
-            address = setup_address()
+        Args:
+            max_retries (int): How many times to attempt to resize workers
+                before failing.
+        """
+        state_dict = self.state_dict()
+        old_workers = self.worker_group.num_workers
+        self.worker_group.reset()
 
-            # Runs the creator functions.
-            remote_component_setup = [
-                worker.setup_components.remote()
-                for i, worker in enumerate(self.remote_workers)
-            ]
-            self.local_worker.setup_components()
-            # Get setup tasks in order to throw errors on failure
-            ray.get(remote_component_setup)
-
-            # Setup the process group among all workers.
-            remote_pgroup_setups = [
-                worker.setup_process_group.remote(address, i + 1, num_workers,
-                                                  timedelta(self.timeout_s))
-                for i, worker in enumerate(self.remote_workers)
-            ]
-            self.local_worker.setup_process_group(address, 0, num_workers,
-                                                  timedelta(self.timeout_s))
-            # Get setup tasks in order to throw errors on failure
-            ray.get(remote_pgroup_setups)
-
-            # Runs code that requires all creator functions to have run.
-            remote_operator_setups = [
-                worker.setup_ddp_and_operator.remote()
-                for worker in self.remote_workers
-            ]
-            self.local_worker.setup_ddp_and_operator()
-            # Get setup tasks in order to throw errors on failure
-            ray.get(remote_operator_setups)
+        time.sleep(1)
+        for i in range(max_retries):
+            new_workers = self.worker_group.new_workers_size()
+            if new_workers:
+                self._last_resize = time.time()
+                self._start_workers(int(new_workers))
+                self.load_state_dict(state_dict, blocking=True)
+                if self.use_local and new_workers == 1 and old_workers > 1:
+                    # Major hack. If we go from LocalDistributedRunner to a
+                    # standard TorchRunner we have to manually reset the
+                    # dummy actor handle global vars.
+                    # TODO(amog): Refactor LocalDistributedTorchRunner to
+                    #  not use global variables for resource reservation.
+                    ray.util.sgd.torch.distributed_torch_runner\
+                        ._dummy_cuda_actor = None
+                    ray.util.sgd.torch.distributed_torch_runner\
+                        ._dummy_cpu_actor = None
+                return
+            else:
+                delay = 2**i
+                logger.warning(
+                    "No new workers found. Retrying in %d sec." % delay)
+                time.sleep(delay)
+        raise RuntimeError("Exceeded max_retries for relaunching workers.")
 
     def train(self,
               num_steps=None,
@@ -400,9 +375,9 @@ class TorchTrainer:
         instance preemption.
 
         Args:
-            num_steps (int): Number of batches to compute update steps on.
-                This corresponds also to the number of times
-                ``TrainingOperator.train_batch`` is called.
+            num_steps (int): Number of batches to compute update steps on
+                per worker. This corresponds also to the number of times
+                ``TrainingOperator.train_batch`` is called per worker.
             profile (bool): Returns time stats for the training procedure.
             reduce_results (bool): Whether to average all metrics across
                 all workers into one dict. If a metric is a non-numerical
@@ -421,19 +396,19 @@ class TorchTrainer:
 
         Returns:
             (dict | list) A dictionary of metrics for training.
-                You can provide custom metrics by passing in a custom
-                ``training_operator_cls``. If ``reduce_results=False``,
-                this will return a list of metric dictionaries whose
-                length will be equal to ``num_workers``.
+                You can provide custom metrics by implementing a custom
+                training loop. If ``reduce_results=False``, this will return a
+                list of metric dictionaries whose length will be equal to
+                ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
         assert isinstance(dataset, Dataset) is not None \
             or self.data_creator, \
             "Must specify either a data creator or a dataset"
-        if self._should_resize():
+        if self.worker_group.should_scale_up():
             logger.info("Resize opportunity detected. Attempting to scale up.")
-            self._resize_workers()
-        success, worker_stats = self._train_epoch(
+            self._resize_worker_group()
+        success, worker_stats = self.worker_group.train(
             num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
         for i in range(max_retries):
@@ -441,10 +416,10 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
-            self._resize_workers()
+            self._resize_worker_group()
             logger.info("Retrying training step with %d workers." %
-                        (len(self.remote_workers) + 1))
-            success, worker_stats = self._train_epoch(
+                        self.worker_group.num_workers)
+            success, worker_stats = self.worker_group.train(
                 num_steps=num_steps,
                 profile=profile,
                 info=info,
@@ -462,51 +437,13 @@ class TorchTrainer:
             NUM_SAMPLES: sum(
                 stats.pop(NUM_SAMPLES, np.nan) for stats in worker_stats)
         }
-
         for stat_key in worker_stats[0]:
-            if isinstance(worker_stats[0], numbers.Number):
+            if isinstance(worker_stats[0][stat_key], numbers.Number):
                 stats[stat_key] = np.nanmean(
                     [s.get(stat_key, np.nan) for s in worker_stats])
             else:
                 stats[stat_key] = worker_stats[0][stat_key]
         return stats
-
-    def _train_epoch(self,
-                     num_steps=None,
-                     profile=False,
-                     info=None,
-                     dataset=None):
-        params = dict(num_steps=num_steps, profile=profile, info=info)
-        remote_worker_stats = []
-        if dataset:
-            dataset.set_num_shards(self.max_replicas)
-        for i, w in enumerate(self.remote_workers):
-            params = dict(num_steps=num_steps, profile=profile, info=info)
-            if dataset:
-                params["iterator"] = dataset.get_shard(i)
-            stats = w.train_epoch.remote(**params)
-            remote_worker_stats.append(stats)
-
-        try:
-            if dataset:
-                params["iterator"] = dataset.get_shard(
-                    len(self.remote_workers))
-            local_worker_stats = self.local_worker.train_epoch(**params)
-        except RuntimeError as err:
-            if "gloo" in err.args[0] and "Timed out" in err.args[0]:
-                logger.warning(err)
-                return False, None
-            if "NCCL" in err.args[0]:  # there is no specific error message
-                logger.warning(err)
-                return False, None
-
-            raise err
-
-        success = check_for_failure(remote_worker_stats)
-        if success:
-            return success, [local_worker_stats] + ray.get(remote_worker_stats)
-
-        return success, None
 
     def apply_all_workers(self, fn):
         """Run a function on all operators on the workers.
@@ -518,9 +455,7 @@ class TorchTrainer:
             A list of objects returned by ``fn`` on each worker.
 
         """
-        remote_calls = [w.apply.remote(fn) for w in self.remote_workers]
-        local_call = self.local_worker.apply(fn)
-        return [local_call] + ray.get(remote_calls)
+        return self.worker_group.apply_all_workers(fn)
 
     def apply_all_operators(self, fn):
         """Run a function on all operators on the workers.
@@ -533,11 +468,7 @@ class TorchTrainer:
             A list of objects returned by ``fn`` on each operator.
 
         """
-        remote_calls = [
-            w.apply_operator.remote(fn) for w in self.remote_workers
-        ]
-        local_call = self.local_worker.apply_operator(fn)
-        return [local_call] + ray.get(remote_calls)
+        return self.worker_group.apply_all_operators(fn)
 
     def validate(self,
                  num_steps=None,
@@ -547,9 +478,9 @@ class TorchTrainer:
         """Evaluates the model on the validation data set.
 
         Args:
-            num_steps (int): Number of batches to compute update steps on.
-                This corresponds also to the number of times
-                ``TrainingOperator.validate_batch`` is called.
+            num_steps (int): Number of batches to compute update steps on
+                per worker. This corresponds also to the number of times
+                ``TrainingOperator.validate_batch`` is called per worker.
             profile (bool): Returns time stats for the evaluation procedure.
             reduce_results (bool): Whether to average all metrics across
                 all workers into one dict. If a metric is a non-numerical
@@ -563,13 +494,8 @@ class TorchTrainer:
                 You can provide custom metrics by passing in a custom
                 ``training_operator_cls``.
         """
-        params = dict(num_steps=num_steps, profile=profile, info=info)
-
-        remote_worker_stats = [
-            w.validate.remote(**params) for w in self.remote_workers
-        ]
-        local_worker_stats = self.local_worker.validate(**params)
-        worker_stats = [local_worker_stats] + ray.get(remote_worker_stats)
+        worker_stats = self.worker_group.validate(
+            num_steps=num_steps, profile=profile, info=info)
 
         if reduce_results:
             return self._process_stats(worker_stats)
@@ -577,17 +503,18 @@ class TorchTrainer:
             return worker_stats
 
     def update_scheduler(self, metric):
-        """Calls ``scheduler.step(metric)`` on all schedulers.
+        """Calls ``scheduler.step(metric)`` on all registered schedulers.
 
         This is useful for lr_schedulers such as ``ReduceLROnPlateau``.
         """
-        self.apply_all_operators(
-            lambda op: [sched.step(metric) for sched in op.schedulers])
+        self.worker_group.apply_all_operators(
+            lambda op: [sched.step(metric) for sched in op._schedulers])
 
     def get_model(self):
         """Returns the learned model(s)."""
         unwrapped = []
-        for model in self.local_worker.models:
+        models = self.worker_group.get_model()
+        for model in models:
             unwrapped += [model.module if hasattr(model, "module") else model]
         if len(unwrapped) == 1:
             return unwrapped[0]
@@ -602,23 +529,13 @@ class TorchTrainer:
         Returns:
             TrainingOperator: The local TrainingOperator object.
         """
-        return self.local_worker.training_operator
+        return self.worker_group.get_local_operator()
 
     def state_dict(self):
-        return self.local_worker.state_dict()
+        return self.worker_group.state_dict()
 
     def load_state_dict(self, state_dict, blocking=False):
-        # This is not the most efficient because you have to wait for
-        # the local worker to save then dump to buffer.
-        self.local_worker.load_state_dict(state_dict)
-        state_id = ray.put(self.local_worker.state_stream())
-
-        remote_calls = [
-            worker.load_state_stream.remote(state_id)
-            for worker in self.remote_workers
-        ]
-        if blocking:
-            ray.get(remote_calls)
+        self.worker_group.load_state_dict(state_dict, blocking=blocking)
 
     def save(self, checkpoint):
         """Saves the Trainer state to the provided checkpoint path.
@@ -642,81 +559,16 @@ class TorchTrainer:
         raise DeprecationWarning("Use `TorchTrainer.load()` instead.")
 
     def shutdown(self, force=False):
-        """Shuts down workers and releases resources."""
-        if not force:
-            cleanup = [
-                worker.shutdown.remote() for worker in self.remote_workers
-            ]
-            self.local_worker.shutdown()
-            try:
-                ray.get(cleanup)
-                [
-                    worker.__ray_terminate__.remote()
-                    for worker in self.remote_workers
-                ]
-            except RayActorError:
-                logger.warning(
-                    "Failed to shutdown gracefully, forcing a shutdown.")
+        """Shuts down workers and releases resources.
 
-                for worker in self.remote_workers:
-                    logger.warning("Killing worker {}.".format(worker))
-                    ray.kill(worker)
-        else:
-            self.local_worker.shutdown()
-            for worker in self.remote_workers:
-                logger.debug("Killing worker {}.".format(worker))
-                ray.kill(worker)
+        Args:
+            force (bool): If True, forcefully kill all workers. If False,
+                attempt a graceful shutdown first, and then forcefully kill if
+                unsuccessful.
 
-        self.local_worker = DeactivatedRunner()
-        self.remote_workers = []
-
-    def _reset(self):
-        """Terminates models without giving up local resource reservation."""
-        self.local_worker.shutdown(cleanup=False)
-        for worker in self.remote_workers:
-            logger.debug("Killing worker {}.".format(worker))
-            ray.kill(worker)
-        self.local_worker = DeactivatedRunner()
-        self.remote_workers = []
-
-    def _check_potential_remote_workers_size(self):
-        # ASSUME 1 GPU + 1 CPU is already reserved for the local worker
-        remote_resources = ray.available_resources()
-        max_remote_workers = self.max_replicas - 1
-        new_remote_workers = min(
-            remote_resources.get("CPU", 0), max_remote_workers)
-        if self.use_gpu:
-            new_remote_workers = min(
-                remote_resources.get("GPU", 0), new_remote_workers)
-        return new_remote_workers
-
-    def _resize_workers(self, max_retries=10):
-        self._reset()
-
-        time.sleep(1)
-        for i in range(max_retries):
-            new_remote_workers = self._check_potential_remote_workers_size()
-            if new_remote_workers:
-                self._last_resize = time.time()
-                self._start_workers(int(new_remote_workers) + 1)
-                self.load_state_dict(self.state_dict())
-                return
-            else:
-                delay = 2**i
-                logger.warning(
-                    "No new workers found. Retrying in %d sec." % delay)
-                time.sleep(delay)
-        raise RuntimeError("Exceeded max_retries for relaunching workers.")
-
-    def _should_resize(self):
-        """Returns True if past cooldown and exists resources to scale up."""
-        worker_gap = self.max_replicas - 1 - len(self.remote_workers)
-        past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
-        if past_cooldown and worker_gap:
-            # Assume 1 resource is already reserved for local worker.
-            potential_remote_size = self._check_potential_remote_workers_size()
-            return potential_remote_size > 0
-        return False
+        """
+        self.worker_group.shutdown(force=force)
+        self.worker_group = DeactivatedWorkerGroup()
 
     @classmethod
     def as_trainable(cls, *args, **kwargs):
@@ -729,10 +581,7 @@ class TorchTrainer:
         .. code-block:: python
 
             TorchTrainable = TorchTrainer.as_trainable(
-                model_creator=ResNet18,
-                data_creator=cifar_creator,
-                optimizer_creator=optimizer_creator,
-                loss_creator=nn.CrossEntropyLoss,
+                training_operator_cls=MyTrainingOperator,
                 num_gpus=2
             )
             analysis = tune.run(
@@ -747,16 +596,26 @@ class TorchTrainer:
             def default_resource_request(cls, config):
                 num_workers = config.get("num_workers",
                                          kwargs.get("num_workers", 1))
-                num_cpus = config.get("num_cpus_per_worker",
-                                      kwargs.get("num_cpus_per_worker", 1))
+                num_cpus_per_worker = config.get(
+                    "num_cpus_per_worker", kwargs.get("num_cpus_per_worker",
+                                                      1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
+                use_local = config.get("use_local",
+                                       kwargs.get("use_local", False))
 
-                remote_worker_count = num_workers - 1
+                if use_local:
+                    remote_worker_count = num_workers - 1
+                    local_cpus = 1
+                    local_gpus = int(use_gpu)
+                else:
+                    remote_worker_count = num_workers
+                    local_cpus = 0
+                    local_gpus = 0
 
                 return Resources(
-                    cpu=num_cpus,
-                    gpu=int(use_gpu),
-                    extra_cpu=int(remote_worker_count),
+                    cpu=int(local_cpus * num_cpus_per_worker),
+                    gpu=int(local_gpus),
+                    extra_cpu=int(remote_worker_count * num_cpus_per_worker),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
 
             def _create_trainer(self, tune_config):
@@ -781,10 +640,7 @@ class BaseTorchTrainable(Trainable):
     .. code-block:: python
 
         TorchTrainable = TorchTrainer.as_trainable(
-            model_creator=ResNet18,
-            data_creator=cifar_creator,
-            optimizer_creator=optimizer_creator,
-            loss_creator=nn.CrossEntropyLoss,
+            training_operator_cls=MyTrainingOperator,
             num_gpus=2
         )
         # TorchTrainable is subclass of BaseTorchTrainable.
@@ -813,6 +669,12 @@ class BaseTorchTrainable(Trainable):
 
         You may want to override this if using a custom LR scheduler.
         """
+        if self._is_overriden("_train"):
+            raise DeprecationWarning(
+                "Trainable._train is deprecated and will be "
+                "removed in "
+                "a future version of Ray. Override Trainable.step instead.")
+
         train_stats = self.trainer.train(max_retries=10, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)

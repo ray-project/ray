@@ -12,6 +12,7 @@ import torch.optim as optim
 from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
+import ray
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
@@ -71,6 +72,8 @@ def train_cifar(config, checkpoint_dir=None, data_dir=None):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
+    # The `checkpoint_dir` parameter gets passed by Ray Tune when a checkpoint
+    # should be restored.
     if checkpoint_dir:
         checkpoint = os.path.join(checkpoint_dir, "checkpoint")
         model_state, optimizer_state = torch.load(checkpoint)
@@ -138,6 +141,9 @@ def train_cifar(config, checkpoint_dir=None, data_dir=None):
                 val_loss += loss.cpu().numpy()
                 val_steps += 1
 
+        # Here we save a checkpoint. It is automatically registered with
+        # Ray Tune and will potentially be passed as the `checkpoint_dir`
+        # parameter in future iterations.
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
             path = os.path.join(checkpoint_dir, "checkpoint")
             torch.save(
@@ -173,7 +179,7 @@ def test_accuracy(net, device="cpu"):
 # __main_begin__
 def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     data_dir = os.path.abspath("./data")
-    load_data(data_dir)
+    load_data(data_dir)  # Download data for all trials before starting the run
     config = {
         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
@@ -195,8 +201,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        progress_reporter=reporter,
-        checkpoint_at_end=True)
+        progress_reporter=reporter)
 
     best_trial = result.get_best_trial("loss", "min", "last")
     print("Best trial config: {}".format(best_trial.config))
@@ -232,6 +237,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
+        ray.init(num_cpus=2)
         main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
     else:
         # Change this to activate training on GPUs

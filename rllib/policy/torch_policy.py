@@ -1,17 +1,16 @@
 import functools
 import gym
+import logging
 import numpy as np
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
-import ray
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.trajectory_view import get_trajectory_view
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -19,17 +18,17 @@ from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.types import AgentID, ModelGradients, ModelWeights, \
+from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
 class TorchPolicy(Policy):
     """Template for a PyTorch policy and loss to use with RLlib.
-
-    This is similar to TFPolicy, but for PyTorch.
 
     Attributes:
         observation_space (gym.Space): observation space of the policy.
@@ -47,15 +46,21 @@ class TorchPolicy(Policy):
             config: TrainerConfigDict,
             *,
             model: ModelV2,
-            loss: Callable[[Policy, ModelV2, type, SampleBatch], TensorType],
-            action_distribution_class: TorchDistributionWrapper,
-            action_sampler_fn: Callable[[TensorType, List[TensorType]], Tuple[
-                TensorType, TensorType]] = None,
+            loss: Callable[[
+                Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
+            ], Union[TensorType, List[TensorType]]],
+            action_distribution_class: Type[TorchDistributionWrapper],
+            action_sampler_fn: Optional[Callable[[
+                TensorType, List[TensorType]
+            ], Tuple[TensorType, TensorType]]] = None,
             action_distribution_fn: Optional[Callable[[
                 Policy, ModelV2, TensorType, TensorType, TensorType
-            ], Tuple[TensorType, type, List[TensorType]]]] = None,
+            ], Tuple[TensorType, Type[TorchDistributionWrapper], List[
+                TensorType]]]] = None,
             max_seq_len: int = 20,
-            get_batch_divisibility_req: Optional[int] = None):
+            get_batch_divisibility_req: Optional[Callable[[Policy],
+                                                          int]] = None,
+    ):
         """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -69,11 +74,11 @@ class TorchPolicy(Policy):
             model (ModelV2): PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
-            loss (Callable[[Policy, ModelV2, type, SampleBatch], TensorType]):
-                Function that takes (policy, model, dist_class, train_batch)
-                and returns a single scalar loss.
-            action_distribution_class (TorchDistributionWrapper): Class for
-                a torch action distribution.
+            loss (Callable[[Policy, ModelV2, Type[TorchDistributionWrapper],
+                SampleBatch], Union[TensorType, List[TensorType]]]): Callable
+                that returns a single scalar loss or a list of loss terms.
+            action_distribution_class (Type[TorchDistributionWrapper]): Class
+                for a torch action distribution.
             action_sampler_fn (Callable[[TensorType, List[TensorType]],
                 Tuple[TensorType, TensorType]]): A callable returning a
                 sampled action and its log-likelihood given Policy, ModelV2,
@@ -98,11 +103,16 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available() and ray.get_gpu_ids():
+        if torch.cuda.is_available():
+            logger.info("TorchPolicy running on GPU.")
             self.device = torch.device("cuda")
         else:
+            logger.info("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+        # Combine view_requirements for Model and Policy.
+        self.view_requirements.update(self.model.inference_view_requirements)
+
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
@@ -116,9 +126,9 @@ class TorchPolicy(Policy):
         self.distributed_world_size = None
 
         self.max_seq_len = max_seq_len
-        self.batch_divisibility_req = \
-            get_batch_divisibility_req(self) if get_batch_divisibility_req \
-            else 1
+        self.batch_divisibility_req = get_batch_divisibility_req(self) if \
+            callable(get_batch_divisibility_req) else \
+            (get_batch_divisibility_req or 1)
 
     @override(Policy)
     @DeveloperAPI
@@ -168,10 +178,9 @@ class TorchPolicy(Policy):
                                               extra_fetches))
 
     @override(Policy)
-    def compute_actions_from_trajectories(
+    def compute_actions_from_input_dict(
             self,
-            trajectories: List["Trajectory"],
-            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
+            input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -181,13 +190,15 @@ class TorchPolicy(Policy):
         timestep = timestep if timestep is not None else self.global_timestep
 
         with torch.no_grad():
-            # Create a view and pass that to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(
-                get_trajectory_view(
-                    self.model, trajectories, is_training=False))
-            # TODO: (sven) support RNNs w/ fast sampling.
-            state_batches = []
-            seq_lens = None
+            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            input_dict = self._lazy_tensor_dict(input_dict)
+            # Pack internal state inputs into (separate) list.
+            state_batches = [
+                input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
+            ]
+            # Calculate RNN sequence lengths.
+            seq_lens = np.array([1] * len(input_dict["obs"])) \
+                if state_batches else None
 
             actions, state_out, extra_fetches, logp = \
                 self._compute_action_helper(
@@ -198,7 +209,8 @@ class TorchPolicy(Policy):
                 extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)
                 extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
-            return actions, state_out, extra_fetches
+            return convert_to_non_torch_type((actions, state_out,
+                                              extra_fetches))
 
     def _compute_action_helper(self, input_dict, state_batches, seq_lens,
                                explore, timestep):
@@ -210,11 +222,12 @@ class TorchPolicy(Policy):
         """
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
-            state_out = []
-            actions, logp = self.action_sampler_fn(
+            state_out = state_batches
+            actions, logp, state_out = self.action_sampler_fn(
                 self,
                 self.model,
-                input_dict[SampleBatch.CUR_OBS],
+                input_dict,
+                state_out,
                 explore=explore,
                 timestep=timestep)
         else:
@@ -260,6 +273,9 @@ class TorchPolicy(Policy):
         # Action-dist inputs.
         if dist_inputs is not None:
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+
+        # Update our global timestep by the batch size.
+        self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
 
         return actions, state_out, extra_fetches, logp
 
@@ -321,20 +337,33 @@ class TorchPolicy(Policy):
             postprocessed_batch,
             max_seq_len=self.max_seq_len,
             shuffle=False,
-            batch_divisibility_req=self.batch_divisibility_req)
+            batch_divisibility_req=self.batch_divisibility_req,
+        )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+
+        # Calculate the actual policy loss.
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
+
         # Call Model's custom-loss with Policy loss outputs and train_batch.
         if self.model:
             loss_out = self.model.custom_loss(loss_out, train_batch)
+
+        # Give Exploration component that chance to modify the loss (or add
+        # its own terms).
+        if hasattr(self, "exploration"):
+            loss_out = self.exploration.get_exploration_loss(
+                loss_out, train_batch)
+
         assert len(loss_out) == len(self._optimizers)
+
         # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
+
         for i, opt in enumerate(self._optimizers):
             # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
@@ -366,11 +395,14 @@ class TorchPolicy(Policy):
 
                 grad_info["allreduce_latency"] += time.time() - start
 
-            # Step the optimizer.
+        # Step the optimizers.
+        for i, opt in enumerate(self._optimizers):
             opt.step()
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
+        if self.model:
+            grad_info["model"] = self.model.metrics()
         return dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
@@ -442,7 +474,7 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
         return [
-            s.cpu().detach().numpy() for s in self.model.get_initial_state()
+            s.detach().cpu().numpy() for s in self.model.get_initial_state()
         ]
 
     @override(Policy)
@@ -451,7 +483,8 @@ class TorchPolicy(Policy):
         state = super().get_state()
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
-            state["_optimizer_variables"].append(o.state_dict())
+            optim_state_dict = convert_to_non_torch_type(o.state_dict())
+            state["_optimizer_variables"].append(optim_state_dict)
         return state
 
     @override(Policy)
@@ -463,7 +496,9 @@ class TorchPolicy(Policy):
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
-                o.load_state_dict(s)
+                optim_state_dict = convert_to_torch_tensor(
+                    s, device=self.device)
+                o.load_state_dict(optim_state_dict)
         # Then the Policy's (NN) weights.
         super().set_state(state)
 

@@ -15,6 +15,7 @@
 #pragma once
 
 #include <boost/asio.hpp>
+
 #include "ray/gcs/redis_context.h"
 
 namespace ray {

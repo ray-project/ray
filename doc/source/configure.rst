@@ -3,6 +3,8 @@
 Configuring Ray
 ===============
 
+.. note:: For running Java applications, please see `Java Applications`_.
+
 This page discusses the various way to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
@@ -113,6 +115,30 @@ start a new worker with the given *root temporary directory*.
               ├── plasma_store
               └── raylet  # this could be deleted by Ray's shutdown cleanup.
 
+.. _ray-ports:
+
+Ports configurations
+--------------------
+Ray requires bi-directional communication among its nodes in a cluster. Each of node is supposed to open specific ports to receive incoming network requests.
+
+All Nodes
+~~~~~~~~~
+- ``--node-manager-port``: Raylet port for node manager. Default: Random value.
+- ``--object-manager-port``: Raylet port for object manager. Default: Random value.
+
+The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
+
+- ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10000.
+- ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
+
+Head Node
+~~~~~~~~~
+In addition to ports specified above, the head node needs to open several more ports.
+
+- ``--port``: Port of GCS. Default: 6379.
+- ``--dashboard-port``: Port for accessing the dashboard. Default: 8265
+- ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
+
 Redis Port Authentication
 -------------------------
 
@@ -137,7 +163,7 @@ To add authentication via the Python API, start Ray using:
 
 .. code-block:: python
 
-  ray.init(redis_password="password")
+  ray.init(_redis_password="password")
 
 To add authentication via the CLI or to connect to an existing Ray instance with
 password-protected Redis ports:
@@ -154,54 +180,64 @@ One of most common attack with Redis is port-scanning attack. Attacker scans
 open port with unprotected redis instance and execute arbitrary code. Ray
 enables a default password for redis. Even though this does not prevent brute
 force password cracking, the default password should alleviate most of the
-port-scanning attack. Furtheremore, redis and other ray services are bind
+port-scanning attack. Furthermore, redis and other ray services are bind
 to localhost when the ray is started using ``ray.init``.
 
 See the `Redis security documentation <https://redis.io/topics/security>`__
 for more information.
 
+Java Applications
+-----------------
 
-Using the Object Store with Huge Pages
---------------------------------------
+.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``Ray.init()`` in Java to connect to the cluster services. On a single machine, you can run ``Ray.init()`` without ``ray start``, which will both start the Ray cluster services and connect to them.
 
-Plasma is a high-performance shared memory object store originally developed in
-Ray and now being developed in `Apache Arrow`_. See the `relevant
-documentation`_.
+.. _code_search_path:
 
-On Linux, it is possible to increase the write throughput of the Plasma object
-store by using huge pages. You first need to create a file system and activate
-huge pages as follows.
+Code Search Path
+~~~~~~~~~~~~~~~~
 
-.. code-block:: shell
+If you want to run a Java application in cluster mode, you must first run ``ray start`` to start the Ray cluster. In addition to any ``ray start`` parameters mentioned above, you must add ``--code-search-path`` to tell Ray where to load jars when starting Java workers. Your jar files must be distributed to all nodes of the Ray cluster before running your code, and this parameter must be set on both the head node and non-head nodes.
 
-  sudo mkdir -p /mnt/hugepages
-  gid=`id -g`
-  uid=`id -u`
-  sudo mount -t hugetlbfs -o uid=$uid -o gid=$gid none /mnt/hugepages
-  sudo bash -c "echo $gid > /proc/sys/vm/hugetlb_shm_group"
-  # This typically corresponds to 20000 2MB pages (about 40GB), but this
-  # depends on the platform.
-  sudo bash -c "echo 20000 > /proc/sys/vm/nr_hugepages"
+.. code-block:: bash
 
-**Note:** Once you create the huge pages, they will take up memory which will
-never be freed unless you remove the huge pages. If you run into memory issues,
-that may be the issue.
+  $ ray start ... --code-search-path=/path/to/jars
 
-You need root access to create the file system, but not for running the object
-store.
+The ``/path/to/jars`` here points to a directory which contains jars. All jars in the directory will be loaded by workers. You can also provide multiple directories for this parameter.
 
-You can then start Ray with huge pages on a single machine as follows.
+.. code-block:: bash
 
-.. code-block:: python
+  $ ray start ... --code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2
 
-  ray.init(huge_pages=True, plasma_directory="/mnt/hugepages")
+Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If code search path is specified, you can only run Python remote functions which can be found in the code search path.
 
-In the cluster case, you can do it by passing ``--huge-pages`` and
-``--plasma-directory=/mnt/hugepages`` into ``ray start`` on any machines where
-huge pages should be enabled.
+You don't need to configure code search path if you run a Java application in single machine mode.
 
-See the relevant `Arrow documentation for huge pages`_.
+.. note:: Currently we don't provide a way to configure Ray when running a Java application in single machine mode. If you need to configure Ray, run ``ray start`` to start the Ray cluster first.
+
+Driver Options
+~~~~~~~~~~~~~~
+
+There is a limited set of options for Java drivers. They are not for configuring the Ray cluster, but only for configuring the driver.
+
+Ray uses `Typesafe Config <https://lightbend.github.io/config/>`__ to read options. There are several ways to set options:
+
+- System properties. You can configure system properties either by adding options in the format of ``-Dkey=value`` in the driver command line, or by invoking ``System.setProperty("key", "value");`` before ``Ray.init()``.
+- A `HOCON format <https://github.com/lightbend/config/blob/master/HOCON.md>`__ configuration file. By default, Ray will try to read the file named ``ray.conf`` in the root of the classpath. You can customize the location of the file by setting system property ``ray.config-file`` to the path of the file.
+
+.. note:: Options configured by system properties have higher priority than options configured in the configuration file.
+
+The list of available driver options:
+
+- ``ray.address``
+
+  - The cluster address if the driver connects to an existing Ray cluster. If it is empty, a new Ray cluster will be created.
+  - Type: ``String``
+  - Default: empty string.
+
+- ``ray.local-mode``
+
+  - If it's set to ``true``, the driver will run in :ref:`local_mode`.
+  - Type: ``Boolean``
+  - Default: ``false``
 
 .. _`Apache Arrow`: https://arrow.apache.org/
-.. _`relevant documentation`: https://arrow.apache.org/docs/python/plasma.html#the-plasma-in-memory-object-store
-.. _`Arrow documentation for huge pages`: https://arrow.apache.org/docs/python/plasma.html#using-plasma-with-huge-pages

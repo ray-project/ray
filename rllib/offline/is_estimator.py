@@ -1,7 +1,7 @@
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 
 
 class ImportanceSamplingEstimator(OffPolicyEstimator):

@@ -24,18 +24,24 @@ class TestMARWIL(unittest.TestCase):
         """Test whether a MARWILTrainer can be built with all frameworks.
 
         And learns from a historic-data file.
+        To generate this data, first run:
+        $ ./train.py --run=PPO --env=CartPole-v0 \
+          --stop='{"timesteps_total": 50000}' \
+          --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(
-            data_file, os.path.isfile(data_file)))
+        print("data_file={} exists={}".format(data_file,
+                                              os.path.isfile(data_file)))
 
         config = marwil.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 1
+        # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
+        # Learn from offline data.
         config["input"] = [data_file]
         num_iterations = 300
 

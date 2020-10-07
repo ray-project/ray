@@ -9,37 +9,108 @@ Getting Started with Ray
 Check out :ref:`gentle-intro` to learn more about Ray and its ecosystem of libraries that enable things like distributed hyperparameter tuning,
 reinforcement learning, and distributed training.
 
-Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your Python code:
+Ray provides Python and Java API. And Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your code.
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: Python
 
-    # First, run `pip install ray`.
+    .. code-block:: python
 
-    import ray
-    ray.init()
+        # First, run `pip install ray`.
 
-    @ray.remote
-    def f(x):
-        return x * x
+        import ray
+        ray.init()
 
-    futures = [f.remote(i) for i in range(4)]
-    print(ray.get(futures)) # [0, 1, 4, 9]
+        @ray.remote
+        def f(x):
+            return x * x
 
-    @ray.remote
-    class Counter(object):
-        def __init__(self):
-            self.n = 0
+        futures = [f.remote(i) for i in range(4)]
+        print(ray.get(futures)) # [0, 1, 4, 9]
 
-        def increment(self):
-            self.n += 1
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.n = 0
 
-        def read(self):
-            return self.n
+            def increment(self):
+                self.n += 1
 
-    counters = [Counter.remote() for i in range(4)]
-    [c.increment.remote() for c in counters]
-    futures = [c.read.remote() for c in counters]
-    print(ray.get(futures)) # [1, 1, 1, 1]
+            def read(self):
+                return self.n
+
+        counters = [Counter.remote() for i in range(4)]
+        [c.increment.remote() for c in counters]
+        futures = [c.read.remote() for c in counters]
+        print(ray.get(futures)) # [1, 1, 1, 1]
+
+  .. group-tab:: Java
+
+    First, add the `ray-api <https://mvnrepository.com/artifact/io.ray/ray-api>`__ and `ray-runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`__ dependencies in your project.
+
+    .. code-block:: java
+
+        import io.ray.api.ActorHandle;
+        import io.ray.api.ObjectRef;
+        import io.ray.api.Ray;
+        import java.util.ArrayList;
+        import java.util.List;
+        import java.util.stream.Collectors;
+
+        public class RayDemo {
+
+          public static int square(int x) {
+            return x * x;
+          }
+
+          public static class Counter {
+
+            private int value = 0;
+
+            public void increment() {
+              this.value += 1;
+            }
+
+            public int read() {
+              return this.value;
+            }
+          }
+
+          public static void main(String[] args) {
+            // Intialize Ray runtime.
+            Ray.init();
+            {
+              List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
+              // Invoke the `square` method 4 times remotely as Ray tasks.
+              // The tasks will run in parallel in the background.
+              for (int i = 0; i < 4; i++) {
+                objectRefList.add(Ray.task(RayDemo::square, i).remote());
+              }
+              // Get the actual results of the tasks with `get`.
+              System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
+            }
+
+            {
+              List<ActorHandle<Counter>> counters = new ArrayList<>();
+              // Create 4 actors from the `Counter` class.
+              // They will run in remote worker processes.
+              for (int i = 0; i < 4; i++) {
+                counters.add(Ray.actor(Counter::new).remote());
+              }
+
+              // Invoke the `increment` method on each actor.
+              // This will send an actor task to each remote actor.
+              for (ActorHandle<Counter> counter : counters) {
+                counter.task(Counter::increment).remote();
+              }
+              // Invoke the `read` method on each actor, and print the results.
+              List<ObjectRef<Integer>> objectRefList = counters.stream()
+                  .map(counter -> counter.task(Counter::read).remote())
+                  .collect(Collectors.toList());
+              System.out.println(Ray.get(objectRefList));  // [1, 1, 1, 1]
+            }
+          }
+        }
 
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
@@ -99,21 +170,23 @@ Slides
 - `Talk given in October 2019 <https://docs.google.com/presentation/d/13K0JsogYQX3gUCGhmQ1PQ8HILwEDFysnq0cI2b88XbU/edit?usp=sharing>`_
 - [Tune] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
 
-Academic Papers
----------------
+Papers
+------
 
-- `Ray paper`_
-- `Ray HotOS paper`_
+- `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
+*Older papers:*
+
+- `Ray paper`_
+- `Ray HotOS paper`_
+
+.. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
-
-
-
 
 .. toctree::
    :hidden:
@@ -121,6 +194,7 @@ Academic Papers
    :caption: Overview of Ray
 
    ray-overview/index.rst
+   ray-libraries.rst
    installation.rst
 
 .. toctree::
@@ -142,10 +216,12 @@ Academic Papers
 
    cluster/index.rst
    cluster/launcher.rst
+   cluster/autoscaling.rst
    cluster/cloud.rst
    cluster/deploy.rst
 
 .. toctree::
+   :hidden:
    :maxdepth: -1
    :caption: Ray Serve
 
@@ -154,6 +230,7 @@ Academic Papers
    serve/tutorials/index.rst
    serve/deployment.rst
    serve/advanced.rst
+   serve/architecture.rst
    serve/package-ref.rst
 
 .. toctree::
@@ -200,13 +277,20 @@ Academic Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Other Libraries
+   :caption: More Libraries
 
    multiprocessing.rst
    joblib.rst
    iter.rst
-   pandas_on_ray.rst
-   projects.rst
+   dask-on-ray.rst
+   mars-on-ray.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Observability
+
+   ray-metrics.rst
 
 .. toctree::
    :hidden:
@@ -221,6 +305,7 @@ Academic Papers
    :caption: Development and Ray Internals
 
    development.rst
+   whitepaper.rst
    debugging.rst
    profiling.rst
    fault-tolerance.rst

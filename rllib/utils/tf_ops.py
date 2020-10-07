@@ -34,8 +34,8 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10.0):
 
     if tf.executing_eagerly():
         tape = optimizer.tape
-        grads_and_vars = list(zip(list(
-            tape.gradient(objective, var_list)), var_list))
+        grads_and_vars = list(
+            zip(list(tape.gradient(objective, var_list)), var_list))
     else:
         grads_and_vars = optimizer.compute_gradients(
             objective, var_list=var_list)
@@ -55,7 +55,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
     will build a function that executes a session run with placeholders
     internally.
 
-    Arguments:
+    Args:
         session_or_none (tf.Session): tf.Session if in graph mode, else None.
         dynamic_shape (bool): True if the placeholders should have a dynamic
             batch dimension. Otherwise they will be fixed shape.

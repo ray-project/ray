@@ -9,8 +9,6 @@ from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
     SMALL_NUMBER, LARGE_INTEGER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
-from ray.rllib.utils.policy_client import PolicyClient
-from ray.rllib.utils.policy_server import PolicyServer
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
@@ -57,37 +55,26 @@ def force_list(elements=None, to_tuple=False):
 
 force_tuple = partial(force_list, to_tuple=True)
 
-
-# TODO(sven): remove at some point.
-def try_import_tree():
-    try:
-        import tree
-        return tree
-    except (ImportError, ModuleNotFoundError):
-        raise ModuleNotFoundError(
-            "`dm-tree` is not installed! Run `pip install dm-tree`.")
-
-
 __all__ = [
     "add_mixins",
     "check",
     "check_compute_single_action",
+    "deep_update",
     "deprecation_warning",
     "fc",
     "force_list",
     "force_tuple",
     "framework_iterator",
     "lstm",
-    "one_hot",
-    "relu",
-    "sigmoid",
-    "softmax",
-    "deep_update",
     "merge_dicts",
+    "one_hot",
     "override",
+    "relu",
     "renamed_function",
     "renamed_agent",
     "renamed_class",
+    "sigmoid",
+    "softmax",
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",
@@ -101,8 +88,6 @@ __all__ = [
     "MAX_LOG_NN_OUTPUT",
     "MIN_LOG_NN_OUTPUT",
     "PiecewiseSchedule",
-    "PolicyClient",
-    "PolicyServer",
     "PolynomialSchedule",
     "PublicAPI",
     "SMALL_NUMBER",

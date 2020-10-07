@@ -67,20 +67,22 @@ class NoisyLayer(nn.Module):
             trainable=True)
 
     def forward(self, inputs):
-        epsilon_in = self._f_epsilon(torch.normal(
-            mean=torch.zeros([self.in_size]),
-            std=torch.ones([self.in_size])))
-        epsilon_out = self._f_epsilon(torch.normal(
-            mean=torch.zeros([self.out_size]),
-            std=torch.ones([self.out_size])))
+        epsilon_in = self._f_epsilon(
+            torch.normal(
+                mean=torch.zeros([self.in_size]),
+                std=torch.ones([self.in_size])))
+        epsilon_out = self._f_epsilon(
+            torch.normal(
+                mean=torch.zeros([self.out_size]),
+                std=torch.ones([self.out_size])))
         epsilon_w = torch.matmul(
             torch.unsqueeze(epsilon_in, -1),
             other=torch.unsqueeze(epsilon_out, 0))
         epsilon_b = epsilon_out
 
         action_activation = torch.matmul(
-            inputs, self.w + self.sigma_w * epsilon_w
-        ) + self.b + self.sigma_b * epsilon_b
+            inputs, self.w +
+            self.sigma_w * epsilon_w) + self.b + self.sigma_b * epsilon_b
 
         if self.activation is not None:
             action_activation = self.activation(action_activation)

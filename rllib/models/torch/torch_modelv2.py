@@ -4,7 +4,7 @@ from typing import List
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.types import ModelConfigDict, TensorType
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 _, nn = try_import_torch()
 
@@ -48,9 +48,10 @@ class TorchModelV2(ModelV2):
 
     @override(ModelV2)
     def variables(self, as_dict: bool = False) -> List[TensorType]:
+        p = list(self.parameters())
         if as_dict:
-            return self.state_dict()
-        return list(self.parameters())
+            return {k: p[i] for i, k in enumerate(self.state_dict().keys())}
+        return p
 
     @override(ModelV2)
     def trainable_variables(self, as_dict: bool = False) -> List[TensorType]:

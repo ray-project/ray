@@ -84,7 +84,14 @@ class GlobalStateAccessor {
   /// \return node resource map info. To support multi-language, we serialize each
   /// ResourceTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::string GetNodeResourceInfo(const ClientID &node_id);
+  std::string GetNodeResourceInfo(const NodeID &node_id);
+
+  /// Get available resources of all nodes.
+  ///
+  /// \return available resources of all nodes. To support multi-language, we serialize
+  /// each AvailableResources and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllAvailableResources();
 
   /// Get internal config from GCS Service.
   ///
@@ -136,6 +143,15 @@ class GlobalStateAccessor {
   /// Service, use string is convenient for python to use.
   /// \return Is operation success.
   bool AddWorkerInfo(const std::string &serialized_string);
+
+  /// Get information of a placement group from GCS Service.
+  ///
+  /// \param placement_group The ID of placement group to look up in the GCS Service.
+  /// \return Placement group info. To support multi-language, we serialize each
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::unique_ptr<std::string> GetPlacementGroupInfo(
+      const PlacementGroupID &placement_group_id);
 
  private:
   /// MultiItem transformation helper in template style.

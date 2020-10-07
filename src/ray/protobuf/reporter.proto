@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "opencensus/proto/metrics/v1/metrics.proto";
+
 import "src/ray/protobuf/common.proto";
 
 message GetProfilingStatsRequest {
@@ -42,10 +44,19 @@ message ReportMetricsReply {
   bool metrcs_description_required = 1;
 }
 
+message ReportOCMetricsRequest {
+  repeated opencensus.proto.metrics.v1.Metric metrics = 1;
+}
+
+message ReportOCMetricsReply {
+}
+
 // Service for communicating with the reporter.py process on a remote node.
 service ReporterService {
   // Get the profiling stats.
   rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
   // Report metrics to the local metrics agents.
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
+  // Report OpenCensus metrics to the local metrics agent.
+  rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
 }

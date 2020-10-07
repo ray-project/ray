@@ -190,6 +190,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetInternalConfig,
                              node_info_grpc_client_, )
 
+  /// Get available resources of all nodes from the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllAvailableResources,
+                             node_info_grpc_client_, )
+
   /// Get object's locations from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
                              object_info_grpc_client_, )
@@ -249,6 +253,13 @@ class GcsRpcClient {
 
   /// Create placement group via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup,
+                             placement_group_info_grpc_client_, )
+
+  /// Remove placement group via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, RemovePlacementGroup,
+                             placement_group_info_grpc_client_, )
+  /// Get placement group via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetPlacementGroup,
                              placement_group_info_grpc_client_, )
 
  private:

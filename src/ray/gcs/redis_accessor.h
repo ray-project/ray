@@ -58,13 +58,6 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 
-  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
-                       const StatusCallback &callback) override;
-
-  Status AsyncUpdate(const ActorID &actor_id,
-                     const std::shared_ptr<ActorTableData> &data_ptr,
-                     const StatusCallback &callback) override;
-
   Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                            const StatusCallback &done) override;
 
@@ -87,6 +80,8 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
+  bool IsActorUnsubscribed(const ActorID &actor_id) override { return false; }
+
  protected:
   virtual std::vector<ActorID> GetAllActorID() const;
   virtual Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const;
@@ -103,13 +98,13 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
 
  protected:
   RedisGcsClient *client_impl_{nullptr};
-  // Use a random ClientID for actor subscription. Because:
-  // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
+  // Use a random NodeID for actor subscription. Because:
+  // If we use NodeID::Nil, GCS will still send all actors' updates to this GCS Client.
   // Even we can filter out irrelevant updates, but there will be extra overhead.
-  // And because the new GCS Client will no longer hold the local ClientID, so we use
-  // random ClientID instead.
+  // And because the new GCS Client will no longer hold the local NodeID, so we use
+  // random NodeID instead.
   // TODO(micafan): Remove this random id, once GCS becomes a service.
-  ClientID subscribe_id_{ClientID::FromRandom()};
+  NodeID subscribe_id_{NodeID::FromRandom()};
 
  private:
   typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
@@ -136,13 +131,6 @@ class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
     return Status::NotImplemented(
         "RedisActorInfoAccessor does not support named detached actors.");
   }
-
-  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
-                       const StatusCallback &callback) override;
-
-  Status AsyncUpdate(const ActorID &actor_id,
-                     const std::shared_ptr<ActorTableData> &data_ptr,
-                     const StatusCallback &callback) override;
 
   Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                            const StatusCallback &done) override;
@@ -244,15 +232,19 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
+  bool IsTaskUnsubscribed(const TaskID &task_id) override { return false; }
+
+  bool IsTaskLeaseUnsubscribed(const TaskID &task_id) override { return false; }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
-  // Use a random ClientID for task subscription. Because:
-  // If we use ClientID::Nil, GCS will still send all tasks' updates to this GCS Client.
+  // Use a random NodeID for task subscription. Because:
+  // If we use NodeID::Nil, GCS will still send all tasks' updates to this GCS Client.
   // Even we can filter out irrelevant updates, but there will be extra overhead.
-  // And because the new GCS Client will no longer hold the local ClientID, so we use
-  // random ClientID instead.
+  // And because the new GCS Client will no longer hold the local NodeID, so we use
+  // random NodeID instead.
   // TODO(micafan): Remove this random id, once GCS becomes a service.
-  ClientID subscribe_id_{ClientID::FromRandom()};
+  NodeID subscribe_id_{NodeID::FromRandom()};
 
   typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
       TaskSubscriptionExecutor;
@@ -272,39 +264,48 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   virtual ~RedisObjectInfoAccessor() {}
 
-  Status AsyncGetLocations(const ObjectID &object_id,
-                           const MultiItemCallback<ObjectTableData> &callback) override;
+  Status AsyncGetLocations(
+      const ObjectID &object_id,
+      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncGetAll(
       const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
-  Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
+  Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                           const StatusCallback &callback) override;
 
-  Status AsyncRemoveLocation(const ObjectID &object_id, const ClientID &node_id,
+  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const StatusCallback &callback) override {
+    return Status::NotImplemented("AsyncAddSpilledUrl not implemented");
+  }
+
+  Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
                              const StatusCallback &callback) override;
 
   Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
+  bool IsObjectUnsubscribed(const ObjectID &object_id) override { return false; }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
 
-  // Use a random ClientID for object subscription. Because:
-  // If we use ClientID::Nil, GCS will still send all objects' updates to this GCS Client.
+  // Use a random NodeID for object subscription. Because:
+  // If we use NodeID::Nil, GCS will still send all objects' updates to this GCS Client.
   // Even we can filter out irrelevant updates, but there will be extra overhead.
-  // And because the new GCS Client will no longer hold the local ClientID, so we use
-  // random ClientID instead.
+  // And because the new GCS Client will no longer hold the local NodeID, so we use
+  // random NodeID instead.
   // TODO(micafan): Remove this random id, once GCS becomes a service.
-  ClientID subscribe_id_{ClientID::FromRandom()};
+  NodeID subscribe_id_{NodeID::FromRandom()};
 
   typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
       ObjectSubscriptionExecutor;
@@ -324,35 +325,39 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   Status UnregisterSelf() override;
 
-  const ClientID &GetSelfId() const override;
+  const NodeID &GetSelfId() const override;
 
   const GcsNodeInfo &GetSelfInfo() const override;
 
   Status AsyncRegister(const GcsNodeInfo &node_info,
                        const StatusCallback &callback) override;
 
-  Status AsyncUnregister(const ClientID &node_id,
-                         const StatusCallback &callback) override;
+  Status AsyncUnregister(const NodeID &node_id, const StatusCallback &callback) override;
 
   Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) override;
 
   Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+      const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const override;
+  boost::optional<GcsNodeInfo> Get(const NodeID &node_id) const override;
 
-  const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const override;
+  const std::unordered_map<NodeID, GcsNodeInfo> &GetAll() const override;
 
-  bool IsRemoved(const ClientID &node_id) const override;
+  bool IsRemoved(const NodeID &node_id) const override;
 
-  Status AsyncGetResources(const ClientID &node_id,
+  Status AsyncGetResources(const NodeID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
 
-  Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override {
+    return Status::NotImplemented("AsyncGetAllAvailableResources not implemented");
+  }
+
+  Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
 
-  Status AsyncDeleteResources(const ClientID &node_id,
+  Status AsyncDeleteResources(const NodeID &node_id,
                               const std::vector<std::string> &resource_names,
                               const StatusCallback &callback) override;
 
@@ -362,8 +367,10 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
+  void AsyncReReportHeartbeat() override;
+
   Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,
+      const SubscribeCallback<NodeID, HeartbeatTableData> &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncReportBatchHeartbeat(
@@ -390,15 +397,15 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
  private:
   RedisGcsClient *client_impl_{nullptr};
 
-  typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
+  typedef SubscriptionExecutor<NodeID, ResourceChangeNotification, DynamicResourceTable>
       DynamicResourceSubscriptionExecutor;
   DynamicResourceSubscriptionExecutor resource_sub_executor_;
 
-  typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
+  typedef SubscriptionExecutor<NodeID, HeartbeatTableData, HeartbeatTable>
       HeartbeatSubscriptionExecutor;
   HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
 
-  typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
+  typedef SubscriptionExecutor<NodeID, HeartbeatBatchTableData, HeartbeatBatchTable>
       HeartbeatBatchSubscriptionExecutor;
   HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
 };
@@ -476,6 +483,13 @@ class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
 
   Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) override;
+
+  Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
+                                   const StatusCallback &callback) override;
+
+  Status AsyncGet(
+      const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 };
 
 }  // namespace gcs

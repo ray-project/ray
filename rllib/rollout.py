@@ -3,13 +3,14 @@
 import argparse
 import collections
 import copy
+import gym
+from gym import wrappers as gym_wrappers
 import json
 import os
 from pathlib import Path
 import pickle
 import shelve
 
-import gym
 import ray
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
@@ -379,7 +380,7 @@ def rollout(agent,
     # If monitoring has been requested, manually wrap our environment with a
     # gym monitor, which is set to record every episode.
     if video_dir:
-        env = gym.wrappers.Monitor(
+        env = gym_wrappers.Monitor(
             env=env,
             directory=video_dir,
             video_callable=lambda x: True,

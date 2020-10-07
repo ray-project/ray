@@ -1,13 +1,14 @@
 
 #pragma once
 
-#include <memory>
-
 #include <ray/api/generated/actor_funcs.generated.h>
 #include <ray/api/generated/create_funcs.generated.h>
 #include <ray/api/generated/funcs.generated.h>
 #include <ray/api/ray_runtime.h>
+
+#include <memory>
 #include <msgpack.hpp>
+
 #include "ray/core.h"
 namespace ray {
 namespace api {
@@ -32,12 +33,23 @@ class Ray {
   /// Initialize Ray runtime.
   static void Init();
 
+  /// Shutdown Ray runtime.
+  static void Shutdown();
+
   /// Store an object in the object store.
   ///
   /// \param[in] obj The object which should be stored.
   /// \return ObjectRef A reference to the object in the object store.
   template <typename T>
   static ObjectRef<T> Put(const T &obj);
+
+  /// Get a single object from the object store.
+  /// This method will be blocked until the object is ready.
+  ///
+  /// \param[in] object The object reference which should be returned.
+  /// \return shared pointer of the result.
+  template <typename T>
+  static std::shared_ptr<T> Get(const ObjectRef<T> &object);
 
   /// Get a list of objects from the object store.
   /// This method will be blocked until all the objects are ready.
@@ -73,13 +85,9 @@ class Ray {
 #include "api/generated/create_actors.generated.h"
 
  private:
-  static RayRuntime *runtime_;
+  static std::shared_ptr<RayRuntime> runtime_;
 
   static std::once_flag is_inited_;
-
-  /// Used by ObjectRef to implement .Get()
-  template <typename T>
-  static std::shared_ptr<T> Get(const ObjectRef<T> &object);
 
   template <typename ReturnType, typename FuncType, typename ExecFuncType,
             typename... ArgTypes>
@@ -195,7 +203,7 @@ inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &ex
   RemoteFunctionPtrHolder ptr;
   ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return TaskCaller<ReturnType>(runtime_, ptr, buffer);
+  return TaskCaller<ReturnType>(runtime_.get(), ptr, buffer);
 }
 
 template <typename ActorType, typename FuncType, typename ExecFuncType,
@@ -209,7 +217,7 @@ inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
   RemoteFunctionPtrHolder ptr;
   ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorCreator<ActorType>(runtime_, ptr, buffer);
+  return ActorCreator<ActorType>(runtime_.get(), ptr, buffer);
 }
 
 template <typename ReturnType, typename ActorType, typename FuncType,
@@ -225,15 +233,23 @@ inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
   MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
   ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorTaskCaller<ReturnType>(runtime_, actor.ID(), ptr, buffer);
+  return ActorTaskCaller<ReturnType>(runtime_.get(), actor.ID(), ptr, buffer);
 }
 
+// TODO(barakmich): These includes are generated files that do not contain their
+// relevant headers. Since they're only used here, they must appear in this
+// particular order, which is a code smell and breaks lint.
+//
+// The generated files, and their generator, should be fixed. Until then, we can
+// force the order by way of comments
+//
+// #1
 #include <ray/api/generated/exec_funcs.generated.h>
-
+// #2
 #include <ray/api/generated/call_funcs_impl.generated.h>
-
+// #3
 #include <ray/api/generated/create_actors_impl.generated.h>
-
+// #4
 #include <ray/api/generated/call_actors_impl.generated.h>
 
 }  // namespace api

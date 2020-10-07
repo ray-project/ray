@@ -4,7 +4,7 @@ from typing import Tuple, Callable, Optional
 import ray
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.types import MultiEnvDict, EnvType, EnvID, MultiAgentDict
+from ray.rllib.utils.typing import MultiEnvDict, EnvType, EnvID, MultiAgentDict
 
 logger = logging.getLogger(__name__)
 

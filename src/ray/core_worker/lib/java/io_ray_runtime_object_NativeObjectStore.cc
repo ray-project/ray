@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "io_ray_runtime_object_NativeObjectStore.h"
+
 #include <jni.h>
+
 #include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
@@ -36,7 +38,8 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
         out_object_id, &data);
   } else {
     status = ray::CoreWorkerProcess::GetCoreWorker().Create(
-        native_ray_object->GetMetadata(), data_size, object_id, &data);
+        native_ray_object->GetMetadata(), data_size, object_id,
+        ray::CoreWorkerProcess::GetCoreWorker().GetRpcAddress(), &data);
     *out_object_id = object_id;
   }
   if (!status.ok()) {
@@ -169,6 +172,43 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv 
         env->ReleaseLongArrayElements(array, elements, 0);
         return array;
       });
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *env, jclass,
+                                                                   jbyteArray objectId) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  const auto &rpc_address =
+      ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(object_id);
+  return NativeStringToJavaByteArray(env, rpc_address.SerializeAsString());
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(
+    JNIEnv *env, jclass, jbyteArray objectId) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  ray::CoreWorkerProcess::GetCoreWorker().PromoteObjectToPlasma(object_id);
+  ray::rpc::Address address;
+  ray::CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address);
+  auto address_str = address.SerializeAsString();
+  auto arr = NativeStringToJavaByteArray(env, address_str);
+  return arr;
+}
+
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResolveFuture(
+    JNIEnv *env, jclass, jbyteArray objectId, jbyteArray outerObjectId,
+    jbyteArray ownerAddress) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  auto outer_objectId = ray::ObjectID::Nil();
+  if (outerObjectId != NULL) {
+    outer_objectId = JavaByteArrayToId<ray::ObjectID>(env, outerObjectId);
+  }
+  auto ownerAddressStr = JavaByteArrayToNativeString(env, ownerAddress);
+  ray::rpc::Address address;
+  address.ParseFromString(ownerAddressStr);
+  ray::CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
+      object_id, outer_objectId, address);
 }
 
 #ifdef __cplusplus

@@ -16,10 +16,13 @@ import io.ray.runtime.util.ResourceUtil;
 import java.io.File;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Configurations of Ray runtime.
@@ -30,8 +33,6 @@ public class RayConfig {
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
 
-  private static int DEFAULT_NUM_JAVA_WORKER_PER_PROCESS = 10;
-
   private static final Random RANDOM = new Random();
 
   private static final DateTimeFormatter DATE_TIME_FORMATTER =
@@ -41,6 +42,9 @@ public class RayConfig {
 
   private Config config;
 
+  /**
+   * IP of this node. if not provided, IP will be automatically detected.
+   */
   public final String nodeIp;
   public final WorkerType workerMode;
   public final RunMode runMode;
@@ -61,14 +65,17 @@ public class RayConfig {
   public final String headRedisPassword;
   public final String redisPassword;
 
+  // RPC socket name of object store.
   public String objectStoreSocketName;
   public final Long objectStoreSize;
 
+  // RPC socket name of Raylet.
   public String rayletSocketName;
-  private int nodeManagerPort;
+  // Listening port for node manager.
+  public int nodeManagerPort;
   public final Map<String, String> rayletConfigParameters;
 
-  public final String jobResourcePath;
+  public List<String> codeSearchPath;
   public final String pythonWorkerCommand;
 
   private static volatile RayConfig instance = null;
@@ -89,7 +96,6 @@ public class RayConfig {
       instance = null;
     }
   }
-
 
   public final int numWorkersPerProcess;
 
@@ -123,13 +129,17 @@ public class RayConfig {
     workerMode = localWorkerMode;
     boolean isDriver = workerMode == WorkerType.DRIVER;
     // Run mode.
-    runMode = config.getEnum(RunMode.class, "ray.run-mode");
+    if (config.hasPath("ray.local-mode")) {
+      runMode = config.getBoolean("ray.local-mode") ? RunMode.SINGLE_PROCESS : RunMode.CLUSTER;
+    } else {
+      runMode = config.getEnum(RunMode.class, "ray.run-mode");
+    }
     // Node ip.
-    String nodeIp = config.getString("ray.node-ip");
-    if (nodeIp.isEmpty()) {
+    if (config.hasPath("ray.node-ip")) {
+      nodeIp = config.getString("ray.node-ip");
+    } else {
       nodeIp = NetworkUtil.getIpAddress(null);
     }
-    this.nodeIp = nodeIp;
     // Resources.
     resources = ResourceUtil.getResourcesMapFromString(
         config.getString("ray.resources"));
@@ -180,10 +190,11 @@ public class RayConfig {
     }
 
     // Redis configurations.
-    String redisAddress = config.getString("ray.redis.address");
-    if (!redisAddress.isEmpty()) {
+    String redisAddress = config.getString("ray.address");
+    if (StringUtils.isNotBlank(redisAddress)) {
       setRedisAddress(redisAddress);
     } else {
+      // We need to start gcs using `RunManager` for local cluster
       this.redisAddress = null;
     }
 
@@ -199,12 +210,12 @@ public class RayConfig {
     }
     headRedisPassword = config.getString("ray.redis.head-password");
     redisPassword = config.getString("ray.redis.password");
-
     // Raylet node manager port.
-    nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
-    if (nodeManagerPort == 0) {
-      Preconditions.checkState(this.redisAddress == null,
-          "Java worker started by raylet should accept the node manager port from raylet.");
+    if (config.hasPath("ray.raylet.node-manager-port")) {
+      nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
+    } else {
+      Preconditions.checkState(workerMode != WorkerType.WORKER,
+          "Worker started by raylet should accept the node manager port from raylet.");
       nodeManagerPort = NetworkUtil.getUnusedPort();
     }
 
@@ -216,28 +227,35 @@ public class RayConfig {
       rayletConfigParameters.put(entry.getKey(), value == null ? "" : value.toString());
     }
 
-    // Job resource path.
-    if (config.hasPath("ray.job.resource-path")) {
-      jobResourcePath = config.getString("ray.job.resource-path");
+    // Job code search path.
+    if (config.hasPath("ray.job.code-search-path")) {
+      codeSearchPath = Arrays.asList(
+          config.getString("ray.job.code-search-path").split(":"));
     } else {
-      jobResourcePath = null;
+      codeSearchPath = Collections.emptyList();
     }
 
-    boolean enableMultiTenancy = false;
+    boolean enableMultiTenancy;
     if (config.hasPath("ray.raylet.config.enable_multi_tenancy")) {
       enableMultiTenancy =
           Boolean.valueOf(config.getString("ray.raylet.config.enable_multi_tenancy"));
+    } else {
+      String envString = System.getenv("RAY_ENABLE_MULTI_TENANCY");
+      if (StringUtils.isNotBlank(envString)) {
+        enableMultiTenancy = "1".equals(envString);
+      } else {
+        enableMultiTenancy = true; // Default value
+      }
     }
 
     if (!enableMultiTenancy) {
-      numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
-    } else {
-      final int localNumWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
-      if (localNumWorkersPerProcess <= 0) {
-        numWorkersPerProcess = DEFAULT_NUM_JAVA_WORKER_PER_PROCESS;
+      if (!isDriver) {
+        numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
       } else {
-        numWorkersPerProcess = localNumWorkersPerProcess;
+        numWorkersPerProcess = 1; // Actually this value isn't used in RayNativeRuntime.
       }
+    } else {
+      numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
     }
 
     // Validate config.
@@ -302,8 +320,8 @@ public class RayConfig {
     dynamic.put("ray.raylet.socket-name", rayletSocketName);
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
-    dynamic.put("ray.redis.address", redisAddress);
-    dynamic.put("ray.job.resource-path", jobResourcePath);
+    dynamic.put("ray.address", redisAddress);
+    dynamic.put("ray.job.code-search-path", codeSearchPath);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());
   }

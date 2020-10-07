@@ -22,6 +22,8 @@ import "src/ray/protobuf/common.proto";
 message RequestWorkerLeaseRequest {
   // TaskSpec containing the requested resources.
   TaskSpec resource_spec = 1;
+  // Worker's backlog size for this spec's shape.
+  int64 backlog_size = 2;
 }
 
 message RequestWorkerLeaseReply {
@@ -37,14 +39,22 @@ message RequestWorkerLeaseReply {
   bool canceled = 4;
 }
 
-message RequestResourceReserveRequest {
+message PrepareBundleResourcesRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message RequestResourceReserveReply {
-  // The status if resource reserve success.
+message PrepareBundleResourcesReply {
+  // The status if prepare request was successful.
   bool success = 1;
+}
+
+message CommitBundleResourcesRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message CommitBundleResourcesReply {
 }
 
 message CancelResourceReserveRequest {
@@ -89,17 +99,6 @@ message CancelWorkerLeaseReply {
   bool success = 1;
 }
 
-message ForwardTaskRequest {
-  // The ID of the task to be forwarded.
-  bytes task_id = 1;
-  // The tasks in the uncommitted lineage of the forwarded task. This
-  // should include task_id.
-  repeated Task uncommitted_tasks = 2;
-}
-
-message ForwardTaskReply {
-}
-
 message PinObjectIDsRequest {
   // Address of the owner to ask when to unpin the objects.
   Address owner_address = 1;
@@ -125,6 +124,10 @@ message WorkerStats {
   CoreWorkerStats core_worker_stats = 3;
   // Error string if fetching core worker stats failed.
   string fetch_error = 4;
+  // Worker id of core worker.
+  bytes worker_id = 5;
+  // Worker language.
+  Language language = 6;
 }
 
 message GetNodeStatsReply {
@@ -133,6 +136,7 @@ message GetNodeStatsReply {
   uint32 num_workers = 3;
   repeated TaskSpec infeasible_tasks = 4;
   repeated TaskSpec ready_tasks = 5;
+  int32 pid = 6;
 }
 
 message GlobalGCRequest {
@@ -150,6 +154,16 @@ message FormatGlobalMemoryInfoReply {
   string memory_summary = 1;
 }
 
+message RequestObjectSpillageRequest {
+  // ObjectID to spill.
+  bytes object_id = 1;
+}
+
+message RequestObjectSpillageReply {
+  // Whether the object spilling was successful or not.
+  bool success = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.
@@ -162,17 +176,20 @@ service NodeManagerService {
   // are still needed. And Raylet will release other leased workers.
   rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
       returns (ReleaseUnusedWorkersReply);
-  // Request resource from the raylet for a bundle.
-  rpc RequestResourceReserve(RequestResourceReserveRequest)
-      returns (RequestResourceReserveReply);
+  // Request a raylet to lock resources for a bundle.
+  // This is the first phase of 2PC protocol for atomic placement group creation.
+  rpc PrepareBundleResources(PrepareBundleResourcesRequest)
+      returns (PrepareBundleResourcesReply);
+  // Commit bundle resources to a raylet.
+  // This is the second phase of 2PC protocol for atomic placement group creation.
+  rpc CommitBundleResources(CommitBundleResourcesRequest)
+      returns (CommitBundleResourcesReply);
   // Return resource for the raylet.
   rpc CancelResourceReserve(CancelResourceReserveRequest)
       returns (CancelResourceReserveReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
-  // Forward a task and its uncommitted lineage to the remote node manager.
-  rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Pin the provided object IDs.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
   // Get the current node stats.
@@ -182,4 +199,7 @@ service NodeManagerService {
   // Get global object reference stats in formatted form.
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
       returns (FormatGlobalMemoryInfoReply);
+  // Ask the raylet to spill an object to external storage.
+  rpc RequestObjectSpillage(RequestObjectSpillageRequest)
+      returns (RequestObjectSpillageReply);
 }

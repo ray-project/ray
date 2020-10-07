@@ -1,21 +1,29 @@
-from gym.spaces import Discrete
+"""PyTorch policy class used for DQN"""
 
+from typing import Dict, List, Tuple
+
+import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
-    PRIO_WEIGHTS, Q_SCOPE, Q_TARGET_SCOPE
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
+from ray.rllib.agents.dqn.dqn_tf_policy import (
+    PRIO_WEIGHTS, Q_SCOPE, Q_TARGET_SCOPE, postprocess_nstep_and_prio)
 from ray.rllib.agents.dqn.dqn_torch_model import DQNTorchModel
 from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
+                                                      TorchDistributionWrapper)
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import huber_loss, reduce_mean_ignore_inf, \
-    softmax_cross_entropy_with_logits
+from ray.rllib.utils.torch_ops import (FLOAT_MIN, huber_loss,
+                                       reduce_mean_ignore_inf,
+                                       softmax_cross_entropy_with_logits)
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 F = None
@@ -25,13 +33,13 @@ if nn:
 
 class QLoss:
     def __init__(self,
-                 q_t_selected,
-                 q_logits_t_selected,
-                 q_tp1_best,
-                 q_probs_tp1_best,
-                 importance_weights,
-                 rewards,
-                 done_mask,
+                 q_t_selected: TensorType,
+                 q_logits_t_selected: TensorType,
+                 q_tp1_best: TensorType,
+                 q_probs_tp1_best: TensorType,
+                 importance_weights: TensorType,
+                 rewards: TensorType,
+                 done_mask: TensorType,
                  gamma=0.99,
                  n_step=1,
                  num_atoms=1,
@@ -97,6 +105,11 @@ class QLoss:
 
 
 class ComputeTDErrorMixin:
+    """Assign the `compute_td_error` method to the DQNTorchPolicy
+
+    This allows us to prioritize on the worker side.
+    """
+
     def __init__(self):
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
@@ -115,9 +128,24 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-def build_q_model_and_distribution(policy, obs_space, action_space, config):
+def build_q_model_and_distribution(
+        policy: Policy, obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
+    """Build q_model and target_q_model for DQN
 
-    if not isinstance(action_space, Discrete):
+    Args:
+        policy (Policy): The policy, which will use the model for optimization.
+        obs_space (gym.spaces.Space): The policy's observation space.
+        action_space (gym.spaces.Space): The policy's action space.
+        config (TrainerConfigDict):
+
+    Returns:
+        (q_model, TorchCategorical)
+            Note: The target q model will not be returned, just assigned to
+            `policy.target_q_model`.
+    """
+    if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
@@ -179,13 +207,14 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
     return policy.q_model, TorchCategorical
 
 
-def get_distribution_inputs_and_class(policy,
-                                      model,
-                                      obs_batch,
-                                      *,
-                                      explore=True,
-                                      is_training=False,
-                                      **kwargs):
+def get_distribution_inputs_and_class(
+        policy: Policy,
+        model: ModelV2,
+        obs_batch: TensorType,
+        *,
+        explore: bool = True,
+        is_training: bool = False,
+        **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
     q_vals = compute_q_values(policy, model, obs_batch, explore, is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
@@ -193,7 +222,18 @@ def get_distribution_inputs_and_class(policy,
     return policy.q_values, TorchCategorical, []  # state-out
 
 
-def build_q_losses(policy, model, _, train_batch):
+def build_q_losses(policy: Policy, model, _,
+                   train_batch: SampleBatch) -> TensorType:
+    """Constructs the loss for DQNTorchPolicy.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        TensorType: A single loss tensor.
+    """
     config = policy.config
     # Q-network evaluation.
     q_t, q_logits_t, q_probs_t = compute_q_values(
@@ -212,10 +252,11 @@ def build_q_losses(policy, model, _, train_batch):
         is_training=True)
 
     # Q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(
-        train_batch[SampleBatch.ACTIONS], policy.action_space.n)
+    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
+                                  policy.action_space.n)
     q_t_selected = torch.sum(
-        torch.where(q_t > -float("inf"), q_t, torch.tensor(0.0)) *
+        torch.where(q_t > FLOAT_MIN, q_t,
+                    torch.tensor(0.0, device=policy.device)) *
         one_hot_selection, 1)
     q_logits_t_selected = torch.sum(
         q_logits_t * torch.unsqueeze(one_hot_selection, -1), 1)
@@ -230,10 +271,11 @@ def build_q_losses(policy, model, _, train_batch):
                 explore=False,
                 is_training=True)
         q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
-        q_tp1_best_one_hot_selection = F.one_hot(
-            q_tp1_best_using_online_net, policy.action_space.n)
+        q_tp1_best_one_hot_selection = F.one_hot(q_tp1_best_using_online_net,
+                                                 policy.action_space.n)
         q_tp1_best = torch.sum(
-            torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
+            torch.where(q_tp1 > FLOAT_MIN, q_tp1,
+                        torch.tensor(0.0, device=policy.device)) *
             q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
@@ -241,7 +283,8 @@ def build_q_losses(policy, model, _, train_batch):
         q_tp1_best_one_hot_selection = F.one_hot(
             torch.argmax(q_tp1, 1), policy.action_space.n)
         q_tp1_best = torch.sum(
-            torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
+            torch.where(q_tp1 > FLOAT_MIN, q_tp1,
+                        torch.tensor(0.0, device=policy.device)) *
             q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
@@ -250,28 +293,32 @@ def build_q_losses(policy, model, _, train_batch):
         q_t_selected, q_logits_t_selected, q_tp1_best, q_probs_tp1_best,
         train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
         train_batch[SampleBatch.DONES].float(), config["gamma"],
-        config["n_step"], config["num_atoms"],
-        config["v_min"], config["v_max"])
+        config["n_step"], config["num_atoms"], config["v_min"],
+        config["v_max"])
 
     return policy.q_loss.loss
 
 
-def adam_optimizer(policy, config):
+def adam_optimizer(policy: Policy,
+                   config: TrainerConfigDict) -> "torch.optim.Optimizer":
     return torch.optim.Adam(
         policy.q_func_vars, lr=policy.cur_lr, eps=config["adam_epsilon"])
 
 
-def build_q_stats(policy, batch):
+def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     return dict({
         "cur_lr": policy.cur_lr,
     }, **policy.q_loss.stats)
 
 
-def setup_early_mixins(policy, obs_space, action_space, config):
+def setup_early_mixins(policy: Policy, obs_space, action_space,
+                       config: TrainerConfigDict) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def after_init(policy, obs_space, action_space, config):
+def after_init(policy: Policy, obs_space: gym.spaces.Space,
+               action_space: gym.spaces.Space,
+               config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
     # Move target net to device (this is done autoatically for the
@@ -279,7 +326,11 @@ def after_init(policy, obs_space, action_space, config):
     policy.target_q_model = policy.target_q_model.to(policy.device)
 
 
-def compute_q_values(policy, model, obs, explore, is_training=False):
+def compute_q_values(policy: Policy,
+                     model: ModelV2,
+                     obs: TensorType,
+                     explore,
+                     is_training: bool = False):
     config = policy.config
 
     model_out, state = model({
@@ -320,12 +371,15 @@ def compute_q_values(policy, model, obs, explore, is_training=False):
     return value, logits, probs_or_logits
 
 
-def grad_process_and_td_error_fn(policy, optimizer, loss):
+def grad_process_and_td_error_fn(policy: Policy,
+                                 optimizer: "torch.optim.Optimizer",
+                                 loss: TensorType) -> Dict[str, TensorType]:
     # Clip grads if configured.
     return apply_grad_clipping(policy, optimizer, loss)
 
 
-def extra_action_out_fn(policy, input_dict, state_batches, model, action_dist):
+def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
+                        action_dist) -> Dict[str, TensorType]:
     return {"q_values": policy.q_values}
 
 

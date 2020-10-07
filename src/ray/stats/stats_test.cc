@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
+#include "ray/stats/stats.h"
 
 #include <chrono>
 #include <iostream>
@@ -21,7 +20,8 @@
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "ray/stats/stats.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 namespace ray {
 

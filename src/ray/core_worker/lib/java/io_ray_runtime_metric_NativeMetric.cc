@@ -13,13 +13,14 @@
 // limitations under the License.
 
 #include "io_ray_runtime_metric_NativeMetric.h"
-#include "jni_utils.h"
-#include "ray/stats/metric.h"
 
 #include <jni.h>
 
 #include <algorithm>
+
+#include "jni_utils.h"
 #include "opencensus/tags/tag_key.h"
+#include "ray/stats/metric.h"
 
 using TagKeyType = opencensus::tags::TagKey;
 using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;

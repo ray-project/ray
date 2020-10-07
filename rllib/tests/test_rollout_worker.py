@@ -278,7 +278,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_action_clipping(self):
         from ray.rllib.examples.env.random_env import RandomEnv
-        action_space = gym.spaces.Box(-2.0, 1.0, (3,))
+        action_space = gym.spaces.Box(-2.0, 1.0, (3, ))
 
         # Clipping: True (clip between Policy's action_space.low/high),
         ev = RolloutWorker(
@@ -625,6 +625,14 @@ class TestRolloutWorker(unittest.TestCase):
         # reset to original
         del os.environ["env_key_1"]
         del os.environ["env_key_2"]
+
+    def test_no_env_seed(self):
+        ev = RolloutWorker(
+            env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
+            policy=MockPolicy,
+            seed=1)
+        assert not hasattr(ev.env, "seed")
+        ev.stop()
 
     def sample_and_flush(self, ev):
         time.sleep(2)

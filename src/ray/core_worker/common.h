@@ -54,9 +54,12 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
-      : num_returns(num_returns), resources(resources) {}
+  TaskOptions(std::string name, int num_returns,
+              std::unordered_map<std::string, double> &resources)
+      : name(name), num_returns(num_returns), resources(resources) {}
 
+  /// The name of this task.
+  std::string name;
   /// Number of returns of this task.
   int num_returns = 1;
   /// Resources required by this task.
@@ -72,7 +75,8 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
       std::string &name, bool is_asyncio,
-      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1))
+      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
+      bool placement_group_capture_child_tasks = true)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -82,7 +86,8 @@ struct ActorCreationOptions {
         is_detached(is_detached),
         name(name),
         is_asyncio(is_asyncio),
-        placement_options(placement_options){};
+        placement_options(placement_options),
+        placement_group_capture_child_tasks(placement_group_capture_child_tasks){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -114,6 +119,9 @@ struct ActorCreationOptions {
   /// If the actor doesn't belong to a placement group, the placement_group_id will be
   /// nil, and the bundle_index will be -1.
   PlacementOptions placement_options;
+  /// When true, the child task will always scheduled on the same placement group
+  /// specified in the PlacementOptions.
+  bool placement_group_capture_child_tasks = true;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

@@ -112,7 +112,7 @@ class VTraceLoss:
 def _make_time_major(policy, seq_lens, tensor, drop_last=False):
     """Swaps batch and trajectory axis.
 
-    Arguments:
+    Args:
         policy: Policy reference
         seq_lens: Sequence lengths if recurrent or None
         tensor: A tensor or list of tensors to reshape.
@@ -259,13 +259,13 @@ def choose_optimizer(policy, config):
             return tf1.train.AdamOptimizer(policy.cur_lr)
     else:
         if tfv == 2:
-            return tf.keras.optimizers.RMSprop(
-                policy.cur_lr, config["decay"], config["momentum"],
-                config["epsilon"])
+            return tf.keras.optimizers.RMSprop(policy.cur_lr, config["decay"],
+                                               config["momentum"],
+                                               config["epsilon"])
         else:
-            return tf1.train.RMSPropOptimizer(
-                policy.cur_lr, config["decay"], config["momentum"],
-                config["epsilon"])
+            return tf1.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
+                                              config["momentum"],
+                                              config["epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):

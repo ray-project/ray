@@ -5,7 +5,7 @@ from typing import List
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.types import ModelConfigDict, TensorType
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 

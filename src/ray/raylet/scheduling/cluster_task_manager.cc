@@ -1,12 +1,13 @@
-#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include <google/protobuf/map.h>
 
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace raylet {
 
 ClusterTaskManager::ClusterTaskManager(
-    const ClientID &self_node_id,
+    const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     std::function<bool(const Task &)> fulfills_dependencies_func,
     NodeInfoGetter get_node_info)
@@ -31,6 +32,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     int64_t _unused;
+    // TODO (Alex): We should distinguish between infeasible tasks and a fully
+    // utilized cluster.
     std::string node_id_string =
         cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
     if (node_id_string.empty()) {
@@ -39,13 +42,16 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
-        did_schedule = did_schedule || WaitForTaskArgsRequests(work);
+        // Warning: WaitForTaskArgsRequests must execute (do not let it short
+        // circuit if did_schedule is true).
+        bool task_scheduled = WaitForTaskArgsRequests(work);
+        did_schedule = task_scheduled || did_schedule;
       } else {
         // Should spill over to a different node.
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                                  request_resources);
 
-        ClientID node_id = ClientID::FromBinary(node_id_string);
+        NodeID node_id = NodeID::FromBinary(node_id_string);
         auto node_info_opt = get_node_info_(node_id);
         // gcs_client_->Nodes().Get(node_id);
         RAY_CHECK(node_info_opt)
@@ -149,17 +155,130 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
   }
 }
 
+void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker) {
+  cluster_resource_scheduler_->SubtractCPUResourceInstances(
+      worker->GetBorrowedCPUInstances());
+  cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
+  worker->ClearAllocatedInstances();
+}
+
+bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
+  for (auto iter = tasks_to_schedule_.begin(); iter != tasks_to_schedule_.end(); iter++) {
+    if (std::get<0>(*iter).GetTaskSpecification().TaskId() == task_id) {
+      tasks_to_schedule_.erase(iter);
+      return true;
+    }
+  }
+  for (auto iter = tasks_to_dispatch_.begin(); iter != tasks_to_dispatch_.end(); iter++) {
+    if (std::get<0>(*iter).GetTaskSpecification().TaskId() == task_id) {
+      tasks_to_dispatch_.erase(iter);
+      return true;
+    }
+  }
+
+  auto iter = waiting_tasks_.find(task_id);
+  if (iter != waiting_tasks_.end()) {
+    waiting_tasks_.erase(iter);
+    return true;
+  }
+
+  return false;
+}
+
+void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
+                                   std::shared_ptr<HeartbeatTableData> data) const {
+  auto resource_loads = data->mutable_resource_load();
+  auto resource_load_by_shape =
+      data->mutable_resource_load_by_shape()->mutable_resource_demands();
+
+  if (light_heartbeat_enabled) {
+    RAY_CHECK(false) << "TODO";
+  } else {
+    // TODO (Alex): Implement the 1-CPU task optimization.
+    for (const auto &work : tasks_to_schedule_) {
+      const auto &task = std::get<0>(work);
+      const auto &resources =
+          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+
+      auto by_shape_entry = resource_load_by_shape->Add();
+
+      for (const auto &resource : resources) {
+        // Add to `resource_loads`.
+        const auto &label = resource.first;
+        const auto &quantity = resource.second;
+        const auto &entry = resource_loads->find(label);
+        if (entry == resource_loads->end()) {
+          (*resource_loads)[label] = quantity;
+        } else {
+          (*resource_loads)[label] = entry->second + quantity;
+        }
+
+        // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
+        // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
+        // that the entire cluster is utilized.
+        by_shape_entry->set_num_infeasible_requests_queued(1);
+      }
+    }
+
+    for (const auto &work : tasks_to_dispatch_) {
+      const auto &task = std::get<0>(work);
+      const auto &resources =
+          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+
+      auto by_shape_entry = resource_load_by_shape->Add();
+
+      for (auto to_add_it = resources.begin(); to_add_it != resources.end();
+           to_add_it++) {
+        // Add to `resource_loads`.
+        const auto &label = to_add_it->first;
+        const auto &quantity = to_add_it->second;
+        const auto &entry = resource_loads->find(label);
+        if (entry == resource_loads->end()) {
+          (*resource_loads)[label] = quantity;
+        } else {
+          (*resource_loads)[label] = entry->second + quantity;
+        }
+
+        // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
+        // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
+        // that the entire cluster is utilized.
+        by_shape_entry->set_num_ready_requests_queued(1);
+      }
+    }
+  }
+}
+
+std::string ClusterTaskManager::DebugString() {
+  std::stringstream buffer;
+  buffer << "========== Node: " << self_node_id_ << " =================\n";
+  buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
+  buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
+  buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
+  buffer << "cluster_resource_scheduler state: "
+         << cluster_resource_scheduler_->DebugString() << "\n";
+  buffer << "==================================================";
+  return buffer.str();
+}
+
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
-    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
+    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
+  // Pass the contact info of the worker to use.
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
   reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
-  RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
-  leased_workers_[worker->WorkerId()] = worker;
+
+  RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
+  leased_workers[worker->WorkerId()] = worker;
+
+  // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
   if (task_spec.IsActorCreationTask()) {
     allocated_resources = worker->GetLifetimeAllocatedInstances();
@@ -204,10 +323,12 @@ void ClusterTaskManager::Dispatch(
       }
     }
   }
+
+  // Send the result back.
   send_reply_callback();
 }
 
-void ClusterTaskManager::Spillback(ClientID spillback_to, std::string address, int port,
+void ClusterTaskManager::Spillback(NodeID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> send_reply_callback) {
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);

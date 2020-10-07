@@ -1,7 +1,6 @@
 import math
 from collections import namedtuple
 import logging
-import multiprocessing
 import os
 import re
 import subprocess
@@ -105,7 +104,9 @@ class ResourceSpec(
         # Check types.
         for resource_label, resource_quantity in resources.items():
             assert (isinstance(resource_quantity, int)
-                    or isinstance(resource_quantity, float))
+                    or isinstance(resource_quantity, float)), (
+                        f"{resource_label} ({type(resource_quantity)}): "
+                        f"{resource_quantity}")
             if (isinstance(resource_quantity, float)
                     and not resource_quantity.is_integer()):
                 raise ValueError(
@@ -140,7 +141,7 @@ class ResourceSpec(
         assert "object_store_memory" not in resources, resources
 
         if node_ip_address is None:
-            node_ip_address = ray.services.get_node_ip_address()
+            node_ip_address = ray._private.services.get_node_ip_address()
 
         # Automatically create a node id resource on each node. This is
         # queryable with ray.state.node_ids() and ray.state.current_node_id().
@@ -148,7 +149,7 @@ class ResourceSpec(
 
         num_cpus = self.num_cpus
         if num_cpus is None:
-            num_cpus = multiprocessing.cpu_count()
+            num_cpus = ray.utils.get_num_cpus()
 
         num_gpus = self.num_gpus
         gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -220,16 +221,6 @@ class ResourceSpec(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
 
-        logger.info(
-            "Starting Ray with {} GiB memory available for workers and up to "
-            "{} GiB for objects. You can adjust these settings "
-            "with ray.init(memory=<bytes>, "
-            "object_store_memory=<bytes>).".format(
-                round(
-                    ray_constants.round_to_memory_units(
-                        memory, round_up=False) / (1024**3), 2),
-                round(object_store_memory / (1024**3), 2)))
-
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
         assert spec.resolved()
@@ -285,8 +276,8 @@ gpu model type.
             break
     pretty_name = _pretty_gpu_name(full_model_name)
     if pretty_name:
-        constraint_name = "{}{}".format(
-            ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
+        constraint_name = (f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                           f"{pretty_name}")
         return {constraint_name: 1}
     return {}
 
@@ -305,8 +296,7 @@ def _get_gpu_info_string():
         if os.path.isdir(proc_gpus_path):
             gpu_dirs = os.listdir(proc_gpus_path)
             if len(gpu_dirs) > 0:
-                gpu_info_path = "{}/{}/information".format(
-                    proc_gpus_path, gpu_dirs[0])
+                gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
                 info_str = open(gpu_info_path).read()
                 return info_str
     return None

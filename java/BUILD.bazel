@@ -13,7 +13,6 @@ all_modules = [
     "api",
     "runtime",
     "test",
-    "tutorial",
 ]
 
 java_import(
@@ -64,7 +63,6 @@ define_java_module(
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
         "@maven//:org_apache_commons_commons_lang3",
-        "@maven//:com_beust_jcommander",
         "@maven//:org_testng_testng",
         "@maven//:commons_io_commons_io",
         "@maven//:javax_xml_bind_jaxb_api",
@@ -90,21 +88,13 @@ define_java_module(
 )
 
 define_java_module(
-    name = "tutorial",
-    deps = [
-        ":io_ray_ray_api",
-        ":io_ray_ray_runtime",
-        "@maven//:com_google_guava_guava",
-    ],
-)
-
-define_java_module(
     name = "test",
     deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
         "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
         "@maven//:commons_io_commons_io",
@@ -230,7 +220,6 @@ genrule(
         WORK_DIR="$$(pwd)"
         cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
         cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
-        cp -f $(location //java:io_ray_ray_tutorial_pom) "$$WORK_DIR/java/tutorial/pom.xml"
         cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         date > $@
     """,
@@ -263,6 +252,13 @@ genrule(
         WORK_DIR="$$(pwd)"
         rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
         cp -f $(location //java:ray_dist_deploy.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
+        chmod +w "$$WORK_DIR/python/ray/jars/ray_dist.jar"
+        zip -d "$$WORK_DIR/python/ray/jars/ray_dist.jar" \
+            native/*/gcs_server \
+            native/*/libray_redis_module.so \
+            native/*/plasma_store_server \
+            native/*/raylet \
+            native/*/redis-server
         date > $@
     """,
     local = 1,

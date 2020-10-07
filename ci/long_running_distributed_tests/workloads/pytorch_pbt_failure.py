@@ -10,7 +10,7 @@ import torchvision.transforms as transforms
 
 import ray
 from ray import tune
-from ray.autoscaler.commands import kill_node
+from ray.autoscaler._private.commands import kill_node
 from ray.tune import CLIReporter
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
@@ -93,7 +93,7 @@ def optimizer_creator(model, config):
         momentum=config.get("momentum", 0.9))
 
 
-ray.init(address="auto" if not args.smoke_test else None, log_to_driver=True)
+ray.init(address="auto" if not args.smoke_test else None, _log_to_driver=True)
 num_training_workers = 1 if args.smoke_test else 3
 
 executor = FailureInjectorExecutor(queue_trials=True)

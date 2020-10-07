@@ -6,40 +6,102 @@ import logging
 import random
 import string
 import time
-from typing import List
+from typing import List, Dict
 import io
 import os
+from ray.serve.exceptions import RayServeException
+from collections import UserDict
 
 import requests
+import numpy as np
+import pydantic
+import flask
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.serve.context import FakeFlaskRequest, TaskContext
+from ray.serve.context import TaskContext
 from ray.serve.http_util import build_flask_request
-import numpy as np
-
-try:
-    import pydantic
-except ImportError:
-    pydantic = None
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
+class ServeMultiDict(UserDict):
+    """Compatible data structure to simulate Flask.Request.args API."""
+
+    def getlist(self, key):
+        """Return the list of items for a given key."""
+        return self.data.get(key, [])
+
+
+class ServeRequest:
+    """The request object used in Python context.
+
+    ServeRequest is built to have similar API as Flask.Request. You only need
+    to write your model serving code once; it can be queried by both HTTP and
+    Python.
+    """
+
+    def __init__(self, data, kwargs, headers, method):
+        self._data = data
+        self._kwargs = ServeMultiDict(kwargs)
+        self._headers = headers
+        self._method = method
+
+    @property
+    def headers(self):
+        """The HTTP headers from ``handle.option(http_headers=...)``."""
+        return self._headers
+
+    @property
+    def method(self):
+        """The HTTP method data from ``handle.option(http_method=...)``."""
+        return self._method
+
+    @property
+    def args(self):
+        """The keyword arguments from ``handle.remote(**kwargs)``."""
+        return self._kwargs
+
+    @property
+    def json(self):
+        """The request dictionary, from ``handle.remote(dict)``."""
+        if not isinstance(self._data, dict):
+            raise RayServeException("Request data is not a dictionary. "
+                                    f"It is {type(self._data)}.")
+        return self._data
+
+    @property
+    def form(self):
+        """The request dictionary, from ``handle.remote(dict)``."""
+        if not isinstance(self._data, dict):
+            raise RayServeException("Request data is not a dictionary. "
+                                    f"It is {type(self._data)}.")
+        return self._data
+
+    @property
+    def data(self):
+        """The request data from ``handle.remote(obj)``."""
+        return self._data
+
+
 def parse_request_item(request_item):
-    if request_item.request_context == TaskContext.Web:
-        is_web_context = True
-        asgi_scope, body_bytes = request_item.request_args
-
-        flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
-        args = (flask_request, )
-        kwargs = {}
+    if request_item.metadata.request_context == TaskContext.Web:
+        asgi_scope, body_bytes = request_item.args
+        return build_flask_request(asgi_scope, io.BytesIO(body_bytes))
     else:
-        is_web_context = False
-        args = (FakeFlaskRequest(), )
-        kwargs = request_item.request_kwargs
+        arg = request_item.args[0] if len(request_item.args) == 1 else None
 
-    return args, kwargs, is_web_context
+        # If the input data from handle is web request, we don't need to wrap
+        # it in ServeRequest.
+        if isinstance(arg, flask.Request):
+            return arg
+
+        return ServeRequest(
+            arg,
+            request_item.kwargs,
+            headers=request_item.metadata.http_headers,
+            method=request_item.metadata.http_method,
+        )
 
 
 def _get_logger():
@@ -66,7 +128,7 @@ class ServeEncoder(json.JSONEncoder):
     def default(self, o):  # pylint: disable=E0202
         if isinstance(o, bytes):
             return o.decode("utf-8")
-        if pydantic is not None and isinstance(o, pydantic.BaseModel):
+        if isinstance(o, pydantic.BaseModel):
             return o.dict()
         if isinstance(o, Exception):
             return str(o)
@@ -105,11 +167,11 @@ def get_random_letters(length=6):
     return "".join(random.choices(string.ascii_letters, k=length))
 
 
-def format_actor_name(actor_name, instance_name=None, *modifiers):
-    if instance_name is None:
+def format_actor_name(actor_name, controller_name=None, *modifiers):
+    if controller_name is None:
         name = actor_name
     else:
-        name = "{}:{}".format(instance_name, actor_name)
+        name = "{}:{}".format(controller_name, actor_name)
 
     for modifier in modifiers:
         name += "-{}".format(modifier)
@@ -175,27 +237,23 @@ def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
 
 def try_schedule_resources_on_nodes(
         requirements: List[dict],
-        ray_nodes: List = None,
+        ray_resource: Dict[str, Dict] = None,
 ) -> List[bool]:
     """Test given resource requirements can be scheduled on ray nodes.
 
     Args:
         requirements(List[dict]): The list of resource requirements.
-        ray_nodes(Optional[List]): The list of nodes. By default it reads from
-            ``ray.nodes()``.
+        ray_nodes(Optional[Dict[str, Dict]]): The resource dictionary keyed by
+            node id. By default it reads from
+            ``ray.state.state._available_resources_per_node()``.
     Returns:
         successfully_scheduled(List[bool]): A list with the same length as
             requirements. Each element indicates whether or not the requirement
             can be satisied.
     """
 
-    if ray_nodes is None:
-        ray_nodes = ray.nodes()
-
-    node_to_resources = {
-        node["NodeID"]: node["Resources"]
-        for node in ray_nodes if node["Alive"]
-    }
+    if ray_resource is None:
+        ray_resource = ray.state.state._available_resources_per_node()
 
     successfully_scheduled = []
 
@@ -203,7 +261,7 @@ def try_schedule_resources_on_nodes(
         # Filter out zero value
         resource_dict = {k: v for k, v in resource_dict.items() if v > 0}
 
-        for node_id, node_resource in node_to_resources.items():
+        for node_id, node_resource in ray_resource.items():
             # Check if we can schedule on this node
             feasible = True
             for key, count in resource_dict.items():
@@ -212,7 +270,6 @@ def try_schedule_resources_on_nodes(
 
             # If we can, schedule it on this node
             if feasible:
-                node_resource = node_to_resources[node_id]
                 for key, count in resource_dict.items():
                     node_resource[key] -= count
 

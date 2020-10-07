@@ -48,8 +48,8 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   log_based_actor_table_.reset(new LogBasedActorTable({primary_context}, this));
   actor_table_.reset(new ActorTable({primary_context}, this));
 
-  // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
-  // We will use NodeID instead of ClientID.
+  // TODO(micafan) Modify ClientTable' Constructor(remove NodeID) in future.
+  // We will use NodeID instead of NodeID.
   // For worker/driver, it might not have this field(NodeID).
   // For raylet, NodeID should be initialized in raylet layer(not here).
   client_table_.reset(new ClientTable({primary_context}, this));
@@ -68,11 +68,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
   worker_table_.reset(new WorkerTable(shard_contexts, this));
 
-  if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_accessor_.reset(new RedisActorInfoAccessor(this));
-  } else {
-    actor_accessor_.reset(new RedisLogBasedActorInfoAccessor(this));
-  }
+  actor_accessor_.reset(new RedisActorInfoAccessor(this));
 
   job_accessor_.reset(new RedisJobInfoAccessor(this));
   object_accessor_.reset(new RedisObjectInfoAccessor(this));
@@ -85,7 +81,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   is_connected_ = true;
 
-  RAY_LOG(INFO) << "RedisGcsClient Connected.";
+  RAY_LOG(DEBUG) << "RedisGcsClient connected.";
 
   return Status::OK();
 }

@@ -30,8 +30,9 @@ public class JobGraph implements Serializable {
     this.jobEdges = new ArrayList<>();
   }
 
-  public JobGraph(String jobName, Map<String, String> jobConfig,
-                  List<JobVertex> jobVertices, List<JobEdge> jobEdges) {
+  public JobGraph(
+      String jobName, Map<String, String> jobConfig,
+      List<JobVertex> jobVertices, List<JobEdge> jobEdges) {
     this.jobName = jobName;
     this.jobConfig = jobConfig;
     this.jobVertices = jobVertices;
@@ -40,8 +41,8 @@ public class JobGraph implements Serializable {
   }
 
   /**
-   * Generate direct-graph(made up of a set of vertices and connected by edges)
-   * by current job graph for simple log printing.
+   * Generate direct-graph(made up of a set of vertices and connected by edges) by current job graph
+   * for simple log printing.
    *
    * @return Digraph in string type.
    */

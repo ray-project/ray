@@ -174,5 +174,12 @@ std::string GcsPubSub::GenChannelPattern(const std::string &channel,
   return pattern.str();
 }
 
+bool GcsPubSub::IsUnsubscribed(const std::string &channel, const std::string &id) {
+  std::string pattern = GenChannelPattern(channel, id);
+
+  absl::MutexLock lock(&mutex_);
+  return !channels_.contains(pattern);
+}
+
 }  // namespace gcs
 }  // namespace ray

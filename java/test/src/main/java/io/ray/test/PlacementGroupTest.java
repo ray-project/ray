@@ -47,4 +47,29 @@ public class PlacementGroupTest extends BaseTest {
     // Test calling an actor.
     Assert.assertEquals(Integer.valueOf(1), actor.task(Counter::getValue).remote().get());
   }
+
+  public void testCheckBundleIndex() {
+    List<Map<String, Double>> bundles = new ArrayList<>();
+    Map<String, Double> bundle = new HashMap<>();
+    bundle.put("CPU", 1.0);
+    bundles.add(bundle);
+    PlacementStrategy strategy = PlacementStrategy.PACK;
+    PlacementGroup placementGroup = Ray.createPlacementGroup(bundles, strategy);
+
+    int exceptionCount = 0;
+    try {
+      Ray.actor(Counter::new, 1).setPlacementGroup(placementGroup, 1).remote();
+    } catch (IllegalArgumentException e) {
+      ++exceptionCount;
+    }
+    Assert.assertEquals(1, exceptionCount);
+
+
+    try {
+      Ray.actor(Counter::new, 1).setPlacementGroup(placementGroup, -1).remote();
+    } catch (IllegalArgumentException e) {
+      ++exceptionCount;
+    }
+    Assert.assertEquals(2, exceptionCount);
+  }
 }

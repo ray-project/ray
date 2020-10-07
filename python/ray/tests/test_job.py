@@ -66,12 +66,14 @@ class Actor:
     def value(self):
         return 1
 
-_ = Actor.options(name="DetachedActor").remote()
+_ = Actor.options(lifetime="detached", name="DetachedActor").remote()
+# Make sure the actor is created before the driver exits.
+ray.get(_.value.remote())
 """.format(address)
 
     p = run_string_as_driver_nonblocking(driver)
     # Wait for actor to be created
-    wait_for_num_actors(1)
+    wait_for_num_actors(1, ray.gcs_utils.ActorTableData.ALIVE)
 
     actor_table = ray.actors()
     assert len(actor_table) == 1

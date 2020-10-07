@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
 #include "ray/core.h"
@@ -27,13 +28,22 @@ class TaskExecutor {
   std::unique_ptr<ObjectID> Execute(const InvocationSpec &invocation);
 
   static void Invoke(const TaskSpecification &task_spec,
-                     std::shared_ptr<msgpack::sbuffer> actor,
-                     AbstractRayRuntime *runtime);
+                     std::shared_ptr<msgpack::sbuffer> actor, AbstractRayRuntime *runtime,
+                     const uintptr_t base_addr);
+
+  static Status ExecuteTask(
+      TaskType task_type, const std::string task_name, const RayFunction &ray_function,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<ObjectID> &arg_reference_ids,
+      const std::vector<ObjectID> &return_ids,
+      std::vector<std::shared_ptr<RayObject>> *results);
 
   virtual ~TaskExecutor(){};
 
  private:
   AbstractRayRuntime &abstract_ray_tuntime_;
+  static std::shared_ptr<msgpack::sbuffer> current_actor_;
 };
 }  // namespace api
 }  // namespace ray

@@ -114,6 +114,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   queue.rpc_client = nullptr;
+  core_worker_client_pool_->Disconnect(ray::WorkerID::FromBinary(queue.worker_id));
   queue.worker_id.clear();
   queue.pending_force_kill.reset();
 }
@@ -127,9 +128,17 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
-  if (num_restarts <= queue->second.num_restarts) {
+  if (num_restarts < queue->second.num_restarts) {
     // This message is about an old version of the actor and the actor has
     // already restarted since then. Skip the connection.
+    RAY_LOG(INFO) << "Skip actor that has already been restarted, actor_id=" << actor_id;
+    return;
+  }
+
+  if (queue->second.rpc_client &&
+      queue->second.rpc_client->Addr().ip_address() == address.ip_address() &&
+      queue->second.rpc_client->Addr().port() == address.port()) {
+    RAY_LOG(DEBUG) << "Skip actor that has already been connected, actor_id=" << actor_id;
     return;
   }
 
@@ -149,8 +158,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Update the mapping so new RPCs go out with the right intended worker id.
   queue->second.worker_id = address.worker_id();
   // Create a new connection to the actor.
-  queue->second.rpc_client =
-      std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
+  queue->second.rpc_client = core_worker_client_pool_->GetOrConnect(address);
   // TODO(swang): This assumes that all replies from the previous incarnation
   // of the actor have been received. Fix this by setting an epoch for each
   // actor task, so we can ignore completed tasks from old epochs.
@@ -168,9 +176,10 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   absl::MutexLock lock(&mu_);
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
-  if (num_restarts < queue->second.num_restarts && !dead) {
+  if (num_restarts <= queue->second.num_restarts && !dead) {
     // This message is about an old version of the actor that has already been
     // restarted successfully. Skip the message handling.
+    RAY_LOG(INFO) << "Skip actor that has already been restarted, actor_id=" << actor_id;
     return;
   }
 
@@ -293,11 +302,11 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 }
 
 void CoreWorkerDirectTaskReceiver::Init(
-    rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
+    std::shared_ptr<rpc::CoreWorkerClientPool> client_pool, rpc::Address rpc_address,
     std::shared_ptr<DependencyWaiter> dependency_waiter) {
   waiter_ = std::move(dependency_waiter);
   rpc_address_ = rpc_address;
-  client_factory_ = client_factory;
+  client_pool_ = client_pool;
 }
 
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
@@ -348,7 +357,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     if (objects_valid) {
       for (size_t i = 0; i < return_objects.size(); i++) {
         auto return_object = reply->add_return_objects();
-        ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), /*index=*/i + 1);
+        ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
         return_object->set_object_id(id.Binary());
 
         // The object is nullptr if it already existed in the object store.

@@ -204,9 +204,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                             false=false)
         if torch is not None:
             if isinstance(x, torch.Tensor):
-                x = x.detach().numpy()
+                x = x.detach().cpu().numpy()
             if isinstance(y, torch.Tensor):
-                y = y.detach().numpy()
+                y = y.detach().cpu().numpy()
 
         # Using decimals.
         if atol is None and rtol is None:
@@ -253,7 +253,7 @@ def check_learning_achieved(tune_results, min_reward):
         tune_results: The tune.run returned results object.
         min_reward (float): The min reward that must be reached.
 
-    Throws:
+    Raises:
         ValueError: If `min_reward` not reached.
     """
     if tune_results.trials[0].last_result["episode_reward_mean"] < min_reward:
@@ -273,7 +273,7 @@ def check_compute_single_action(trainer,
         include_prev_action_reward (bool): Whether to include the prev-action
             and -reward in the `compute_action` call.
 
-    Throws:
+    Raises:
         ValueError: If anything unexpected happens.
     """
     try:
@@ -288,8 +288,8 @@ def check_compute_single_action(trainer,
             method_to_test = trainer.compute_action
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(
-                trainer, "workers", getattr(trainer, "_workers", None))
+            worker_set = getattr(trainer, "workers",
+                                 getattr(trainer, "_workers", None))
             assert worker_set
             if isinstance(worker_set, list):
                 obs_space = trainer.get_policy().observation_space

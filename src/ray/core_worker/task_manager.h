@@ -19,7 +19,6 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
-#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -58,13 +57,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
-              std::shared_ptr<ActorReporterInterface> actor_reporter,
               RetryTaskCallback retry_task_callback,
-              const std::function<bool(const ClientID &node_id)> &check_node_alive,
+              const std::function<bool(const NodeID &node_id)> &check_node_alive,
               ReconstructObjectCallback reconstruct_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
-        actor_reporter_(actor_reporter),
         retry_task_callback_(retry_task_callback),
         check_node_alive_(check_node_alive),
         reconstruct_object_callback_(reconstruct_object_callback) {
@@ -234,9 +231,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// submitted tasks (dependencies and return objects).
   std::shared_ptr<ReferenceCounter> reference_counter_;
 
-  // Interface for publishing actor creation.
-  std::shared_ptr<ActorReporterInterface> actor_reporter_;
-
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
 
@@ -244,7 +238,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// processing a worker's reply to check whether the node that the worker
   /// was on is still alive. If the node is down, the plasma objects returned by the task
   /// are marked as failed.
-  const std::function<bool(const ClientID &node_id)> check_node_alive_;
+  const std::function<bool(const NodeID &node_id)> check_node_alive_;
   /// Called when processing a worker's reply if the node that the worker was
   /// on died. This should be called to attempt to recover a plasma object
   /// returned by the task (or store an error if the object is not

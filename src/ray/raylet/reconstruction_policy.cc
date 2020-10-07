@@ -23,7 +23,7 @@ namespace raylet {
 ReconstructionPolicy::ReconstructionPolicy(
     boost::asio::io_service &io_service,
     std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
-    int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
+    int64_t initial_reconstruction_timeout_ms, const NodeID &client_id,
     std::shared_ptr<gcs::GcsClient> gcs_client,
     std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : io_service_(io_service),
@@ -88,7 +88,7 @@ void ReconstructionPolicy::OnTaskLeaseNotification(
     return;
   }
 
-  const ClientID node_manager_id = ClientID::FromBinary(task_lease->node_manager_id());
+  const NodeID node_manager_id = NodeID::FromBinary(task_lease->node_manager_id());
   if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
     // The node manager that added the task lease is already removed. The
     // lease is considered inactive.
@@ -176,10 +176,12 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
   // attempted asynchronously.
   for (const auto &created_object_id : it->second.created_objects) {
     RAY_CHECK_OK(object_directory_->LookupLocations(
-        created_object_id, [this, task_id, reconstruction_attempt](
-                               const ray::ObjectID &object_id,
-                               const std::unordered_set<ray::ClientID> &clients) {
-          if (clients.empty()) {
+        created_object_id, it->second.owner_addresses[created_object_id],
+        [this, task_id, reconstruction_attempt](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::NodeID> &clients,
+            const std::string &spilled_url) {
+          if (clients.empty() && spilled_url.empty()) {
             // The required object no longer exists on any live nodes. Attempt
             // reconstruction.
             AttemptReconstruction(task_id, object_id, reconstruction_attempt);
@@ -207,7 +209,8 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
   }
 }
 
-void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) {
+void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id,
+                                                     const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Listening and maybe reconstructing object " << object_id;
   TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);
@@ -220,6 +223,7 @@ void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) 
     SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
   }
   it->second.created_objects.insert(object_id);
+  it->second.owner_addresses.emplace(object_id, owner_address);
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
@@ -248,11 +252,6 @@ std::string ReconstructionPolicy::DebugString() const {
   result << "ReconstructionPolicy:";
   result << "\n- num reconstructing: " << listening_tasks_.size();
   return result.str();
-}
-
-void ReconstructionPolicy::RecordMetrics() const {
-  stats::ReconstructionPolicyStats().Record(
-      listening_tasks_.size(), {{stats::ValueTypeKey, "num_reconstructing_tasks"}});
 }
 
 }  // namespace raylet

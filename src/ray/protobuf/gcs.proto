@@ -79,10 +79,8 @@ message GcsEntry {
 }
 
 message ObjectTableData {
-  // The size of the object.
-  uint64 object_size = 1;
   // The node manager ID that this object appeared on or was evicted by.
-  bytes manager = 2;
+  bytes manager = 1;
 }
 
 message TaskReconstructionData {
@@ -128,9 +126,9 @@ message ActorTableData {
   // Max number of times this actor should be restarted,
   // a value of -1 indicates an infinite number of reconstruction attempts.
   int64 max_restarts = 7;
-  // Number of restarts that have been successfully performed on this
-  // actor. This is the equal to the number of ALIVE messages that have been
-  // previously published for this actor.
+  // Number of restarts that has been tried on this actor.
+  // This will be greater by 1 than what's published before in ALIVE.
+  // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
   uint64 num_restarts = 8;
   // The address of the the actor.
   Address address = 9;
@@ -165,10 +163,12 @@ message PlacementGroupTableData {
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
-    // Placement Group is alive.
-    ALIVE = 1;
-    // Placement Group is already dead and won't be reschedule.
-    DEAD = 2;
+    // Placement Group is created.
+    CREATED = 1;
+    // Placement Group is already removed and won't be reschedule.
+    REMOVED = 2;
+    // Placement Group is rescheduling because the node it placed is dead.
+    RESCHEDULING = 3;
   }
 
   // ID of the PlacementGroup.
@@ -220,6 +220,13 @@ message ResourceTableData {
   double resource_capacity = 1;
 }
 
+message AvailableResources {
+  // Node manager client id.
+  bytes node_id = 1;
+  // Resource capacity currently available on this node manager.
+  map<string, double> resources_available = 2;
+}
+
 message GcsNodeInfo {
   // State of a node.
   enum GcsNodeState {
@@ -249,6 +256,9 @@ message GcsNodeInfo {
 
   // The Hostname address of the node manager.
   string node_manager_hostname = 8;
+
+  // The port at which the node will expose metrics to.
+  int32 metrics_export_port = 9;
 }
 
 // Represents the demand for a particular resource shape.
@@ -262,6 +272,9 @@ message ResourceDemand {
   // The number of requests for which there is no node that is a superset of
   // the requested resource shape.
   uint64 num_infeasible_requests_queued = 3;
+  // The number of requests of this shape still queued in CoreWorkers that this
+  // raylet knows about.
+  int64 backlog_size = 4;
 }
 
 // Represents the demand sorted by resource shape.
@@ -271,21 +284,32 @@ message ResourceLoad {
   repeated ResourceDemand resource_demands = 1;
 }
 
+message PlacementGroupLoad {
+  // The list of pending placement group specifications.
+  repeated PlacementGroupTableData placement_group_data = 1;
+}
+
 message HeartbeatTableData {
   // Node manager client id
   bytes client_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
+  // Indicates whether avaialbe resources is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_available_changed = 3;
   // Total resource capacity configured for this node manager.
-  map<string, double> resources_total = 3;
+  map<string, double> resources_total = 4;
   // Aggregate outstanding resource load on this node manager.
-  map<string, double> resource_load = 4;
+  map<string, double> resource_load = 5;
+  // Indicates whether resource load is changed. Only used when
+  // light heartbeat enabled.
+  bool resource_load_changed = 6;
   // The resource load on this node, sorted by resource shape.
-  ResourceLoad resource_load_by_shape = 5;
+  ResourceLoad resource_load_by_shape = 7;
   // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 6;
+  repeated bytes active_object_id = 8;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 7;
+  bool should_global_gc = 9;
 }
 
 message HeartbeatBatchTableData {
@@ -293,6 +317,8 @@ message HeartbeatBatchTableData {
   // The total resource demand on all nodes included in the batch, sorted by
   // resource shape.
   ResourceLoad resource_load_by_shape = 2;
+  // The pending list of placement groups.
+  PlacementGroupLoad placement_group_load = 3;
 }
 
 // Data for a lease on task execution.
@@ -316,6 +342,10 @@ message JobConfig {
   uint32 num_java_workers_per_process = 2;
   // The jvm options for java workers of the job.
   repeated string jvm_options = 3;
+  // A list of directories or jar files that specify the search path for user
+  // code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH` in
+  // Python.
+  repeated string code_search_path = 4;
 }
 
 message JobTableData {
@@ -388,19 +418,22 @@ message StoredConfig {
   map<string, string> config = 1;
 }
 
-message ObjectTableDataList {
-  repeated ObjectTableData items = 1;
-}
-
 message ObjectLocationInfo {
   bytes object_id = 1;
   repeated ObjectTableData locations = 2;
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 3;
 }
 
 // A notification message about one object's locations being changed.
 message ObjectLocationChange {
   bool is_add = 1;
-  ObjectTableData data = 2;
+  // The node manager ID that this object appeared on or was evicted by.
+  bytes node_id = 2;
+  // The object has been spilled to this URL. This should be set xor the above
+  // fields are set.
+  string spilled_url = 3;
 }
 
 // A notification message about one node's resources being changed.
@@ -416,38 +449,4 @@ message NodeResourceChange {
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
-}
-
-// This enum type is used as object's metadata to indicate the object's
-// creating task has failed because of a certain error.
-// TODO(hchen): We may want to make these errors more specific. E.g., we may
-// want to distinguish between intentional and expected actor failures, and
-// between worker process failure and node failure.
-enum ErrorType {
-  // Indicates that a task failed because the worker died unexpectedly while
-  // executing it.
-  WORKER_DIED = 0;
-  // Indicates that a task failed because the actor died unexpectedly before
-  // finishing it.
-  ACTOR_DIED = 1;
-  // Indicates that an object is lost and cannot be restarted.
-  // Note, this currently only happens to actor objects. When the actor's
-  // state is already after the object's creating task, the actor cannot
-  // re-run the task.
-  // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
-  // 1) A object that was put by the driver.
-  // 2) The object's creating task is already cleaned up from GCS (this
-  // currently
-  //    crashes raylet).
-  OBJECT_UNRECONSTRUCTABLE = 2;
-  // Indicates that a task failed due to user code failure.
-  TASK_EXECUTION_EXCEPTION = 3;
-  // Indicates that the object has been placed in plasma. This error shouldn't
-  // ever be exposed to user code; it is only used internally to indicate the
-  // result of a direct call has been placed in plasma.
-  OBJECT_IN_PLASMA = 4;
-  // Indicates that an object has been cancelled.
-  TASK_CANCELLED = 5;
-  // Inidicates that creating the GCS service failed to create the actor.
-  ACTOR_CREATION_FAILED = 6;
 }

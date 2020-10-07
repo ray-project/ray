@@ -1,11 +1,12 @@
 
 #pragma once
 
-#include <mutex>
-
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime.h>
+
 #include <msgpack.hpp>
+#include <mutex>
+
 #include "./object/object_store.h"
 #include "./task/task_executor.h"
 #include "./task/task_submitter.h"
@@ -18,6 +19,8 @@ class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
 
+  void Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
+
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 
   ObjectID Put(std::shared_ptr<msgpack::sbuffer> data);
@@ -28,9 +31,10 @@ class AbstractRayRuntime : public RayRuntime {
 
   WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
 
-  ObjectID Call(RemoteFunctionPtrHolder &fptr, std::shared_ptr<msgpack::sbuffer> args);
+  ObjectID Call(const RemoteFunctionPtrHolder &fptr,
+                std::shared_ptr<msgpack::sbuffer> args);
 
-  ActorID CreateActor(RemoteFunctionPtrHolder &fptr,
+  ActorID CreateActor(const RemoteFunctionPtrHolder &fptr,
                       std::shared_ptr<msgpack::sbuffer> args);
 
   ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
@@ -44,6 +48,8 @@ class AbstractRayRuntime : public RayRuntime {
 
   const std::unique_ptr<WorkerContext> &GetWorkerContext();
 
+  static std::shared_ptr<AbstractRayRuntime> GetInstance();
+
  protected:
   std::shared_ptr<RayConfig> config_;
   std::unique_ptr<WorkerContext> worker_;
@@ -52,7 +58,10 @@ class AbstractRayRuntime : public RayRuntime {
   std::unique_ptr<ObjectStore> object_store_;
 
  private:
-  static AbstractRayRuntime *DoInit(std::shared_ptr<RayConfig> config);
+  static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
+  static std::shared_ptr<AbstractRayRuntime> DoInit(std::shared_ptr<RayConfig> config);
+
+  static void DoShutdown(std::shared_ptr<RayConfig> config);
 
   void Execute(const TaskSpecification &task_spec);
 

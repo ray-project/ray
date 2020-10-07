@@ -18,7 +18,6 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_accessor.h"
@@ -102,7 +101,7 @@ class MockReferenceCounter : public ReferenceCounterInterface {
                void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
                     const rpc::Address &owner_address, const std::string &call_site,
                     const int64_t object_size, bool is_reconstructable,
-                    const absl::optional<ClientID> &pinned_at_raylet_id));
+                    const absl::optional<NodeID> &pinned_at_raylet_id));
 
   MOCK_METHOD2(SetDeleteCallback,
                bool(const ObjectID &object_id,

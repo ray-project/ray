@@ -18,8 +18,10 @@ class RandomPolicy(Policy):
         if self.config.get("ignore_action_bounds", False) and \
                 isinstance(self.action_space, Box):
             self.action_space_for_sampling = Box(
-                -float("inf"), float("inf"),
-                shape=self.action_space.shape, dtype=self.action_space.dtype)
+                -float("inf"),
+                float("inf"),
+                shape=self.action_space.shape,
+                dtype=self.action_space.dtype)
         else:
             self.action_space_for_sampling = self.action_space
 

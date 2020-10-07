@@ -18,7 +18,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.sgd import do_minibatch_sgd, averaged
-from ray.rllib.utils.types import PolicyID, SampleBatchType
+from ray.rllib.utils.typing import PolicyID, SampleBatchType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -138,10 +138,8 @@ class TrainTFMultiGPU:
         with self.workers.local_worker().tf_sess.graph.as_default():
             with self.workers.local_worker().tf_sess.as_default():
                 for policy_id in self.policies:
-                    policy = self.workers.local_worker().get_policy(
-                        policy_id)
-                    with tf1.variable_scope(
-                            policy_id, reuse=tf1.AUTO_REUSE):
+                    policy = self.workers.local_worker().get_policy(policy_id)
+                    with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
                         if policy._state_inputs:
                             rnn_inputs = policy._state_inputs + [
                                 policy._seq_lens
@@ -150,12 +148,10 @@ class TrainTFMultiGPU:
                             rnn_inputs = []
                         self.optimizers[policy_id] = (
                             LocalSyncParallelOptimizer(
-                                policy._optimizer,
-                                self.devices,
-                                [v for _, v in policy._loss_inputs],
-                                rnn_inputs,
-                                self.per_device_batch_size,
-                                policy.copy))
+                                policy._optimizer, self.devices,
+                                [v
+                                 for _, v in policy._loss_inputs], rnn_inputs,
+                                self.per_device_batch_size, policy.copy))
 
                 self.sess = self.workers.local_worker().tf_sess
                 self.sess.run(tf1.global_variables_initializer())
@@ -277,7 +273,7 @@ class ApplyGradients:
                  update_all=True):
         """Creates an ApplyGradients instance.
 
-        Arguments:
+        Args:
             workers (WorkerSet): workers to apply gradients to.
             update_all (bool): If true, updates all workers. Otherwise, only
                 update the worker that produced the sample batch we are

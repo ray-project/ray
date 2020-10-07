@@ -27,6 +27,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
+#include "src/ray/protobuf/common.pb.h"
 
 using arrow::Buffer;
 
@@ -77,6 +78,7 @@ class RAY_EXPORT PlasmaClient {
   /// be passed in when the object is created.
   ///
   /// \param object_id The ID to use for the newly created object.
+  /// \param owner_address The address of the object's owner.
   /// \param data_size The size in bytes of the space to be allocated for this
   /// object's
   ///        data (this does not include space used for metadata).
@@ -97,8 +99,9 @@ class RAY_EXPORT PlasmaClient {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  Status Create(const ObjectID& object_id, int64_t data_size, const uint8_t* metadata,
-                int64_t metadata_size, std::shared_ptr<Buffer>* data, int device_num = 0,
+  Status Create(const ObjectID& object_id, const ray::rpc::Address& owner_address,
+                int64_t data_size, const uint8_t* metadata, int64_t metadata_size,
+                std::shared_ptr<Buffer>* data, int device_num = 0,
                 bool evict_if_full = true);
 
   /// Get some objects from the Plasma Store. This function will block until the

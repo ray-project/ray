@@ -14,7 +14,8 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.types import ModelGradients, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, TensorType, \
+    TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -47,38 +48,39 @@ class DynamicTFPolicy(TFPolicy):
     """
 
     @DeveloperAPI
-    def __init__(self,
-                 obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 config: TrainerConfigDict,
-                 loss_fn: Callable[
-                     [Policy, ModelV2, type, SampleBatch], TensorType],
-                 *,
-                 stats_fn: Optional[Callable[[Policy, SampleBatch],
-                                             Dict[str, TensorType]]] = None,
-                 grad_stats_fn: Optional[Callable[
-                     [Policy, SampleBatch, ModelGradients],
-                     Dict[str, TensorType]]] = None,
-                 before_loss_init: Optional[Callable[
-                     [Policy, gym.spaces.Space, gym.spaces.Space,
-                      TrainerConfigDict], None]] = None,
-                 make_model: Optional[Callable[
-                     [Policy, gym.spaces.Space, gym.spaces.Space,
-                      TrainerConfigDict], ModelV2]] = None,
-                 action_sampler_fn: Optional[Callable[
-                     [TensorType, List[TensorType]], Tuple[
-                      TensorType, TensorType]]] = None,
-                 action_distribution_fn: Optional[Callable[
-                     [Policy, ModelV2, TensorType, TensorType, TensorType],
-                     Tuple[TensorType, type, List[TensorType]]]] = None,
-                 existing_inputs: Optional[Dict[
-                     str, "tf1.placeholder"]] = None,
-                 existing_model: Optional[ModelV2] = None,
-                 get_batch_divisibility_req: Optional[int] = None,
-                 obs_include_prev_action_reward: bool = True):
+    def __init__(
+            self,
+            obs_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            config: TrainerConfigDict,
+            loss_fn: Callable[[Policy, ModelV2, type, SampleBatch],
+                              TensorType],
+            *,
+            stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
+                str, TensorType]]] = None,
+            grad_stats_fn: Optional[Callable[[
+                Policy, SampleBatch, ModelGradients
+            ], Dict[str, TensorType]]] = None,
+            before_loss_init: Optional[Callable[[
+                Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+            ], None]] = None,
+            make_model: Optional[Callable[[
+                Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+            ], ModelV2]] = None,
+            action_sampler_fn: Optional[Callable[[
+                TensorType, List[TensorType]
+            ], Tuple[TensorType, TensorType]]] = None,
+            action_distribution_fn: Optional[Callable[[
+                Policy, ModelV2, TensorType, TensorType, TensorType
+            ], Tuple[TensorType, type, List[TensorType]]]] = None,
+            existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
+            existing_model: Optional[ModelV2] = None,
+            get_batch_divisibility_req: Optional[Callable[[Policy],
+                                                          int]] = None,
+            obs_include_prev_action_reward: bool = True):
         """Initialize a dynamic TF policy.
 
-        Arguments:
+        Args:
             observation_space (gym.spaces.Space): Observation space of the
                 policy.
             action_space (gym.spaces.Space): Action space of the policy.
@@ -198,8 +200,7 @@ class DynamicTFPolicy(TFPolicy):
                 action_space=action_space,
                 num_outputs=logit_dim,
                 model_config=self.config["model"],
-                framework="tf",
-                **self.config["model"].get("custom_model_config", {}))
+                framework="tf")
 
         # Create the Exploration object to use for this Policy.
         self.exploration = self._create_exploration()

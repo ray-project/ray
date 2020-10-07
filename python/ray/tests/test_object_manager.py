@@ -1,5 +1,4 @@
 from collections import defaultdict
-import json
 import multiprocessing
 import numpy as np
 import pytest
@@ -207,14 +206,15 @@ def test_object_transfer_retry(ray_start_cluster):
     # Also, force the receiving object manager to retry the pull sooner. We
     # make the chunk size smaller in order to make it easier to test objects
     # with multiple chunks.
-    config = json.dumps({
+    config = {
         "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000,
         "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
-        "object_manager_default_chunk_size": 1000
-    })
+        "object_manager_default_chunk_size": 1000,
+        "object_store_full_max_retries": 1,
+    }
     object_store_memory = 150 * 1024 * 1024
     cluster.add_node(
-        object_store_memory=object_store_memory, _internal_config=config)
+        object_store_memory=object_store_memory, _system_config=config)
     cluster.add_node(num_gpus=1, object_store_memory=object_store_memory)
     ray.init(address=cluster.address)
 
@@ -243,8 +243,14 @@ def test_object_transfer_retry(ray_start_cluster):
         return not ray.worker.global_worker.core_worker.object_exists(x_id)
 
     def force_eviction():
+        refs = []
         for _ in range(20):
-            ray.put(np.zeros(object_store_memory // 10, dtype=np.uint8))
+            try:
+                refs.append(
+                    ray.put(
+                        np.zeros(object_store_memory // 10, dtype=np.uint8)))
+            except Exception:
+                break
         wait_for_condition(not_exists)
 
     # Force the object to be evicted from the local node.

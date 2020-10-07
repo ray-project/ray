@@ -3,7 +3,7 @@ import gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.types import TensorType, List, Union, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, List, Union, ModelConfigDict
 
 
 @DeveloperAPI

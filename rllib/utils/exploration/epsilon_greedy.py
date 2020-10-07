@@ -7,6 +7,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
+from ray.rllib.utils.torch_ops import FLOAT_MIN
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -56,7 +57,7 @@ class EpsilonGreedy(Exploration):
             0, framework=framework, tf_name="timestep")
 
         # Build the tf-info-op.
-        if self.framework in ["tf", "tfe"]:
+        if self.framework in ["tf2", "tf", "tfe"]:
             self._tf_info_op = self.get_info()
 
     @override(Exploration)
@@ -67,7 +68,7 @@ class EpsilonGreedy(Exploration):
                                explore: bool = True):
 
         q_values = action_distribution.inputs
-        if self.framework in ["tf", "tfe"]:
+        if self.framework in ["tf2", "tf", "tfe"]:
             return self._get_tf_exploration_action_op(q_values, explore,
                                                       timestep)
         else:
@@ -102,8 +103,8 @@ class EpsilonGreedy(Exploration):
             tf.random.categorical(random_valid_action_logits, 1), axis=1)
 
         chose_random = tf.random.uniform(
-            tf.stack([batch_size]),
-            minval=0, maxval=1, dtype=tf.float32) < epsilon
+            tf.stack([batch_size]), minval=0, maxval=1,
+            dtype=tf.float32) < epsilon
 
         action = tf.cond(
             pred=tf.constant(explore, dtype=tf.bool)
@@ -145,7 +146,7 @@ class EpsilonGreedy(Exploration):
             # Mask out actions, whose Q-values are -inf, so that we don't
             # even consider them for exploration.
             random_valid_action_logits = torch.where(
-                q_values == -float("inf"),
+                q_values <= FLOAT_MIN,
                 torch.ones_like(q_values) * 0.0, torch.ones_like(q_values))
             # A random action.
             random_actions = torch.squeeze(

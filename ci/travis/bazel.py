@@ -71,7 +71,7 @@ def textproto_split(input_lines, json_encoder):
 
 def textproto_parse(stream, encoding, json_encoder):
     for item in textproto_split(stream, json_encoder):
-        yield json.loads(item)
+        yield json.loads(item.decode(encoding))
 
 
 class Bazel(object):

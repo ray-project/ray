@@ -8,12 +8,12 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
     RepeatedValuesPreprocessor
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.trajectory_view import ViewRequirement
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.types import ModelConfigDict, TensorStructType
+from ray.rllib.utils.typing import ModelConfigDict, TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -58,7 +58,13 @@ class ModelV2:
         self.name: str = name or "default_model"
         self.framework: str = framework
         self._last_output = None
+        self.time_major = self.model_config.get("_time_major")
+        self.inference_view_requirements = {
+            SampleBatch.OBS: ViewRequirement(shift=0),
+        }
 
+    # TODO: (sven): Get rid of `get_initial_state` once Trajectory
+    #  View API is supported across all of RLlib.
     @PublicAPI
     def get_initial_state(self) -> List[np.ndarray]:
         """Get the initial recurrent state values for the model.
@@ -138,7 +144,7 @@ class ModelV2:
 
         You can find an runnable example in examples/custom_loss.py.
 
-        Arguments:
+        Args:
             policy_loss (Union[List[Tensor],Tensor]): List of or single policy
                 loss(es) from the policy.
             loss_inputs (dict): map of input placeholders for rollout data.
@@ -177,7 +183,7 @@ class ModelV2:
 
         Custom models should override forward() instead of __call__.
 
-        Arguments:
+        Args:
             input_dict (dict): dictionary of input tensors, including "obs",
                 "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those
@@ -246,37 +252,6 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
-    def get_view_requirements(
-            self, is_training: bool = False) -> Dict[str, ViewRequirement]:
-        """Returns a list of ViewRequirements for this Model (or None).
-
-        Note: This is an experimental API method.
-
-        A ViewRequirement object tells the caller of this Model, which
-        data at which timesteps are needed by this Model. This could be a
-        sequence of past observations, internal-states, previous rewards, or
-        other episode data/previous model outputs.
-
-        Args:
-            is_training (bool): Whether the returned requirements are for
-                training or inference (default).
-
-        Returns:
-            Dict[str, ViewRequirement]: The view requirements as a dict mapping
-                column names e.g. "obs" to config dicts containing supported
-                fields.
-                TODO: (sven) Currently only `timesteps==0` can be setup.
-        """
-        # Default implementation for simple RL model:
-        # Single requirement: Pass current obs as input.
-        return {
-            SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
-            SampleBatch.PREV_ACTIONS: ViewRequirement(
-                SampleBatch.ACTIONS, timesteps=-1),
-            SampleBatch.PREV_REWARDS: ViewRequirement(
-                SampleBatch.REWARDS, timesteps=-1),
-        }
-
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
 
@@ -332,6 +307,16 @@ class ModelV2:
                 of this ModelV2.
         """
         raise NotImplementedError
+
+    @PublicAPI
+    def is_time_major(self) -> bool:
+        """If True, data for calling this ModelV2 must be in time-major format.
+
+        Returns
+            bool: Whether this ModelV2 requires a time-major (TxBx...) data
+                format.
+        """
+        return self.time_major is True
 
 
 class NullContextManager:

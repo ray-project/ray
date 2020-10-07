@@ -15,6 +15,7 @@
 #pragma once
 
 #include <flatbuffers/flatbuffers.h>
+
 #include <unordered_set>
 
 #include "ray/common/id.h"

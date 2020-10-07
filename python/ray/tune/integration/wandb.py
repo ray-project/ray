@@ -1,12 +1,17 @@
 import os
-
+import pickle
 from multiprocessing import Process, Queue
 from numbers import Number
+from typing import Callable, Dict, List, Tuple
+import numpy as np
 
 from ray import logger
 from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
+from ray.tune.utils import flatten_dict
+
+import yaml
 
 try:
     import wandb
@@ -18,7 +23,55 @@ WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
 
 
-def wandb_mixin(func):
+def _is_allowed_type(obj):
+    """Return True if type is allowed for logging to wandb"""
+    if isinstance(obj, np.ndarray) and obj.size == 1:
+        return isinstance(obj.item(), Number)
+    return isinstance(obj, Number)
+
+
+def _clean_log(obj):
+    # Fixes https://github.com/ray-project/ray/issues/10631
+    if isinstance(obj, dict):
+        return {k: _clean_log(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_log(v) for v in obj]
+    elif _is_allowed_type(obj):
+        return obj
+
+    # Else
+    try:
+        pickle.dumps(obj)
+        yaml.dump(
+            obj,
+            Dumper=yaml.SafeDumper,
+            default_flow_style=False,
+            allow_unicode=True,
+            encoding="utf-8")
+        return obj
+    except Exception:
+        # give up, similar to _SafeFallBackEncoder
+        fallback = str(obj)
+
+        # Try to convert to int
+        try:
+            fallback = int(fallback)
+            return fallback
+        except ValueError:
+            pass
+
+        # Try to convert to float
+        try:
+            fallback = float(fallback)
+            return fallback
+        except ValueError:
+            pass
+
+        # Else, return string
+        return fallback
+
+
+def wandb_mixin(func: Callable):
     """wandb_mixin
 
     Weights and biases (https://www.wandb.com/) is a tool for experiment
@@ -46,7 +99,8 @@ def wandb_mixin(func):
     are used to configure the ``WandbTrainableMixin`` itself:
 
     Args:
-        api_key_file (str): Path to file containing the Wandb API KEY.
+        api_key_file (str): Path to file containing the Wandb API KEY. This
+            file must be on all nodes if using the `wandb_mixin`.
         api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
@@ -85,11 +139,10 @@ def wandb_mixin(func):
 
     """
     func.__mixins__ = (WandbTrainableMixin, )
-    func.__wandb_group__ = func.__name__
     return func
 
 
-def _set_api_key(wandb_config):
+def _set_api_key(wandb_config: Dict):
     """Set WandB API key from `wandb_config`. Will pop the
     `api_key_file` and `api_key` keys from `wandb_config` parameter"""
     api_key_file = os.path.expanduser(wandb_config.pop("api_key_file", ""))
@@ -103,10 +156,18 @@ def _set_api_key(wandb_config):
     if api_key:
         os.environ[WANDB_ENV_VAR] = api_key
     elif not os.environ.get(WANDB_ENV_VAR):
+        try:
+            # Check if user is already logged into wandb.
+            wandb.ensure_configured()
+            if wandb.api.api_key:
+                logger.info("Already logged into W&B.")
+                return
+        except AttributeError:
+            pass
         raise ValueError(
             "No WandB API key found. Either set the {} environment "
-            "variable or pass `api_key` or `api_key_file` in the config".
-            format(WANDB_ENV_VAR))
+            "variable, pass `api_key` or `api_key_file` in the config, "
+            "or run `wandb login` from the command line".format(WANDB_ENV_VAR))
 
 
 class _WandbLoggingProcess(Process):
@@ -115,7 +176,8 @@ class _WandbLoggingProcess(Process):
     wandb logging instances locally.
     """
 
-    def __init__(self, queue, exclude, to_config, *args, **kwargs):
+    def __init__(self, queue: Queue, exclude: List[str], to_config: List[str],
+                 *args, **kwargs):
         super(_WandbLoggingProcess, self).__init__()
         self.queue = queue
         self._exclude = set(exclude)
@@ -134,16 +196,21 @@ class _WandbLoggingProcess(Process):
             wandb.log(log)
         wandb.join()
 
-    def _handle_result(self, result):
+    def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
         log = {}
+        flat_result = flatten_dict(result, delimiter="/")
 
-        for k, v in result.items():
-            if k in self._to_config:
+        for k, v in flat_result.items():
+            if any(
+                    k.startswith(item + "/") or k == item
+                    for item in self._to_config):
                 config_update[k] = v
-            elif k in self._exclude:
+            elif any(
+                    k.startswith(item + "/") or k == item
+                    for item in self._exclude):
                 continue
-            elif not isinstance(v, Number):
+            elif not _is_allowed_type(v):
                 continue
             else:
                 log[k] = v
@@ -163,12 +230,18 @@ class WandbLogger(Logger):
     Wandb configuration is done by passing a ``wandb`` key to
     the ``config`` parameter of ``tune.run()`` (see example below).
 
+    The ``wandb`` config key can be optionally included in the
+    ``logger_config`` subkey of ``config`` to be compatible with RLLib
+    trainables (see second example below).
+
     The content of the ``wandb`` config entry is passed to ``wandb.init()``
     as keyword arguments. The exception are the following settings, which
     are used to configure the WandbLogger itself:
 
     Args:
-        api_key_file (str): Path to file containing the Wandb API KEY.
+        api_key_file (str): Path to file containing the Wandb API KEY. This
+            file only needs to be present on the node running the Tune script
+            if using the WandbLogger.
         api_key (str): Wandb API Key. Alternative to setting ``api_key_file``.
         excludes (list): List of metrics that should be excluded from
             the log.
@@ -205,6 +278,27 @@ class WandbLogger(Logger):
             },
             loggers=DEFAULT_LOGGERS + (WandbLogger, ))
 
+    Example for RLLib:
+
+    .. code-block :: python
+
+        from ray import tune
+        from ray.tune.integration.wandb import WandbLogger
+
+        tune.run(
+            "PPO",
+            config={
+                "env": "CartPole-v0",
+                "logger_config": {
+                    "wandb": {
+                        "project": "PPO",
+                        "api_key_file": "~/.wandb_api_key"
+                    }
+                }
+            },
+            loggers=[WandbLogger])
+
+
     """
 
     # Do not log these result keys
@@ -221,8 +315,14 @@ class WandbLogger(Logger):
     def _init(self):
         config = self.config.copy()
 
+        config.pop("callbacks", None)  # Remove callbacks
+
         try:
-            wandb_config = config.pop("wandb").copy()
+            if config.get("logger_config", {}).get("wandb"):
+                logger_config = config.pop("logger_config")
+                wandb_config = logger_config.get("wandb").copy()
+            else:
+                wandb_config = config.pop("wandb").copy()
         except KeyError:
             raise ValueError(
                 "Wandb logger specified but no configuration has been passed. "
@@ -243,8 +343,8 @@ class WandbLogger(Logger):
             exclude_results += ["config"]
 
         # Fill trial ID and name
-        trial_id = self.trial.trial_id
-        trial_name = str(self.trial)
+        trial_id = self.trial.trial_id if self.trial else None
+        trial_name = str(self.trial) if self.trial else None
 
         # Project name for Wandb
         try:
@@ -254,7 +354,11 @@ class WandbLogger(Logger):
                 "You need to specify a `project` in your wandb `config` dict.")
 
         # Grouping
-        wandb_group = wandb_config.pop("group", self.trial.trainable_name)
+        wandb_group = wandb_config.pop(
+            "group", self.trial.trainable_name if self.trial else None)
+
+        # remove unpickleable items!
+        config = _clean_log(config)
 
         wandb_init_kwargs = dict(
             id=trial_id,
@@ -275,7 +379,8 @@ class WandbLogger(Logger):
             **wandb_init_kwargs)
         self._wandb.start()
 
-    def on_result(self, result):
+    def on_result(self, result: Dict):
+        result = _clean_log(result)
         self._queue.put(result)
 
     def close(self):
@@ -286,7 +391,7 @@ class WandbLogger(Logger):
 class WandbTrainableMixin:
     _wandb = wandb
 
-    def __init__(self, config, *args, **kwargs):
+    def __init__(self, config: Dict, *args, **kwargs):
         if not isinstance(self, Trainable):
             raise ValueError(
                 "The `WandbTrainableMixin` can only be used as a mixin "
@@ -296,10 +401,10 @@ class WandbTrainableMixin:
 
         super().__init__(config, *args, **kwargs)
 
-        config = config.copy()
+        _config = config.copy()
 
         try:
-            wandb_config = config.pop("wandb").copy()
+            wandb_config = _config.pop("wandb").copy()
         except KeyError:
             raise ValueError(
                 "Wandb mixin specified but no configuration has been passed. "
@@ -326,6 +431,9 @@ class WandbTrainableMixin:
             default_group = type(self).__name__
         wandb_group = wandb_config.pop("group", default_group)
 
+        # remove unpickleable items!
+        _config = _clean_log(_config)
+
         wandb_init_kwargs = dict(
             id=trial_id,
             name=trial_name,
@@ -334,7 +442,7 @@ class WandbTrainableMixin:
             allow_val_change=True,
             group=wandb_group,
             project=wandb_project,
-            config=config)
+            config=_config)
         wandb_init_kwargs.update(wandb_config)
 
         self.wandb = self._wandb.init(**wandb_init_kwargs)

@@ -4,7 +4,7 @@ import numpy as np
 from typing import Callable, List, Tuple
 
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.types import EnvType, EnvConfigDict, EnvObsType, \
+from ray.rllib.utils.typing import EnvType, EnvConfigDict, EnvObsType, \
     EnvInfoDict, EnvActionType
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ class VectorEnv:
     ) -> Tuple[List[EnvObsType], List[float], List[bool], List[EnvInfoDict]]:
         """Performs a vectorized step on all sub environments using `actions`.
 
-        Arguments:
+        Args:
             actions (List[any]): List of actions (one for each sub-env).
 
         Returns:

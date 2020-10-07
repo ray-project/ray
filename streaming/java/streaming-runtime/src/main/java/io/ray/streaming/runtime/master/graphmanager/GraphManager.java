@@ -5,7 +5,6 @@ import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 
 /**
  * Graph manager is one of the important roles of JobMaster. It mainly focuses on graph management.
- *
  * <p>
  * Such as:
  * <ol>

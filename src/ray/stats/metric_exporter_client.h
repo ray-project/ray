@@ -14,9 +14,6 @@
 
 #pragma once
 
-#include <boost/asio.hpp>
-
-#include "ray/rpc/client_call.h"
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/stats/metric.h"
 
@@ -57,20 +54,11 @@ class MetricExporterDecorator : public MetricExporterClient {
 
 class MetricsAgentExporter : public MetricExporterDecorator {
  public:
-  MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter, const int port,
-                       boost::asio::io_service &io_service, const std::string address);
+  MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter);
 
   ~MetricsAgentExporter() {}
 
   void ReportMetrics(const std::vector<MetricPoint> &points) override;
-
- private:
-  /// Client to call a metrics agent gRPC server.
-  std::unique_ptr<rpc::MetricsAgentClient> client_;
-  /// Call Manager for gRPC client.
-  rpc::ClientCallManager client_call_manager_;
-  /// Whether or not description and units information for metrics should be updated.
-  bool should_update_description_ = true;
 };
 
 }  // namespace stats

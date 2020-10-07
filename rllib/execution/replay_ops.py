@@ -3,10 +3,11 @@ import random
 
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
+    warn_replay_buffer_size
 from ray.rllib.execution.common import \
     STEPS_SAMPLED_COUNTER, _get_shared_metrics
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 
 
 class StoreToReplayBuffer:
@@ -60,7 +61,7 @@ def Replay(*,
     This should be combined with the StoreToReplayActors operation using the
     Concurrently() operator.
 
-    Arguments:
+    Args:
         local_buffer (LocalReplayBuffer): Local buffer to use. Only one of this
             and replay_actors can be specified.
         actors (list): List of replay actors. Only one of this and
@@ -122,6 +123,7 @@ class SimpleReplayBuffer:
         self.replay_index = 0
 
     def add_batch(self, sample_batch):
+        warn_replay_buffer_size(item=sample_batch, num_items=self.num_slots)
         if self.num_slots > 0:
             if len(self.replay_batches) < self.num_slots:
                 self.replay_batches.append(sample_batch)

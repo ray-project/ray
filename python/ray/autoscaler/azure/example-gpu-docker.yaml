@@ -23,18 +23,13 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "tensorflow/tensorflow:1.13.1-gpu-py3"
+    image: "rayproject/ray:0.8.7-gpu"
     container_name: "ray-nvidia-docker-test" # e.g. ray_docker
-    run_options:
-      - --runtime=nvidia
 
     # # Example of running a GPU head with CPU workers
-    # head_image: "tensorflow/tensorflow:1.13.1-gpu-py3"
-    # head_run_options:
-    #     - --runtime=nvidia
+    # head_image: "rayproject/ray:0.8.7-gpu"
 
-    # worker_image: "ubuntu:18.04"
-    # worker_run_options: []
+    # worker_image: "rayproject/ray:0.8.7"
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
@@ -79,8 +74,9 @@ file_mounts: {
 }
 
 # List of shell commands to run to set up nodes.
-setup_commands:
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+# NOTE: rayproject/ray:0.8.7 has ray 0.8.7 bundled
+# setup_commands:
+#     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
  
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

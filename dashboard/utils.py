@@ -1,4 +1,5 @@
 import abc
+import socket
 import asyncio
 import collections
 import copy
@@ -12,10 +13,15 @@ import pkgutil
 import traceback
 from base64 import b64decode
 from collections.abc import MutableMapping, Mapping
-
+from collections import namedtuple
+from typing import Any
+import os
+import aioredis
 import aiohttp.web
 from aiohttp import hdrs
 from aiohttp.frozenlist import FrozenList
+from aiohttp.typedefs import PathLike
+from aiohttp.web import RouteDef
 import aiohttp.signals
 from google.protobuf.json_format import MessageToDict
 from ray.utils import binary_to_hex
@@ -52,9 +58,12 @@ class DashboardHeadModule(abc.ABC):
         self._dashboard_head = dashboard_head
 
     @abc.abstractmethod
-    async def run(self):
+    async def run(self, server):
         """
-        Run the module in an asyncio loop.
+        Run the module in an asyncio loop. A head module can provide
+        servicers to the server.
+
+        :param server: Asyncio GRPC server.
         """
 
 
@@ -75,14 +84,29 @@ class ClassMethodRouteTable:
         return cls._routes
 
     @classmethod
+    def bound_routes(cls):
+        bound_items = []
+        for r in cls._routes._items:
+            if isinstance(r, RouteDef):
+                route_method = getattr(r.handler, "__route_method__")
+                route_path = getattr(r.handler, "__route_path__")
+                instance = cls._bind_map[route_method][route_path].instance
+                if instance is not None:
+                    bound_items.append(r)
+            else:
+                bound_items.append(r)
+        routes = aiohttp.web.RouteTableDef()
+        routes._items = bound_items
+        return routes
+
+    @classmethod
     def _register_route(cls, method, path, **kwargs):
         def _wrapper(handler):
             if path in cls._bind_map[method]:
                 bind_info = cls._bind_map[method][path]
-                raise Exception("Duplicated route path: {}, "
-                                "previous one registered at {}:{}".format(
-                                    path, bind_info.filename,
-                                    bind_info.lineno))
+                raise Exception(f"Duplicated route path: {path}, "
+                                f"previous one registered at "
+                                f"{bind_info.filename}:{bind_info.lineno}")
 
             bind_info = cls._BindInfo(handler.__code__.co_filename,
                                       handler.__code__.co_firstlineno, None)
@@ -133,6 +157,10 @@ class ClassMethodRouteTable:
         return cls._register_route(hdrs.METH_ANY, path, **kwargs)
 
     @classmethod
+    def static(cls, prefix: str, path: PathLike, **kwargs: Any) -> None:
+        cls._routes.static(prefix, path, **kwargs)
+
+    @classmethod
     def bind(cls, instance):
         def predicate(o):
             if inspect.ismethod(o):
@@ -146,19 +174,39 @@ class ClassMethodRouteTable:
                 h.__func__.__route_path__].instance = instance
 
 
+def dashboard_module(enable):
+    """A decorator for dashboard module."""
+
+    def _cls_wrapper(cls):
+        cls.__ray_dashboard_module_enable__ = enable
+        return cls
+
+    return _cls_wrapper
+
+
 def get_all_modules(module_type):
-    logger.info("Get all modules by type: {}".format(module_type.__name__))
+    logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.new_dashboard.modules
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
             ray.new_dashboard.modules.__path__,
             ray.new_dashboard.modules.__name__ + "."):
         importlib.import_module(name)
-    return module_type.__subclasses__()
+    return [
+        m for m in module_type.__subclasses__()
+        if getattr(m, "__ray_dashboard_module_enable__", True)
+    ]
 
 
 def to_posix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
+
+
+def address_tuple(address):
+    if isinstance(address, tuple):
+        return address
+    ip, port = address.split(":")
+    return ip, int(port)
 
 
 class CustomEncoder(json.JSONEncoder):
@@ -170,13 +218,21 @@ class CustomEncoder(json.JSONEncoder):
 
 
 async def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
+    # In the dev context we allow a dev server running on a
+    # different port to consume the API, meaning we need to allow
+    # cross-origin access
+    if os.environ.get("RAY_DASHBOARD_DEV") == "1":
+        headers = {"Access-Control-Allow-Origin": "*"}
+    else:
+        headers = {}
     return aiohttp.web.json_response(
         {
             "result": success,
             "msg": message,
             "data": to_google_style(kwargs)
         },
-        dumps=functools.partial(json.dumps, cls=CustomEncoder))
+        dumps=functools.partial(json.dumps, cls=CustomEncoder),
+        headers=headers)
 
 
 def to_camel_case(snake_str):
@@ -190,6 +246,7 @@ def to_camel_case(snake_str):
 def to_google_style(d):
     """Recursive convert all keys in dict to google style."""
     new_dict = {}
+
     for k, v in d.items():
         if isinstance(v, dict):
             new_dict[to_camel_case(k)] = to_google_style(v)
@@ -279,8 +336,7 @@ class Change:
         self.new = new
 
     def __str__(self):
-        return "Change(owner: {}, old: {}, new: {}".format(
-            self.owner, self.old, self.new)
+        return f"Change(owner: {self.owner}, old: {self.old}, new: {self.new}"
 
 
 class NotifyQueue:
@@ -303,6 +359,8 @@ class Dict(MutableMapping):
     :note: Only the first level data report change.
     """
 
+    ChangeItem = namedtuple("DictChangeItem", ["key", "value"])
+
     def __init__(self, *args, **kwargs):
         self._data = dict(*args, **kwargs)
         self.signal = Signal(self)
@@ -312,10 +370,14 @@ class Dict(MutableMapping):
         self._data[key] = value
         if len(self.signal) and old != value:
             if old is None:
-                co = self.signal.send(Change(owner=self, new={key: value}))
+                co = self.signal.send(
+                    Change(owner=self, new=Dict.ChangeItem(key, value)))
             else:
                 co = self.signal.send(
-                    Change(owner=self, old={key: old}, new={key: value}))
+                    Change(
+                        owner=self,
+                        old=Dict.ChangeItem(key, old),
+                        new=Dict.ChangeItem(key, value)))
             NotifyQueue.put(co)
 
     def __getitem__(self, item):
@@ -324,7 +386,8 @@ class Dict(MutableMapping):
     def __delitem__(self, key):
         old = self._data.pop(key, None)
         if len(self.signal) and old is not None:
-            co = self.signal.send(Change(owner=self, old={key: old}))
+            co = self.signal.send(
+                Change(owner=self, old=Dict.ChangeItem(key, old)))
             NotifyQueue.put(co)
 
     def __len__(self):
@@ -333,8 +396,41 @@ class Dict(MutableMapping):
     def __iter__(self):
         return iter(copy.deepcopy(self._data))
 
+    def __str__(self):
+        return str(self._data)
+
     def reset(self, d):
         assert isinstance(d, Mapping)
         for key in self._data.keys() - d.keys():
             self.pop(key)
         self.update(d)
+
+
+async def get_aioredis_client(redis_address, redis_password,
+                              retry_interval_seconds, retry_times):
+    for x in range(retry_times):
+        try:
+            return await aioredis.create_redis_pool(
+                address=redis_address, password=redis_password)
+        except (socket.gaierror, ConnectionError) as ex:
+            logger.error("Connect to Redis failed: %s, retry...", ex)
+            await asyncio.sleep(retry_interval_seconds)
+    # Raise exception from create_redis_pool
+    return await aioredis.create_redis_pool(
+        address=redis_address, password=redis_password)
+
+
+def async_loop_forever(interval_seconds):
+    def _wrapper(coro):
+        @functools.wraps(coro)
+        async def _looper(*args, **kwargs):
+            while True:
+                try:
+                    await coro(*args, **kwargs)
+                except Exception:
+                    logger.exception(f"Error looping coroutine {coro}.")
+                await asyncio.sleep(interval_seconds)
+
+        return _looper
+
+    return _wrapper

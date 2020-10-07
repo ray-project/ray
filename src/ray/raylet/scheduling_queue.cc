@@ -21,10 +21,8 @@
 
 namespace {
 
-static constexpr const char *task_state_strings[] = {
-    "placeable", "waiting",    "ready",
-    "running",   "infeasible", "waiting for actor creation",
-    "swap"};
+static constexpr const char *task_state_strings[] = {"placeable", "waiting", "ready",
+                                                     "running", "infeasible"};
 static_assert(sizeof(task_state_strings) / sizeof(const char *) ==
                   static_cast<int>(ray::raylet::TaskState::kNumTaskQueues),
               "Must specify a TaskState name for every task queue");
@@ -71,7 +69,14 @@ bool TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
   task_map_[task_id] = list_iterator;
   // Resource bookkeeping
   total_resource_load_.AddResources(task.GetTaskSpecification().GetRequiredResources());
-  resource_load_by_shape_[task.GetTaskSpecification().GetSchedulingClass()]++;
+  const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
+  resource_load_by_shape_[scheduling_class]++;
+
+  int64_t backlog_size = task.BacklogSize();
+  if (backlog_size >
+      0) {  // Poor man's version of RayConfig::instance().report_worker_backlog()
+    request_backlog_by_shape_[scheduling_class] += task.BacklogSize();
+  }
   return true;
 }
 
@@ -89,6 +94,10 @@ bool TaskQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tas
   resource_load_by_shape_[scheduling_class]--;
   if (resource_load_by_shape_[scheduling_class] == 0) {
     resource_load_by_shape_.erase(scheduling_class);
+  }
+  request_backlog_by_shape_[scheduling_class] -= it->BacklogSize();
+  if (request_backlog_by_shape_[scheduling_class] <= 0) {
+    request_backlog_by_shape_.erase(scheduling_class);
   }
   if (removed_tasks) {
     removed_tasks->push_back(std::move(*it));
@@ -117,6 +126,11 @@ const ResourceSet &TaskQueue::GetTotalResourceLoad() const {
 const std::unordered_map<SchedulingClass, uint64_t> &TaskQueue::GetResourceLoadByShape()
     const {
   return resource_load_by_shape_;
+}
+
+const std::unordered_map<SchedulingClass, int64_t> &TaskQueue::GetRequestBacklogByShape()
+    const {
+  return request_backlog_by_shape_;
 }
 
 bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
@@ -163,11 +177,13 @@ ResourceSet SchedulingQueue::GetTotalResourceLoad() const {
   return load;
 }
 
-rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes) const {
+rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(
+    int64_t max_shapes, bool report_worker_backlog) const {
   std::unordered_map<SchedulingClass, rpc::ResourceDemand> load;
   auto infeasible_queue_load =
       task_queues_[static_cast<int>(TaskState::INFEASIBLE)]->GetResourceLoadByShape();
   auto ready_queue_load = ready_queue_->GetResourceLoadByShape();
+  auto backlog_size_load = ready_queue_->GetRequestBacklogByShape();
   size_t max_shapes_to_add = ready_queue_load.size() + infeasible_queue_load.size();
   if (max_shapes >= 0) {
     max_shapes_to_add = max_shapes;
@@ -188,6 +204,12 @@ rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes) co
       load[one_cpu_scheduling_cls].set_num_ready_requests_queued(
           ready_queue_load.at(one_cpu_scheduling_cls));
     }
+    if (report_worker_backlog) {
+      if (backlog_size_load.count(one_cpu_scheduling_cls) > 0) {
+        load[one_cpu_scheduling_cls].set_backlog_size(
+            backlog_size_load.at(one_cpu_scheduling_cls));
+      }
+    }
   }
 
   // Collect the infeasible queue's load.
@@ -203,6 +225,15 @@ rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes) co
   while (ready_it != ready_queue_load.end() && load.size() < max_shapes_to_add) {
     load[ready_it->first].set_num_ready_requests_queued(ready_it->second);
     ready_it++;
+  }
+
+  if (report_worker_backlog) {
+    // Collect the backlog size.
+    auto backlog_it = backlog_size_load.begin();
+    while (backlog_it != backlog_size_load.end() && load.size() < max_shapes_to_add) {
+      load[backlog_it->first].set_backlog_size(backlog_it->second);
+      backlog_it++;
+    }
   }
 
   // Set the resource shapes.
@@ -242,9 +273,6 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
   case TaskState::PLACEABLE:
     FilterStateFromQueue(task_ids, TaskState::PLACEABLE);
     break;
-  case TaskState::WAITING_FOR_ACTOR_CREATION:
-    FilterStateFromQueue(task_ids, TaskState::WAITING_FOR_ACTOR_CREATION);
-    break;
   case TaskState::WAITING:
     FilterStateFromQueue(task_ids, TaskState::WAITING);
     break;
@@ -256,9 +284,6 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
     break;
   case TaskState::INFEASIBLE:
     FilterStateFromQueue(task_ids, TaskState::INFEASIBLE);
-    break;
-  case TaskState::SWAP:
-    FilterStateFromQueue(task_ids, TaskState::SWAP);
     break;
   case TaskState::BLOCKED: {
     const auto blocked_ids = GetBlockedTaskIds();
@@ -326,8 +351,6 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
            TaskState::READY,
            TaskState::RUNNING,
            TaskState::INFEASIBLE,
-           TaskState::WAITING_FOR_ACTOR_CREATION,
-           TaskState::SWAP,
        }) {
     RemoveTasksFromQueue(task_state, task_ids, &removed_tasks);
   }
@@ -347,8 +370,6 @@ bool SchedulingQueue::RemoveTask(const TaskID &task_id, Task *removed_task,
            TaskState::READY,
            TaskState::RUNNING,
            TaskState::INFEASIBLE,
-           TaskState::WAITING_FOR_ACTOR_CREATION,
-           TaskState::SWAP,
        }) {
     RemoveTasksFromQueue(task_state, task_id_set, &removed_tasks);
     if (task_id_set.empty()) {
@@ -395,9 +416,6 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   case TaskState::INFEASIBLE:
     RemoveTasksFromQueue(TaskState::INFEASIBLE, task_ids, &removed_tasks);
     break;
-  case TaskState::SWAP:
-    RemoveTasksFromQueue(TaskState::SWAP, task_ids, &removed_tasks);
-    break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks from unrecognized state "
                    << static_cast<std::underlying_type<TaskState>::type>(src_state);
@@ -422,9 +440,6 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     break;
   case TaskState::INFEASIBLE:
     QueueTasks(removed_tasks, TaskState::INFEASIBLE);
-    break;
-  case TaskState::SWAP:
-    QueueTasks(removed_tasks, TaskState::SWAP);
     break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks to unrecognized state "
@@ -457,23 +472,6 @@ std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForJob(const JobID &job_id
   std::unordered_set<TaskID> task_ids;
   for (const auto &task_queue : task_queues_) {
     GetTasksForJobFromQueue(*task_queue, job_id, task_ids);
-  }
-  return task_ids;
-}
-
-std::unordered_set<TaskID> SchedulingQueue::GetTaskIdsForActor(
-    const ActorID &actor_id) const {
-  std::unordered_set<TaskID> task_ids;
-  int swap = static_cast<int>(TaskState::SWAP);
-  int i = 0;
-  for (const auto &task_queue : task_queues_) {
-    // This is a hack to make sure that we don't remove tasks from the SWAP
-    // queue, since these are always guaranteed to be removed and eventually
-    // resubmitted if necessary by the node manager.
-    if (i != swap) {
-      GetActorTasksFromQueue(*task_queue, actor_id, task_ids);
-    }
-    i++;
   }
   return task_ids;
 }
@@ -539,13 +537,13 @@ std::string SchedulingQueue::DebugString() const {
 }
 
 void SchedulingQueue::RecordMetrics() const {
-  for (size_t i = 0; i < static_cast<int>(ray::raylet::TaskState::kNumTaskQueues); i++) {
-    TaskState task_state = static_cast<TaskState>(i);
-    stats::SchedulingQueueStats().Record(
-        static_cast<double>(GetTaskQueue(task_state)->GetTasks().size()),
-        {{stats::ValueTypeKey,
-          std::string("num_") + GetTaskStateString(task_state) + "_tasks"}});
-  }
+  stats::NumPlaceableTasks().Record(
+      GetTaskQueue(TaskState::PLACEABLE)->GetTasks().size());
+  stats::NumPlaceableTasks().Record(GetTaskQueue(TaskState::WAITING)->GetTasks().size());
+  stats::NumPlaceableTasks().Record(GetTaskQueue(TaskState::READY)->GetTasks().size());
+  stats::NumPlaceableTasks().Record(GetTaskQueue(TaskState::RUNNING)->GetTasks().size());
+  stats::NumPlaceableTasks().Record(
+      GetTaskQueue(TaskState::INFEASIBLE)->GetTasks().size());
 }
 
 }  // namespace raylet

@@ -21,10 +21,11 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
- * Optimize job graph by chaining some operators so that some operators can be run in the
- * same thread.
+ * Optimize job graph by chaining some operators so that some operators can be run in the same
+ * thread.
  */
 public class JobGraphOptimizer {
+
   private final JobGraph jobGraph;
   private Set<JobVertex> visited = new HashSet<>();
   // vertex id -> vertex
@@ -89,7 +90,8 @@ public class JobGraphOptimizer {
       mergedVertex = headVertex;
     } else {
       List<StreamOperator> operators = verticesToMerge.stream()
-          .map(v -> vertexMap.get(v.getVertexId()).getStreamOperator())
+          .map(v -> vertexMap.get(v.getVertexId())
+              .getStreamOperator())
           .collect(Collectors.toList());
       List<Map<String, String>> configs = verticesToMerge.stream()
           .map(v -> vertexMap.get(v.getVertexId()).getConfig())
@@ -99,7 +101,8 @@ public class JobGraphOptimizer {
         operator = ChainedOperator.newChainedOperator(operators, configs);
       } else {
         List<PythonOperator> pythonOperators = operators.stream()
-            .map(o -> (PythonOperator) o).collect(Collectors.toList());
+            .map(o -> (PythonOperator) o)
+            .collect(Collectors.toList());
         operator = new ChainedPythonOperator(pythonOperators, configs);
       }
       // chained operator config is placed into `ChainedOperator`.
@@ -156,9 +159,10 @@ public class JobGraphOptimizer {
     }
   }
 
-  private boolean canBeChained(JobVertex precedingVertex,
-                               JobVertex succeedingVertex,
-                               JobEdge edge) {
+  private boolean canBeChained(
+      JobVertex precedingVertex,
+      JobVertex succeedingVertex,
+      JobEdge edge) {
     if (jobGraph.getVertexOutputEdges(precedingVertex.getVertexId()).size() > 1 ||
         jobGraph.getVertexInputEdges(succeedingVertex.getVertexId()).size() > 1) {
       return false;

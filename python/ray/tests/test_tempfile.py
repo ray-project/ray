@@ -5,7 +5,6 @@ import time
 
 import pytest
 import ray
-from ray.cluster_utils import Cluster
 from ray.test_utils import check_call_ray
 
 
@@ -24,43 +23,11 @@ def unix_socket_delete(unix_socket):
     return os.remove(unix_socket) if unix else None
 
 
-def test_conn_cluster():
-    # plasma_store_socket_name
-    with pytest.raises(Exception) as exc_info:
-        ray.init(
-            address="127.0.0.1:6379",
-            plasma_store_socket_name=os.path.join(
-                ray.utils.get_user_temp_dir(), "this_should_fail"))
-    assert exc_info.value.args[0] == (
-        "When connecting to an existing cluster, "
-        "plasma_store_socket_name must not be provided.")
-
-    # raylet_socket_name
-    with pytest.raises(Exception) as exc_info:
-        ray.init(
-            address="127.0.0.1:6379",
-            raylet_socket_name=os.path.join(ray.utils.get_user_temp_dir(),
-                                            "this_should_fail"))
-    assert exc_info.value.args[0] == (
-        "When connecting to an existing cluster, "
-        "raylet_socket_name must not be provided.")
-
-    # temp_dir
-    with pytest.raises(Exception) as exc_info:
-        ray.init(
-            address="127.0.0.1:6379",
-            temp_dir=os.path.join(ray.utils.get_user_temp_dir(),
-                                  "this_should_fail"))
-    assert exc_info.value.args[0] == (
-        "When connecting to an existing cluster, "
-        "temp_dir must not be provided.")
-
-
 def test_tempdir(shutdown_only):
     shutil.rmtree(ray.utils.get_ray_temp_dir(), ignore_errors=True)
     ray.init(
-        temp_dir=os.path.join(ray.utils.get_user_temp_dir(),
-                              "i_am_a_temp_dir"))
+        _temp_dir=os.path.join(ray.utils.get_user_temp_dir(),
+                               "i_am_a_temp_dir"))
     assert os.path.exists(
         os.path.join(ray.utils.get_user_temp_dir(),
                      "i_am_a_temp_dir")), "Specified temp dir not found."
@@ -75,7 +42,7 @@ def test_tempdir_commandline():
     shutil.rmtree(ray.utils.get_ray_temp_dir(), ignore_errors=True)
     check_call_ray([
         "start", "--head", "--temp-dir=" + os.path.join(
-            ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2")
+            ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2"), "--port", "0"
     ])
     assert os.path.exists(
         os.path.join(ray.utils.get_user_temp_dir(),
@@ -94,47 +61,7 @@ def test_tempdir_long_path():
         maxlen = 104 if sys.platform.startswith("darwin") else 108
         temp_dir = os.path.join(ray.utils.get_user_temp_dir(), "z" * maxlen)
         with pytest.raises(OSError):
-            ray.init(temp_dir=temp_dir)  # path should be too long
-
-
-def test_raylet_socket_name(shutdown_only):
-    sock1 = unix_socket_create_path("i_am_a_temp_socket_1")
-    ray.init(raylet_socket_name=sock1)
-    unix_socket_verify(sock1)
-    ray.shutdown()
-    try:
-        unix_socket_delete(sock1)
-    except OSError:
-        pass  # It could have been removed by Ray.
-    cluster = Cluster(True)
-    sock2 = unix_socket_create_path("i_am_a_temp_socket_2")
-    cluster.add_node(raylet_socket_name=sock2)
-    unix_socket_verify(sock2)
-    cluster.shutdown()
-    try:
-        unix_socket_delete(sock2)
-    except OSError:
-        pass  # It could have been removed by Ray.
-
-
-def test_temp_plasma_store_socket(shutdown_only):
-    sock1 = unix_socket_create_path("i_am_a_temp_socket_1")
-    ray.init(plasma_store_socket_name=sock1)
-    unix_socket_verify(sock1)
-    ray.shutdown()
-    try:
-        unix_socket_delete(sock1)
-    except OSError:
-        pass  # It could have been removed by Ray.
-    cluster = Cluster(True)
-    sock2 = unix_socket_create_path("i_am_a_temp_socket_2")
-    cluster.add_node(plasma_store_socket_name=sock2)
-    unix_socket_verify(sock2)
-    cluster.shutdown()
-    try:
-        unix_socket_delete(sock2)
-    except OSError:
-        pass  # It could have been removed by Ray.
+            ray.init(_temp_dir=temp_dir)  # path should be too long
 
 
 def test_raylet_tempfiles(shutdown_only):

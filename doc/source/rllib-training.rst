@@ -235,11 +235,11 @@ It also simplifies saving the trained agent. For example:
     checkpoints = analysis.get_trial_checkpoints_paths(
         trial=analysis.get_best_trial("episode_reward_mean"),
         metric="episode_reward_mean")
-													  
+
 Loading and restoring a trained agent from a checkpoint is simple:
 
 .. code-block:: python
-	
+
     agent = ppo.PPOTrainer(config=config, env=env_class)
     agent.restore(checkpoint_path)
 
@@ -519,7 +519,7 @@ For even finer-grained control over training, you can use RLlib's lower-level `b
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
-Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *detached actors* (learn more about Ray actors `here <actors.html>`__). These actors are assigned a global name and handles to them can be retrieved using these names. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
+Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). These actors are assigned a global name and handles to them can be retrieved using these names. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
 
 .. code-block:: python
 
@@ -568,12 +568,11 @@ actions from distributions (stochastically or deterministically).
 The setup can be done via using built-in Exploration classes
 (see `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
 which are specified (and further configured) inside ``Trainer.config["exploration_config"]``.
-Besides using built-in classes, one can sub-class any of
+Besides using one of the available classes, one can sub-class any of
 these built-ins, add custom behavior to it, and use that new class in
 the config instead.
 
-Every policy has-an instantiation of one of the Exploration (sub-)classes.
-This Exploration object is created from the Trainer’s
+Every policy has-an Exploration object, which is created from the Trainer’s
 ``config[“exploration_config”]`` dict, which specifies the class to use via the
 special “type” key, as well as constructor arguments via all other keys,
 e.g.:
@@ -589,7 +588,7 @@ e.g.:
     # ...
 
 The following table lists all built-in Exploration sub-classes and the agents
-that currently used these by default:
+that currently use these by default:
 
 .. View table below at: https://docs.google.com/drawings/d/1dEMhosbu7HVgHEwGBuMlEDyPiwjqp_g6bZ0DzCMaoUM/edit?usp=sharing
 .. image:: images/rllib-exploration-api-table.svg
@@ -598,53 +597,20 @@ An Exploration class implements the ``get_exploration_action`` method,
 in which the exact exploratory behavior is defined.
 It takes the model’s output, the action distribution class, the model itself,
 a timestep (the global env-sampling steps already taken),
-and an ``explore`` switch and outputs a tuple of 1) action and
-2) log-likelihood:
+and an ``explore`` switch and outputs a tuple of a) action and
+b) log-likelihood:
 
-.. code-block:: python
-
-    def get_exploration_action(self,
-                               distribution_inputs,
-                               action_dist_class,
-                               model=None,
-                               explore=True,
-                               timestep=None):
-        """Returns a (possibly) exploratory action and its log-likelihood.
-
-        Given the Model's logits outputs and action distribution, returns an
-        exploratory action.
-
-        Args:
-            distribution_inputs (any): The output coming from the model,
-                ready for parameterizing a distribution
-                (e.g. q-values or PG-logits).
-            action_dist_class (class): The action distribution class
-                to use.
-            model (ModelV2): The Model object.
-            explore (bool): True: "Normal" exploration behavior.
-                False: Suppress all exploratory behavior and return
-                    a deterministic action.
-            timestep (int): The current sampling time step. If None, the
-                component should try to use an internal counter, which it
-                then increments by 1. If provided, will set the internal
-                counter to the given value.
-
-        Returns:
-            Tuple:
-            - The chosen exploration action or a tf-op to fetch the exploration
-              action from the graph.
-            - The log-likelihood of the exploration action.
-        """
-        pass
-
+.. literalinclude:: ../../rllib/utils/exploration/exploration.py
+   :language: python
+   :start-after: __sphinx_doc_begin_get_exploration_action__
+   :end-before: __sphinx_doc_end_get_exploration_action__
 
 On the highest level, the ``Trainer.compute_action`` and ``Policy.compute_action(s)``
 methods have a boolean ``explore`` switch, which is passed into
-``Exploration.get_exploration_action``. If ``None``, the value of
-``Trainer.config[“explore”]`` is used.
-Hence ``config[“explore”]`` describes the default behavior of the policy and
-e.g. allows switching off any exploration easily for evaluation purposes
-(see :ref:`CustomEvaluation`).
+``Exploration.get_exploration_action``. If ``explore=None``, the value of
+``Trainer.config[“explore”]`` is used, which thus serves as a main switch for
+exploratory behavior, allowing e.g. turning off any exploration easily for
+evaluation purposes (see :ref:`CustomEvaluation`).
 
 The following are example excerpts from different Trainers' configs
 (see rllib/agents/trainer.py) to setup different exploration behaviors:
@@ -688,13 +654,14 @@ The following are example excerpts from different Trainers' configs
        "temperature": 1.0,
     },
 
-    # c) PPO: see rllib/agents/ppo/ppo.py
-    # Behavior: The algo samples stochastically by default from the
+    # c) All policy-gradient algos and SAC: see rllib/agents/trainer.py
+    # Behavior: The algo samples stochastically from the
     # model-parameterized distribution. This is the global Trainer default
-    # setting defined in trainer.py and used by all PG-type algos.
+    # setting defined in trainer.py and used by all PG-type algos (plus SAC).
     "explore": True,
     "exploration_config": {
        "type": "StochasticSampling",
+       "random_timesteps": 0,  # timesteps at beginning, over which to act uniformly randomly
     },
 
 
@@ -912,7 +879,7 @@ Using PyTorch
 ~~~~~~~~~~~~~
 
 Trainers that have an implemented TorchPolicy, will allow you to run
-`rllib train` using the the command line ``--torch`` flag.
+`rllib train` using the command line ``--torch`` flag.
 Algorithms that do not have a torch version yet will complain with an error in
 this case.
 

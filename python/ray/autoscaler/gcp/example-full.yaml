@@ -23,7 +23,7 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
+    image: "" # e.g., rayproject/ray:0.8.7
     container_name: "" # e.g. ray_docker
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
@@ -140,9 +140,7 @@ setup_commands:
       && echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.profile
 
     # Install ray
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
 
 
 # Custom commands that will be run on the head node after common setup.
