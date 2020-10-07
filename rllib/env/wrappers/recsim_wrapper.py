@@ -5,7 +5,8 @@ Source: https://github.com/google-research/recsim
 """
 
 import math
-from typing import List, OrderedDict
+from typing import List
+from collections import OrderedDict
 
 import gym
 from gym import spaces
