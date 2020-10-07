@@ -46,7 +46,7 @@ class ForwardActor:
         self.handle = client.get_handle("hello_world")
 
     async def __call__(self, _):
-        return ray.get(self.handle.remote())
+        await self.handle.remote()
 
 
 client.create_backend("hello_world", hello_world)
@@ -78,7 +78,7 @@ def run_test(num_replicas, num_forwarders):
     qps = num_queries / (time.time() - start)
 
     logger.info("{} forwarders and {} worker replicas: {} requests/s".format(
-        num_forwarders, num_replicas, qps))
+        num_forwarders, num_replicas, int(qps)))
 
 
 for num_forwarders in [0, 1, 2]:

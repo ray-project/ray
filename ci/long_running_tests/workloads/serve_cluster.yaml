@@ -6,7 +6,7 @@ autoscaling_mode: default
 docker:
     image: 'anyscale/ray-ml:latest'
     container_name: ray_container
-    pull_before_run: false
+    pull_before_run: true
 target_utilization_fraction: 0.8
 idle_timeout_minutes: 5
 provider:
@@ -32,7 +32,6 @@ initialization_commands: []
 setup_commands:
     - apt-get install build-essential libssl-dev git -y
     - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make && cp wrk /usr/local/bin'
-    - python -c 'import sys;sys.exit(0) if 6 >= sys.version_info.minor else sys.exit(1)' && echo 'keep dataclasses package installed in python < 3.6.x' || pip uninstall --yes dataclasses
 head_setup_commands: []
 worker_setup_commands: []
 head_start_ray_commands:
