@@ -350,9 +350,9 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
         self.action_space_struct = get_base_struct_from_space(action_space)
 
-        input_lens = tree.flatten(input_lens)
+        self.input_lens = tree.flatten(input_lens)
         flat_child_distributions = tree.flatten(child_distributions)
-        split_inputs = torch.split(inputs, input_lens, dim=1)
+        split_inputs = torch.split(inputs, self.input_lens, dim=1)
         self.flat_child_distributions = tree.map_structure(
             lambda dist, input_: dist(input_, model), flat_child_distributions,
             list(split_inputs))
@@ -419,3 +419,7 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         for c in self.flat_child_distributions[1:]:
             p += c.sampled_action_logp()
         return p
+
+    @override(ActionDistribution)
+    def required_model_output_shape(self, action_space, model_config):
+        return np.sum(self.input_lens)

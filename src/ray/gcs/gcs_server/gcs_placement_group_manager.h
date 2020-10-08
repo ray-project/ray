@@ -20,6 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -107,10 +108,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param io_context The event loop to run the monitor on.
   /// \param scheduler Used to schedule placement group creation tasks.
   /// \param gcs_table_storage Used to flush placement group data to storage.
+  /// \param gcs_node_manager Reference of GcsNodeManager.
   explicit GcsPlacementGroupManager(
       boost::asio::io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+      GcsNodeManager &gcs_node_manager);
 
   ~GcsPlacementGroupManager() = default;
 
@@ -191,6 +194,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     return scheduling_in_progress_id_ != PlacementGroupID::Nil();
   }
 
+  // Method that is invoked every second.
+  void Tick() const;
+
+  // Update placement group load information so that the autoscaler can use it.
+  void UpdatePlacementGroupLoad() const;
+
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
   boost::asio::io_context &io_context_;
@@ -221,6 +230,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// TODO(sang): Currently, only one placement group can be scheduled at a time.
   /// We should probably support concurrenet creation (or batching).
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
+
+  /// Reference of GcsNodeManager.
+  const GcsNodeManager &gcs_node_manager_;
 };
 
 }  // namespace gcs

@@ -3,6 +3,11 @@ const base =
     ? "http://localhost:8265"
     : window.location.origin;
 
+type APIResponse<T> = {
+  result: boolean;
+  msg: string;
+  data?: T;
+};
 // TODO(mitchellstern): Add JSON schema validation for the responses.
 const get = async <T>(path: string, params: { [key: string]: any }) => {
   const url = new URL(path, base);
@@ -11,67 +16,65 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   }
 
   const response = await fetch(url.toString());
-  const json = await response.json();
+  const json: APIResponse<T> = await response.json();
 
-  const { result, error } = json;
+  const { result, msg, data } = json;
 
-  if (error !== null) {
-    throw Error(error);
+  if (!result) {
+    throw Error(msg);
   }
 
-  return result as T;
-};
-
-const post = async <T>(path: string, params: { [key: string]: any }) => {
-  const requestOptions = {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  };
-
-  const url = new URL(path, base);
-
-  const response = await fetch(url.toString(), requestOptions);
-  const json = await response.json();
-
-  const { result, error } = json;
-
-  if (error !== null) {
-    throw Error(error);
-  }
-
-  return result as T;
+  return data as T;
 };
 
 export type RayConfigResponse = {
-  min_workers: number;
-  max_workers: number;
-  initial_workers: number;
-  autoscaling_mode: string;
-  idle_timeout_minutes: number;
-  head_type: string;
-  worker_type: string;
+  minWorkers: number;
+  maxWorkers: number;
+  initialWorkers: number;
+  autoscalingMode: string;
+  idleTimeoutMinutes: number;
+  headType: string;
+  workerType: string;
 };
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
-export type NodeInfoResponseWorker = {
+export type Worker = {
   pid: number;
-  create_time: number;
-  cmdline: string[];
-  cpu_percent: number;
-  cpu_times: {
-    system: number;
-    children_system: number;
-    user: number;
-    children_user: number;
-  };
-  memory_info: {
-    pageins: number;
-    pfaults: number;
-    vms: number;
+  workerId: string;
+  createTime: number;
+  memoryInfo: {
     rss: number;
+    vms: number;
+    shared: number;
+    text: number;
+    lib: number;
+    data: number;
+    dirty: Number;
   };
+  cmdline: string[];
+  cpuTimes: {
+    user: number;
+    system: number;
+    childrenUser: number;
+    childrenSystem: number;
+    iowait: number;
+  };
+  cpuPercent: number;
+  logCount: number;
+  errorCount: number;
+  language: string;
+  jobId: string;
+  coreWorkerStats: CoreWorkerStats[];
+};
+
+export type CoreWorkerStats = {
+  ipAddress: string;
+  port: number;
+  usedResources?: { [key: string]: ResourceAllocations };
+  numExecutedTasks: number;
+  workerId: string;
+  // We need the below but Ant's API does not yet support it.
 };
 
 export type GPUProcessStats = {
@@ -79,7 +82,7 @@ export type GPUProcessStats = {
   // utilization of a single process of a single GPU.
   username: string;
   command: string;
-  gpu_memory_usage: number;
+  gpuMemoryUsage: number;
   pid: number;
 };
 
@@ -87,43 +90,89 @@ export type GPUStats = {
   // This represents stats fetched from a node about a single GPU
   uuid: string;
   name: string;
-  temperature_gpu: number;
-  fan_speed: number;
-  utilization_gpu: number;
-  power_draw: number;
-  enforced_power_limit: number;
-  memory_used: number;
-  memory_total: number;
-  processes: Array<GPUProcessStats>;
+  temperatureGpu: number;
+  fanSpeed: number;
+  utilizationGpu: number;
+  powerDraw: number;
+  enforcedPowerLimit: number;
+  memoryUsed: number;
+  memoryTotal: number;
+  processes: GPUProcessStats[];
+};
+
+export type NodeSummary = BaseNodeInfo;
+
+export type NodeDetails = {
+  workers: Worker[];
+  raylet: RayletData;
+} & BaseNodeInfo;
+
+export type RayletData = {
+  // Merger of GCSNodeStats and GetNodeStatsReply
+  // GetNodeStatsReply fields.
+  // Note workers are in an array in NodeDetails
+  objectStoreUsedMemory: number;
+  objectStoreAvailableMemory: number;
+  numWorkers: number;
+
+  // GCSNodeStats fields
+  nodeId: number;
+  nodeManagerAddress: string;
+  rayletSocketName: string;
+  objectStoreSocketName: string;
+  nodeManagerPort: number;
+  objectManagerPort: number;
+  state: "ALIVE" | "DEAD";
+  nodeManagerHostname: string;
+  metricsExportPort: number;
+};
+
+export type ViewData = {
+  viewName: string;
+  measures: Measure[];
+};
+
+export type Measure = {
+  tags: string; // e.g.  "Tag1:Value1,Tag2:Value2,Tag3:Value3"
+  intValue?: number;
+  doubleValue?: number;
+  distributionMin?: number;
+  distributionMean?: number;
+  distributionMax?: number;
+  distributionCount?: number;
+  distributionBucketBoundaries?: number[];
+  distributionBucketCounts?: number[];
+};
+
+type BaseNodeInfo = {
+  now: number;
+  hostname: string;
+  ip: string;
+  bootTime: number; // System boot time expressed in seconds since epoch
+  cpu: number; // System-wide CPU utilization expressed as a percentage
+  cpus: [number, number]; // Number of logical CPUs and physical CPUs
+  gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
+  mem: [number, number, number]; // Total, available, and used percentage of memory
+  disk: {
+    [dir: string]: {
+      total: number;
+      free: number;
+      used: number;
+      percent: number;
+    };
+  };
+  loadAvg: [[number, number, number], [number, number, number]];
+  net: [number, number]; // Sent and received network traffic in bytes / second
+  logCount: number;
+  errorCount: number;
 };
 
 export type NodeInfoResponse = {
-  clients: Array<{
-    now: number;
-    hostname: string;
-    ip: string;
-    boot_time: number; // System boot time expressed in seconds since epoch
-    cpu: number; // System-wide CPU utilization expressed as a percentage
-    cpus: [number, number]; // Number of logical CPUs and physical CPUs
-    gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
-    mem: [number, number, number]; // Total, available, and used percentage of memory
-    disk: {
-      [path: string]: {
-        total: number;
-        free: number;
-        used: number;
-        percent: number;
-      };
-    };
-    load_avg: [[number, number, number], [number, number, number]];
-    net: [number, number]; // Sent and received network traffic in bytes / second
-    log_count?: { [pid: string]: number };
-    error_count?: { [pid: string]: number };
-    workers: Array<NodeInfoResponseWorker>;
-  }>;
+  clients: NodeDetails[];
 };
 
-export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
+export const getNodeInfo = () =>
+  get<NodeInfoResponse>("/nodes", { view: "details" });
 
 export type ResourceSlot = {
   slot: number;
@@ -134,44 +183,34 @@ export type ResourceAllocations = {
   resourceSlots: ResourceSlot[];
 };
 
-export type RayletCoreWorkerStats = {
-  usedResources: {
-    [key: string]: ResourceAllocations;
-  };
-};
-
-export type RayletWorkerStats = {
-  pid: number;
-  isDriver?: boolean;
-  coreWorkerStats: RayletCoreWorkerStats;
-};
+export const getActorGroups = () =>
+  get<ActorsResponse>("logical/actor_groups", {});
 
 export enum ActorState {
   // These two are virtual states that we air because there is
   // an existing task to create an actor
-  Infeasible = -2, // Actor task is waiting on resources (e.g. RAM, CPUs or GPUs) that the cluster does not have
-  PendingResources = -1, // Actor task is waiting on resources the cluster has but are in-use
+  Infeasible = "INFEASIBLE", // Actor task is waiting on resources (e.g. RAM, CPUs or GPUs) that the cluster does not have
+  PendingResources = "PENDING_RESOURCES", // Actor task is waiting on resources the cluster has but are in-use
   // The rest below are "official" GCS actor states
-  DependenciesUnready = 0, // Actor is pending on an argument to be ready
-  PendingCreation = 1, // Actor creation is running
-  Alive = 2, // Actor is alive and handling tasks
-  Restarting = 3, // Actor died and is being restarted
-  Dead = 4, // Actor died and is not being restarted
+  DependenciesUnready = "PENDING", // Actor is pending on an argument to be ready
+  PendingCreation = "CREATING", // Actor creation is running
+  Alive = "ALIVE", // Actor is alive and handling tasks
+  Restarting = "RESTARTING", // Actor died and is being restarted
+  Dead = "DEAD", // Actor died and is not being restarted
 }
 
 export type ActorInfo = FullActorInfo | ActorTaskInfo;
 
 export type FullActorInfo = {
   actorId: string;
-  actorTitle: string;
-  averageTaskExecutionSpeed: number;
-  children?: ActorInfo[];
+  actorConstructor: string;
+  actorClass: string;
   ipAddress: string;
   jobId: string;
   nodeId: string;
-  numExecutedTasks: number;
-  numLocalObjects: number;
-  numObjectRefsInScope: number;
+  numExecutedTasks?: number;
+  numLocalObjects?: number;
+  numObjectRefsInScope?: number;
   pid: number;
   port: number;
   state:
@@ -180,9 +219,9 @@ export type FullActorInfo = {
     | ActorState.Dead
     | ActorState.DependenciesUnready
     | ActorState.PendingCreation;
-  taskQueueLength: number;
+  taskQueueLength?: number;
   timestamp: number;
-  usedObjectStoreMemory: number;
+  usedObjectStoreMemory?: number;
   usedResources: { [key: string]: ResourceAllocations };
   currentTaskDesc?: string;
   numPendingTasks?: number;
@@ -190,8 +229,8 @@ export type FullActorInfo = {
 };
 
 export type ActorTaskInfo = {
-  actorId?: string;
-  actorTitle?: string;
+  actorId: string;
+  actorClass: string;
   requiredResources?: { [key: string]: number };
   state: ActorState.Infeasible | ActorState.PendingResources;
 };
@@ -221,52 +260,41 @@ export type ActorGroup = {
   summary: ActorGroupSummary;
 };
 
-export type RayletInfoResponse = {
-  nodes: {
-    [ip: string]: {
-      extraInfo?: string;
-      workersStats: Array<RayletWorkerStats>;
-    };
-  };
+export type ActorsResponse = {
   actorGroups: {
-    [groupKey: string]: ActorGroup;
-  };
-  plasmaStats: {
-    [ip: string]: PlasmaStats;
+    [key: string]: ActorGroup;
   };
 };
-
-export type PlasmaStats = {
-  object_store_num_local_objects: number;
-  object_store_available_memory: number;
-  object_store_used_memory: number;
-};
-
-export const getRayletInfo = () =>
-  get<RayletInfoResponse>("/api/raylet_info", {});
 
 export type ErrorsResponse = {
-  [pid: string]: Array<{
+  errors: ErrorsByPid;
+};
+
+export type ErrorsByPid = {
+  [pid: string]: {
     message: string;
     timestamp: number;
     type: string;
-  }>;
+  }[];
 };
-
-export const getErrors = (hostname: string, pid: number | null) =>
-  get<ErrorsResponse>("/api/errors", {
-    hostname,
-    pid: pid === null ? "" : pid,
+export const getErrors = (nodeIp: string, pid: number | null) =>
+  get<ErrorsResponse>("/node_errors", {
+    nodeIp,
+    pid: pid ?? "",
   });
 
 export type LogsResponse = {
+  logs: LogsByPid;
+};
+
+export type LogsByPid = {
   [pid: string]: string[];
 };
 
-export const getLogs = (hostname: string, pid: number | null) =>
-  get<LogsResponse>("/api/logs", {
-    hostname,
-    pid: pid === null ? "" : pid,
+export const getLogs = (nodeIp: string, pid: number | null) =>
+  get<LogsResponse>("/node_logs", {
+    ip: nodeIp,
+    pid: pid ?? "",
   });
 
 export type LaunchProfilingResponse = string;
@@ -302,34 +330,34 @@ export const launchKillActor = (
   actorIpAddress: string,
   actorPort: number,
 ) =>
-  get<object>("/api/kill_actor", {
+  get<{}>("/logical/kill_actor", {
     // make sure object is okay
-    actor_id: actorId,
-    ip_address: actorIpAddress,
+    actorId: actorId,
+    ipAddress: actorIpAddress,
     port: actorPort,
   });
 
 export type TuneTrial = {
   date: string;
-  episodes_total: string;
-  experiment_id: string;
-  experiment_tag: string;
+  episodesTotal: string;
+  experimentId: string;
+  experimentTag: string;
   hostname: string;
-  iterations_since_restore: number;
+  iterationsSinceRestore: number;
   logdir: string;
-  node_ip: string;
+  nodeIp: string;
   pid: number;
-  time_since_restore: number;
-  time_this_iter_s: number;
-  time_total_s: number;
+  timeSinceRestore: number;
+  timeThisIterS: number;
+  timeTotalS: number;
   timestamp: number;
-  timesteps_since_restore: number;
-  timesteps_total: number;
-  training_iteration: number;
-  start_time: string;
+  timestepsSinceRestore: number;
+  timestepsTotal: number;
+  trainingIteration: number;
+  startTime: string;
   status: string;
-  trial_id: string | number;
-  job_id: string;
+  trialId: string | number;
+  jobId: string;
   params: { [key: string]: string | number };
   metrics: { [key: string]: string | number };
   error: string;
@@ -337,59 +365,72 @@ export type TuneTrial = {
 
 export type TuneError = {
   text: string;
-  job_id: string;
-  trial_id: string;
+  jobId: string;
+  trialId: string;
 };
 
 export type TuneJobResponse = {
-  trial_records: { [key: string]: TuneTrial };
+  result: TuneJob;
+};
+
+export type TuneJob = {
+  trialRecords: { [key: string]: TuneTrial };
   errors: { [key: string]: TuneError };
   tensorboard: {
-    tensorboard_current: boolean;
-    tensorboard_enabled: boolean;
+    tensorboardCurrent: boolean;
+    tensorboardEnabled: boolean;
   };
 };
 
-export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
+export const getTuneInfo = () => get<TuneJobResponse>("/tune/info", {});
+
+export type TuneAvailability = {
+  available: boolean;
+  trialsAvailable: boolean;
+};
 
 export type TuneAvailabilityResponse = {
-  available: boolean;
-  trials_available: boolean;
+  result: TuneAvailability;
 };
 
 export const getTuneAvailability = () =>
-  get<TuneAvailabilityResponse>("/api/tune_availability", {});
+  get<TuneAvailabilityResponse>("/tune/availability", {});
 
-export type TuneSetExperimentReponse = {
+export type TuneSetExperimentResponse = {
   experiment: string;
 };
 
 export const setTuneExperiment = (experiment: string) =>
-  post<TuneSetExperimentReponse>("/api/set_tune_experiment", {
+  get<TuneSetExperimentResponse>("/tune/set_experiment", {
     experiment: experiment,
   });
 
 export const enableTuneTensorBoard = () =>
-  post<{}>("/api/enable_tune_tensorboard", {});
+  get<{}>("/tune/enable_tensorboard", {});
 
 export type MemoryTableSummary = {
-  total_actor_handles: number;
-  total_captured_in_objects: number;
-  total_local_ref_count: number;
+  totalActorHandles: number;
+  totalCapturedInObjects: number;
+  totalLocalRefCount: number;
   // The measurement is B.
-  total_object_size: number;
-  total_pinned_in_memory: number;
-  total_used_by_pending_task: number;
+  totalObjectSize: number;
+  totalPinnedInMemory: number;
+  totalUsedByPendingTask: number;
 };
 
 export type MemoryTableEntry = {
-  node_ip_address: string;
+  nodeIpAddress: string;
   pid: number;
   type: string;
-  object_ref: string;
-  object_size: number;
-  reference_type: string;
-  call_site: string;
+  objectRef: string;
+  objectSize: number;
+  referenceType: string;
+  callSite: string;
+};
+
+export type MemoryTable = {
+  group: MemoryTableGroups;
+  summary: MemoryTableSummary;
 };
 
 export type MemoryTableGroups = {
@@ -402,8 +443,7 @@ export type MemoryTableGroup = {
 };
 
 export type MemoryTableResponse = {
-  group: MemoryTableGroups;
-  summary: MemoryTableSummary;
+  memoryTable: MemoryTable;
 };
 
 // This doesn't return anything.
@@ -412,10 +452,10 @@ export type StopMemoryTableResponse = {};
 export type MemoryGroupByKey = "node" | "stack_trace" | "";
 
 export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
-  return get<MemoryTableResponse>("/api/memory_table", {
-    group_by: groupByKey,
+  return get<MemoryTableResponse>("/memory/memory_table", {
+    groupBy: groupByKey,
   });
 };
 
-export const stopMemoryTableCollection = () =>
-  get<StopMemoryTableResponse>("/api/stop_memory_table", {});
+export const setMemoryTableCollection = (value: boolean) =>
+  get<{}>("/memory/set_fetch", { shouldFetch: value });

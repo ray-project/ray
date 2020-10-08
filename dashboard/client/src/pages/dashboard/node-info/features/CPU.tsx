@@ -37,14 +37,14 @@ export const nodeCPUAccessor: Accessor<NodeFeatureData> = ({ node }) => {
 export const WorkerCPU: WorkerFeatureRenderFn = ({ worker }) => (
   <div style={{ minWidth: 60 }}>
     <UsageBar
-      percent={worker.cpu_percent}
-      text={`${worker.cpu_percent.toFixed(1)}%`}
+      percent={worker.cpuPercent}
+      text={`${worker.cpuPercent.toFixed(1)}%`}
     />
   </div>
 );
 
 export const workerCPUAccessor: Accessor<WorkerFeatureData> = ({ worker }) => {
-  return worker.cpu_percent;
+  return worker.cpuPercent;
 };
 
 const cpuFeature: NodeInfoFeature = {

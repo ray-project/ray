@@ -96,6 +96,16 @@ class ClusterTaskManager {
   /// false if the task is already running.
   bool CancelTask(const TaskID &task_id);
 
+  /// Populate the relevant parts of the heartbeat table. This is intended for
+  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// resource_load and resource_load_by_shape.
+  ///
+  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  /// fields used.
+  void Heartbeat(bool light_heartbeat_enabled,
+                 std::shared_ptr<HeartbeatTableData> data) const;
+
   std::string DebugString();
 
  private:

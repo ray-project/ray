@@ -162,7 +162,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           new DefaultAgentManagerServiceHandler(agent_manager_)),
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
-      new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
+      new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
+      report_worker_backlog_(RayConfig::instance().report_worker_backlog()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -391,64 +392,70 @@ void NodeManager::Heartbeat() {
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   heartbeat_data->set_client_id(self_node_id_.Binary());
 
-  // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
-  // TODO(atumanov): implement a ResourceSet const_iterator.
-  // If light heartbeat enabled, we only set filed that represent resources changed.
-  if (light_heartbeat_enabled_) {
-    if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
-            local_resources.GetTotalResources())) {
+  if (new_scheduler_enabled_) {
+    new_resource_scheduler_->Heartbeat(light_heartbeat_enabled_, heartbeat_data);
+    cluster_task_manager_->Heartbeat(light_heartbeat_enabled_, heartbeat_data);
+  } else {
+    // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
+    // directly.
+    // TODO(atumanov): implement a ResourceSet const_iterator.
+    // If light heartbeat enabled, we only set filed that represent resources changed.
+    if (light_heartbeat_enabled_) {
+      if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
+              local_resources.GetTotalResources())) {
+        for (const auto &resource_pair :
+             local_resources.GetTotalResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
+              resource_pair.second;
+        }
+        last_heartbeat_resources_.SetTotalResources(
+            ResourceSet(local_resources.GetTotalResources()));
+      }
+
+      if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
+              local_resources.GetAvailableResources())) {
+        heartbeat_data->set_resources_available_changed(true);
+        for (const auto &resource_pair :
+             local_resources.GetAvailableResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+              resource_pair.second;
+        }
+        last_heartbeat_resources_.SetAvailableResources(
+            ResourceSet(local_resources.GetAvailableResources()));
+      }
+
+      local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
+      if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
+              local_resources.GetLoadResources())) {
+        heartbeat_data->set_resource_load_changed(true);
+        for (const auto &resource_pair :
+             local_resources.GetLoadResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+              resource_pair.second;
+        }
+        last_heartbeat_resources_.SetLoadResources(
+            ResourceSet(local_resources.GetLoadResources()));
+      }
+    } else {
+      // If light heartbeat disabled, we send whole resources information every time.
       for (const auto &resource_pair :
            local_resources.GetTotalResources().GetResourceMap()) {
         (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
             resource_pair.second;
       }
-      last_heartbeat_resources_.SetTotalResources(
-          ResourceSet(local_resources.GetTotalResources()));
-    }
 
-    if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
-            local_resources.GetAvailableResources())) {
-      heartbeat_data->set_resources_available_changed(true);
       for (const auto &resource_pair :
            local_resources.GetAvailableResources().GetResourceMap()) {
         (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
             resource_pair.second;
       }
-      last_heartbeat_resources_.SetAvailableResources(
-          ResourceSet(local_resources.GetAvailableResources()));
-    }
 
-    local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-    if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
-            local_resources.GetLoadResources())) {
-      heartbeat_data->set_resource_load_changed(true);
+      local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
       for (const auto &resource_pair :
            local_resources.GetLoadResources().GetResourceMap()) {
         (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
             resource_pair.second;
       }
-      last_heartbeat_resources_.SetLoadResources(
-          ResourceSet(local_resources.GetLoadResources()));
-    }
-  } else {
-    // If light heartbeat disabled, we send whole resources information every time.
-    for (const auto &resource_pair :
-         local_resources.GetTotalResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    for (const auto &resource_pair :
-         local_resources.GetAvailableResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-    for (const auto &resource_pair :
-         local_resources.GetLoadResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
-          resource_pair.second;
     }
   }
 
@@ -525,14 +532,9 @@ void NodeManager::HandleRequestObjectSpillage(
                });
 }
 
-void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
+void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids,
                                std::function<void(const ray::Status &)> callback) {
-  std::vector<ObjectID> objects_ids;
-  for (const auto &id : objects_ids_to_spill) {
-    // Do not spill already spilled objects.
-    if (spilled_objects_.count(id) == 0) {
-      objects_ids.push_back(id);
-    }
+  for (const auto &id : objects_ids) {
     // We should not spill an object that we are not the primary copy for.
     // TODO(swang): We should really return an error here but right now there
     // is a race condition where the raylet receives the owner's request to
@@ -542,12 +544,6 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
       RAY_LOG(WARNING) << "Requested spill for object that has not yet been marked as "
                           "the primary copy.";
     }
-  }
-  if (objects_ids.empty()) {
-    if (callback) {
-      callback(Status::OK());
-    }
-    return;
   }
   worker_pool_.PopIOWorker([this, objects_ids,
                             callback](std::shared_ptr<WorkerInterface> io_worker) {
@@ -563,50 +559,46 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send object spilling request: "
                            << status.ToString();
+            if (callback) {
+              callback(status);
+            }
           } else {
-            RAY_CHECK(static_cast<size_t>(r.spilled_objects_url_size()) ==
-                      objects_ids.size());
             for (size_t i = 0; i < objects_ids.size(); ++i) {
               const ObjectID &object_id = objects_ids[i];
               const std::string &object_url = r.spilled_objects_url(i);
               RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
-              // TODO(suquark): write to object directory.
-              spilled_objects_[object_id] = object_url;
-              auto search = pinned_objects_.find(object_id);
-              if (search != pinned_objects_.end()) {
-                pinned_objects_.erase(search);
-              } else {
-                RAY_LOG(ERROR) << "The spilled object " << object_id.Hex()
-                               << " is not pinned.";
-              }
+              // Write to object directory. Wait for the write to finish before
+              // releasing the object to make sure that the spilled object can
+              // be retrieved by other raylets.
+              RAY_CHECK_OK(gcs_client_->Objects().AsyncAddSpilledUrl(
+                  object_id, object_url, [this, object_id, callback](Status status) {
+                    RAY_CHECK_OK(status);
+                    // Unpin the object.
+                    // NOTE(swang): Due to a race condition, the object may not be in
+                    // the map yet. In that case, the owner will respond to the
+                    // WaitForObjectEvictionRequest and we will unpin the object
+                    // then.
+                    pinned_objects_.erase(object_id);
+                    if (callback) {
+                      callback(status);
+                    }
+                  }));
             }
-          }
-          if (callback) {
-            callback(status);
           }
         });
   });
 }
 
-void NodeManager::RestoreSpilledObjects(
-    const std::vector<ObjectID> &object_ids,
+void NodeManager::AsyncRestoreSpilledObject(
+    const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
-  std::vector<std::string> object_urls;
-  object_urls.reserve(object_ids.size());
-  for (const auto &object_id : object_ids) {
-    if (spilled_objects_.count(object_id) == 0) {
-      callback(Status::Invalid("No object URL recorded"));
-      return;
-    }
-    object_urls.push_back(spilled_objects_[object_id]);
-  }
-  worker_pool_.PopIOWorker([this, object_urls,
+  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
+                 << object_url;
+  worker_pool_.PopIOWorker([this, object_url,
                             callback](std::shared_ptr<WorkerInterface> io_worker) {
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
-    for (const auto &url : object_urls) {
-      request.add_spilled_objects_url(std::move(url));
-    }
+    request.add_spilled_objects_url(std::move(object_url));
     io_worker->rpc_client()->RestoreSpilledObjects(
         request, [this, callback, io_worker](const ray::Status &status,
                                              const rpc::RestoreSpilledObjectsReply &r) {
@@ -1220,24 +1212,6 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);
   } break;
-  case protocol::MessageType::ForceRestoreSpilledObjectsRequest: {
-    auto message =
-        flatbuffers::GetRoot<protocol::ForceRestoreSpilledObjectsRequest>(message_data);
-    std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
-    RestoreSpilledObjects(object_ids, [this, client](const ray::Status &status) {
-      flatbuffers::FlatBufferBuilder fbb;
-      flatbuffers::Offset<protocol::ForceRestoreSpilledObjectsReply> reply =
-          protocol::CreateForceRestoreSpilledObjectsReply(fbb);
-      fbb.Finish(reply);
-      auto reply_status = client->WriteMessage(
-          static_cast<int64_t>(protocol::MessageType::ForceRestoreSpilledObjectsReply),
-          fbb.GetSize(), fbb.GetBufferPointer());
-      if (!reply_status.ok()) {
-        // We failed to write to the client, so disconnect the client.
-        ProcessDisconnectClientMessage(client);
-      }
-    });
-  } break;
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
@@ -1509,22 +1483,14 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   if (message->fetch_only()) {
-    std::vector<ObjectID> spilled_object_ids;
     for (const auto &ref : refs) {
       ObjectID object_id = ObjectID::FromBinary(ref.object_id());
       // If only a fetch is required, then do not subscribe to the
       // dependencies to the task dependency manager.
       if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
-        if (spilled_objects_.count(object_id) > 0) {
-          spilled_object_ids.push_back(object_id);
-        } else {
-          // Fetch the object if it's not already local.
-          RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
-        }
+        // Fetch the object if it's not already local.
+        RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
       }
-    }
-    if (spilled_object_ids.size() > 0) {
-      RestoreSpilledObjects(spilled_object_ids);
     }
   } else {
     // The values are needed. Add all requested objects to the list to
@@ -1719,7 +1685,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
-  Task task(task_message);
+  auto backlog_size = -1;
+  if (report_worker_backlog_) {
+    backlog_size = request.backlog_size();
+  }
+  Task task(task_message, backlog_size);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
 
@@ -2268,45 +2238,6 @@ void NodeManager::MarkObjectsAsFailed(
           gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
-  }
-}
-
-void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
-  const TaskSpecification &spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId()
-                 << " as failed if return values lost.";
-  // Loop over the return IDs (except the dummy ID) and check whether a
-  // location for the return ID exists.
-  int64_t num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask()) {
-    // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
-    // information about the TaskSpecification implementation.
-    num_returns -= 1;
-  }
-  // Use a shared flag to make sure that we only treat the task as failed at
-  // most once. This flag will get deallocated once all of the object table
-  // lookup callbacks are fired.
-  auto task_marked_as_failed = std::make_shared<bool>(false);
-  for (int64_t i = 0; i < num_returns; i++) {
-    const ObjectID object_id = spec.ReturnId(i);
-    // Lookup the return value's locations.
-    RAY_CHECK_OK(object_directory_->LookupLocations(
-        object_id, spec.CallerAddress(),
-        [this, task_marked_as_failed, task](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::NodeID> &clients) {
-          if (!*task_marked_as_failed) {
-            // Only process the object locations if we haven't already marked the
-            // task as failed.
-            if (clients.empty()) {
-              // The object does not exist on any nodes but has been created
-              // before, so the object has been lost. Mark the task as failed to
-              // prevent any tasks that depend on this object from hanging.
-              TreatTaskAsFailed(task, ErrorType::OBJECT_UNRECONSTRUCTABLE);
-              *task_marked_as_failed = true;
-            }
-          }
-        }));
   }
 }
 
