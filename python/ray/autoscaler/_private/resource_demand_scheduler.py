@@ -88,7 +88,8 @@ class ResourceDemandScheduler:
             self.reserve_and_allocate_spread(
                 strict_spreads, node_resources, node_type_counts)
 
-        # Step 4/5: add nodes for pending tasks, actors, and non-strict spread groups
+        # Step 4/5: add nodes for pending tasks, actors, and non-strict spread
+        # groups
         unfulfilled, _ = get_bin_pack_residual(node_resources,
                                                resource_demands)
         logger.info("Resource demands: {}".format(resource_demands))
@@ -169,26 +170,28 @@ class ResourceDemandScheduler:
                                     strict_spreads: List[List[ResourceDict]],
                                     node_resources: List[ResourceDict],
                                     node_type_counts: Dict[NodeType, int]):
-        """For each strict spread, attempt to reserve as much space as possible on the
-           node, then allocate new nodes for the unfulfilled portion.
+
+        """For each strict spread, attempt to reserve as much space as possible
+        on the node, then allocate new nodes for the unfulfilled portion.
 
         Args:
             strict_spreads (List[List[ResourceDict]]): A list of placement
                 groups which must be spread out.
             node_resources (List[ResourceDict]): Available node resources in
                 the cluster.
-            node_type_counts (Dict[NodeType, int]): The amount of each type of node
-                pending or in the cluster.
+            node_type_counts (Dict[NodeType, int]): The amount of each type of
+                node pending or in the cluster.
 
         Returns:
             Dict[NodeType, int]: Nodes to add.
             List[ResourceDict]: The updated node_resources after the method.
             Dict[NodeType, int]: The updated node_type_counts.
+
         """
         to_add = collections.defaultdict(int)
         for bundles in strict_spreads:
-            # Try to pack as many bundles of this group as possible on existing nodes.
-            # The remaining will be allocated on new nodes.
+            # Try to pack as many bundles of this group as possible on existing
+            # nodes. The remaining will be allocated on new nodes.
             unfulfilled, node_resources = get_bin_pack_residual(
                 node_resources, bundles, strict_spread=True)
             max_to_add = self.max_workers - sum(node_type_counts.values())
@@ -203,7 +206,8 @@ class ResourceDemandScheduler:
             _inplace_add(to_add, to_launch)
             new_node_resources = _node_type_counts_to_node_resources(
                 self.node_types, to_launch)
-            # Update node resources to include newly launched nodes and their bundles.
+            # Update node resources to include newly launched nodes and their
+            # bundles.
             unfulfilled, including_reserved = get_bin_pack_residual(
                 new_node_resources, unfulfilled, strict_spread=True)
             assert not unfulfilled
@@ -437,8 +441,10 @@ def placement_groups_to_resource_demands(pending_placement_groups: List[
         PlacementGroupLoad's.
 
     Returns:
-        List[ResourceDict]: The placement groups which were converted to a resource demand vector.
-        List[List[ResourceDict]]: The placement groups which should be strictly spread.
+        List[ResourceDict]: The placement groups which were converted to a
+            resource demand vector.
+        List[List[ResourceDict]]: The placement groups which should be strictly
+            spread.
     """
     resource_demand_vector = []
     unconverted = []

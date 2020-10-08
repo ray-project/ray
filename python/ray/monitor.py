@@ -131,7 +131,8 @@ class Monitor:
             waiting_bundles, infeasible_bundles = \
                 self.parse_resource_demands(message.resource_load_by_shape)
 
-            pending_placement_groups = list(message.pending_placement_groups)
+            pending_placement_groups = list(
+                message.placement_group_load.placement_group_data)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
