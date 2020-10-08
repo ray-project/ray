@@ -199,7 +199,7 @@ matrix:
       script:
         - . ./ci/travis/ci.sh test_wheels
         - export PATH="$HOME/miniconda3/bin:$PATH"
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python -m pip install docker && python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py; fi
         - bash ./java/build-jar-multiplatform.sh linux
       cache: false
 
