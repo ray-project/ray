@@ -197,8 +197,8 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - python --version
-        - python3 --version
+        - python3.6 --version
+        - $HOME/miniconda3/bin/python --version
         - . ./ci/travis/ci.sh test_wheels
         - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python3 $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py; fi
         - bash ./java/build-jar-multiplatform.sh linux
