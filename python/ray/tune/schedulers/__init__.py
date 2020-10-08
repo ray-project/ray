@@ -28,11 +28,15 @@ def create_scheduler(
     """
 
     SCHEDULER_IMPORT = {
+        "fifo": FIFOScheduler,
         "async_hyperband": AsyncHyperBandScheduler,
+        "asynchyperband": AsyncHyperBandScheduler,
         "median_stopping_rule": MedianStoppingRule,
+        "medianstopping": MedianStoppingRule,
         "hyperband": HyperBandScheduler,
         "hb_bohb": HyperBandForBOHB,
         "pbt": PopulationBasedTraining,
+        "pbt_replay": PopulationBasedTrainingReplay,
     }
     scheduler = scheduler.lower()
     if scheduler not in SCHEDULER_IMPORT:
