@@ -10,8 +10,6 @@ from ray.tune.schedulers.pbt import (PopulationBasedTraining,
 
 def create_scheduler(
         scheduler,
-        metric=None,
-        mode=None,
         **kwargs,
 ):
     """Instantiate a scheduler based on the given string.
@@ -20,17 +18,13 @@ def create_scheduler(
 
     Args:
         scheduler (str): The scheduler to use.
-        metric (str): The training result objective value attribute. Stopping
-            procedures will use this attribute.
-        mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute.
-        **kwargs: Additional parameters.
+        **kwargs: Scheduler parameters.
             These keyword arguments will be passed to the initialization
-            function of the chosen class.
+            function of the chosen scheduler.
     Returns:
         ray.tune.schedulers.trial_scheduler.TrialScheduler: The scheduler.
     Example:
-        >>> scheduler = tune.create_scheduler('pbt')
+        >>> scheduler = tune.create_scheduler('pbt', **pbt_kwargs)
     """
 
     SCHEDULER_IMPORT = {
@@ -47,7 +41,7 @@ def create_scheduler(
             f"Got: {scheduler}")
 
     SchedulerClass = SCHEDULER_IMPORT[scheduler]
-    return SchedulerClass(metric=metric, mode=mode, **kwargs)
+    return SchedulerClass(**kwargs)
 
 
 __all__ = [
