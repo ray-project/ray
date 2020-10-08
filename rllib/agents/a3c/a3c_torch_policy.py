@@ -2,7 +2,7 @@ import gym
 from typing import Dict
 
 import ray
-from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_pg
+from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_w_vf_preds
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -96,5 +96,5 @@ A3CTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=torch_optimizer,
     mixins=[ValueNetworkMixin],
-    view_requirements_fn=view_requirements_fn_pg,
+    view_requirements_fn=view_requirements_fn_w_vf_preds,
 )

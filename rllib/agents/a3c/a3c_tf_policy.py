@@ -1,7 +1,7 @@
-import gym
 from typing import Dict
 
 import ray
+from ray.rllib.agents.pg.pg_tf_policy import view_requirements_fn_pg
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.policy import Policy
@@ -122,7 +122,8 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def view_requirements_fn_pg(policy: Policy) -> Dict[str, ViewRequirement]:
+def view_requirements_fn_w_vf_preds(policy: Policy) -> \
+        Dict[str, ViewRequirement]:
     """Function defining the view requirements for training/postprocessing.
 
     These go on top of the Policy's Model's own view requirements used for
@@ -135,29 +136,15 @@ def view_requirements_fn_pg(policy: Policy) -> Dict[str, ViewRequirement]:
     Returns:
         Dict[str, ViewRequirement]: The Policy's view requirements.
     """
-    ret = {
-        # Next obs are needed for PPO postprocessing, but not in loss.
-        SampleBatch.NEXT_OBS: ViewRequirement(
-            data_col=SampleBatch.OBS,
-            space=policy.observation_space,
-            shift=1,
-            used_for_training=False),
-        # Created during postprocessing.
-        Postprocessing.ADVANTAGES: ViewRequirement(shift=0),
-        Postprocessing.VALUE_TARGETS: ViewRequirement(shift=0),
-        # Needed for PPO's loss function.
+    # Get the standard PG requirements w/o value-function predictions.
+    ret = view_requirements_fn_pg(policy)
+    # Add value-function predictions, action-logp, action-dist-inputs for GAE
+    # postprocessing and loss calculation.
+    ret.update({
+        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
         SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
         SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
-        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
-    }
-    # If policy is recurrent, have to add state_out for PG-style postprocessing
-    # (calculating GAE from next-obs and last state-out).
-    if policy.is_recurrent():
-        init_state = policy.get_initial_state()
-        for i, s in enumerate(init_state):
-            ret["state_out_{}".format(i)] = ViewRequirement(
-                space=gym.spaces.Box(-1.0, 1.0, shape=(s.shape[0], )),
-                used_for_training=False)
+    })
     return ret
 
 
@@ -172,5 +159,5 @@ A3CTFPolicy = build_tf_policy(
     extra_action_fetches_fn=add_value_function_fetch,
     before_loss_init=setup_mixins,
     mixins=[ValueNetworkMixin, LearningRateSchedule],
-    view_requirements_fn=view_requirements_fn_pg,
+    view_requirements_fn=view_requirements_fn_w_vf_preds,
 )

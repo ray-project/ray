@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_pg
+from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_w_vf_preds
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
@@ -361,5 +361,5 @@ PPOTFPolicy = build_tf_policy(
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
     ],
-    view_requirements_fn=view_requirements_fn_pg,
+    view_requirements_fn=view_requirements_fn_w_vf_preds,
 )

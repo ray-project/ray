@@ -8,7 +8,7 @@ import gym
 
 import ray
 from ray.rllib.agents.impala import vtrace_tf as vtrace
-from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_pg
+from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_w_vf_preds
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -289,6 +289,6 @@ VTraceTFPolicy = build_tf_policy(
     gradients_fn=clip_gradients,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
-    view_requirements_fn=view_requirements_fn_pg,
+    view_requirements_fn=view_requirements_fn_w_vf_preds,
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"],
 )
