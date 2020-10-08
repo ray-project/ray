@@ -89,7 +89,7 @@ class ResourceDemandScheduler:
             if nodes_to_add > 0:
                 total_nodes_to_add[node_type] = nodes_to_add
 
-        # Limit the concurent launches
+        # Limit the number of concurrent launches
         total_nodes_to_add = self._get_concurrent_resource_demand_to_launch(
             total_nodes_to_add, nodes, pending_nodes)
 
@@ -120,20 +120,13 @@ class ResourceDemandScheduler:
             Dict[NodeType, int]: Maximum number of nodes to launch for each
                 node type.
         """
-        running_nodes = collections.defaultdict(int)
-        pending_nodes = collections.defaultdict(int)
-        for node_id in non_terminated_nodes:
-            tags = self.provider.node_tags(node_id)
-            if TAG_RAY_USER_NODE_TYPE in tags:
-                node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                status = tags.get(TAG_RAY_NODE_STATUS)
-                if status == STATUS_UP_TO_DATE:
-                    running_nodes[node_type] += 1
-                elif status != STATUS_UPDATE_FAILED:
-                    pending_nodes[node_type] += 1
         # TODO(ameer): Consider making frac configurable.
         frac = 1
         updated_nodes_to_launch = {}
+        running_nodes, pending_nodes = \
+            self._separate_running_and_pending_nodes(
+                non_terminated_nodes
+            )
         for node_type in to_launch:
             # Enforce here max allowed pending nodes to be frac of total
             # running nodes.
@@ -153,6 +146,25 @@ class ResourceDemandScheduler:
                     nodes_to_add, to_launch[node_type])
 
         return updated_nodes_to_launch
+
+    def _separate_running_and_pending_nodes(
+            self,
+            non_terminated_nodes: List[NodeID],
+    ) -> (Dict[NodeType, int], Dict[NodeType, int]):
+        """Receives non terminated nodes & splits them to pending & running."""
+
+        running_nodes = collections.defaultdict(int)
+        pending_nodes = collections.defaultdict(int)
+        for node_id in non_terminated_nodes:
+            tags = self.provider.node_tags(node_id)
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                status = tags.get(TAG_RAY_NODE_STATUS)
+                if status == STATUS_UP_TO_DATE:
+                    running_nodes[node_type] += 1
+                elif status != STATUS_UPDATE_FAILED:
+                    pending_nodes[node_type] += 1
+        return running_nodes, pending_nodes
 
     def calculate_node_resources(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeID, int],
