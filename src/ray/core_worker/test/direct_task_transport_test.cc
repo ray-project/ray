@@ -102,7 +102,8 @@ class MockRayletClient : public WorkerLeaseInterface {
 
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
+      const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
   }
