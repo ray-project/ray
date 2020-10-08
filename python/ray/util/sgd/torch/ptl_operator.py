@@ -5,6 +5,7 @@ import torch
 from pytorch_lightning.core.step_result import Result
 from pytorch_lightning.overrides.data_parallel import \
     LightningDistributedDataParallel
+from pytorch_lightning.utilities.model_utils import is_overridden
 from pytorch_lightning.trainer.model_hooks import TrainerModelHooksMixin
 from pytorch_lightning.trainer.optimizers import TrainerOptimizersMixin
 import pytorch_lightning as ptl
@@ -39,8 +40,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         assert len(models) == 1
         model = models[0]
         assert isinstance(model, ptl.LightningModule)
-        # This will default to LightningDistributedDataParallel.
-        model = model.configure_ddp(model=model, device_ids=device_ids)
+        model = LightningDistributedDataParallel(
+            model, device_ids=device_ids, find_unused_parameters=True)
         return [model]
 
     @property
@@ -110,7 +111,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         # Call model.setup.
         ptl_module.setup("fit")
 
-        if not self.is_overridden("configure_optimizers", ptl_module):
+        if not is_overridden("configure_optimizers", ptl_module):
             raise MisconfigurationException(
                 "No `configure_optimizers()` method defined.")
 
@@ -232,7 +233,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 break
 
         processed_outputs = None
-        if self.is_overridden("training_epoch_end", model):
+        if is_overridden("training_epoch_end", model):
             raw_outputs = [eo["raw_output"] for eo in epoch_outputs]
             processed_outputs = model.training_epoch_end(raw_outputs)
 
@@ -316,7 +317,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
 
         # allow any mode to define training_step_end
         # do something will all the dp outputs (like softmax)
-        if self.is_overridden("training_step_end", model):
+        if is_overridden("training_step_end", model):
             output = model.training_step_end(output)
 
         # Extract loss from output if dictionary.
@@ -397,7 +398,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 val_outputs.append(batch_output)
 
         processed_outputs = None
-        if self.is_overridden("validation_epoch_end", model):
+        if is_overridden("validation_epoch_end", model):
             raw_outputs = [vo["raw_output"] for vo in val_outputs]
             processed_outputs = model.training_epoch_end(raw_outputs)
 
@@ -440,7 +441,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
     def validate_batch(self, batch, batch_info):
         model = self.get_model()
         batch_idx = batch_info["batch_idx"]
-        if self.is_overridden("on_validation_batch_start", model):
+        if is_overridden("on_validation_batch_start", model):
             model.on_validation_batch_start(
                 batch=batch, batch_idx=batch_idx, dataloader_idx=0)
         args = [batch, batch_idx]
@@ -462,7 +463,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
             raise ValueError("EvalResult objects are not supported. Please "
                              "return a dictionary instead.")
 
-        if self.is_overridden("on_validation_step_end", model):
+        if is_overridden("on_validation_step_end", model):
             output = model.validation_step_end(output)
 
         if self.is_function_implemented("on_validation_batch_end", model):
