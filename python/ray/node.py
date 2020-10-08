@@ -824,6 +824,7 @@ class Node:
             )
         self.start_plasma_store(plasma_directory, object_store_memory)
         self.start_raylet(plasma_directory, object_store_memory)
+        self.start_reporter()
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 
