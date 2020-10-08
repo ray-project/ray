@@ -53,8 +53,7 @@ def ppo_surrogate_loss(
         max_seq_len = torch.max(train_batch["seq_lens"])
         mask = sequence_mask(
             train_batch["seq_lens"],
-            max_seq_len,
-            time_major=model.is_time_major())
+            max_seq_len)
         mask = torch.reshape(mask, [-1])
         num_valid = torch.sum(mask)
 

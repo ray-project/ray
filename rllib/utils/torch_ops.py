@@ -144,7 +144,7 @@ def reduce_mean_ignore_inf(x, axis):
     return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
 
-def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
+def sequence_mask(lengths, maxlen=None, dtype=None):
     """Offers same behavior as tf.sequence_mask for torch.
 
     Thanks to Dimitris Papatheodorou
@@ -156,8 +156,6 @@ def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
 
     mask = ~(torch.ones(
         (len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t() > lengths)
-    if not time_major:
-        mask = mask.t()
     mask.type(dtype or torch.bool)
 
     return mask

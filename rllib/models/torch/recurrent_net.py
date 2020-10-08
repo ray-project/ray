@@ -75,6 +75,8 @@ class RecurrentNetwork(TorchModelV2):
             time_major=self.time_major,
         )
         output, new_state = self.forward_rnn(inputs, state, seq_lens)
+        if self.time_major:
+            output = torch.transpose(output, 0, 1)
         output = torch.reshape(output, [-1, self.num_outputs])
         return output, new_state
 

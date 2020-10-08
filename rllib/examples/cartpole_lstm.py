@@ -43,6 +43,7 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "model": {
                 "use_lstm": True,
+                "_time_major": True,
                 "lstm_use_prev_action_reward": args.use_prev_action_reward,
             },
             "framework": "torch" if args.torch else "tf",

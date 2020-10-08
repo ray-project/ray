@@ -71,7 +71,7 @@ def pad_batch_to_sequences_of_same_size(
     elif not meets_divisibility_reqs:
         max_seq_len = batch_divisibility_req
         dynamic_max = False
-    # Simple case: not RNN nor do we need to pad.
+    # Simple case: No RNN, nor do we need to pad.
     else:
         if shuffle:
             batch.shuffle()
@@ -127,7 +127,9 @@ def add_time_dimension(padded_inputs: TensorType,
         max_seq_len (int): The max. sequence length in padded_inputs.
         framework (str): The framework string ("tf2", "tf", "tfe", "torch").
         time_major (bool): Whether data should be returned in time-major (TxB)
-            format or not (BxT).
+            format or not (BxT). This will perform an additional transpose
+            operation on padded_inputs, which will have to be undone before
+            further processing (e.g. in a loss function).
 
     Returns:
         TensorType: Reshaped tensor of shape [B, T, ...] or [T, B, ...].
@@ -137,24 +139,25 @@ def add_time_dimension(padded_inputs: TensorType,
     # input batch must be padded to the max seq length given here. That is,
     # batch_size == len(seq_lens) * max(seq_lens)
     if framework in ["tf2", "tf", "tfe"]:
-        assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
         new_shape = ([new_batch_size, max_seq_len] +
                      padded_inputs.get_shape().as_list()[1:])
-        return tf.reshape(padded_inputs, new_shape)
+        padded_inputs = tf.reshape(padded_inputs, new_shape)
+        if time_major:
+            padded_inputs = tf.transpose(padded_inputs, [1, 0] + list(range(2, len(padded_inputs.shape))))
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
         padded_batch_size = padded_inputs.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
+        new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
+        padded_inputs = torch.reshape(padded_inputs, new_shape)
         if time_major:
-            new_shape = (max_seq_len, new_batch_size) + padded_inputs.shape[1:]
-        else:
-            new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
-        return torch.reshape(padded_inputs, new_shape)
+            padded_inputs = torch.transpose(padded_inputs, 0, 1)
+    return padded_inputs
 
 
 # NOTE: This function will be deprecated once chunks already come padded and
@@ -236,7 +239,8 @@ def chop_into_sequences(episode_ids,
 
     feature_sequences = []
     for f in feature_columns:
-        f = np.array(f)
+        if not isinstance(f, np.ndarray):
+            f = np.array(f)
         length = len(seq_lens) * max_seq_len
         if f.dtype == np.object or f.dtype.type is np.str_:
             f_pad = [None] * length
