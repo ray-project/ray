@@ -444,6 +444,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
                     runner.step()
     assert t1.status == Trial.TERMINATED, runner.debug_string()
 
+
 @pytest.mark.skip(reason="Not very consistent.")
 @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
 def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
