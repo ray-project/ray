@@ -92,8 +92,12 @@ def copy_wheels():
     root_dir = _get_root_dir()
     wheel = _get_wheel_name()
     source = os.path.join(root_dir, ".whl", wheel)
-    shutil.copy(source, os.path.join(root_dir, "docker/ray/.whl/"))
-    shutil.copy(source, os.path.join(root_dir, "docker/ray-deps/.whl/"))
+    ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
+    ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
+    os.mkdir(ray_dst)
+    shutil.copy(source, ray_dst)
+    os.mkdir(ray_dep_dst)
+    shutil.copy(source, ray_dep_dst)
 
 
 def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
