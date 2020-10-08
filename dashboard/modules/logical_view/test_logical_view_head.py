@@ -33,8 +33,8 @@ def test_actor_groups(ray_start_with_dashboard):
     foo_actors = [Foo.remote(4), Foo.remote(5)]
     infeasible_actor = InfeasibleActor.remote()  # noqa
     results = [actor.do_task.remote() for actor in foo_actors]  # noqa
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
     webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
 
     timeout_seconds = 5
@@ -88,8 +88,8 @@ def test_kill_actor(ray_start_with_dashboard):
     worker_pid = ray.get(a.f.remote())
 
     webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = format_web_url(webui_url)
     assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
 
     def actor_killed(PID):
         """Check For the existence of a unix pid."""
@@ -101,8 +101,9 @@ def test_kill_actor(ray_start_with_dashboard):
             return False
 
     def get_actor():
-        actor_groups_resp = requests.get(f"{webui_url}/logical/actor_groups")
-        actor_groups_resp.raise_for_status()
+        resp = requests.get(f"{webui_url}/logical/actor_groups")
+        resp.raise_for_status()
+        actor_groups_resp = resp.json()
         assert actor_groups_resp["result"] is True, actor_groups_resp[
                     "msg"]
         actor_groups = actor_groups_resp["data"]["actorGroups"]
@@ -113,13 +114,13 @@ def test_kill_actor(ray_start_with_dashboard):
         resp = requests.get(
             webui_url + "/logical/kill_actor",
             params={
-                "actorId": ray.utils.binary_to_hex(
-                    actor["actorId"]),
+                "actorId": actor["actorId"],
                 "ipAddress": actor["ipAddress"],
                 "port": actor["port"]
             })
         resp.raise_for_status()
-        assert resp["result"] is True, "msg" in resp
+        resp_json = resp.json()
+        assert resp_json["result"] is True, "msg" in resp_json
 
     start = time.time()
     last_exc = None
