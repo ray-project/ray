@@ -266,7 +266,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
          "committing and preparing.";
 
   // Cancel all resource reservation.
-  RAY_LOG(INFO) << "Cancelling all bundles of a placement group id, "
+  RAY_LOG(INFO) << "Cancelling all bundles of a placement group, id is "
                 << placement_group_id;
   for (const auto &iter : *(bundle_locations)) {
     auto &bundle_spec = iter.second.second;

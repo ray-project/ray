@@ -2181,11 +2181,10 @@ void NodeManager::ScheduleTasks(
           << task.GetTaskSpecification().GetRequiredResources().ToString()
           << " for execution and "
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-          << " for placement, however there are no nodes in the cluster that can "
-          << "provide the requested resources. To resolve this issue, consider "
-          << "reducing the resource requests of this task or add nodes that "
-          << "can fit the task. If you are using a placement group, tasks or actors "
-             "might be just waiting for placement group resources to be reserved.";
+          << " for placement, however the cluster currently cannot provide the requested "
+             "resources. The required resources may be added as autoscaling takes place "
+             "or placement groups are scheduled. Otherwise, consider reducing the "
+             "resource requirements of the task.";
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
                                     task.GetTaskSpecification().JobId());
@@ -3321,13 +3320,11 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
           if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
           } else {
-            RAY_LOG(ERROR)
-                << "Failed to send get core worker stats "
-                << "worker id, " << worker->WorkerId()
-                << ", request: " << status.ToString()
-                << ". It is mostly because worker is already dead when this requests are "
-                   "sent. It won't impact application progress, but it can be a symptom "
-                   "of some unexpected worker failures.";
+            RAY_LOG(WARNING) << "Failed to send get core worker stats request, "
+                             << "worker id is " << worker->WorkerId() << ", status is "
+                             << status.ToString()
+                             << ". This is likely since the worker has died before the "
+                                "request was sent.";
             worker_stats->set_fetch_error(status.ToString());
           }
           if (reply->num_workers() == all_workers.size()) {
