@@ -14,31 +14,15 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
-from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
-                                 FIFOScheduler, MedianStoppingRule)
+from ray.tune.schedulers import FIFOScheduler
 
 logger = logging.getLogger(__name__)
-
-_SCHEDULERS = {
-    "FIFO": FIFOScheduler,
-    "MedianStopping": MedianStoppingRule,
-    "HyperBand": HyperBandScheduler,
-    "AsyncHyperBand": AsyncHyperBandScheduler,
-}
 
 try:
     class_name = get_ipython().__class__.__name__
     IS_NOTEBOOK = True if "Terminal" not in class_name else False
 except NameError:
     IS_NOTEBOOK = False
-
-
-def _make_scheduler(args):
-    if args.scheduler in _SCHEDULERS:
-        return _SCHEDULERS[args.scheduler](**args.scheduler_config)
-    else:
-        raise TuneError("Unknown scheduler: {}, should be one of {}".format(
-            args.scheduler, _SCHEDULERS.keys()))
 
 
 def _check_default_resources_override(run_identifier):
