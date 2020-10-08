@@ -223,7 +223,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "synchronize_filters": True,
     # Configures TF for single-process operation by default.
     "tf_session_args": {
-        # note: overriden by `local_tf_session_args`
+        # note: overridden by `local_tf_session_args`
         "intra_op_parallelism_threads": 2,
         "inter_op_parallelism_threads": 2,
         "gpu_options": {

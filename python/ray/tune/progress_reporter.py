@@ -56,7 +56,7 @@ class ProgressReporter:
 class TuneReporterBase(ProgressReporter):
     """Abstract base class for the default Tune reporters.
 
-    If metric_columns is not overriden, Tune will attempt to automatically
+    If metric_columns is not overridden, Tune will attempt to automatically
     infer the metrics being outputted, up to 'infer_limit' number of
     metrics.
 

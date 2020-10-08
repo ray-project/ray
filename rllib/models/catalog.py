@@ -290,7 +290,7 @@ class ModelCatalog:
 
         if model_config.get("custom_model"):
 
-            # Allow model kwargs to be overriden / augmented by
+            # Allow model kwargs to be overridden / augmented by
             # custom_model_config.
             customized_model_kwargs = dict(
                 model_kwargs, **model_config.get("custom_model_config", {}))
