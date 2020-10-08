@@ -186,7 +186,7 @@ matrix:
     # Build Linux wheels and jars.
     - os: linux
       env:
-        - PYTHON=3.6
+        # - PYTHON=3.6
         - LINUX_WHEELS=1 LINUX_JARS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
@@ -197,8 +197,10 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
+        - python --version
+        - python3 --version
         - . ./ci/travis/ci.sh test_wheels
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python3 $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py; fi
         - bash ./java/build-jar-multiplatform.sh linux
       cache: false
 
