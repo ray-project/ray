@@ -67,4 +67,4 @@ std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1) {
   return out;
 }
 
-double FixedPoint::Double() { return round(i_) / RESOURCE_UNIT_SCALING; };
+double FixedPoint::Double() const { return round(i_) / RESOURCE_UNIT_SCALING; };

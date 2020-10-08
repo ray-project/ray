@@ -168,6 +168,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
+  /// Restore a spilled object from external storage back into local memory.
+  /// \param object_id The ID of the object to restore.
+  /// \param object_url The URL in external storage from which the object can be restored.
+  /// \param callback A callback to call when the restoration is done. Status
+  /// will contain the error during restoration, if any.
+  void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
+                                 std::function<void(const ray::Status &)> callback);
+
  private:
   /// Methods for handling clients.
 
@@ -260,14 +268,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void MarkObjectsAsFailed(const ErrorType &error_type,
                            const std::vector<rpc::ObjectReference> object_ids,
                            const JobID &job_id);
-  /// This is similar to TreatTaskAsFailed, but it will only mark the task as
-  /// failed if at least one of the task's return values is lost. A return
-  /// value is lost if it has been created before, but no longer exists on any
-  /// nodes, due to either node failure or eviction.
-  ///
-  /// \param task The task to potentially fail.
-  /// \return Void.
-  void TreatTaskAsFailedIfLost(const Task &task);
   /// Handle specified task's submission to the local node manager.
   ///
   /// \param task The task being submitted.
@@ -658,11 +658,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
                     std::function<void(const ray::Status &)> callback = nullptr);
 
-  /// Restore spilled objects from external storage.
-  /// \param object_ids Objects to be restored.
-  void RestoreSpilledObjects(const std::vector<ObjectID> &object_ids,
-                             std::function<void(const ray::Status &)> callback = nullptr);
-
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
@@ -754,9 +749,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
-  /// A mapping from ObjectIDs to external object URLs for spilled objects.
-  /// TODO(suquark): Move it into object directory.
-  absl::flat_hash_map<ObjectID, std::string> spilled_objects_;
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
@@ -790,6 +782,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
+
+  /// Whether to report the worker's backlog size in the GCS heartbeat.
+  const bool report_worker_backlog_;
 
   /// Whether to trigger global GC in the next heartbeat. This will broadcast
   /// a global GC message to all raylets except for this one.

@@ -14,6 +14,7 @@ from ray.util.sgd.torch.constants import (
     NUM_STEPS,
     SCHEDULER_STEP_BATCH,
 )
+
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
 
@@ -78,7 +79,6 @@ class TrainingOperator:
                     train_loader=train_loader,
                     validation_loader=val_loader)
 
-
         trainer = TorchTrainer(
             training_operator_cls=MyTrainingOperator,
             config={"batch_size": 32},
@@ -119,18 +119,21 @@ class TrainingOperator:
     def __init__(self,
                  config,
                  world_rank,
+                 local_rank,
+                 is_distributed=False,
                  device_ids=None,
                  use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False,
                  apex_args=None,
                  wrap_ddp=False,
-                 wrap_distributed_sampler=False,
                  add_dist_sampler=False,
                  scheduler_step_freq=None):
         # You are not expected to override this method.
         self._world_rank = world_rank
+        self._local_rank = local_rank
         self._config = config
+        self._is_distributed = is_distributed
         self._use_fp16 = use_fp16
         self._device_ids = device_ids
         self._use_gpu = use_gpu and torch.cuda.is_available()
@@ -141,7 +144,6 @@ class TrainingOperator:
         self.global_step = 0
         self._apex_args = apex_args if apex_args else {}
         self._wrap_ddp = wrap_ddp
-        self._wrap_distributed_sampler = wrap_distributed_sampler
         self._add_dist_sampler = add_dist_sampler
         self._scheduler_step_freq = scheduler_step_freq
 
@@ -151,6 +153,28 @@ class TrainingOperator:
     def _set_timers(self, timers):
         """Passes in the timers from the Runner."""
         self.timers = timers
+
+    def _configure_amp(self, amp, models, optimizers):
+        models, optimizers = amp.initialize(models, optimizers,
+                                            **self._apex_args)
+        return models, optimizers
+
+    def _configure_ddp(self, models, device_ids):
+        return [
+            DistributedDataParallel(model, device_ids=device_ids)
+            for model in models
+        ]
+
+    def _return_items(self, items, original_items):
+        """Helper method to return items in same format as original_items."""
+        if isinstance(original_items, tuple):
+            return tuple(items)
+        elif isinstance(original_items, Iterable):
+            # Items is already a list.
+            return items
+        else:
+            assert len(items) == 1
+            return items[0]
 
     def setup(self, config):
         """Override this method to implement operator setup.
@@ -218,7 +242,6 @@ class TrainingOperator:
         Returns:
             Tuple of model, optimizer, criterion if not None, and scheduler
             if not None.
-
         """
         return_vals = []
         logger.debug("Registering models.")
@@ -244,7 +267,10 @@ class TrainingOperator:
             if not isinstance(self._schedulers, Iterable):
                 self._schedulers = [self._schedulers]
         else:
-            self._schedulers = None
+            if isinstance(schedulers, Iterable):
+                self._schedulers = []
+            else:
+                self._schedulers = None
 
         if criterion:
             logger.debug("Registering loss.")
@@ -257,28 +283,19 @@ class TrainingOperator:
 
         if self.use_fp16 and amp:
             logger.debug("Setting up Apex.")
-            self._original_models, self._optimizers = amp.initialize(
-                self._original_models, self._optimizers, **self._apex_args)
             self._amp = amp
+            self._original_models, self._optimizers = self._configure_amp(
+                self._amp, self._original_models, self._optimizers)
 
         if self._wrap_ddp:
             logging.debug("Setting up DDP for models.")
-            self._models = [
-                DistributedDataParallel(model, device_ids=self.device_ids)
-                for model in self._original_models
-            ]
+            self._models = self._configure_ddp(
+                models=self._original_models, device_ids=self.device_ids)
         else:
             self._models = self._original_models
 
-        if len(self._models) == 1:
-            return_vals.append(self._models[0])
-        else:
-            return_vals.append(self._models)
-
-        if len(self._optimizers) == 1:
-            return_vals.append(self._optimizers[0])
-        else:
-            return_vals.append(self._optimizers)
+        return_vals.append(self._return_items(self._models, models))
+        return_vals.append(self._return_items(self._optimizers, optimizers))
 
         if self._criterion is not None:
             return_vals.append(self._criterion)
@@ -290,10 +307,8 @@ class TrainingOperator:
                                  "are registering schedulers. Set this to "
                                  "'manual' if you will be manually stepping "
                                  "the schedulers.")
-            if len(self._schedulers) == 1:
-                return_vals.append(self._schedulers[0])
-            else:
-                return_vals.append(self._schedulers)
+            return_vals.append(
+                self._return_items(self._schedulers, schedulers))
 
         return tuple(return_vals)
 
@@ -348,8 +363,7 @@ class TrainingOperator:
         self._train_loader = train_loader
         self._validation_loader = validation_loader
 
-        if self._wrap_distributed_sampler:
-            logging.debug("Wrapping data loaders with DistributedSampler.")
+        if self._is_distributed:
 
             def with_sampler(loader):
                 # Automatically set the DistributedSampler
@@ -373,11 +387,15 @@ class TrainingOperator:
 
             if should_wrap_dataloader(self._train_loader):
                 if self._add_dist_sampler:
+                    logging.debug("Wrapping train data loader with "
+                                  "DistributedSampler.")
                     self._train_loader = with_sampler(self._train_loader)
 
             if self._validation_loader is not None and should_wrap_dataloader(
                     self._validation_loader):
                 if self._add_dist_sampler:
+                    logging.debug("Wrapping validation data loader with "
+                                  "DistributedSampler.")
                     self._validation_loader = with_sampler(
                         self._validation_loader)
 
@@ -665,6 +683,90 @@ class TrainingOperator:
             state_dict (dict): State dict as returned by the operator. """
         pass
 
+    def _get_original_models(self):
+        if not hasattr(self, "_original_models"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered models. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
+        return self._original_models
+
+    def _get_optimizers(self):
+        if not hasattr(self, "_optimizers"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered optimizers. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
+        return self._optimizers
+
+    def _get_schedulers(self):
+        if not hasattr(self, "_schedulers"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered schedulers. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
+        return self._schedulers
+
+    def _get_train_loader(self):
+        if not hasattr(self, "_train_loader") or \
+                self._train_loader is None:
+            raise RuntimeError(
+                "Training Operator does not have any "
+                "registered train loader. If this is "
+                "unexepected, make sure to call "
+                "self.register_data(...) inside the setup method "
+                "of your Training Operator.")
+        return self._train_loader
+
+    def _get_validation_loader(self):
+        if not hasattr(self, "_validation_loader") or \
+                self._validation_loader is None:
+            raise RuntimeError(
+                "Training Operator does not have any "
+                "registered validation loader. If this is "
+                "unexepected, make sure to call "
+                "self.register_data(...) inside the setup method "
+                "of your Training Operator.")
+        return self._validation_loader
+
+    def _get_criterion(self):
+        if not hasattr(self, "_criterion"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered criterion. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
+        return self._criterion
+
+    @classmethod
+    def from_ptl(cls,
+                 lightning_module_cls,
+                 train_dataloader=None,
+                 val_dataloader=None):
+        """Creates a TrainingOperator from a Pytorch Lightning Module.
+
+        Args:
+            lightning_module_cls: Your LightningModule class. An object of
+                this class will get instantiated on each worker.
+            train_dataloader: The data loader to use for training. If None
+                is provided, LightningModule.train_dataloader will be used
+                instead.
+            val_dataloader: The data loader to use for validation. If None
+                is provided, LightningModule.val_dataloader will be used
+                instead.
+
+        Returns:
+            A TrainingOperator class properly configured given the
+            LightningModule.
+        """
+        from ray.util.sgd.torch.ptl_operator import LightningOperator
+
+        class CustomLightningOperator(LightningOperator):
+            _lightning_module_cls = lightning_module_cls
+            _train_dataloader = train_dataloader
+            _val_dataloader = val_dataloader
+
+        return CustomLightningOperator
+
     @classmethod
     def from_creators(cls,
                       model_creator,
@@ -748,6 +850,11 @@ class TrainingOperator:
     def world_rank(self):
         """int: The rank of the parent runner. Always 0 if not distributed."""
         return self._world_rank
+
+    @property
+    def local_rank(self):
+        """int: Local rank of parent runner. Always 0 if not distributed."""
+        return self._local_rank
 
     @property
     def use_gpu(self):
@@ -849,28 +956,72 @@ class CreatorOperator(TrainingOperator):
             kwargs["criterion"] = criterion
 
         state = self.register(**kwargs)
-        self.models, self.optimizers = state[:2]
-        if isinstance(self.models, tuple):
-            self.model = self.models[0]
+        self._registered_models, self._registered_optimizers = state[:2]
+        if isinstance(self.models, (list, tuple)):
+            logger.info("Multiple models have been registered. If custom "
+                        "training methods are not provided, only the first "
+                        "model will be used.")
+            self._registered_model = self.models[0]
         else:
-            self.model = self.models
+            self._registered_model = self.models
 
-        if isinstance(self.optimizers, tuple):
-            self.optimizer = self.optimizers[0]
+        if isinstance(self.optimizers, (list, tuple)):
+            logger.info("Multiple optimizers have been registered. If custom "
+                        "training methods are not provided, only the first "
+                        "optimizer will be used.")
+            self._reigstered_optimizer = self.optimizers[0]
         else:
-            self.optimizer = self.optimizers
+            self._registered_optimizer = self.optimizers
 
         if len(state) >= 3:
-            self.criterion = state[2]
+            self._registered_criterion = state[2]
         if len(state) == 4:
-            self.schedulers = state[3]
-            if isinstance(self.schedulers, tuple):
-                self.scheduler = self.schedulers[0]
+            self._registered_schedulers = state[3]
+            if isinstance(self.schedulers, (list, tuple)):
+                logger.info("Multiple schedulers have been registered. If "
+                            "custom training methods are not provided, "
+                            "only the first scheduler will be used.")
+                self._registered_scheduler = self.schedulers[0]
             else:
-                self.scheduler = self.schedulers
+                self._registered_scheduler = self.schedulers
 
         self.register_data(
             train_loader=train_loader, validation_loader=validation_loader)
+
+    @property
+    def model(self):
+        """First or only model created by the provided ``model_creator``."""
+        return self._registered_model
+
+    @property
+    def optimizer(self):
+        """First or only optimizer(s) created by the ``optimizer_creator``."""
+        return self._registered_optimizer
+
+    @property
+    def scheduler(self):
+        """First or only scheduler(s) created by the ``scheduler_creator``."""
+        return self._registered_scheduler
+
+    @property
+    def criterion(self):
+        """Criterion created by the provided ``loss_creator``."""
+        return self._registered_criterion
+
+    @property
+    def models(self):
+        """List of models created by the provided ``model_creator``."""
+        return self._registered_models
+
+    @property
+    def optimizers(self):
+        """List of optimizers created by the ``optimizer_creator``."""
+        return self._registered_optimizers
+
+    @property
+    def schedulers(self):
+        """List of schedulers created by the ``scheduler_creator``."""
+        return self._registered_schedulers
 
 
 def get_test_operator(operator_cls):
@@ -880,6 +1031,9 @@ def get_test_operator(operator_cls):
             if callable(func):
                 return func(self, iterator, info)
             return {"done": 1}
+
+        def validate(self, iterator, info):
+            return self.train_epoch(iterator, info)
 
     return _TestingOperator
 

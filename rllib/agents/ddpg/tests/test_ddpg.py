@@ -60,13 +60,16 @@ class TestDDPG(unittest.TestCase):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_action(obs, explore=False)
-            for _ in range(50):
+            self.assertEqual(trainer.get_policy().global_timestep, 1)
+            for i in range(50):
                 a = trainer.compute_action(obs, explore=False)
+                self.assertEqual(trainer.get_policy().global_timestep, i + 2)
                 check(a, a_)
             # explore=None (default: explore) should return different actions.
             actions = []
-            for _ in range(50):
+            for i in range(50):
                 actions.append(trainer.compute_action(obs))
+                self.assertEqual(trainer.get_policy().global_timestep, i + 52)
             check(np.std(actions), 0.0, false=True)
             trainer.stop()
 
@@ -80,23 +83,27 @@ class TestDDPG(unittest.TestCase):
                 "final_scale": 0.001,
             }
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
-            # ts=1 (get a deterministic action as per explore=False).
+            # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_action(obs, explore=False)
-            # ts=2-5 (in random window).
+            self.assertEqual(trainer.get_policy().global_timestep, 1)
+            # ts=1-49 (in random window).
             random_a = []
-            for _ in range(49):
+            for i in range(1, 50):
                 random_a.append(trainer.compute_action(obs, explore=True))
+                self.assertEqual(trainer.get_policy().global_timestep, i + 1)
                 check(random_a[-1], deterministic_action, false=True)
             self.assertTrue(np.std(random_a) > 0.5)
 
             # ts > 50 (a=deterministic_action + scale * N[0,1])
-            for _ in range(50):
+            for i in range(50):
                 a = trainer.compute_action(obs, explore=True)
+                self.assertEqual(trainer.get_policy().global_timestep, i + 51)
                 check(a, deterministic_action, rtol=0.1)
 
             # ts >> 50 (BUT: explore=False -> expect deterministic action).
-            for _ in range(50):
+            for i in range(50):
                 a = trainer.compute_action(obs, explore=False)
+                self.assertEqual(trainer.get_policy().global_timestep, i + 101)
                 check(a, deterministic_action)
             trainer.stop()
 
@@ -291,7 +298,7 @@ class TestDDPG(unittest.TestCase):
                 ]
                 for tf_g, torch_g in zip(tf_a_grads, torch_a_grads):
                     if tf_g.shape != torch_g.shape:
-                        check(tf_g, np.transpose(torch_g))
+                        check(tf_g, np.transpose(torch_g.cpu()))
                     else:
                         check(tf_g, torch_g)
 
@@ -313,7 +320,7 @@ class TestDDPG(unittest.TestCase):
                 torch_c_grads = [v.grad for v in policy.model.q_variables()]
                 for tf_g, torch_g in zip(tf_c_grads, torch_c_grads):
                     if tf_g.shape != torch_g.shape:
-                        check(tf_g, np.transpose(torch_g))
+                        check(tf_g, np.transpose(torch_g.cpu()))
                     else:
                         check(tf_g, torch_g)
                 # Compare (unchanged(!) actor grads) with tf ones.
@@ -322,7 +329,7 @@ class TestDDPG(unittest.TestCase):
                 ]
                 for tf_g, torch_g in zip(tf_a_grads, torch_a_grads):
                     if tf_g.shape != torch_g.shape:
-                        check(tf_g, np.transpose(torch_g))
+                        check(tf_g, np.transpose(torch_g.cpu()))
                     else:
                         check(tf_g, torch_g)
 
@@ -379,7 +386,10 @@ class TestDDPG(unittest.TestCase):
                         else:
                             torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), atol=0.1)
+                            check(
+                                tf_var,
+                                np.transpose(torch_var.cpu()),
+                                atol=0.1)
                         else:
                             check(tf_var, torch_var, atol=0.1)
 
@@ -516,6 +526,8 @@ class TestDDPG(unittest.TestCase):
             for k, v in weights_dict.items() if re.search(
                 "default_policy/(actor_(hidden_0|out)|sequential(_1)?)/", k)
         }
+        model_dict["low_action"] = convert_to_torch_tensor(np.array([0.0]))
+        model_dict["action_range"] = convert_to_torch_tensor(np.array([1.0]))
         return model_dict
 
 

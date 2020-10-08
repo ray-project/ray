@@ -1,6 +1,6 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
-from typing import Optional, List, Union
+from typing import Any, Dict, Optional, List, Union
 import json
 import os
 import tempfile
@@ -96,6 +96,8 @@ def rsync(cluster_config: Union[dict, str],
           source: str,
           target: str,
           down: bool,
+          ip_address: str = None,
+          use_internal_ip: bool = False,
           no_config_cache: bool = False):
     """Rsyncs files to or from the cluster.
 
@@ -105,6 +107,9 @@ def rsync(cluster_config: Union[dict, str],
         source (str): rsync source argument.
         target (str): rsync target argument.
         down (bool): whether we're syncing remote -> local.
+        ip_address (str): Address of node.
+        use_internal_ip (bool): Whether the provided ip_address is
+            public or private.
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
 
@@ -117,6 +122,8 @@ def rsync(cluster_config: Union[dict, str],
         target=target,
         override_cluster_name=None,
         down=down,
+        ip_address=ip_address,
+        use_internal_ip=use_internal_ip,
         no_config_cache=no_config_cache,
         all_nodes=False)
 
@@ -179,3 +186,16 @@ def _as_config_file(cluster_config: Union[dict, str]):
     if not os.path.exists(cluster_config):
         raise ValueError("Cluster config not found {}".format(cluster_config))
     return cluster_config
+
+
+def bootstrap_config(cluster_config: Dict[str, any],
+                     no_config_cache: bool = False) -> bool:
+    """Validate and add provider-specific fields to the config. For example,
+       IAM/authentication may be added here."""
+    return commands._bootstrap_config(cluster_config, no_config_cache)
+
+
+def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Fillout default values for a cluster_config based on the provider."""
+    from ray.autoscaler._private.util import fillout_defaults
+    return fillout_defaults(config)

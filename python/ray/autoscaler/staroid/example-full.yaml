@@ -143,7 +143,7 @@ head_node:
           #   - rsync (used for `ray rsync` commands and file mounts)
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
-          # Image will be overriden when 'image_from_project' is true.
+          # Image will be overridden when 'image_from_project' is true.
           image: rayproject/autoscaler
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.

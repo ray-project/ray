@@ -77,7 +77,7 @@ def explore(config: Dict, mutations: Dict, resample_probability: float,
                 new_config[key] = config[key] * 1.2
             else:
                 new_config[key] = config[key] * 0.8
-            if type(config[key]) is int:
+            if isinstance(config[key], int):
                 new_config[key] = int(new_config[key])
     if custom_explore_fn:
         new_config = custom_explore_fn(new_config)

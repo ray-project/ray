@@ -37,7 +37,7 @@ FAKE_BATCH = {
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
