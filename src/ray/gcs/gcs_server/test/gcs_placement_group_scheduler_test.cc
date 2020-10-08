@@ -963,7 +963,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
   auto bundles_on_node1 =
       scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles_on_node1.size());
-  // all nodes are dead, reschedule the placement group.
+  // All nodes are dead, reschedule the placement group.
   placement_group->GetMutableBundle(0)->clear_node_id();
   placement_group->GetMutableBundle(1)->clear_node_id();
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);

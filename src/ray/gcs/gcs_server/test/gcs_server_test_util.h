@@ -183,7 +183,7 @@ struct GcsServerMocker {
       return_callbacks.push_back(callback);
     }
 
-    // Trigger reply to PrepareBundleResources
+    // Trigger reply to PrepareBundleResources.
     bool GrantPrepareBundleResources(bool success = true) {
       Status status = Status::OK();
       rpc::PrepareBundleResourcesReply reply;
@@ -198,7 +198,7 @@ struct GcsServerMocker {
       }
     }
 
-    // Trigger reply to CommitBundleResources
+    // Trigger reply to CommitBundleResources.
     bool GrantCommitBundleResources(bool success = true) {
       Status status = Status::OK();
       rpc::CommitBundleResourcesReply reply;
