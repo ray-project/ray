@@ -1,4 +1,5 @@
-from typing import Union
+from gym.spaces import Space
+from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -7,6 +8,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
+from ray.rllib.utils.schedules import Schedule
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 
 tf1, tf, tfv = try_import_tf()
@@ -23,16 +25,16 @@ class GaussianNoise(Exploration):
     """
 
     def __init__(self,
-                 action_space,
+                 action_space: Space,
                  *,
                  framework: str,
                  model: ModelV2,
-                 random_timesteps=1000,
-                 stddev=0.1,
-                 initial_scale=1.0,
-                 final_scale=0.02,
-                 scale_timesteps=10000,
-                 scale_schedule=None,
+                 random_timesteps: int = 1000,
+                 stddev: float = 0.1,
+                 initial_scale: float = 1.0,
+                 final_scale: float = 0.02,
+                 scale_timesteps: int = 10000,
+                 scale_schedule: Optional[Schedule] = None,
                  **kwargs):
         """Initializes a GaussianNoise Exploration object.
 
@@ -56,9 +58,12 @@ class GaussianNoise(Exploration):
         super().__init__(
             action_space, model=model, framework=framework, **kwargs)
 
+        # Create the Random exploration module (used for the first n
+        # timesteps).
         self.random_timesteps = random_timesteps
         self.random_exploration = Random(
             action_space, model=self.model, framework=self.framework, **kwargs)
+
         self.stddev = stddev
         # The `scale` annealing schedule.
         self.scale_schedule = scale_schedule or PiecewiseSchedule(
@@ -89,7 +94,9 @@ class GaussianNoise(Exploration):
             return self._get_tf_exploration_action_op(action_distribution,
                                                       explore, timestep)
 
-    def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
+    def _get_tf_exploration_action_op(self, action_dist: ActionDistribution,
+                                      explore: bool,
+                                      timestep: Union[int, TensorType]):
         ts = timestep if timestep is not None else self.last_timestep
 
         # The deterministic actions (if explore=False).
@@ -104,7 +111,7 @@ class GaussianNoise(Exploration):
             self.random_exploration.get_tf_exploration_action_op(
                 action_dist, explore)
         stochastic_actions = tf.cond(
-            pred=tf.convert_to_tensor(ts <= self.random_timesteps),
+            pred=tf.convert_to_tensor(ts < self.random_timesteps),
             true_fn=lambda: random_actions,
             false_fn=lambda: tf.clip_by_value(
                 deterministic_actions + gaussian_sample,
@@ -136,7 +143,9 @@ class GaussianNoise(Exploration):
             with tf1.control_dependencies([assign_op]):
                 return action, logp
 
-    def _get_torch_exploration_action(self, action_dist, explore, timestep):
+    def _get_torch_exploration_action(self, action_dist: ActionDistribution,
+                                      explore: bool,
+                                      timestep: Union[int, TensorType]):
         # Set last timestep or (if not given) increase by one.
         self.last_timestep = timestep if timestep is not None else \
             self.last_timestep + 1
@@ -144,7 +153,7 @@ class GaussianNoise(Exploration):
         # Apply exploration.
         if explore:
             # Random exploration phase.
-            if self.last_timestep <= self.random_timesteps:
+            if self.last_timestep < self.random_timesteps:
                 action, _ = \
                     self.random_exploration.get_torch_exploration_action(
                         action_dist, explore=True)
@@ -177,7 +186,7 @@ class GaussianNoise(Exploration):
         return action, logp
 
     @override(Exploration)
-    def get_info(self, sess=None):
+    def get_info(self, sess: Optional["tf.Session"] = None):
         """Returns the current scale value.
 
         Returns:

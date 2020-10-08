@@ -3,6 +3,9 @@
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://docs.ray.io/en/latest/?badge=latest
 
+.. image:: https://img.shields.io/badge/Ray-Join%20Slack-blue
+    :target: https://forms.gle/9TSdDYUgxYs8SA9e8
+
 |
 
 
@@ -292,14 +295,14 @@ More Information
 Getting Involved
 ----------------
 
-- `Github Discussions`_: For discussions about development, questions about usage, and feature requests.
-- `GitHub Issues`_: For reporting bugs.
 - `Community Slack`_: Join our Slack workspace.
+- `GitHub Discussions`_: For discussions about development, questions about usage, and feature requests.
+- `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
 - `Meetup Group`_: Join our meetup group.
 - `StackOverflow`_: For questions about how to use Ray.
 
-.. _`Github Discussions`: https://github.com/ray-project/ray/discussions
+.. _`GitHub Discussions`: https://github.com/ray-project/ray/discussions
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/

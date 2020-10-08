@@ -272,6 +272,9 @@ message ResourceDemand {
   // The number of requests for which there is no node that is a superset of
   // the requested resource shape.
   uint64 num_infeasible_requests_queued = 3;
+  // The number of requests of this shape still queued in CoreWorkers that this
+  // raylet knows about.
+  int64 backlog_size = 4;
 }
 
 // Represents the demand sorted by resource shape.

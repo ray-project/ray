@@ -59,8 +59,8 @@ class Preprocessor:
             try:
                 if not self._obs_space.contains(observation):
                     raise ValueError(
-                        "Observation outside expected value range",
-                        self._obs_space, observation)
+                        "Observation ({}) outside given space ({})!",
+                        observation, self._obs_space)
             except AttributeError:
                 raise ValueError(
                     "Observation for a Box/MultiBinary/MultiDiscrete space "

@@ -125,7 +125,7 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
   RAY_LOG(INFO) << "Failed to create placement group " << placement_group->GetName()
-                << ", try again.";
+                << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
   // We will attempt to schedule this placement_group once an eligible node is
   // registered.
   auto state = placement_group->GetState();
@@ -148,7 +148,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     const std::shared_ptr<GcsPlacementGroup> &placement_group) {
-  RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName();
+  RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
+                << ", id: " << placement_group->GetPlacementGroupID();
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
   auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
@@ -363,7 +364,7 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
   int total_cnt = 0;
-  for (const auto pending_pg_spec : pending_placement_groups_) {
+  for (const auto &pending_pg_spec : pending_placement_groups_) {
     auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
     placement_group_data->Swap(&placement_group_table_data);
