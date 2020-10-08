@@ -55,8 +55,8 @@ def _docker_affected():
         x.split("=")[0]: x.split("=")[1]
         for x in variable_definitions
     }
-    affected = env_var_dict["RAY_CI_DOCKER_AFFECTED"] == 1 or \
-        env_var_dict["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"] == 1
+    affected = env_var_dict["RAY_CI_DOCKER_AFFECTED"] == "1" or \
+        env_var_dict["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"] == "1"
     print(f"Docker affected: {affected}")
     return affected
 
