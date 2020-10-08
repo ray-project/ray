@@ -94,7 +94,8 @@ class LogMonitor:
             try:
                 # Test if the worker process that generated the log file
                 # is still alive. Only applies to worker processes.
-                if file_info.worker_pid != "raylet":
+                if (file_info.worker_pid != "raylet"
+                        and file_info.worker_pid != "gcs_server"):
                     os.kill(file_info.worker_pid, 0)
             except OSError:
                 # The process is not alive any more, so move the log file
@@ -121,7 +122,8 @@ class LogMonitor:
         log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
-        for file_path in log_file_paths + raylet_err_paths:
+        gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server.err")
+        for file_path in log_file_paths + raylet_err_paths + gcs_err_path:
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
@@ -240,6 +242,8 @@ class LogMonitor:
                     lines_to_publish = lines_to_publish[1:]
                 elif "/raylet" in file_info.filename:
                     file_info.worker_pid = "raylet"
+                elif "/gcs_server" in file_info.filename:
+                    file_info.worker_pid = "gcs_server"
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
