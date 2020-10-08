@@ -467,25 +467,27 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
     for t in trials:
         runner.add_trial(t)
 
-    # Start trial (x2), process result, process save
+    # Start trial (x2), process result, process save or result
     for _ in range(4):
         runner.step()
     assert all(t.status == Trial.RUNNING for t in runner.get_trials())
-    runner.checkpoint()
+    runner.checkpoint(force=True)
 
     ray.shutdown()
     cluster.shutdown()
 
     cluster = _start_new_cluster()
     runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
-    # Start trial, process restore, process result, process save
-    for _ in range(4):
-        runner.step()
 
-    # Start trial 2, process result, process save, process result, process save
-    for i in range(5):
+    # We have no control over how many iters have been processed.
+    iters = sum(
+        t.last_result.get("training_iteration", 0)
+        for t in runner.get_trials())
+    # we have 2 trials and each will do process result/save per iter
+    for i in range(((2 + 2) - iters) * 2 + 2):
+        # result or save
         runner.step()
-
+        print(i, runner.get_trials())
     with pytest.raises(TuneError):
         runner.step()
 

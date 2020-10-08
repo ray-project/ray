@@ -580,7 +580,11 @@ class Trial:
         return self.saving_to is not None
 
     def __repr__(self):
-        return self._trainable_name(include_trial_id=True)
+        name = self._trainable_name(include_trial_id=True)
+        rep = f"{name}[status={self.status}]"
+        if str(self.location):
+            rep += f"[loc={str(self.location)}]"
+        return rep
 
     def __str__(self):
         return self._trainable_name(include_trial_id=True)
