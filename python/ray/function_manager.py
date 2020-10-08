@@ -300,9 +300,7 @@ class FunctionActorManager:
         while True:
             with self.lock:
                 if (self._worker.actor_id.is_nil()
-                        and (not isinstance(function_descriptor,
-                                            PythonFunctionDescriptor)
-                             or function_descriptor.function_id in
+                        and (function_descriptor.function_id in
                              self._function_execution_info[job_id])):
                     break
                 elif not self._worker.actor_id.is_nil() and (
