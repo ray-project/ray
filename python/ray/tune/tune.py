@@ -14,6 +14,7 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
+from ray.tune.schedulers import FIFOScheduler
 
 logger = logging.getLogger(__name__)
 
