@@ -447,8 +447,6 @@ After connecting, you can scale up the number of workers seamlessly across multi
     trainer.train()
     model = trainer.get_model()
 
-.. _raysgd-tune:
-
 Advanced: Fault Tolerance
 -------------------------
 
@@ -469,6 +467,8 @@ During each ``train`` method, each parallel worker iterates through the iterable
   6. If there are available resources and the Trainer has fewer workers than initially specified, then it will scale up its worker pool until it reaches the initially specified ``num_workers``.
 
 Note that we assume the Trainer itself is not on a pre-emptible node. To allow the entire Trainer to recover from failure, you must use Tune to execute the training.
+
+.. _raysgd-tune:
 
 Advanced: Hyperparameter Tuning
 -------------------------------
