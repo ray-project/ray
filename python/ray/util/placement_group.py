@@ -52,7 +52,6 @@ class PlacementGroup:
         """
         self._fill_bundle_cache_if_needed()
 
-        global bundle_reservation_check
         _export_bundle_reservation_check_method_if_needed()
 
         assert len(self.bundle_cache) != 0, (
