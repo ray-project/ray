@@ -43,7 +43,7 @@ def _make_scheduler(args):
 
 def _check_default_resources_override(run_identifier):
     if not isinstance(run_identifier, str):
-        # If obscure dtype, assume it is overriden.
+        # If obscure dtype, assume it is overridden.
         return True
     trainable_cls = get_trainable_cls(run_identifier)
     return hasattr(trainable_cls, "default_resource_request") and (
@@ -409,7 +409,7 @@ def run(
             # "gpu" is manually set.
             pass
         elif _check_default_resources_override(experiments[0].run_identifier):
-            # "default_resources" is manually overriden.
+            # "default_resources" is manually overridden.
             pass
         else:
             logger.warning("Tune detects GPUs, but no trials are using GPUs. "
