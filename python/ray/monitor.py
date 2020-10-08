@@ -89,7 +89,6 @@ class Monitor:
         """
         self.primary_subscribe_client.psubscribe(pattern)
 
-
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
 
@@ -360,6 +359,7 @@ if __name__ == "__main__":
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
         raise e
 
+
 def parse_resource_demands(resource_load_by_shape):
     """Handle the message.resource_load_by_shape protobuf for the demand
     based autoscaling. Catch and log all exceptions so this doesn't
@@ -380,11 +380,9 @@ def parse_resource_demands(resource_load_by_shape):
         for resource_demand_pb in list(
                 resource_load_by_shape.resource_demands):
             request_shape = dict(resource_demand_pb.shape)
-            for _ in range(
-                    resource_demand_pb.num_ready_requests_queued):
+            for _ in range(resource_demand_pb.num_ready_requests_queued):
                 waiting_bundles.append(request_shape)
-            for _ in range(
-                    resource_demand_pb.num_infeasible_requests_queued):
+            for _ in range(resource_demand_pb.num_infeasible_requests_queued):
                 infeasible_bundles.append(request_shape)
 
             # Infeasible and ready states for tasks are (logically)
@@ -393,8 +391,7 @@ def parse_resource_demands(resource_load_by_shape):
                 backlog_queue = infeasible_bundles
             else:
                 backlog_queue = waiting_bundles
-            for _ in range(
-                    resource_demand_pb.backlog_size):
+            for _ in range(resource_demand_pb.backlog_size):
                 backlog_queue.append(request_shape)
     except Exception:
         logger.exception("Failed to parse resource demands.")
