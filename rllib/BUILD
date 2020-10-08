@@ -1026,13 +1026,6 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-py_test(
-    name = "env/wrappers/tests/test_kaggle_wrapper",
-    tags = ["env"],
-    size = "small",
-    srcs = ["env/wrappers/tests/test_kaggle_wrapper.py"]
-)
-
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/

@@ -286,8 +286,6 @@ install_dependencies() {
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
-    pip install 'kaggle_environments>=1.3.6'
-    pip install 'gfootball>=2.6'
   fi
 
   # Additional Tune test dependencies.
