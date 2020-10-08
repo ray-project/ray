@@ -40,9 +40,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         assert len(models) == 1
         model = models[0]
         assert isinstance(model, ptl.LightningModule)
-        model = LightningDistributedDataParallel(model,
-                                                 device_ids=device_ids,
-                                                 find_unused_parameters=True)
+        model = LightningDistributedDataParallel(
+            model, device_ids=device_ids, find_unused_parameters=True)
         return [model]
 
     @property

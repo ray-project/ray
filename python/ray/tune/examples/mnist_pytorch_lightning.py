@@ -4,7 +4,6 @@
 # __import_lightning_begin__
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning import TrainResult, EvalResult
 from torch.utils.data import DataLoader, random_split
 from torch.nn import functional as F
 from torchvision.datasets import MNIST
