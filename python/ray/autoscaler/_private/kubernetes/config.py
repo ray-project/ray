@@ -32,7 +32,7 @@ def not_found_msg(resource_type, name):
 
 
 def not_checking_msg(resource_type, name):
-    return "Ray is not checking if {} '{}' exists.".format(resource_type, name)
+    return "not checking if {} '{}' exists".format(resource_type, name)
 
 
 def created_msg(resource_type, name):
@@ -67,7 +67,8 @@ def _configure_namespace(provider_config):
         namespaces = core_api().list_namespace(
             field_selector=field_selector).items
     except ApiException:
-        logger.warning(not_checking_msg(namespace_field, namespace))
+        logger.warning(log_prefix +
+                       not_checking_msg(namespace_field, namespace))
         return namespace
 
     if len(namespaces) > 0:
