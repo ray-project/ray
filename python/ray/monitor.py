@@ -18,6 +18,44 @@ import redis
 logger = logging.getLogger(__name__)
 
 
+def parse_resource_demands(resource_load_by_shape):
+    """Handle the message.resource_load_by_shape protobuf for the demand
+    based autoscaling. Catch and log all exceptions so this doesn't
+    interfere with the utilization based autoscaler until we're confident
+    this is stable. Worker queue backlogs are added to the appropriate
+    resource demand vector.
+
+    Args:
+        resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
+            in protobuf form or None.
+
+    Returns:
+        List[ResourceDict]: Waiting bundles (ready and feasible).
+        List[ResourceDict]: Infeasible bundles.
+    """
+    waiting_bundles, infeasible_bundles = [], []
+    try:
+        for resource_demand_pb in list(
+                resource_load_by_shape.resource_demands):
+            request_shape = dict(resource_demand_pb.shape)
+            for _ in range(resource_demand_pb.num_ready_requests_queued):
+                waiting_bundles.append(request_shape)
+            for _ in range(resource_demand_pb.num_infeasible_requests_queued):
+                infeasible_bundles.append(request_shape)
+
+            # Infeasible and ready states for tasks are (logically)
+            # mutually exclusive.
+            if resource_demand_pb.num_infeasible_requests_queued > 0:
+                backlog_queue = infeasible_bundles
+            else:
+                backlog_queue = waiting_bundles
+            for _ in range(resource_demand_pb.backlog_size):
+                backlog_queue.append(request_shape)
+    except Exception:
+        logger.exception("Failed to parse resource demands.")
+    return waiting_bundles, infeasible_bundles
+
+
 class Monitor:
     """A monitor for Ray processes.
 
@@ -358,41 +396,3 @@ if __name__ == "__main__":
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
         raise e
-
-
-def parse_resource_demands(resource_load_by_shape):
-    """Handle the message.resource_load_by_shape protobuf for the demand
-    based autoscaling. Catch and log all exceptions so this doesn't
-    interfere with the utilization based autoscaler until we're confident
-    this is stable. Worker queue backlogs are added to the appropriate
-    resource demand vector.
-
-    Args:
-        resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
-            in protobuf form or None.
-
-    Returns:
-        List[ResourceDict]: Waiting bundles (ready and feasible).
-        List[ResourceDict]: Infeasible bundles.
-    """
-    waiting_bundles, infeasible_bundles = [], []
-    try:
-        for resource_demand_pb in list(
-                resource_load_by_shape.resource_demands):
-            request_shape = dict(resource_demand_pb.shape)
-            for _ in range(resource_demand_pb.num_ready_requests_queued):
-                waiting_bundles.append(request_shape)
-            for _ in range(resource_demand_pb.num_infeasible_requests_queued):
-                infeasible_bundles.append(request_shape)
-
-            # Infeasible and ready states for tasks are (logically)
-            # mutually exclusive.
-            if resource_demand_pb.num_infeasible_requests_queued > 0:
-                backlog_queue = infeasible_bundles
-            else:
-                backlog_queue = waiting_bundles
-            for _ in range(resource_demand_pb.backlog_size):
-                backlog_queue.append(request_shape)
-    except Exception:
-        logger.exception("Failed to parse resource demands.")
-    return waiting_bundles, infeasible_bundles
