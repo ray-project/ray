@@ -113,7 +113,7 @@ Ray provides Python, Java, and *Experimental* C++ API. And Ray uses Tasks (funct
         }
   .. group-tab:: C++ (Experimental)
 
-    The C++ language API is in very early experimental stage.
+    The C++ Ray API is currently experimental. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
     Run the following commands to get started:
     - Build ray from source with *bazel* as shown `here <https://docs.ray.io/en/master/development.html#building-ray-full>`__.
     - Modify `ray/cpp/src/ray/test/cluster/cluster_mode_test.cc` or add C++ files under `ray/cpp/src/ray/test/cluster`.
