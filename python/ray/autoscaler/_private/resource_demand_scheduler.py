@@ -45,8 +45,8 @@ class ResourceDemandScheduler:
     def get_nodes_to_launch(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeType, int],
             resource_demands: List[ResourceDict],
-            usage_by_ip: Dict[str, ResourceDict], pending_placement_groups: List[
-                PlacementGroupTableData]
+            usage_by_ip: Dict[str, ResourceDict],
+            pending_placement_groups: List[PlacementGroupTableData]
     ) -> Dict[NodeType, int]:
         """Given resource demands, return node types to add to the cluster.
 
@@ -102,10 +102,9 @@ class ResourceDemandScheduler:
         # demand was calculated after the min_workers constraint was respected.
         total_nodes_to_add = {}
         for node_type in self.node_types:
-            nodes_to_add = (min_workers_nodes_to_add.get(node_type, 0) +
-                            placement_group_nodes_to_add.get(node_type, 0) +
-                            nodes_to_add_based_on_demand.get(node_type, 0)
-                            )
+            nodes_to_add = (min_workers_nodes_to_add.get(
+                node_type, 0) + placement_group_nodes_to_add.get(node_type, 0)
+                            + nodes_to_add_based_on_demand.get(node_type, 0))
             if nodes_to_add > 0:
                 total_nodes_to_add[node_type] = nodes_to_add
 
@@ -170,7 +169,6 @@ class ResourceDemandScheduler:
                                     strict_spreads: List[List[ResourceDict]],
                                     node_resources: List[ResourceDict],
                                     node_type_counts: Dict[NodeType, int]):
-
         """For each strict spread, attempt to reserve as much space as possible
         on the node, then allocate new nodes for the unfulfilled portion.
 
@@ -427,8 +425,8 @@ def _inplace_add(a: collections.defaultdict, b: Dict) -> None:
         a[k] += v
 
 
-def placement_groups_to_resource_demands(pending_placement_groups: List[
-        PlacementGroupTableData]):
+def placement_groups_to_resource_demands(
+        pending_placement_groups: List[PlacementGroupTableData]):
     """Preprocess placement group requests into regular resource demand vectors
     when possible. The policy is:
         * STRICT_PACK - Convert to a single bundle.
@@ -449,9 +447,11 @@ def placement_groups_to_resource_demands(pending_placement_groups: List[
     resource_demand_vector = []
     unconverted = []
     for placement_group in pending_placement_groups:
-        shapes = [dict(bundle.unit_resources) for bundle in placement_group.bundles]
-        if (placement_group.strategy == PlacementStrategy.PACK or
-                placement_group.strategy == PlacementStrategy.SPREAD):
+        shapes = [
+            dict(bundle.unit_resources) for bundle in placement_group.bundles
+        ]
+        if (placement_group.strategy == PlacementStrategy.PACK
+                or placement_group.strategy == PlacementStrategy.SPREAD):
             resource_demand_vector.extend(shapes)
         elif placement_group.strategy == PlacementStrategy.STRICT_PACK:
             combined = collections.defaultdict(float)
@@ -459,8 +459,7 @@ def placement_groups_to_resource_demands(pending_placement_groups: List[
                 for label, quantity in shape.items():
                     combined[label] += quantity
             resource_demand_vector.append(combined)
-        elif (placement_group.strategy ==
-              PlacementStrategy.STRICT_SPREAD):
+        elif (placement_group.strategy == PlacementStrategy.STRICT_SPREAD):
             unconverted.append(shapes)
         else:
             logger.error(

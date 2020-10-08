@@ -145,7 +145,8 @@ class Monitor:
                 self.load_metrics.update(
                     ip, total_resources, update_available_resources,
                     available_resources, update_resource_load, resource_load,
-                    waiting_bundles, infeasible_bundles, pending_placement_groups)
+                    waiting_bundles, infeasible_bundles,
+                    pending_placement_groups)
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")
