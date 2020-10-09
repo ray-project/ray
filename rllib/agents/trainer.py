@@ -556,12 +556,12 @@ class Trainer(Trainable):
             # A class specifier.
             elif "." in env:
                 self.env_creator = \
-                    lambda env_config: from_config(env, env_config)
+                    lambda env_context: from_config(env, env_context)
             # Try gym.
             else:
                 import gym  # soft dependency
                 self.env_creator = \
-                    lambda env_config: gym.make(env, **env_config)
+                    lambda env_context: gym.make(env, **env_context)
         else:
             self.env_creator = lambda env_config: None
 
