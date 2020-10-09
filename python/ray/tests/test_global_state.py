@@ -212,6 +212,143 @@ def test_load_report(shutdown_only, max_shapes):
             else:
                 assert demand.num_ready_requests_queued > 0
                 assert demand.num_infeasible_requests_queued == 0
+    client.close()
+
+
+def test_placement_group_load_report(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Add a head node that doesn't have gpu resource.
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+    redis = ray._private.services.create_redis_client(
+        cluster.address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    redis = ray._private.services.create_redis_client(
+        cluster.address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    client = redis.pubsub(ignore_subscribe_messages=True)
+    client.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+
+    class PgLoadChecker:
+        def nothing_is_ready(self):
+            heartbeat = self._read_heartbeat()
+            if not heartbeat:
+                return False
+            if heartbeat.HasField("placement_group_load"):
+                pg_load = heartbeat.placement_group_load
+                return len(pg_load.placement_group_data) == 2
+            return False
+
+        def only_first_one_ready(self):
+            heartbeat = self._read_heartbeat()
+            if not heartbeat:
+                return False
+            if heartbeat.HasField("placement_group_load"):
+                pg_load = heartbeat.placement_group_load
+                return len(pg_load.placement_group_data) == 1
+            return False
+
+        def two_infeasible_pg(self):
+            heartbeat = self._read_heartbeat()
+            if not heartbeat:
+                return False
+            if heartbeat.HasField("placement_group_load"):
+                pg_load = heartbeat.placement_group_load
+                return len(pg_load.placement_group_data) == 2
+            return False
+
+        def _read_heartbeat(self):
+            try:
+                message = client.get_message()
+            except redis.exceptions.ConnectionError:
+                pass
+            if message is None:
+                return None
+
+            pattern = message["pattern"]
+            data = message["data"]
+            if pattern != ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
+                return None
+            pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+            heartbeat_data = pub_message.data
+            heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+                heartbeat_data)
+            return heartbeat
+
+    checker = PgLoadChecker()
+
+    # Create 2 placement groups that are infeasible.
+    pg_feasible = ray.util.placement_group([{"A": 1}])
+    pg_infeasible = ray.util.placement_group([{"B": 1}])
+    _, unready = ray.wait(
+        [pg_feasible.ready(), pg_infeasible.ready()], timeout=0)
+    assert len(unready) == 2
+    ray.test_utils.wait_for_condition(checker.nothing_is_ready)
+
+    # Add a node that makes pg feasible. Make sure load include this change.
+    cluster.add_node(resources={"A": 1})
+    ray.get(pg_feasible.ready())
+    ray.test_utils.wait_for_condition(checker.only_first_one_ready)
+    # Create one more infeasible pg and make sure load is properly updated.
+    pg_infeasible_second = ray.util.placement_group([{"C": 1}])
+    _, unready = ray.wait([pg_infeasible_second.ready()], timeout=0)
+    assert len(unready) == 1
+    ray.test_utils.wait_for_condition(checker.two_infeasible_pg)
+    client.close()
+
+
+def test_backlog_report(shutdown_only):
+    cluster = ray.init(
+        num_cpus=1, _system_config={
+            "report_worker_backlog": True,
+        })
+    redis = ray._private.services.create_redis_client(
+        cluster["redis_address"],
+        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    client = redis.pubsub(ignore_subscribe_messages=True)
+    client.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+
+    @ray.remote(num_cpus=1)
+    def foo(x):
+        print(".")
+        time.sleep(x)
+        return None
+
+    def backlog_size_set():
+        try:
+            raw_message = client.get_message()
+        except Exception:
+            return False
+        if raw_message is None:
+            return False
+
+        data = raw_message["data"]
+        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+        heartbeat_data = pub_message.data
+
+        message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+            heartbeat_data)
+        aggregate_resource_load = \
+            message.resource_load_by_shape.resource_demands
+        if len(aggregate_resource_load) == 1:
+            backlog_size = aggregate_resource_load[0].backlog_size
+            print(backlog_size)
+            # Ideally we'd want to assert backlog_size == 8, but guaranteeing
+            # the order the order that submissions will occur is too
+            # hard/flaky.
+            return backlog_size > 0
+        return False
+
+    # We want this first task to finish
+    refs = [foo.remote(0.5)]
+    # These tasks should all start _before_ the first one finishes.
+    refs.extend([foo.remote(1000) for _ in range(9)])
+    # Now there's 1 request running, 1 queued in the raylet, and 8 queued in
+    # the worker backlog.
+
+    ray.get(refs[0])
+    # First request finishes, second request is now running, third lease
+    # request is sent to the raylet with backlog=7
+
+    ray.test_utils.wait_for_condition(backlog_size_set, timeout=2)
 
 
 if __name__ == "__main__":

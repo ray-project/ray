@@ -229,27 +229,6 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
   }
 }
 
-TEST_F(GlobalStateAccessorTest, TestActorTable) {
-  int actor_count = 1;
-  ASSERT_EQ(global_state_->GetAllActorInfo().size(), 0);
-  auto job_id = JobID::FromInt(1);
-  std::vector<ActorID> actor_ids;
-  actor_ids.reserve(actor_count);
-  for (int index = 0; index < actor_count; ++index) {
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
-    actor_ids.emplace_back(ActorID::FromBinary(actor_table_data->actor_id()));
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(
-        actor_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
-    WaitReady(promise.get_future(), timeout_ms_);
-  }
-  ASSERT_EQ(global_state_->GetAllActorInfo().size(), actor_count);
-
-  for (auto &actor_id : actor_ids) {
-    ASSERT_TRUE(global_state_->GetActorInfo(actor_id));
-  }
-}
-
 TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
   // Add worker info

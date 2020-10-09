@@ -1,13 +1,9 @@
 import numpy as np
-import scipy
-from typing import Union
 
-from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    TensorType
+from ray.rllib.utils.exploration.stochastic_sampling import StochasticSampling
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -69,58 +65,39 @@ def calculate_gae_advantages(paths, discount, gae_lambda):
     return paths
 
 
-def discount_cumsum(x, discount):
-    """
-        Returns:
-            (float) : y[t] - discount*y[t+1] = x[t] or rev(y)[t]
-            - discount*rev(y)[t-1] = rev(x)[t]
-        """
-    return scipy.signal.lfilter(
-        [1], [1, float(-discount)], x[::-1], axis=0)[::-1]
-
-
-class MBMPOExploration(Exploration):
-    """An exploration that simply samples from a distribution.
-
-    The sampling can be made deterministic by passing explore=False into
-    the call to `get_exploration_action`.
-    Also allows for scheduled parameters for the distributions, such as
-    lowering stddev, temperature, etc.. over time.
+class MBMPOExploration(StochasticSampling):
+    """Like StochasticSampling, but only worker=0 uses Random for n timesteps.
     """
 
-    def __init__(self, action_space, *, framework: str, model: ModelV2,
+    def __init__(self,
+                 action_space,
+                 *,
+                 framework: str,
+                 model: ModelV2,
+                 random_timesteps: int = 8000,
                  **kwargs):
-        """Initializes a StochasticSampling Exploration object.
+        """Initializes a MBMPOExploration instance.
 
         Args:
             action_space (Space): The gym action space used by the environment.
             framework (str): One of None, "tf", "torch".
+            model (ModelV2): The ModelV2 used by the owning Policy.
+            random_timesteps (int): The number of timesteps for which to act
+                completely randomly. Only after this number of timesteps,
+                actual samples will be drawn to get exploration actions.
+                NOTE: For MB-MPO, only worker=0 will use this setting. All
+                other workers will not use random actions ever.
         """
-        assert framework is not None
-        self.timestep = 0
-        self.worker_index = kwargs["worker_index"]
         super().__init__(
-            action_space, model=model, framework=framework, **kwargs)
+            action_space,
+            model=model,
+            framework=framework,
+            random_timesteps=random_timesteps,
+            **kwargs)
 
-    @override(Exploration)
-    def get_exploration_action(self,
-                               *,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
-        assert self.framework == "torch"
-        return self._get_torch_exploration_action(action_distribution, explore)
+        assert self.framework == "torch", \
+            "MBMPOExploration currently only supports torch!"
 
-    def _get_torch_exploration_action(self, action_dist, explore):
-        action = action_dist.sample()
-        logp = action_dist.sampled_action_logp()
-
-        batch_size = action.size()[0]
-
-        # Initial Random Exploration for Real Env Interaction
-        if self.worker_index == 0 and self.timestep < 8000:
-            print("Using Random")
-            action = [self.action_space.sample() for _ in range(batch_size)]
-            logp = [0.0 for _ in range(batch_size)]
-        self.timestep += batch_size
-        return action, logp
+        # Switch off Random sampling for all non-driver workers.
+        if self.worker_index > 0:
+            self.random_timesteps = 0

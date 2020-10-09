@@ -88,13 +88,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 
-  Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                       const StatusCallback &callback) override;
-
-  Status AsyncUpdate(const ActorID &actor_id,
-                     const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                     const StatusCallback &callback) override;
-
   Status AsyncSubscribeAll(
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) override;
@@ -181,6 +174,9 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   Status AsyncGetResources(const NodeID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override;
 
   Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
@@ -330,19 +326,23 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncGetLocations(
       const ObjectID &object_id,
-      const MultiItemCallback<rpc::ObjectTableData> &callback) override;
+      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                           const StatusCallback &callback) override;
 
+  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const StatusCallback &callback) override;
+
   Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
                              const StatusCallback &callback) override;
 
   Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;

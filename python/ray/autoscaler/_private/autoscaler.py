@@ -13,12 +13,12 @@ import collections
 
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
-from ray.autoscaler.node_provider import _get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_FILE_MOUNTS_CONTENTS,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
                                  TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE,
                                  NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
+from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \
@@ -26,9 +26,10 @@ from ray.autoscaler._private.resource_demand_scheduler import \
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
-from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
-    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
-    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -216,7 +217,7 @@ class StandardAutoscaler:
                 resource_demand_vector,
                 self.load_metrics.get_resource_utilization()))
             # TODO(ekl) also enforce max launch concurrency here?
-            for node_type, count in to_launch:
+            for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
 
             num_pending = self.pending_launches.value

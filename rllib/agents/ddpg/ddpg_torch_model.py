@@ -49,12 +49,18 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         super(DDPGTorchModel, self).__init__(obs_space, action_space,
                                              num_outputs, model_config, name)
 
-        self.bounded = np.logical_and(action_space.bounded_above,
-                                      action_space.bounded_below).any()
-        self.low_action = torch.tensor(action_space.low, dtype=torch.float32)
-        self.action_range = torch.tensor(
-            action_space.high - action_space.low, dtype=torch.float32)
-        self.action_dim = np.product(action_space.shape)
+        self.bounded = np.logical_and(self.action_space.bounded_above,
+                                      self.action_space.bounded_below).any()
+        low_action = nn.Parameter(
+            torch.from_numpy(self.action_space.low).float())
+        low_action.requires_grad = False
+        self.register_parameter("low_action", low_action)
+        action_range = nn.Parameter(
+            torch.from_numpy(self.action_space.high -
+                             self.action_space.low).float())
+        action_range.requires_grad = False
+        self.register_parameter("action_range", action_range)
+        self.action_dim = np.product(self.action_space.shape)
 
         # Build the policy network.
         self.policy_model = nn.Sequential()

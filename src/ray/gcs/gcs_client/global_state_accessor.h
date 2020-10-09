@@ -86,6 +86,13 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::string GetNodeResourceInfo(const NodeID &node_id);
 
+  /// Get available resources of all nodes.
+  ///
+  /// \return available resources of all nodes. To support multi-language, we serialize
+  /// each AvailableResources and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllAvailableResources();
+
   /// Get internal config from GCS Service.
   ///
   /// \return map of internal config keys and values. It is stored as a StoredConfig proto

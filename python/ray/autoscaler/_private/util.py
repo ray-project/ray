@@ -1,4 +1,5 @@
 import collections
+import logging
 import hashlib
 import json
 import jsonschema
@@ -8,7 +9,8 @@ from typing import Any, Dict
 
 import ray
 import ray._private.services as services
-from ray.autoscaler.node_provider import _get_default_config
+from ray.autoscaler._private.providers import _get_default_config, \
+    _NODE_PROVIDERS
 from ray.autoscaler._private.docker import validate_docker_config
 
 REQUIRED, OPTIONAL = True, False
@@ -18,6 +20,8 @@ RAY_SCHEMA_PATH = os.path.join(
 # Internal kv keys for storing debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+
+logger = logging.getLogger(__name__)
 
 
 class ConcurrentCounter:
@@ -98,7 +102,26 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
+    try:
+        defaults = _fillout_available_node_types_resources(defaults)
+    except Exception:
+        # We don't want to introduce new errors with filling available node
+        # types resources feature.
+        logger.exception("Failed to autodetect node resources")
+
     return defaults
+
+
+def _fillout_available_node_types_resources(
+        cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Fills out missing "resources" field for available_node_types."""
+    if "available_node_types" in cluster_config:
+        importer = _NODE_PROVIDERS.get(cluster_config["provider"]["type"])
+        if importer is not None:
+            provider_cls = importer(cluster_config["provider"])
+            return provider_cls.fillout_available_node_types_resources(
+                cluster_config)
+    return cluster_config
 
 
 def merge_setup_commands(config):

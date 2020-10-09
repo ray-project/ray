@@ -2,6 +2,7 @@ import logging
 from typing import Callable, Iterable, List, Optional, Type
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep
@@ -40,6 +41,7 @@ def build_trainer(
         default_policy: Optional[Type[Policy]] = None,
         get_policy_class: Optional[Callable[[TrainerConfigDict], Optional[Type[
             Policy]]]] = None,
+        validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
         before_init: Optional[Callable[[Trainer], None]] = None,
         after_init: Optional[Callable[[Trainer], None]] = None,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
@@ -68,6 +70,9 @@ def build_trainer(
             that takes a config and returns the policy class or None. If None
             is returned, will use `default_policy` (which must be provided
             then).
+        validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
+            Optional callable to validate the generated environment (only
+            on worker=0).
         before_init (Optional[Callable[[Trainer], None]]): Optional callable to
             run before anything is constructed inside Trainer (Workers with
             Policies, execution plan, etc..). Takes the Trainer instance as
@@ -106,12 +111,17 @@ def build_trainer(
             if validate_config:
                 validate_config(config)
 
+            # No `get_policy_class` function.
             if get_policy_class is None:
+                # Default_policy must be provided (unless in multi-agent mode,
+                # where each policy can have its own default policy class.
                 if not config["multiagent"]["policies"]:
                     assert default_policy is not None
                 self._policy_class = default_policy
+            # Query the function for a class to use.
             else:
                 self._policy_class = get_policy_class(config)
+                # If None returned, use default policy (must be provided).
                 if self._policy_class is None:
                     assert default_policy is not None
                     self._policy_class = default_policy
@@ -120,9 +130,12 @@ def build_trainer(
                 before_init(self)
 
             # Creating all workers (excluding evaluation workers).
-            self.workers = self._make_workers(env_creator, self._policy_class,
-                                              config,
-                                              self.config["num_workers"])
+            self.workers = self._make_workers(
+                env_creator=env_creator,
+                validate_env=validate_env,
+                policy_class=self._policy_class,
+                config=config,
+                num_workers=self.config["num_workers"])
             self.execution_plan = execution_plan
             self.train_exec_impl = execution_plan(self.workers, config)
 
