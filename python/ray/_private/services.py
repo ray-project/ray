@@ -1352,7 +1352,8 @@ def start_raylet(redis_address,
     if start_initial_python_workers_for_first_job:
         command.append("--num_initial_python_workers_for_first_job={}".format(
             resource_spec.num_cpus))
-    command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
+    command.append("--agent_command={}".format(
+        subprocess.list2cmdline(agent_command)))
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store
         command += [

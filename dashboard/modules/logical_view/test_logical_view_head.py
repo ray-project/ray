@@ -85,7 +85,7 @@ def test_kill_actor(ray_start_with_dashboard):
             return os.getpid()
 
     a = Actor.remote()
-    worker_pid = ray.get(a.f.remote())
+    worker_pid = ray.get(a.f.remote())  # noqa
 
     webui_url = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(webui_url)
@@ -104,8 +104,7 @@ def test_kill_actor(ray_start_with_dashboard):
         resp = requests.get(f"{webui_url}/logical/actor_groups")
         resp.raise_for_status()
         actor_groups_resp = resp.json()
-        assert actor_groups_resp["result"] is True, actor_groups_resp[
-                    "msg"]
+        assert actor_groups_resp["result"] is True, actor_groups_resp["msg"]
         actor_groups = actor_groups_resp["data"]["actorGroups"]
         actor = actor_groups["Actor"]["entries"][0]
         return actor
@@ -134,13 +133,6 @@ def test_kill_actor(ray_start_with_dashboard):
             last_exc = e
             time.sleep(.1)
     assert last_exc is None
-
-    
-
-
-
-
-
 
 
 if __name__ == "__main__":

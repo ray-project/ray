@@ -1,27 +1,19 @@
 import os
-import json
 import grpc
-import pytest
 import requests
 import time
-import numpy as np
 
 import ray
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
-from ray.core.generated import reporter_pb2
-from ray.core.generated import reporter_pb2_grpc
-from ray.dashboard.memory import (ReferenceType, decode_object_ref_if_needed,
-                                  MemoryTableEntry, MemoryTable, SortingType)
 from ray.test_utils import (RayTestTimeoutException,
-                            wait_until_succeeded_without_exception,
-                            wait_until_server_available, wait_for_condition)
+                            wait_until_succeeded_without_exception)
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 def test_worker_stats(shutdown_only):
-    addresses = ray.init(num_cpus=1, include_dashboard=True)
+    ray.init(num_cpus=1, include_dashboard=True)
     raylet = ray.nodes()[0]
     num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
@@ -117,6 +109,7 @@ def test_worker_stats(shutdown_only):
                     or "runner" in process or "ray" in process)
         break
 
+
 def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
     NUM_NODES = 3
     cluster = ray_start_cluster
@@ -146,6 +139,6 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+    import pytest
     sys.exit(pytest.main(["-v", __file__]))
