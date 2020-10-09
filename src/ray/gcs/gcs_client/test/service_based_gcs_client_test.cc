@@ -28,7 +28,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
-        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)}});
+        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)},
+         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)}});
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -171,6 +172,14 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     message.set_parent_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
     message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
+    // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
+    // worker client is called during the actor registration process. In order to simulate
+    // the scenario of registration failure, we set the address to an illegal value.
+    if (!is_detached) {
+      rpc::Address address;
+      address.set_ip_address("");
+      message.mutable_caller_address()->CopyFrom(address);
+    }
     TaskSpecification task_spec(message);
 
     if (skip_wait) {
@@ -657,8 +666,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   ASSERT_TRUE(SubscribeAllActors(on_subscribe));
 
   // Register an actor to GCS.
-  ASSERT_FALSE(RegisterActor(actor_table_data1, false));
-  ASSERT_FALSE(RegisterActor(actor_table_data2, false));
+  RegisterActor(actor_table_data1, false);
+  RegisterActor(actor_table_data2, false);
   WaitForExpectedCount(actor_update_count, 2);
 }
 
@@ -1300,6 +1309,23 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
   auto actors = GetAllActors();
   RAY_LOG(INFO) << "It takes " << current_time_ms() - start_time << "ms to query "
                 << actor_count << " actors.";
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDestroyedActors) {
+  // Register actors and the actors will be destroyed.
+  JobID job_id = JobID::FromInt(1);
+  int actor_count = 20;
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    RegisterActor(actor_table_data, false);
+  }
+
+  // Get all actors.
+  auto condition = [this]() {
+    return GetAllActors().size() ==
+           RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 // TODO(sang): Add tests after adding asyncAdd

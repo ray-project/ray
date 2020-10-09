@@ -120,7 +120,7 @@ def create_or_update_cluster(config_file: str,
                              no_restart: bool,
                              restart_only: bool,
                              yes: bool,
-                             override_cluster_name: Optional[str],
+                             override_cluster_name: Optional[str] = None,
                              no_config_cache: bool = False,
                              redirect_command_output: bool = False,
                              use_login_shells: bool = True) -> None:
@@ -305,7 +305,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             # todo: add better exception info
             cli_logger.verbose_error("{}", str(e))
             cli_logger.warning(
-                "Exception occured when stopping the cluster Ray runtime "
+                "Exception occurred when stopping the cluster Ray runtime "
                 "(use -v to dump teardown exceptions).")
             cli_logger.warning(
                 "Ignoring the exception and "
@@ -1037,7 +1037,7 @@ def rsync(config_file: str,
 
 
 def get_head_node_ip(config_file: str,
-                     override_cluster_name: Optional[str]) -> str:
+                     override_cluster_name: Optional[str] = None) -> str:
     """Returns head node IP for given configuration file if exists."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -1058,7 +1058,8 @@ def get_head_node_ip(config_file: str,
 
 
 def get_worker_node_ips(config_file: str,
-                        override_cluster_name: Optional[str]) -> List[str]:
+                        override_cluster_name: Optional[str] = None
+                        ) -> List[str]:
     """Returns worker node IPs for given configuration file."""
 
     config = yaml.safe_load(open(config_file).read())

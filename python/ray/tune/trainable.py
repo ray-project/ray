@@ -302,7 +302,7 @@ class Trainable:
             `done` (bool): training is terminated. Filled only if not provided.
 
             `time_this_iter_s` (float): Time in seconds this iteration
-            took to run. This may be overriden in order to override the
+            took to run. This may be overridden in order to override the
             system-computed time difference.
 
             `time_total_s` (float): Accumulated time in seconds for this
@@ -552,7 +552,22 @@ class Trainable:
         self._close_logfiles()
         self._open_logfiles(stdout_file, stderr_file)
 
-        return self.reset_config(new_config)
+        success = self.reset_config(new_config)
+        if not success:
+            return False
+
+        # Reset attributes. Will be overwritten by `restore` if a checkpoint
+        # is provided.
+        self._iteration = 0
+        self._time_total = 0.0
+        self._timesteps_total = None
+        self._episodes_total = None
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
+        self._restored = False
+
+        return True
 
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
@@ -727,7 +742,7 @@ class Trainable:
         """
         result = self._train()
 
-        if self._is_overriden("_train") and log_once("_train"):
+        if self._is_overridden("_train") and log_once("_train"):
             logger.warning(
                 "Trainable._train is deprecated and will be removed in "
                 "a future version of Ray. Override Trainable.step instead.")
@@ -778,7 +793,7 @@ class Trainable:
         """
         checkpoint = self._save(tmp_checkpoint_dir)
 
-        if self._is_overriden("_save") and log_once("_save"):
+        if self._is_overridden("_save") and log_once("_save"):
             logger.warning(
                 "Trainable._save is deprecated and will be removed in a "
                 "future version of Ray. Override "
@@ -836,7 +851,7 @@ class Trainable:
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
         self._restore(checkpoint)
-        if self._is_overriden("_restore") and log_once("_restore"):
+        if self._is_overridden("_restore") and log_once("_restore"):
             logger.warning(
                 "Trainable._restore is deprecated and will be removed in a "
                 "future version of Ray. Override Trainable.load_checkpoint "
@@ -859,7 +874,7 @@ class Trainable:
                 Copy of `self.config`.
         """
         self._setup(config)
-        if self._is_overriden("_setup") and log_once("_setup"):
+        if self._is_overridden("_setup") and log_once("_setup"):
             logger.warning(
                 "Trainable._setup is deprecated and will be removed in "
                 "a future version of Ray. Override Trainable.setup instead.")
@@ -884,7 +899,7 @@ class Trainable:
             result (dict): Training result returned by step().
         """
         self._log_result(result)
-        if self._is_overriden("_log_result") and log_once("_log_result"):
+        if self._is_overridden("_log_result") and log_once("_log_result"):
             logger.warning(
                 "Trainable._log_result is deprecated and will be removed in "
                 "a future version of Ray. Override "
@@ -909,7 +924,7 @@ class Trainable:
         .. versionadded:: 0.8.7
         """
         self._stop()
-        if self._is_overriden("_stop") and log_once("trainable.cleanup"):
+        if self._is_overridden("_stop") and log_once("trainable.cleanup"):
             logger.warning(
                 "Trainable._stop is deprecated and will be removed in "
                 "a future version of Ray. Override Trainable.cleanup instead.")
@@ -933,5 +948,5 @@ class Trainable:
         """
         return {}
 
-    def _is_overriden(self, key):
+    def _is_overridden(self, key):
         return getattr(self, key).__code__ != getattr(Trainable, key).__code__

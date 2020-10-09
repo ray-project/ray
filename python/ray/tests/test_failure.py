@@ -1,5 +1,7 @@
+import json
 import logging
 import os
+import signal
 import sys
 import tempfile
 import threading
@@ -1244,6 +1246,34 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         assert len(keys) <= 1, len(keys)
     else:
         assert len(keys) <= 2, len(keys)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": {
+            "ping_gcs_rpc_server_max_retries": 100
+        }
+    }],
+    indirect=True)
+def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
+    p = log_pubsub
+    # Get gcs server pid to send a signal.
+    all_processes = ray.worker._global_node.all_processes
+    gcs_server_process = all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    os.kill(gcs_server_pid, signal.SIGBUS)
+    msg = None
+    cnt = 0
+    # wait for max 30 seconds.
+    while cnt < 3000 and not msg:
+        msg = p.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            cnt += 1
+            continue
+        data = json.loads(ray.utils.decode(msg["data"]))
+        assert data["pid"] == "gcs_server"
 
 
 if __name__ == "__main__":

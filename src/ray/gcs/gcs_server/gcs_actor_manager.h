@@ -353,6 +353,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param actor The actor to be killed.
   void KillActor(const std::shared_ptr<GcsActor> &actor);
 
+  /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
+  /// evicted.
+  ///
+  /// \param actor The actor to be killed.
+  void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
+
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
