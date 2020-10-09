@@ -79,6 +79,7 @@ class PiecewiseSchedule(Schedule):
 
         # Return correct results tensor depending on where we find t.
         def _cond(i, x):
+            x = tf.cast(x, tf.int64)
             return tf.logical_not(
                 tf.logical_or(
                     tf.equal(endpoints[i + 1], -1),
@@ -88,5 +89,5 @@ class PiecewiseSchedule(Schedule):
             return (i + 1, t)
 
         idx_and_t = tf.while_loop(_cond, _body,
-                                  [tf.constant(0, dtype=t.dtype), t])
+                                  [tf.constant(0, dtype=tf.int64), t])
         return results_list[idx_and_t[0]]
