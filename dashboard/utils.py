@@ -16,7 +16,7 @@ from base64 import b64decode
 from collections.abc import MutableMapping, Mapping
 from collections import namedtuple
 from typing import Any
-
+import os
 import aioredis
 import aiohttp.web
 import ray.new_dashboard.consts as dashboard_consts
@@ -229,13 +229,21 @@ class CustomEncoder(json.JSONEncoder):
 
 
 def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
+    # In the dev context we allow a dev server running on a
+    # different port to consume the API, meaning we need to allow
+    # cross-origin access
+    if os.environ.get("RAY_DASHBOARD_DEV") == "1":
+        headers = {"Access-Control-Allow-Origin": "*"}
+    else:
+        headers = {}
     return aiohttp.web.json_response(
         {
             "result": success,
             "msg": message,
             "data": to_google_style(kwargs)
         },
-        dumps=functools.partial(json.dumps, cls=CustomEncoder))
+        dumps=functools.partial(json.dumps, cls=CustomEncoder),
+        headers=headers)
 
 
 def to_camel_case(snake_str):
@@ -249,6 +257,7 @@ def to_camel_case(snake_str):
 def to_google_style(d):
     """Recursive convert all keys in dict to google style."""
     new_dict = {}
+
     for k, v in d.items():
         if isinstance(v, dict):
             new_dict[to_camel_case(k)] = to_google_style(v)
@@ -477,6 +486,9 @@ class Dict(MutableMapping):
 
     def __iter__(self):
         return iter(copy.deepcopy(self._data))
+
+    def __str__(self):
+        return str(self._data)
 
     def reset(self, d):
         assert isinstance(d, Mapping)

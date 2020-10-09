@@ -448,6 +448,27 @@ By default, syncing occurs every 300 seconds. To change the frequency of syncing
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``TUNE_GLOBAL_CHECKPOINT_S`` environment variable. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, TUNE_GLOBAL_CHECKPOINT_S)``.
 
+
+.. _tune-docker:
+
+Using Tune with Docker
+----------------------
+Tune automatically syncs files and checkpoints between different remote
+containers as needed.
+
+To make this work in your Docker cluster, e.g. when you are using the Ray autoscaler
+with docker containers, you will need to pass a
+``DockerSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
+
+.. code-block:: python
+
+    from ray.tune.integration.docker import DockerSyncer
+    sync_config = tune.SyncConfig(
+        sync_to_driver=DockerSyncer)
+
+    tune.run(train, sync_config=sync_config)
+
+
 .. _tune-kubernetes:
 
 Using Tune with Kubernetes
@@ -579,11 +600,16 @@ These are the environment variables Ray Tune currently considers:
   ``~/ray_bootstrap_key.pem`` will be used.
 * **TUNE_DISABLE_AUTO_INIT**: Disable automatically calling ``ray.init()`` if
   not attached to a Ray session.
+* **TUNE_DISABLE_DATED_SUBDIR**: Tune automatically adds a date string to experiment
+  directories when the name is not specified explicitly or the trainable isn't passed
+  as a string. Setting this environment variable to ``1`` disables adding these date strings.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
   ``tune.report()`` and passed a ``metric`` parameter to ``tune.run()``, a scheduler,
   or a search algorithm, Tune will error
   if the metric was not reported in the result. Setting this environment variable
   to ``1`` will disable this check.
+* **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
+  for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
   experiment state is checkpointed. If not set this will default to ``10``.
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those

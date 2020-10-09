@@ -83,27 +83,6 @@ class ActorInfoAccessor {
   virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
                                   const StatusCallback &callback) = 0;
 
-  /// Register an actor to GCS asynchronously.
-  ///
-  /// \param data_ptr The actor that will be registered to the GCS.
-  /// \param callback Callback that will be called after actor has been registered
-  /// to the GCS.
-  /// \return Status
-  virtual Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                               const StatusCallback &callback) = 0;
-
-  /// Update dynamic states of actor in GCS asynchronously.
-  ///
-  /// \param actor_id ID of the actor to update.
-  /// \param data_ptr Data of the actor to update.
-  /// \param callback Callback that will be called after update finishes.
-  /// \return Status
-  /// TODO(micafan) Don't expose the whole `ActorTableData` and only allow
-  /// updating dynamic states.
-  virtual Status AsyncUpdate(const ActorID &actor_id,
-                             const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                             const StatusCallback &callback) = 0;
-
   /// Subscribe to any register or update operations of actors.
   ///
   /// \param subscribe Callback that will be called each time when an actor is registered
@@ -373,7 +352,7 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncGetLocations(
       const ObjectID &object_id,
-      const MultiItemCallback<rpc::ObjectTableData> &callback) = 0;
+      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) = 0;
 
   /// Get all object's locations from GCS asynchronously.
   ///
@@ -390,6 +369,16 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                                   const StatusCallback &callback) = 0;
+
+  /// Add spilled location of object to GCS asynchronously.
+  ///
+  /// \param object_id The ID of object which location will be added to GCS.
+  /// \param spilled_url The URL where the object has been spilled.
+  /// \param callback Callback that will be called after object has been added to GCS.
+  /// \return Status
+  virtual Status AsyncAddSpilledUrl(const ObjectID &object_id,
+                                    const std::string &spilled_url,
+                                    const StatusCallback &callback) = 0;
 
   /// Remove location of object from GCS asynchronously.
   ///
@@ -409,7 +398,8 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe,
       const StatusCallback &done) = 0;
 
   /// Cancel subscription to any update of an object's location.
@@ -537,6 +527,13 @@ class NodeInfoAccessor {
   /// \return Status
   virtual Status AsyncGetResources(const NodeID &node_id,
                                    const OptionalItemCallback<ResourceMap> &callback) = 0;
+
+  /// Get available resources of all nodes from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) = 0;
 
   /// Update resources of node in GCS asynchronously.
   ///

@@ -9,13 +9,14 @@ from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
     TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
+from ray.rllib.evaluation.collectors.sample_collector import \
+    _SampleCollector
+from ray.rllib.evaluation.collectors.simple_list_collector import \
+    _SimpleListCollector
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.multi_agent_sample_collector import \
-    _MultiAgentSampleCollector
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.evaluation.sample_collector import _SampleCollector
 from ray.rllib.policy.policy import clip_action, Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.preprocessors import Preprocessor
@@ -188,8 +189,9 @@ class SyncSampler(SamplerInput):
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats()
         if _use_trajectory_view_api:
-            self.sample_collector = _MultiAgentSampleCollector(
-                policies, callbacks)
+            self.sample_collector = _SimpleListCollector(
+                policies, clip_rewards, callbacks, multiple_episodes_in_batch,
+                rollout_fragment_length)
         else:
             self.sample_collector = None
 
@@ -333,8 +335,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.observation_fn = observation_fn
         self._use_trajectory_view_api = _use_trajectory_view_api
         if _use_trajectory_view_api:
-            self.sample_collector = _MultiAgentSampleCollector(
-                policies, callbacks)
+            self.sample_collector = _SimpleListCollector(
+                policies, clip_rewards, callbacks, multiple_episodes_in_batch,
+                rollout_fragment_length)
         else:
             self.sample_collector = None
 
@@ -537,7 +540,6 @@ def _env_runner(
 
     active_episodes: Dict[str, MultiAgentEpisode] = \
         NewEpisodeDefaultDict(new_episode)
-    eval_results = None
 
     while True:
         perf_stats.iters += 1
@@ -564,7 +566,6 @@ def _env_runner(
                     base_env=base_env,
                     policies=policies,
                     active_episodes=active_episodes,
-                    prev_policy_outputs=eval_results,
                     unfiltered_obs=unfiltered_obs,
                     rewards=rewards,
                     dones=dones,
@@ -572,13 +573,11 @@ def _env_runner(
                     horizon=horizon,
                     preprocessors=preprocessors,
                     obs_filters=obs_filters,
-                    rollout_fragment_length=rollout_fragment_length,
                     multiple_episodes_in_batch=multiple_episodes_in_batch,
                     callbacks=callbacks,
                     soft_horizon=soft_horizon,
                     no_done_at_end=no_done_at_end,
                     observation_fn=observation_fn,
-                    perf_stats=perf_stats,
                     _sample_collector=_sample_collector,
                 )
         else:
@@ -601,7 +600,6 @@ def _env_runner(
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                perf_stats=perf_stats,
             )
         perf_stats.raw_obs_processing_time += time.time() - t1
         for o in outputs:
@@ -669,7 +667,6 @@ def _process_observations(
         soft_horizon: bool,
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
-        perf_stats: _PerfStats,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
     """Record new data from the environment and prepare for policy evaluation.
@@ -682,8 +679,6 @@ def _process_observations(
             SampleBatchBuilder object for recycling.
         active_episodes (Dict[str, MultiAgentEpisode]): Mapping from
             episode ID to currently ongoing MultiAgentEpisode object.
-        prev_policy_outputs (Dict[str,List]): The prev policy output dict
-            (by policy-id -> List[action, state outs, extra fetches]).
         unfiltered_obs (dict): Doubly keyed dict of env-ids -> agent ids
             -> unfiltered observation tensor, returned by a `BaseEnv.poll()`
             call.
@@ -862,6 +857,7 @@ def _process_observations(
         # and add it to "outputs".
         if (all_agents_done and not multiple_episodes_in_batch) or \
                 batch_builder.count >= rollout_fragment_length:
+            batch_builder.postprocess_batch_so_far(episode)
             outputs.append(batch_builder.build_and_reset(episode))
         # Make sure postprocessor stays within one episode.
         elif all_agents_done:
@@ -887,10 +883,14 @@ def _process_observations(
                 episode=episode,
                 env_index=env_id,
             )
+            # Horizon hit and we have a soft horizon (no hard env reset).
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs: Dict[AgentID, EnvObsType] = agent_obs
+            # Env actually ended OR horizon hit and no soft horizon ->
+            # Try hard env-reset.
             else:
+                # Remove episode from active ones.
                 del active_episodes[env_id]
                 resetted_obs: Dict[AgentID, EnvObsType] = base_env.try_reset(
                     env_id)
@@ -939,8 +939,6 @@ def _process_observations_w_trajectory_view_api(
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
         active_episodes: Dict[str, MultiAgentEpisode],
-        prev_policy_outputs: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
-                                                  dict]],
         unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
         rewards: Dict[EnvID, Dict[AgentID, float]],
         dones: Dict[EnvID, Dict[AgentID, bool]],
@@ -948,13 +946,11 @@ def _process_observations_w_trajectory_view_api(
         horizon: int,
         preprocessors: Dict[PolicyID, Preprocessor],
         obs_filters: Dict[PolicyID, Filter],
-        rollout_fragment_length: int,
         multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         soft_horizon: bool,
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
-        perf_stats: _PerfStats,
         _sample_collector: _SampleCollector,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
@@ -964,40 +960,19 @@ def _process_observations_w_trajectory_view_api(
 
     # Output objects.
     active_envs: Set[EnvID] = set()
-    to_eval: Set[PolicyID] = set()
+    to_eval: Dict[PolicyID, List[PolicyEvalData]] = defaultdict(list)
     outputs: List[Union[RolloutMetrics, SampleBatchType]] = []
 
-    large_batch_threshold: int = max(1000, rollout_fragment_length * 10) if \
-        rollout_fragment_length != float("inf") else 5000
-
-    # For each environment.
+    # For each (vectorized) sub-environment.
     # type: EnvID, Dict[AgentID, EnvObsType]
-    for env_id, agent_obs in unfiltered_obs.items():
+    for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: MultiAgentEpisode = active_episodes[env_id]
 
         if not is_new_episode:
+            _sample_collector.episode_step(episode.episode_id)
             episode.length += 1
-            _sample_collector.count += 1
             episode._add_agent_rewards(rewards[env_id])
-
-        if (_sample_collector.total_env_steps() > large_batch_threshold
-                and log_once("large_batch_warning")):
-            logger.warning(
-                "More than {} observations for {} env steps ".format(
-                    _sample_collector.total_env_steps(),
-                    _sample_collector.count) +
-                "are buffered in the sampler. If this is more than you "
-                "expected, check that that you set a horizon on your "
-                "environment correctly and that it terminates at some point. "
-                "Note: In multi-agent environments, `rollout_fragment_length` "
-                "sets the batch size based on (across-agents) environment "
-                "steps, not the steps of individual agents, which can result "
-                "in unexpectedly large batches." +
-                ("Also, you may be in evaluation waiting for your Env to "
-                 "terminate (batch_mode=`complete_episodes`). Make sure it "
-                 "does at some point."
-                 if not multiple_episodes_in_batch else ""))
 
         # Check episode termination conditions.
         if dones[env_id]["__all__"] or episode.length >= horizon:
@@ -1023,19 +998,19 @@ def _process_observations_w_trajectory_view_api(
 
         # Custom observation function is applied before preprocessing.
         if observation_fn:
-            agent_obs: Dict[AgentID, EnvObsType] = observation_fn(
-                agent_obs=agent_obs,
+            all_agents_obs: Dict[AgentID, EnvObsType] = observation_fn(
+                agent_obs=all_agents_obs,
                 worker=worker,
                 base_env=base_env,
                 policies=policies,
                 episode=episode)
-            if not isinstance(agent_obs, dict):
+            if not isinstance(all_agents_obs, dict):
                 raise ValueError(
                     "observe() must return a dict of agent observations")
 
         # For each agent in the environment.
         # type: AgentID, EnvObsType
-        for agent_id, raw_obs in agent_obs.items():
+        for agent_id, raw_obs in all_agents_obs.items():
             assert agent_id != "__all__"
             policy_id: PolicyID = episode.policy_for(agent_id)
             prep_obs: EnvObsType = _get_or_raise(preprocessors,
@@ -1058,38 +1033,41 @@ def _process_observations_w_trajectory_view_api(
 
             # Record transition info if applicable.
             if last_observation is None:
-                _sample_collector.add_init_obs(episode.episode_id, agent_id,
-                                               env_id, policy_id, filtered_obs)
+                _sample_collector.add_init_obs(episode, agent_id, env_id,
+                                               policy_id, filtered_obs)
             else:
-                rc = _sample_collector.policy_sample_collectors[policy_id]
-                eval_idx = rc.agent_key_to_forward_pass_index[(
-                    agent_id, episode.episode_id)]
+                # Add actions, rewards, next-obs to collectors.
                 values_dict = {
                     "t": episode.length - 1,
                     "eps_id": episode.episode_id,
+                    "env_id": env_id,
                     "agent_index": episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
-                    "actions": prev_policy_outputs[policy_id][0][eval_idx],
+                    "actions": episode.last_action_for(agent_id),
                     # Reward received after taking a at timestep t.
                     "rewards": rewards[env_id][agent_id],
-                    # After taking a, did we reach terminal?
+                    # After taking action=a, did we reach terminal?
                     "dones": (False if (no_done_at_end
                                         or (hit_horizon and soft_horizon)) else
                               agent_done),
                     # Next observation.
                     "new_obs": filtered_obs,
                 }
-                # TODO: (sven) add env infos to buffers as well.
-                for k, v in prev_policy_outputs[policy_id][2].items():
-                    values_dict[k] = v[eval_idx]
-                for i, v in enumerate(prev_policy_outputs[policy_id][1]):
-                    values_dict["state_out_{}".format(i)] = v[eval_idx]
+                # Add extra-action-fetches to collectors.
+                values_dict.update(**episode.last_pi_info_for(agent_id))
                 _sample_collector.add_action_reward_next_obs(
                     episode.episode_id, agent_id, env_id, policy_id,
                     agent_done, values_dict)
 
             if not agent_done:
-                to_eval.add(policy_id)
+                item = PolicyEvalData(
+                    env_id, agent_id, filtered_obs, infos[env_id].get(
+                        agent_id, {}), None if last_observation is None else
+                    episode.rnn_state_for(agent_id), None
+                    if last_observation is None else
+                    episode.last_action_for(agent_id),
+                    rewards[env_id][agent_id] or 0.0)
+                to_eval[policy_id].append(item)
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
@@ -1098,36 +1076,22 @@ def _process_observations_w_trajectory_view_api(
             episode=episode,
             env_index=env_id)
 
-        # Cut the batch if ...
-        # - all-agents-done and not packing multiple episodes into one
-        #   (batch_mode="complete_episodes")
-        # - or if we've exceeded the rollout_fragment_length.
-        if _sample_collector.has_non_postprocessed_data():
-            # Sanity check, whether all agents have done=True, if done[__all__]
-            # is True.
-            if dones[env_id]["__all__"] and not no_done_at_end:
-                _sample_collector.check_missing_dones(
-                    episode_id=episode.episode_id)
-
-        # Reached end of episode and we are not allowed to pack the
-        # next episode into the same SampleBatch -> Build the SampleBatch
-        # and add it to "outputs".
-        if (all_agents_done and not multiple_episodes_in_batch) or \
-                _sample_collector.count >= rollout_fragment_length:
-            # TODO: (sven) Case: rollout_fragment_length reached: Do not
-            #  store any data in `episode` anymore
-            #  (useless for get_view_requirements when t<<-1, e.g.
-            #  attention), but keep last episode data around in
-            #  SampleBatchBuilder
-            #  to be able to still reference into it
-            #  should a model require this.
-            outputs.append(_sample_collector.get_multi_agent_batch_and_reset())
+        # Episode is done for all agents
+        # (dones[__all__] == True or hit horizon).
         # Make sure postprocessor stays within one episode.
-        elif all_agents_done:
-            _sample_collector.postprocess_trajectories_so_far(episode)
-
-        # Episode is done.
         if all_agents_done:
+            is_done = dones[env_id]["__all__"]
+            check_dones = is_done and not no_done_at_end
+            _sample_collector.postprocess_episode(
+                episode, is_done=is_done, check_dones=check_dones)
+            # We are not allowed to pack the next episode into the same
+            # SampleBatch (batch_mode=complete_episodes) -> Build the
+            # MultiAgentBatch from a single episode and add it to "outputs".
+            if not multiple_episodes_in_batch:
+                ma_sample_batch = \
+                    _sample_collector.build_multi_agent_batch(episode.length)
+                outputs.append(ma_sample_batch)
+
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
                 if getattr(p, "exploration", None) is not None:
@@ -1144,44 +1108,56 @@ def _process_observations_w_trajectory_view_api(
                 episode=episode,
                 env_index=env_id,
             )
+            # Horizon hit and we have a soft horizon (no hard env reset).
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
-                resetted_obs: Dict[AgentID, EnvObsType] = agent_obs
+                resetted_obs: Dict[AgentID, EnvObsType] = all_agents_obs
             else:
                 del active_episodes[env_id]
                 resetted_obs: Dict[AgentID, EnvObsType] = base_env.try_reset(
                     env_id)
+            # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
-                # Reset not supported, drop this env from the ready list.
                 if horizon != float("inf"):
                     raise ValueError(
                         "Setting episode horizon requires reset() support "
                         "from the environment.")
+            # Creates a new episode if this is not async return.
+            # If reset is async, we will get its result in some future poll.
             elif resetted_obs != ASYNC_RESET_RETURN:
-                # Creates a new episode if this is not async return.
-                # If reset is async, we will get its result in some future poll
-                episode: MultiAgentEpisode = active_episodes[env_id]
+                new_episode: MultiAgentEpisode = active_episodes[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
                         agent_obs=resetted_obs,
                         worker=worker,
                         base_env=base_env,
                         policies=policies,
-                        episode=episode)
+                        episode=new_episode)
                 # type: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
-                    policy_id: PolicyID = episode.policy_for(agent_id)
+                    policy_id: PolicyID = new_episode.policy_for(agent_id)
                     prep_obs: EnvObsType = _get_or_raise(
                         preprocessors, policy_id).transform(raw_obs)
                     filtered_obs: EnvObsType = _get_or_raise(
                         obs_filters, policy_id)(prep_obs)
-                    episode._set_last_observation(agent_id, filtered_obs)
+                    new_episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.
-                    _sample_collector.add_init_obs(episode.episode_id,
-                                                   agent_id, env_id, policy_id,
-                                                   filtered_obs)
-                    to_eval.add(policy_id)
+                    _sample_collector.add_init_obs(
+                        new_episode, agent_id, env_id, policy_id, filtered_obs)
+
+                    item = PolicyEvalData(
+                        env_id, agent_id, filtered_obs,
+                        episode.last_info_for(agent_id) or {},
+                        episode.rnn_state_for(agent_id), None, 0.0)
+                    to_eval[policy_id].append(item)
+
+    # Try to build something.
+    if multiple_episodes_in_batch:
+        sample_batch = \
+            _sample_collector.try_build_truncated_episode_multi_agent_batch()
+        if sample_batch is not None:
+            outputs.append(sample_batch)
 
     return active_envs, to_eval, outputs
 
@@ -1306,7 +1282,7 @@ def _do_policy_eval_w_trajectory_view_api(
         logger.info("Inputs to compute_actions():\n\n{}\n".format(
             summarize(to_eval)))
 
-    for policy_id in to_eval:
+    for policy_id in to_eval.keys():
         policy: Policy = _get_or_raise(policies, policy_id)
         input_dict = _sample_collector.get_inference_input_dict(policy_id)
         eval_results[policy_id] = \
@@ -1373,7 +1349,7 @@ def _process_policy_eval_results(
         actions_to_send[env_id] = {}  # at minimum send empty dict
 
     # type: PolicyID, List[PolicyEvalData]
-    for policy_id in to_eval:
+    for policy_id, eval_data in to_eval.items():
         actions: TensorStructType = eval_results[policy_id][0]
         actions = convert_to_numpy(actions)
 
@@ -1385,10 +1361,11 @@ def _process_policy_eval_results(
         if isinstance(actions, list):
             actions = np.array(actions)
 
-        # Add RNN state info.
-        eval_data = None
-        if not _use_trajectory_view_api:
-            eval_data = to_eval[policy_id]
+        # Store RNN state ins/outs and extra-action fetches to episode.
+        if _use_trajectory_view_api:
+            for f_i, column in enumerate(rnn_out_cols):
+                pi_info_cols["state_out_{}".format(f_i)] = column
+        else:
             rnn_in_cols: StateBatch = _to_column_format(
                 [t.rnn_state for t in eval_data])
 
@@ -1413,27 +1390,19 @@ def _process_policy_eval_results(
             else:
                 clipped_action = action
 
-            # Trajectory View API: Do not store data directly in episode
-            #  (entire episode is stored in Trajectory and kept until
-            #  end of episode).
-            if _use_trajectory_view_api:
-                agent_id, episode_id, env_id = \
-                    _sample_collector.policy_sample_collectors[
-                        policy_id].forward_pass_index_to_agent_info[i]
+            env_id: int = eval_data[i].env_id
+            agent_id: AgentID = eval_data[i].agent_id
+            episode: MultiAgentEpisode = active_episodes[env_id]
+            episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
+            episode._set_last_pi_info(
+                agent_id, {k: v[i]
+                           for k, v in pi_info_cols.items()})
+            if env_id in off_policy_actions and \
+                    agent_id in off_policy_actions[env_id]:
+                episode._set_last_action(agent_id,
+                                         off_policy_actions[env_id][agent_id])
             else:
-                env_id: int = eval_data[i].env_id
-                agent_id: AgentID = eval_data[i].agent_id
-                episode: MultiAgentEpisode = active_episodes[env_id]
-                episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
-                episode._set_last_pi_info(
-                    agent_id, {k: v[i]
-                               for k, v in pi_info_cols.items()})
-                if env_id in off_policy_actions and \
-                        agent_id in off_policy_actions[env_id]:
-                    episode._set_last_action(
-                        agent_id, off_policy_actions[env_id][agent_id])
-                else:
-                    episode._set_last_action(agent_id, action)
+                episode._set_last_action(agent_id, action)
 
             assert agent_id not in actions_to_send[env_id]
             actions_to_send[env_id][agent_id] = clipped_action

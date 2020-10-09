@@ -5,6 +5,7 @@ import inspect
 import threading
 import time
 from collections import defaultdict, deque, Mapping, Sequence
+from datetime import datetime
 from threading import Thread
 
 import numpy as np
@@ -151,6 +152,10 @@ class Tee(object):
     def flush(self, *args, **kwargs):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
+
+
+def date_str():
+    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 def env_integer(key, default):

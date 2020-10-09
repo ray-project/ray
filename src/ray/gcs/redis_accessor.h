@@ -58,13 +58,6 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 
-  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
-                       const StatusCallback &callback) override;
-
-  Status AsyncUpdate(const ActorID &actor_id,
-                     const std::shared_ptr<ActorTableData> &data_ptr,
-                     const StatusCallback &callback) override;
-
   Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                            const StatusCallback &done) override;
 
@@ -138,13 +131,6 @@ class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
     return Status::NotImplemented(
         "RedisActorInfoAccessor does not support named detached actors.");
   }
-
-  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
-                       const StatusCallback &callback) override;
-
-  Status AsyncUpdate(const ActorID &actor_id,
-                     const std::shared_ptr<ActorTableData> &data_ptr,
-                     const StatusCallback &callback) override;
 
   Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                            const StatusCallback &done) override;
@@ -278,8 +264,9 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   virtual ~RedisObjectInfoAccessor() {}
 
-  Status AsyncGetLocations(const ObjectID &object_id,
-                           const MultiItemCallback<ObjectTableData> &callback) override;
+  Status AsyncGetLocations(
+      const ObjectID &object_id,
+      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncGetAll(
       const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override {
@@ -289,12 +276,18 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                           const StatusCallback &callback) override;
 
+  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const StatusCallback &callback) override {
+    return Status::NotImplemented("AsyncAddSpilledUrl not implemented");
+  }
+
   Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
                              const StatusCallback &callback) override;
 
   Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
@@ -355,6 +348,11 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   Status AsyncGetResources(const NodeID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override {
+    return Status::NotImplemented("AsyncGetAllAvailableResources not implemented");
+  }
 
   Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;

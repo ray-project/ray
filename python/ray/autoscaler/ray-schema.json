@@ -217,6 +217,11 @@
                 "worker_run_options": {
                     "type": "array",
                     "description": "analogous to head_run_options"
+                }, 
+                "disable_automatic_runtime_detection" : {
+                    "type": "boolean",
+                    "description": "disable Ray from automatically using the NVIDIA runtime if available",
+                    "default": false
                 }
             }
         },
@@ -291,6 +296,7 @@
                            "type": "object",
                            "description": "Provider-specific config for the node, e.g. instance type."
                        },
+                       "min_workers": {"type": "integer"},
                        "max_workers": {"type": "integer"},
                        "resources": {
                            "type": "object",

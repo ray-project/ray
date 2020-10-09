@@ -60,10 +60,12 @@ class WorkerLeaseInterface {
  public:
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
+  /// \param backlog_size The queue length for the given shape on the CoreWorker.
   /// \return ray::Status
   virtual void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback) = 0;
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size = -1) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -341,16 +343,11 @@ class RayletClient : public PinObjectsInterface,
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
-  /// Restore spilled objects from external storage.
-  /// \param object_ids The IDs of objects to be restored.
-  /// \return ray::Status
-  ray::Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
-
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
-      override;
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
