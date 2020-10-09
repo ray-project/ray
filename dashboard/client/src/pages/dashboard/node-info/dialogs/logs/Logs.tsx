@@ -3,15 +3,14 @@ import {
   fade,
   Theme,
   Typography,
-  WithStyles,
-  withStyles,
+  makeStyles
 } from "@material-ui/core";
-import React from "react";
+import React, {useState, useEffect} from "react";
 import { getLogs, LogsByPid } from "../../../../../api";
 import DialogWithTitle from "../../../../../common/DialogWithTitle";
 import NumberedLines from "../../../../../common/NumberedLines";
 
-const styles = (theme: Theme) =>
+const useLogPaneStyles = makeStyles((theme: Theme) =>
   createStyles({
     header: {
       lineHeight: 1,
@@ -25,35 +24,67 @@ const styles = (theme: Theme) =>
       borderLeftWidth: 2,
       padding: theme.spacing(2),
     },
-  });
+  }));
 
-type Props = {
+type LogPaneProps = {
+  clearLogDialog: () => void;
+  logs: LogsByPid;
+  groupTag: string;
+};
+
+const LogPane: React.FC<LogPaneProps> = ({
+  logs,
+  clearLogDialog,
+  groupTag,
+}) => {
+  const classes = useLogPaneStyles();
+  return (
+  <DialogWithTitle handleClose={clearLogDialog} title="Logs">
+    {
+      Object.entries(logs).map(([pid, lines]) => (
+        <React.Fragment key={pid}>
+          <Typography className={classes.header}>
+            {nodeIp} (PID: {pid})
+          </Typography>
+          {lines.length > 0 ? (
+            <div className={classes.log}>
+              <NumberedLines lines={lines} />
+            </div>) :
+            <Typography color="textSecondary">No logs found.</Typography>
+            }
+        )
+        </React.Fragment>
+      ))
+    }
+  </DialogWithTitle>)
+};
+
+type FetchingLogPaneProps = {
   clearLogDialog: () => void;
   nodeIp: string;
   pid: number | null;
 };
 
-type State = {
-  result: LogsByPid | null;
-  error: string | null;
+const FetchingLogPane: React.FC<FetchingLogPaneProps> = ({
+  clearLogDialog,
+  nodeIp,
+  pid
+}) => {
+  const [logs, setLogs] = useState<string[]>([]);
+  const [error, setError] = useState<null | string>(null)
+  useEffect(() => {
+    try {
+      const result = await getLogs(nodeIp, pid);
+      setLogs(result.logs);
+      setError(null);
+    } catch (error) {
+      setError(error.toString());
+    }
+  });
+  return;
 };
 
 class Logs extends React.Component<Props & WithStyles<typeof styles>, State> {
-  state: State = {
-    result: null,
-    error: null,
-  };
-
-  async componentDidMount() {
-    try {
-      const { nodeIp, pid } = this.props;
-      const result = await getLogs(nodeIp, pid);
-      this.setState({ result: result.logs, error: null });
-    } catch (error) {
-      this.setState({ result: null, error: error.toString() });
-    }
-  }
-
   render() {
     const { classes, clearLogDialog, nodeIp } = this.props;
     const { result, error } = this.state;

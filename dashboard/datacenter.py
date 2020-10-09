@@ -95,7 +95,6 @@ class DataOrganizer:
             worker_id = actor_table_data["address"]["workerId"]
             if worker_id in worker_id_to_raylet_info:
                 actor_pid = str(worker_id_to_pid[worker_id])
-                logger.error(f"actor_pid={actor_pid}")
                 actor_logs = node_logs.get(actor_pid, [])
                 actor_errs = node_errs.get(actor_pid, [])
                 worker_raylet_stats = worker_id_to_raylet_info[worker_id]
