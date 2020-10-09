@@ -30,6 +30,9 @@ def _merge_build():
 
 def _release_build():
     branch = os.environ.get("$TRAVIS_BRANCH")
+    if not branch:
+        print("Branch not found!")
+        return False
     return branch != "master" and "releases" in branch
 
 
