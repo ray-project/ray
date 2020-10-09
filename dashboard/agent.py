@@ -38,6 +38,7 @@ aiogrpc.init_grpc_aio()
 class DashboardAgent(object):
     def __init__(self,
                  redis_address,
+                 metrics_agent_port,
                  redis_password=None,
                  temp_dir=None,
                  log_dir=None,
@@ -51,6 +52,7 @@ class DashboardAgent(object):
         self.redis_password = redis_password
         self.temp_dir = temp_dir
         self.log_dir = log_dir
+        self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
         self.object_store_name = object_store_name
@@ -187,6 +189,13 @@ if __name__ == "__main__":
         type=int,
         help="The port to expose metrics through Prometheus.")
     parser.add_argument(
+        "--metrics-agent-port",
+        required=True,
+        type=int,
+        help="The port to which metrics will be sent for aggregation "\
+            "by Ray processes over GRPC."
+    )
+    parser.add_argument(
         "--node-manager-port",
         required=True,
         type=int,
@@ -288,6 +297,7 @@ if __name__ == "__main__":
 
         agent = DashboardAgent(
             args.redis_address,
+            args.metrics_agent_port,
             redis_password=args.redis_password,
             temp_dir=temp_dir,
             log_dir=log_dir,
