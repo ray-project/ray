@@ -171,6 +171,14 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     message.set_parent_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
     message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
+    // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
+    // worker client is called during the actor registration process. In order to simulate
+    // the scenario of registration failure, we set the address to an illegal value.
+    if (!is_detached) {
+      rpc::Address address;
+      address.set_ip_address("");
+      message.mutable_caller_address()->CopyFrom(address);
+    }
     TaskSpecification task_spec(message);
 
     if (skip_wait) {
@@ -657,8 +665,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   ASSERT_TRUE(SubscribeAllActors(on_subscribe));
 
   // Register an actor to GCS.
-  ASSERT_FALSE(RegisterActor(actor_table_data1, false));
-  ASSERT_FALSE(RegisterActor(actor_table_data2, false));
+  RegisterActor(actor_table_data1, false);
+  RegisterActor(actor_table_data2, false);
   WaitForExpectedCount(actor_update_count, 2);
 }
 
