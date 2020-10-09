@@ -130,7 +130,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
 
         # search through all the sub_directories in log directory
         analysis = Analysis(str(self._logdir))
-        df = analysis.dataframe(metric="episode_reward_mean", mode="max")
+        df = analysis.dataframe(metric=None, mode=None)
 
         if len(df) == 0 or "trial_id" not in df.columns:
             return

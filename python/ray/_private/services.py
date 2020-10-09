@@ -1037,12 +1037,7 @@ def start_dashboard(require_dashboard,
             raise ValueError(
                 f"The given dashboard port {port} is already in use")
 
-    if "RAY_USE_NEW_DASHBOARD" in os.environ:
-        dashboard_dir = "new_dashboard"
-    else:
-        dashboard_dir = "dashboard"
-        logdir = None
-
+    dashboard_dir = "new_dashboard"
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
     command = [
         sys.executable,
@@ -1058,12 +1053,12 @@ def start_dashboard(require_dashboard,
     if redis_password:
         command += ["--redis-password", redis_password]
 
-    webui_dependencies_present = True
+    dashboard_dependencies_present = True
     try:
         import aiohttp  # noqa: F401
         import grpc  # noqa: F401
     except ImportError:
-        webui_dependencies_present = False
+        dashboard_dependencies_present = False
         warning_message = (
             "Failed to start the dashboard. The dashboard requires Python 3 "
             "as well as 'pip install aiohttp grpcio'.")
@@ -1071,8 +1066,7 @@ def start_dashboard(require_dashboard,
             raise ImportError(warning_message)
         else:
             logger.warning(warning_message)
-
-    if webui_dependencies_present:
+    if dashboard_dependencies_present:
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1319,12 +1313,13 @@ def start_raylet(redis_address,
         sys.executable,
         "-u",
         os.path.join(RAY_PATH, "new_dashboard/agent.py"),
-        "--redis-address={}".format(redis_address),
-        "--metrics-export-port={}".format(metrics_export_port),
-        "--node-manager-port={}".format(node_manager_port),
-        "--object-store-name={}".format(plasma_store_name),
-        "--raylet-name={}".format(raylet_name),
-        "--temp-dir={}".format(temp_dir),
+        f"--redis-address={redis_address}",
+        f"--metrics-export-port={metrics_export_port}",
+        f"--metrics-agent-port={metrics_agent_port}",
+        f"--node-manager-port={node_manager_port}",
+        f"--object-store-name={plasma_store_name}",
+        f"--raylet-name={raylet_name}",
+        f"--temp-dir={temp_dir}",
     ]
 
     if redis_password is not None and len(redis_password) != 0:
@@ -1357,9 +1352,8 @@ def start_raylet(redis_address,
     if start_initial_python_workers_for_first_job:
         command.append("--num_initial_python_workers_for_first_job={}".format(
             resource_spec.num_cpus))
-    if "RAY_USE_NEW_DASHBOARD" in os.environ:
-        command.append("--agent_command={}".format(
-            subprocess.list2cmdline(agent_command)))
+    command.append("--agent_command={}".format(
+        subprocess.list2cmdline(agent_command)))
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store
         command += [
