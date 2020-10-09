@@ -106,9 +106,9 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     // The lease request should not be send and the scheduling of placement_group should
     // fail as there are no available nodes.
     ASSERT_EQ(raylet_clients_[0]->num_lease_requested, 0);
-    ASSERT_EQ(0, getSuccessPlacementGroups().size());
-    ASSERT_EQ(1, getFailurePlacementGroups().size());
-    ASSERT_EQ(placement_group, getFailurePlacementGroups().front());
+    ASSERT_EQ(0, GetSuccessPlacementGroups().size());
+    ASSERT_EQ(1, GetFailurePlacementGroups().size());
+    ASSERT_EQ(placement_group, GetFailurePlacementGroups().front());
   }
 
   void SchedulePlacementGroupSuccessTest(rpc::PlacementStrategy strategy) {
@@ -139,9 +139,9 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-    WaitPendingDone(getFailurePlacementGroups(), 0);
-    WaitPendingDone(getSuccessPlacementGroups(), 1);
-    ASSERT_EQ(placement_group, getSuccessPlacementGroups().front());
+    WaitPendingDone(GetFailurePlacementGroups(), 0);
+    WaitPendingDone(GetSuccessPlacementGroups(), 1);
+    ASSERT_EQ(placement_group, GetSuccessPlacementGroups().front());
   }
 
   void ReschedulingWhenNodeAddTest(rpc::PlacementStrategy strategy) {
@@ -162,8 +162,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
     scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
                                         success_handler);
-    WaitPendingDone(getFailurePlacementGroups(), 1);
-    ASSERT_EQ(0, getSuccessPlacementGroups().size());
+    WaitPendingDone(GetFailurePlacementGroups(), 1);
+    ASSERT_EQ(0, GetSuccessPlacementGroups().size());
 
     // A new node is added, and the rescheduling is successful.
     AddNode(Mocker::GenNodeInfo(0), 2);
@@ -174,7 +174,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-    WaitPendingDone(getSuccessPlacementGroups(), 1);
+    WaitPendingDone(GetSuccessPlacementGroups(), 1);
   }
 
  protected:
@@ -251,9 +251,9 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReplyFailure) {
   // Reply failure, so the placement group scheduling failed.
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources(false));
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources(false));
-  WaitPendingDone(getFailurePlacementGroups(), 1);
-  WaitPendingDone(getSuccessPlacementGroups(), 0);
-  ASSERT_EQ(placement_group, getFailurePlacementGroups().front());
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 0);
+  ASSERT_EQ(placement_group, GetFailurePlacementGroups().front());
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadStrategyResourceCheck) {
@@ -273,12 +273,12 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadStrategyResourceCheck) {
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
 
   // The node resource is not enough, scheduling failed.
-  WaitPendingDone(getFailurePlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
 
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
 
   // The node resource is not enough, scheduling failed.
-  WaitPendingDone(getFailurePlacementGroups(), 2);
+  WaitPendingDone(GetFailurePlacementGroups(), 2);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource) {
@@ -310,9 +310,9 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
   ASSERT_EQ(1, raylet_clients_[0]->num_return_requested);
   // Reply the placement_group creation request, then the placement_group should be
   // scheduled successfully.
-  WaitPendingDone(getFailurePlacementGroups(), 1);
-  WaitPendingDone(getSuccessPlacementGroups(), 0);
-  ASSERT_EQ(placement_group, getFailurePlacementGroups().front());
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 0);
+  ASSERT_EQ(placement_group, GetFailurePlacementGroups().front());
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling) {
@@ -352,7 +352,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling)
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
-  WaitPendingDone(getSuccessPlacementGroups(), 10);
+  WaitPendingDone(GetSuccessPlacementGroups(), 10);
   ASSERT_EQ(node_select_count[0], 5);
   ASSERT_EQ(node_select_count[1], 5);
 }
@@ -381,7 +381,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
 
   // Node1 has less number of bundles, but it doesn't satisfy the resource
   // requirement. In this case, the bundles should be scheduled on Node0.
@@ -397,7 +397,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-  WaitPendingDone(getSuccessPlacementGroups(), 2);
+  WaitPendingDone(GetSuccessPlacementGroups(), 2);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
@@ -426,8 +426,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-  WaitPendingDone(getFailurePlacementGroups(), 0);
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 0);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
@@ -467,7 +467,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  WaitPendingDone(getFailurePlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringCommit) {
@@ -502,7 +502,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringCommit) {
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  WaitPendingDone(getFailurePlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyReschedulingWhenNodeAdd) {
@@ -546,7 +546,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
   for (int index = 0; index < raylet_clients_[1]->num_commit_requested; ++index) {
     ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
   }
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
@@ -577,7 +577,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
   WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
 
   auto bundles_on_node0 =
       scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
@@ -603,7 +603,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
   EXPECT_TRUE(WaitForCondition(commit_ready, timeout_ms_.count()));
   raylet_clients_[0]->GrantCommitBundleResources();
   raylet_clients_[1]->GrantCommitBundleResources();
-  WaitPendingDone(getSuccessPlacementGroups(), 2);
+  WaitPendingDone(GetSuccessPlacementGroups(), 2);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
@@ -623,13 +623,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
 
   // The number of nodes is less than the number of bundles, scheduling failed.
-  WaitPendingDone(getFailurePlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
 
   // Node1 resource is insufficient, scheduling failed.
   auto node1 = Mocker::GenNodeInfo(1);
   AddNode(node1, 1);
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
-  WaitPendingDone(getFailurePlacementGroups(), 2);
+  WaitPendingDone(GetFailurePlacementGroups(), 2);
 
   // The node2 resource is enough and the scheduling is successful.
   auto node2 = Mocker::GenNodeInfo(2);
@@ -641,7 +641,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
   WaitPendingDone(raylet_clients_[2]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[2]->GrantCommitBundleResources());
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
@@ -750,7 +750,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringPreparingResources) {
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources(false));
   ASSERT_TRUE(raylet_clients_[0]->commit_callbacks.size() == 0);
   ASSERT_TRUE(raylet_clients_[1]->commit_callbacks.size() == 0);
-  WaitPendingDone(getFailurePlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest,
@@ -793,7 +793,7 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   ASSERT_FALSE(raylet_clients_[1]->GrantCommitBundleResources());
   // In this case, we treated the placement group creation successful. Instead,
   // we will reschedule them.
-  WaitPendingDone(getFailurePlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommittingResources) {
@@ -828,7 +828,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommittingResources) {
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   // Commit will fail because the node is dead.
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources(false));
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
@@ -859,7 +859,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
   WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
 
   auto bundles_on_node0 =
       scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
@@ -881,8 +881,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
   ASSERT_TRUE(raylet_clients_[0]->commit_callbacks.size() == 0);
   ASSERT_TRUE(raylet_clients_[1]->commit_callbacks.size() == 0);
 
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
-  WaitPendingDone(getFailurePlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommit) {
@@ -913,7 +913,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommit) 
   WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
 
   auto bundles_on_node0 =
       scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
@@ -937,8 +937,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommit) 
   // After commits are granted the placement group will be removed.
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
-  WaitPendingDone(getFailurePlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPrepare) {
@@ -969,7 +969,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
   WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
 
   auto bundles_on_node0 =
       scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
@@ -991,8 +991,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
   WaitPendingDone(raylet_clients_[0]->commit_callbacks, 0);
   WaitPendingDone(raylet_clients_[1]->commit_callbacks, 0);
   // Make sure the placement group creation has failed.
-  WaitPendingDone(getSuccessPlacementGroups(), 1);
-  WaitPendingDone(getFailurePlacementGroups(), 1);
+  WaitPendingDone(GetSuccessPlacementGroups(), 1);
+  WaitPendingDone(GetFailurePlacementGroups(), 1);
 }
 
 }  // namespace ray
