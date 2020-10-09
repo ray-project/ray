@@ -1,3 +1,4 @@
+import inspect
 import time
 
 import numpy as np
@@ -571,23 +572,43 @@ class TorchTrainer:
         self.worker_group = DeactivatedWorkerGroup()
 
     @classmethod
-    def as_trainable(cls, *args, **kwargs):
+    def as_trainable(cls, *args, tune_func=None, **kwargs):
         """Creates a BaseTorchTrainable class compatible with Tune.
 
         Any configuration parameters will be overridden by the Tune
-        Trial configuration. You can also subclass the provided Trainable
-        to implement your own iterative optimization routine.
+        Trial configuration. You can also pass in a custom
+        ``tune_func`` to implement your own iterative optimization
+        routine.
 
         .. code-block:: python
+            def tune_func(trainer, iter):
+                # Implement custom objective function here.
+                ...
+                # Return the metrics to report to tune.
+                # Do not call tune.report here.
+                return metrics_dict
 
             TorchTrainable = TorchTrainer.as_trainable(
                 training_operator_cls=MyTrainingOperator,
-                num_gpus=2
+                num_gpus=2,
+                tune_func=tune_func
             )
             analysis = tune.run(
                 TorchTrainable,
                 config={"lr": tune.grid_search([0.01, 0.1])}
             )
+
+        Args:
+            tune_func (Callable[[TorchTrainer, int], Dict]): A function that
+                defines a single step of the objective function for tune.
+                Function should accept two arguments, the first one is an
+                instance of your TorchTrainer, and the second one is the
+                current iteration. If None is passed in, default objective
+                will be used: run 1 epoch of training, 1 epoch of
+                validation, and report both results to tune. Passing in a
+                tune_func is useful to define custom objective functions for
+                example if you need to manually update the scheduler or want to
+                run more than 1 training epoch for each tune iteration.
 
         """
 
@@ -617,6 +638,20 @@ class TorchTrainer:
                     gpu=int(local_gpus),
                     extra_cpu=int(remote_worker_count * num_cpus_per_worker),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
+
+            def step(self):
+                if tune_func is not None:
+                    args = inspect.signature(tune_func)
+                    if not len(args.parameters) == 2:
+                        raise ValueError("tune_func must take in exactly 2 "
+                                         "arguments. The passed in function "
+                                         "currently takes in {} "
+                                         "args".format(str(len(args.parameters))))
+                    output = tune_func(self._trainer, self._iter)
+                    self._iter += 1
+                    return output
+                else:
+                    return super(TorchTrainable, self).step()
 
             def _create_trainer(self, tune_config):
                 """Overrides the provided config with Tune config."""
@@ -663,6 +698,7 @@ class BaseTorchTrainable(Trainable):
     def setup(self, config):
         """Constructs a TorchTrainer object as `self.trainer`."""
         self._trainer = self._create_trainer(config)
+        self._iter = 0
 
     def step(self):
         """Calls `self.trainer.train()` and `self.trainer.validate()` once.
@@ -678,6 +714,7 @@ class BaseTorchTrainable(Trainable):
         train_stats = self.trainer.train(max_retries=10, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
+        self._iter += 1
         return stats
 
     def save_checkpoint(self, checkpoint_dir):
