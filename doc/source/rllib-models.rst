@@ -45,8 +45,74 @@ The following is a list of the built-in model hyperparameters:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+
+Custom Models
+--------------
+Custom Models on Top of Built-In Ones
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A common use case is to construct a custom model on top of one of RLlib's built-in ones (e.g. a special output head on top of an fcnet, or an action + observation concat operation at the beginning or
+after a conv2d stack).
+Here is an example of how to construct a dueling layer head (for DQN) on top of an RLlib default model (either a Conv2D or an FCNet):
+
+.. code-block:: python
+
+    class DuelingQModel(TFModelV2):  # or: TorchModelV2
+        """A simple, hard-coded dueling head model."""
+        def __init__(obs_space, action_space, num_outputs, model_config, name):
+            # Pass num_outputs=None into super constructor (so that no action/
+            # logits output layer is built).
+            # Alternatively, you can pass in num_outputs=[last layer size of
+            # config[model][fcnet_hiddens]] AND set no_last_linear=True, but
+            # this seems more tedious as you will have to explain users of this
+            # class that num_outputs is NOT the size of your Q-output layer.
+            super(DuelingQModel, self).__init__(
+                obs_space, action_space, None, model_config, name)
+            # Now: self.num_outputs contains the last layer's size, which
+            # we can use to construct the dueling head.
+
+            # Construct advantage head ...
+            self.A = tf.keras.layers.Dense(num_outputs)
+            # torch:
+            # self.A = SlimFC(
+            #     in_size=self.num_outputs, out_size=num_outputs)
+
+            # ... and value head.
+            self.V = tf.keras.layers.Dense(1)
+            # torch:
+            # self.V = SlimFC(in_size=self.num_outputs, out_size=1)
+
+        def get_q_values(self, inputs):
+            # Calculate q-values following dueling logic:
+            v = self.V(inputs)  # value
+            a = self.A(inputs)  # advantages (per action)
+            advantages_mean = tf.reduce_mean(a, 1)
+            advantages_centered = a - tf.expand_dims(advantages_mean, 1)
+            return v + advantages_centered  # q-values
+
+
+In order to construct an instance of the above model, you can still use the `catalog <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__
+`get_model_v2` convenience method:
+
+.. code-block:: python
+
+        dueling_model = ModelCatalog.get_model_v2(
+            obs_space=[obs_space],
+            action_space=[action_space],
+            num_outputs=[num q-value (per action) outs],
+            model_config=config["model"],
+            framework="tf",  # or: "torch"
+            model_interface=DuelingQModel,
+            name="dueling_q_model"
+        )
+
+
+Now, with the model object, you can get the underlying intermediate output (before the dueling head)
+by calling `dueling_model` directly (`out = dueling_model([input_dict])`), and then passing `out` into
+your custom `get_q_values` method: `q_values = dueling_model.get_q_values(out)`.
+
 TensorFlow Models
------------------
+~~~~~~~~~~~~~~~~~~
 
 .. note::
 
@@ -97,7 +163,7 @@ See the `keras model example <https://github.com/ray-project/ray/blob/master/rll
 You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
 
 PyTorch Models
---------------
+~~~~~~~~~~~~~~~
 
 Similarly, you can create and register custom PyTorch models.
 See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/rllib/models/torch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__ torch models.
@@ -170,6 +236,7 @@ You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"
 
 In case RLlib does not properly detect the update ops for your custom model, you can override the ``update_ops()`` method to return the list of ops to run for updates.
 
+
 Custom Preprocessors
 --------------------
 
@@ -205,68 +272,6 @@ Custom preprocessors should subclass the RLlib `preprocessor class <https://gith
         },
     })
 
-Custom Models on Top of Built-In Ones
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A common use case is to construct a custom model on top of one of RLlib's built-in ones (e.g. a special output head on top of an fcnet, or an action + observation concat operation at the beginning or
-after a conv2d stack).
-Here is an example of how to construct a dueling layer head (for DQN) on top of an RLlib default model (either a Conv2D or an FCNet):
-
-.. code-block:: python
-
-    class DuelingQModel(TFModelV2):  # or: TorchModelV2
-        """A simple, hard-coded dueling head model."""
-        def __init__(obs_space, action_space, num_outputs, model_config, name):
-            # Pass num_outputs=None into super constructor (so that no action/
-            # logits output layer is built).
-            # Alternatively, you can pass in num_outputs=[last layer size of
-            # config[model][fcnet_hiddens]] AND set no_last_linear=True, but
-            # this seems more tedious as you will have to explain users of this
-            # class that num_outputs is NOT the size of your Q-output layer.
-            super(DuelingQModel, self).__init__(
-                obs_space, action_space, None, model_config, name)
-            # Now: self.num_outputs contains the last layer's size, which
-            # we can use to construct the dueling head.
-
-            # Construct advantage head ...
-            self.A = tf.keras.layers.Dense(num_outputs)
-            # torch:
-            # self.A = SlimFC(
-            #     in_size=self.num_outputs, out_size=num_outputs)
-
-            # ... and value head.
-            self.V = tf.keras.layers.Dense(1)
-            # torch:
-            # self.V = SlimFC(in_size=self.num_outputs, out_size=1)
-
-        def get_q_values(self, inputs):
-            # Calculate q-values following dueling logic:
-            v = self.V(inputs)  # value
-            a = self.A(inputs)  # advantages (per action)
-            advantages_mean = tf.reduce_mean(a, 1)
-            advantages_centered = a - tf.expand_dims(advantages_mean, 1)
-            return v + advantages_centered  # q-values
-
-
-In order to construct an instance of the above model, you can still use the `catalog <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__
-`get_model_v2` convenience method:
-
-.. code-block:: python
-
-        dueling_model = ModelCatalog.get_model_v2(
-            obs_space=[obs_space],
-            action_space=[action_space],
-            num_outputs=[num q-value (per action) outs],
-            model_config=config["model"],
-            framework="tf",  # or: "torch"
-            model_interface=DuelingQModel,
-            name="dueling_q_model"
-        )
-
-
-Now, with the model object, you can get the underlying intermediate output (before the dueling head)
-by calling `dueling_model` directly (`out = dueling_model([input_dict])`), and then passing `out` into
-your custom `get_q_values` method: `q_values = dueling_model.get_q_values(out)`.
 
 
 Custom Action Distributions
