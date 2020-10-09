@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 import os
 import sys
 from typing import Any, Optional
@@ -185,6 +186,7 @@ def get_variable(value,
             does not have any (e.g. if it's an initializer w/o explicit value).
         dtype (Optional[TensorType]): An optional dtype to use iff `value` does
             not have any (e.g. if it's an initializer w/o explicit value).
+            This should always be a numpy dtype (e.g. np.float32, np.int64).
 
     Returns:
         any: A framework-specific variable (tf.Variable, torch.tensor, or
@@ -198,7 +200,7 @@ def get_variable(value,
             if isinstance(value, int) else None)
         return tf.compat.v1.get_variable(
             tf_name,
-            initializer=value,
+            initializer=np.array(value, dtype=dtype),
             dtype=dtype,
             trainable=trainable,
             **({} if shape is None else {
@@ -207,10 +209,13 @@ def get_variable(value,
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
         var_ = torch.from_numpy(value)
-        if dtype == torch.float32:
+        if dtype in [torch.float32, np.float32]:
             var_ = var_.float()
-        elif dtype == torch.int32:
+        elif dtype in [torch.int32, np.int32]:
             var_ = var_.int()
+        elif dtype in [torch.float64, np.float64]:
+            var_ = var_.double()
+
         if device:
             var_ = var_.to(device)
         var_.requires_grad = trainable
