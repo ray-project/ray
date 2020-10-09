@@ -117,7 +117,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gpus = gpustat.new_query().gpus
         except Exception as e:
             logger.debug(
-                "gpustat failed to retrieve GPU information: {}".format(e))
+                f"gpustat failed to retrieve GPU information: {e}")
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
