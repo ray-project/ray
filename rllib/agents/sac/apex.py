@@ -41,6 +41,9 @@ APEX_SAC_DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
 # __sphinx_doc_end__
 # yapf: enable
 
+
 ApexSACTrainer = SACTrainer.with_updates(
-    name="APEX_SAC", default_config=APEX_SAC_DEFAULT_CONFIG, execution_plan=apex_execution_plan
+    name="APEX_SAC",
+    default_config=APEX_SAC_DEFAULT_CONFIG,
+    execution_plan=apex_execution_plan,
 )

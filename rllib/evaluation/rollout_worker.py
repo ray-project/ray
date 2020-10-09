@@ -1,4 +1,6 @@
 import random
+from typing import Iterator
+
 import numpy as np
 import gym
 import logging
@@ -18,7 +20,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
@@ -512,8 +514,18 @@ class RolloutWorker(ParallelIteratorWorker):
         Child classes could override this method if a custom generator function
         is required.
         """
-        while True:
-            yield self.sample()
+
+        class _GenRollouts(Iterator[SampleBatch]):
+            def __init__(self, parent_worker: RolloutWorker):
+                self.parent_worker = parent_worker
+
+            def __iter__(self) -> Iterator[SampleBatch]:
+                return self
+
+            def __next__(self) -> SampleBatch:
+                return self.parent_worker.sample()
+
+        return _GenRollouts(self)
 
     @DeveloperAPI
     def sample(self):

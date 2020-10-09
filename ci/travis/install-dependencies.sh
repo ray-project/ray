@@ -276,7 +276,7 @@ install_dependencies() {
       msys) tf_version="${TF_VERSION:-2.2.0}";;
       *) tf_version="${TF_VERSION:-2.1.0}";;
     esac
-    pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
+    pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym==0.17.2 \
       opencv-python-headless pyyaml pandas==1.0.5 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
@@ -321,7 +321,7 @@ install_dependencies() {
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 \
-      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari] lz4 smart_open
+      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari]==0.17.2 lz4 smart_open
   fi
 
   # Additional streaming dependencies.

@@ -416,4 +416,109 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         return stat
 
 
+# Visible for testing.
+_local_vanilla_replay_buffer = None
+
+
+class LocalVanillaReplayBuffer(LocalReplayBuffer):
+    """A replay buffer shard.
+
+    Ray actors are single-threaded, so for scalability multiple replay actors
+    may be created to increase parallelism."""
+
+    def __init__(
+        self,
+        num_shards,
+        learning_starts,
+        buffer_size,
+        replay_batch_size,
+        prioritized_replay_alpha=0.6,
+        prioritized_replay_beta=0.4,
+        prioritized_replay_eps=1e-6,
+        multiagent_sync_replay=False,
+    ):
+        self.replay_starts = learning_starts // num_shards
+        self.buffer_size = buffer_size // num_shards
+        self.replay_batch_size = replay_batch_size
+        self.prioritized_replay_beta = prioritized_replay_beta
+        self.prioritized_replay_eps = prioritized_replay_eps
+        self.multiagent_sync_replay = multiagent_sync_replay
+
+        def gen_replay():
+            while True:
+                yield self.replay()
+
+        ParallelIteratorWorker.__init__(self, gen_replay, False)
+
+        def new_buffer():
+            return ReplayBuffer(self.buffer_size)
+
+        self.replay_buffers = collections.defaultdict(new_buffer)
+
+        # Metrics
+        self.add_batch_timer = TimerStat()
+        self.replay_timer = TimerStat()
+        self.update_priorities_timer = TimerStat()
+        self.num_added = 0
+
+        # Make externally accessible for testing.
+        global _local_vanilla_replay_buffer
+        _local_vanilla_replay_buffer = self
+        # If set, return this instead of the usual data for testing.
+        self._fake_batch = None
+
+    @staticmethod
+    def get_instance_for_testing():
+        global _local_vanilla_replay_buffer
+        return _local_vanilla_replay_buffer
+
+    def replay(self):
+        if self._fake_batch:
+            fake_batch = SampleBatch(self._fake_batch)
+            return MultiAgentBatch({DEFAULT_POLICY_ID: fake_batch}, fake_batch.count)
+
+        if self.num_added < self.replay_starts:
+            return None
+
+        with self.replay_timer:
+            samples = {}
+            idxes = None
+            for policy_id, replay_buffer in self.replay_buffers.items():
+                if self.multiagent_sync_replay:
+                    if idxes is None:
+                        idxes = replay_buffer.sample_idxes(self.replay_batch_size)
+                else:
+                    idxes = replay_buffer.sample_idxes(self.replay_batch_size)
+                (
+                    obses_t,
+                    actions,
+                    rewards,
+                    obses_tp1,
+                    dones,
+                ) = replay_buffer.sample_with_idxes(idxes)
+                samples[policy_id] = SampleBatch(
+                    {
+                        "obs": obses_t,
+                        "actions": actions,
+                        "rewards": rewards,
+                        "new_obs": obses_tp1,
+                        "dones": dones,
+                    }
+                )
+            return MultiAgentBatch(samples, self.replay_batch_size)
+
+    def stats(self, debug=False):
+        stat = {
+            "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
+            "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
+        }
+        for policy_id, replay_buffer in self.replay_buffers.items():
+            stat.update(
+                {"policy_{}".format(policy_id): replay_buffer.stats(debug=debug)}
+            )
+        return stat
+
+
+VanillaReplayActor = ray.remote(num_cpus=0)(LocalVanillaReplayBuffer)
+
 ReplayActor = ray.remote(num_cpus=0)(LocalReplayBuffer)

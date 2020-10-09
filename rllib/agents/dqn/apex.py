@@ -13,7 +13,7 @@ from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_buffer import ReplayActor
+from ray.rllib.execution.replay_buffer import ReplayActor, VanillaReplayActor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
 
@@ -88,15 +88,21 @@ class UpdateWorkerWeights:
 def apex_execution_plan(workers: WorkerSet, config: dict):
     # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
-    replay_actors = create_colocated(ReplayActor, [
+    replay_actor_cls = ReplayActor if config[
+        "prioritized_replay"] else VanillaReplayActor
+    replay_actors = create_colocated(
+        replay_actor_cls,
+        [
+            num_replay_buffer_shards,
+            config["learning_starts"],
+            config["buffer_size"],
+            config["train_batch_size"],
+            config["prioritized_replay_alpha"],
+            config["prioritized_replay_beta"],
+            config["prioritized_replay_eps"],
+        ],
         num_replay_buffer_shards,
-        config["learning_starts"],
-        config["buffer_size"],
-        config["train_batch_size"],
-        config["prioritized_replay_alpha"],
-        config["prioritized_replay_beta"],
-        config["prioritized_replay_eps"],
-    ], num_replay_buffer_shards)
+    )
 
     # Start the learner thread.
     learner_thread = LearnerThread(workers.local_worker())
@@ -105,7 +111,8 @@ def apex_execution_plan(workers: WorkerSet, config: dict):
     # Update experience priorities post learning.
     def update_prio_and_stats(item: ("ActorHandle", dict, int)):
         actor, prio_dict, count = item
-        actor.update_priorities.remote(prio_dict)
+        if config["prioritized_replay"]:
+            actor.update_priorities.remote(prio_dict)
         metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.
@@ -165,12 +172,16 @@ def apex_execution_plan(workers: WorkerSet, config: dict):
             [store_op, replay_op, update_op],
             mode="round_robin",
             output_indexes=[2],
-            round_robin_weights=rr_weights)
+            round_robin_weights=rr_weights,
+            strict=True)
     else:
         # Execute (1), (2), (3) asynchronously as fast as possible. Only output
         # items from (3) since metrics aren't available before then.
         merged_op = Concurrently(
-            [store_op, replay_op, update_op], mode="async", output_indexes=[2])
+            [store_op, replay_op, update_op],
+            mode="async",
+            output_indexes=[2],
+            strict=True)
 
     # Add in extra replay and learner metrics to the training result.
     def add_apex_metrics(result):

@@ -283,9 +283,20 @@ test_monotonic_convergence_params: List[
             config_updates={
                 "num_workers": 8,
                 "exploration_config": {"type": "StochasticSampling"},
-                "no_done_at_end": True,
+                "prioritized_replay": False,
+                "no_done_at_end": False,
             },
-            # TODO: Delete next line before landing PR
+            n_iter=200,
+            threshold=-350.,
+        ),
+        TestAgentParams.for_pendulum(
+            algorithm=ContinuousActionSpaceAlgorithm.APEX_SAC,
+            config_updates={
+                "num_workers": 8,
+                "exploration_config": {"type": "StochasticSampling"},
+                "prioritized_replay": True,
+                "no_done_at_end": True
+            },
             n_iter=200,
             threshold=-350.,
         ),

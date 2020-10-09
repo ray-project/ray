@@ -1,5 +1,5 @@
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Iterator
 import time
 
 from ray.util.iter import from_actors, LocalIterator
@@ -65,9 +65,15 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
 
     if not workers.remote_workers():
         # Handle the serial sampling case.
-        def sampler(_):
-            while True:
-                yield workers.local_worker().sample()
+        class sampler(Iterator[SampleBatch]):
+            def __init__(self, timeout):
+                self.timeout = timeout
+
+            def __iter__(self) -> Iterator[SampleBatch]:
+                return self
+
+            def __next__(self) -> SampleBatch:
+                return workers.local_worker().sample()
 
         return (LocalIterator(sampler, SharedMetrics())
                 .for_each(report_timesteps))
