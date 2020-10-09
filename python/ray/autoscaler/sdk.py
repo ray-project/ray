@@ -193,10 +193,7 @@ def _as_config_file(cluster_config: Union[dict, str]):
         cluster_config = tmp.name
     if not os.path.exists(cluster_config):
         raise ValueError("Cluster config not found {}".format(cluster_config))
-    try:
-        yield cluster_config
-    finally:
-        return
+    yield cluster_config
 
 
 def bootstrap_config(cluster_config: Dict[str, any],
