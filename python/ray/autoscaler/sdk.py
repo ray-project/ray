@@ -1,5 +1,6 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
+from contextlib import contextmanager
 from typing import Any, Dict, Optional, List, Union
 import json
 import os
@@ -177,9 +178,8 @@ def request_resources(num_cpus=None, bundles=None):
     return commands.request_resources(num_cpus, bundles)
 
 
+@contextmanager
 def _as_config_file(cluster_config: Union[dict, str]):
-    # Ensure the temporary object outlives this function
-    global tmp
     if isinstance(cluster_config, dict):
         tmp = tempfile.NamedTemporaryFile("w", prefix="autoscaler-sdk-tmp-")
         tmp.write(json.dumps(cluster_config))
@@ -187,7 +187,10 @@ def _as_config_file(cluster_config: Union[dict, str]):
         cluster_config = tmp.name
     if not os.path.exists(cluster_config):
         raise ValueError("Cluster config not found {}".format(cluster_config))
-    return cluster_config
+    try:
+        yield cluster_config
+    finally:
+        return
 
 
 def bootstrap_config(cluster_config: Dict[str, any],
