@@ -21,9 +21,11 @@ def test_actor_groups(ray_start_with_dashboard):
     @ray.remote
     class Foo:
         def __init__(self, num):
+            print("Starting up printed")
             self.num = num
 
         def do_task(self):
+            print("printing returning num")
             return self.num
 
     @ray.remote(num_gpus=1)
@@ -38,7 +40,7 @@ def test_actor_groups(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    timeout_seconds = 5
+    timeout_seconds = 20
     start_time = time.time()
     last_ex = None
     while True:
@@ -58,8 +60,11 @@ def test_actor_groups(ray_start_with_dashboard):
 
             entries = actor_groups["Foo"]["entries"]
             assert len(entries) == 2
-            assert "InfeasibleActor" in actor_groups
+            assert "logs" in entries[0]
+            assert "errors" in entries[0]
+            assert len(entries[0]["logs"]) == 2
 
+            assert "InfeasibleActor" in actor_groups
             entries = actor_groups["InfeasibleActor"]["entries"]
             assert "requiredResources" in entries[0]
             assert "GPU" in entries[0]["requiredResources"]

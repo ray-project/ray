@@ -111,6 +111,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 # e.g. b'RAY_REPORTER:2b4fbd406898cc86fb88fb0acfd5456b0afd87cf'
                 key, data = msg
                 data = json.loads(ray.utils.decode(data))
+                logger.warning(data)
                 key = key.decode("utf-8")
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = data

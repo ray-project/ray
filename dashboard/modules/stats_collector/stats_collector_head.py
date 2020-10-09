@@ -222,7 +222,6 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         async for sender, msg in receiver.iter():
             try:
                 data = json.loads(ray.utils.decode(msg))
-                logger.error(f"data={data}")
                 ip = data["ip"]
                 pid = str(data["pid"])
                 logs_for_ip = DataSource.ip_and_pid_to_logs.get(ip, {})
