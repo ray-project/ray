@@ -178,6 +178,8 @@ def request_resources(num_cpus=None, bundles=None):
 
 
 def _as_config_file(cluster_config: Union[dict, str]):
+    # Ensure the temporary object outlives this function
+    global tmp
     if isinstance(cluster_config, dict):
         tmp = tempfile.NamedTemporaryFile("w", prefix="autoscaler-sdk-tmp-")
         tmp.write(json.dumps(cluster_config))
