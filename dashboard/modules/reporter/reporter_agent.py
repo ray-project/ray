@@ -96,12 +96,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
     async def ReportOCMetrics(self, request, context):
-        logger.info("CALLING REPORTOCMETRICS")
         try:
             self._metrics_agent.record_metric_points_from_protobuf(
                 request.metrics)
-        except Exception as e:
-            logger.info("THERE WAS AN EXCEPTION {e}")
+        except Exception:
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
@@ -241,8 +239,5 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         aioredis_client = await aioredis.create_redis_pool(
             address=self._dashboard_agent.redis_address,
             password=self._dashboard_agent.redis_password)
-
-        port = server.add_insecure_port(f"[::]:{self._dashboard_agent.metrics_agent_port}")
-        await aioredis_client.set(f"REPORTER_PORT:{self._ip}", port)
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
         await self._perform_iteration(aioredis_client)

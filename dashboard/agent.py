@@ -61,7 +61,8 @@ class DashboardAgent(object):
         assert self.node_id, "Empty node id (RAY_NODE_ID)."
         self.ip = ray._private.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = self.server.add_insecure_port("[::]:0")
+        self.grpc_port = self.server.add_insecure_port(
+            f"[::]:{self.metrics_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
@@ -192,9 +193,8 @@ if __name__ == "__main__":
         "--metrics-agent-port",
         required=True,
         type=int,
-        help="The port to which metrics will be sent for aggregation "\
-            "by Ray processes over GRPC."
-    )
+        help="The port to which metrics will be sent for aggregation "
+        "by Ray processes over GRPC.")
     parser.add_argument(
         "--node-manager-port",
         required=True,
