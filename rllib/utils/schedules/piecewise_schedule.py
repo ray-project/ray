@@ -65,7 +65,7 @@ class PiecewiseSchedule(Schedule):
             "provided!"
 
         endpoints = tf.cast(
-            tf.stack([e[0] for e in self.endpoints] + [-1]), tf.int32)
+            tf.stack([e[0] for e in self.endpoints] + [-1]), tf.int64)
 
         # Create all possible interpolation results.
         results_list = []
@@ -88,5 +88,5 @@ class PiecewiseSchedule(Schedule):
             return (i + 1, t)
 
         idx_and_t = tf.while_loop(_cond, _body,
-                                  [tf.constant(0, dtype=tf.int32), t])
+                                  [tf.constant(0, dtype=t.dtype), t])
         return results_list[idx_and_t[0]]
