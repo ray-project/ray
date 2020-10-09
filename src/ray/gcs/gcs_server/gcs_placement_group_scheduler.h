@@ -475,7 +475,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   BundleLocationIndex committed_bundle_location_index_;
 
   /// Set of placement group that have lease requests in flight to nodes.
-  /// It is required to know if placement group has been removed or not.
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeaseStatusTracker>>
       placement_group_leasing_in_progress_;
 };

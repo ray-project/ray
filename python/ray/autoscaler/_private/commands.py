@@ -305,7 +305,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             # todo: add better exception info
             cli_logger.verbose_error("{}", str(e))
             cli_logger.warning(
-                "Exception occured when stopping the cluster Ray runtime "
+                "Exception occurred when stopping the cluster Ray runtime "
                 "(use -v to dump teardown exceptions).")
             cli_logger.warning(
                 "Ignoring the exception and "

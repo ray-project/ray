@@ -77,27 +77,23 @@ class LightningMNISTClassifier(pl.LightningModule):
         loss = self.cross_entropy_loss(logits, y)
         accuracy = self.accuracy(logits, y)
 
-        logs = {"ptl/train_loss": loss, "ptl/train_accuracy": accuracy}
-        return {"loss": loss, "log": logs}
+        self.log("ptl/train_loss", loss)
+        self.log("ptl/train_accuracy", accuracy)
+        return loss
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
         logits = self.forward(x)
         loss = self.cross_entropy_loss(logits, y)
         accuracy = self.accuracy(logits, y)
-
         return {"val_loss": loss, "val_accuracy": accuracy}
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
-        logs = {"ptl/val_loss": avg_loss, "ptl/val_accuracy": avg_acc}
+        self.log("ptl/val_loss", avg_loss)
+        self.log("ptl/val_accuracy", avg_acc)
 
-        return {
-            "val_loss": avg_loss,
-            "val_accuracy": avg_acc,
-            "log": logs
-        }
 
     @staticmethod
     def download_data(data_dir):
@@ -144,12 +140,11 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
         callbacks=[
             TuneReportCallback(
                 {
-                    "loss": "val_loss",
-                    "mean_accuracy": "val_accuracy"
+                    "loss": "ptl/val_loss",
+                    "mean_accuracy": "ptl/val_accuracy"
                 },
                 on="validation_end")
         ])
-
     trainer.fit(model)
 # __tune_train_end__
 
@@ -169,8 +164,8 @@ def train_mnist_tune_checkpoint(config,
         callbacks=[
             TuneReportCheckpointCallback(
                 metrics={
-                    "loss": "val_loss",
-                    "mean_accuracy": "val_accuracy"
+                    "loss": "ptl/val_loss",
+                    "mean_accuracy": "ptl/val_accuracy"
                 },
                 filename="checkpoint",
                 on="validation_end")
