@@ -45,7 +45,7 @@ def _get_wheel_name():
     matches = glob.glob(f"{_get_root_dir()}/.whl/*cp37m-manylinux*")
     assert len(matches) == 1
     f"Found ({len(matches)}) matches '*cp37m-manylinux*' instead of 1"
-    return matches[0]
+    return os.path.basename(matches[0])
 
 
 def _docker_affected():
@@ -68,20 +68,23 @@ def _build_helper(image_name) -> List[str]:
         if image_name == "base-deps":
             build_args["BASE_IMAGE"] = (
                 "nvidia/cuda:10.1-cudnn8-runtime-ubuntu18.04"
-                if gpu else "ubuntu:focal")
+                if gpu == "-gpu" else "ubuntu:focal")
         else:
             build_args["GPU"] = gpu
 
         if "ray" in image_name:
             build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name()}"
 
-        tagged_name = f"rayproject/{image_name}:nightly:{gpu}"
+        tagged_name = f"rayproject/{image_name}:nightly{gpu}"
 
-        DOCKER_CLIENT.api.build(
-            path=f"{_get_root_dir()}/docker/{image_name}",
+        output = DOCKER_CLIENT.api.build(
+            path=os.path.join(_get_root_dir(), "docker", image_name),
             tag=tagged_name,
             nocache=True,
             buildargs=build_args)
+
+        for line in output:
+            print(line)
 
         print("BUILT: ", tagged_name)
         built_images.append(tagged_name)
@@ -94,9 +97,9 @@ def copy_wheels():
     source = os.path.join(root_dir, ".whl", wheel)
     ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
     ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
-    os.mkdir(ray_dst)
+    os.makedirs(ray_dst, exist_ok=True)
     shutil.copy(source, ray_dst)
-    os.mkdir(ray_dep_dst)
+    os.makedirs(ray_dep_dst, exist_ok=True)
     shutil.copy(source, ray_dep_dst)
 
 
