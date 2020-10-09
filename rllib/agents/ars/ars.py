@@ -335,46 +335,13 @@ class ARSTrainer(Trainer):
         return action[0]
 
     @override(Trainer)
-    def _evaluate(self) -> dict:
+    def _sync_weights_to_workers(self, *, worker_set=None, workers=None):
         # Broadcast the new policy weights to all evaluation workers.
+        assert worker_set is not None
         logger.info("Synchronizing weights to evaluation workers.")
         weights = ray.put(self.policy.get_flat_weights())
-        self.evaluation_workers.foreach_policy(
+        worker_set.foreach_policy(
             lambda p, pid: p.set_flat_weights(ray.get(weights)))
-        self._sync_filters_if_needed(self.evaluation_workers)
-
-        if self.config["custom_eval_function"]:
-            logger.info("Running custom eval function {}".format(
-                self.config["custom_eval_function"]))
-            metrics = self.config["custom_eval_function"](
-                self, self.evaluation_workers)
-            if not metrics or not isinstance(metrics, dict):
-                raise ValueError("Custom eval function must return "
-                                 "dict of metrics, got {}.".format(metrics))
-        else:
-            logger.info("Evaluating current policy for {} episodes.".format(
-                self.config["evaluation_num_episodes"]))
-            if self.config["evaluation_num_workers"] == 0:
-                for _ in range(self.config["evaluation_num_episodes"]):
-                    self.evaluation_workers.local_worker().sample()
-            else:
-                num_rounds = int(
-                    math.ceil(self.config["evaluation_num_episodes"] /
-                              self.config["evaluation_num_workers"]))
-                num_workers = len(self.evaluation_workers.remote_workers())
-                num_episodes = num_rounds * num_workers
-                for i in range(num_rounds):
-                    logger.info("Running round {} of parallel evaluation "
-                                "({}/{} episodes)".format(
-                                    i, (i + 1) * num_workers, num_episodes))
-                    ray.get([
-                        w.sample.remote()
-                        for w in self.evaluation_workers.remote_workers()
-                    ])
-
-            metrics = collect_metrics(self.evaluation_workers.local_worker(),
-                                      self.evaluation_workers.remote_workers())
-        return {"evaluation": metrics}
 
     def _collect_results(self, theta_id, min_episodes):
         num_episodes, num_timesteps = 0, 0
