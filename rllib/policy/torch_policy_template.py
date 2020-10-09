@@ -22,9 +22,9 @@ torch, _ = try_import_torch()
 def build_torch_policy(
         name: str,
         *,
-        loss_fn: Callable[[
+        loss_fn: Optional[Callable[[
             Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
-        ], Union[TensorType, List[TensorType]]],
+        ], Union[TensorType, List[TensorType]]]],
         get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,
@@ -72,8 +72,9 @@ def build_torch_policy(
 
     Args:
         name (str): name of the policy (e.g., "PPOTorchPolicy")
-        loss_fn (Callable[[Policy, ModelV2, type, SampleBatch], TensorType]):
-            Callable that returns a loss tensor.
+        loss_fn (Optional[Callable[[Policy, ModelV2, 
+            Type[TorchDistributionWrapper], SampleBatch], Union[TensorType, 
+            List[TensorType]]]]): Callable that returns a loss tensor.
         get_default_config (Optional[Callable[[None], TrainerConfigDict]]):
             Optional callable that returns the default config to merge with any
             overrides. If None, uses only(!) the user-provided

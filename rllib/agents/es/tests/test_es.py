@@ -18,6 +18,9 @@ class TestES(unittest.TestCase):
         config["num_workers"] = 1
         config["episodes_per_batch"] = 10
         config["train_batch_size"] = 100
+        # Test eval workers ("normal" Trainer eval WorkerSet, unusual for ARS).
+        config["evaluation_interval"] = 1
+        config["evaluation_num_workers"] = 2
 
         num_iterations = 1
 

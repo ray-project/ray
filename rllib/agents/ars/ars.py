@@ -4,17 +4,18 @@
 
 from collections import namedtuple
 import logging
+import math
 import numpy as np
 import time
 
 import ray
 from ray.rllib.agents import Trainer, with_common_config
-
 from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.agents.es import optimizers, utils
 from ray.rllib.agents.es.es import validate_config
 from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import FilterManager
@@ -40,6 +41,14 @@ DEFAULT_CONFIG = with_common_config({
     "eval_prob": 0.03,  # probability of evaluating the parameter rewards
     "report_length": 10,  # how many of the last rewards we average over
     "offset": 0,
+    # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
+    # Therefore, we must be careful not to use more than 1 env per eval worker
+    # (would break ARSPolicy's compute_action method) and to not do obs-
+    # filtering.
+    "evaluation_config": {
+        "num_envs_per_worker": 1,
+        "observation_filter": "NoFilter"
+    },
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -183,9 +192,9 @@ class ARSTrainer(Trainer):
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
 
-        policy_cls = get_policy_class(config)
-        self.policy = policy_cls(env.observation_space, env.action_space,
-                                 config)
+        self._policy_class = get_policy_class(config)
+        self.policy = self._policy_class(
+            env.observation_space, env.action_space, config)
         self.optimizer = optimizers.SGD(self.policy, config["sgd_stepsize"])
 
         self.rollouts_used = config["rollouts_used"]
@@ -320,10 +329,52 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        action = self.policy.compute_actions(observation, update=True)[0]
+        action, _, _ = self.policy.compute_actions(observation, update=True)
         if kwargs.get("full_fetch"):
-            return action, [], {}
-        return action
+            return action[0], [], {}
+        return action[0]
+
+    @override(Trainer)
+    def _evaluate(self) -> dict:
+        # Broadcast the new policy weights to all evaluation workers.
+        logger.info("Synchronizing weights to evaluation workers.")
+        weights = ray.put(self.policy.get_flat_weights())
+        self.evaluation_workers.foreach_policy(
+            lambda p, pid: p.set_flat_weights(ray.get(weights)))
+        self._sync_filters_if_needed(self.evaluation_workers)
+
+        if self.config["custom_eval_function"]:
+            logger.info("Running custom eval function {}".format(
+                self.config["custom_eval_function"]))
+            metrics = self.config["custom_eval_function"](
+                self, self.evaluation_workers)
+            if not metrics or not isinstance(metrics, dict):
+                raise ValueError("Custom eval function must return "
+                                 "dict of metrics, got {}.".format(metrics))
+        else:
+            logger.info("Evaluating current policy for {} episodes.".format(
+                self.config["evaluation_num_episodes"]))
+            if self.config["evaluation_num_workers"] == 0:
+                for _ in range(self.config["evaluation_num_episodes"]):
+                    self.evaluation_workers.local_worker().sample()
+            else:
+                num_rounds = int(
+                    math.ceil(self.config["evaluation_num_episodes"] /
+                              self.config["evaluation_num_workers"]))
+                num_workers = len(self.evaluation_workers.remote_workers())
+                num_episodes = num_rounds * num_workers
+                for i in range(num_rounds):
+                    logger.info("Running round {} of parallel evaluation "
+                                "({}/{} episodes)".format(
+                                    i, (i + 1) * num_workers, num_episodes))
+                    ray.get([
+                        w.sample.remote()
+                        for w in self.evaluation_workers.remote_workers()
+                    ])
+
+            metrics = collect_metrics(self.evaluation_workers.local_worker(),
+                                      self.evaluation_workers.remote_workers())
+        return {"evaluation": metrics}
 
     def _collect_results(self, theta_id, min_episodes):
         num_episodes, num_timesteps = 0, 0

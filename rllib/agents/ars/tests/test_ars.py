@@ -14,6 +14,9 @@ class TestARS(unittest.TestCase):
         # Keep it simple.
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = None
+        # Test eval workers ("normal" Trainer eval WorkerSet, unusual for ARS).
+        config["evaluation_interval"] = 1
+        config["evaluation_num_workers"] = 2
 
         num_iterations = 2
 
