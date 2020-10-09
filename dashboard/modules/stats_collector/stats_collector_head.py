@@ -75,7 +75,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 summary=all_node_summary)
         elif view == "details":
             all_node_details = await DataOrganizer.get_all_node_details()
-            return await dashboard_utils.rest_response(
+            return dashboard_utils.rest_response(
                 success=True,
                 message="All node details fetched",
                 clients=all_node_details,
@@ -112,7 +112,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             kwargs["sort_by"] = SortingType(sort_by)
 
         memory_table = await DataOrganizer.get_memory_table(**kwargs)
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Fetched memory table",
             memory_table=memory_table.as_dict())
@@ -125,10 +125,10 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         elif should_fetch == "false":
             self._collect_memory_info = False
         else:
-            return await dashboard_utils.rest_response(
+            return dashboard_utils.rest_response(
                 success=False,
                 message=f"Unknown argument to set_fetch {should_fetch}")
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message=f"Successfully set fetching to {should_fetch}")
 
@@ -138,7 +138,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         pid = req.query.get("pid")
         node_logs = DataSource.ip_and_pid_to_logs[ip]
         payload = node_logs.get(pid, []) if pid else node_logs
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True, message="Fetched logs.", logs=payload)
 
     @routes.get("/node_errors")
@@ -147,7 +147,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         pid = req.query.get("pid")
         node_errors = DataSource.ip_and_pid_to_errors[ip]
         filtered_errs = node_errors.get(pid, []) if pid else node_errors
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True, message="Fetched errors.", errors=filtered_errs)
 
     async def _update_actors(self):

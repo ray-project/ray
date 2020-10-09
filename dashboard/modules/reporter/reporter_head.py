@@ -61,14 +61,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 with open(config_path) as f:
                     cfg = yaml.safe_load(f)
             except yaml.YAMLError:
-                return await dashboard_utils.rest_response(
+                return dashboard_utils.rest_response(
                     success=False,
                     message=f"No config found at {config_path}.",
                 )
             except FileNotFoundError:
-                return await dashboard_utils.rest_response(
+                return dashboard_utils.rest_response(
                     success=False,
-                    message=f"Invalid config, could not load YAML.")
+                    message="Invalid config, could not load YAML.")
 
             payload = {
                 "min_workers": cfg["min_workers"],
@@ -90,7 +90,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             self._ray_config = payload
 
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Fetched ray config.",
             **self._ray_config,
