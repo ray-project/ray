@@ -1293,7 +1293,7 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
 
   // Get all actors.
   auto condition = [this, actor_count]() {
-    return (int) GetAllActors().size() == actor_count;
+    return (int)GetAllActors().size() == actor_count;
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
