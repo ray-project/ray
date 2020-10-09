@@ -68,12 +68,12 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
-  std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> &getSuccessPlacementGroups() {
+  std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> &GetSuccessPlacementGroups() {
     absl::MutexLock lock(&vector_mutex_);
     return success_placement_groups_;
   }
 
-  std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> &getFailurePlacementGroups() {
+  std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> &GetFailurePlacementGroups() {
     absl::MutexLock lock(&vector_mutex_);
     return failure_placement_groups_;
   }
