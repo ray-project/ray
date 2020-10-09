@@ -309,11 +309,6 @@ install_dependencies() {
     pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
   fi
 
-  # Additional dependnecy for building docker images.
-  if [ "${LINUX_WHEELS-}" = 1 ]; then
-    pip install docker
-  fi
-
 
   # If CI has deemed that a different version of Tensorflow or Torch
   # should be installed, then upgrade/downgrade to that specific version.

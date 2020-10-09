@@ -2,26 +2,18 @@ import datetime
 import glob
 import os
 import re
+import runpy
 import shutil
-import subprocess
 import sys
+from contextlib import redirect_stdout
+from io import StringIO
 from typing import List
 
 import docker
 
 DOCKER_USERNAME = "raytravisbot"
 DOCKER_CLIENT = None
-
-
-def _subprocess_wrapper(cmd):
-    result = subprocess.run(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    if result.returncode != 0:
-        print(f"COMMAND FAILED: {cmd}")
-        print(f"STDOUT is: {result.stdout}")
-        print(f"STDERR is: {result.stderr}")
-        raise Exception("Command Failed") from None
-    return (result.stdout or b"").decode()
+PYTHON_WHL_VERSION = "cp37m"
 
 
 def _merge_build():
@@ -45,15 +37,21 @@ def _get_root_dir():
 
 
 def _get_wheel_name():
-    matches = glob.glob(f"{_get_root_dir()}/.whl/*cp37m-manylinux*")
-    assert len(matches) == 1
-    f"Found ({len(matches)}) matches '*cp37m-manylinux*' instead of 1"
+    matches = glob.glob(
+        f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}-manylinux*")
+    assert len(matches) == 1, (
+        f"Found ({len(matches)}) matches "
+        "'*{PYTHON_WHL_VERSION}-manylinux*' instead of 1")
     return os.path.basename(matches[0])
 
 
 def _docker_affected():
-    variable_definitions = _subprocess_wrapper(
-        f"python {_get_curr_dir()}/determine_tests_to_run.py").split()
+    result = StringIO()
+    with redirect_stdout(result):
+        runpy.run_path(
+            f"{_get_curr_dir()}/determine_tests_to_run.py",
+            run_name="__main__")
+    variable_definitions = result.getvalue().split()
     env_var_dict = {
         x.split("=")[0]: x.split("=")[1]
         for x in variable_definitions
@@ -64,7 +62,7 @@ def _docker_affected():
     return affected
 
 
-def _build_helper(image_name) -> List[str]:
+def _build_cpu_gpu_images(image_name) -> List[str]:
     built_images = []
     for gpu in ["-cpu", "-gpu"]:
         build_args = {}
@@ -119,7 +117,7 @@ def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
 
     if is_stale or is_docker_affected or _release_build():
         for image in ["base-deps", "ray-deps"]:
-            _build_helper(image)
+            _build_cpu_gpu_images(image)
         return True
     else:
         print("Just pulling images!")
@@ -136,7 +134,7 @@ def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
 
 
 def build_ray():
-    return _build_helper("ray")
+    return _build_cpu_gpu_images("ray")
 
 
 def build_ray_ml():
@@ -145,7 +143,7 @@ def build_ray_ml():
         f"{_get_root_dir()}/python/requirements*.txt")
     for fl in requirement_files:
         shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
-    ray_ml_images = _build_helper("ray-ml")
+    ray_ml_images = _build_cpu_gpu_images("ray-ml")
     for img in ray_ml_images:
         tag = img.split(":")[-1]
         DOCKER_CLIENT.api.tag(
