@@ -115,6 +115,8 @@ start a new worker with the given *root temporary directory*.
               ├── plasma_store
               └── raylet  # this could be deleted by Ray's shutdown cleanup.
 
+.. _ray-ports:
+
 Ports configurations
 --------------------
 Ray requires bi-directional communication among its nodes in a cluster. Each of node is supposed to open specific ports to receive incoming network requests.
@@ -130,7 +132,7 @@ The following options specify the range of ports used by worker processes across
 - ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
 
 Head Node
-~~~~~~~~~~~
+~~~~~~~~~
 In addition to ports specified above, the head node needs to open several more ports.
 
 - ``--port``: Port of GCS. Default: 6379.
@@ -178,7 +180,7 @@ One of most common attack with Redis is port-scanning attack. Attacker scans
 open port with unprotected redis instance and execute arbitrary code. Ray
 enables a default password for redis. Even though this does not prevent brute
 force password cracking, the default password should alleviate most of the
-port-scanning attack. Furtheremore, redis and other ray services are bind
+port-scanning attack. Furthermore, redis and other ray services are bind
 to localhost when the ray is started using ``ray.init``.
 
 See the `Redis security documentation <https://redis.io/topics/security>`__

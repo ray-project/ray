@@ -22,7 +22,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
     rpc::SendReplyCallback send_reply_callback) {
   const rpc::Address worker_address = request.worker_failure().worker_address();
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
-  const auto node_id = ClientID::FromBinary(worker_address.raylet_id());
+  const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
   std::stringstream log_stream;
   log_stream << "Reporting worker failure, worker id = " << worker_id
              << ", node id = " << node_id

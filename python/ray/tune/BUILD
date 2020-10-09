@@ -202,6 +202,14 @@ py_test(
 )
 
 py_test(
+    name = "test_trial_runner_callbacks",
+    size = "small",
+    srcs = ["tests/test_trial_runner_callbacks.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_var",
     size = "small",
     srcs = ["tests/test_var.py"],

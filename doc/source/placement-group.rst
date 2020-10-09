@@ -115,6 +115,37 @@ Let's see an example of using placement group. Note that this example is done wi
 
 Let's create a placement group. Recall that each bundle is a collection of resources, and tasks or actors can be scheduled on each bundle.
 
+.. note::
+
+  When specifying bundles,
+
+  - "CPU" will correspond with `num_cpus` as used in `ray.remote`
+  - "GPU" will correspond with `num_gpus` as used in `ray.remote`
+  - "MEM" will correspond with `memory` as used in `ray.remote`
+  - Other resources will correspond with `resources` as used in `ray.remote`.
+
+  Once the placement group reserves resources, original resources are unavailable until the placement group is removed. For example:
+
+  .. code-block:: python
+
+    # Two "CPU"s are available.
+    ray.init(num_cpus=2)
+
+    # Create a placement group.
+    pg = placement_group([{"CPU": 2}])
+    ray.get(pg.ready())
+
+    # Now, 2 CPUs are not available anymore because they are pre-reserved by the placement group.
+    @ray.remote(num_cpus=2)
+    def f():
+        return True
+
+    # Won't be scheduled because there are no 2 cpus.
+    f.remote()
+
+    # Will be scheduled because 2 cpus are reserved by the placement group.
+    f.options(placement_group=pg).remote()
+
 .. code-block:: python
 
   gpu_bundle = {"GPU": 2}
@@ -162,7 +193,9 @@ Now, you can guarantee all gpu actors and extra_resource tasks are located on th
 because they are scheduled on a placement group with the STRICT_PACK strategy.
 
 Note that you must remove the placement group once you are finished with your application.
-Workers of actors and tasks that are scheduled on placement group will be all killed:
+Workers of actors and tasks that are scheduled on placement group will be all killed.
+
+.. warning:: Do not lose the reference to the placement group - you will not be able to remove it. This behavior will change in a later release.
 
 .. code-block:: python
 
@@ -194,7 +227,7 @@ Placement groups are pending creation if there are no nodes that can satisfy res
 
 If nodes that contain some bundles of a placement group die, bundles will be rescheduled on different nodes by GCS. This means that the initial creation of placement group is "atomic", but once it is created, there could be partial placement groups.
 
-Unlike actors and tasks, placement group is currently not fault tolerant yet. It is in progress.
+Placement groups are tolerant to worker nodes failures (bundles on dead nodes are rescheduled). However, placement groups are currently unable to tolerate head node failures (GCS failures).
 
 API Reference
 -------------

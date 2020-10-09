@@ -100,6 +100,7 @@ def run(
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
+        callbacks=None,
         # Deprecated args
         ray_auto_init=None,
         run_errored_only=None,
@@ -230,7 +231,7 @@ def run(
         max_failures (int): Try to recover a trial at least this many times.
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
-            Setting to 0 will disable retries. Defaults to 3.
+            Setting to 0 will disable retries. Defaults to 0.
         fail_fast (bool | str): Whether to fail upon the first error.
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
@@ -259,6 +260,9 @@ def run(
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
+        callbacks (list): List of callbacks that will be called at different
+            times in the training loop. Must be instances of the
+            ``ray.tune.trial_runner.Callback`` class.
 
 
     Returns:
@@ -374,7 +378,9 @@ def run(
         server_port=server_port,
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
-        trial_executor=trial_executor)
+        trial_executor=trial_executor,
+        callbacks=callbacks,
+        metric=metric)
 
     if not runner.resumed:
         for exp in experiments:
@@ -388,6 +394,12 @@ def run(
         else:
             progress_reporter = CLIReporter()
 
+    if not progress_reporter.set_search_properties(metric, mode):
+        raise ValueError(
+            "You passed a `metric` or `mode` argument to `tune.run()`, but "
+            "the reporter you are using was already instantiated with their "
+            "own `metric` and `mode` parameters. Either remove the arguments "
+            "from your reporter or from your call to `tune.run()`")
     progress_reporter.set_total_samples(search_alg.total_samples)
 
     # User Warning for GPUs

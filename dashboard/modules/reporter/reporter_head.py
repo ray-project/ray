@@ -9,7 +9,7 @@ import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
