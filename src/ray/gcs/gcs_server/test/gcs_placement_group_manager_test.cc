@@ -290,6 +290,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
+  // Register first placement group request,
+  // It will start schedule and mark there is a placement group scheduling.
   auto request1 = Mocker::GenCreatePlacementGroupRequest();
   std::atomic<int> finished_placement_group_count(0);
   gcs_placement_group_manager_->RegisterPlacementGroup(
@@ -297,6 +299,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
       [&finished_placement_group_count](Status status) {
         ++finished_placement_group_count;
       });
+
+  // Register second placement group request,
+  // The second request would not schedule now, because there is a request scheduling.
   auto request2 = Mocker::GenCreatePlacementGroupRequest();
   gcs_placement_group_manager_->RegisterPlacementGroup(
       std::make_shared<gcs::GcsPlacementGroup>(request2),
@@ -306,6 +311,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   ASSERT_EQ(finished_placement_group_count, 0);
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+
+  // Manully assign the node field of the first request bundle, simulation scheduling is
+  // done.
   placement_group->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
   placement_group->GetMutableBundle(1)->set_node_id(NodeID::FromRandom().Binary());
 
@@ -361,6 +369,5 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ::testing::GTEST_FLAG(filter) = "*TestRescheduleWhenNodeDead*";
   return RUN_ALL_TESTS();
 }
