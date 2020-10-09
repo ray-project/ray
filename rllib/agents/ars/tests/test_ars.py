@@ -9,7 +9,7 @@ from ray.rllib.utils.test_utils import framework_iterator, \
 class TestARS(unittest.TestCase):
     def test_ars_compilation(self):
         """Test whether an ARSTrainer can be built on all frameworks."""
-        ray.init(num_cpus=2, local_mode=True)
+        ray.init(num_cpus=4)
         config = ars.DEFAULT_CONFIG.copy()
         # Keep it simple.
         config["model"]["fcnet_hiddens"] = [10]
