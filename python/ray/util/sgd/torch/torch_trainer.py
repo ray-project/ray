@@ -646,7 +646,8 @@ class TorchTrainer:
                         raise ValueError("tune_func must take in exactly 2 "
                                          "arguments. The passed in function "
                                          "currently takes in {} "
-                                         "args".format(str(len(args.parameters))))
+                                         "args".format(
+                                             str(len(args.parameters))))
                     output = tune_func(self._trainer, self._iter)
                     self._iter += 1
                     return output

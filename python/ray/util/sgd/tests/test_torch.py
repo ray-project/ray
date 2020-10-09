@@ -659,10 +659,11 @@ def test_tune_train(ray_start_4_cpus, num_workers, use_local):  # noqa: F811
         assert mean_train_loss2 <= mean_train_loss1
         assert mean_val_loss2 <= mean_val_loss1
 
+
 @pytest.mark.parametrize("num_workers", [2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
-def test_tune_custom_train(ray_start_4_cpus, num_workers, use_local): # noqa: F811
-
+def test_tune_custom_train(ray_start_4_cpus, num_workers,
+                           use_local):  # noqa: F811
     def custom_train_func(trainer, iter):
         train_stats = trainer.train(profile=True)
         val_stats = trainer.validate(profile=True)

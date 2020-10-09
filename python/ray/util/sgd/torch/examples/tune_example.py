@@ -37,6 +37,7 @@ def data_creator(config):
     validation_loader = DataLoader(val_dataset, batch_size=config[BATCH_SIZE])
     return train_loader, validation_loader
 
+
 def scheduler_creator(optimizer, config):
     """Returns scheduler. We are using a ReduceLROnPleateau scheduler."""
     scheduler = ReduceLROnPlateau(optimizer, mode="min")
@@ -61,6 +62,7 @@ def tune_example(operator_cls, num_workers=1, use_gpu=False):
 
     return analysis.get_best_config(metric="val_loss", mode="min")
 # __end_torch_tune_example__
+
 
 # __torch_tune_manual_lr_example__
 def tune_example_manual(operator_cls, num_workers=1, use_gpu=False):
@@ -93,6 +95,7 @@ def tune_example_manual(operator_cls, num_workers=1, use_gpu=False):
 
     return analysis.get_best_config(metric="val_loss", mode="min")
 # __end_torch_tune_manual_lr_example__
+
 
 if __name__ == "__main__":
     import argparse
