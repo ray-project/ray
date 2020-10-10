@@ -55,13 +55,13 @@ The setup commands you use should ideally be *idempotent*, that is, can be run m
 Docker Support
 --------------
 
-The ``worker_image`` and ``pull_before_run`` fields override the correpsonding field in the top level ``docker`` section for the node type. The ``worker_run_options`` field is combined with top level ``docker: run_options`` field to produce the docker run command for the given node_type. The following configuration is for a GPU enabled node type. Ray will automatically select the Nvidia docker runtime if it is available.
+The cluster launcher is fully compatible with docker images. To get started with using docker, provide a ``docker_image`` and ``container_name`` in the ``docker`` field of the YAML. We provide docker images on [DockerHub](https://hub.docker.com/u/rayproject); the ``rayproject/ray-ml:latest`` image is a quick way to get up and running . When the cluster is launched, all of the Ray tasks will be executed inside of the container. For GPU support, Ray will automatically select the Nvidia docker runtime if it is available and you just need to specify a docker image with the CUDA support (``rayproject/ray-ml:latest-gpu`` and all of our ``-gpu`` images have this).
 
 .. code-block:: yaml
 
-    pull_before_run: True
-    worker_image:
-        - rayproject/ray-ml:latest-gpu
+    docker:
+        container_name: "ray_container"
+        image: "rayproject/ray-ml:latest-gpu"
 
 Common cluster configurations
 -----------------------------
@@ -135,5 +135,4 @@ with GPU worker nodes instead.
         InstanceMarketOptions:
             MarketType: spot
         InstanceType: p2.xlarge
-
 
