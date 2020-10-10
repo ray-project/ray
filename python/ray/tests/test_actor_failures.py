@@ -698,6 +698,7 @@ def test_clear_up_expired_actors(ray_start_cluster):
     @ray.remote(num_cpus=1, max_restarts=0)
     class Actor:
         """An actor that won't restart."""
+
         def ready(self):
             return True
 
