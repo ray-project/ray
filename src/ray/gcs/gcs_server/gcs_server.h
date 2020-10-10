@@ -90,6 +90,9 @@ class GcsServer {
   /// Initialize the gcs placement group manager.
   virtual void InitGcsPlacementGroupManager();
 
+  /// Fire a periodic timer to clear up expired data.
+  virtual void PeriodicallyClearUpExpiredData();
+
   /// The object manager
   virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
 
@@ -161,6 +164,9 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   bool is_started_ = false;
   bool is_stopped_ = false;
+  /// A timer used to clear up expired data.
+  // It includes: dead actors and dead nodes in gcs storage.
+  boost::asio::deadline_timer clear_expired_data_timer_;
 };
 
 }  // namespace gcs

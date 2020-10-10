@@ -34,7 +34,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
-      client_call_manager_(main_service) {}
+      client_call_manager_(main_service),
+      clear_expired_data_timer_(main_service) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -98,6 +99,9 @@ void GcsServer::Start() {
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
+
+  // Clear up expired data.
+  PeriodicallyClearUpExpiredData();
 
   auto load_completed_count = std::make_shared<int>(0);
   int load_count = 2;
@@ -191,8 +195,7 @@ void GcsServer::InitGcsActorManager() {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      main_service_, scheduler, gcs_table_storage_, gcs_pub_sub_,
-      [this](const rpc::Address &address) {
+      scheduler, gcs_table_storage_, gcs_pub_sub_, [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_node_manager_->AddNodeAddedListener(
@@ -280,6 +283,25 @@ std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
 std::unique_ptr<GcsWorkerManager> GcsServer::InitGcsWorkerManager() {
   return std::unique_ptr<GcsWorkerManager>(
       new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
+}
+
+void GcsServer::PeriodicallyClearUpExpiredData() {
+  // Clear up expired actors.
+  gcs_actor_manager_->ClearUpExpiredActors();
+
+  // Clear up expired nodes.
+  gcs_node_manager_->ClearUpExpiredNodes();
+
+  auto clear_period = boost::posix_time::seconds(
+      RayConfig::instance().gcs_clear_up_expired_data_interval_seconds());
+  clear_expired_data_timer_.expires_from_now(clear_period);
+  clear_expired_data_timer_.async_wait([this](const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      return;
+    }
+    RAY_CHECK(!error) << "Clearing expired actors failed with error: " << error.message();
+    PeriodicallyClearUpExpiredData();
+  });
 }
 
 }  // namespace gcs

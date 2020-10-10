@@ -83,18 +83,15 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-GcsActorManager::GcsActorManager(boost::asio::io_service &io_service,
-                                 std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
                                  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                                  const rpc::ClientFactoryFn &worker_client_factory)
-    : clear_expired_actors_timer_(io_service),
-      gcs_actor_scheduler_(std::move(scheduler)),
+    : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory) {
   RAY_CHECK(worker_client_factory_);
-  PeriodicallyClearExpiredActors();
 }
 
 void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &request,
@@ -641,6 +638,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+  mutable_actor_table_data->set_timestamp(current_sys_time_ms());
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
   // The backend storage is reliable in the future, so the status must be ok.
@@ -834,6 +832,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     }
 
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+    mutable_actor_table_data->set_timestamp(current_sys_time_ms());
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
@@ -1109,8 +1108,7 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   destroyed_actors_.emplace(actor->GetActorID(), actor);
 }
 
-void GcsActorManager::PeriodicallyClearExpiredActors() {
-  // Clear up expired actors.
+void GcsActorManager::ClearUpExpiredActors() {
   for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
     if (current_sys_time_ms() - iter->second->GetActorTableData().timestamp() >
         RayConfig::instance().gcs_ttl_of_dead_actor_seconds()) {
@@ -1120,17 +1118,6 @@ void GcsActorManager::PeriodicallyClearExpiredActors() {
       iter++;
     }
   }
-
-  auto clear_period = boost::posix_time::seconds(
-      RayConfig::instance().gcs_clear_expired_actors_interval_seconds());
-  clear_expired_actors_timer_.expires_from_now(clear_period);
-  clear_expired_actors_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      return;
-    }
-    RAY_CHECK(!error) << "Clearing expired actors failed with error: " << error.message();
-    PeriodicallyClearExpiredActors();
-  });
 }
 
 }  // namespace gcs

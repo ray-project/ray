@@ -164,6 +164,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void UpdatePlacementGroupLoad(
       std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) const;
 
+  /// Clear up expired nodes.
+  void ClearUpExpiredNodes();
+
  protected:
   class NodeFailureDetector {
    public:
@@ -246,6 +249,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
 
  private:
+  /// Add the dead node to the cache. If the cache is full, one node is randomly
+  /// evicted.
+  ///
+  /// \param actor The node which is dead.
+  void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
+
   /// The main event loop for node failure detector.
   boost::asio::io_service &main_io_service_;
   /// Detector to detect the failure of node.
