@@ -66,7 +66,7 @@ See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-ex
 tune.run and Trials
 -------------------
 
-Use :ref:`tune.run <tune-run-ref>` execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
+Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
 
 .. code-block:: python
 
