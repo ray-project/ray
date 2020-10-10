@@ -1842,11 +1842,10 @@ void NodeManager::HandleCancelResourceReserve(
   }
 
   // Return bundle resources.
-  if (ReturnBundleResources(bundle_spec)) {
-    // Call task dispatch to assign work to the released resources.
-    TryLocalInfeasibleTaskScheduling();
-    DispatchTasks(local_queues_.GetReadyTasksByClass());
-  }
+  ReturnBundleResources(bundle_spec);
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2158,10 +2157,10 @@ void NodeManager::ScheduleTasks(
           << task.GetTaskSpecification().GetRequiredResources().ToString()
           << " for execution and "
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-          << " for placement, however there are no nodes in the cluster that can "
-          << "provide the requested resources. To resolve this issue, consider "
-          << "reducing the resource requests of this task or add nodes that "
-          << "can fit the task.";
+          << " for placement, however the cluster currently cannot provide the requested "
+             "resources. The required resources may be added as autoscaling takes place "
+             "or placement groups are scheduled. Otherwise, consider reducing the "
+             "resource requirements of the task.";
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
                                     task.GetTaskSpecification().JobId());
@@ -3258,8 +3257,11 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
           if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
           } else {
-            RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
-                           << status.ToString();
+            RAY_LOG(WARNING) << "Failed to send get core worker stats request, "
+                             << "worker id is " << worker->WorkerId() << ", status is "
+                             << status.ToString()
+                             << ". This is likely since the worker has died before the "
+                                "request was sent.";
             worker_stats->set_fetch_error(status.ToString());
           }
           if (reply->num_workers() == all_workers.size()) {
