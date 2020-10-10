@@ -246,6 +246,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
 
  private:
+  /// Add the dead node to the cache. If the cache is full, one node is randomly
+  /// evicted.
+  ///
+  /// \param node The node which is dead.
+  void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
+
   /// The main event loop for node failure detector.
   boost::asio::io_service &main_io_service_;
   /// Detector to detect the failure of node.

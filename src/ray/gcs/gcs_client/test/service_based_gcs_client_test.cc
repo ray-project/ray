@@ -29,7 +29,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
         {{"ping_gcs_rpc_server_max_retries", std::to_string(60)},
-         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)}});
+         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)},
+         {"maximum_gcs_dead_node_cached_count", std::to_string(10)}});
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -1324,6 +1325,24 @@ TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDestroyedActors) {
   auto condition = [this]() {
     return GetAllActors().size() ==
            RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDeadNodes) {
+  // Simulate the scenario of node dead.
+  int node_count = 20;
+  for (int index = 0; index < node_count; ++index) {
+    auto node_info = Mocker::GenNodeInfo();
+    auto node_id = NodeID::FromBinary(node_info->node_id());
+    ASSERT_TRUE(RegisterNode(*node_info));
+    ASSERT_TRUE(UnregisterNode(node_id));
+  }
+
+  // Get all nodes.
+  auto condition = [this]() {
+    return GetNodeInfoList().size() ==
+           RayConfig::instance().maximum_gcs_dead_node_cached_count();
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
