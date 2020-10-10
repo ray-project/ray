@@ -207,10 +207,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> success_placement_groups_
       GUARDED_BY(vector_mutex_);
-  ;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> failure_placement_groups_
       GUARDED_BY(vector_mutex_);
-  ;
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
