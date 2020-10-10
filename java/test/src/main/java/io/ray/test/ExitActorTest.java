@@ -9,9 +9,12 @@ import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -29,6 +32,17 @@ public class ExitActorTest extends BaseTest {
 
     public int getPid() {
       return pid();
+    }
+
+    public int getSizeOfActorContextMap() {
+      TaskExecutor taskExecutor = TestUtils.getRuntime().getTaskExecutor();
+      try {
+        Field field = TaskExecutor.class.getDeclaredField("actorContextMap");
+        field.setAccessible(true);
+        return ((Map<?, ?>)field.get(taskExecutor)).size();
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
     }
 
     @Override
@@ -77,6 +91,7 @@ public class ExitActorTest extends BaseTest {
     ActorHandle<ExitingActor> actor1 = Ray.actor(ExitingActor::new)
         .setMaxRestarts(10000).remote();
     int pid = actor1.task(ExitingActor::getPid).remote().get();
+    Assert.assertEquals(1, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
     ActorHandle<ExitingActor> actor2;
     while (true) {
       // Create another actor which share the same process of actor 1.
@@ -86,11 +101,14 @@ public class ExitActorTest extends BaseTest {
         break;
       }
     }
+    Assert.assertEquals(2, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
+    Assert.assertEquals(2, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
     ObjectRef<Boolean> obj1 = actor1.task(ExitingActor::exit).remote();
     Assert.assertThrows(RayActorException.class, obj1::get);
     Assert.assertTrue(SystemUtil.isProcessAlive(pid));
     // Actor 2 shouldn't exit or be reconstructed.
     Assert.assertEquals(1, (int) actor2.task(ExitingActor::incr).remote().get());
+    Assert.assertEquals(1, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
     Assert.assertEquals(pid, (int) actor2.task(ExitingActor::getPid).remote().get());
     Assert.assertTrue(SystemUtil.isProcessAlive(pid));
   }

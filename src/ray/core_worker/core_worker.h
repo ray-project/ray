@@ -123,6 +123,8 @@ struct CoreWorkerOptions {
   std::string stderr_file;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
+  /// The callback to be called when shutting down a `CoreWorker` instance.
+  std::function<void(const WorkerID &)> on_worker_shutdown;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,

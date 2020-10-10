@@ -211,6 +211,16 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     }
   };
 
+  auto on_worker_shutdown = [](const ray::WorkerID &worker_id) {
+    JNIEnv *env = GetJNIEnv();
+    auto worker_id_bytes = IdToJavaByteArray<ray::WorkerID>(env, worker_id);
+    if (java_task_executor) {
+      env->CallVoidMethod(java_task_executor,
+                          java_native_task_executor_on_worker_shutdown, worker_id_bytes);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+    }
+  };
+
   std::string serialized_job_config =
       (jobConfig == nullptr ? "" : JavaByteArrayToNativeString(env, jobConfig));
   ray::CoreWorkerOptions options;
@@ -229,6 +239,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
   options.raylet_ip_address = JavaStringToNativeString(env, nodeIpAddress);
   options.driver_name = JavaStringToNativeString(env, driverName);
   options.task_execution_callback = task_execution_callback;
+  options.on_worker_shutdown = on_worker_shutdown;
   options.gc_collect = gc_collect;
   options.ref_counting_enabled = true;
   options.num_workers = static_cast<int>(numWorkersPerProcess);
