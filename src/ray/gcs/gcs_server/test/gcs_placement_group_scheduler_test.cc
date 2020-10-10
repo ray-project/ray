@@ -55,7 +55,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     thread_io_service_->join();
   }
 
-  void WaitPlacementGroupPendingDone(int expected_count, GcsPlacementGroupStatus status) {
+  void WaitPlacementGroupPendingDone(unsigned int expected_count, GcsPlacementGroupStatus status) {
     auto condition = [this, expected_count, status]() {
       absl::MutexLock lock(&vector_mutex_);
       if (status == GcsPlacementGroupStatus::SUCCESS) {
