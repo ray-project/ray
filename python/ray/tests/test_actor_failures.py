@@ -680,6 +680,44 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
     wait_for_condition(lambda: ray.get(caller.hang.remote()))
 
 
+def test_clear_up_expired_actors(ray_start_cluster):
+    config = {
+        "gcs_clear_up_expired_data_interval_seconds": 1,
+        "gcs_ttl_of_dead_actor_seconds": 1,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0, _system_config=config)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Node to place the actor.
+    actor_node = cluster.add_node(num_cpus=10)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1, max_restarts=0)
+    class Actor:
+        """An actor that won't restart."""
+        def ready(self):
+            return True
+
+    for _ in range(10):
+        actor = Actor.options(lifetime="detached").remote()
+        ray.get(actor.ready.remote())
+
+    # Kill actor node.
+    cluster.remove_node(actor_node)
+
+    # Check that dead actors are cleaned up.
+    def condition():
+        if len(ray.actors()) == 0:
+            return True
+        else:
+            return False
+
+    wait_for_condition(condition, timeout=10)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

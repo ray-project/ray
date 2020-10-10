@@ -6,7 +6,11 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_system_config_map, SignalActor
+from ray.test_utils import (
+    wait_for_condition,
+    generate_system_config_map,
+    SignalActor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +195,34 @@ def test_wait_for_nodes(ray_start_cluster_head):
     cluster.remove_node(worker2)
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 1
+
+
+def test_clear_up_expired_nodes(ray_start_cluster):
+    config = {
+        "gcs_clear_up_expired_data_interval_seconds": 1,
+        "gcs_ttl_of_dead_node_seconds": 1,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0, _system_config=config)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Add node.
+    node = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    # Kill node.
+    cluster.remove_node(node)
+
+    # Check that dead node is cleaned up.
+    def condition():
+        if len(ray.nodes()) == 1:
+            return True
+        else:
+            return False
+
+    wait_for_condition(condition, timeout=10)
 
 
 if __name__ == "__main__":

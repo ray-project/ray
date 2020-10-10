@@ -1111,7 +1111,7 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
 void GcsActorManager::ClearUpExpiredActors() {
   for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
     if (current_sys_time_ms() - iter->second->GetActorTableData().timestamp() >
-        RayConfig::instance().gcs_ttl_of_dead_actor_seconds()) {
+        RayConfig::instance().gcs_ttl_of_dead_actor_seconds() * 1000 /*ms*/) {
       RAY_CHECK_OK(gcs_table_storage_->ActorTable().Delete(iter->first, nullptr));
       destroyed_actors_.erase(iter++);
     } else {

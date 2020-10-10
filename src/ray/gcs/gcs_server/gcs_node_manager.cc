@@ -525,7 +525,7 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
 void GcsNodeManager::ClearUpExpiredNodes() {
   for (auto iter = dead_nodes_.begin(); iter != dead_nodes_.end();) {
     if (current_sys_time_ms() - iter->second->timestamp() >
-        RayConfig::instance().gcs_ttl_of_dead_node_seconds()) {
+        RayConfig::instance().gcs_ttl_of_dead_node_seconds() * 1000 /*ms*/) {
       RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(iter->first, nullptr));
       dead_nodes_.erase(iter++);
     } else {
