@@ -222,6 +222,18 @@ py_test(
     args = ["--yaml-dir=tuned_examples/impala", "--torch"]
 )
 
+# Working, but takes a long time to learn (>15min).
+## MB-MPO
+#py_test(
+#    name = "run_regression_tests_pendulum_mbmpo_torch",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/mbmpo/pendulum-mbmpo.yaml"],
+#    args = ["--torch", "--yaml-dir=tuned_examples/mbmpo"]
+#)
+
 # PG
 py_test(
     name = "run_regression_tests_cartpole_pg_tf",
@@ -484,6 +496,14 @@ py_test(
     tags = ["agents_dir"],
     size = "medium",
     srcs = ["agents/maml/tests/test_maml.py"]
+)
+
+# MBMPOTrainer
+py_test(
+    name = "test_mbmpo",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
 )
 
 # PGTrainer
@@ -1004,6 +1024,13 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_remote_inference.sh"],
     data = glob(["examples/serving/*.py"]),
+)
+
+py_test(
+    name = "env/wrappers/tests/test_recsim_wrapper",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
 )
 
 # --------------------------------------------------------------------

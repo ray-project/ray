@@ -121,7 +121,7 @@ class ModelCatalog:
             action_space (Space): Action space of the target gym env.
             config (Optional[dict]): Optional model config.
             dist_type (Optional[str]): Identifier of the action distribution
-                interpreted as a hint.
+                type (str) interpreted as a hint.
             framework (str): One of "tf", "tfe", or "torch".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
@@ -134,20 +134,21 @@ class ModelCatalog:
                     distribution.
         """
 
-        dist = None
+        dist_cls = None
         config = config or MODEL_DEFAULTS
         # Custom distribution given.
         if config.get("custom_action_dist"):
             action_dist_name = config["custom_action_dist"]
             logger.debug(
                 "Using custom action distribution {}".format(action_dist_name))
-            dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
+            dist_cls = _global_registry.get(RLLIB_ACTION_DIST,
+                                            action_dist_name)
         # Dist_type is given directly as a class.
         elif type(dist_type) is type and \
                 issubclass(dist_type, ActionDistribution) and \
                 dist_type not in (
                 MultiActionDistribution, TorchMultiActionDistribution):
-            dist = dist_type
+            dist_cls = dist_type
         # Box space -> DiagGaussian OR Deterministic.
         elif isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
@@ -159,14 +160,15 @@ class ModelCatalog:
                     "using a Tuple action space, or the multi-agent API.")
             # TODO(sven): Check for bounds and return SquashedNormal, etc..
             if dist_type is None:
-                dist = TorchDiagGaussian if framework == "torch" \
+                dist_cls = TorchDiagGaussian if framework == "torch" \
                     else DiagGaussian
             elif dist_type == "deterministic":
-                dist = TorchDeterministic if framework == "torch" \
+                dist_cls = TorchDeterministic if framework == "torch" \
                     else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
-            dist = TorchCategorical if framework == "torch" else Categorical
+            dist_cls = (TorchCategorical
+                        if framework == "torch" else Categorical)
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
@@ -189,19 +191,20 @@ class ModelCatalog:
                 # TODO(sven): implement
                 raise NotImplementedError(
                     "Simplex action spaces not supported for torch.")
-            dist = Dirichlet
+            dist_cls = Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            dist = TorchMultiCategorical if framework == "torch" else \
+            dist_cls = TorchMultiCategorical if framework == "torch" else \
                 MultiCategorical
-            return partial(dist, input_lens=action_space.nvec), \
+            return partial(dist_cls, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
         # Unknown type -> Error.
         else:
             raise NotImplementedError("Unsupported args: {} {}".format(
                 action_space, dist_type))
 
-        return dist, dist.required_model_output_shape(action_space, config)
+        return dist_cls, dist_cls.required_model_output_shape(
+            action_space, config)
 
     @staticmethod
     @DeveloperAPI
@@ -287,7 +290,7 @@ class ModelCatalog:
 
         if model_config.get("custom_model"):
 
-            # Allow model kwargs to be overriden / augmented by
+            # Allow model kwargs to be overridden / augmented by
             # custom_model_config.
             customized_model_kwargs = dict(
                 model_kwargs, **model_config.get("custom_model_config", {}))
