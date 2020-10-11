@@ -48,7 +48,7 @@ class EvalTest(unittest.TestCase):
                         "framework": fw,
                     })
                 # Given evaluation_interval=2, r0, r2, r4 should not contain
-                # evaluation metrics while r1, r3 should do.
+                # evaluation metrics, while r1, r3 should.
                 r0 = agent.train()
                 r1 = agent.train()
                 r2 = agent.train()

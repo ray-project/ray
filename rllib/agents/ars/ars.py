@@ -191,8 +191,8 @@ class ARSTrainer(Trainer):
         env = env_creator(env_context)
 
         self._policy_class = get_policy_class(config)
-        self.policy = self._policy_class(
-            env.observation_space, env.action_space, config)
+        self.policy = self._policy_class(env.observation_space,
+                                         env.action_space, config)
         self.optimizer = optimizers.SGD(self.policy, config["sgd_stepsize"])
 
         self.rollouts_used = config["rollouts_used"]

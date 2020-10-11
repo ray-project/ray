@@ -758,11 +758,12 @@ class Trainer(Trainable):
         pass
 
     @DeveloperAPI
-    def _sync_weights_to_workers(self,
-                                 *,
-                                 worker_set: Optional[WorkerSet] = None,
-                                 workers: Optional[List[RolloutWorker]] = None,
-                                 ) -> None:
+    def _sync_weights_to_workers(
+            self,
+            *,
+            worker_set: Optional[WorkerSet] = None,
+            workers: Optional[List[RolloutWorker]] = None,
+    ) -> None:
         """Sync "main" weights to given WorkerSet or list of workers."""
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
