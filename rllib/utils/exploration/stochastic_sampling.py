@@ -54,7 +54,10 @@ class StochasticSampling(Exploration):
 
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(
-            0, framework=self.framework, tf_name="timestep", dtype=np.int64)
+            np.array(0, np.int64),
+            framework=self.framework,
+            tf_name="timestep",
+            dtype=tf.int64)
 
     @override(Exploration)
     def get_exploration_action(self,
