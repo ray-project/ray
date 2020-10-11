@@ -581,7 +581,7 @@ class CoreWorkerDirectTaskReceiver {
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<WorkerID, SchedulingQueue*> actor_scheduling_queues_;
   // Queue of pending normal (non-actor) tasks.
-  SchedulingQueue *normal_scheduling_queue_;
+  SchedulingQueue *normal_scheduling_queue_ = new NormalSchedulingQueue();
 };
 
 }  // namespace ray

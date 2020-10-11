@@ -432,9 +432,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                    accept_callback, reject_callback, dependencies);
   } else {
-    if (!normal_scheduling_queue_) {
-      normal_scheduling_queue_ = new NormalSchedulingQueue();
-    }
 
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(request.sequence_number(),
@@ -446,18 +443,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
 
 void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
-  if (!normal_scheduling_queue_ || normal_scheduling_queue_->TaskQueueEmpty()) {
+  // If the scheduling queue is empty, return.
+  if (normal_scheduling_queue_->TaskQueueEmpty()) {
     return;
   }
 
   // Execute as many tasks as there are in the queue, in sequential order.
   normal_scheduling_queue_->ScheduleRequests();
-
-  // If the scheduling queue is empty, return.
-  if (normal_scheduling_queue_->TaskQueueEmpty()) {
-    delete normal_scheduling_queue_;
-    return;
-  }
 
 }
 
