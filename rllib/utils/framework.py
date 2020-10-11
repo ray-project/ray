@@ -195,8 +195,8 @@ def get_variable(value,
     if framework in ["tf2", "tf", "tfe"]:
         import tensorflow as tf
         dtype = dtype or getattr(
-            value, "dtype", tf.float32
-            if isinstance(value, float) else tf.int32
+            value, "dtype", np.float32
+            if isinstance(value, float) else np.int32
             if isinstance(value, int) else None)
         return tf.compat.v1.get_variable(
             tf_name,
