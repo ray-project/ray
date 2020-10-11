@@ -246,7 +246,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
 
  private:
-  /// Add the dead node to the cache. If the cache is full, one node is randomly
+  /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
   ///
   /// \param node The node which is dead.
