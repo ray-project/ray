@@ -356,9 +356,10 @@ class TestSAC(unittest.TestCase):
                         tf_var = tf_weights[tf_key]
                         torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var,
-                                  np.transpose(torch_var.detach().cpu()),
-                                  rtol=0.05)
+                            check(
+                                tf_var,
+                                np.transpose(torch_var.detach().cpu()),
+                                rtol=0.05)
                         else:
                             check(tf_var, torch_var, rtol=0.05)
                     # And alpha.
@@ -370,9 +371,10 @@ class TestSAC(unittest.TestCase):
                         torch_var = policy.target_model.state_dict()[map_[
                             tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var,
-                                  np.transpose(torch_var.detach().cpu()),
-                                  rtol=0.05)
+                            check(
+                                tf_var,
+                                np.transpose(torch_var.detach().cpu()),
+                                rtol=0.05)
                         else:
                             check(tf_var, torch_var, rtol=0.05)
 
@@ -516,8 +518,8 @@ class TestSAC(unittest.TestCase):
     def _translate_weights_to_torch(self, weights_dict, map_):
         model_dict = {
             map_[k]: convert_to_torch_tensor(
-                np.transpose(v) if re.search("kernel", k) else np.array(
-                    [v]) if re.search("log_alpha", k) else v)
+                np.transpose(v) if re.search("kernel", k) else np.array([v])
+                if re.search("log_alpha", k) else v)
             for k, v in weights_dict.items()
             if re.search("(sequential(/|_1)|value_out/|log_alpha)", k)
         }
