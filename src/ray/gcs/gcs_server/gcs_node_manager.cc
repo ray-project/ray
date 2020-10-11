@@ -469,11 +469,10 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
         sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
       }
     }
-    std::sort(std::begin(sorted_dead_node_list_), std::end(sorted_dead_node_list_),
-              [](const std::pair<NodeID, int64_t> &left,
-                 const std::pair<NodeID, int64_t> &right) {
-                return left.second < right.second;
-              });
+    sorted_dead_node_list_.sort([](const std::pair<NodeID, int64_t> &left,
+                                   const std::pair<NodeID, int64_t> &right) {
+      return left.second < right.second;
+    });
 
     auto get_node_resource_callback =
         [this, done](const std::unordered_map<NodeID, ResourceMap> &result) {
