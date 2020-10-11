@@ -39,7 +39,7 @@ def test_output():
     lines = outputs.split("\n")
     for line in lines:
         print(line)
-    assert len(lines) == 4, lines
+    assert len(lines) == 2, lines
 
 
 if __name__ == "__main__":
