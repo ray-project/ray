@@ -572,6 +572,18 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     ASSERT_TRUE(actor.state() == expected_state);
   }
 
+  absl::flat_hash_set<NodeID> RegisterNodeAndMarkDead(int node_count) {
+    absl::flat_hash_set<NodeID> node_ids;
+    for (int index = 0; index < node_count; ++index) {
+      auto node_info = Mocker::GenNodeInfo();
+      auto node_id = NodeID::FromBinary(node_info->node_id());
+      EXPECT_TRUE(RegisterNode(*node_info));
+      EXPECT_TRUE(UnregisterNode(node_id));
+      node_ids.insert(node_id);
+    }
+    return node_ids;
+  }
+
   // GCS server.
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -1331,13 +1343,13 @@ TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDestroyedActors) {
 
 TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDeadNodes) {
   // Simulate the scenario of node dead.
-  int node_count = 20;
-  for (int index = 0; index < node_count; ++index) {
-    auto node_info = Mocker::GenNodeInfo();
-    auto node_id = NodeID::FromBinary(node_info->node_id());
-    ASSERT_TRUE(RegisterNode(*node_info));
-    ASSERT_TRUE(UnregisterNode(node_id));
-  }
+  int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  RegisterNodeAndMarkDead(node_count);
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  const auto &node_ids = RegisterNodeAndMarkDead(node_count);
 
   // Get all nodes.
   auto condition = [this]() {
@@ -1345,6 +1357,11 @@ TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDeadNodes) {
            RayConfig::instance().maximum_gcs_dead_node_cached_count();
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  auto nodes = GetNodeInfoList();
+  for (const auto &node : nodes) {
+    EXPECT_TRUE(node_ids.contains(NodeID::FromBinary(node.node_id())));
+  }
 }
 
 // TODO(sang): Add tests after adding asyncAdd

@@ -168,6 +168,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &main_io_service,
             main_io_service_.post([this, node_id] {
               if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
                 node->set_state(rpc::GcsNodeInfo::DEAD);
+                node->set_timestamp(current_sys_time_ms());
                 AddDeadNodeToCache(node);
                 auto on_done = [this, node_id, node](const Status &status) {
                   auto on_done = [this, node_id, node](const Status &status) {
@@ -213,6 +214,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
+    node->set_timestamp(current_sys_time_ms());
     AddDeadNodeToCache(node);
 
     auto on_done = [this, node_id, node, reply,
@@ -463,9 +465,14 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
         // detector.
         AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
       } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
-        AddDeadNodeToCache(std::make_shared<rpc::GcsNodeInfo>(item.second));
+        dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+        sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
       }
     }
+    sorted_dead_node_list_.sort([](const std::pair<NodeID, int64_t> &left,
+                                   const std::pair<NodeID, int64_t> &right) {
+      return left.second < right.second;
+    });
 
     auto get_node_resource_callback =
         [this, done](const std::unordered_map<NodeID, ResourceMap> &result) {
@@ -515,9 +522,12 @@ void GcsNodeManager::UpdatePlacementGroupLoad(
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
-    dead_nodes_.erase(dead_nodes_.begin());
+    dead_nodes_.erase(sorted_dead_node_list_.begin()->first);
+    sorted_dead_node_list_.erase(sorted_dead_node_list_.begin());
   }
-  dead_nodes_.emplace(NodeID::FromBinary(node->node_id()), node);
+  auto node_id = NodeID::FromBinary(node->node_id());
+  dead_nodes_.emplace(node_id, node);
+  sorted_dead_node_list_.emplace_back(node_id, node->timestamp());
 }
 
 }  // namespace gcs
