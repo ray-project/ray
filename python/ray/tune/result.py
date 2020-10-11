@@ -48,7 +48,7 @@ TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 TIMESTEPS_TOTAL = "timesteps_total"
 
 # (Auto-filled) Time in seconds this iteration took to run.
-# This may be overriden to override the system-computed time difference.
+# This may be overridden to override the system-computed time difference.
 TIME_THIS_ITER_S = "time_this_iter_s"
 
 # (Auto-filled) Accumulated time in seconds for this entire trial.

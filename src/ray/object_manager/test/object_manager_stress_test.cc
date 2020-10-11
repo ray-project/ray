@@ -50,11 +50,12 @@ class MockServer {
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
              std::shared_ptr<gcs::GcsClient> gcs_client)
-      : node_id_(ClientID::FromRandom()),
+      : node_id_(NodeID::FromRandom()),
         config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, node_id_, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_),
+                        nullptr) {
     RAY_CHECK_OK(RegisterGcs(main_service));
   }
 
@@ -75,7 +76,7 @@ class MockServer {
 
   friend class StressTestObjectManager;
 
-  ClientID node_id_;
+  NodeID node_id_;
   ObjectManagerConfig config_;
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   ObjectManager object_manager_;
@@ -199,8 +200,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   int num_connected_clients = 0;
 
-  ClientID node_id_1;
-  ClientID node_id_2;
+  NodeID node_id_1;
+  NodeID node_id_2;
 
   int64_t start_time;
 
@@ -208,7 +209,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     node_id_1 = gcs_client_1->Nodes().GetSelfId();
     node_id_2 = gcs_client_2->Nodes().GetSelfId();
     RAY_CHECK_OK(gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
-        [this](const ClientID &node_id, const GcsNodeInfo &data) {
+        [this](const NodeID &node_id, const GcsNodeInfo &data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
@@ -218,7 +219,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
         },
         nullptr));
     RAY_CHECK_OK(gcs_client_2->Nodes().AsyncSubscribeToNodeChange(
-        [this](const ClientID &node_id, const GcsNodeInfo &data) {
+        [this](const NodeID &node_id, const GcsNodeInfo &data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
@@ -310,8 +311,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void TransferTestExecute(int num_trials, int64_t data_size,
                            TransferPattern transfer_pattern) {
-    ClientID node_id_1 = gcs_client_1->Nodes().GetSelfId();
-    ClientID node_id_2 = gcs_client_2->Nodes().GetSelfId();
+    NodeID node_id_1 = gcs_client_1->Nodes().GetSelfId();
+    NodeID node_id_2 = gcs_client_2->Nodes().GetSelfId();
 
     ray::Status status = ray::Status::OK();
 
@@ -388,8 +389,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "Server node ids:"
                    << "\n";
-    ClientID node_id_1 = gcs_client_1->Nodes().GetSelfId();
-    ClientID node_id_2 = gcs_client_2->Nodes().GetSelfId();
+    NodeID node_id_1 = gcs_client_1->Nodes().GetSelfId();
+    NodeID node_id_2 = gcs_client_2->Nodes().GetSelfId();
     RAY_LOG(DEBUG) << "Server 1: " << node_id_1 << "\n"
                    << "Server 2: " << node_id_2;
 
@@ -397,11 +398,11 @@ class StressTestObjectManager : public TestObjectManagerBase {
                    << "All connected nodes:"
                    << "\n";
     auto data = gcs_client_1->Nodes().Get(node_id_1);
-    RAY_LOG(DEBUG) << "NodeID=" << ClientID::FromBinary(data->node_id()) << "\n"
+    RAY_LOG(DEBUG) << "NodeID=" << NodeID::FromBinary(data->node_id()) << "\n"
                    << "NodeIp=" << data->node_manager_address() << "\n"
                    << "NodePort=" << data->node_manager_port();
     auto data2 = gcs_client_1->Nodes().Get(node_id_2);
-    RAY_LOG(DEBUG) << "NodeID=" << ClientID::FromBinary(data2->node_id()) << "\n"
+    RAY_LOG(DEBUG) << "NodeID=" << NodeID::FromBinary(data2->node_id()) << "\n"
                    << "NodeIp=" << data2->node_manager_address() << "\n"
                    << "NodePort=" << data2->node_manager_port();
   }

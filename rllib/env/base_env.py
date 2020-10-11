@@ -84,7 +84,7 @@ class BaseEnv:
                     make_env: Callable[[int], EnvType] = None,
                     num_envs: int = 1,
                     remote_envs: bool = False,
-                    remote_env_batch_wait_ms: bool = 0) -> "BaseEnv":
+                    remote_env_batch_wait_ms: int = 0) -> "BaseEnv":
         """Wraps any env type as needed to expose the async interface."""
 
         from ray.rllib.env.remote_vector_env import RemoteVectorEnv
@@ -183,7 +183,8 @@ class BaseEnv:
                 reset the entire Env (i.e. all sub-envs).
 
         Returns:
-            obs (dict|None): Resetted observation or None if not supported.
+            Optional[MultiAgentDict]: Resetted (multi-agent) observation dict
+                or None if reset is not supported.
         """
         return None
 

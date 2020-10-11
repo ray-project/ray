@@ -5,6 +5,25 @@ from typing import (List, Dict, Optional)
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
 
+bundle_reservation_check = None
+
+
+# We need to import this method to use for ready API.
+# But ray.remote is only available in runtime, and
+# if we define this method inside ready method, this function is
+# exported whenever ready is called, which can impact performance,
+# https://github.com/ray-project/ray/issues/6240.
+def _export_bundle_reservation_check_method_if_needed():
+    global bundle_reservation_check
+    if bundle_reservation_check:
+        return
+
+    @ray.remote(num_cpus=0, max_calls=0)
+    def bundle_reservation_check_func(placement_group):
+        return placement_group
+
+    bundle_reservation_check = bundle_reservation_check_func
+
 
 class PlacementGroup:
     """A handle to a placement group."""
@@ -33,9 +52,7 @@ class PlacementGroup:
         """
         self._fill_bundle_cache_if_needed()
 
-        @ray.remote(num_cpus=0, max_calls=0)
-        def bundle_reservation_check(placement_group):
-            return placement_group
+        _export_bundle_reservation_check_method_if_needed()
 
         assert len(self.bundle_cache) != 0, (
             "ready() cannot be called on placement group object with a "
@@ -51,7 +68,7 @@ class PlacementGroup:
         resource_name, value = self._get_none_zero_resource(bundle)
         num_cpus = 0
         num_gpus = 0
-        resources = None
+        resources = {}
         if resource_name == "CPU":
             num_cpus = value
         elif resource_name == "GPU":
@@ -209,8 +226,9 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
             None if the current task or actor wasn't
             created with any placement group.
     """
-    pg_id = ray.runtime_context.get_runtime_context(
-    ).current_placement_group_id
+    worker = ray.worker.global_worker
+    worker.check_connected()
+    pg_id = worker.placement_group_id
     if pg_id.is_nil():
         return None
     return PlacementGroup(pg_id)

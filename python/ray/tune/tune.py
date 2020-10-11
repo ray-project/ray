@@ -1,5 +1,6 @@
 import logging
 import sys
+import time
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -14,17 +15,9 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
-from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
-                                 FIFOScheduler, MedianStoppingRule)
+from ray.tune.schedulers import FIFOScheduler
 
 logger = logging.getLogger(__name__)
-
-_SCHEDULERS = {
-    "FIFO": FIFOScheduler,
-    "MedianStopping": MedianStoppingRule,
-    "HyperBand": HyperBandScheduler,
-    "AsyncHyperBand": AsyncHyperBandScheduler,
-}
 
 try:
     class_name = get_ipython().__class__.__name__
@@ -33,17 +26,9 @@ except NameError:
     IS_NOTEBOOK = False
 
 
-def _make_scheduler(args):
-    if args.scheduler in _SCHEDULERS:
-        return _SCHEDULERS[args.scheduler](**args.scheduler_config)
-    else:
-        raise TuneError("Unknown scheduler: {}, should be one of {}".format(
-            args.scheduler, _SCHEDULERS.keys()))
-
-
 def _check_default_resources_override(run_identifier):
     if not isinstance(run_identifier, str):
-        # If obscure dtype, assume it is overriden.
+        # If obscure dtype, assume it is overridden.
         return True
     trainable_cls = get_trainable_cls(run_identifier)
     return hasattr(trainable_cls, "default_resource_request") and (
@@ -100,6 +85,7 @@ def run(
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
+        callbacks=None,
         # Deprecated args
         ray_auto_init=None,
         run_errored_only=None,
@@ -259,6 +245,9 @@ def run(
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
+        callbacks (list): List of callbacks that will be called at different
+            times in the training loop. Must be instances of the
+            ``ray.tune.trial_runner.Callback`` class.
 
 
     Returns:
@@ -267,6 +256,7 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+    all_start = time.time()
     if global_checkpoint_period:
         raise ValueError("global_checkpoint_period is deprecated. Set env var "
                          "'TUNE_GLOBAL_CHECKPOINT_S' instead.")
@@ -375,6 +365,7 @@ def run(
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
         trial_executor=trial_executor,
+        callbacks=callbacks,
         metric=metric)
 
     if not runner.resumed:
@@ -404,7 +395,7 @@ def run(
             # "gpu" is manually set.
             pass
         elif _check_default_resources_override(experiments[0].run_identifier):
-            # "default_resources" is manually overriden.
+            # "default_resources" is manually overridden.
             pass
         else:
             logger.warning("Tune detects GPUs, but no trials are using GPUs. "
@@ -415,10 +406,12 @@ def run(
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
+    tune_start = time.time()
     while not runner.is_finished():
         runner.step()
         if verbose:
             _report_progress(runner, progress_reporter)
+    tune_taken = time.time() - tune_start
 
     try:
         runner.checkpoint(force=True)
@@ -441,6 +434,10 @@ def run(
             raise TuneError("Trials did not complete", incomplete_trials)
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
+
+    all_taken = time.time() - all_start
+    logger.info(f"Total run time: {all_taken:.2f} seconds "
+                f"({tune_taken:.2f} seconds for the tuning loop).")
 
     trials = runner.get_trials()
     return ExperimentAnalysis(

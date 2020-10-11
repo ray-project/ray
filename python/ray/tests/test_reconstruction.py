@@ -410,7 +410,11 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
         return
 
     obj = large_object.options(resources={"node2": 1}).remote()
-    downstream = [chain.remote(obj) for _ in range(4)]
+    downstream = [
+        chain.options(resources={
+            "node1": 1
+        }).remote(obj) for _ in range(4)
+    ]
     for obj in downstream:
         ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
 

@@ -96,7 +96,7 @@ def ckpt_restore_test(alg_name, tfe=False):
             if optim_state:
                 s2 = alg2.get_policy().get_state().get("_optimizer_variables")
                 # Tf -> Compare states 1:1.
-                if fw in ["tf", "tfe"]:
+                if fw in ["tf2", "tf", "tfe"]:
                     check(s2, optim_state)
                 # For torch, optimizers have state_dicts with keys=params,
                 # which are different for the two models (ignore these

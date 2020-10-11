@@ -174,9 +174,11 @@ class TorchSpyModel(TorchModelV2, nn.Module):
             action_space, num_outputs, model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
-        pos = input_dict["obs"]["sensors"]["position"].numpy()
-        front_cam = input_dict["obs"]["sensors"]["front_cam"][0].numpy()
-        task = input_dict["obs"]["inner_state"]["job_status"]["task"].numpy()
+        pos = input_dict["obs"]["sensors"]["position"].detach().cpu().numpy()
+        front_cam = input_dict["obs"]["sensors"]["front_cam"][
+            0].detach().cpu().numpy()
+        task = input_dict["obs"]["inner_state"]["job_status"][
+            "task"].detach().cpu().numpy()
         ray.experimental.internal_kv._internal_kv_put(
             "torch_spy_in_{}".format(TorchSpyModel.capture_index),
             pickle.dumps((pos, front_cam, task)),
@@ -226,7 +228,7 @@ def to_list(value):
     elif isinstance(value, int):
         return value
     else:
-        return value.numpy().tolist()
+        return value.detach().cpu().numpy().tolist()
 
 
 class DictSpyModel(TFModelV2):

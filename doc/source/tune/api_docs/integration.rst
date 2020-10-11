@@ -7,6 +7,15 @@ External library integrations (tune.integration)
     :local:
     :depth: 1
 
+
+.. _tune-integration-docker:
+
+Docker (tune.integration.docker)
+--------------------------------
+
+.. autofunction:: ray.tune.integration.docker.DockerSyncer
+
+
 .. _tune-integration-keras:
 
 Keras (tune.integration.keras)

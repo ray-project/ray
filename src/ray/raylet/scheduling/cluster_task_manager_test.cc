@@ -267,7 +267,7 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
   spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
-                                 required_resources, {}, PlacementGroupID::Nil());
+                                 required_resources, {}, PlacementGroupID::Nil(), true);
 
   for (int i = 0; i < num_args; i++) {
     ObjectID put_id = ObjectID::FromIndex(TaskID::Nil(), /*index=*/i + 1);
@@ -282,7 +282,7 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest()
-      : id_(ClientID::FromRandom()),
+      : id_(NodeID::FromRandom()),
         single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary())),
         fulfills_dependencies_calls_(0),
         dependencies_fulfilled_(true),
@@ -293,7 +293,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
                         fulfills_dependencies_calls_++;
                         return dependencies_fulfilled_;
                       },
-                      [this](const ClientID &node_id) {
+                      [this](const NodeID &node_id) {
                         node_info_calls_++;
                         return node_info_;
                       }) {}
@@ -302,7 +302,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   void Shutdown() {}
 
-  ClientID id_;
+  NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> single_node_resource_scheduler_;
   MockWorkerPool pool_;
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
@@ -483,10 +483,90 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   ASSERT_EQ(leased_workers_.size(), 1);
 }
 
+TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+    rpc::RequestWorkerLeaseReply reply;
+
+    bool callback_called = false;
+    bool *callback_called_ptr = &callback_called;
+    auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
+
+    task_manager_.QueueTask(task, &reply, callback);
+    task_manager_.SchedulePendingTasks();
+    task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+    ASSERT_TRUE(callback_called);
+    // Now {CPU: 7, GPU: 4, MEM:128}
+  }
+
+  {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+    rpc::RequestWorkerLeaseReply reply;
+
+    bool callback_called = false;
+    bool *callback_called_ptr = &callback_called;
+    auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
+
+    task_manager_.QueueTask(task, &reply, callback);
+    task_manager_.SchedulePendingTasks();
+    task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+    ASSERT_FALSE(callback_called);  // No worker available.
+    // Now {CPU: 7, GPU: 4, MEM:128} with 1 queued task.
+  }
+
+  {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 9}, {ray::kGPU_ResourceLabel, 5}});
+    rpc::RequestWorkerLeaseReply reply;
+
+    bool callback_called = false;
+    bool *callback_called_ptr = &callback_called;
+    auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
+
+    task_manager_.QueueTask(task, &reply, callback);
+    task_manager_.SchedulePendingTasks();
+    task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+    ASSERT_FALSE(callback_called);  // Infeasible.
+    // Now there is also an infeasible task {CPU: 9}.
+  }
+
+  {
+    auto data = std::make_shared<rpc::HeartbeatTableData>();
+    task_manager_.Heartbeat(false, data);
+
+    auto load = data->mutable_resource_load();
+    ASSERT_EQ(load->size(), 2);
+    ASSERT_EQ((*load)["CPU"], 10);  // 9 + 1 = 10
+    ASSERT_EQ((*load)["GPU"], 5);
+
+    auto load_by_shape =
+        data->mutable_resource_load_by_shape()->mutable_resource_demands();
+    ASSERT_EQ(load_by_shape->size(), 2);
+
+    auto load1 = (*load_by_shape)[0];
+    auto load2 = (*load_by_shape)[1];
+
+    ASSERT_EQ(load1.num_infeasible_requests_queued(), 1);
+    ASSERT_EQ(load1.num_ready_requests_queued(), 0);
+    ASSERT_EQ((*load1.mutable_shape())["CPU"], 9);
+    ASSERT_EQ((*load1.mutable_shape())["GPU"], 5);
+    ASSERT_EQ((*load1.mutable_shape()).size(), 2);
+
+    ASSERT_EQ(load2.num_infeasible_requests_queued(), 0);
+    ASSERT_EQ(load2.num_ready_requests_queued(), 1);
+    ASSERT_EQ((*load2.mutable_shape())["CPU"], 1);
+    ASSERT_EQ((*load2.mutable_shape()).size(), 1);
+  }
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
 
 }  // namespace raylet
+
 }  // namespace ray

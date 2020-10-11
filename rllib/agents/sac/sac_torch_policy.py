@@ -472,7 +472,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy)
 
 
-# Build a child class of `DynamicTFPolicy`, given the custom functions defined
+# Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
 SACTorchPolicy = build_torch_policy(
     name="SACTorchPolicy",
