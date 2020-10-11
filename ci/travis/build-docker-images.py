@@ -77,15 +77,23 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
             build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name()}"
 
         tagged_name = f"rayproject/{image_name}:nightly{gpu}"
+        for i in range(2):
+            output = DOCKER_CLIENT.api.build(
+                path=os.path.join(_get_root_dir(), "docker", image_name),
+                tag=tagged_name,
+                nocache=True,
+                buildargs=build_args)
 
-        output = DOCKER_CLIENT.api.build(
-            path=os.path.join(_get_root_dir(), "docker", image_name),
-            tag=tagged_name,
-            nocache=True,
-            buildargs=build_args)
+            for line in output:
+                print(line)
 
-        for line in output:
-            print(line)
+            if len(DOCKER_CLIENT.api.images(tagged_name)) == 0:
+                print("ERROR building: ", tagged_name)
+                if (i == 1):
+                    raise Exception("FAILED TO BUILD IMAGE")
+                print("TRYING AGAIN")
+            else:
+                break
 
         print("BUILT: ", tagged_name)
         built_images.append(tagged_name)
