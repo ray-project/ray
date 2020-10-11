@@ -75,10 +75,13 @@ class WorkerSet:
 
             # If num_workers > 0, get the action_spaces and observation_spaces
             # to not be forced to create an Env on the driver.
-            spaces = {e[0]: (e[1], e[2]) for e in ray.get(
-                self.remote_workers()[0].foreach_policy.remote(
-                    lambda p, pid: (
-                    pid, p.observation_space, p.action_space)))}
+            if self._remote_workers:
+                spaces = {e[0]: (e[1], e[2]) for e in ray.get(
+                    self.remote_workers()[0].foreach_policy.remote(
+                        lambda p, pid: (
+                        pid, p.observation_space, p.action_space)))}
+            else:
+                spaces = None
 
             # Always create a local worker.
             self._local_worker = self._make_worker(
