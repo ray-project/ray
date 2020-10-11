@@ -1081,13 +1081,13 @@ class RolloutWorker(ParallelIteratorWorker):
 
 
 def _validate_and_canonicalize(
-        policy: Policy,
+        policy: Union[Type[Policy], MultiAgentPolicyConfigDict],
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[
             gym.spaces.Space, gym.spaces.Space]]] = None) -> \
         MultiAgentPolicyConfigDict:
     if isinstance(policy, dict):
-        _validate_multiagent_config(policy, spaces=spaces)
+        _validate_multiagent_config(policy)
         return policy
     elif not issubclass(policy, Policy):
         raise ValueError("policy must be a rllib.Policy class")
