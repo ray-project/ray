@@ -446,6 +446,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
 
 void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
+  if (!normal_scheduling_queue_ || normal_scheduling_queue_->TaskQueueEmpty()) {
+    return;
+  }
+
   // Execute as many tasks as there are in the queue, in sequential order.
   normal_scheduling_queue_->ScheduleRequests();
 
