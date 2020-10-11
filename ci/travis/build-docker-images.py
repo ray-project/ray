@@ -24,6 +24,8 @@ def _release_build():
     branch = os.environ.get("$TRAVIS_BRANCH")
     if not branch:
         print("Branch not found!")
+        print(os.environ)
+        print("Environment is above ^^")
         return False
     return branch != "master" and "releases" in branch
 
@@ -170,7 +172,9 @@ def push_and_tag_images(push_base_images: bool):
 
     def docker_push(image, tag):
         if _merge_build():
-            DOCKER_CLIENT.api.push(image, tag=tag)
+            result = DOCKER_CLIENT.api.push(image, tag=tag)
+            print(f"PUSHING: {image}:{tag}, result:")
+            print(result)
         else:
             print(
                 "This is a PR Build! On a merge build, we would normally push "
