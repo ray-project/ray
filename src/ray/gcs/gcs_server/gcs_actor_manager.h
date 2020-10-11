@@ -297,8 +297,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       &GetActorRegisterCallbacks() const;
 
-  /// Clear up expired actors.
-  void ClearUpExpiredActors();
+  /// Clean up expired actors.
+  void CleanUpExpiredActors();
 
  private:
   /// A data structure representing an actor's owner.

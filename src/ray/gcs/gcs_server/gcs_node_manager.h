@@ -164,8 +164,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void UpdatePlacementGroupLoad(
       std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) const;
 
-  /// Clear up expired nodes.
-  void ClearUpExpiredNodes();
+  /// Clean up expired nodes.
+  void CleanUpExpiredNodes();
 
  protected:
   class NodeFailureDetector {
@@ -265,6 +265,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
+  /// The nodes are sorted according to the timestamp, and the oldest is at the head of
+  /// the list.
+  std::list<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
   /// Cluster resources.
   absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
   /// Listeners which monitors the addition of nodes.

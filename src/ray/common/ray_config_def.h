@@ -236,7 +236,7 @@ RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 10000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-/// The interval at which the gcs server will clear up expired data.
+/// The interval at which the gcs server will clean up expired data.
 RAY_CONFIG(int64_t, gcs_clear_up_expired_data_interval_seconds, 600)
 /// The ttl of dead actor.
 RAY_CONFIG(int64_t, gcs_ttl_of_dead_actor_seconds, 3 * 24 * 60 * 60)

@@ -465,9 +465,15 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
         // detector.
         AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
       } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
-        AddDeadNodeToCache(std::make_shared<rpc::GcsNodeInfo>(item.second));
+        dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+        sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
       }
     }
+    std::sort(std::begin(sorted_dead_node_list_), std::end(sorted_dead_node_list_),
+              [](const std::pair<NodeID, int64_t> &left,
+                 const std::pair<NodeID, int64_t> &right) {
+                return left.second < right.second;
+              });
 
     auto get_node_resource_callback =
         [this, done](const std::unordered_map<NodeID, ResourceMap> &result) {
@@ -517,19 +523,24 @@ void GcsNodeManager::UpdatePlacementGroupLoad(
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
-    dead_nodes_.erase(dead_nodes_.begin());
+    dead_nodes_.erase(sorted_dead_node_list_.begin()->first);
+    sorted_dead_node_list_.erase(sorted_dead_node_list_.begin());
   }
-  dead_nodes_.emplace(NodeID::FromBinary(node->node_id()), node);
+  auto node_id = NodeID::FromBinary(node->node_id());
+  dead_nodes_.emplace(node_id, node);
+  sorted_dead_node_list_.emplace_back(node_id, node->timestamp());
 }
 
-void GcsNodeManager::ClearUpExpiredNodes() {
-  for (auto iter = dead_nodes_.begin(); iter != dead_nodes_.end();) {
-    if (current_sys_time_ms() - iter->second->timestamp() >
+void GcsNodeManager::CleanUpExpiredNodes() {
+  for (auto iter = sorted_dead_node_list_.begin();
+       iter != sorted_dead_node_list_.end();) {
+    if (current_sys_time_ms() - iter->second >
         RayConfig::instance().gcs_ttl_of_dead_node_seconds() * 1000 /*ms*/) {
       RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(iter->first, nullptr));
-      dead_nodes_.erase(iter++);
+      dead_nodes_.erase(iter->first);
+      sorted_dead_node_list_.erase(iter++);
     } else {
-      iter++;
+      break;
     }
   }
 }

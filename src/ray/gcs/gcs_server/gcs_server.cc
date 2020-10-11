@@ -100,8 +100,8 @@ void GcsServer::Start() {
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
 
-  // Clear up expired data.
-  PeriodicallyClearUpExpiredData();
+  // Clean up expired data.
+  PeriodicallyCleanUpExpiredData();
 
   auto load_completed_count = std::make_shared<int>(0);
   int load_count = 2;
@@ -285,12 +285,12 @@ std::unique_ptr<GcsWorkerManager> GcsServer::InitGcsWorkerManager() {
       new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
 }
 
-void GcsServer::PeriodicallyClearUpExpiredData() {
-  // Clear up expired actors.
-  gcs_actor_manager_->ClearUpExpiredActors();
+void GcsServer::PeriodicallyCleanUpExpiredData() {
+  // Clean up expired actors.
+  gcs_actor_manager_->CleanUpExpiredActors();
 
-  // Clear up expired nodes.
-  gcs_node_manager_->ClearUpExpiredNodes();
+  // Clean up expired nodes.
+  gcs_node_manager_->CleanUpExpiredNodes();
 
   auto clear_period = boost::posix_time::seconds(
       RayConfig::instance().gcs_clear_up_expired_data_interval_seconds());
@@ -300,7 +300,7 @@ void GcsServer::PeriodicallyClearUpExpiredData() {
       return;
     }
     RAY_CHECK(!error) << "Clearing expired actors failed with error: " << error.message();
-    PeriodicallyClearUpExpiredData();
+    PeriodicallyCleanUpExpiredData();
   });
 }
 

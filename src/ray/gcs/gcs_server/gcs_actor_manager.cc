@@ -1108,7 +1108,7 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   destroyed_actors_.emplace(actor->GetActorID(), actor);
 }
 
-void GcsActorManager::ClearUpExpiredActors() {
+void GcsActorManager::CleanUpExpiredActors() {
   for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
     if (current_sys_time_ms() - iter->second->GetActorTableData().timestamp() >
         RayConfig::instance().gcs_ttl_of_dead_actor_seconds() * 1000 /*ms*/) {
