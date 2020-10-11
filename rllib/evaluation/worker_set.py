@@ -76,10 +76,10 @@ class WorkerSet:
             # If num_workers > 0, get the action_spaces and observation_spaces
             # to not be forced to create an Env on the driver.
             if self._remote_workers:
-                spaces = {e[0]: (e[1], e[2]) for e in ray.get(
-                    self.remote_workers()[0].foreach_policy.remote(
-                        lambda p, pid: (
-                        pid, p.observation_space, p.action_space)))}
+                remote_spaces = ray.get(self.remote_workers(
+                )[0].foreach_policy.remote(
+                    lambda p, pid: (pid, p.observation_space, p.action_space)))
+                spaces = {e[0]: (e[1], e[2]) for e in remote_spaces}
             else:
                 spaces = None
 
@@ -238,8 +238,8 @@ class WorkerSet:
             policy_cls: Type[Policy],
             worker_index: int,
             config: TrainerConfigDict,
-            spaces: Optional[Dict[PolicyID, Tuple[
-                gym.spaces.Space, gym.spaces.Space]]] = None,
+            spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
+                                                  gym.spaces.Space]]] = None,
     ) -> Union[RolloutWorker, "ActorHandle"]:
         def session_creator():
             logger.debug("Creating TF session {}".format(

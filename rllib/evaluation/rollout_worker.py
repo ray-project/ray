@@ -173,8 +173,8 @@ class RolloutWorker(ParallelIteratorWorker):
             seed: int = None,
             extra_python_environs: dict = None,
             fake_sampler: bool = False,
-            spaces: Optional[Dict[PolicyID, Tuple[
-                gym.spaces.Space, gym.spaces.Space]]] = None,
+            spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
+                                                  gym.spaces.Space]]] = None,
     ):
         """Initialize a rollout worker.
 
@@ -344,30 +344,33 @@ class RolloutWorker(ParallelIteratorWorker):
         self.global_vars: dict = None
         self.fake_sampler: bool = fake_sampler
 
-        if worker_index == 0 and num_workers > 0:
+        # No Env will be used in this particular worker (not needed).
+        if worker_index == 0 and num_workers > 0 and \
+                policy_config["create_env_on_driver"] is False:
             self.env = None
+        # Create an env for this worker.
         else:
             self.env = _validate_env(env_creator(env_context))
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
             if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
-    
+
                 def wrap(env):
                     return env  # we can't auto-wrap these env types
-    
+
             elif is_atari(self.env) and \
                     not model_config.get("custom_preprocessor") and \
                     preprocessor_pref == "deepmind":
-    
+
                 # Deepmind wrappers already handle all preprocessing.
                 self.preprocessing_enabled = False
-    
+
                 # If clip_rewards not explicitly set to False, switch it
                 # on here (clip between -1.0 and 1.0).
                 if clip_rewards is None:
                     clip_rewards = True
-    
+
                 def wrap(env):
                     env = wrap_deepmind(
                         env,
@@ -378,13 +381,13 @@ class RolloutWorker(ParallelIteratorWorker):
                         env = wrappers.Monitor(env, monitor_path, resume=True)
                     return env
             else:
-    
+
                 def wrap(env):
                     if monitor_path:
                         from gym import wrappers
                         env = wrappers.Monitor(env, monitor_path, resume=True)
                     return env
-    
+
             self.env: EnvType = wrap(self.env)
 
         def make_env(vector_index):
@@ -398,8 +401,8 @@ class RolloutWorker(ParallelIteratorWorker):
         self.make_env_fn = make_env
 
         self.tf_sess = None
-        policy_dict = _validate_and_canonicalize(policy_spec, self.env,
-                                                 spaces=spaces)
+        policy_dict = _validate_and_canonicalize(
+            policy_spec, self.env, spaces=spaces)
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
             policy_dict.keys())
         self.policy_map: Dict[PolicyID, Policy] = None
@@ -1106,9 +1109,8 @@ def _validate_and_canonicalize(
             }
 
 
-def _validate_multiagent_config(
-        policy: MultiAgentPolicyConfigDict,
-        allow_none_graph: bool = False) -> None:
+def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
+                                allow_none_graph: bool = False) -> None:
     for k, v in policy.items():
         if not isinstance(k, str):
             raise ValueError("policy keys must be strs, got {}".format(
