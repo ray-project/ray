@@ -4,7 +4,6 @@
 
 from collections import namedtuple
 import logging
-import math
 import numpy as np
 import time
 
@@ -15,7 +14,6 @@ from ray.rllib.agents.es import optimizers, utils
 from ray.rllib.agents.es.es import validate_config
 from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import FilterManager

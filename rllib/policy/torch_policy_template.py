@@ -72,8 +72,8 @@ def build_torch_policy(
 
     Args:
         name (str): name of the policy (e.g., "PPOTorchPolicy")
-        loss_fn (Optional[Callable[[Policy, ModelV2, 
-            Type[TorchDistributionWrapper], SampleBatch], Union[TensorType, 
+        loss_fn (Optional[Callable[[Policy, ModelV2,
+            Type[TorchDistributionWrapper], SampleBatch], Union[TensorType,
             List[TensorType]]]]): Callable that returns a loss tensor.
         get_default_config (Optional[Callable[[None], TrainerConfigDict]]):
             Optional callable that returns the default config to merge with any
