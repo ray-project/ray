@@ -1,7 +1,9 @@
 import cv2
+import gym
 import numpy as np
 import unittest
 
+from ray.rllib.models.preprocessors import GenericPixelPreprocessor
 from ray.rllib.models.torch.modules.convtranspose2d_stack import \
     ConvTranspose2DStack
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
@@ -19,15 +21,19 @@ class TestConvTranspose2DStack(unittest.TestCase):
         batch_size = 128
         input_size = 1
         module = ConvTranspose2DStack(input_size=input_size)
+        preprocessor = GenericPixelPreprocessor(
+            gym.spaces.Box(0, 255, (64, 64, 3), np.uint8), options={"dim": 64})
         optim = torch.optim.Adam(module.parameters(), lr=0.0001)
-        img = cv2.imread("../../tests/data/images/obstacle_tower.png")
+        img = cv2.imread("../../tests/data/images/obstacle_tower.png").astype(
+            np.float32)
+        # Preprocess.
+        img = preprocessor.transform(img)
         # Make channels first.
         img = np.transpose(img, (2, 0, 1))
         # Add batch rank and repeat.
         imgs = np.reshape(img, (1, ) + img.shape)
         imgs = np.repeat(imgs, batch_size, axis=0)
-        # Normalize (-1.0 to 1.0).
-        imgs = (imgs / 255.0) * 2.0 - 1.0
+        # Move to torch.
         imgs = torch.from_numpy(imgs)
         init_loss = loss = None
         for _ in range(10):

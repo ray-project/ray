@@ -294,8 +294,8 @@ class RSSM(nn.Module):
 
         self.softplus = nn.Softplus
 
-        self.device = (torch.device("cuda") if torch.cuda.is_available()
-                       else torch.device("cpu"))
+        self.device = (torch.device("cuda")
+                       if torch.cuda.is_available() else torch.device("cpu"))
 
     def get_initial_state(self, batch_size: int) -> List[TensorType]:
         """Returns the inital state for the RSSM, which consists of mean,
@@ -385,9 +385,9 @@ class RSSM(nn.Module):
         prior = [e.permute(1, 0, 2) for e in prior]
         return prior
 
-    def obs_step(self, prev_state: TensorType, prev_action: TensorType,
-                 embed: TensorType
-                 ) -> Tuple[List[TensorType], List[TensorType]]:
+    def obs_step(
+            self, prev_state: TensorType, prev_action: TensorType,
+            embed: TensorType) -> Tuple[List[TensorType], List[TensorType]]:
         """Runs through the posterior model and returns the posterior state
 
         Args:
@@ -445,8 +445,8 @@ class RSSM(nn.Module):
 class DreamerModel(TorchModelV2, nn.Module):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super().__init__(obs_space, action_space, num_outputs,
-                         model_config, name)
+        super().__init__(obs_space, action_space, num_outputs, model_config,
+                         name)
 
         nn.Module.__init__(self)
         self.depth = model_config["depth_size"]
@@ -472,13 +472,10 @@ class DreamerModel(TorchModelV2, nn.Module):
                                   self.hidden_size)
         self.state = None
 
-        self.device = (torch.device("cuda") if torch.cuda.is_available()
-                       else torch.device("cpu"))
+        self.device = (torch.device("cuda")
+                       if torch.cuda.is_available() else torch.device("cpu"))
 
-    def policy(self,
-               obs: TensorType,
-               state: List[TensorType],
-               explore=True
+    def policy(self, obs: TensorType, state: List[TensorType], explore=True
                ) -> Tuple[TensorType, List[float], List[TensorType]]:
         """Returns the action. Runs through the encoder, recurrent model,
         and policy to obtain action.
