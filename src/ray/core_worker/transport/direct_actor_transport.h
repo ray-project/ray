@@ -549,23 +549,17 @@ class CoreWorkerDirectTaskReceiver {
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
             std::shared_ptr<DependencyWaiter> dependency_waiter);
 
-  /// Handle a `PushTask` request for an actor task.
+  /// Handle a `PushTask` request. If it's an actor request, this function will enqueue the task
+  /// and then start scheduling the requests to begin the execution. If it's a non-actor request, 
+  /// this function will just enqueue the task.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleActorTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+  void HandleTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                        rpc::SendReplyCallback send_reply_callback);
 
-  /// Enqueue a non-actor task from a `PushTask` request.
-  ///
-  /// \param[in] request The request message.
-  /// \param[out] reply The reply message.
-  /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void EnqueueNormalTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                         rpc::SendReplyCallback send_reply_callback);
-
-  /// Remove tasks from the queue and execute them sequentially
+  /// Pop tasks from the queue and execute them sequentially
   void RunNormalTasksFromQueue();
 
  private:
@@ -585,9 +579,9 @@ class CoreWorkerDirectTaskReceiver {
   std::shared_ptr<DependencyWaiter> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<WorkerID, ActorSchedulingQueue> actor_scheduling_queues_;
+  std::unordered_map<WorkerID, SchedulingQueue*> actor_scheduling_queues_;
   // Queue of pending normal (non-actor) tasks.
-  NormalSchedulingQueue normal_scheduling_queue_ = NormalSchedulingQueue();
+  SchedulingQueue *normal_scheduling_queue_;
 };
 
 }  // namespace ray
