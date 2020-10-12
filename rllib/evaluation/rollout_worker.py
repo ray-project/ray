@@ -32,6 +32,7 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -84,7 +85,7 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> # Create a rollout worker and using it to collect experiences.
         >>> worker = RolloutWorker(
         ...   env_creator=lambda _: gym.make("CartPole-v0"),
-        ...   policy=PGTFPolicy)
+        ...   policy_spec=PGTFPolicy)
         >>> print(worker.sample())
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
@@ -93,7 +94,7 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> # Creating a multi-agent rollout worker
         >>> worker = RolloutWorker(
         ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-        ...   policies={
+        ...   policy_spec={
         ...       # Use an ensemble of two policies for car agents
         ...       "car_policy1":
         ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
@@ -175,6 +176,7 @@ class RolloutWorker(ParallelIteratorWorker):
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
+            policy = None,
     ):
         """Initialize a rollout worker.
 
@@ -288,6 +290,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
+        # Deprecated arg.
+        if policy is not None:
+            deprecation_warning("policy", "policy_spec", error=False)
+            policy_spec = policy
+
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
 

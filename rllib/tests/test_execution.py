@@ -28,7 +28,7 @@ def iter_list(values):
 def make_workers(n):
     local = RolloutWorker(
         env_creator=lambda _: gym.make("CartPole-v0"),
-        policy=PPOTFPolicy,
+        policy_spec=PPOTFPolicy,
         rollout_fragment_length=100)
     remotes = [
         RolloutWorker.as_remote().remote(
