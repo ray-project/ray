@@ -212,7 +212,7 @@ export type FullActorInfo = {
   ipAddress: string;
   jobId: string;
   logs: string[];
-  errors: string[];
+  errors: ErrorMessage[];
   nodeId: string;
   numExecutedTasks?: number;
   numLocalObjects?: number;
@@ -279,11 +279,13 @@ export type ErrorsResponse = {
 };
 
 export type ErrorsByPid = {
-  [pid: string]: {
-    message: string;
-    timestamp: number;
-    type: string;
-  }[];
+  [pid: string]: ErrorMessage[];
+};
+
+type ErrorMessage = {
+  message: string;
+  timestamp: number;
+  type: string;
 };
 
 export const getErrors = (nodeIp: string, pid: number | null) =>

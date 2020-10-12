@@ -7,6 +7,7 @@ import LabeledDatum from "../../../common/LabeledDatum";
 import ActorStateRepr from "./ActorStateRepr";
 import UsageBar from '../../../common/UsageBar';
 import { LogPane } from '../../../common/dialogs/logs/Logs';
+import { ErrorPane } from '../../../common/dialogs/errors/Errors';
 import { FullActorInfo } from '../../../../../../python/ray/new_dashboard/client/src/api';
 
 const memoryDebuggingDocLink =
@@ -118,11 +119,16 @@ const extractLogsByPid = (actor: FullActorInfo) => {
   return {[actor.processStats.pid.toString()]: actor.logs };
 };
   
+const extractErrorsByPid = (actor: FullActorInfo) => {
+  return {[actor.processStats.pid.toString()]: actor.errors };
+};
+
 const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
   actor
 }) => {
   const classes = useStyles();
   const [showLogs, setShowLogs] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
   const actorData: ActorDatum[] = labeledActorData(actor);
   return (
     <React.Fragment>
@@ -132,15 +138,28 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
       </div>
       {isFullActorInfo(actor) && actor.logs.length > 0 &&
         <SpanButton onClick={() => setShowLogs(true) }>
-        {actor.logs.length} logs ({actor.logs.length.toLocaleString()} {actor.logs.length === 1 ? "line" : "lines" })
+        View Logs ({actor.logs.length.toLocaleString()} {actor.logs.length === 1 ? "line" : "lines" })
+        </SpanButton>
+      }
+      {isFullActorInfo(actor) && actor.errors.length > 0 &&
+        <SpanButton onClick={() => setShowErrors(true) }>
+        View errors ({actor.errors.length.toLocaleString()} {actor.errors.length === 1 ? "entry" : "entries" })
         </SpanButton>
       }
       {isFullActorInfo(actor) && showLogs &&
         <LogPane
           logs={extractLogsByPid(actor)}
-          groupTag={`Actor ${actor.actorClass}`}
+          groupTag={`Actor ${actor.actorId}`}
           clearLogDialog={() => setShowLogs(false)}
           error={null}
+        />
+      }
+      {isFullActorInfo(actor) && showErrors &&
+        <ErrorPane
+          errors={extractErrorsByPid(actor)}
+          groupTag={`Actor ${actor.actorId}`}
+          clearErrorDialog={() => setShowErrors(false)}
+          fetchError={null}
         />
       }
       <Divider className={classes.divider} />

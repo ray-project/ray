@@ -1,17 +1,16 @@
 import {
   createStyles,
+  makeStyles,
   fade,
   Theme,
   Typography,
-  withStyles,
-  WithStyles,
 } from "@material-ui/core";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { ErrorsByPid, getErrors } from "../../../api";
 import DialogWithTitle from "../../DialogWithTitle";
 import NumberedLines from "../../NumberedLines";
 
-const styles = (theme: Theme) =>
+const useErrorPaneStyles = makeStyles((theme: Theme) =>
   createStyles({
     header: {
       lineHeight: 1,
@@ -30,53 +29,72 @@ const styles = (theme: Theme) =>
       color: theme.palette.text.secondary,
       marginBottom: theme.spacing(1),
     },
-  });
+  }));
 
-type Props = {
+type FetchingErrorPaneProps = {
   clearErrorDialog: () => void;
   nodeIp: string;
   pid: number | null;
 };
 
-type State = {
-  result: ErrorsByPid | null;
-  error: string | null;
+export const FetchingErrorPane: React.FC<FetchingErrorPaneProps> = ({
+  nodeIp,
+  clearErrorDialog,
+  pid,
+}) => {
+  // errors holds the error entries for the entity for whom the pane
+  // is displayed, while fetchError holds an error encountered
+  // trying to fetch data from the API.
+  const [errors, setErrors] = useState<ErrorsByPid | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  useEffect(() => {
+      (async () => {
+        try {
+          const result = await getErrors(nodeIp, pid);
+          setErrors(result.errors);
+          setFetchError(null);
+        } catch (error) {
+          setErrors(null);
+          setFetchError(error.toString());
+        }
+      })();
+  }, [nodeIp, pid]);
+  return (
+    <ErrorPane
+      errors={errors}
+      fetchError={fetchError}
+      clearErrorDialog={clearErrorDialog}
+      groupTag={nodeIp} />
+  )
 };
 
-class Errors extends React.Component<Props & WithStyles<typeof styles>, State> {
-  state: State = {
-    result: null,
-    error: null,
-  };
+type ErrorPaneProps = {
+  clearErrorDialog: () => void;
+  errors: ErrorsByPid | null;
+  fetchError: string | null;
+  groupTag: string;
+};
 
-  async componentDidMount() {
-    try {
-      const { nodeIp, pid } = this.props;
-      const result = await getErrors(nodeIp, pid);
-      this.setState({ result: result.errors, error: null });
-    } catch (error) {
-      this.setState({ result: null, error: error.toString() });
-    }
-  }
-
-  render() {
-    const { classes, clearErrorDialog, nodeIp } = this.props;
-    const { result, error } = this.state;
-
-    return (
-      <DialogWithTitle handleClose={clearErrorDialog} title="Errors">
-        {error !== null ? (
-          <Typography color="error">{error}</Typography>
-        ) : result === null ? (
-          <Typography color="textSecondary">Loading...</Typography>
-        ) : (
-          Object.entries(result).map(([pid, errors]) => (
+export const ErrorPane: React.FC<ErrorPaneProps> = ({
+  clearErrorDialog,
+  errors,
+  fetchError,
+  groupTag,
+}) => {
+  const classes = useErrorPaneStyles();
+  return (<DialogWithTitle handleClose={clearErrorDialog} title="Errors">
+    {fetchError !== null ? (
+      <Typography color="error">{fetchError}</Typography>
+    ) : errors === null ? (
+      <Typography color="textSecondary">Loading...</Typography>
+    ) : (
+          Object.entries(errors).map(([pid, errorEntries]) => (
             <React.Fragment key={pid}>
               <Typography className={classes.header}>
-                {nodeIp} (PID: {pid})
+                {groupTag} (PID: {pid})
               </Typography>
-              {errors.length > 0 ? (
-                errors.map(({ message, timestamp }, index) => (
+              {errorEntries.length > 0 ? (
+                errorEntries.map(({ message, timestamp }, index) => (
                   <div className={classes.error} key={index}>
                     <Typography className={classes.timestamp}>
                       Error at {new Date(timestamp * 1000).toLocaleString()}
@@ -85,14 +103,12 @@ class Errors extends React.Component<Props & WithStyles<typeof styles>, State> {
                   </div>
                 ))
               ) : (
-                <Typography color="textSecondary">No errors found.</Typography>
-              )}
+                  <Typography color="textSecondary">No errors found.</Typography>
+                )}
             </React.Fragment>
           ))
         )}
-      </DialogWithTitle>
-    );
-  }
-}
+  </DialogWithTitle>)
+};
 
-export default withStyles(styles)(Errors);
+export default FetchingErrorPane;
