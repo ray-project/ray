@@ -3231,9 +3231,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   // and return the information from HandleNodesStatsRequest. The caller of
   // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers();
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
   absl::flat_hash_set<WorkerID> driver_ids;
-  for (auto driver : worker_pool_.GetAllRegisteredDrivers()) {
+  for (auto driver :
+       worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
   }
@@ -3242,6 +3243,9 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     return;
   }
   for (const auto &worker : all_workers) {
+    if (worker->IsDead()) {
+      continue;
+    }
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(node_stats_request.include_memory_info());
