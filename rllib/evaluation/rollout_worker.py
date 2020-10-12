@@ -176,7 +176,9 @@ class RolloutWorker(ParallelIteratorWorker):
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
-            policy = None,
+            policy: Union[type, Dict[
+                str, Tuple[Optional[type], gym.Space, gym.Space,
+                           PartialTrainerConfigDict]]] = None,
     ):
         """Initialize a rollout worker.
 
@@ -289,6 +291,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
+            policy: Obsoleted arg. Use policy_spec instead.
         """
         # Deprecated arg.
         if policy is not None:

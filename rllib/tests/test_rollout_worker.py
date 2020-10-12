@@ -265,6 +265,7 @@ class TestRolloutWorker(unittest.TestCase):
                     "rollout_fragment_length": 5,
                     "num_envs_per_worker": 2,
                     "framework": fw,
+                    "create_env_on_driver": True,
                 })
             results = pg.workers.foreach_worker(
                 lambda ev: ev.rollout_fragment_length)
@@ -447,7 +448,7 @@ class TestRolloutWorker(unittest.TestCase):
             batch_mode="complete_episodes")
         remote_ev = RolloutWorker.as_remote().remote(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             batch_mode="complete_episodes")
         ev.sample()
         ray.get(remote_ev.sample.remote())

@@ -90,6 +90,7 @@ class WorkerSet:
                 validate_env=validate_env,
                 policy_cls=self._policy_class,
                 worker_index=0,
+                num_workers=num_workers,
                 config=self._local_config,
                 spaces=spaces,
             )
@@ -133,6 +134,7 @@ class WorkerSet:
                 validate_env=None,
                 policy_cls=self._policy_class,
                 worker_index=i + 1,
+                num_workers=num_workers,
                 config=self._remote_config) for i in range(num_workers)
         ])
 
@@ -237,6 +239,7 @@ class WorkerSet:
             validate_env: Optional[Callable[[EnvType], None]],
             policy_cls: Type[Policy],
             worker_index: int,
+            num_workers: int,
             config: TrainerConfigDict,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
@@ -327,7 +330,7 @@ class WorkerSet:
             model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
-            num_workers=config["num_workers"],
+            num_workers=num_workers,
             monitor_path=self._logdir if config["monitor"] else None,
             log_dir=self._logdir,
             log_level=config["log_level"],
