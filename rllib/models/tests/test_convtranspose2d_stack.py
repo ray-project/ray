@@ -1,6 +1,8 @@
 import cv2
 import gym
 import numpy as np
+import os
+from pathlib import Path
 import unittest
 
 from ray.rllib.models.preprocessors import GenericPixelPreprocessor
@@ -24,8 +26,11 @@ class TestConvTranspose2DStack(unittest.TestCase):
         preprocessor = GenericPixelPreprocessor(
             gym.spaces.Box(0, 255, (64, 64, 3), np.uint8), options={"dim": 64})
         optim = torch.optim.Adam(module.parameters(), lr=0.0001)
-        img = cv2.imread("../../tests/data/images/obstacle_tower.png").astype(
-            np.float32)
+
+        rllib_dir = Path(__file__).parent.parent.parent
+        img_file = os.path.join(rllib_dir,
+                                "tests/data/images/obstacle_tower.png")
+        img = cv2.imread(img_file).astype(np.float32)
         # Preprocess.
         img = preprocessor.transform(img)
         # Make channels first.

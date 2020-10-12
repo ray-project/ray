@@ -1051,7 +1051,7 @@ py_test(
     name = "test_convtranspose2d_stack",
     tags = ["models"],
     size = "small",
-    data = glob(["tests/data/images/**"]),
+    data = glob(["tests/data/images/obstacle_tower.png"]),
     srcs = ["models/tests/test_convtranspose2d_stack.py"]
 )
 
