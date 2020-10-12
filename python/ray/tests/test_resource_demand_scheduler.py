@@ -589,7 +589,7 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     # requires 41 p2.8xls (currently 1 pending, 1 launching, 0 running}
     demands = [{"GPU": 8}] * (len(utilizations) + 40)
     to_launch = scheduler.get_nodes_to_launch(nodes, launching_nodes, demands,
-                                              utilizations)
+                                              utilizations, [])
     # Enforces max launch to 5 when < 5 running. 2 are pending/launching.
     assert to_launch == {"p2.8xlarge": 3}
 
@@ -604,7 +604,7 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     # requires 17 p2.8xls (currently 1 pending, 1 launching, 8 running}
     demands = [{"GPU": 8}] * (len(utilizations) + 15)
     to_launch = scheduler.get_nodes_to_launch(nodes, launching_nodes, demands,
-                                              utilizations)
+                                              utilizations, [])
     # We are allowed to launch up to 8 more since 8 are running.
     # We already have 2 pending/launching, so only 6 remain.
     assert to_launch == {"p2.8xlarge": 6}
