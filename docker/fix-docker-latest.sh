@@ -1,4 +1,5 @@
 #!/bin/bash
+# This script is not for normal use and is used in the event that CI (or a user) overwrites the latest tag.
 
 IMAGE="1.0.0"
 
