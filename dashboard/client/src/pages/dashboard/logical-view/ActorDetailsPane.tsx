@@ -1,10 +1,13 @@
 import { Divider, Grid, makeStyles, Theme, Typography } from "@material-ui/core";
-import React from "react";
+import SpanButton from "../../../common/SpanButton";
+import React, { useState } from "react";
 import { ActorInfo, isFullActorInfo } from "../../../api";
 import { sum } from "../../../common/util";
 import LabeledDatum from "../../../common/LabeledDatum";
 import ActorStateRepr from "./ActorStateRepr";
 import UsageBar from '../../../common/UsageBar';
+import { LogPane } from '../../../common/dialogs/logs/Logs';
+import { FullActorInfo } from '../../../../../../python/ray/new_dashboard/client/src/api';
 
 const memoryDebuggingDocLink =
   "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
@@ -111,10 +114,15 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
+const extractLogsByPid = (actor: FullActorInfo) => {
+  return {[actor.processStats.pid.toString()]: actor.logs };
+};
+  
 const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
   actor
 }) => {
   const classes = useStyles();
+  const [showLogs, setShowLogs] = useState(false);
   const actorData: ActorDatum[] = labeledActorData(actor);
   return (
     <React.Fragment>
@@ -122,6 +130,19 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
         <div>{actor.actorClass}</div>
         <ActorStateRepr state={actor.state} />
       </div>
+      {isFullActorInfo(actor) && actor.logs.length > 0 &&
+        <SpanButton onClick={() => setShowLogs(true) }>
+        {actor.logs.length} logs ({actor.logs.length.toLocaleString()} {actor.logs.length === 1 ? "line" : "lines" })
+        </SpanButton>
+      }
+      {isFullActorInfo(actor) && showLogs &&
+        <LogPane
+          logs={extractLogsByPid(actor)}
+          groupTag={`Actor ${actor.actorClass}`}
+          clearLogDialog={() => setShowLogs(false)}
+          error={null}
+        />
+      }
       <Divider className={classes.divider} />
       <Grid container className={classes.detailsPane}>
         {actorData.map(

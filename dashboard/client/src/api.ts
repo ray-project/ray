@@ -211,6 +211,8 @@ export type FullActorInfo = {
   actorClass: string;
   ipAddress: string;
   jobId: string;
+  logs: string[];
+  errors: string[];
   nodeId: string;
   numExecutedTasks?: number;
   numLocalObjects?: number;
@@ -231,7 +233,7 @@ export type FullActorInfo = {
   currentTaskDesc?: string;
   numPendingTasks?: number;
   webuiDisplay?: Record<string, string>;
-  processStats?: ProcessStats;
+  processStats: ProcessStats;
 };
 
 export type ActorTaskInfo = {
@@ -283,6 +285,7 @@ export type ErrorsByPid = {
     type: string;
   }[];
 };
+
 export const getErrors = (nodeIp: string, pid: number | null) =>
   get<ErrorsResponse>("/node_errors", {
     nodeIp,

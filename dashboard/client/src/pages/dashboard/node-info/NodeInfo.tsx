@@ -16,8 +16,8 @@ import SortableTableHead, {
 import { getFnComparator, Order, stableSort } from "../../../common/tableUtils";
 import { sum } from "../../../common/util";
 import { StoreState } from "../../../store";
-import Errors from "./dialogs/errors/Errors";
-import Logs from "./dialogs/logs/Logs";
+import Errors from "../../../common/dialogs/errors/Errors";
+import Logs from "../../../common/dialogs/logs/Logs";
 import cpuFeature from "./features/CPU";
 import diskFeature from "./features/Disk";
 import makeErrorsFeature from "./features/Errors";

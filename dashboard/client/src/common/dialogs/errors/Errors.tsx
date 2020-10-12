@@ -7,9 +7,9 @@ import {
   WithStyles,
 } from "@material-ui/core";
 import React from "react";
-import { ErrorsByPid, getErrors } from "../../../../../api";
-import DialogWithTitle from "../../../../../common/DialogWithTitle";
-import NumberedLines from "../../../../../common/NumberedLines";
+import { ErrorsByPid, getErrors } from "../../../api";
+import DialogWithTitle from "../../DialogWithTitle";
+import NumberedLines from "../../NumberedLines";
 
 const styles = (theme: Theme) =>
   createStyles({
