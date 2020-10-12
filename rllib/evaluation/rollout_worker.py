@@ -513,7 +513,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.io_context: IOContext = IOContext(log_dir, policy_config,
                                                worker_index, self)
-        self.reward_estimators: OffPolicyEstimator = []
+        self.reward_estimators: List[OffPolicyEstimator] = []
         for method in input_evaluation:
             if method == "simulation":
                 logger.warning(
@@ -837,10 +837,12 @@ class RolloutWorker(ParallelIteratorWorker):
     def get_metrics(self) -> List[Union[RolloutMetrics, OffPolicyEstimate]]:
         """Returns a list of new RolloutMetric objects from evaluation."""
 
+        # Get metrics from sampler (if any).
         if self.sampler is not None:
             out = self.sampler.get_metrics()
         else:
             out = []
+        # Get metrics from our reward-estimators (if any).
         for m in self.reward_estimators:
             out.extend(m.get_metrics())
         return out
@@ -851,6 +853,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if self.async_env is None:
             return []
+
         envs = self.async_env.get_unwrapped()
         if not envs:
             return [func(self.async_env)]
@@ -983,7 +986,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def stop(self) -> None:
-        self.async_env.stop()
+        if self.env:
+            self.async_env.stop()
 
     @DeveloperAPI
     def creation_args(self) -> dict:
