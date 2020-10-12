@@ -144,6 +144,9 @@ train each trial at least for ``n`` epochs.
 
 Why are all my trials returning "1" iteration?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**This is most likely applicable for the Tune function API.**
+
 Ray Tune counts iterations internally every time ``tune.report()`` is
 called. If you only call ``tune.report()`` once at the end of the training,
 the counter has only been incremented once. If you're using the class API,
@@ -156,33 +159,34 @@ like Hyperband/ASHA can terminate bad performing trials early.
 
 What are all these extra outputs?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 You'll notice that Ray Tune not only reports hyperparameters (from the
 ``config``) or metrics (passed to ``tune.report()``), but also some other
-outputs. The ``Trial.last_result`` dictionary contains the following
-additional outputs:
+outputs.
 
-* ``config``: The hyperparameter configuration
-* ``date``: String-formatted date and time when the result was processed
-* ``done``: True if the trial has been finished, False otherwise
-* ``episodes_total``: Total number of episodes (for RLLib trainables)
-* ``experiment_id``: Unique experiment ID
-* ``experiment_tag``: Unique experiment tag (includes parameter values)
-* ``hostname``: Hostname of the worker
-* ``iterations_since_restore``: The number of times ``tune.report()`` has been
-  called after restoring the run from a checkpoint
-* ``node_ip``: Host IP of the worker
-* ``pid``: Process ID (PID) of the worker process
-* ``time_since_restore``: Time in seconds since restoring from a checkpoint.
-* ``time_this_iter_s``: Runtime of the current training iteration in seconds (i.e.
-  one call to the trainable function or to ``_train()`` in the class API.
-* ``time_total_s``: Total runtime in seconds.
-* ``timestamp``: Timestamp when the result was processed
-* ``timesteps_since_restore``: Number of timesteps since restoring from a checkpoint
-* ``timesteps_total``: Total number of timesteps
-* ``training_iteration``: The number of times ``tune.report()`` has been
-  called
-* ``trial_id``: Unique trial ID
+.. code-block:: bash
 
+    Result for easy_objective_c64c9112:
+      date: 2020-10-07_13-29-18
+      done: false
+      experiment_id: 6edc31257b564bf8985afeec1df618ee
+      experiment_tag: 7_activation=tanh,height=-53.116,steps=100,width=13.885
+      hostname: ubuntu
+      iterations: 0
+      iterations_since_restore: 1
+      mean_loss: 4.688385317424468
+      neg_mean_loss: -4.688385317424468
+      node_ip: 192.168.1.115
+      pid: 5973
+      time_since_restore: 7.605552673339844e-05
+      time_this_iter_s: 7.605552673339844e-05
+      time_total_s: 7.605552673339844e-05
+      timestamp: 1602102558
+      timesteps_since_restore: 0
+      training_iteration: 1
+      trial_id: c64c9112
+
+See the :ref:`tune-autofilled-metrics` section for a glossary.
 
 How do I set resources?
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -223,6 +227,9 @@ has machines that can actually fulfill your resource requests.
 
 How can I pass further parameter values to my trainable function?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**This is only applicable for the Tune function API.**
+
 Ray Tune expects your trainable functions to accept only up to two parameters,
 ``config`` and ``checkpoint_dir``. But sometimes there are cases where
 you want to pass constant arguments, like the number of epochs to run,

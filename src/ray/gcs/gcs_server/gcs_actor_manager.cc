@@ -542,7 +542,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           RAY_LOG(INFO) << "Worker " << owner_id << " failed, destroying actor child.";
         } else {
           RAY_LOG(INFO) << "Actor " << actor_id
-                        << " is out of scope,, destroying actor child.";
+                        << " is out of scope, destroying actor child.";
         }
 
         auto node_it = owners_.find(owner_node_id);
@@ -562,7 +562,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   RAY_CHECK(it != registered_actors_.end())
       << "Tried to destroy actor that does not exist " << actor_id;
   it->second->GetMutableActorTableData()->mutable_task_spec()->Clear();
-  destroyed_actors_.emplace(it->first, it->second);
+  AddDestroyedActorToCache(it->second);
   const auto actor = std::move(it->second);
   registered_actors_.erase(it);
 
@@ -954,7 +954,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
           node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
         }
       } else {
-        destroyed_actors_.emplace(item.first, actor);
+        AddDestroyedActorToCache(actor);
       }
     }
 
@@ -1096,6 +1096,14 @@ void GcsActorManager::KillActor(const std::shared_ptr<GcsActor> &actor) {
   request.set_force_kill(true);
   request.set_no_restart(true);
   RAY_UNUSED(actor_client->KillActor(request, nullptr));
+}
+
+void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor) {
+  if (destroyed_actors_.size() >=
+      RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
+    destroyed_actors_.erase(destroyed_actors_.begin());
+  }
+  destroyed_actors_.emplace(actor->GetActorID(), actor);
 }
 
 }  // namespace gcs

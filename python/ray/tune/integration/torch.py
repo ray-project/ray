@@ -219,9 +219,9 @@ def DistributedTrainableCreator(
             placement timeouts if forcing colocation.
 
     Returns:
-        A trainable class object that can be passed to Tune. Resources
-            are automatically set within the object, so users do
-            not need to set `resources_per_trainable`.
+        type(Trainable): A trainable class object that can be passed
+        to Tune. Resources are automatically set within the object, so
+        users do not need to set `resources_per_trainable`.
 
     Example:
 
@@ -279,8 +279,9 @@ def distributed_checkpoint_dir(
         disable (bool): Disable for prototyping.
 
     Yields:
-        path (str): A path to a directory. This path will be used
-            again when invoking the training_function.
+        str: A path to a directory. This path will be used
+        again when invoking the training_function.
+
     Example:
 
     .. code-block:: python

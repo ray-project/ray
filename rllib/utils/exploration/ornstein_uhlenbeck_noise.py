@@ -1,9 +1,12 @@
 import numpy as np
+from typing import Optional, Union
 
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    get_variable
+    get_variable, TensorType
+from ray.rllib.utils.schedules import Schedule
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -24,14 +27,14 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                  action_space,
                  *,
                  framework: str,
-                 ou_theta=0.15,
-                 ou_sigma=0.2,
-                 ou_base_scale=0.1,
-                 random_timesteps=1000,
-                 initial_scale=1.0,
-                 final_scale=0.02,
-                 scale_timesteps=10000,
-                 scale_schedule=None,
+                 ou_theta: float = 0.15,
+                 ou_sigma: float = 0.2,
+                 ou_base_scale: float = 0.1,
+                 random_timesteps: int = 1000,
+                 initial_scale: float = 1.0,
+                 final_scale: float = 0.02,
+                 scale_timesteps: int = 10000,
+                 scale_schedule: Optional[Schedule] = None,
                  **kwargs):
         """Initializes an Ornstein-Uhlenbeck Exploration object.
 
@@ -82,7 +85,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             device=self.device)
 
     @override(GaussianNoise)
-    def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
+    def _get_tf_exploration_action_op(self, action_dist: ActionDistribution,
+                                      explore: Union[bool, TensorType],
+                                      timestep: Union[int, TensorType]):
         ts = timestep if timestep is not None else self.last_timestep
         scale = self.scale_schedule(ts)
 
@@ -143,7 +148,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 return action, logp
 
     @override(GaussianNoise)
-    def _get_torch_exploration_action(self, action_dist, explore, timestep):
+    def _get_torch_exploration_action(self, action_dist: ActionDistribution,
+                                      explore: bool,
+                                      timestep: Union[int, TensorType]):
         # Set last timestep or (if not given) increase by one.
         self.last_timestep = timestep if timestep is not None else \
             self.last_timestep + 1
