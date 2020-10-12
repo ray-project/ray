@@ -1,4 +1,5 @@
 from gym.spaces import Space
+import numpy as np
 from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -74,7 +75,10 @@ class GaussianNoise(Exploration):
 
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(
-            0, framework=self.framework, tf_name="timestep")
+            np.array(0, np.int64),
+            framework=self.framework,
+            tf_name="timestep",
+            dtype=np.int64)
 
         # Build the tf-info-op.
         if self.framework in ["tf2", "tf", "tfe"]:

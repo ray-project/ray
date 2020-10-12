@@ -1431,6 +1431,13 @@ py_test(
     args = ["TestSupportedSpacesEvolutionAlgos"]
 )
 
+py_test(
+    name = "tests/test_timesteps",
+    tags = ["tests_dir", "tests_dir_T"],
+    size = "small",
+    srcs = ["tests/test_timesteps.py"]
+)
+
 # --------------------------------------------------------------------
 # examples/ directory
 #
