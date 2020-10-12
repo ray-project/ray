@@ -4,10 +4,11 @@ RecSim is a configurable recommender systems simulation platform.
 Source: https://github.com/google-research/recsim
 """
 
-import math
-from typing import List, OrderedDict
+from collections import OrderedDict
+from typing import List
 
 import gym
+import numpy as np
 from gym import spaces
 from recsim.environments import interest_evolution
 
@@ -83,7 +84,7 @@ class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
                 f"is not supported by {self.__class__.__name__}")
         self.action_space_dimensions = env.action_space.nvec
         self.action_space = spaces.Discrete(
-            math.prod(self.action_space_dimensions))
+            np.prod(self.action_space_dimensions))
 
     def action(self, action: int) -> List[int]:
         """Convert a Discrete action to a MultiDiscrete action"""

@@ -574,7 +574,7 @@ class TorchTrainer:
     def as_trainable(cls, *args, **kwargs):
         """Creates a BaseTorchTrainable class compatible with Tune.
 
-        Any configuration parameters will be overriden by the Tune
+        Any configuration parameters will be overridden by the Tune
         Trial configuration. You can also subclass the provided Trainable
         to implement your own iterative optimization routine.
 
@@ -669,7 +669,7 @@ class BaseTorchTrainable(Trainable):
 
         You may want to override this if using a custom LR scheduler.
         """
-        if self._is_overriden("_train"):
+        if self._is_overridden("_train"):
             raise DeprecationWarning(
                 "Trainable._train is deprecated and will be "
                 "removed in "

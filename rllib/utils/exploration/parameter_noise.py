@@ -1,17 +1,24 @@
 from gym.spaces import Box, Discrete
 import numpy as np
+from typing import Optional, TYPE_CHECKING, Union
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.framework import get_variable
+from ray.rllib.utils.framework import get_variable, try_import_tf, \
+    try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
+from ray.rllib.utils.typing import TensorType
+
+if TYPE_CHECKING:
+    from ray.rllib.policy.policy import Policy
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -36,9 +43,9 @@ class ParameterNoise(Exploration):
                  framework: str,
                  policy_config: dict,
                  model: ModelV2,
-                 initial_stddev=1.0,
-                 random_timesteps=10000,
-                 sub_exploration=None,
+                 initial_stddev: float = 1.0,
+                 random_timesteps: int = 10000,
+                 sub_exploration: Optional[dict] = None,
                  **kwargs):
         """Initializes a ParameterNoise Exploration object.
 
@@ -139,9 +146,9 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def before_compute_actions(self,
                                *,
-                               timestep=None,
-                               explore=None,
-                               tf_sess=None):
+                               timestep: Optional[int] = None,
+                               explore: bool = None,
+                               tf_sess: Optional["tf.Session"] = None):
         explore = explore if explore is not None else \
             self.policy_config["explore"]
 
@@ -158,11 +165,10 @@ class ParameterNoise(Exploration):
             self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
-    def get_exploration_action(self,
-                               *,
-                               action_distribution,
-                               timestep,
-                               explore=True):
+    def get_exploration_action(self, *,
+                               action_distribution: ActionDistribution,
+                               timestep: Union[TensorType, int],
+                               explore: Union[TensorType, bool]):
         # Use our sub-exploration object to handle the final exploration
         # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
@@ -172,11 +178,11 @@ class ParameterNoise(Exploration):
 
     @override(Exploration)
     def on_episode_start(self,
-                         policy,
+                         policy: "Policy",
                          *,
-                         environment=None,
-                         episode=None,
-                         tf_sess=None):
+                         environment: BaseEnv = None,
+                         episode: int = None,
+                         tf_sess: Optional["tf.Session"] = None):
         # We have to delay the noise-adding step by one forward call.
         # This is due to the fact that the optimizer does it's step right
         # after the episode was reset (and hence the noise was already added!).
@@ -204,7 +210,10 @@ class ParameterNoise(Exploration):
             self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
-    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+    def postprocess_trajectory(self,
+                               policy: "Policy",
+                               sample_batch: SampleBatch,
+                               tf_sess: Optional["tf.Session"] = None):
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.

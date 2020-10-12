@@ -1026,6 +1026,13 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
+py_test(
+    name = "env/wrappers/tests/test_recsim_wrapper",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -1034,19 +1041,26 @@ sh_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_distributions",
-    tags = ["models"],
-    size = "medium",
-    srcs = ["models/tests/test_distributions.py"]
-)
-
-py_test(
     name = "test_attention_nets",
     tags = ["models"],
     size = "small",
     srcs = ["models/tests/test_attention_nets.py"]
 )
 
+py_test(
+    name = "test_convtranspose2d_stack",
+    tags = ["models"],
+    size = "small",
+    data = glob(["tests/data/images/obstacle_tower.png"]),
+    srcs = ["models/tests/test_convtranspose2d_stack.py"]
+)
+
+py_test(
+    name = "test_distributions",
+    tags = ["models"],
+    size = "medium",
+    srcs = ["models/tests/test_distributions.py"]
+)
 
 # --------------------------------------------------------------------
 # Evaluation components

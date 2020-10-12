@@ -87,6 +87,7 @@ py_test_module_list(
     "test_metrics_agent.py",
     "test_microbenchmarks.py",
     "test_mini.py",
+    "test_monitor.py",
     "test_node_manager.py",
     "test_numba.py",
     "test_queue.py",
