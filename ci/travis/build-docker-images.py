@@ -21,7 +21,7 @@ def _merge_build():
 
 
 def _release_build():
-    branch = os.environ.get("$TRAVIS_BRANCH")
+    branch = os.environ.get("TRAVIS_BRANCH")
     if not branch:
         print("Branch not found!")
         print(os.environ)
@@ -86,11 +86,16 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
                 nocache=True,
                 buildargs=build_args)
 
-            for line in output:
-                print(line)
+            full_output = ""
+            try:
+                for line in output:
+                    full_output += line.decode('utf-8')
+            except Exception as e:
+                print(f"FAILURE with error {e}")
 
             if len(DOCKER_CLIENT.api.images(tagged_name)) == 0:
-                print("ERROR building: ", tagged_name)
+                print(f"ERROR building: {tagged_name} & error below:")
+                print(full_output)
                 if (i == 1):
                     raise Exception("FAILED TO BUILD IMAGE")
                 print("TRYING AGAIN")
@@ -213,14 +218,18 @@ def push_and_tag_images(push_base_images: bool):
                 full_arch_tag, date_tag if "-deps" in image else sha_tag)
             # Tag and push rayproject/<image>:<sha/date><arch_tag>
             DOCKER_CLIENT.api.tag(
-                image=full_image, repository=full_image, tag=specific_tag)
+                image=f"{full_image}:{full_arch_tag}",
+                repository=full_image,
+                tag=specific_tag)
             docker_push(full_image, specific_tag)
 
             if _release_build():
                 latest_tag = get_new_tag(full_arch_tag, "latest")
                 # Tag and push rayproject/<image>:latest<arch_tag>
                 DOCKER_CLIENT.api.tag(
-                    image=full_image, repository=full_image, tag=latest_tag)
+                    image=f"{full_image}:{full_arch_tag}",
+                    repository=full_image,
+                    tag=latest_tag)
                 docker_push(full_image, latest_tag)
 
 
