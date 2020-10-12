@@ -150,6 +150,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
         if (throwable &&
             env->IsInstanceOf(throwable,
                               java_ray_intentional_system_exit_exception_class)) {
+          env->ExceptionClear();
           return ray::Status::IntentionalSystemExit();
         }
         RAY_CHECK_JAVA_EXCEPTION(env);
