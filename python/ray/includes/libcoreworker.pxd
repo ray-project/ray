@@ -19,6 +19,7 @@ from ray.includes.unique_ids cimport (
     CTaskID,
     CObjectID,
     CPlacementGroupID,
+    CWorkerID,
 )
 from ray.includes.common cimport (
     CAddress,
