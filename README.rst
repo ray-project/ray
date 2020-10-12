@@ -97,7 +97,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray[tune]
+    $ pip install "ray[tune]"
 
 
 This example runs a parallel grid search to optimize an example objective function.
@@ -155,7 +155,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]  # also recommended: ray[debug]
+  pip install "ray[rllib]"  # also recommended: ray[debug]
 
 .. code-block:: python
 
