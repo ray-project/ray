@@ -91,7 +91,8 @@ public class ExitActorTest extends BaseTest {
     ActorHandle<ExitingActor> actor1 = Ray.actor(ExitingActor::new)
         .setMaxRestarts(10000).remote();
     int pid = actor1.task(ExitingActor::getPid).remote().get();
-    Assert.assertEquals(1, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
+    Assert.assertEquals(
+        1, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
     ActorHandle<ExitingActor> actor2;
     while (true) {
       // Create another actor which share the same process of actor 1.
@@ -101,14 +102,17 @@ public class ExitActorTest extends BaseTest {
         break;
       }
     }
-    Assert.assertEquals(2, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
-    Assert.assertEquals(2, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
+    Assert.assertEquals(
+        2, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
+    Assert.assertEquals(
+        2, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
     ObjectRef<Boolean> obj1 = actor1.task(ExitingActor::exit).remote();
     Assert.assertThrows(RayActorException.class, obj1::get);
     Assert.assertTrue(SystemUtil.isProcessAlive(pid));
     // Actor 2 shouldn't exit or be reconstructed.
     Assert.assertEquals(1, (int) actor2.task(ExitingActor::incr).remote().get());
-    Assert.assertEquals(1, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
+    Assert.assertEquals(
+        1, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
     Assert.assertEquals(pid, (int) actor2.task(ExitingActor::getPid).remote().get());
     Assert.assertTrue(SystemUtil.isProcessAlive(pid));
   }
