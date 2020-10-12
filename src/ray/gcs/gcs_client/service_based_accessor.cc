@@ -706,6 +706,22 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
   }
 }
 
+Status ServiceBasedNodeInfoAccessor::AsyncGetAllHeartbeat(
+    const MultiItemCallback<rpc::HeartbeatTableData> &callback) {
+  rpc::GetAllHeartbeatRequest request;
+  client_impl_->GetGcsRpcClient().GetAllHeartbeat(
+      request, [callback](const Status &status, const rpc::GetAllHeartbeatReply &reply) {
+        std::vector<rpc::HeartbeatTableData> result;
+        result.reserve((reply.heartbeat_list_size()));
+        for (int index = 0; index < reply.heartbeat_list_size(); ++index) {
+          result.emplace_back(reply.heartbeat_list(index));
+        }
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting heartbeat of all nodes, status = " << status;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
     const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
     const StatusCallback &done) {

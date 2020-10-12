@@ -250,6 +250,24 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
 
+  if (RayConfig::instance().light_heartbeat_enabled()) {
+    auto iter = node_heartbeats_.find(node_id);
+    if (iter != node_heartbeats_.end()) {
+      if (request.heartbeat().resources_total_size() > 0) {
+        (*iter->second.mutable_resources_total()) = request.heartbeat().resources_total();
+      }
+      if (request.heartbeat().resources_available_changed()) {
+        (*iter->second.mutable_resources_available()) =
+            request.heartbeat().resources_available();
+      }
+      if (request.heartbeat().resource_load_changed()) {
+        (*iter->second.mutable_resource_load()) = request.heartbeat().resource_load();
+      }
+    } else {
+      node_heartbeats_[node_id] = *heartbeat_data;
+    }
+  }
+
   // Update node realtime resources.
   UpdateNodeRealtimeResources(node_id, *heartbeat_data);
 
@@ -381,6 +399,15 @@ void GcsNodeManager::HandleGetAllAvailableResources(
       (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
     }
     reply->add_resources_list()->CopyFrom(resource);
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &request,
+                                           rpc::GetAllHeartbeatReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
+  for (auto iter : node_heartbeats_) {
+    reply->add_heartbeat_list()->CopyFrom(iter.second);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }

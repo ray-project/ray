@@ -574,6 +574,14 @@ class NodeInfoAccessor {
   /// Resend heartbeat when GCS restarts from a failure.
   virtual void AsyncReReportHeartbeat() = 0;
 
+  /// Get heartbeat of all nodes from GCS asynchronously. Only used when light heartbeat
+  /// enabled.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetAllHeartbeat(
+      const MultiItemCallback<rpc::HeartbeatTableData> &callback) = 0;
+
   /// Subscribe to the heartbeat of each node from GCS.
   ///
   /// \param subscribe Callback that will be called each time when heartbeat is updated.

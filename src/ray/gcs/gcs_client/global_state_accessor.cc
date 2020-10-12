@@ -174,6 +174,15 @@ std::string GlobalStateAccessor::GetInternalConfig() {
   return config_proto.SerializeAsString();
 }
 
+std::vector<std::string> GlobalStateAccessor::GetAllHeartbeat() {
+  std::vector<std::string> heartbeat_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllHeartbeat(
+      TransformForMultiItemCallback<rpc::HeartbeatTableData>(heartbeat_data, promise)));
+  promise.get_future().get();
+  return heartbeat_data;
+}
+
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
   std::vector<std::string> actor_table_data;
   std::promise<bool> promise;

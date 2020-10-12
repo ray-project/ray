@@ -78,6 +78,12 @@ cdef class GlobalStateAccessor:
             return c_string(object_info.get().data(), object_info.get().size())
         return None
 
+    def get_all_heartbeat(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllHeartbeat()
+        return result
+
     def get_actor_table(self):
         cdef c_vector[c_string] result
         with nogil:

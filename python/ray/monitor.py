@@ -13,6 +13,7 @@ import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.utils import binary_to_hex, setup_logger
+from ray._raylet import GlobalStateAccessor
 import redis
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,9 @@ class Monitor:
             redis_address, redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
+        self.global_state_accessor = GlobalStateAccessor(
+            redis_address, redis_password, False)
+        self.global_state_accessor.connect()
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
@@ -49,6 +53,7 @@ class Monitor:
         self.raylet_id_to_ip_map = {}
         self.light_heartbeat_enabled = ray._config.light_heartbeat_enabled()
         self.load_metrics = LoadMetrics()
+        self.load_metrics_initialized = False
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
                                                  self.load_metrics)
@@ -66,6 +71,9 @@ class Monitor:
             primary_subscribe_client = None
         if primary_subscribe_client is not None:
             primary_subscribe_client.close()
+        if self.global_state_accessor is not None:
+            self.global_state_accessor.disconnect()
+            self.global_state_accessor = None
 
     def subscribe(self, channel):
         """Subscribe to the given channel on the primary Redis shard.
@@ -88,6 +96,10 @@ class Monitor:
             Exception: An exception is raised if the subscription fails.
         """
         self.primary_subscribe_client.psubscribe(pattern)
+
+        if pattern == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN and \
+            not self.load_metrics_initialized:
+            self.init_load_metric()
 
     def parse_resource_demands(self, resource_load_by_shape):
         """Handle the message.resource_load_by_shape protobuf for the demand
@@ -114,6 +126,25 @@ class Monitor:
         except Exception as e:
             logger.exception(e)
         return waiting_bundles, infeasible_bundles
+
+    def init_load_metric(self):
+        all_heartbeat = self.global_state_accessor.get_all_heartbeat()
+        for message in all_heartbeat:
+            heartbeat_message = ray.gcs_utils.HeartbeatTableData.FromString(
+                message)
+            resource_load = dict(heartbeat_message.resource_load)
+            total_resources = dict(heartbeat_message.resources_total)
+            available_resources = dict(heartbeat_message.resources_available)
+
+            client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
+            ip = self.raylet_id_to_ip_map.get(client_id)
+            if ip:
+                self.load_metrics.update(ip, total_resources, True,
+                                         available_resources, True,
+                                         resource_load)
+            else:
+                logger.warning(
+                    f"Monitor: could not find ip for client {client_id}")
 
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
