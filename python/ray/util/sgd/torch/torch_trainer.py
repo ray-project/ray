@@ -601,7 +601,7 @@ class TorchTrainer:
         Args:
             tune_func (Callable[[TorchTrainer, int], Dict]): A function that
                 defines a single step of the objective function for tune.
-                Function should accept two arguments, the first one is an
+                It accepts two arguments: the first one is an
                 instance of your TorchTrainer, and the second one is the
                 current iteration. If None is passed in, default objective
                 will be used: run 1 epoch of training, 1 epoch of
