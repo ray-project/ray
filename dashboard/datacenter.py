@@ -66,7 +66,6 @@ class DataOrganizer:
         node_ip = DataSource.node_id_to_ip[node_id]
         node_logs = DataSource.ip_and_pid_to_logs.get(node_ip, {})
 
-        logger.error(f"node_logs={node_logs}")
         node_errs = DataSource.ip_and_pid_to_errors.get(node_ip, {})
         worker_id_to_raylet_info = {}
         worker_id_to_process_info = {}
