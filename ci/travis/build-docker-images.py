@@ -89,7 +89,7 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
             full_output = ""
             try:
                 for line in output:
-                    full_output += line.decode('utf-8')
+                    full_output += line.decode("utf-8")
             except Exception as e:
                 print(f"FAILURE with error {e}")
 
