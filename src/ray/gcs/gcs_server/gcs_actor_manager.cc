@@ -1119,7 +1119,9 @@ void GcsActorManager::KillActor(const std::shared_ptr<GcsActor> &actor) {
 void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor) {
   if (destroyed_actors_.size() >=
       RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
-    destroyed_actors_.erase(sorted_destroyed_actor_list_.begin()->first);
+    const auto &actor_id = sorted_destroyed_actor_list_.begin()->first;
+    RAY_CHECK_OK(gcs_table_storage_->ActorTable().Delete(actor_id, nullptr));
+    destroyed_actors_.erase(actor_id);
     sorted_destroyed_actor_list_.erase(sorted_destroyed_actor_list_.begin());
   }
   destroyed_actors_.emplace(actor->GetActorID(), actor);
