@@ -110,12 +110,12 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(action_space: gym.Space,
-                        config: ModelConfigDict,
-                        dist_type: Optional[
-                            Union[str, Type[ActionDistribution]]] = None,
-                        framework: str = "tf",
-                        **kwargs) -> (type, int):
+    def get_action_dist(
+            action_space: gym.Space,
+            config: ModelConfigDict,
+            dist_type: Optional[Union[str, Type[ActionDistribution]]] = None,
+            framework: str = "tf",
+            **kwargs) -> (type, int):
         """Returns a distribution class and size for the given action space.
 
         Args:
@@ -145,7 +145,7 @@ class ModelCatalog:
                 "Using custom action distribution {}".format(action_dist_name))
             dist_cls = _global_registry.get(RLLIB_ACTION_DIST,
                                             action_dist_name)
-            return ModelCatalog._get_multi_action_distribution(
+            dist_cls = ModelCatalog._get_multi_action_distribution(
                 dist_cls, action_space, {}, framework)
 
         # Dist_type is given directly as a class.
@@ -178,9 +178,10 @@ class ModelCatalog:
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
                 isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
-            return ModelCatalog._get_multi_action_distribution((
-                MultiActionDistribution if framework == "tf" else
-                TorchMultiActionDistribution), action_space, config, framework)
+            return ModelCatalog._get_multi_action_distribution(
+                (MultiActionDistribution
+                 if framework == "tf" else TorchMultiActionDistribution),
+                action_space, config, framework)
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
             if framework == "torch":
@@ -418,7 +419,8 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor(env: gym.Env, options: dict = None) -> Preprocessor:
+    def get_preprocessor(env: gym.Env,
+                         options: Optional[dict] = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given env.
 
         This is a wrapper for get_preprocessor_for_space().
@@ -550,7 +552,8 @@ class ModelCatalog:
             return VisionNet
 
     @staticmethod
-    def _get_multi_action_distribution(dist_class, action_space, config, framework):
+    def _get_multi_action_distribution(dist_class, action_space, config,
+                                       framework):
         # In case the custom distribution is a child of MultiActionDistr.
         # If users want to completely ignore the suggested child
         # distributions, they should simply do so in their custom class'
@@ -568,4 +571,4 @@ class ModelCatalog:
                 action_space=action_space,
                 child_distributions=child_dists,
                 input_lens=input_lens), int(sum(input_lens))
-
+        return dist_class
