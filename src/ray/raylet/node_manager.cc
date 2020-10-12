@@ -496,10 +496,8 @@ void NodeManager::Heartbeat() {
 }
 
 void NodeManager::DoLocalGC() {
-  auto all_workers =
-      worker_pool_.GetAllRegisteredWorkers(false /* filter_dead_workers */);
-  for (const auto &driver :
-       worker_pool_.GetAllRegisteredDrivers(false /* filter_dead_drivers */)) {
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers();
+  for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
     all_workers.push_back(driver);
   }
   RAY_LOG(WARNING) << "Sending local GC request to " << all_workers.size()
@@ -3297,10 +3295,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   // and return the information from HandleNodesStatsRequest. The caller of
   // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers(true /* filter_dead_worker */);
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
   absl::flat_hash_set<WorkerID> driver_ids;
   for (auto driver :
-       worker_pool_.GetAllRegisteredDrivers(true /* filter_dead_driver */)) {
+       worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
   }
