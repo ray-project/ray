@@ -58,7 +58,7 @@ class EpsilonGreedy(Exploration):
             np.array(0, np.int64),
             framework=framework,
             tf_name="timestep",
-            dtype=tf.int64)
+            dtype=np.int64)
 
         # Build the tf-info-op.
         if self.framework in ["tf2", "tf", "tfe"]:

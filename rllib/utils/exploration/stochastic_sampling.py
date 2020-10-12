@@ -57,7 +57,7 @@ class StochasticSampling(Exploration):
             np.array(0, np.int64),
             framework=self.framework,
             tf_name="timestep",
-            dtype=tf.int64)
+            dtype=np.int64)
 
     @override(Exploration)
     def get_exploration_action(self,
