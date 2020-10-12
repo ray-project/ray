@@ -574,7 +574,7 @@ def test_get_nodes_to_launch_max_launch_concurrency():
 
     scheduler = ResourceDemandScheduler(provider, new_types, 30)
 
-    to_launch = scheduler.get_nodes_to_launch([], {}, [], [])
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], [], [])
     # Respects min_workers despite concurrency limitation.
     assert to_launch == {"p2.8xlarge": 4}
 
