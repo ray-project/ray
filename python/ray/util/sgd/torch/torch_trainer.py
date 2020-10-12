@@ -619,8 +619,7 @@ class TorchTrainer:
                 raise ValueError("tune_func must take in exactly 2 "
                                  "arguments. The passed in function "
                                  "currently takes in {} "
-                                 "args".format(
-                    str(len(args.parameters))))
+                                 "args".format(str(len(args.parameters))))
 
         class TorchTrainable(BaseTorchTrainable):
             @classmethod
@@ -724,12 +723,10 @@ class BaseTorchTrainable(Trainable):
     def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
         trainer_checkpoint_path = os.path.join(checkpoint_dir,
-                                           "trainer.checkpoint")
+                                               "trainer.checkpoint")
         self.trainer.save(trainer_checkpoint_path)
         metadata_path = os.path.join(checkpoint_dir, "metadata.checkpoint")
-        metadata_dict = {
-            "iter": self._iter
-        }
+        metadata_dict = {"iter": self._iter}
         torch.save(metadata_dict, metadata_path)
         return checkpoint_dir
 
