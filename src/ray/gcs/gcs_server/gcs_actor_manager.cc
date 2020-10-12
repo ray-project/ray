@@ -935,76 +935,71 @@ void GcsActorManager::SchedulePendingActors() {
   }
 }
 
-void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
-  RAY_LOG(INFO) << "Loading initial data.";
-  auto callback = [this,
-                   done](const std::unordered_map<ActorID, ActorTableData> &result) {
-    std::unordered_map<NodeID, std::vector<WorkerID>> node_to_workers;
-    for (auto &item : result) {
-      auto actor = std::make_shared<GcsActor>(item.second);
-      if (item.second.state() != ray::rpc::ActorTableData::DEAD) {
-        registered_actors_.emplace(item.first, actor);
+void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
+  const auto &jobs = gcs_init_data.Jobs();
+  std::unordered_map<NodeID, std::vector<WorkerID>> node_to_workers;
+  for (const auto &entry : gcs_init_data.Actors()) {
+    auto job_iter = jobs.find(entry.first.JobId());
+    auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
+    auto actor = std::make_shared<GcsActor>(entry.second);
+    if (entry.second.state() != ray::rpc::ActorTableData::DEAD && !is_job_dead) {
+      registered_actors_.emplace(entry.first, actor);
 
-        if (!actor->GetName().empty()) {
-          named_actors_.emplace(actor->GetName(), actor->GetActorID());
-        }
-
-        if (item.second.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
-          const auto &owner = actor->GetOwnerAddress();
-          const auto &owner_node = NodeID::FromBinary(owner.raylet_id());
-          const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
-          RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
-                        .emplace(actor->GetActorID())
-                        .second);
-        } else if (item.second.state() == ray::rpc::ActorTableData::ALIVE) {
-          created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
-                                                      actor->GetActorID());
-        }
-
-        if (!actor->IsDetached()) {
-          // This actor is owned. Send a long polling request to the actor's
-          // owner to determine when the actor should be removed.
-          PollOwnerForActorOutOfScope(actor);
-        }
-
-        if (!actor->GetWorkerID().IsNil()) {
-          RAY_CHECK(!actor->GetNodeID().IsNil());
-          node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
-        }
-      } else {
-        destroyed_actors_.emplace(item.first, actor);
-        sorted_destroyed_actor_list_.emplace_back(item.first,
-                                                  (int64_t)item.second.timestamp());
+      if (!actor->GetName().empty()) {
+        named_actors_.emplace(actor->GetName(), actor->GetActorID());
       }
-    }
-    sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
-                                         const std::pair<ActorID, int64_t> &right) {
-      return left.second < right.second;
-    });
 
-    // Notify raylets to release unused workers.
-    gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
-
-    RAY_LOG(DEBUG) << "The number of registered actors is " << registered_actors_.size()
-                   << ", and the number of created actors is " << created_actors_.size();
-    for (auto &item : registered_actors_) {
-      auto &actor = item.second;
-      if (actor->GetState() == ray::rpc::ActorTableData::PENDING_CREATION ||
-          actor->GetState() == ray::rpc::ActorTableData::RESTARTING) {
-        // We should not reschedule actors in state of `ALIVE`.
-        // We could not reschedule actors in state of `DEPENDENCIES_UNREADY` because the
-        // dependencies of them may not have been resolved yet.
-        RAY_LOG(INFO) << "Rescheduling a non-alive actor, actor id = "
-                      << actor->GetActorID() << ", state = " << actor->GetState()
-                      << ", job id = " << actor->GetActorID().JobId();
-        gcs_actor_scheduler_->Reschedule(actor);
+      if (entry.second.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+        const auto &owner = actor->GetOwnerAddress();
+        const auto &owner_node = NodeID::FromBinary(owner.raylet_id());
+        const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
+        RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
+                      .emplace(actor->GetActorID())
+                      .second);
+      } else if (entry.second.state() == ray::rpc::ActorTableData::ALIVE) {
+        created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
+                                                    actor->GetActorID());
       }
-    }
 
-    RAY_LOG(INFO) << "Finished loading initial data.";
-    done();
-  };
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetAll(callback));
+      if (!actor->IsDetached()) {
+        // This actor is owned. Send a long polling request to the actor's
+        // owner to determine when the actor should be removed.
+        PollOwnerForActorOutOfScope(actor);
+      }
+
+      if (!actor->GetWorkerID().IsNil()) {
+        RAY_CHECK(!actor->GetNodeID().IsNil());
+        node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
+      }
+    } else {
+      destroyed_actors_.emplace(entry.first, actor);
+      sorted_destroyed_actor_list_.emplace_back(entry.first,
+                                                (int64_t)entry.second.timestamp());
+    }
+  }
+  sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
+                                       const std::pair<ActorID, int64_t> &right) {
+    return left.second < right.second;
+  });
+
+  // Notify raylets to release unused workers.
+  gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
+
+  RAY_LOG(DEBUG) << "The number of registered actors is " << registered_actors_.size()
+                 << ", and the number of created actors is " << created_actors_.size();
+  for (auto &item : registered_actors_) {
+    auto &actor = item.second;
+    if (actor->GetState() == ray::rpc::ActorTableData::PENDING_CREATION ||
+        actor->GetState() == ray::rpc::ActorTableData::RESTARTING) {
+      // We should not reschedule actors in state of `ALIVE`.
+      // We could not reschedule actors in state of `DEPENDENCIES_UNREADY` because the
+      // dependencies of them may not have been resolved yet.
+      RAY_LOG(INFO) << "Rescheduling a non-alive actor, actor id = "
+                    << actor->GetActorID() << ", state = " << actor->GetState()
+                    << ", job id = " << actor->GetActorID().JobId();
+      gcs_actor_scheduler_->Reschedule(actor);
+    }
+  }
 }
 
 void GcsActorManager::OnJobFinished(const JobID &job_id) {

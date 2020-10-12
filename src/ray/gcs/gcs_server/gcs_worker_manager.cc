@@ -146,5 +146,11 @@ void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &requ
   }
 }
 
+void GcsWorkerManager::AddWorkerDeadListener(
+    std::function<void(std::shared_ptr<WorkerTableData>)> listener) {
+  RAY_CHECK(listener != nullptr);
+  worker_dead_listeners_.emplace_back(std::move(listener));
+}
+
 }  // namespace gcs
 }  // namespace ray

@@ -284,24 +284,17 @@ const ObjectLocationInfo GcsObjectManager::GenObjectLocationInfo(
   return object_data;
 }
 
-void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
-  RAY_LOG(INFO) << "Loading initial data.";
-  auto callback = [this,
-                   done](const std::unordered_map<ObjectID, ObjectLocationInfo> &result) {
-    absl::flat_hash_map<NodeID, ObjectSet> node_to_objects;
-    for (auto &item : result) {
-      for (const auto &loc : item.second.locations()) {
-        node_to_objects[NodeID::FromBinary(loc.manager())].insert(item.first);
-      }
+void GcsObjectManager::Initialize(const GcsInitData &gcs_init_data) {
+  absl::flat_hash_map<NodeID, ObjectSet> node_to_objects;
+  for (const auto &item : gcs_init_data.Objects()) {
+    for (const auto &loc : item.second.locations()) {
+      node_to_objects[NodeID::FromBinary(loc.manager())].insert(item.first);
     }
+  }
 
-    for (auto &item : node_to_objects) {
-      AddObjectsLocation(item.first, item.second);
-    }
-    RAY_LOG(INFO) << "Finished loading initial data.";
-    done();
-  };
-  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
+  for (auto &item : node_to_objects) {
+    AddObjectsLocation(item.first, item.second);
+  }
 }
 
 }  // namespace gcs
