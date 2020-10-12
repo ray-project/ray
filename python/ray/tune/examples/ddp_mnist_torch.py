@@ -84,4 +84,4 @@ if __name__ == "__main__":
         trainable_cls,
         num_samples=4,
         stop={"training_iteration": 10},
-        queue_trials=True)
+        queue_trials=False)
