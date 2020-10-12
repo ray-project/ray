@@ -462,8 +462,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   auto iter = registered_actors_.find(actor_id);
   if (iter == registered_actors_.end()) {
-    RAY_LOG(INFO) << "Actor " << actor_id
-                  << " may be already destroyed, job id = " << actor_id.JobId();
+    RAY_LOG(DEBUG) << "Actor " << actor_id
+                   << " may be already destroyed, job id = " << actor_id.JobId();
     return Status::Invalid("Actor may be already destroyed.");
   }
 
@@ -787,8 +787,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
   if (actor == nullptr) {
-    RAY_LOG(INFO) << "Actor is destroyed before reconstruction, actor id = " << actor_id
-                  << ", job id = " << actor_id.JobId();
+    RAY_LOG(DEBUG) << "Actor is destroyed before reconstruction, actor id = " << actor_id
+                   << ", job id = " << actor_id.JobId();
     return;
   }
   auto node_id = actor->GetNodeID();
@@ -1084,8 +1084,8 @@ void GcsActorManager::RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &act
 void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &actor) {
   const auto &actor_id = actor->GetActorID();
   const auto &owner_id = actor->GetOwnerID();
-  RAY_LOG(INFO) << "Erasing actor " << actor_id << " owned by " << owner_id
-                << ", job id = " << actor_id.JobId();
+  RAY_LOG(DEBUG) << "Erasing actor " << actor_id << " owned by " << owner_id
+                 << ", job id = " << actor_id.JobId();
 
   const auto &owner_node_id = actor->GetOwnerNodeID();
   auto &node = owners_[owner_node_id];
