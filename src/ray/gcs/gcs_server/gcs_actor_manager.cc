@@ -966,7 +966,8 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
         }
       } else {
         destroyed_actors_.emplace(item.first, actor);
-        sorted_destroyed_actor_list_.emplace_back(item.first, item.second.timestamp());
+        sorted_destroyed_actor_list_.emplace_back(item.first,
+                                                  (int64_t)item.second.timestamp());
       }
     }
     sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
