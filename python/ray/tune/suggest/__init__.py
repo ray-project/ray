@@ -76,6 +76,7 @@ def create_searcher(
 
     SEARCH_ALG_IMPORT = {
         "variant_generator": _import_variant_generator,
+        "random": _import_variant_generator,
         "ax": _import_ax_search,
         "dragonfly": _import_dragonfly_search,
         "skopt": _import_skopt_search,
