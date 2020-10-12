@@ -1,4 +1,5 @@
 import datetime
+import functools
 import glob
 import os
 import re
@@ -11,6 +12,7 @@ from typing import List
 
 import docker
 
+print = functools.partial(print, file=sys.stderr)
 DOCKER_USERNAME = "raytravisbot"
 DOCKER_CLIENT = None
 PYTHON_WHL_VERSION = "cp37m"
