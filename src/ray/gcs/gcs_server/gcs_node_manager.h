@@ -246,6 +246,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
 
  private:
+  /// Add the dead node to the cache. If the cache is full, the earliest dead node is
+  /// evicted.
+  ///
+  /// \param node The node which is dead.
+  void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
+
   /// The main event loop for node failure detector.
   boost::asio::io_service &main_io_service_;
   /// Detector to detect the failure of node.
@@ -256,6 +262,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
+  /// The nodes are sorted according to the timestamp, and the oldest is at the head of
+  /// the list.
+  std::list<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
   /// Cluster resources.
   absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
   /// Listeners which monitors the addition of nodes.

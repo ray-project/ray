@@ -252,8 +252,6 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
   // Check if we can find committed bundle locations.
   const auto &maybe_bundle_locations =
       committed_bundle_location_index_.GetBundleLocations(placement_group_id);
-  // If bundle location has been already removed, it means bundles
-  // are already destroyed. Do nothing.
   if (maybe_bundle_locations.has_value()) {
     committed_bundle_locations = maybe_bundle_locations.value();
   }
@@ -267,6 +265,8 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
   }
 
   // Cancel all resource reservation.
+  RAY_LOG(INFO) << "Cancelling all bundles of a placement group, id is "
+                << placement_group_id;
   for (const auto &iter : *(committed_bundle_locations)) {
     auto &bundle_spec = iter.second.second;
     auto &node_id = iter.second.first;
@@ -296,6 +296,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
     callback(Status::NotFound("Node is already dead."));
     return;
   }
+
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
   RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
@@ -323,6 +324,7 @@ void GcsPlacementGroupScheduler::CommitResources(
   RAY_CHECK(node.has_value());
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
+
   RAY_LOG(DEBUG) << "Committing resource to a node " << node_id
                  << " for a bundle: " << bundle->DebugString();
   lease_client->CommitBundleResources(
@@ -353,6 +355,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
   RAY_LOG(DEBUG) << "Cancelling the resource reserved for bundle: "
                  << bundle_spec->DebugString() << " at node " << node_id;
   const auto return_client = GetLeaseClientFromNode(node.value());
+
   return_client->CancelResourceReserve(
       *bundle_spec, [bundle_spec, node_id](const Status &status,
                                            const rpc::CancelResourceReserveReply &reply) {

@@ -1,6 +1,8 @@
 Tune: Scalable Hyperparameter Tuning
 ====================================
 
+.. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
+
 .. image:: /images/tune.png
     :scale: 30%
     :align: center
@@ -16,8 +18,6 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 .. _`Ray Serve`: serve/index.html
 
 **Want to get started?** Head over to the :doc:`Key Concepts page </tune/key-concepts>`.
-
-.. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
 .. tip:: Join the `Ray community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray Tune (and other Ray libraries)!
 

@@ -259,6 +259,8 @@ message GcsNodeInfo {
 
   // The port at which the node will expose metrics to.
   int32 metrics_export_port = 9;
+  // Timestamp that the node is dead.
+  int64 timestamp = 10;
 }
 
 // Represents the demand for a particular resource shape.
