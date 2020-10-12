@@ -98,7 +98,7 @@ class Monitor:
         self.primary_subscribe_client.psubscribe(pattern)
 
         if pattern == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN and \
-            not self.load_metrics_initialized:
+                not self.load_metrics_initialized:
             self.init_load_metric()
 
     def parse_resource_demands(self, resource_load_by_shape):
