@@ -66,7 +66,7 @@ def tune_example(operator_cls, num_workers=1, use_gpu=False):
 
 # __torch_tune_manual_lr_example__
 def tune_example_manual(operator_cls, num_workers=1, use_gpu=False):
-    def tune_func(trainer, iter):
+    def step(trainer, info: dict):
         """Define a custom training loop for tune.
          This is needed because we want to manually update our scheduler.
          """
@@ -78,7 +78,7 @@ def tune_example_manual(operator_cls, num_workers=1, use_gpu=False):
         return all_stats
 
     TorchTrainable = TorchTrainer.as_trainable(
-        tune_func=tune_func,
+        tune_func=step,
         training_operator_cls=operator_cls,
         num_workers=num_workers,
         use_gpu=use_gpu,

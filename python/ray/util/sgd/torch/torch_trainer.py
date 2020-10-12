@@ -572,7 +572,7 @@ class TorchTrainer:
         self.worker_group = DeactivatedWorkerGroup()
 
     @classmethod
-    def as_trainable(cls, *args, tune_func=None, **kwargs):
+    def as_trainable(cls, *args, step=None, **kwargs):
         """Creates a BaseTorchTrainable class compatible with Tune.
 
         Any configuration parameters will be overridden by the Tune
@@ -599,18 +599,28 @@ class TorchTrainer:
             )
 
         Args:
-            tune_func (Callable[[TorchTrainer, int], Dict]): A function that
-                defines a single step of the objective function for tune.
+            step (Callable[[TorchTrainer, Dict], Dict]): A function
+                that defines a single step of training to be used for Ray Tune.
                 It accepts two arguments: the first one is an
-                instance of your TorchTrainer, and the second one is the
-                current iteration. If None is passed in, default objective
-                will be used: run 1 epoch of training, 1 epoch of
-                validation, and report both results to tune. Passing in a
-                tune_func is useful to define custom objective functions for
-                example if you need to manually update the scheduler or want to
-                run more than 1 training epoch for each tune iteration.
+                instance of your TorchTrainer, and the second one is a info
+                dictionary, containing information about the Trainer
+                state. If no ``step`` function is passed in,
+                the default step function will be used: run 1 epoch of
+                training, 1 epoch of validation, and report both results to
+                tune. Passing in a custom ``step`` is useful to define
+                custom objective functions, for example if you need to
+                manually update the scheduler or want to run more than 1
+                training epoch for each tune iteration.
 
         """
+        if step is not None:
+            args = inspect.signature(step)
+            if not len(args.parameters) == 2:
+                raise ValueError("tune_func must take in exactly 2 "
+                                 "arguments. The passed in function "
+                                 "currently takes in {} "
+                                 "args".format(
+                    str(len(args.parameters))))
 
         class TorchTrainable(BaseTorchTrainable):
             @classmethod
@@ -640,15 +650,8 @@ class TorchTrainer:
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
 
             def step(self):
-                if tune_func is not None:
-                    args = inspect.signature(tune_func)
-                    if not len(args.parameters) == 2:
-                        raise ValueError("tune_func must take in exactly 2 "
-                                         "arguments. The passed in function "
-                                         "currently takes in {} "
-                                         "args".format(
-                                             str(len(args.parameters))))
-                    output = tune_func(self._trainer, self._iter)
+                if step is not None:
+                    output = step(self._trainer, self._iter)
                     self._iter += 1
                     return output
                 else:
@@ -720,16 +723,27 @@ class BaseTorchTrainable(Trainable):
 
     def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
-        checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
-        self.trainer.save(checkpoint_path)
-        return checkpoint_path
+        trainer_checkpoint_path = os.path.join(checkpoint_dir,
+                                           "trainer.checkpoint")
+        self.trainer.save(trainer_checkpoint_path)
+        metadata_path = os.path.join(checkpoint_dir, "metadata.checkpoint")
+        metadata_dict = {
+            "iter": self._iter
+        }
+        torch.save(metadata_dict, metadata_path)
+        return checkpoint_dir
 
-    def load_checkpoint(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_dir):
         """Restores the trainer state.
 
         Override this if you have state external to the Trainer object.
         """
-        return self.trainer.load(checkpoint_path)
+        trainer_checkpoint_path = os.path.join(checkpoint_dir,
+                                               "trainer.checkpoint")
+        self.trainer.load(trainer_checkpoint_path)
+        metadata_path = os.path.join(checkpoint_dir, "metadata.checkpoint")
+        metadata_dict = torch.load(metadata_path)
+        self._iter = metadata_dict["iter"]
 
     def cleanup(self):
         """Shuts down the trainer."""
