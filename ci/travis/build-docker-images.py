@@ -12,7 +12,7 @@ from typing import List
 
 import docker
 
-print = functools.partial(print, file=sys.stderr)
+print = functools.partial(print, file=sys.stderr, flush=True)
 DOCKER_USERNAME = "raytravisbot"
 DOCKER_CLIENT = None
 PYTHON_WHL_VERSION = "cp37m"
@@ -93,7 +93,7 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
                 start = datetime.datetime.now()
                 current_iter = start
                 for line in output:
-                    print(line)
+                    # print(line)
                     if datetime.datetime.now(
                     ) - current_iter >= datetime.timedelta(minutes=5):
                         current_iter = datetime.datetime.now()
