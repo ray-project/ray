@@ -473,7 +473,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
-        if self.multiagent:
+        if self.multiagent and self.env is not None:
             if not ((isinstance(self.env, MultiAgentEnv)
                      or isinstance(self.env, ExternalMultiAgentEnv))
                     or isinstance(self.env, BaseEnv)):

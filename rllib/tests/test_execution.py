@@ -33,7 +33,7 @@ def make_workers(n):
     remotes = [
         RolloutWorker.as_remote().remote(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=PPOTFPolicy,
+            policy_spec=PPOTFPolicy,
             rollout_fragment_length=100) for _ in range(n)
     ]
     workers = WorkerSet._from_existing(local, remotes)
