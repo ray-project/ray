@@ -60,6 +60,8 @@ def test_actor_groups(ray_start_with_dashboard):
             # 2 __init__ tasks and 2 do_task tasks
             assert summary["numExecutedTasks"] == 4
             assert summary["stateToCount"]["ALIVE"] == 2
+            assert summary["numLogs"] == 1
+            assert summary["numErrors"] == 1
 
             entries = actor_groups["Foo"]["entries"]
             assert len(entries) == 1

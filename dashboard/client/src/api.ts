@@ -261,6 +261,8 @@ export type ActorGroupSummary = {
   avgLifetime: number;
   maxLifetime: number;
   numExecutedTasks: number;
+  numLogs: number;
+  numErrors: number;
 };
 
 export type ActorGroup = {

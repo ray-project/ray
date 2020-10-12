@@ -44,6 +44,8 @@ def _get_actor_group_stats(group):
     min_timestamp = None
     num_timestamps = 0
     sum_timestamps = 0
+    num_logs = 0
+    num_errors = 0
     now = time.time() * 1000  # convert S -> MS
     for actor in group:
         state_to_count[actor["state"]] += 1
@@ -54,6 +56,10 @@ def _get_actor_group_stats(group):
             sum_timestamps += now - actor["timestamp"]
         if "numExecutedTasks" in actor:
             executed_tasks += actor["numExecutedTasks"]
+        if "logs" in actor:
+            num_logs += len(actor["logs"])
+        if "errors" in actor:
+            num_errors += len(actor["errors"])
     if num_timestamps > 0:
         avg_lifetime = int((sum_timestamps / num_timestamps) / 1000)
         max_lifetime = int((now - min_timestamp) / 1000)
@@ -65,4 +71,6 @@ def _get_actor_group_stats(group):
         "avgLifetime": avg_lifetime,
         "maxLifetime": max_lifetime,
         "numExecutedTasks": executed_tasks,
+        "numLogs": num_logs,
+        "numErrors": num_errors,
     }

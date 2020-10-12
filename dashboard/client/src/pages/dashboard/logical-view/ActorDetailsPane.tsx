@@ -1,14 +1,13 @@
 import { Divider, Grid, makeStyles, Theme, Typography } from "@material-ui/core";
 import SpanButton from "../../../common/SpanButton";
 import React, { useState } from "react";
-import { ActorInfo, isFullActorInfo } from "../../../api";
+import { ActorInfo, isFullActorInfo, FullActorInfo } from "../../../api";
 import { sum } from "../../../common/util";
 import LabeledDatum from "../../../common/LabeledDatum";
 import ActorStateRepr from "./ActorStateRepr";
 import UsageBar from '../../../common/UsageBar';
 import { LogPane } from '../../../common/dialogs/logs/Logs';
 import { ErrorPane } from '../../../common/dialogs/errors/Errors';
-import { FullActorInfo } from '../../../../../../python/ray/new_dashboard/client/src/api';
 
 const memoryDebuggingDocLink =
   "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
@@ -143,7 +142,7 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
       }
       {isFullActorInfo(actor) && actor.errors.length > 0 &&
         <SpanButton onClick={() => setShowErrors(true) }>
-        View errors ({actor.errors.length.toLocaleString()} {actor.errors.length === 1 ? "entry" : "entries" })
+        View Errors ({actor.errors.length.toLocaleString()} {actor.errors.length === 1 ? "entry" : "entries" })
         </SpanButton>
       }
       {isFullActorInfo(actor) && showLogs &&
