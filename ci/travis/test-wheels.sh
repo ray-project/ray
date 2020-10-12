@@ -22,7 +22,7 @@ if [ -z "${BUILD_DIR}" ]; then
 fi
 TEST_DIR="${BUILD_DIR}/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
-UI_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_webui.py"
+UI_TEST_SCRIPT="${BUILD_DIR}/python/ray/new_dashboard/tests/test_dashboard.py"
 
 function retry {
   local n=1
