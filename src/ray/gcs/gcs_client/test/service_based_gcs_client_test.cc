@@ -1341,7 +1341,7 @@ TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDestroyedActors) {
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDeadNodes) {
+TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDeadNodes) {
   // Simulate the scenario of node dead.
   int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
   RegisterNodeAndMarkDead(node_count);
