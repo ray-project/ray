@@ -569,6 +569,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   RAY_CHECK(it != registered_actors_.end())
       << "Tried to destroy actor that does not exist " << actor_id;
   it->second->GetMutableActorTableData()->mutable_task_spec()->Clear();
+  it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   AddDestroyedActorToCache(it->second);
   const auto actor = std::move(it->second);
   registered_actors_.erase(it);
@@ -964,9 +965,14 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
           node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
         }
       } else {
-        AddDestroyedActorToCache(actor);
+        destroyed_actors_.emplace(item.first, actor);
+        sorted_destroyed_actor_list_.emplace_back(item.first, item.second.timestamp());
       }
     }
+    sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
+                                         const std::pair<ActorID, int64_t> &right) {
+      return left.second < right.second;
+    });
 
     // Notify raylets to release unused workers.
     gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
@@ -1113,9 +1119,12 @@ void GcsActorManager::KillActor(const std::shared_ptr<GcsActor> &actor) {
 void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor) {
   if (destroyed_actors_.size() >=
       RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
-    destroyed_actors_.erase(destroyed_actors_.begin());
+    destroyed_actors_.erase(sorted_destroyed_actor_list_.begin()->first);
+    sorted_destroyed_actor_list_.erase(sorted_destroyed_actor_list_.begin());
   }
   destroyed_actors_.emplace(actor->GetActorID(), actor);
+  sorted_destroyed_actor_list_.emplace_back(
+      actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
 }
 
 }  // namespace gcs
