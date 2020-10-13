@@ -20,7 +20,7 @@ from ray.tune.registry import register_env
 DEFAULT_CONFIG = with_common_config({})
 
 
-class RandomLegalPolicy(Policy, ABC):
+class RandomParametriclPolicy(Policy, ABC):
     """
     Just pick a random legal action
     The outputted state of the environment needs to be a dictionary with an 'action_mask' key
@@ -72,7 +72,7 @@ def execution_plan(workers: WorkerSet,
 RandomParametricTrainer = build_trainer(
     name="RandomParametric",
     default_config=DEFAULT_CONFIG,
-    default_policy=RandomLegalPolicy,
+    default_policy=RandomParametriclPolicy,
     execution_plan=execution_plan)
 
 if __name__ == "__main__":
