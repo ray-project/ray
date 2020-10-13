@@ -9,19 +9,37 @@ import pytest
 import psutil
 import ray
 
+file_system_object_spilling_config = {
+    "type": "filesystem",
+    "params": {
+        "directory_path": "/tmp"
+    }
+}
+s3_object_spilling_config = {
+    "type": "s3",
+    "params": {
+        "bucket_name": "sang-object-spilling-test"
+    }
+}
+
+
+@pytest.fixture(
+    scope="module",
+    params=[
+        file_system_object_spilling_config,
+        # s3_object_spilling_config,
+    ])
+def object_spilling_config(request):
+    yield request.param
+
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_objects_manually(shutdown_only):
+def test_spill_objects_manually(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
-        _object_spilling_config={
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        },
+        _object_spilling_config=object_spilling_config,
         _system_config={
             "object_store_full_max_retries": 0,
             "max_io_workers": 4,
@@ -66,16 +84,12 @@ def test_spill_objects_manually(shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_objects_manually_from_workers(shutdown_only):
+def test_spill_objects_manually_from_workers(object_spilling_config,
+                                             shutdown_only):
     # Limit our object store to 100 MiB of memory.
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        _object_spilling_config={
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        },
+        _object_spilling_config=object_spilling_config,
         _system_config={
             "object_store_full_max_retries": 0,
             "max_io_workers": 4,
@@ -99,16 +113,12 @@ def test_spill_objects_manually_from_workers(shutdown_only):
 
 
 @pytest.mark.skip(reason="Not implemented yet.")
-def test_spill_objects_manually_with_workers(shutdown_only):
+def test_spill_objects_manually_with_workers(object_spilling_config,
+                                             shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        _object_spilling_config={
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        },
+        _object_spilling_config=object_spilling_config,
         _system_config={
             "object_store_full_max_retries": 0,
             "max_io_workers": 4,
@@ -128,32 +138,23 @@ def test_spill_objects_manually_with_workers(shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 0,
-        "object_store_memory": 75 * 1024 * 1024,
-        "object_spilling_config": {
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        },
-        "_system_config": {
+def test_spill_remote_object(object_spilling_config, ray_start_cluster):
+    cluster = ray_start_cluster
+    # # Head node.
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        object_spilling_config=object_spilling_config,
+        _system_config={
             "object_store_full_max_retries": 0,
             "max_io_workers": 4,
-        },
-    }],
-    indirect=True)
-def test_spill_remote_object(ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+        })
+    # Worker nodes.
     cluster.add_node(
         object_store_memory=75 * 1024 * 1024,
-        object_spilling_config={
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        })
+        object_spilling_config=object_spilling_config)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
 
     @ray.remote
     def put():
