@@ -672,7 +672,7 @@ def test_tune_custom_train(ray_start_4_cpus, num_workers,
 
     TorchTrainable = TorchTrainer.as_trainable(
         **{
-            "step": custom_train_func,
+            "override_tune_step": custom_train_func,
             "training_operator_cls": Operator,
             "num_workers": num_workers,
             "use_gpu": False,

@@ -572,7 +572,7 @@ class TorchTrainer:
         self.worker_group = DeactivatedWorkerGroup()
 
     @classmethod
-    def as_trainable(cls, *args, step=None, **kwargs):
+    def as_trainable(cls, *args, override_tune_step=None, **kwargs):
         """Creates a BaseTorchTrainable class compatible with Tune.
 
         Any configuration parameters will be overridden by the Tune
@@ -599,22 +599,22 @@ class TorchTrainer:
             )
 
         Args:
-            step (Callable[[TorchTrainer, Dict], Dict]): A function
-                that defines a single step of training to be used for Ray Tune.
-                It accepts two arguments: the first one is an
+            override_tune_step (Callable[[TorchTrainer, Dict], Dict]): A
+                function to override the default training step to be used
+                for Ray Tune. It accepts two arguments: the first one is an
                 instance of your TorchTrainer, and the second one is a info
                 dictionary, containing information about the Trainer
-                state. If no ``step`` function is passed in,
-                the default step function will be used: run 1 epoch of
-                training, 1 epoch of validation, and report both results to
-                tune. Passing in a custom ``step`` is useful to define
-                custom objective functions, for example if you need to
+                state. If None is passed in, the default step function will be
+                used: run 1 epoch of training, 1 epoch of validation,
+                and report both results to Tune. Passing in
+                ``override_tune_step`` is useful to define
+                custom step functions, for example if you need to
                 manually update the scheduler or want to run more than 1
                 training epoch for each tune iteration.
 
         """
-        if step is not None:
-            args = inspect.signature(step)
+        if override_tune_step is not None:
+            args = inspect.signature(override_tune_step)
             if not len(args.parameters) == 2:
                 raise ValueError("tune_func must take in exactly 2 "
                                  "arguments. The passed in function "
@@ -649,8 +649,9 @@ class TorchTrainer:
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
 
             def step(self):
-                if step is not None:
-                    output = step(self._trainer, self._iter)
+                if override_tune_step is not None:
+                    output = override_tune_step(self._trainer,
+                                                {"iter": self._iter})
                     self._iter += 1
                     return output
                 else:
