@@ -31,6 +31,7 @@ setup_commands:
     - conda uninstall -y terminado
     - source activate tensorflow_p36 && pip install -U ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl
     - source activate tensorflow_p36 && pip install ray[rllib] ray[debug]
+    - source activate tensorflow_p36 && pip install torch==1.6 torchvision
     - source activate tensorflow_p36 && pip install boto3==1.4.8 cython==0.29.0
 
 # Command to start ray on the head node. You don't need to change this.

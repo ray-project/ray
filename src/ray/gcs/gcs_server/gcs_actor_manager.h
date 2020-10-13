@@ -353,6 +353,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param actor The actor to be killed.
   void KillActor(const std::shared_ptr<GcsActor> &actor);
 
+  /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
+  /// evicted.
+  ///
+  /// \param actor The actor to be killed.
+  void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
+
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
@@ -368,6 +374,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// All destroyed actors.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> destroyed_actors_;
+  /// The actors are sorted according to the timestamp, and the oldest is at the head of
+  /// the list.
+  std::list<std::pair<ActorID, int64_t>> sorted_destroyed_actor_list_;
   /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The actors which dependencies have not been resolved.

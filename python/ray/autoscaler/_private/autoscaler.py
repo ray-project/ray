@@ -216,7 +216,6 @@ class StandardAutoscaler:
                 self.pending_launches.breakdown(),
                 resource_demand_vector,
                 self.load_metrics.get_resource_utilization()))
-            # TODO(ekl) also enforce max launch concurrency here?
             for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
 
