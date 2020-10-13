@@ -17,7 +17,7 @@ mxnet
 nevergrad
 optuna
 pytest-remotedata>=0.3.1
-pytorch-lightning==0.10.0
+pytorch-lightning
 scikit-optimize
 sigopt
 smart_open

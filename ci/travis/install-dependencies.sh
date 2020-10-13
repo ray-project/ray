@@ -304,6 +304,9 @@ install_dependencies() {
   # Additional RaySGD test dependencies.
   if [ "${SGD_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+    # TODO: eventually have a separate requirements file for Ray SGD.
+    # Fix PTL version to 0.10 for now.
+    pip install -U pytorch-lightning==0.10.0
   fi
 
   # Additional Doc test dependencies.
