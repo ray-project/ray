@@ -1,7 +1,7 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
 from contextlib import contextmanager
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 import json
 import os
 import tempfile
@@ -62,8 +62,9 @@ def run_on_cluster(cluster_config: Union[dict, str],
                    cmd: Optional[str] = None,
                    run_env: str = "auto",
                    no_config_cache: bool = False,
-                   port_forward: Union[int, List[int]] = None,
-                   with_output: bool = False) -> str:
+                   port_forward: Union[Tuple[int, int], List[Tuple[int, int]],
+                                       None] = None,
+                   with_output: bool = False) -> Optional[str]:
     """Runs a command on the specified cluster.
 
     Args:
@@ -167,7 +168,7 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
         return commands.get_worker_node_ips(config_file)
 
 
-def request_resources(num_cpus=None, bundles=None):
+def request_resources(num_cpus=None, bundles=None) -> None:
     """Remotely request some CPU or GPU resources from the autoscaler.
 
     This function is to be called e.g. on a node before submitting a bunch of
@@ -185,19 +186,20 @@ def request_resources(num_cpus=None, bundles=None):
 
 
 @contextmanager
-def _as_config_file(cluster_config: Union[dict, str]):
+def _as_config_file(cluster_config: Union[dict, str]) -> Iterator[str]:
     if isinstance(cluster_config, dict):
         tmp = tempfile.NamedTemporaryFile("w", prefix="autoscaler-sdk-tmp-")
         tmp.write(json.dumps(cluster_config))
         tmp.flush()
-        cluster_config = tmp.name
-    if not os.path.exists(cluster_config):
-        raise ValueError("Cluster config not found {}".format(cluster_config))
-    yield cluster_config
+        cluster_config_file = tmp.name
+    if not os.path.exists(cluster_config_file):
+        raise ValueError(
+            "Cluster config not found {}".format(cluster_config_file))
+    yield cluster_config_file
 
 
-def bootstrap_config(cluster_config: Dict[str, any],
-                     no_config_cache: bool = False) -> bool:
+def bootstrap_config(cluster_config: Dict[str, Any],
+                     no_config_cache: bool = False) -> Dict[str, Any]:
     """Validate and add provider-specific fields to the config. For example,
        IAM/authentication may be added here."""
     return commands._bootstrap_config(cluster_config, no_config_cache)

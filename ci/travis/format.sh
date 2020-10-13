@@ -94,11 +94,13 @@ YAPF_FLAGS=(
 # TODO(dmitri): When more of the codebase is typed properly, the mypy flags
 # should be set to do a more stringent check. 
 MYPY_FLAGS=(
-    '--follow-imports=skip'
 )
 
 MYPY_FILES=(
-    'python/ray/autoscaler/node_provider.py'
+    # Relative to python/ray
+    'autoscaler/node_provider.py'
+    'autoscaler/sdk.py'
+    'autoscaler/_private/commands.py'
 )
 
 YAPF_EXCLUDES=(
@@ -126,10 +128,12 @@ shellcheck_scripts() {
 # Runs mypy on each argument in sequence. This is different than running mypy 
 # once on the list of arguments.
 mypy_on_each() {
+    pushd python/ray
     for file in "$@"; do
        echo "Running mypy on $file"
        mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} "$file"
     done
+    popd python/ray
 }
 
 
@@ -166,8 +170,6 @@ format_files() {
 
     if [ 0 -lt "${#python_files[@]}" ]; then
       yapf --in-place "${YAPF_FLAGS[@]}" -- "${python_files[@]}"
-      echo "Running mypy on provided python files:"
-      mypy_on_each "${python_files[@]}" 
     fi
 
     if shellcheck --shell=sh --format=diff - < /dev/null; then
