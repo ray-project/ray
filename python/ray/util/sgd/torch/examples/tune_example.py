@@ -78,7 +78,7 @@ def tune_example_manual(operator_cls, num_workers=1, use_gpu=False):
         return all_stats
 
     TorchTrainable = TorchTrainer.as_trainable(
-        tune_func=step,
+        step=step,
         training_operator_cls=operator_cls,
         num_workers=num_workers,
         use_gpu=use_gpu,
