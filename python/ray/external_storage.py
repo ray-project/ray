@@ -121,8 +121,8 @@ class S3Storage(ExternalStorage):
             the default boto3.resource('s3').Object(bucket_name, key).put()
     Raises:
         RayError if it fails to setup a S3 client. For example, if boto3 is
-        not downloaded, it raises an RayError. Or if it doesn't have a bucket,
-        it raises the same error.
+        not downloaded, it raises an RayError. It can also raise S3 related
+        exceptions.
     """
 
     def __init__(self,
@@ -178,7 +178,9 @@ class S3Storage(ExternalStorage):
     def _restore_spilled_object(self, key, ref):
         resp = self.s3.Object(self.bucket_name, key).get()
         if "Body" not in resp:
-            raise IOError("Failed to get a proper response from S3.")
+            raise IOError("Failed to get a proper response from S3. "
+                          "The response should contain a Body field, "
+                          f"but it only got {resp}")
         with closing(resp["Body"]) as streaming_body:
             # botocore.response.StreamingBody doesn't provide readinto,
             # which we'd need to put objects to avoid unnecessary copy.

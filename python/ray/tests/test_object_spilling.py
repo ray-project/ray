@@ -1,3 +1,4 @@
+import copy
 import json
 import random
 import platform
@@ -18,7 +19,7 @@ file_system_object_spilling_config = {
 s3_object_spilling_config = {
     "type": "s3",
     "params": {
-        "bucket_name": "sang-object-spilling-test"
+        "bucket_name": "object-spilling-test"
     }
 }
 
@@ -27,10 +28,30 @@ s3_object_spilling_config = {
     scope="module",
     params=[
         file_system_object_spilling_config,
+        # TODO(sang): Add a mock dependency to test S3.
         # s3_object_spilling_config,
     ])
 def object_spilling_config(request):
     yield request.param
+
+
+def test_invalid_config_raises_exception(shutdown_only):
+    # Make sure ray.init raises an exception before
+    # it starts processes when invalid object spilling
+    # config is given.
+    with pytest.raises(ValueError):
+        ray.init(_object_spilling_config={"type": "abc"})
+
+    with pytest.raises(Exception):
+        copied_config = copy.deepcopy(file_system_object_spilling_config)
+        # Add invalid params to the config.
+        copied_config["params"].update({"random_arg": "abc"})
+        ray.init(_object_spilling_config=copied_config)
+
+    with pytest.raises(ValueError):
+        copied_config = copy.deepcopy(file_system_object_spilling_config)
+        copied_config["params"].update({"directory_path": "not_exist_path"})
+        ray.init(_object_spilling_config=copied_config)
 
 
 @pytest.mark.skipif(

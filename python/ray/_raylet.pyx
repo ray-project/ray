@@ -859,9 +859,6 @@ cdef class CoreWorker:
         """Directly create a new Plasma Store object from a file like
         object. This avoids extra memory copy.
 
-        This method should be thread-safe because it is used by thread pool
-        of IO workers. Please have an additional care.
-
         Args:
             metadata (bytes): The metadata of the object.
             data_size (int): The size of the data buffer.
