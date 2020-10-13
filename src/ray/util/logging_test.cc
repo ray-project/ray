@@ -64,6 +64,7 @@ TEST(PrintLogTest, LogTestWithInit) {
 
 // This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
+  RAY_LOG(INFO) << ray::GetUserTempDir() + ray::GetDirSep();
   RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR,
                       ray::GetUserTempDir() + ray::GetDirSep());
   int rounds = 100000;
@@ -78,10 +79,12 @@ TEST(LogPerfTest, PerfTest) {
             << std::endl;
 
   start_time = current_time_ms();
+  RAY_LOG(ERROR) << "Start";
   for (int i = 0; i < rounds; ++i) {
     RAY_LOG(ERROR) << "This is the "
                    << "RAY_ERROR message";
   }
+  RAY_LOG(ERROR) << "End";
   elapsed = current_time_ms() - start_time;
   std::cout << "Testing RAY_ERROR log for " << rounds << " rounds takes " << elapsed
             << " ms." << std::endl;
@@ -95,6 +98,31 @@ TEST(LogPerfTest, PerfTest) {
   std::cout << "Testing RAY_CHECK(true) for " << rounds << " rounds takes " << elapsed
             << " ms." << std::endl;
   RayLog::ShutDownRayLog();
+}
+
+std::string TestFunctionLevel0() {
+  std::string call_trace = GetCallTrace();
+  RAY_LOG(INFO) << "TestFunctionLevel0\n" << call_trace;
+  return call_trace;
+}
+
+std::string TestFunctionLevel1() {
+  RAY_LOG(INFO) << "TestFunctionLevel1:";
+  return TestFunctionLevel0();
+}
+
+std::string TestFunctionLevel2() {
+  RAY_LOG(INFO) << "TestFunctionLevel2:";
+  return TestFunctionLevel1();
+}
+
+TEST(PrintLogTest, CallstackTraceTest) {
+  auto ret0 = TestFunctionLevel0();
+  EXPECT_TRUE(ret0.find("TestFunctionLevel0") != std::string::npos);
+  auto ret1 = TestFunctionLevel1();
+  EXPECT_TRUE(ret1.find("TestFunctionLevel1") != std::string::npos);
+  auto ret2 = TestFunctionLevel2();
+  EXPECT_TRUE(ret2.find("TestFunctionLevel2") != std::string::npos);
 }
 
 }  // namespace ray
