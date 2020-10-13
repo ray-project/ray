@@ -8,10 +8,6 @@
 namespace ray {
 namespace api {
 
-void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                     const std::vector<std::unique_ptr<TaskArg>> &args,
-                     const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
-
 ObjectID NativeTaskSubmitter::Submit(const InvocationSpec &invocation) {
   auto base_addr =
       GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
@@ -22,14 +18,15 @@ ObjectID NativeTaskSubmitter::Submit(const InvocationSpec &invocation) {
       invocation.lib_name, std::to_string(func_offset), std::to_string(exec_func_offset));
   auto ray_function = RayFunction(Language::CPP, function_descriptor);
 
-  auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-      reinterpret_cast<uint8_t *>(invocation.args->data()), invocation.args->size(),
-      true);
   std::vector<std::unique_ptr<ray::TaskArg>> args;
-  auto task_arg = new TaskArgByValue(
-      std::make_shared<::ray::RayObject>(buffer, nullptr, std::vector<ObjectID>()));
-  args.emplace_back(task_arg);
-
+  if (invocation.args->size() > 0) {
+    auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
+        reinterpret_cast<uint8_t *>(invocation.args->data()), invocation.args->size(),
+        true);
+    auto task_arg = new TaskArgByValue(
+        std::make_shared<::ray::RayObject>(buffer, nullptr, std::vector<ObjectID>()));
+    args.emplace_back(task_arg);
+  }
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::vector<ObjectID> return_ids;
   if (invocation.task_type == TaskType::ACTOR_TASK) {

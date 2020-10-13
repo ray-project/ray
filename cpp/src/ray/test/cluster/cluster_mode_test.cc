@@ -7,6 +7,7 @@
 using namespace ray::api;
 
 /// general function of user code
+int Return1() { return 1; }
 int Plus1(int x) { return x + 1; }
 
 /// a class of user code
@@ -36,8 +37,12 @@ TEST(RayClusterModeTest, FullTest) {
   auto get_result = *(Ray::Get(obj));
   EXPECT_EQ(12345, get_result);
 
-  auto task_obj = Ray::Task(Plus1, 5).Remote();
+  auto task_obj = Ray::Task(Return1).Remote();
   int task_result = *(Ray::Get(task_obj));
+  EXPECT_EQ(1, task_result);
+
+  task_obj = Ray::Task(Plus1, 5).Remote();
+  task_result = *(Ray::Get(task_obj));
   EXPECT_EQ(6, task_result);
 
   ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate, 1).Remote();
