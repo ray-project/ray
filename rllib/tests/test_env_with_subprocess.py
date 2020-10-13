@@ -56,6 +56,9 @@ if __name__ == "__main__":
             },
         },
     })
+
+    ray.shutdown()
+
     # Check whether processes are still running or Env has not cleaned up
     # the given tmp files.
     wait_for_condition(lambda: not leaked_processes(), timeout=30)
