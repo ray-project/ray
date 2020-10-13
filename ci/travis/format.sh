@@ -94,6 +94,7 @@ YAPF_FLAGS=(
 # TODO(dmitri): When more of the codebase is typed properly, the mypy flags
 # should be set to do a more stringent check. 
 MYPY_FLAGS=(
+    '--follow-imports=skip'
 )
 
 MYPY_FILES=(
