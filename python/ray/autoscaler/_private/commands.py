@@ -49,6 +49,8 @@ RUN_ENV_TYPES = ["auto", "host", "docker"]
 
 POLL_INTERVAL = 5
 
+Port_forward = Union[Tuple[int, int], List[Tuple[int, int]]]
+
 
 def _redis() -> redis.StrictRedis:
     global redis_client
@@ -96,7 +98,7 @@ def debug_status() -> str:
 
 
 def request_resources(num_cpus: Optional[int] = None,
-                      bundles: List[Dict] = None) -> None:
+                      bundles: Optional[List[dict]] = None) -> None:
     """Remotely request some CPU or GPU resources from the autoscaler.
 
     This function is to be called e.g. on a node before submitting a bunch of
@@ -774,8 +776,7 @@ def attach_cluster(config_file: str,
                    override_cluster_name: Optional[str],
                    no_config_cache: bool = False,
                    new: bool = False,
-                   port_forward: Union[Tuple[int, int], List[Tuple[int, int]],
-                                       None] = None) -> None:
+                   port_forward: Optional[Port_forward] = None) -> None:
     """Attaches to a screen for the specified cluster.
 
     Arguments:
@@ -785,7 +786,7 @@ def attach_cluster(config_file: str,
         use_tmux: whether to use tmux as multiplexer
         override_cluster_name: set the name of the cluster
         new: whether to force a new screen
-        port_forward (int or list[int]): port(s) to forward
+        port_forward ( (int,int) or list[(int,int)] ): port(s) to forward
     """
 
     if use_tmux:
@@ -828,8 +829,7 @@ def exec_cluster(config_file: str,
                  start: bool = False,
                  override_cluster_name: Optional[str] = None,
                  no_config_cache: bool = False,
-                 port_forward: Union[Tuple[int, int], List[Tuple[int, int]],
-                                     None] = None,
+                 port_forward: Optional[Port_forward] = None,
                  with_output: bool = False) -> Optional[str]:
     """Runs a command on the specified cluster.
 
@@ -920,8 +920,7 @@ def _exec(updater: NodeUpdaterThread,
           cmd: Optional[str] = None,
           screen: bool = False,
           tmux: bool = False,
-          port_forward: Union[Tuple[int, int], List[Tuple[int, int]],
-                              None] = None,
+          port_forward: Optional[Port_forward] = None,
           with_output: bool = False,
           run_env: str = "auto",
           shutdown_after_run: bool = False) -> str:
