@@ -64,7 +64,6 @@ TEST(PrintLogTest, LogTestWithInit) {
 
 // This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
-  RAY_LOG(INFO) << ray::GetUserTempDir() + ray::GetDirSep();
   RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR,
                       ray::GetUserTempDir() + ray::GetDirSep());
   int rounds = 100000;
@@ -79,12 +78,10 @@ TEST(LogPerfTest, PerfTest) {
             << std::endl;
 
   start_time = current_time_ms();
-  RAY_LOG(ERROR) << "Start";
   for (int i = 0; i < rounds; ++i) {
     RAY_LOG(ERROR) << "This is the "
                    << "RAY_ERROR message";
   }
-  RAY_LOG(ERROR) << "End";
   elapsed = current_time_ms() - start_time;
   std::cout << "Testing RAY_ERROR log for " << rounds << " rounds takes " << elapsed
             << " ms." << std::endl;

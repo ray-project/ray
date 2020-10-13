@@ -56,3 +56,17 @@ index c66f914..39c48e8 100644
  
  struct CrashReason {
    CrashReason() : filename(0), line_number(0), message(0), depth(0) {}
+diff --git src/windows/glog/logging.h src/windows/glog/logging.h
+index 2a739f9..4ff2a79 100755
+--- src/windows/glog/logging.h
++++ src/windows/glog/logging.h
+@@ -1677,6 +1677,9 @@ class GOOGLE_GLOG_DLL_DECL NullStreamFatal : public NullStream {
+ // words, stack traces of other threads won't be shown.
+ GOOGLE_GLOG_DLL_DECL void InstallFailureSignalHandler();
+
++// Providing stack trace function for upper level.
++GOOGLE_GLOG_DLL_DECL std::string GetStackTraceToString();
++
+ // Installs a function that is used for writing the failure dump.  "data"
+ // is the pointer to the beginning of a message to be written, and "size"
+ // is the size of the message.  You should not expect the data is
