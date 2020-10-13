@@ -59,7 +59,7 @@ class RandomLegalPolicy(Policy, ABC):
 
 def execution_plan(workers: WorkerSet,
                    config: TrainerConfigDict) -> LocalIterator[dict]:
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    rollouts = ParallelRollouts(workers, mode="async")
 
     # Collect batches for the trainable policies.
     rollouts = rollouts.for_each(
