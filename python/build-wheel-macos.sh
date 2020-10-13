@@ -39,7 +39,7 @@ source "$HOME"/.nvm/nvm.sh
 nvm use node
 
 # Build the dashboard so its static assets can be included in the wheel.
-pushd python/ray/dashboard/client
+pushd python/ray/new_dashboard/client
   npm ci
   npm run build
 popd
