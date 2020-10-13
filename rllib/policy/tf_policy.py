@@ -177,7 +177,7 @@ class TFPolicy(Policy):
         self._apply_op = None
         self._stats_fetches = {}
         self._timestep = timestep if timestep is not None else \
-            tf1.placeholder(tf.int32, (), name="timestep")
+            tf1.placeholder(tf.int64, (), name="timestep")
 
         self._optimizer = None
         self._grads_and_vars = None

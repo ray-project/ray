@@ -232,7 +232,7 @@ class DynamicTFPolicy(TFPolicy):
                             tf.float32, [None], name="prev_reward"),
                     })
             # Placeholder for (sampling steps) timestep (int).
-            timestep = tf1.placeholder(tf.int32, (), name="timestep")
+            timestep = tf1.placeholder(tf.int64, (), name="timestep")
             # Placeholder for `is_exploring` flag.
             explore = tf1.placeholder_with_default(
                 True, (), name="is_exploring")

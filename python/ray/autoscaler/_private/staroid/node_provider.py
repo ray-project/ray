@@ -190,21 +190,21 @@ class StaroidNodeProvider(NodeProvider):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api.read_namespaced_pod(node_id, self.namespace)
         return pod.status.phase == "Running"
 
     def is_terminated(self, node_id):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api.read_namespaced_pod(node_id, self.namespace)
         return pod.status.phase not in ["Running", "Pending"]
 
     def node_tags(self, node_id):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api.read_namespaced_pod(node_id, self.namespace)
         return pod.metadata.labels
 
     def external_ip(self, node_id):
@@ -214,7 +214,7 @@ class StaroidNodeProvider(NodeProvider):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api.read_namespaced_pod(node_id, self.namespace)
         return pod.status.pod_ip
 
     def get_node_id(self, ip_address, use_internal_ip=True) -> str:
@@ -226,7 +226,7 @@ class StaroidNodeProvider(NodeProvider):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api.read_namespaced_pod(node_id, self.namespace)
         pod.metadata.labels.update(tags)
         core_api.patch_namespaced_pod(node_id, self.namespace, pod)
 

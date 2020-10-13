@@ -20,7 +20,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-def _convert_to_tf(x):
+def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
         x = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
         return tf.nest.map_structure(_convert_to_tf, x)
@@ -28,8 +28,9 @@ def _convert_to_tf(x):
         return x
 
     if x is not None:
+        d = dtype
         x = tf.nest.map_structure(
-            lambda f: tf.convert_to_tensor(f) if f is not None else None, x)
+            lambda f: tf.convert_to_tensor(f, d) if f is not None else None, x)
     return x
 
 
@@ -52,9 +53,10 @@ def convert_eager_inputs(func):
     def _func(*args, **kwargs):
         if tf.executing_eagerly():
             args = [_convert_to_tf(x) for x in args]
-            # TODO(gehring): find a way to remove specific hacks
+            # TODO: (sven) find a way to remove key-specific hacks.
             kwargs = {
-                k: _convert_to_tf(v)
+                k: _convert_to_tf(
+                    v, dtype=tf.int64 if k == "timestep" else None)
                 for k, v in kwargs.items()
                 if k not in {"info_batch", "episodes"}
             }
