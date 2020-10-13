@@ -136,8 +136,9 @@ class RolloutWorker(ParallelIteratorWorker):
             env_creator: Callable[[EnvContext], EnvType],
             validate_env: Optional[Callable[[EnvType, EnvContext],
                                             None]] = None,
-            policy_spec: Union[type, Dict[str, Tuple[Optional[
-                type], gym.Space, gym.Space, PartialTrainerConfigDict]]],
+            policy_spec: Union[type, Dict[
+                str, Tuple[Optional[type], gym.Space, gym.Space,
+                           PartialTrainerConfigDict]]] = None,
             policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
@@ -291,12 +292,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
-            policy: Obsoleted arg. Use policy_spec instead.
+            policy: Obsoleted arg. Use `policy_spec` instead.
         """
         # Deprecated arg.
         if policy is not None:
             deprecation_warning("policy", "policy_spec", error=False)
             policy_spec = policy
+        assert policy_spec is not None, "Must provide `policy_spec` when " \
+                                        "creating RolloutWorker!"
 
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
