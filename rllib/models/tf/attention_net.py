@@ -8,12 +8,14 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
+from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
@@ -267,6 +269,21 @@ class GTrXLNet(RecurrentNetwork):
             inputs=[input_layer] + memory_ins,
             outputs=[logits, values_out] + memory_outs[:-1])
 
+        # Setup additional view requirements for attention net inference calls.
+        # 0: The last `max_seq_len` observations.
+        self.inference_view_requirements["state_in_0"] = ViewRequirement(
+            "state_out_0",
+            shift=-1,
+            space=Box(-1.0, 1.0, shape=(self.max_seq_len, self.obs_dim)))
+        # 1 to `num_transformer_units`: Memory data (one per transformer unit).
+        for i in range(1, self.num_transformer_units + 1):
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0,
+                              shape=(self.memory_tau, self.attn_dim)))
+
         self.register_variables(self.trxl_model.variables)
         self.trxl_model.summary()
 
@@ -302,6 +319,7 @@ class GTrXLNet(RecurrentNetwork):
 
         return logits, [observations] + memory_outs
 
+    # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
     def get_initial_state(self):
         # State is the T last observations concat'd together into one Tensor.

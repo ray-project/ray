@@ -82,7 +82,7 @@ def view_requirements_fn_pg(policy: Policy) -> \
         init_state = policy.get_initial_state()
         for i, s in enumerate(init_state):
             ret["state_out_{}".format(i)] = ViewRequirement(
-                space=gym.spaces.Box(-1.0, 1.0, shape=(s.shape[0], )),
+                space=gym.spaces.Box(-1.0, 1.0, shape=s.shape),
                 used_for_training=False)
     return ret
 
