@@ -138,7 +138,7 @@ message ActorTableData {
   bool is_detached = 11;
   // Name of the actor. Only populated if is_detached is true.
   string name = 12;
-  // Timestamp that the actor is created or reconstructed.
+  // Last timestamp that the actor state was updated.
   double timestamp = 13;
   // The task specification of this actor's creation task.
   TaskSpec task_spec = 14;
