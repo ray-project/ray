@@ -5,7 +5,7 @@ from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
     get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
-    PRIO_WEIGHTS, view_requirements_fn_dqn
+    PRIO_WEIGHTS, view_requirements_fn_simple_q
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -282,5 +282,5 @@ DDPGTorchPolicy = build_torch_policy(
         TargetNetworkMixin,
         ComputeTDErrorMixin,
     ],
-    view_requirements_fn=view_requirements_fn_dqn,
+    view_requirements_fn=view_requirements_fn_simple_q,
 )

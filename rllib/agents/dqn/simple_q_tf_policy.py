@@ -204,7 +204,8 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-def view_requirements_fn_dqn(policy: Policy) -> Dict[str, ViewRequirement]:
+def view_requirements_fn_simple_q(policy: Policy) -> \
+        Dict[str, ViewRequirement]:
     """Function defining the view requirements for training/postprocessing.
 
     These go on top of the Policy's Model's own view requirements used for
@@ -229,7 +230,7 @@ def view_requirements_fn_dqn(policy: Policy) -> Dict[str, ViewRequirement]:
 
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
 # above.
-SimpleQTFPolicy: DynamicTFPolicy = build_tf_policy(
+SimpleQTFPolicy: Type[DynamicTFPolicy] = build_tf_policy(
     name="SimpleQTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,
@@ -240,5 +241,5 @@ SimpleQTFPolicy: DynamicTFPolicy = build_tf_policy(
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
     mixins=[TargetNetworkMixin],
-    view_requirements_fn=view_requirements_fn_dqn,
+    view_requirements_fn=view_requirements_fn_simple_q,
 )

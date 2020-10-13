@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.dqn.simple_q_tf_policy import view_requirements_fn_dqn
+from ray.rllib.agents.dqn.simple_q_tf_policy import view_requirements_fn_simple_q
 from ray.rllib.agents.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, \
     TargetNetworkMixin
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
@@ -690,5 +690,5 @@ SACTFPolicy = build_tf_policy(
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
-    view_requirements_fn=view_requirements_fn_dqn,
+    view_requirements_fn=view_requirements_fn_simple_q,
 )

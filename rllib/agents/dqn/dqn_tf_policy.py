@@ -8,7 +8,7 @@ import ray
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin, \
-    view_requirements_fn_dqn
+    view_requirements_fn_simple_q
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -16,6 +16,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
 from ray.rllib.utils.framework import try_import_tf
@@ -428,6 +429,29 @@ def postprocess_nstep_and_prio(policy: Policy,
         batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch
+
+
+def view_requirements_fn_dqn(policy: Policy) -> \
+        Dict[str, ViewRequirement]:
+    """Function defining the view requirements for training/postprocessing.
+
+    These go on top of the Policy's Model's own view requirements used for
+    the action computing forward passes.
+
+    Args:
+        policy (Policy): The Policy that requires the returned
+            ViewRequirements.
+
+    Returns:
+        Dict[str, ViewRequirement]: The Policy's view requirements.
+    """
+    ret = view_requirements_fn_simple_q(policy)
+    ret.update({
+        # Priority weights (for prioritized replay buffer) are needed for DQN
+        # loss function.
+        PRIO_WEIGHTS: ViewRequirement(),
+    })
+    return ret
 
 
 DQNTFPolicy = build_tf_policy(

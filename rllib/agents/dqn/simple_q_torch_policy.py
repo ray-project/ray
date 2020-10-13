@@ -1,18 +1,19 @@
 """PyTorch policy class used for Simple Q-Learning"""
 
 import logging
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Type
 
 import gym
 import ray
 from ray.rllib.agents.dqn.simple_q_tf_policy import (
     build_q_models, compute_q_values, get_distribution_inputs_and_class,
-    view_requirements_fn_dqn)
+    view_requirements_fn_simple_q)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDistributionWrapper
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss
@@ -128,7 +129,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-SimpleQTorchPolicy = build_torch_policy(
+SimpleQTorchPolicy: Type[TorchPolicy] = build_torch_policy(
     name="SimpleQPolicy",
     loss_fn=build_q_losses,
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
@@ -138,5 +139,5 @@ SimpleQTorchPolicy = build_torch_policy(
     mixins=[TargetNetworkMixin],
     action_distribution_fn=get_distribution_inputs_and_class,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
-    view_requirements_fn=view_requirements_fn_dqn,
+    view_requirements_fn=view_requirements_fn_simple_q,
 )

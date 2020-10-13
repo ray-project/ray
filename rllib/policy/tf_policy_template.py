@@ -67,7 +67,8 @@ def build_tf_policy(
             str, ViewRequirement]]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
         # TODO: (sven) deprecate once _use_trajectory_view_api is always True.
-        obs_include_prev_action_reward: bool = True) -> Type[TFPolicy]:
+        obs_include_prev_action_reward: bool = True,
+) -> Type[DynamicTFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
     Functions will be run in this order to initialize the policy:
