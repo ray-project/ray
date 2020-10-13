@@ -19,9 +19,9 @@ ClusterTaskManager::ClusterTaskManager(
 bool ClusterTaskManager::SchedulePendingTasks() {
   bool did_schedule = false;
 
-  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end(); shapes_it++) {
+  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
+    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
     // Check every task in task_to_schedule queue to see
     // whether it can be scheduled. This avoids head-of-line
     // blocking where a task which cannot be scheduled because
@@ -38,7 +38,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
           cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
       if (node_id_string.empty()) {
         /// There is no node that has available resources to run the request.
-        continue;
+        work_it++;
       } else {
         if (node_id_string == self_node_id_.Binary()) {
           // Warning: WaitForTaskArgsRequests must execute (do not let it short
@@ -61,11 +61,13 @@ bool ClusterTaskManager::SchedulePendingTasks() {
           Spillback(node_id, node_info_opt->node_manager_address(),
                     node_info_opt->node_manager_port(), reply, callback);
         }
+        work_it = work_queue.erase(work_it);
       }
-      work_queue.erase(work_it++);
     }
     if (work_queue.empty()) {
-      tasks_to_schedule_.erase(shapes_it);
+      shapes_it = tasks_to_schedule_.erase(shapes_it);
+    } else {
+      shapes_it++;
     }
   }
   return did_schedule;
