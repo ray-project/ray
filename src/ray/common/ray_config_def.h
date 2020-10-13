@@ -234,6 +234,8 @@ RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 10000)
+/// Maximum number of dead nodes in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -287,7 +289,7 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
 /// If true, the worker's queue backlog size will be propagated to the heartbeat batch
 /// data.
-RAY_CONFIG(bool, report_worker_backlog, true)
+RAY_CONFIG(bool, report_worker_backlog, false)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
