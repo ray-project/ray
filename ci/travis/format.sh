@@ -95,6 +95,7 @@ YAPF_FLAGS=(
 # should be set to do a more stringent check. 
 MYPY_FLAGS=(
     '--follow-imports=skip'
+    '--ignore-missing-imports'
 )
 
 MYPY_FILES=(

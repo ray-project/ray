@@ -830,7 +830,7 @@ def exec_cluster(config_file: str,
                  override_cluster_name: Optional[str] = None,
                  no_config_cache: bool = False,
                  port_forward: Optional[Port_forward] = None,
-                 with_output: bool = False) -> Optional[str]:
+                 with_output: bool = False) -> str:
     """Runs a command on the specified cluster.
 
     Arguments:
