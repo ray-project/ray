@@ -96,6 +96,13 @@ Alibi is an open source Python library aimed at machine learning model inspectio
 
 GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
 
+Scikit Learn |scikit|
+---------------------
+
+Scikit-learn is a free software machine learning library for the Python programming language. It features various classification, regression and clustering algorithms including support vector machines, random forests, gradient boosting, k-means and DBSCAN, and is designed to interoperate with the Python numerical and scientific libraries NumPy and SciPy.
+
+[`Link to integration <https://docs.ray.io/en/master/joblib.html>`__]
+
 Spacy |spacy|
 -------------
 spaCy is a library for advanced Natural Language Processing in Python and Cython. It's built on the very latest research, and was designed from day one to be used in real products.
@@ -139,6 +146,10 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :height: 30
 
 .. |raydp| image:: images/intel.png
+    :class: inline-figure
+    :height: 30
+
+.. |scikit| image:: images/scikit.png
     :class: inline-figure
     :height: 30
 
