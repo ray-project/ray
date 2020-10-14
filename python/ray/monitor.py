@@ -143,6 +143,9 @@ class Monitor:
             waiting_bundles, infeasible_bundles = \
                 parse_resource_demands(message.resource_load_by_shape)
 
+            pending_placement_groups = list(
+                message.placement_group_load.placement_group_data)
+
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
@@ -154,7 +157,8 @@ class Monitor:
                 self.load_metrics.update(
                     ip, total_resources, update_available_resources,
                     available_resources, update_resource_load, resource_load,
-                    waiting_bundles, infeasible_bundles)
+                    waiting_bundles, infeasible_bundles,
+                    pending_placement_groups)
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")
