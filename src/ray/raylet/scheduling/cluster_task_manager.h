@@ -116,11 +116,10 @@ class ClusterTaskManager {
 
   // TODO (Alex): Implement fair queuing for these queues
   /// Queue of lease requests that are waiting for resources to become available.
-  /* std::deque<Work> tasks_to_schedule_; */
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<Work> tasks_to_dispatch_;
+  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
   /// Tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
