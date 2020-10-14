@@ -34,7 +34,7 @@ class _MockModule(pl.LightningModule):
     def forward(self, *args, **kwargs):
         return self.loss
 
-    def backward(self, trainer, loss, optimizer, optimizer_idx):
+    def backward(self, loss, optimizer, optimizer_idx):
         return None
 
     def training_step(self, train_batch, batch_idx):

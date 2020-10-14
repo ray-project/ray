@@ -1184,7 +1184,7 @@ py_test(
 py_test(
     name = "tests/test_catalog",
     tags = ["tests_dir", "tests_dir_C"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_catalog.py"]
 )
 

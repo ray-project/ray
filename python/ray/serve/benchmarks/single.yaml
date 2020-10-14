@@ -1,14 +1,10 @@
 cluster_name: default
-min_workers: 22
-max_workers: 22
-initial_workers: 22
-autoscaling_mode: default
+
 docker:
     image: 'anyscale/ray-ml:latest'
     container_name: ray_container
     pull_before_run: true
-target_utilization_fraction: 0.8
-idle_timeout_minutes: 5
+
 provider:
     type: aws
     region: us-west-2
@@ -16,14 +12,13 @@ provider:
 auth:
     ssh_user: ubuntu
 head_node:
-    InstanceType: m5.xlarge
+    InstanceType: m5.16xlarge
     BlockDeviceMappings:
         -
             DeviceName: /dev/sda1
             Ebs:
                 VolumeSize: 100
-worker_nodes:
-    InstanceType: m5.xlarge
+
 initialization_commands: []
 setup_commands:
     - apt-get install build-essential libssl-dev git -y
