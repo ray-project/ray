@@ -149,16 +149,6 @@ def placement_group(bundles: List[Dict[str, float]],
                 "Bundles cannot be an empty dictionary or "
                 f"resources with only 0 values. Bundles: {bundles}")
 
-        # Remove zero value reousrces from a bundle. This is necessary
-        # because cpp code requires all resources to be > 0.
-        zero_value_resource_key = []
-        for resource_key, value in bundle.items():
-            if value == 0:
-                zero_value_resource_key.append(resource_key)
-
-        for key in zero_value_resource_key:
-            del bundle[key]
-
     placement_group_id = worker.core_worker.create_placement_group(
         name, bundles, strategy)
 

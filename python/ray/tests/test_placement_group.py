@@ -32,11 +32,17 @@ def test_placement_group_pack(ray_start_cluster):
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
-        name="name", strategy="PACK", bundles=[{
-            "CPU": 2
-        }, {
-            "CPU": 2
-        }])
+        name="name",
+        strategy="PACK",
+        bundles=[
+            {
+                "CPU": 2,
+                "GPU": 0  # Test 0 resource spec doesn't break tests.
+            },
+            {
+                "CPU": 2
+            }
+        ])
     ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
@@ -426,18 +432,6 @@ def test_cuda_visible_devices(ray_start_cluster):
 
     devices = ray.get(o1)
     assert devices == "0", devices
-
-
-def test_input_validation(ray_start_cluster):
-    cluster = ray_start_cluster
-    num_nodes = 1
-    for _ in range(num_nodes):
-        cluster.add_node(num_gpus=1)
-    ray.init(address=cluster.address)
-
-    g1 = ray.util.placement_group([{"CPU": 1, "GPU": 0}])
-    # Make sure the above input won't break the program.
-    ray.get(g1.ready())
 
 
 def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
