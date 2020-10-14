@@ -137,7 +137,12 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+
+        assert model is None or isinstance(model, ModelV2), \
+            "Model classes for TFPolicy other than `ModelV2` not allowed! " \
+            "You passed in {}.".format(model)
         self.model = model
+
         self.exploration = self._create_exploration()
         self._sess = sess
         self._obs_input = obs_input
@@ -270,9 +275,7 @@ class TFPolicy(Policy):
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
-        if hasattr(self, "model"):
-            assert isinstance(self.model, ModelV2), \
-                "Model classes other than `ModelV2` not allowed!"
+        if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self._sess, self.variables())
 

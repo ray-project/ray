@@ -340,7 +340,8 @@ class _SimpleListCollector(_SampleCollector):
             assert self.agent_key_to_policy[agent_key] == policy_id
         policy = self.policy_map[policy_id]
         view_reqs = policy.model.inference_view_requirements if \
-            hasattr(policy, "model") else policy.view_requirements
+            hasattr(policy, "model") and policy.model is not None else \
+            policy.view_requirements
 
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
@@ -388,7 +389,8 @@ class _SimpleListCollector(_SampleCollector):
         keys = self.forward_pass_agent_keys[policy_id]
         buffers = {k: self.agent_collectors[k].buffers for k in keys}
         view_reqs = policy.model.inference_view_requirements if \
-            hasattr(policy, "model") else policy.view_requirements
+            hasattr(policy, "model") and policy.model is not None else \
+            policy.view_requirements
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():

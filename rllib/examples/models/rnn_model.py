@@ -59,12 +59,22 @@ class RNNModel(RecurrentNetwork):
         self.register_variables(self.rnn_model.variables)
         self.rnn_model.summary()
 
+        # Add state-ins to this model's view.
+        for i in range(2):
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
         model_out, self._value_out, h, c = self.rnn_model([inputs, seq_lens] +
                                                           state)
         return model_out, [h, c]
 
+    # TODO: (sven): Get rid of `get_initial_state` once Trajectory
+    #  View API is supported across all of RLlib.
     @override(ModelV2)
     def get_initial_state(self):
         return [
@@ -111,10 +121,10 @@ class TorchRNNModel(TorchRNN, nn.Module):
                     shift=-1,
                     space=Box(-1.0, 1.0, shape=(self.lstm_state_size,)))
 
+    # TODO: (sven): Get rid of `get_initial_state` once Trajectory
+    #  View API is supported across all of RLlib.
     @override(ModelV2)
     def get_initial_state(self):
-        # TODO: (sven): Get rid of `get_initial_state` once Trajectory
-        #  View API is supported across all of RLlib.
         # Place hidden states on same device as model.
         h = [
             self.fc1.weight.new(1, self.lstm_state_size).zero_().squeeze(0),
