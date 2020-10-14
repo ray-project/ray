@@ -10,7 +10,8 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.dqn.simple_q_tf_policy import view_requirements_fn_simple_q
+from ray.rllib.agents.dqn.simple_q_tf_policy import \
+    view_requirements_fn_simple_q
 from ray.rllib.agents.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, \
     TargetNetworkMixin
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio

@@ -10,7 +10,8 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.agents.dqn.simple_q_tf_policy import view_requirements_fn_simple_q
+from ray.rllib.agents.dqn.simple_q_tf_policy import \
+    view_requirements_fn_simple_q
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS

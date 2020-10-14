@@ -271,8 +271,7 @@ class Policy(metaclass=ABCMeta):
         # `self.compute_actions()`.
         state_batches = [
             # TODO: (sven) remove unsqueezing code here for non-traj.view API.
-            s if self.config["_use_trajectory_view_api"] else
-            s.unsqueeze(0)
+            s if self.config["_use_trajectory_view_api"] else s.unsqueeze(0)
             if torch and isinstance(s, torch.Tensor) else np.expand_dims(s, 0)
             for k, s in input_dict.items() if k[:9] == "state_in_"
         ]

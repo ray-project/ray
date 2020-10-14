@@ -1,6 +1,3 @@
-import gym
-from typing import Dict
-
 import ray
 from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_w_vf_preds
 from ray.rllib.evaluation.postprocessing import compute_advantages, \

@@ -14,7 +14,6 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.typing import AgentID, EpisodeID, EnvID, PolicyID, \
     TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.util.debug import log_once
 
 _, tf, _ = try_import_tf()

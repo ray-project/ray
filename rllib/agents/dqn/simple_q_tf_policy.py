@@ -221,9 +221,7 @@ def view_requirements_fn_simple_q(policy: Policy) -> \
     ret = {
         # Next obs are needed for DQN loss function.
         SampleBatch.NEXT_OBS: ViewRequirement(
-            data_col=SampleBatch.OBS,
-            shift=1,
-            space=policy.observation_space),
+            data_col=SampleBatch.OBS, shift=1, space=policy.observation_space),
     }
     return ret
 

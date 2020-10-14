@@ -18,7 +18,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
@@ -50,8 +49,8 @@ class QLoss:
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
-            z = torch.range(0.0, num_atoms - 1, dtype=torch.float32).to(
-                rewards.device)
+            z = torch.range(
+                0.0, num_atoms - 1, dtype=torch.float32).to(rewards.device)
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)

@@ -1,7 +1,6 @@
 import numpy as np
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
-from ray.rllib.utils.framework import get_variable
 
 torch, nn = try_import_torch()
 
@@ -37,22 +36,25 @@ class NoisyLayer(nn.Module):
             self.activation = self.activation()
 
         sigma_w = nn.Parameter(
-            torch.from_numpy(np.random.uniform(
-                low=-1.0 / np.sqrt(float(self.in_size)),
-                high=1.0 / np.sqrt(float(self.in_size)),
-                size=[self.in_size, out_size])).float())
+            torch.from_numpy(
+                np.random.uniform(
+                    low=-1.0 / np.sqrt(float(self.in_size)),
+                    high=1.0 / np.sqrt(float(self.in_size)),
+                    size=[self.in_size, out_size])).float())
         self.register_parameter("sigma_w", sigma_w)
         sigma_b = nn.Parameter(
-            torch.from_numpy(np.full(
-                shape=[out_size],
-                fill_value=sigma0 / np.sqrt(float(self.in_size)))).float())
+            torch.from_numpy(
+                np.full(
+                    shape=[out_size],
+                    fill_value=sigma0 / np.sqrt(float(self.in_size)))).float())
         self.register_parameter("sigma_b", sigma_b)
 
-        w = nn.Parameter(torch.from_numpy(
-            np.full(
-                shape=[self.in_size, self.out_size],
-                fill_value=6 / np.sqrt(float(in_size) + float(out_size)))
-        ).float())
+        w = nn.Parameter(
+            torch.from_numpy(
+                np.full(
+                    shape=[self.in_size, self.out_size],
+                    fill_value=6 /
+                    np.sqrt(float(in_size) + float(out_size)))).float())
         self.register_parameter("w", w)
         b = nn.Parameter(torch.from_numpy(np.zeros([out_size])).float())
         self.register_parameter("b", b)

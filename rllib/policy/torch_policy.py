@@ -164,8 +164,8 @@ class TorchPolicy(Policy):
                 convert_to_torch_tensor(s, self.device)
                 for s in (state_batches or [])
             ]
-            return self._compute_action_helper(
-                input_dict, state_batches, seq_lens, explore, timestep)
+            return self._compute_action_helper(input_dict, state_batches,
+                                               seq_lens, explore, timestep)
 
     @override(Policy)
     def compute_actions_from_input_dict(
@@ -190,8 +190,8 @@ class TorchPolicy(Policy):
             seq_lens = np.array([1] * len(input_dict["obs"])) \
                 if state_batches else None
 
-            return self._compute_action_helper(
-                input_dict, state_batches, seq_lens, explore, timestep)
+            return self._compute_action_helper(input_dict, state_batches,
+                                               seq_lens, explore, timestep)
 
     def _compute_action_helper(self, input_dict, state_batches, seq_lens,
                                explore, timestep):
@@ -264,8 +264,7 @@ class TorchPolicy(Policy):
         # Update our global timestep by the batch size.
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
 
-        return convert_to_non_torch_type((actions, state_out,
-                                          extra_fetches))
+        return convert_to_non_torch_type((actions, state_out, extra_fetches))
 
     @override(Policy)
     @DeveloperAPI

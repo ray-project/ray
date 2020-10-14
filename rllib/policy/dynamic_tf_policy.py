@@ -182,9 +182,11 @@ class DynamicTFPolicy(TFPolicy):
         else:
             if self.config["_use_trajectory_view_api"]:
                 self._state_inputs = [
-                    tf1.placeholder(shape=(None,) + vr.space.shape, dtype=vr.space.dtype)
-                    for k, vr in self.model.inference_view_requirements.items() if
-                    k[:9] == "state_in_"
+                    tf1.placeholder(
+                        shape=(None, ) + vr.space.shape, dtype=vr.space.dtype)
+                    for k, vr in
+                    self.model.inference_view_requirements.items()
+                    if k[:9] == "state_in_"
                 ]
             else:
                 self._state_inputs = [
@@ -213,9 +215,11 @@ class DynamicTFPolicy(TFPolicy):
                     self.view_requirements, existing_inputs)
         else:
             if self.config["_use_trajectory_view_api"]:
+                action_ph = ModelCatalog.get_action_placeholder(action_space)
                 self._input_dict, self._dummy_batch = \
                     self._get_input_dict_and_dummy_batch(
-                        self.view_requirements, {SampleBatch.ACTIONS: ModelCatalog.get_action_placeholder(action_space)})
+                        self.view_requirements,
+                        {SampleBatch.ACTIONS: action_ph})
             else:
                 self._input_dict = {
                     SampleBatch.CUR_OBS: tf1.placeholder(
@@ -225,9 +229,8 @@ class DynamicTFPolicy(TFPolicy):
                 }
                 if self._obs_include_prev_action_reward:
                     self._input_dict.update({
-                        SampleBatch.PREV_ACTIONS:
-                            ModelCatalog.get_action_placeholder(action_space,
-                                                                "prev_action"),
+                        SampleBatch.PREV_ACTIONS: ModelCatalog.
+                        get_action_placeholder(action_space, "prev_action"),
                         SampleBatch.PREV_REWARDS: tf1.placeholder(
                             tf.float32, [None], name="prev_reward"),
                     })
@@ -295,7 +298,8 @@ class DynamicTFPolicy(TFPolicy):
                         [1 if not s else s for s in
                          dist_inputs.shape.as_list()])
             self._input_dict[SampleBatch.ACTION_DIST_INPUTS] = \
-                tf1.placeholder(shape=dist_inputs.shape.as_list(), dtype=tf.float32)
+                tf1.placeholder(shape=dist_inputs.shape.as_list(),
+                                dtype=tf.float32)
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session()
@@ -391,7 +395,8 @@ class DynamicTFPolicy(TFPolicy):
         else:
             return []
 
-    def _get_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
+    def _get_input_dict_and_dummy_batch(self, view_requirements,
+                                        existing_inputs):
         input_dict = {}
         dummy_batch = {}
         for view_col, view_req in view_requirements.items():
@@ -401,8 +406,10 @@ class DynamicTFPolicy(TFPolicy):
             elif view_col in existing_inputs:
                 input_dict[view_col] = existing_inputs[view_col]
                 dummy_batch[view_col] = np.zeros(
-                    shape=[1 if s is None else s
-                           for s in existing_inputs[view_col].shape.as_list()],
+                    shape=[
+                        1 if s is None else s
+                        for s in existing_inputs[view_col].shape.as_list()
+                    ],
                     dtype=np.float32)
             # All others.
             else:
@@ -410,18 +417,20 @@ class DynamicTFPolicy(TFPolicy):
                     shape=(None, ) + view_req.space.shape,
                     dtype=view_req.space.dtype,
                 )
-                dummy_batch[view_col] = np.zeros_like([view_req.space.sample()])
+                dummy_batch[view_col] = np.zeros_like(
+                    [view_req.space.sample()])
         return input_dict, dummy_batch
 
     def _initialize_loss_dynamically(self):
         if self.config["_use_trajectory_view_api"]:
             dummy_batch = self._dummy_batch
         else:
+
             def fake_array(tensor):
                 shape = tensor.shape.as_list()
                 shape = [s if s is not None else 1 for s in shape]
                 return np.zeros(shape, dtype=tensor.dtype.as_numpy_dtype)
-    
+
             dummy_batch = {
                 SampleBatch.CUR_OBS: fake_array(self._obs_input),
                 SampleBatch.NEXT_OBS: fake_array(self._obs_input),
@@ -432,8 +441,10 @@ class DynamicTFPolicy(TFPolicy):
             }
             if self._obs_include_prev_action_reward:
                 dummy_batch.update({
-                    SampleBatch.PREV_ACTIONS: fake_array(self._prev_action_input),
-                    SampleBatch.PREV_REWARDS: fake_array(self._prev_reward_input),
+                    SampleBatch.PREV_ACTIONS: fake_array(
+                        self._prev_action_input),
+                    SampleBatch.PREV_REWARDS: fake_array(
+                        self._prev_reward_input),
                 })
             state_init = self.get_initial_state()
             state_batches = []
@@ -491,11 +502,9 @@ class DynamicTFPolicy(TFPolicy):
             for i, si in enumerate(self._state_inputs):
                 train_batch["state_in_{}".format(i)] = si
         else:
-            loss_inputs = [
-                (k, v) for k, v in self._input_dict.items() if
-                k in self.view_requirements and
-                self.view_requirements[k].used_for_training
-            ]
+            loss_inputs = [(k, v) for k, v in self._input_dict.items()
+                           if k in self.view_requirements
+                           and self.view_requirements[k].used_for_training]
             train_batch = UsageTrackingDict(self._input_dict)
         train_batch["seq_lens"] = self._seq_lens
 
