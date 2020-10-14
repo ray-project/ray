@@ -78,8 +78,8 @@ class TuneCallback(Callback):
             self._handle(trainer, pl_module)
 
     def on_validation_batch_end(self, trainer: Trainer,
-                                pl_module: LightningModule, batch, batch_idx,
-                                dataloader_idx):
+                                pl_module: LightningModule, outputs, batch,
+                                batch_idx, dataloader_idx):
         if "validation_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
@@ -89,7 +89,7 @@ class TuneCallback(Callback):
             self._handle(trainer, pl_module)
 
     def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
-                          batch, batch_idx, dataloader_idx):
+                          outputs, batch, batch_idx, dataloader_idx):
         if "test_batch_end" in self._on:
             self._handle(trainer, pl_module)
 

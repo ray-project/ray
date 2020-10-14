@@ -541,6 +541,9 @@ void CoreWorker::Shutdown() {
   if (options_.worker_type == WorkerType::WORKER) {
     task_execution_service_.stop();
   }
+  if (options_.on_worker_shutdown) {
+    options_.on_worker_shutdown(GetWorkerID());
+  }
 }
 
 void CoreWorker::Disconnect() {
