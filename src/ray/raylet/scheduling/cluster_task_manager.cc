@@ -19,14 +19,15 @@ ClusterTaskManager::ClusterTaskManager(
 bool ClusterTaskManager::SchedulePendingTasks() {
   bool did_schedule = false;
 
-  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();) {
+  for (auto shapes_it = tasks_to_schedule_.begin();
+       shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
-    // Check every task in task_to_schedule queue to see
-    // whether it can be scheduled. This avoids head-of-line
-    // blocking where a task which cannot be scheduled because
-    // there are not enough available resources blocks other
-    // tasks from being scheduled.
+      // Check every task in task_to_schedule queue to see
+      // whether it can be scheduled. This avoids head-of-line
+      // blocking where a task which cannot be scheduled because
+      // there are not enough available resources blocks other
+      // tasks from being scheduled.
       Work work = *work_it;
       Task task = std::get<0>(work);
       auto request_resources =
@@ -34,8 +35,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       int64_t _unused;
       // TODO (Alex): We should distinguish between infeasible tasks and a fully
       // utilized cluster.
-      std::string node_id_string =
-          cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
+      std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+          request_resources, &_unused);
       if (node_id_string.empty()) {
         /// There is no node that has available resources to run the request.
         work_it++;
@@ -48,7 +49,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
         } else {
           // Should spill over to a different node.
           cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
-                                                                  request_resources);
+                                                                   request_resources);
 
           NodeID node_id = NodeID::FromBinary(node_id_string);
           auto node_info_opt = get_node_info_(node_id);
@@ -101,7 +102,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   // blocking where a task which cannot be dispatched because
   // there are not enough available resources blocks other
   // tasks from being dispatched.
-  for (auto shapes_it = tasks_to_dispatch_.begin(); shapes_it != tasks_to_dispatch_.end();) {
+  for (auto shapes_it = tasks_to_dispatch_.begin();
+       shapes_it != tasks_to_dispatch_.end();) {
     auto &dispatch_queue = shapes_it->second;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto work = *work_it;
@@ -156,7 +158,7 @@ void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseRepl
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   auto it = tasks_to_schedule_.find(scheduling_class);
   if (it == tasks_to_schedule_.end()) {
-    tasks_to_schedule_[scheduling_class] = { work };
+    tasks_to_schedule_[scheduling_class] = {work};
   } else {
     it->second.push_back(work);
   }
@@ -167,7 +169,8 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
     auto it = waiting_tasks_.find(task_id);
     if (it != waiting_tasks_.end()) {
       auto work = it->second;
-      const auto &scheduling_key = std::get<0>(work).GetTaskSpecification().GetSchedulingClass();
+      const auto &scheduling_key =
+          std::get<0>(work).GetTaskSpecification().GetSchedulingClass();
       tasks_to_dispatch_[scheduling_key].push_back(work);
       waiting_tasks_.erase(it);
     }
@@ -182,7 +185,8 @@ void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> wor
 }
 
 bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
-  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end(); shapes_it++) {
+  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
+       shapes_it++) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
@@ -194,7 +198,8 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       }
     }
   }
-  for (auto shapes_it = tasks_to_dispatch_.begin(); shapes_it != tasks_to_dispatch_.end(); shapes_it++) {
+  for (auto shapes_it = tasks_to_dispatch_.begin(); shapes_it != tasks_to_dispatch_.end();
+       shapes_it++) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
@@ -228,7 +233,9 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
     // TODO (Alex): Implement the 1-CPU task optimization.
     for (const auto &pair : tasks_to_schedule_) {
       const auto &scheduling_class = pair.first;
-      const auto &resources = TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).GetResourceMap();
+      const auto &resources =
+          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+              .GetResourceMap();
       const auto &queue = pair.second;
       const auto &count = queue.size();
 
@@ -250,7 +257,9 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
 
     for (const auto &pair : tasks_to_dispatch_) {
       const auto &scheduling_class = pair.first;
-      const auto &resources = TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).GetResourceMap();
+      const auto &resources =
+          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+              .GetResourceMap();
       const auto &queue = pair.second;
       const auto &count = queue.size();
 
