@@ -16,13 +16,15 @@ diff --git src/logging.cc src/logging.cc
 index 733ce8c..e988eb9 100644
 --- src/logging.cc
 +++ src/logging.cc
-@@ -2336,4 +2336,11 @@ void DisableLogCleaner() {
+@@ -2336,4 +2336,13 @@ void DisableLogCleaner() {
    log_cleaner_enabled_ = false;
  }
  
 +std::string GetStackTraceToString() {
 +  // Collect stacktrace from utilities.
 +  std::string stacktrace;
++  // The second parameter stands for skip count. The top stack frames will be
++  // skipped to dump from stack if it's non-zero.
 +  DumpStackTraceToString(&stacktrace, 0);
 +  return stacktrace;
 +}
