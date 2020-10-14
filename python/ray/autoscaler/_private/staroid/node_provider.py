@@ -305,6 +305,14 @@ class StaroidNodeProvider(NodeProvider):
         else:
             pod_spec["metadata"]["labels"] = tags
 
+        if "generateName" not in pod_spec["metadata"]:
+            pod_spec["metadata"]["generateName"] = \
+                "ray-" + pod_spec["metadata"]["labels"]["ray-node-type"] + "-"
+
+        if "component" not in pod_spec["metadata"]["labels"]:
+            pod_spec["metadata"]["labels"]["component"] = \
+                "ray-" + pod_spec["metadata"]["labels"]["ray-node-type"]
+
         if image is not None:
             containers = pod_spec["spec"]["containers"]
             for c in containers:
