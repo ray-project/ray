@@ -41,7 +41,7 @@ setup_commands:
     - echo set-window-option -g mouse on > ~/.tmux.conf
     - echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc
     # Serve load testing tool
-    - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && cp wrk /usr/local/bin'
+    - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && sudo cp wrk /usr/local/bin'
 
     # Uncomment the following if you wish to build Ray instead.
     # - sudo apt-get update
