@@ -58,9 +58,9 @@ DEFAULT_CONFIG = with_common_config({
     "critic_hidden_activation": "relu",
     # N-step Q learning
     "n_step": 1,
-    # Algorithm for good policies
+    # Algorithm for good policies.
     "good_policy": "maddpg",
-    # Algorithm for adversary policies
+    # Algorithm for adversary policies.
     "adv_policy": "maddpg",
 
     # === Replay buffer ===
@@ -110,6 +110,9 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you're using the Async or Ape-X optimizers.
     "num_workers": 1,
+    # Switch off trajectory view API for MADDPG (env infos not stored by
+    # SampleCollector yet).
+    "_use_trajectory_view_api": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 0,
 })
