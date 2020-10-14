@@ -165,6 +165,8 @@ def test_invalid_arguments(shutdown_only):
                 x = 1
 
 
+@pytest.mark.skipif(
+    bool(os.environ.get("NEW_SCHEDULER_ENABLED")), reason="Currently flaky")
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
