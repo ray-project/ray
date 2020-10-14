@@ -60,8 +60,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     auto condition = [this, expected_count, status]() {
       absl::MutexLock lock(&placement_group_requests_mutex_);
       return status == GcsPlacementGroupStatus::SUCCESS
-                 ? success_placement_groups_.size() == expected_count
-                 : failure_placement_groups_.size() == expected_count;
+                 ? (int)success_placement_groups_.size() == expected_count
+                 : (int)failure_placement_groups_.size() == expected_count;
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
