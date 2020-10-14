@@ -1681,10 +1681,7 @@ def make_decorator(num_returns=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
-                   worker=None,
-                   placement_group=None,
-                   placement_group_bundle_index=-1,
-                   placement_group_capture_child_tasks=True):
+                   worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1713,9 +1710,7 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries, placement_group,
-                placement_group_bundle_index,
-                placement_group_capture_child_tasks)
+                num_returns, max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
