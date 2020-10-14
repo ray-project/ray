@@ -20,7 +20,7 @@
 
 namespace ray {
 
-enum class GcsPlacementGroupStatus : uint32_t {
+enum class GcsPlacementGroupStatus : int32_t {
   SUCCESS = 0,
   FAILURE = 1,
 };
@@ -55,20 +55,18 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     thread_io_service_->join();
   }
 
-  void WaitPlacementGroupPendingDone(unsigned int expected_count,
-                                     GcsPlacementGroupStatus status) {
+  void WaitPlacementGroupPendingDone(int expected_count,
+                                     const GcsPlacementGroupStatus status) {
     auto condition = [this, expected_count, status]() {
       absl::MutexLock lock(&placement_group_requests_mutex_);
-      if (status == GcsPlacementGroupStatus::SUCCESS) {
-        return success_placement_groups_.size() == expected_count;
-      } else {
-        return failure_placement_groups_.size() == expected_count;
-      }
+      return status == GcsPlacementGroupStatus::SUCCESS
+                 ? success_placement_groups_.size() == expected_count
+                 : failure_placement_groups_.size() == expected_count;
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
-  void CheckPlacementGroupSize(int expected_count, GcsPlacementGroupStatus status) {
+  void CheckPlacementGroupSize(int expected_count, const GcsPlacementGroupStatus status) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     if (status == GcsPlacementGroupStatus::SUCCESS) {
       ASSERT_EQ(expected_count, success_placement_groups_.size());
@@ -79,7 +77,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
   void CheckEqWithPlacementGroupFront(
       std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-      GcsPlacementGroupStatus status) {
+      const GcsPlacementGroupStatus status) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     if (status == GcsPlacementGroupStatus::SUCCESS) {
       ASSERT_EQ(placement_group, success_placement_groups_.front());
