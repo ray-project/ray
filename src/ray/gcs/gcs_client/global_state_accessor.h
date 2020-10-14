@@ -99,7 +99,7 @@ class GlobalStateAccessor {
   /// and serialized as a string to allow multi-language support.
   std::string GetInternalConfig();
 
-  /// Get heartbeat information of all node from GCS Service. Only used when light
+  /// Get newest heartbeat of all nodes from GCS Service. Only used when light
   /// heartbeat enabled.
   ///
   /// \return node heartbeat info. To support multi-language, we serialize each

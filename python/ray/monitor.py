@@ -154,6 +154,7 @@ class Monitor:
                 self.load_metrics.update(ip, total_resources, True,
                                          available_resources, True,
                                          resource_load)
+                self.load_metrics_initialized = True
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")

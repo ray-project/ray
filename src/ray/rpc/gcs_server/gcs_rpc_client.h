@@ -171,7 +171,8 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat,
                              node_info_grpc_client_, )
 
-  /// Get heartbeat of all nodes from GCS Service. Only used when light heartbeat enabled.
+  /// Get newest heartbeat of all nodes from GCS Service. Only used when light heartbeat
+  /// enabled.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllHeartbeat,
                              node_info_grpc_client_, )
 
