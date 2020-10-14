@@ -78,8 +78,8 @@ class TuneCallback(Callback):
             self._handle(trainer, pl_module)
 
     def on_validation_batch_end(self, trainer: Trainer,
-                                pl_module: LightningModule, batch, batch_idx,
-                                dataloader_idx):
+                                pl_module: LightningModule, outputs, batch,
+                                batch_idx, dataloader_idx):
         if "validation_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
@@ -89,7 +89,7 @@ class TuneCallback(Callback):
             self._handle(trainer, pl_module)
 
     def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
-                          batch, batch_idx, dataloader_idx):
+                          outputs, batch, batch_idx, dataloader_idx):
         if "test_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
@@ -170,6 +170,9 @@ class TuneReportCallback(TuneCallback):
         self._metrics = metrics
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
+        # Don't report if just doing initial validation sanity checks.
+        if trainer.running_sanity_check:
+            return
         report_dict = {}
         for key in self._metrics:
             if isinstance(self._metrics, dict):
@@ -206,6 +209,8 @@ class _TuneCheckpointCallback(TuneCallback):
         self._filename = filename
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
+        if trainer.running_sanity_check:
+            return
         with tune.checkpoint_dir(step=trainer.global_step) as checkpoint_dir:
             trainer.save_checkpoint(
                 os.path.join(checkpoint_dir, self._filename))

@@ -279,6 +279,15 @@ cc_test(
 )
 
 cc_test(
+    name = "barrier_helper_tests",
+    srcs = [
+        "src/test/barrier_helper_tests.cc",
+    ],
+    copts = COPTS,
+    deps = test_common_deps,
+)
+
+cc_test(
     name = "streaming_message_serialization_tests",
     srcs = [
         "src/test/message_serialization_tests.cc",

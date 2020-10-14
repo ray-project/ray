@@ -15,62 +15,72 @@ Let's quickly walk through the key concepts you need to know to use Tune. In thi
 Trainables
 ----------
 
-Tune will optimize your training process using the :ref:`Trainable API <trainable-docs>`. To start, let's try to maximize this objective function:
+To start, let's try to maximize this objective function:
 
 .. code-block:: python
 
     def objective(x, a, b):
         return a * (x ** 0.5) + b
 
-Here's an example of specifying the objective function using :ref:`the function-based Trainable API <tune-function-api>`:
+To use Tune, you will need to wrap this function in a lightweight :ref:`trainable API <trainable-docs>`. You can either use a :ref:`function-based version <tune-function-api>` or a :ref:`class-based version <tune-class-api>`.
 
-.. code-block:: python
+.. tabs::
+    .. group-tab:: Function API
 
-    def trainable(config):
-        # config (dict): A dict of hyperparameters.
+        Here's an example of specifying the objective function using :ref:`the function-based Trainable API <tune-function-api>`:
 
-        for x in range(20):
-            score = objective(x, config["a"], config["b"])
+        .. code-block:: python
 
-            tune.report(score=score)  # This sends the score to Tune.
+            def trainable(config):
+                # config (dict): A dict of hyperparameters.
 
-Now, there's two Trainable APIs - one being the :ref:`function-based API <tune-function-api>` that we demonstrated above.
+                for x in range(20):
+                    score = objective(x, config["a"], config["b"])
 
-The other is a :ref:`class-based API <tune-class-api>`. Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
+                    tune.report(score=score)  # This sends the score to Tune.
 
-.. code-block:: python
+    .. group-tab:: Class API
 
-    from ray import tune
+        Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
-    class Trainable(tune.Trainable):
-        def setup(self, config):
-            # config (dict): A dict of hyperparameters
-            self.x = 0
-            self.a = config["a"]
-            self.b = config["b"]
+        .. code-block:: python
 
-        def step(self):  # This is called iteratively.
-            score = objective(self.x, self.a, self.b)
-            self.x += 1
-            return {"score": score}
+            from ray import tune
 
-.. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
+            class Trainable(tune.Trainable):
+                def setup(self, config):
+                    # config (dict): A dict of hyperparameters
+                    self.x = 0
+                    self.a = config["a"]
+                    self.b = config["b"]
+
+                def step(self):  # This is called iteratively.
+                    score = objective(self.x, self.a, self.b)
+                    self.x += 1
+                    return {"score": score}
+
+        .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
 
 tune.run and Trials
 -------------------
 
-Use ``tune.run`` execute hyperparameter tuning using the core Ray APIs. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
+Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
 
 .. code-block:: python
 
     # Pass in a Trainable class or function to tune.run.
     tune.run(trainable)
 
-``tune.run`` will generate a couple hyperparameter configurations from its arguments, and each hyperparameter configuration is logically represented by a Trial object.
+``tune.run`` will generate a couple hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
 
-Each trial has a resource specification (``resources_per_trial`` or ``trial.resources``), a hyperparameter configuration (``trial.config``), id (``trial.trial_id``), among other configuration values. Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`Analysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
+Each trial has
+* a hyperparameter configuration (``trial.config``), id (``trial.trial_id``)
+* a resource specification (``resources_per_trial`` or ``trial.resources``)
+* And other configuration values.
+
+Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`Analysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
 
 ``tune.run`` will execute until all trials stop or error:
 

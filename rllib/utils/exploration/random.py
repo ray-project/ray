@@ -1,9 +1,10 @@
-from gym.spaces import Discrete, Box, MultiDiscrete
+from gym.spaces import Discrete, Box, MultiDiscrete, Space
 import numpy as np
 import tree
-from typing import Union
+from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils import force_tuple
@@ -23,7 +24,8 @@ class Random(Exploration):
     If explore=False, returns the greedy/max-likelihood action.
     """
 
-    def __init__(self, action_space, *, model, framework, **kwargs):
+    def __init__(self, action_space: Space, *, model: ModelV2,
+                 framework: Optional[str], **kwargs):
         """Initialize a Random Exploration object.
 
         Args:
@@ -53,7 +55,9 @@ class Random(Exploration):
             return self.get_torch_exploration_action(action_distribution,
                                                      explore)
 
-    def get_tf_exploration_action_op(self, action_dist, explore):
+    def get_tf_exploration_action_op(
+            self, action_dist: ActionDistribution,
+            explore: Optional[Union[bool, TensorType]]):
         def true_fn():
             batch_size = 1
             req = force_tuple(
@@ -72,10 +76,14 @@ class Random(Exploration):
                         maxval=component.n,
                         dtype=component.dtype)
                 elif isinstance(component, MultiDiscrete):
-                    return tf.random.uniform(
-                        shape=(batch_size, ) + component.shape,
-                        maxval=component.nvec,
-                        dtype=component.dtype)
+                    return tf.concat(
+                        [
+                            tf.random.uniform(
+                                shape=(batch_size, 1),
+                                maxval=n,
+                                dtype=component.dtype) for n in component.nvec
+                        ],
+                        axis=1)
                 elif isinstance(component, Box):
                     if component.bounded_above.all() and \
                             component.bounded_below.all():
@@ -107,7 +115,8 @@ class Random(Exploration):
         logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
         return action, logp
 
-    def get_torch_exploration_action(self, action_dist, explore):
+    def get_torch_exploration_action(self, action_dist: ActionDistribution,
+                                     explore: bool):
         if explore:
             req = force_tuple(
                 action_dist.required_model_output_shape(

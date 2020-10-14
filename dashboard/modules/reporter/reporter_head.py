@@ -24,6 +24,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._stubs = {}
+        self._ray_config = None
         DataSource.agents.signal.append(self._update_stubs)
 
     async def _update_stubs(self, change):
@@ -48,7 +49,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
         profiling_info = (json.loads(reply.profiling_stats)
                           if reply.profiling_stats else reply.std_out)
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Profiling success.",
             profiling_info=profiling_info)
@@ -61,14 +62,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 with open(config_path) as f:
                     cfg = yaml.safe_load(f)
             except yaml.YAMLError:
-                return await dashboard_utils.rest_response(
+                return dashboard_utils.rest_response(
                     success=False,
                     message=f"No config found at {config_path}.",
                 )
             except FileNotFoundError:
-                return await dashboard_utils.rest_response(
+                return dashboard_utils.rest_response(
                     success=False,
-                    message=f"Invalid config, could not load YAML.")
+                    message="Invalid config, could not load YAML.")
 
             payload = {
                 "min_workers": cfg["min_workers"],
@@ -90,7 +91,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             self._ray_config = payload
 
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Fetched ray config.",
             **self._ray_config,

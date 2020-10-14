@@ -91,8 +91,11 @@ class Analysis:
         Returns:
             pd.DataFrame: Constructed from a result dict of each trial.
         """
-        metric = self._validate_metric(metric)
-        mode = self._validate_mode(mode)
+        # Allow None values here.
+        if metric or self.default_metric:
+            metric = self._validate_metric(metric)
+        if mode or self.default_mode:
+            mode = self._validate_mode(mode)
 
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs(prefix=True)
