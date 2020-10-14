@@ -10,7 +10,8 @@ import numpy as np
 import logging
 from typing import Type
 
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
+from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping, \
+    view_requirements_fn_w_vf_preds
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
@@ -334,4 +335,6 @@ AsyncPPOTorchPolicy = build_torch_policy(
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
         ValueNetworkMixin
     ],
-    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])
+    view_requirements_fn=view_requirements_fn_w_vf_preds,
+    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"],
+)

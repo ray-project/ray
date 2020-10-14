@@ -10,6 +10,7 @@ import logging
 import gym
 from typing import Dict, List, Optional, Type, Union
 
+from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_w_vf_preds
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, choose_optimizer
@@ -440,4 +441,6 @@ AsyncPPOTFPolicy = build_tf_policy(
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
         ValueNetworkMixin
     ],
-    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])
+    view_requirements_fn=view_requirements_fn_w_vf_preds,
+    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"],
+)
