@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { Accessor } from "../../../../common/tableUtils";
 import {
   ClusterFeatureRenderFn,
@@ -17,7 +18,7 @@ export const ClusterHost: ClusterFeatureRenderFn = ({ nodes }) => (
 
 export const NodeHost: NodeFeatureRenderFn = ({ node }) => (
   <React.Fragment>
-    {node.hostname} ({node.ip})
+    <Link target="_blank" to={`/node/${node?.raylet?.nodeId}`}>{node.hostname}({node.ip})</Link>
   </React.Fragment>
 );
 

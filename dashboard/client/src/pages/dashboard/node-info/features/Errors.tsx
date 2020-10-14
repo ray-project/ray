@@ -35,7 +35,7 @@ const makeNodeErrors = (
     </Typography>
   ) : (
     <SpanButton onClick={() => setErrorDialog(node.ip, null)}>
-      View all errors ({node.errorCount.toLocaleString()})
+      View all errors ({node.errorCount?.toLocaleString()})
     </SpanButton>
   );
 };
@@ -48,7 +48,7 @@ const makeWorkerErrors = (
 ): WorkerFeatureRenderFn => ({ node, worker }) => {
   return worker.errorCount !== 0 ? (
     <SpanButton onClick={() => setErrorDialog(node.ip, worker.pid)}>
-      View errors ({worker.errorCount.toLocaleString()})
+      View errors ({worker.errorCount?.toLocaleString()})
     </SpanButton>
   ) : (
     <Typography color="textSecondary" component="span" variant="inherit">

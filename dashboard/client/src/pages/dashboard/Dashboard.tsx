@@ -1,4 +1,5 @@
 import {
+  Button,
   createStyles,
   makeStyles,
   Tab,
@@ -8,6 +9,7 @@ import {
 } from "@material-ui/core";
 import React, { useCallback, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { Link } from "react-router-dom";
 import { getActorGroups, getNodeInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
@@ -103,6 +105,7 @@ const Dashboard: React.FC = () => {
   return (
     <div className={classes.root}>
       <Typography variant="h5">Ray Dashboard</Typography>
+      <Button><Link target="_blanks" to="/log">Server Logs</Link></Button>
       <Tabs
         className={classes.tabs}
         indicatorColor="primary"

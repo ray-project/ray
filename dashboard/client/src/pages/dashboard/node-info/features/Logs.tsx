@@ -34,7 +34,7 @@ const makeNodeLogs = (
     </Typography>
   ) : (
     <SpanButton onClick={() => setLogDialog(node.ip, null)}>
-      View all logs ({node.logCount.toLocaleString()}{" "}
+      View all logs ({node.logCount?.toLocaleString()}{" "}
       {node.logCount === 1 ? "line" : "lines"})
     </SpanButton>
   );
@@ -47,7 +47,7 @@ const makeWorkerLogs = (
 ): WorkerFeatureRenderFn => ({ worker, node }) =>
   worker.logCount !== 0 ? (
     <SpanButton onClick={() => setLogDialog(node.ip, worker.pid)}>
-      View log ({worker.logCount.toLocaleString()}{" "}
+      View log ({worker.logCount?.toLocaleString()}{" "}
       {worker.logCount === 1 ? "line" : "lines"})
     </SpanButton>
   ) : (
