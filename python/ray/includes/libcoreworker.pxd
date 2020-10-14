@@ -19,6 +19,7 @@ from ray.includes.unique_ids cimport (
     CTaskID,
     CObjectID,
     CPlacementGroupID,
+    CWorkerID,
 )
 from ray.includes.common cimport (
     CAddress,
@@ -200,8 +201,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CNodeID &client_Id)
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
-        CRayStatus ForceRestoreSpilledObjects(
-                const c_vector[CObjectID] &object_ids)
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
@@ -229,6 +228,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &return_ids,
             c_vector[shared_ptr[CRayObject]] *returns) nogil
          ) task_execution_callback
+        (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
         (c_vector[c_string](const c_vector[CObjectID]&) nogil) spill_objects

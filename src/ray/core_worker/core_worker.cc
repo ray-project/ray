@@ -496,13 +496,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   auto object_lookup_fn = [this](const ObjectID &object_id,
                                  const ObjectLookupCallback &callback) {
     return gcs_client_->Objects().AsyncGetLocations(
-        object_id,
-        [this, object_id, callback](const Status &status,
-                                    const std::vector<rpc::ObjectTableData> &results) {
+        object_id, [this, object_id, callback](
+                       const Status &status,
+                       const boost::optional<rpc::ObjectLocationInfo> &result) {
           RAY_CHECK_OK(status);
           std::vector<rpc::Address> locations;
-          for (const auto &result : results) {
-            const auto &node_id = NodeID::FromBinary(result.manager());
+          for (const auto &loc : result->locations()) {
+            const auto &node_id = NodeID::FromBinary(loc.manager());
             auto node = gcs_client_->Nodes().Get(node_id);
             RAY_CHECK(node.has_value());
             if (node->state() == rpc::GcsNodeInfo::ALIVE) {
@@ -540,6 +540,9 @@ void CoreWorker::Shutdown() {
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {
     task_execution_service_.stop();
+  }
+  if (options_.on_worker_shutdown) {
+    options_.on_worker_shutdown(GetWorkerID());
   }
 }
 
@@ -1170,7 +1173,13 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
 
   // Find the raylet that hosts the primary copy of the object.
   NodeID pinned_at;
-  RAY_CHECK(reference_counter_->IsPlasmaObjectPinned(object_id, &pinned_at));
+  bool spilled;
+  RAY_CHECK(
+      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled));
+  if (spilled) {
+    // The object has already been spilled.
+    return;
+  }
   auto node = gcs_client_->Nodes().Get(pinned_at);
   if (pinned_at.IsNil() || !node) {
     RAY_LOG(ERROR) << "Primary raylet for object " << object_id << " unreachable";
@@ -1179,6 +1188,7 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   }
 
   // Ask the raylet to spill the object.
+  RAY_LOG(DEBUG) << "Sending spill request to raylet for object " << object_id;
   auto raylet_client =
       std::make_shared<raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
           node->node_manager_address(), node->node_manager_port(),
@@ -1237,11 +1247,11 @@ Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
   }
 
   ready_promise->get_future().wait();
-  return final_status;
-}
 
-Status CoreWorker::ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids) {
-  return local_raylet_client_->ForceRestoreSpilledObjects(object_ids);
+  for (const auto &object_id : object_ids) {
+    reference_counter_->HandleObjectSpilled(object_id);
+  }
+  return final_status;
 }
 
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(

@@ -414,11 +414,18 @@ RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), object_sub_executor_(client_impl->object_table()) {}
 
 Status RedisObjectInfoAccessor::AsyncGetLocations(
-    const ObjectID &object_id, const MultiItemCallback<ObjectTableData> &callback) {
+    const ObjectID &object_id,
+    const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
                             const std::vector<ObjectTableData> &data) {
-    callback(Status::OK(), data);
+    rpc::ObjectLocationInfo info;
+    info.set_object_id(object_id.Binary());
+    for (const auto &item : data) {
+      auto item_ptr = info.add_locations();
+      item_ptr->CopyFrom(item);
+    }
+    callback(Status::OK(), info);
   };
 
   ObjectTable &object_table = client_impl_->object_table();
@@ -463,10 +470,22 @@ Status RedisObjectInfoAccessor::AsyncRemoveLocation(const ObjectID &object_id,
 
 Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
     const ObjectID &object_id,
-    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+    const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+  return object_sub_executor_.AsyncSubscribe(
+      subscribe_id_, object_id,
+      [subscribe](const ObjectID &id, const ObjectChangeNotification &notification_data) {
+        std::vector<rpc::ObjectLocationChange> updates;
+        for (const auto &item : notification_data.GetData()) {
+          rpc::ObjectLocationChange update;
+          update.set_is_add(notification_data.IsAdded());
+          update.set_node_id(item.manager());
+          updates.push_back(update);
+        }
+        subscribe(id, updates);
+      },
+      done);
 }
 
 Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id) {

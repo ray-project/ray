@@ -4,9 +4,9 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-logger = logging.getLogger(__name__)
+from ray.autoscaler._private.constants import DOCKER_MOUNT_PREFIX
 
-DOCKER_MOUNT_PREFIX = "/tmp/ray_tmp_mount"
+logger = logging.getLogger(__name__)
 
 
 def validate_docker_config(config):

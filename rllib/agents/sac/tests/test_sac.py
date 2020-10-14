@@ -109,6 +109,7 @@ class TestSAC(unittest.TestCase):
             "_model.0.weight",
             "default_policy/value_out/bias": "_value_branch."
             "_model.0.bias",
+            "default_policy/log_alpha": "log_alpha",
             # Target net.
             "default_policy/sequential_2/action_1/kernel": "action_model."
             "action_0._model.0.weight",
@@ -130,6 +131,7 @@ class TestSAC(unittest.TestCase):
             "_model.0.weight",
             "default_policy/value_out_1/bias": "_value_branch."
             "_model.0.bias",
+            "default_policy/log_alpha_1": "log_alpha",
         }
 
         env = SimpleEnv
@@ -186,7 +188,7 @@ class TestSAC(unittest.TestCase):
                 # Actually convert to torch tensors (by accessing everything).
                 input_ = policy._lazy_tensor_dict(input_)
                 input_ = {k: input_[k] for k in input_.keys()}
-                log_alpha = policy.model.log_alpha.detach().numpy()[0]
+                log_alpha = policy.model.log_alpha.detach().cpu().numpy()[0]
 
             # Only run the expectation once, should be the same anyways
             # for all frameworks.
@@ -259,7 +261,7 @@ class TestSAC(unittest.TestCase):
                 ]
                 for tf_g, torch_g in zip(tf_a_grads, torch_a_grads):
                     if tf_g.shape != torch_g.shape:
-                        check(tf_g, np.transpose(torch_g))
+                        check(tf_g, np.transpose(torch_g.detach().cpu()))
                     else:
                         check(tf_g, torch_g)
 
@@ -283,7 +285,7 @@ class TestSAC(unittest.TestCase):
                 torch_c_grads = [v.grad for v in policy.model.q_variables()]
                 for tf_g, torch_g in zip(tf_c_grads, torch_c_grads):
                     if tf_g.shape != torch_g.shape:
-                        check(tf_g, np.transpose(torch_g))
+                        check(tf_g, np.transpose(torch_g.detach().cpu()))
                     else:
                         check(tf_g, torch_g)
                 # Compare (unchanged(!) actor grads) with tf ones.
@@ -292,7 +294,7 @@ class TestSAC(unittest.TestCase):
                 ]
                 for tf_g, torch_g in zip(tf_a_grads, torch_a_grads):
                     if tf_g.shape != torch_g.shape:
-                        check(tf_g, np.transpose(torch_g))
+                        check(tf_g, np.transpose(torch_g.detach().cpu()))
                     else:
                         check(tf_g, torch_g)
 
@@ -354,7 +356,10 @@ class TestSAC(unittest.TestCase):
                         tf_var = tf_weights[tf_key]
                         torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), rtol=0.05)
+                            check(
+                                tf_var,
+                                np.transpose(torch_var.detach().cpu()),
+                                rtol=0.05)
                         else:
                             check(tf_var, torch_var, rtol=0.05)
                     # And alpha.
@@ -366,7 +371,10 @@ class TestSAC(unittest.TestCase):
                         torch_var = policy.target_model.state_dict()[map_[
                             tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(tf_var, np.transpose(torch_var), rtol=0.05)
+                            check(
+                                tf_var,
+                                np.transpose(torch_var.detach().cpu()),
+                                rtol=0.05)
                         else:
                             check(tf_var, torch_var, rtol=0.05)
 
@@ -510,9 +518,10 @@ class TestSAC(unittest.TestCase):
     def _translate_weights_to_torch(self, weights_dict, map_):
         model_dict = {
             map_[k]: convert_to_torch_tensor(
-                np.transpose(v) if re.search("kernel", k) else v)
+                np.transpose(v) if re.search("kernel", k) else np.array([v])
+                if re.search("log_alpha", k) else v)
             for k, v in weights_dict.items()
-            if re.search("(sequential(/|_1)|value_out/)", k)
+            if re.search("(sequential(/|_1)|value_out/|log_alpha)", k)
         }
         return model_dict
 

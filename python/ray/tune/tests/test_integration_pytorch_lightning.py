@@ -34,7 +34,7 @@ class _MockModule(pl.LightningModule):
     def forward(self, *args, **kwargs):
         return self.loss
 
-    def backward(self, trainer, loss, optimizer, optimizer_idx):
+    def backward(self, loss, optimizer, optimizer_idx):
         return None
 
     def training_step(self, train_batch, batch_idx):
@@ -46,8 +46,8 @@ class _MockModule(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         avg_val_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         avg_val_acc = torch.stack([x["val_acc"] for x in outputs]).mean()
-
-        return {"avg_val_loss": avg_val_loss, "avg_val_acc": avg_val_acc}
+        self.log("avg_val_loss", avg_val_loss)
+        self.log("avg_val_acc", avg_val_acc)
 
     def configure_optimizers(self):
         return None

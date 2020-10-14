@@ -1,7 +1,7 @@
 #!/bin/bash
 # This script is for users to build docker images locally. It is most useful for users wishing to edit the
 # base-deps, ray-deps, or ray images. This script is *not* tested, so please look at the 
-# scripts/build-docker-images.sh if there are problems with using this script.
+# scripts/build-docker-images.py if there are problems with using this script.
 
 set -x
 
@@ -16,7 +16,7 @@ key="$1"
 case $key in
     --gpu)
     GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"
+    BASE_IMAGE="nvidia/cuda:10.1-cudnn8-runtime-ubuntu18.04"
     ;;
     --no-cache-build)
     NO_CACHE="--no-cache"

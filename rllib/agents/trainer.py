@@ -14,6 +14,7 @@ from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -224,7 +225,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "synchronize_filters": True,
     # Configures TF for single-process operation by default.
     "tf_session_args": {
-        # note: overriden by `local_tf_session_args`
+        # note: overridden by `local_tf_session_args`
         "intra_op_parallelism_threads": 2,
         "inter_op_parallelism_threads": 2,
         "gpu_options": {
@@ -446,9 +447,6 @@ class Trainer(Trainable):
         # in self.setup().
         config = config or {}
 
-        # Vars to synchronize to workers on each train call
-        self.global_vars = {"timestep": 0}
-
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(env or config.get("env"))
 
@@ -641,9 +639,10 @@ class Trainer(Trainable):
                     "using evaluation_config: {}".format(extra_config))
 
                 self.evaluation_workers = self._make_workers(
-                    self.env_creator,
-                    self._policy_class,
-                    merge_dicts(self.config, extra_config),
+                    env_creator=self.env_creator,
+                    validate_env=None,
+                    policy_class=self._policy_class,
+                    config=merge_dicts(self.config, extra_config),
                     num_workers=self.config["evaluation_num_workers"])
                 self.evaluation_metrics = {}
 
@@ -668,9 +667,11 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
-                      policy_class: Type[Policy], config: TrainerConfigDict,
-                      num_workers: int) -> WorkerSet:
+    def _make_workers(
+            self, *, env_creator: Callable[[EnvContext], EnvType],
+            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
+            policy_class: Type[Policy], config: TrainerConfigDict,
+            num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
         Override this method by passing a custom `make_workers` into
@@ -679,6 +680,9 @@ class Trainer(Trainable):
         Args:
             env_creator (callable): A function that return and Env given an env
                 config.
+            validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
+                Optional callable to validate the generated environment (only
+                on worker=0).
             policy (Type[Policy]): The Policy class to use for creating the
                 policies of the workers.
             config (TrainerConfigDict): The Trainer's config.
@@ -690,6 +694,7 @@ class Trainer(Trainable):
         """
         return WorkerSet(
             env_creator=env_creator,
+            validate_env=validate_env,
             policy_class=policy_class,
             trainer_config=config,
             num_workers=num_workers,
@@ -708,13 +713,10 @@ class Trainer(Trainable):
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
+        # Call the `_before_evaluate` hook.
         self._before_evaluate()
-
-        # Broadcast the new policy weights to all evaluation workers.
-        logger.info("Synchronizing weights to evaluation workers.")
-        weights = ray.put(self.workers.local_worker().save())
-        self.evaluation_workers.foreach_worker(
-            lambda w: w.restore(ray.get(weights)))
+        # Sync weights to the evaluation WorkerSet.
+        self._sync_weights_to_workers(worker_set=self.evaluation_workers)
         self._sync_filters_if_needed(self.evaluation_workers)
 
         if self.config["custom_eval_function"]:
@@ -754,6 +756,20 @@ class Trainer(Trainable):
     def _before_evaluate(self):
         """Pre-evaluation callback."""
         pass
+
+    @DeveloperAPI
+    def _sync_weights_to_workers(
+            self,
+            *,
+            worker_set: Optional[WorkerSet] = None,
+            workers: Optional[List[RolloutWorker]] = None,
+    ) -> None:
+        """Sync "main" weights to given WorkerSet or list of workers."""
+        assert worker_set is not None
+        # Broadcast the new policy weights to all evaluation workers.
+        logger.info("Synchronizing weights to evaluation workers.")
+        weights = ray.put(self.workers.local_worker().save())
+        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     @PublicAPI
     def compute_action(self,
@@ -799,9 +815,6 @@ class Trainer(Trainable):
         filtered_obs = self.workers.local_worker().filters[policy_id](
             preprocessed, update=False)
 
-        # Figure out the current (sample) time step and pass it into Policy.
-        self.global_vars["timestep"] += 1
-
         result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
             state,
@@ -809,8 +822,7 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            explore=explore,
-            timestep=self.global_vars["timestep"])
+            explore=explore)
 
         if state or full_fetch:
             return result
@@ -876,9 +888,6 @@ class Trainer(Trainable):
             state = list(zip(*filtered_state))
             state = [np.stack(s) for s in state]
 
-        # Figure out the current (sample) time step and pass it into Policy.
-        self.global_vars["timestep"] += 1
-
         # Batch compute actions
         actions, states, infos = policy.compute_actions(
             obs_batch,
@@ -887,8 +896,7 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            explore=explore,
-            timestep=self.global_vars["timestep"])
+            explore=explore)
 
         # Unbatch actions for the environment
         atns, actions = space_utils.unbatch(actions), {}

@@ -82,9 +82,6 @@ enum MessageType:int {
   SetResourceRequest,
   // Subscribe to Plasma updates
   SubscribePlasmaReady,
-  // Manually restore objects from external storage.
-  ForceRestoreSpilledObjectsRequest,
-  ForceRestoreSpilledObjectsReply,
 }
 
 table TaskExecutionSpecification {
@@ -307,12 +304,4 @@ table ForceSpillObjectsRequest {
 }
 
 table ForceSpillObjectsReply {
-}
-
-table ForceRestoreSpilledObjectsRequest {
-  // List of object IDs to be restored from external storage.
-  object_ids: [string];
-}
-
-table ForceRestoreSpilledObjectsReply {
 }

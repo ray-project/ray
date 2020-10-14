@@ -126,7 +126,6 @@ test_core() {
         -//:gcs_pub_sub_test
         -//:gcs_server_test
         -//:gcs_server_rpc_test
-        -//:subscription_executor_test
       )
       ;;
   esac
