@@ -72,9 +72,6 @@ def view_requirements_fn_pg(policy: Policy) -> \
         # Created during postprocessing.
         Postprocessing.ADVANTAGES: ViewRequirement(shift=0),
         Postprocessing.VALUE_TARGETS: ViewRequirement(shift=0),
-        # Needed for PPO's loss function.
-        #SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
-        #SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
     }
     # If policy is recurrent, have to add state_out for PG-style postprocessing
     # (calculating GAE from next-obs and last state-out).

@@ -4,16 +4,17 @@ Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 
 import numpy as np
 import logging
-import gym
+from typing import Dict
 
 import ray
 from ray.rllib.agents.impala import vtrace_tf as vtrace
-from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_w_vf_preds
 from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance
 
@@ -279,6 +280,26 @@ def setup_mixins(policy, obs_space, action_space, config):
                                   config["entropy_coeff_schedule"])
 
 
+def view_requirements_fn_impala(policy: Policy) -> \
+        Dict[str, ViewRequirement]:
+    """Function defining the view requirements for training/postprocessing.
+
+    These go on top of the Policy's Model's own view requirements used for
+    the action computing forward passes.
+
+    Args:
+        policy (Policy): The Policy that requires the returned
+            ViewRequirements.
+
+    Returns:
+        Dict[str, ViewRequirement]: The Policy's view requirements.
+    """
+    return {
+        SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(),
+        SampleBatch.ACTION_LOGP: ViewRequirement(),
+    }
+
+
 VTraceTFPolicy = build_tf_policy(
     name="VTraceTFPolicy",
     get_default_config=lambda: ray.rllib.agents.impala.impala.DEFAULT_CONFIG,
@@ -289,6 +310,6 @@ VTraceTFPolicy = build_tf_policy(
     gradients_fn=clip_gradients,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
-    view_requirements_fn=view_requirements_fn_w_vf_preds,
+    view_requirements_fn=view_requirements_fn_impala,
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"],
 )
