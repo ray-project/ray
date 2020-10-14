@@ -285,13 +285,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = task_queue.front();
   TaskID task_id = resource_spec.TaskId();
-  const auto node_id = raylet_address->raylet_id();
-  const auto raylet_ip_address = raylet_address->ip_address();
-  const auto raylet_port = raylet_address->port();
   lease_client->RequestWorkerLease(
       resource_spec,
-      [this, scheduling_key, node_id, raylet_ip_address, raylet_port](
-          const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
+      [this, scheduling_key, raylet_address](const Status &status,
+                                             const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
 
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -325,8 +322,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           // A lease request to a remote raylet failed. Retry locally if the lease is
           // still needed.
           // TODO(swang): Fail after some number of retries?
+          const auto node_id = raylet_address->raylet_id();
+          const auto raylet_ip_address = raylet_address->ip_address();
+          const auto raylet_port = raylet_address->port();
           RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. "
-                         << "task id: " << task_id << ", node id: " << node_id
+                         << "Task id: " << task_id << ", node id: " << node_id
                          << ", raylet address: " << raylet_ip_address << ":"
                          << raylet_port << ". Error: " << status.ToString();
           RequestNewWorkerIfNeeded(scheduling_key);
