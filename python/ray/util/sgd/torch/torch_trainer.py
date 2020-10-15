@@ -577,21 +577,22 @@ class TorchTrainer:
 
         Any configuration parameters will be overridden by the Tune
         Trial configuration. You can also pass in a custom
-        ``tune_func`` to implement your own iterative optimization
-        routine.
+        ``override_tune_step`` to implement your own iterative optimization
+        routine and override the default implementation.
 
         .. code-block:: python
-            def tune_func(trainer, iter):
+            def step(trainer, info):
                 # Implement custom objective function here.
+                train_stats = trainer.train()
                 ...
                 # Return the metrics to report to tune.
                 # Do not call tune.report here.
-                return metrics_dict
+                return train_stats
 
             TorchTrainable = TorchTrainer.as_trainable(
                 training_operator_cls=MyTrainingOperator,
                 num_gpus=2,
-                tune_func=tune_func
+                override_tune_step=step
             )
             analysis = tune.run(
                 TorchTrainable,
@@ -604,7 +605,8 @@ class TorchTrainer:
                 for Ray Tune. It accepts two arguments: the first one is an
                 instance of your TorchTrainer, and the second one is a info
                 dictionary, containing information about the Trainer
-                state. If None is passed in, the default step function will be
+                state. If None is passed in, the default step
+                function will be
                 used: run 1 epoch of training, 1 epoch of validation,
                 and report both results to Tune. Passing in
                 ``override_tune_step`` is useful to define
@@ -614,12 +616,13 @@ class TorchTrainer:
 
         """
         if override_tune_step is not None:
-            args = inspect.signature(override_tune_step)
-            if not len(args.parameters) == 2:
-                raise ValueError("tune_func must take in exactly 2 "
+            callback_args = inspect.signature(override_tune_step)
+            if not len(callback_args.parameters) == 2:
+                raise ValueError("override_tune_step must take in exactly 2 "
                                  "arguments. The passed in function "
                                  "currently takes in {} "
-                                 "args".format(str(len(args.parameters))))
+                                 "args".format(str(len(
+                    callback_args.parameters))))
 
         class TorchTrainable(BaseTorchTrainable):
             @classmethod
@@ -651,8 +654,8 @@ class TorchTrainer:
             def step(self):
                 if override_tune_step is not None:
                     output = override_tune_step(self._trainer,
-                                                {"iter": self._iter})
-                    self._iter += 1
+                                                {"iteration":
+                                                     self.training_iteration})
                     return output
                 else:
                     return super(TorchTrainable, self).step()
@@ -673,27 +676,27 @@ class BaseTorchTrainable(Trainable):
 
     This class is produced when you call ``TorchTrainer.as_trainable(...)``.
 
-    You can override the produced Trainable to implement custom iterative
-    training procedures:
+    You can implement custom iterative
+    training procedures by passing in a ``override_tune_step`` function to
+    ``as_trainable``.:
 
     .. code-block:: python
+        def custom_step(trainer, info):
+            for i in range(5):
+                    train_stats = trainer.train()
+            validation_stats = trainer.validate()
+            train_stats.update(validation_stats)
+            return train_stats
 
+        # TorchTrainable is subclass of BaseTorchTrainable.
         TorchTrainable = TorchTrainer.as_trainable(
             training_operator_cls=MyTrainingOperator,
-            num_gpus=2
+            num_gpus=2,
+            override_tune_step=custom_step
         )
-        # TorchTrainable is subclass of BaseTorchTrainable.
-
-        class CustomTrainable(TorchTrainable):
-            def step(self):
-                for i in range(5):
-                    train_stats = self.trainer.train()
-                validation_stats = self.trainer.validate()
-                train_stats.update(validation_stats)
-                return train_stats
 
         analysis = tune.run(
-            CustomTrainable,
+            TorchTrainable,
             config={"lr": tune.grid_search([0.01, 0.1])}
         )
 
@@ -702,7 +705,6 @@ class BaseTorchTrainable(Trainable):
     def setup(self, config):
         """Constructs a TorchTrainer object as `self.trainer`."""
         self._trainer = self._create_trainer(config)
-        self._iter = 0
 
     def step(self):
         """Calls `self.trainer.train()` and `self.trainer.validate()` once.
@@ -718,7 +720,6 @@ class BaseTorchTrainable(Trainable):
         train_stats = self.trainer.train(max_retries=10, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
-        self._iter += 1
         return stats
 
     def save_checkpoint(self, checkpoint_dir):
@@ -726,22 +727,14 @@ class BaseTorchTrainable(Trainable):
         trainer_checkpoint_path = os.path.join(checkpoint_dir,
                                                "trainer.checkpoint")
         self.trainer.save(trainer_checkpoint_path)
-        metadata_path = os.path.join(checkpoint_dir, "metadata.checkpoint")
-        metadata_dict = {"iter": self._iter}
-        torch.save(metadata_dict, metadata_path)
-        return checkpoint_dir
+        return trainer_checkpoint_path
 
-    def load_checkpoint(self, checkpoint_dir):
+    def load_checkpoint(self, checkpoint_path):
         """Restores the trainer state.
 
         Override this if you have state external to the Trainer object.
         """
-        trainer_checkpoint_path = os.path.join(checkpoint_dir,
-                                               "trainer.checkpoint")
-        self.trainer.load(trainer_checkpoint_path)
-        metadata_path = os.path.join(checkpoint_dir, "metadata.checkpoint")
-        metadata_dict = torch.load(metadata_path)
-        self._iter = metadata_dict["iter"]
+        self.trainer.load(checkpoint_path)
 
     def cleanup(self):
         """Shuts down the trainer."""
