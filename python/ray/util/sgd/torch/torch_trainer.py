@@ -581,6 +581,7 @@ class TorchTrainer:
         routine and override the default implementation.
 
         .. code-block:: python
+
             def step(trainer, info):
                 # Implement custom objective function here.
                 train_stats = trainer.train()
