@@ -678,7 +678,7 @@ class BaseTorchTrainable(Trainable):
 
     You can implement custom iterative
     training procedures by passing in a ``override_tune_step`` function to
-    ``as_trainable``.:
+    ``as_trainable``:
 
     .. code-block:: python
         def custom_step(trainer, info):
