@@ -1,5 +1,5 @@
 const base =
-  process.env.NODE_ENV !== "development"
+  process.env.NODE_ENV === "development"
     ? "http://localhost:8265"
     : window.location.origin;
 
