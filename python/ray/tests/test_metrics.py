@@ -70,11 +70,10 @@ def test_worker_stats(shutdown_only):
     worker_pid = ray.get(f.remote())
     reply = try_get_node_stats()
     target_worker_present = False
-    for worker in reply.workers_stats:
-        stats = worker.core_worker_stats
+    for stats in reply.core_workers_stats:
         if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
             target_worker_present = True
-            assert worker.pid == worker_pid
+            assert stats.pid == worker_pid
         else:
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
@@ -84,11 +83,10 @@ def test_worker_stats(shutdown_only):
     worker_pid = ray.get(a.f.remote())
     reply = try_get_node_stats()
     target_worker_present = False
-    for worker in reply.workers_stats:
-        stats = worker.core_worker_stats
+    for stats in reply.core_workers_stats:
         if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
             target_worker_present = True
-            assert worker.pid == worker_pid
+            assert stats.pid == worker_pid
         else:
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
@@ -101,17 +99,17 @@ def test_worker_stats(shutdown_only):
                 "Timed out while waiting for worker processes")
 
         # Wait for the workers to start.
-        if len(reply.workers_stats) < num_cpus + 1:
+        if len(reply.core_workers_stats) < num_cpus + 1:
             time.sleep(1)
             reply = try_get_node_stats()
             continue
 
         # Check that the rest of the processes are workers, 1 for each CPU.
-        assert len(reply.workers_stats) == num_cpus + 1
+        assert len(reply.core_workers_stats) == num_cpus + 1
         views = [view.view_name for view in reply.view_data]
         assert "local_available_resource" in views
         # Check that all processes are Python.
-        pids = [worker.pid for worker in reply.workers_stats]
+        pids = [worker.pid for worker in reply.core_workers_stats]
         processes = [
             p.info["name"] for p in psutil.process_iter(attrs=["pid", "name"])
             if p.info["pid"] in pids
@@ -137,16 +135,15 @@ def test_worker_stats(shutdown_only):
 
     webui_url = addresses["webui_url"]
     webui_url = webui_url.replace("127.0.0.1", "http://127.0.0.1")
-    for worker in reply.workers_stats:
-        if worker.is_driver:
+    for stats in reply.core_workers_stats:
+        if stats.worker_type == common_pb2.DRIVER:
             continue
         requests.get(
             webui_url + "/api/kill_actor",
             params={
-                "actor_id": ray.utils.binary_to_hex(
-                    worker.core_worker_stats.actor_id),
-                "ip_address": worker.core_worker_stats.ip_address,
-                "port": worker.core_worker_stats.port
+                "actor_id": ray.utils.binary_to_hex(stats.actor_id),
+                "ip_address": stats.ip_address,
+                "port": stats.port
             })
     timeout_seconds = 20
     start_time = time.time()
@@ -154,8 +151,8 @@ def test_worker_stats(shutdown_only):
         if time.time() - start_time > timeout_seconds:
             raise RayTestTimeoutException("Timed out while killing actors")
         if all(
-                actor_killed(worker.pid) for worker in reply.workers_stats
-                if not worker.is_driver):
+                actor_killed(stats.pid) for stats in reply.core_workers_stats
+                if stats.worker_type != common_pb2.DRIVER):
             break
 
 
