@@ -1,0 +1,6 @@
+ray[rllib]
+ray[debug]
+torch==1.6+cu101
+torchvision==0.7.0+cu101
+boto3==1.4.8
+cython==0.29.0
