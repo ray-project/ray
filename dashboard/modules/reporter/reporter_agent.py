@@ -95,10 +95,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
     async def ReportOCMetrics(self, request, context):
-        """
-        This function receives a GRPC containing OpenCensus (OC) metrics
-        from a Ray process, then exposes those metrics to Prometheus.
-        """
+        # This function receives a GRPC containing OpenCensus (OC) metrics
+        # from a Ray process, then exposes those metrics to Prometheus.
         try:
             self._metrics_agent.record_metric_points_from_protobuf(
                 request.metrics)
