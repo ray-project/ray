@@ -76,11 +76,19 @@ def auto_http_archive(*, name=None, url=None, urls=True,
                         strip_prefix=strip_prefix, **kwargs)
 
 def ray_deps_setup():
+
+    # TODO: Okay, so this is dirty and should feel bad.
+    # Previously we were at redis 5.0.9 -- and life was good. Many features and bugfixes, and,
+    # importantly, security fixes were added for 6.0, but 6.0 also broke manylinux1 builds.
+    # (See https://github.com/redis/redis/issues/7174) 
+    # Since we're not waiting for the release that contains the fix, (redis 6.1 or 6.2) -- this is a particular sha.
+    # 
+    # Please change to a future valid release version or remove redis as a dependency altogether.
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
-        url = "https://github.com/redis/redis/archive/6.0.8.tar.gz",
-        sha256 = "1f192a0eb68ac19cb869c2512dc10c97e58b27bc464e2e74ae70c72cbe66bc08",
+        url = "https://github.com/redis/redis/archive/19418b6b28b70818e67c50bbdfad8568da7c3458.tar.gz",
+        sha256 = "3f5775ba5af86667523bb99fd658c2158a770fde4c2f4d484b30bcac24637884",
         patches = [
             "//thirdparty/patches:redis-quiet.patch",
         ],
