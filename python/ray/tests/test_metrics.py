@@ -7,6 +7,7 @@ import time
 import numpy as np
 
 import ray
+from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import reporter_pb2
@@ -44,7 +45,10 @@ def test_worker_stats(shutdown_only):
 
     reply = try_get_node_stats()
     # Check that there is one connected driver.
-    drivers = [worker for worker in reply.workers_stats if worker.is_driver]
+    drivers = [
+        worker for worker in reply.core_workers_stats
+        if worker.worker_type == common_pb2.DRIVER
+    ]
     assert len(drivers) == 1
     assert os.getpid() == drivers[0].pid
 
