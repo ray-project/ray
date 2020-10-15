@@ -174,7 +174,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    Lock writeLock = shutdownLock.readLock();
+    Lock writeLock = shutdownLock.writeLock();
     writeLock.lock();
     try {
       if (rayConfig.workerMode == WorkerType.DRIVER) {
