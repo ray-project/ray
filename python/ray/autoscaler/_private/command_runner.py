@@ -730,6 +730,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             except Exception as e:
                 logger.warning(
                     "Nvidia Container Runtime is present, but no GPUs found.")
+                logger.debug(f"nvidia-smi error: {e}")
                 return []
 
         return []
