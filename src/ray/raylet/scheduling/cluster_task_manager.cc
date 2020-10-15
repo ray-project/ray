@@ -37,8 +37,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       std::string node_id_string =
           cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
       if (node_id_string.empty()) {
-        /// There is no node that has available resources to run the request.
-        work_it++;
+        // There is no node that has available resources to run the request.
+        // Move on to the next shape.
+        break;
       } else {
         if (node_id_string == self_node_id_.Binary()) {
           // Warning: WaitForTaskArgsRequests must execute (do not let it short
@@ -238,7 +239,7 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
         // Add to `resource_loads`.
         const auto &label = resource.first;
         const auto &quantity = resource.second;
-        (*resource_loads)[label] = quantity * count;
+        (*resource_loads)[label] += quantity * count;
 
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
