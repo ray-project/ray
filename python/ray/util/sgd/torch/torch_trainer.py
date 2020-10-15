@@ -723,8 +723,7 @@ class BaseTorchTrainable(Trainable):
 
     def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                               "trainer.checkpoint")
+        checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
         self.trainer.save(checkpoint_path)
         return checkpoint_path
 
