@@ -32,6 +32,7 @@ NODE_START_WAIT_S = 300
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
+RAY_HOME = "/home/ray"  # ray home path in the container image
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
@@ -190,7 +191,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 logger.warning("'rsync_filter' detected but is currently "
                                "unsupported for k8s.")
         if target.startswith("~"):
-            target = "/root" + target[1:]
+            target = RAY_HOME + target[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -206,7 +207,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = "/root" + target[1:]
+                target = RAY_HOME + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
@@ -215,7 +216,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
 
     def run_rsync_down(self, source, target, options=None):
         if target.startswith("~"):
-            target = "/root" + target[1:]
+            target = RAY_HOME + target[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -231,7 +232,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = "/root" + target[1:]
+                target = RAY_HOME + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
