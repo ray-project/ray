@@ -8,8 +8,6 @@ from ray.tune.suggest.repeater import Repeater
 
 def create_searcher(
         search_alg,
-        metric=None,
-        mode=None,
         **kwargs,
 ):
     """Instantiate a search algorithm based on the given string.
@@ -95,7 +93,7 @@ def create_searcher(
             f"Got: {search_alg}")
 
     SearcherClass = SEARCH_ALG_IMPORT[search_alg]()
-    return SearcherClass(metric=metric, mode=mode, **kwargs)
+    return SearcherClass(**kwargs)
 
 
 __all__ = [
