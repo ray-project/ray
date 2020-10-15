@@ -3,6 +3,7 @@ import copy
 import threading
 from collections import defaultdict
 import logging
+import time
 from typing import Any, Dict
 
 import boto3
@@ -21,6 +22,8 @@ from ray.autoscaler._private.aws.utils import boto_exception_handler
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
+
+BATCH_TAG_UPDATE_DELAY = 5
 
 
 def to_aws_format(tags):
@@ -71,52 +74,14 @@ class AWSNodeProvider(NodeProvider):
         self.tag_cache = {}  # Tags that we believe to actually be on EC2.
         self.tag_cache_pending = {}  # Tags that we will soon upload.
         self.tag_cache_lock = threading.Lock()
-        self.tag_cache_update_event = threading.Event()
-        self.tag_cache_kill_event = threading.Event()
-        self.tag_update_thread = threading.Thread(
-            target=self._node_tag_update_loop)
-        self.tag_update_thread.start()
+        self.tag_batching_in_progress = threading.Event()
+        self.tag_update_thread = threading.Thread()
+        self.tag_update_thread.start()  # Put this thread in finished state.
+        self.tag_update_thread_lock = threading.Lock()
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
-
-    def _node_tag_update_loop(self):
-        """Update the AWS tags for a cluster periodically.
-
-        The purpose of this loop is to avoid excessive EC2 calls when a large
-        number of nodes are being launched simultaneously.
-        """
-        while True:
-            self.tag_cache_update_event.wait()
-            self.tag_cache_update_event.clear()
-
-            batch_updates = defaultdict(list)
-
-            with self.tag_cache_lock:
-                for node_id, tags in self.tag_cache_pending.items():
-                    for x in tags.items():
-                        batch_updates[x].append(node_id)
-                    self.tag_cache[node_id].update(tags)
-
-                self.tag_cache_pending = {}
-
-            for (k, v), node_ids in batch_updates.items():
-                m = "Set tag {}={} on {}".format(k, v, node_ids)
-                with LogTimer("AWSNodeProvider: {}".format(m)):
-                    if k == TAG_RAY_NODE_NAME:
-                        k = "Name"
-                    self.ec2.meta.client.create_tags(
-                        Resources=node_ids,
-                        Tags=[{
-                            "Key": k,
-                            "Value": v
-                        }],
-                    )
-
-            self.tag_cache_kill_event.wait(timeout=5)
-            if self.tag_cache_kill_event.is_set():
-                return
 
     def non_terminated_nodes(self, tag_filters):
         # Note that these filters are acceptable because they are set on
@@ -192,7 +157,54 @@ class AWSNodeProvider(NodeProvider):
             except KeyError:
                 self.tag_cache_pending[node_id] = tags
 
-            self.tag_cache_update_event.set()
+        # If on main thread, update tags now.
+        if threading.current_thread() is threading.main_thread():
+            self._update_node_tags()
+        else:  # Else, wait for tag_update_thread to update a batch of tags
+            with self.tag_update_thread_lock:
+                if not self.tag_batching_in_progress.is_set():
+                    self.tag_update_thread.join(
+                    )  # Wait for last batch to finish updating
+                    self.tag_update_thread = threading.Thread(
+                        target=self._batched_tag_update)
+                    self.tag_update_thread.start()  # Start the new batch
+            self.tag_update_thread.join(
+            )  # Wait for update to complete before returning
+
+    def _batched_tag_update(self):
+        """Update the AWS tags for a cluster after waiting for a specified delay.
+
+        The purpose of this method is to avoid excessive EC2 calls when a large
+        number of nodes are being launched simultaneously.
+        """
+        self.tag_batching_in_progress.set()
+        time.sleep(BATCH_TAG_UPDATE_DELAY)
+        self.tag_batching_in_progress.clear()
+        self._update_node_tags()
+
+    def _update_node_tags(self):
+        batch_updates = defaultdict(list)
+
+        with self.tag_cache_lock:
+            for node_id, tags in self.tag_cache_pending.items():
+                for x in tags.items():
+                    batch_updates[x].append(node_id)
+                self.tag_cache[node_id].update(tags)
+
+            self.tag_cache_pending = {}
+
+        for (k, v), node_ids in batch_updates.items():
+            m = "Set tag {}={} on {}".format(k, v, node_ids)
+            with LogTimer("AWSNodeProvider: {}".format(m)):
+                if k == TAG_RAY_NODE_NAME:
+                    k = "Name"
+                self.ec2.meta.client.create_tags(
+                    Resources=node_ids,
+                    Tags=[{
+                        "Key": k,
+                        "Value": v
+                    }],
+                )
 
     def create_node(self, node_config, tags, count):
         tags = copy.deepcopy(tags)
@@ -472,10 +484,6 @@ class AWSNodeProvider(NodeProvider):
             return self.cached_nodes[node_id]
 
         return self._get_node(node_id)
-
-    def cleanup(self):
-        self.tag_cache_update_event.set()
-        self.tag_cache_kill_event.set()
 
     @staticmethod
     def bootstrap_config(cluster_config):
