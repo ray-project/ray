@@ -676,7 +676,8 @@ class BaseTorchTrainable(Trainable):
 
     This class is produced when you call ``TorchTrainer.as_trainable(...)``.
 
-    You can implement custom iterative
+    By default one step of training runs ``trainer.train()`` once and
+    ``trainer.validate()`` once. You can implement custom iterative
     training procedures by passing in a ``override_tune_step`` function to
     ``as_trainable``:
 
@@ -708,10 +709,7 @@ class BaseTorchTrainable(Trainable):
         self._trainer = self._create_trainer(config)
 
     def step(self):
-        """Calls `self.trainer.train()` and `self.trainer.validate()` once.
-
-        You may want to override this if using a custom LR scheduler.
-        """
+        """Calls `self.trainer.train()` and `self.trainer.validate()` once."""
         if self._is_overridden("_train"):
             raise DeprecationWarning(
                 "Trainable._train is deprecated and will be "
