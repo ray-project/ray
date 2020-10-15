@@ -238,7 +238,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
         break;
       }
       case Language::JAVA: {
-        code_search_path_str = "-Dray.job.code-search-path" + code_search_path_str;
+        code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
         break;
       }
       default:
