@@ -1,7 +1,11 @@
 import gym
-from typing import List, Optional, Union
+from typing import List, Optional, Union, TYPE_CHECKING
 
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import ViewReqDict
+
+if TYPE_CHECKING:
+    from ray.rllib.policy.policy import Policy
 
 torch, _ = try_import_torch()
 
@@ -56,3 +60,49 @@ class ViewRequirement:
             float("-inf"), float("inf"), shape=())
         self.shift = shift
         self.used_for_training = used_for_training
+
+
+def get_default_view_requirements(policy: "Policy") -> ViewReqDict:
+    """Returns a default ViewRequirements dict (for backward compatibility).
+    
+    Args:
+        policy (Policy): The Policy, for which to generate the ViewRequirements
+            dict.
+
+    Returns:
+        ViewReqDict: The default view requirements dict.
+    """
+    from ray.rllib.evaluation.postprocessing import Postprocessing
+    from ray.rllib.policy.sample_batch import SampleBatch
+
+    # Default view requirements (equal to those that we would use before
+    # the trajectory view API was introduced).
+    view_reqs = {
+        SampleBatch.OBS: ViewRequirement(space=policy.observation_space),
+        SampleBatch.NEXT_OBS: ViewRequirement(
+            data_col=SampleBatch.OBS,
+            shift=1,
+            space=policy.observation_space),
+        SampleBatch.ACTIONS: ViewRequirement(space=policy.action_space),
+        SampleBatch.REWARDS: ViewRequirement(),
+        SampleBatch.DONES: ViewRequirement(),
+        SampleBatch.EPS_ID: ViewRequirement(),
+        SampleBatch.AGENT_INDEX: ViewRequirement(),
+        Postprocessing.ADVANTAGES: ViewRequirement(),
+        Postprocessing.VALUE_TARGETS: ViewRequirement(),
+        SampleBatch.VF_PREDS: ViewRequirement(),
+        SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(),
+        SampleBatch.ACTION_LOGP: ViewRequirement(),
+    }
+    # Add the state-in/out views in case the policy has an RNN.
+    if policy.is_recurrent():
+        init_state = policy.get_initial_state()
+        for i, s in enumerate(init_state):
+            view_reqs["state_in_{}".format(i)] = ViewRequirement(
+                data_col="state_out_{}".format(i),
+                shift=-1,
+                space=gym.spaces.Box(-1.0, 1.0, shape=s.shape))
+            view_reqs["state_out_{}".format(i)] = ViewRequirement(
+                space=gym.spaces.Box(-1.0, 1.0, shape=s.shape))
+
+    return view_reqs

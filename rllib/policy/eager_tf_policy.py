@@ -11,6 +11,7 @@ from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import get_default_view_requirements
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -253,6 +254,11 @@ def build_eager_tf_policy(name,
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
                 self.view_requirements.update(view_requirements_fn(self))
+            # If no view-requirements given, use default settings.
+            # Add NEXT_OBS, STATE_IN_0.., and others.
+            else:
+                self.view_requirements.update(
+                    get_default_view_requirements(self))
 
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(

@@ -2,14 +2,16 @@ from collections import OrderedDict
 import gym
 import logging
 import numpy as np
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from ray.util.debug import log_once
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.policy.view_requirement import get_default_view_requirements, \
+    ViewRequirement
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
@@ -54,8 +56,9 @@ class DynamicTFPolicy(TFPolicy):
             obs_space: gym.spaces.Space,
             action_space: gym.spaces.Space,
             config: TrainerConfigDict,
-            loss_fn: Callable[[Policy, ModelV2, type, SampleBatch],
-                              TensorType],
+            loss_fn: Callable[
+                [Policy, ModelV2, Type[TFActionDistribution], SampleBatch],
+                TensorType],
             *,
             stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
                 str, TensorType]]] = None,
@@ -88,9 +91,9 @@ class DynamicTFPolicy(TFPolicy):
                 policy.
             action_space (gym.spaces.Space): Action space of the policy.
             config (TrainerConfigDict): Policy-specific configuration data.
-            loss_fn (Callable[[Policy, ModelV2, type, SampleBatch],
-                TensorType]): Function that returns a loss tensor for the
-                policy graph.
+            loss_fn (Callable[[Policy, ModelV2, Type[TFActionDistribution],
+                SampleBatch], TensorType]): Function that returns a loss tensor
+                for the policy graph.
             stats_fn (Optional[Callable[[Policy, SampleBatch],
                 Dict[str, TensorType]]]): Optional function that returns a dict
                 of TF fetches given the policy and batch input tensors.
@@ -203,8 +206,14 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.AGENT_INDEX: ViewRequirement(),
         }
         self.view_requirements.update(self.model.inference_view_requirements)
+
+        # Update this Policy's ViewRequirements (if function given).
         if callable(view_requirements_fn):
             self.view_requirements.update(view_requirements_fn(self))
+        # If no view-requirements given, use default settings.
+        # Add NEXT_OBS, STATE_IN_0.., and others.
+        else:
+            self.view_requirements.update(get_default_view_requirements(self))
 
         # Setup standard placeholders
         if existing_inputs is not None:

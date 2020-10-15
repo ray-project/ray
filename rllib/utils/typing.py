@@ -102,3 +102,7 @@ TensorStructType = Union[TensorType, dict, tuple]
 
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
+
+# A view requirements dict mapping SampleBatch/dict keys (str) to a
+# ViewRequirement object.
+ViewReqDict = Dict[str, "ViewRequirement"]
