@@ -621,8 +621,8 @@ class TorchTrainer:
                 raise ValueError("override_tune_step must take in exactly 2 "
                                  "arguments. The passed in function "
                                  "currently takes in {} "
-                                 "args".format(str(len(
-                    callback_args.parameters))))
+                                 "args".format(
+                                     str(len(callback_args.parameters))))
 
         class TorchTrainable(BaseTorchTrainable):
             @classmethod
@@ -653,9 +653,8 @@ class TorchTrainer:
 
             def step(self):
                 if override_tune_step is not None:
-                    output = override_tune_step(self._trainer,
-                                                {"iteration":
-                                                     self.training_iteration})
+                    output = override_tune_step(
+                        self._trainer, {"iteration": self.training_iteration})
                     return output
                 else:
                     return super(TorchTrainable, self).step()
