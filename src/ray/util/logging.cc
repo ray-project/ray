@@ -32,7 +32,7 @@
 #include <iostream>
 #include <sstream>
 
-#ifdef RAY_USE_GLOG
+#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
 #include <sys/stat.h>
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -42,10 +42,6 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-#endif
-
-#ifdef RAY_USE_GLOG
-#undef RAY_USE_SPDLOG
 #endif
 
 #ifdef RAY_USE_SPDLOG
@@ -61,7 +57,7 @@ namespace ray {
 
 std::string GetCallTrace() {
   std::string return_message = "Cannot get callstack information.";
-#ifdef RAY_USE_GLOG
+#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
   return google::GetStackTraceToString();
 #endif
   return return_message;
@@ -108,8 +104,15 @@ class SpdLogMessage final {
       logger = spdlog::stdout_color_mt("console");
       spdlog::set_default_logger(logger);
     }
+    if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
+      stream() << "\n" << ray::GetCallTrace();
+    }
     logger->log(static_cast<spdlog::level::level_enum>(loglevel_), "{}", str_.str());
     logger->flush();
+    if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
+      // For keeping same action with glog, process will be abort if it's fatal log.
+      std::abort();
+    }
   }
 
   ~SpdLogMessage() { Flush(); }

@@ -15,6 +15,7 @@
 #include "ray/util/logging.h"
 
 #include <chrono>
+#include <csignal>
 #include <cstdlib>
 #include <iostream>
 
@@ -121,6 +122,26 @@ TEST(PrintLogTest, CallstackTraceTest) {
   auto ret2 = TestFunctionLevel2();
   EXPECT_TRUE(ret2.find("TestFunctionLevel2") != std::string::npos);
 }
+
+/// Catch abort signal handler for testing RAY_CHECK.
+/// We'd better to run the following test case manually since process
+/// will terminated if abort signal raising.
+/*
+bool get_abort_signal = false;
+void signal_handler(int signum) {
+  RAY_LOG(WARNING) << "Interrupt signal (" << signum << ") received.";
+  get_abort_signal = signum == SIGABRT;
+  exit(0);
+}
+
+TEST(PrintLogTest, RayCheckAbortTest) {
+  get_abort_signal = false;
+  signal(SIGABRT, signal_handler);
+  RAY_CHECK(0) << "Check for aborting";
+  sleep(1);
+  EXPECT_TRUE(get_abort_signal);
+}
+*/
 
 }  // namespace ray
 
