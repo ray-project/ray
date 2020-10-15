@@ -10,10 +10,9 @@ import logging
 import gym
 from typing import Dict, List, Optional, Type, Union
 
-from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_w_vf_preds
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
-    clip_gradients, choose_optimizer
+    clip_gradients, choose_optimizer, view_requirements_fn_impala
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -171,8 +170,9 @@ def appo_surrogate_loss(
                     unpacked_old_policy_behaviour_logits, drop_last=True),
                 actions=tf.unstack(
                     make_time_major(loss_actions, drop_last=True), axis=2),
-                discounts=tf.cast(~make_time_major(dones, drop_last=True),
-                                  tf.float32) * policy.config["gamma"],
+                discounts=tf.cast(
+                    ~make_time_major(tf.cast(dones, tf.bool), drop_last=True),
+                    tf.float32) * policy.config["gamma"],
                 rewards=make_time_major(rewards, drop_last=True),
                 values=values_time_major[:-1],  # drop-last=True
                 bootstrap_value=values_time_major[-1],
@@ -441,6 +441,6 @@ AsyncPPOTFPolicy = build_tf_policy(
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
         ValueNetworkMixin
     ],
-    view_requirements_fn=view_requirements_fn_w_vf_preds,
+    view_requirements_fn=view_requirements_fn_impala,
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"],
 )

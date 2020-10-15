@@ -350,8 +350,8 @@ def build_eager_tf_policy(name,
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
-            n = input_dict[SampleBatch.CUR_OBS].shape[0]
-            seq_lens = tf.ones(n, dtype=tf.int32)
+            batch_size = input_dict[SampleBatch.CUR_OBS].shape[0]
+            seq_lens = tf.ones(batch_size, dtype=tf.int32)
             if obs_include_prev_action_reward:
                 if prev_action_batch is not None:
                     input_dict[SampleBatch.PREV_ACTIONS] = \
@@ -412,7 +412,7 @@ def build_eager_tf_policy(name,
                 extra_fetches.update(extra_action_fetches_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += len(obs_batch)
+            self.global_timestep += int(batch_size)
 
             return actions, state_out, extra_fetches
 

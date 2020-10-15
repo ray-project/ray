@@ -64,7 +64,7 @@ class ViewRequirement:
 
 def get_default_view_requirements(policy: "Policy") -> ViewReqDict:
     """Returns a default ViewRequirements dict (for backward compatibility).
-    
+
     Args:
         policy (Policy): The Policy, for which to generate the ViewRequirements
             dict.
@@ -80,9 +80,7 @@ def get_default_view_requirements(policy: "Policy") -> ViewReqDict:
     view_reqs = {
         SampleBatch.OBS: ViewRequirement(space=policy.observation_space),
         SampleBatch.NEXT_OBS: ViewRequirement(
-            data_col=SampleBatch.OBS,
-            shift=1,
-            space=policy.observation_space),
+            data_col=SampleBatch.OBS, shift=1, space=policy.observation_space),
         SampleBatch.ACTIONS: ViewRequirement(space=policy.action_space),
         SampleBatch.REWARDS: ViewRequirement(),
         SampleBatch.DONES: ViewRequirement(),
