@@ -349,7 +349,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 }
 
 void RayLog::UninstallSignalAction() {
-#ifdef RAY_USE_GLOG
+#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
   if (!is_failure_signal_handler_installed_) {
     return;
   }
@@ -375,13 +375,28 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
-#if defined(RAY_USE_GLOG)
+#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
   UninstallSignalAction();
+#endif
+#if defined(RAY_USE_GLOG)
   google::ShutdownGoogleLogging();
 #elif defined(RAY_USE_SPDLOG)
   spdlog::default_logger()->flush();
   spdlog::drop_all();
   spdlog::shutdown();
+#endif
+}
+
+void WriteFailureMessage(const char *data, int size) {
+  // The data & size represent one line failure message.
+  // The second parameter `size-1` means we should strip last char `\n`
+  // for pretty printing.
+  RAY_LOG(ERROR) << std::string(data, size - 1);
+#ifdef RAY_USE_SPDLOG
+  // If logger writes logs to files, logs are fully-buffered, which is different from
+  // stdout (line-buffered) and stderr (unbuffered). So always flush here in case logs are
+  // lost when logger writes logs to files.
+  spdlog::default_logger()->flush();
 #endif
 }
 
@@ -392,11 +407,12 @@ void RayLog::InstallFailureSignalHandler() {
   // If process crashes, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
 #endif
-#ifdef RAY_USE_GLOG
+#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
   if (is_failure_signal_handler_installed_) {
     return;
   }
   google::InstallFailureSignalHandler();
+  google::InstallFailureWriter(&WriteFailureMessage);
   is_failure_signal_handler_installed_ = true;
 #endif
 }

@@ -137,6 +137,7 @@ void signal_handler(int signum) {
 TEST(PrintLogTest, RayCheckAbortTest) {
   get_abort_signal = false;
   signal(SIGABRT, signal_handler);
+  ray::RayLog::InstallFailureSignalHandler();
   RAY_CHECK(0) << "Check for aborting";
   sleep(1);
   EXPECT_TRUE(get_abort_signal);
