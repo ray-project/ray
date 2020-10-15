@@ -149,7 +149,7 @@ class TestCuriosity(unittest.TestCase):
         config["callbacks"] = MyCallBack
         # Limit horizon to make it really hard for non-curious agent to reach
         # the goal state.
-        config["horizon"] = 30
+        config["horizon"] = 23
         config["num_workers"] = 0  # local only
         config["lr"] = 0.001
 
@@ -174,8 +174,8 @@ class TestCuriosity(unittest.TestCase):
             for i in range(num_iterations):
                 result = trainer.train()
                 print(result)
-                if result["episode_reward_mean"] >= 0.01:
-                    print("Learnt something after {} iters!".format(i))
+                if result["episode_reward_max"] >= 0.0:
+                    print("Reached goal after {} iters!".format(i))
                     learnt = True
                     break
             trainer.stop()
