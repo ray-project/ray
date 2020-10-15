@@ -20,12 +20,12 @@ class MyCallBack(DefaultCallbacks):
         super().__init__()
         self.deltas = []
 
-    def on_postprocess_trajectory(self, *, worker, episode,
-            agent_id, policy_id, policies, postprocessed_batch,
-            original_batches, **kwargs):
+    def on_postprocess_trajectory(self, *, worker, episode, agent_id,
+                                  policy_id, policies, postprocessed_batch,
+                                  original_batches, **kwargs):
         pos = np.argmax(postprocessed_batch["obs"], -1)
         x, y = pos % 10, pos // 10
-        self.deltas.extend((x ** 2 + y ** 2) ** 0.5)
+        self.deltas.extend((x**2 + y**2)**0.5)
 
     def on_sample_end(self, *, worker, samples, **kwargs):
         print("mean. distance from origin={}".format(np.mean(self.deltas)))
@@ -184,14 +184,14 @@ class TestCuriosity(unittest.TestCase):
 
             # W/o Curiosity. Expect to learn nothing.
             config["exploration_config"] = {
-                 "type": "StochasticSampling",
+                "type": "StochasticSampling",
             }
             trainer = ppo.PPOTrainer(config=config)
             rewards_wo = 0.0
             for _ in range(num_iterations):
-                 result = trainer.train()
-                 rewards_wo += result["episode_reward_mean"]
-                 print(result)
+                result = trainer.train()
+                rewards_wo += result["episode_reward_mean"]
+                print(result)
             trainer.stop()
             self.assertTrue(rewards_wo == 0.0)
 
