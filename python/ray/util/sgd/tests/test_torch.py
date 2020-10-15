@@ -664,7 +664,7 @@ def test_tune_train(ray_start_4_cpus, num_workers, use_local):  # noqa: F811
 @pytest.mark.parametrize("use_local", [True, False])
 def test_tune_custom_train(ray_start_4_cpus, num_workers,
                            use_local):  # noqa: F811
-    def custom_train_func(trainer, iter):
+    def custom_train_func(trainer, info):
         train_stats = trainer.train(profile=True)
         val_stats = trainer.validate(profile=True)
         stats = merge_dicts(train_stats, val_stats)
