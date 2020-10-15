@@ -38,14 +38,17 @@ Status TaskExecutor::ExecuteTask(
   std::string lib_name = typed_descriptor->LibName();
   std::string func_offset = typed_descriptor->FunctionOffset();
   std::string exec_func_offset = typed_descriptor->ExecFunctionOffset();
-
-  auto args_buffer = args[0]->GetData();
-  auto args_sbuffer = std::make_shared<msgpack::sbuffer>(args_buffer->Size());
-  /// TODO(Guyang Song): Avoid the memory copy.
-  args_sbuffer->write(reinterpret_cast<const char *>(args_buffer->Data()),
-                      args_buffer->Size());
+  std::shared_ptr<msgpack::sbuffer> args_sbuffer;
+  if (args.size() > 0) {
+    auto args_buffer = args[0]->GetData();
+    args_sbuffer = std::make_shared<msgpack::sbuffer>(args_buffer->Size());
+    /// TODO(Guyang Song): Avoid the memory copy.
+    args_sbuffer->write(reinterpret_cast<const char *>(args_buffer->Data()),
+                        args_buffer->Size());
+  } else {
+    args_sbuffer = std::make_shared<msgpack::sbuffer>();
+  }
   auto base_addr = FunctionHelper::GetInstance().GetBaseAddress(lib_name);
-
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   if (task_type == TaskType::ACTOR_CREATION_TASK) {
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(

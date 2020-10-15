@@ -185,6 +185,7 @@ def ray_deps_setup():
             "//thirdparty/patches:glog-log-pid-tid.patch",
             "//thirdparty/patches:glog-stack-trace.patch",
             "//thirdparty/patches:glog-suffix-log.patch",
+            "//thirdparty/patches:glog-dump-stacktrack.patch",
         ],
     )
 
