@@ -101,7 +101,7 @@ class SpdLogMessage final {
     auto logger = spdlog::default_logger();
     // If no default logger we just emit all log informations to console.
     if (!logger) {
-      logger = spdlog::stdout_color_mt("console");
+      logger = spdlog::stderr_color_mt("console");
       spdlog::set_default_logger(logger);
     }
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
