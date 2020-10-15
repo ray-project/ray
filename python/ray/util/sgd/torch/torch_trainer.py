@@ -681,6 +681,7 @@ class BaseTorchTrainable(Trainable):
     ``as_trainable``:
 
     .. code-block:: python
+
         def custom_step(trainer, info):
             for i in range(5):
                     train_stats = trainer.train()
