@@ -66,9 +66,22 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def testReportCallback(self):
+    def testReportCallbackUnnamed(self):
         def train(config):
-            module = _MockModule(10, 20)
+            module = _MockModule(10., 20.)
+            trainer = pl.Trainer(
+                max_epochs=1,
+                callbacks=[TuneReportCallback(on="validation_end")])
+            trainer.fit(module)
+
+        analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
+
+        self.assertEqual(analysis.trials[0].last_result["avg_val_loss"],
+                         10. * 1.1)
+
+    def testReportCallbackNamed(self):
+        def train(config):
+            module = _MockModule(10., 20.)
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
@@ -81,14 +94,15 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
 
         analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
 
-        self.assertEqual(analysis.trials[0].last_result["tune_loss"], 10 * 1.1)
+        self.assertEqual(analysis.trials[0].last_result["tune_loss"],
+                         10. * 1.1)
 
     def testCheckpointCallback(self):
         tmpdir = tempfile.mkdtemp()
         self.addCleanup(lambda: shutil.rmtree(tmpdir))
 
         def train(config):
-            module = _MockModule(10, 20)
+            module = _MockModule(10., 20.)
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
@@ -115,7 +129,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(tmpdir))
 
         def train(config):
-            module = _MockModule(10, 20)
+            module = _MockModule(10., 20.)
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
