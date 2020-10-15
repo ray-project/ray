@@ -684,7 +684,7 @@ class BaseTorchTrainable(Trainable):
 
         def custom_step(trainer, info):
             for i in range(5):
-                    train_stats = trainer.train()
+                train_stats = trainer.train()
             validation_stats = trainer.validate()
             train_stats.update(validation_stats)
             return train_stats
