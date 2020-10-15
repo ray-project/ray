@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 
 #ifdef RAY_USE_GLOG
 #include <sys/stat.h>
@@ -43,9 +44,28 @@
 #endif
 #endif
 
+#ifdef RAY_USE_GLOG
+#undef RAY_USE_SPDLOG
+#endif
+
+#ifdef RAY_USE_SPDLOG
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/spdlog.h"
+#endif
+
 #include "ray/util/filesystem.h"
 
 namespace ray {
+
+std::string GetCallTrace() {
+  std::string return_message = "Cannot get callstack information.";
+#ifdef RAY_USE_GLOG
+  return google::GetStackTraceToString();
+#endif
+  return return_message;
+}
 
 #ifdef RAY_USE_GLOG
 struct StdoutLogger : public google::base::Logger {
@@ -63,6 +83,45 @@ struct StdoutLogger : public google::base::Logger {
 };
 
 static StdoutLogger stdout_logger_singleton;
+#endif
+
+#ifdef RAY_USE_SPDLOG
+/// NOTE(lingxuan.zlx): we reuse glog const_basename function from its utils.
+inline const char *ConstBasename(const char *filepath) {
+  const char *base = strrchr(filepath, '/');
+#ifdef OS_WINDOWS  // Look for either path separator in Windows
+  if (!base) base = strrchr(filepath, '\\');
+#endif
+  return base ? (base + 1) : filepath;
+}
+
+class SpdLogMessage final {
+ public:
+  explicit SpdLogMessage(const char *file, int line, int loglevel) : loglevel_(loglevel) {
+    stream() << ConstBasename(file) << ":" << line << ": ";
+  }
+
+  void Flush() {
+    auto logger = spdlog::default_logger();
+    // If no default logger we just emit all log informations to console.
+    if (!logger) {
+      logger = spdlog::stdout_color_mt("console");
+      spdlog::set_default_logger(logger);
+    }
+    logger->log(static_cast<spdlog::level::level_enum>(loglevel_), "{}", str_.str());
+    logger->flush();
+  }
+
+  ~SpdLogMessage() { Flush(); }
+  std::ostream &stream() { return str_; }
+
+ private:
+  std::ostringstream str_;
+  int loglevel_;
+
+  SpdLogMessage(const SpdLogMessage &) = delete;
+  SpdLogMessage &operator=(const SpdLogMessage &) = delete;
+};
 #endif
 
 // This is the default implementation of ray log,
@@ -110,6 +169,8 @@ class CerrLog {
 
 #ifdef RAY_USE_GLOG
 typedef google::LogMessage LoggingProvider;
+#elif defined(RAY_USE_SPDLOG)
+typedef ray::SpdLogMessage LoggingProvider;
 #else
 typedef ray::CerrLog LoggingProvider;
 #endif
@@ -125,8 +186,8 @@ using namespace google;
 // Glog's severity map.
 static int GetMappedSeverity(RayLogLevel severity) {
   switch (severity) {
+  case RayLogLevel::TRACE:
   case RayLogLevel::DEBUG:
-    return GLOG_INFO;
   case RayLogLevel::INFO:
     return GLOG_INFO;
   case RayLogLevel::WARNING:
@@ -142,6 +203,28 @@ static int GetMappedSeverity(RayLogLevel severity) {
   }
 }
 
+#elif defined(RAY_USE_SPDLOG)
+// Spdlog's severity map.
+static int GetMappedSeverity(RayLogLevel severity) {
+  switch (severity) {
+  case RayLogLevel::TRACE:
+    return spdlog::level::trace;
+  case RayLogLevel::DEBUG:
+    return spdlog::level::debug;
+  case RayLogLevel::INFO:
+    return spdlog::level::info;
+  case RayLogLevel::WARNING:
+    return spdlog::level::warn;
+  case RayLogLevel::ERROR:
+    return spdlog::level::err;
+  case RayLogLevel::FATAL:
+    return spdlog::level::critical;
+  default:
+    RAY_LOG(FATAL) << "Unsupported logging level: " << static_cast<int>(severity);
+    // This return won't be hit but compiler needs it.
+    return spdlog::level::off;
+  }
+}
 #endif
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
@@ -169,9 +252,11 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   severity_threshold_ = severity_threshold;
   app_name_ = app_name;
   log_dir_ = log_dir;
+#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
 #ifdef RAY_USE_GLOG
   google::InitGoogleLogging(app_name_.c_str());
   int level = GetMappedSeverity(static_cast<RayLogLevel>(severity_threshold_));
+#endif
   if (!log_dir_.empty()) {
     // Enable log file if log_dir_ is not empty.
     std::string dir_ends_with_slash = log_dir_;
@@ -188,15 +273,57 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_file_name;
       }
     }
+#ifdef RAY_USE_GLOG
     app_name_without_path += ".";
     google::SetLogFilenameExtension(app_name_without_path.c_str());
     google::SetLogDestination(level, dir_ends_with_slash.c_str());
     FLAGS_stop_logging_if_full_disk = true;
+#else
+#ifdef _WIN32
+    int pid = _getpid();
+#else
+    pid_t pid = getpid();
+#endif
+    // Reset log pattern and level and we assume a log file can be rotated with
+    // 10 files in max size 512M.
+    // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
+    // %L is loglevel, %P is process id, %t for thread id.
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v");
+    spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
+    // Sink all log stuff to default file logger we defined here. We may need
+    // multiple sinks for different files or loglevel.
+    auto file_logger = spdlog::get(app_name);
+    if (!file_logger) {
+      file_logger =
+          spdlog::rotating_logger_mt(app_name,
+                                     dir_ends_with_slash + app_name_without_path + "_" +
+                                         std::to_string(pid) + ".log",
+                                     1 << 29, 10);
+    }
+    spdlog::set_default_logger(file_logger);
+#endif
   } else {
+#ifdef RAY_USE_GLOG
     // NOTE(lingxuan.zlx): If no specific log dir or empty directory string,
     // we use stdout by default.
     google::base::SetLogger(level, &stdout_logger_singleton);
+#else
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    console_sink->set_pattern("[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v");
+    auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
+    console_sink->set_level(level);
+
+    auto err_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    err_sink->set_pattern("[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v");
+    err_sink->set_level(spdlog::level::err);
+
+    auto logger = std::shared_ptr<spdlog::logger>(
+        new spdlog::logger("multi_sink", {console_sink, err_sink}));
+    logger->set_level(level);
+    spdlog::set_default_logger(logger);
+#endif
   }
+#ifdef RAY_USE_GLOG
   for (int i = GLOG_INFO; i <= GLOG_FATAL; ++i) {
     if (i != level) {
       // NOTE(lingxuan.zlx): It means nothing can be printed or sinked to pass
@@ -207,6 +334,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     }
   }
   google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
+#endif
 #endif
 }
 
@@ -237,9 +365,13 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
-#ifdef RAY_USE_GLOG
+#if defined(RAY_USE_GLOG)
   UninstallSignalAction();
   google::ShutdownGoogleLogging();
+#elif defined(RAY_USE_SPDLOG)
+  spdlog::default_logger()->flush();
+  spdlog::drop_all();
+  spdlog::shutdown();
 #endif
 }
 
@@ -266,10 +398,10 @@ bool RayLog::IsLevelEnabled(RayLogLevel log_level) {
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     // glog does not have DEBUG level, we can handle it using is_enabled_.
     : logging_provider_(nullptr), is_enabled_(severity >= severity_threshold_) {
-#ifdef RAY_USE_GLOG
+#if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
   if (is_enabled_) {
     logging_provider_ =
-        new google::LogMessage(file_name, line_number, GetMappedSeverity(severity));
+        new LoggingProvider(file_name, line_number, GetMappedSeverity(severity));
   }
 #else
   auto logging_provider = new CerrLog(severity);
@@ -280,13 +412,9 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
 
 std::ostream &RayLog::Stream() {
   auto logging_provider = reinterpret_cast<LoggingProvider *>(logging_provider_);
-#ifdef RAY_USE_GLOG
   // Before calling this function, user should check IsEnabled.
   // When IsEnabled == false, logging_provider_ will be empty.
   return logging_provider->stream();
-#else
-  return logging_provider->Stream();
-#endif
 }
 
 bool RayLog::IsEnabled() const { return is_enabled_; }
