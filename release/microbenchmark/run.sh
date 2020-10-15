@@ -21,6 +21,9 @@ case "$i" in
     --ray-branch=*)
     ray_branch="${i#*=}"
     ;;
+    --workload=*)
+    workload="${i#*=}"
+    ;;
     --help)
     usage
     exit
@@ -38,15 +41,20 @@ then
     exit 1
 fi
 
+
 echo "version: $ray_version"
 echo "commit: $commit"
 echo "branch: $ray_branch"
+echo "workload: $workload"
 
-rm "ray-$ray_version-cp38-cp38-manylinux1_x86_64.whl" || true
-wget "https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp38-cp38-manylinux1_x86_64.whl"
+wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp38-cp38-manylinux1_x86_64.whl"
 
+
+echo set-window-option -g mouse on > ~/.tmux.conf
+echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc
 pip uninstall -y -q ray
-pip install -U "ray-$ray_version-cp38-cp38-manylinux1_x86_64.whl"
+pip install --upgrade pip
+pip install -U "$wheel"
 
 unset RAY_ADDRESS
 OMP_NUM_THREADS=64 ray microbenchmark

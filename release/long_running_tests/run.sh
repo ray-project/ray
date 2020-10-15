@@ -50,8 +50,15 @@ echo "workload: $workload"
 
 wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux1_x86_64.whl"
 
+echo set-window-option -g mouse on > ~/.tmux.conf
+echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc
+# Serve load testing tool
+rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && sudo cp wrk /usr/local/bin
 pip install -U pip
 unset RAY_ADDRESS
+source activate tensorflow_p36 && conda remove -y --force wrapt || true
+source activate tensorflow_p36 && pip install --upgrade pip
+source activate tensorflow_p36 && pip install -U tensorflow==1.14
 source activate tensorflow_p36 && pip install -q -U "$wheel" Click
 source activate tensorflow_p36 && pip install -q "ray[all]" "gym[atari]"
 source activate tensorflow_p36 && python "workloads/$workload.py"

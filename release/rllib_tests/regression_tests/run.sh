@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 ray_version="" 
 commit=""
 ray_branch=""
@@ -49,7 +48,7 @@ wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ra
 conda uninstall -y terminado
 source activate tensorflow_p36 && pip install -U pip
 source activate tensorflow_p36 && pip install -U "$wheel"
-
-# Run all test cases, but with a forced num_gpus=1.
-# TODO: (sven) chose correct dir and run over all RLlib tests and example scripts!
-source activate tensorflow_p36 && export RAY_FORCE_NUM_GPUS=1 && cd ~ && python -m pytest test_attention_net_learning.py
+source activate tensorflow_p36 && pip install ray[rllib] ray[debug]
+source activate tensorflow_p36 && pip install torch==1.6 torchvision
+source activate tensorflow_p36 && pip install boto3==1.4.8 cython==0.29.0
+source activate tensorflow_p36 && rllib train -f compact-regression-test.yaml
