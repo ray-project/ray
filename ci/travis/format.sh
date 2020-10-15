@@ -135,7 +135,7 @@ mypy_on_each() {
        echo "Running mypy on $file"
        mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} "$file"
     done
-    popd python/ray
+    popd
 }
 
 
