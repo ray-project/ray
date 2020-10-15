@@ -96,14 +96,21 @@ class SpdLogMessage final {
   explicit SpdLogMessage(const char *file, int line, int loglevel) : loglevel_(loglevel) {
     stream() << ConstBasename(file) << ":" << line << ": ";
   }
-
-  void Flush() {
-    auto logger = spdlog::default_logger();
-    // If no default logger we just emit all log informations to console.
+  inline std::shared_ptr<spdlog::logger> get_logger() {
+    auto logger = spdlog::get("ray_log_sink");
     if (!logger) {
-      logger = spdlog::stderr_color_mt("console");
-      spdlog::set_default_logger(logger);
+      logger = spdlog::get("stderr");
     }
+    // If no default logger we just emit all log informations to stderr.
+    if (!logger) {
+      logger = spdlog::stderr_color_mt("stderr");
+      logger->set_pattern("[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v");
+    }
+    return logger;
+  }
+
+  inline void Flush() {
+    auto logger = get_logger();
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
       stream() << "\n" << ray::GetCallTrace();
     }
@@ -116,7 +123,7 @@ class SpdLogMessage final {
   }
 
   ~SpdLogMessage() { Flush(); }
-  std::ostream &stream() { return str_; }
+  inline std::ostream &stream() { return str_; }
 
  private:
   std::ostringstream str_;
@@ -295,10 +302,10 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
-    auto file_logger = spdlog::get(app_name);
+    auto file_logger = spdlog::get("ray_log_sink");
     if (!file_logger) {
       file_logger =
-          spdlog::rotating_logger_mt(app_name,
+          spdlog::rotating_logger_mt("ray_log_sink",
                                      dir_ends_with_slash + app_name_without_path + "_" +
                                          std::to_string(pid) + ".log",
                                      1 << 29, 10);
@@ -316,12 +323,12 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
     console_sink->set_level(level);
 
-    auto err_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
     err_sink->set_pattern("[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v");
     err_sink->set_level(spdlog::level::err);
 
     auto logger = std::shared_ptr<spdlog::logger>(
-        new spdlog::logger("multi_sink", {console_sink, err_sink}));
+        new spdlog::logger("ray_log_sink", {console_sink, err_sink}));
     logger->set_level(level);
     spdlog::set_default_logger(logger);
 #endif
