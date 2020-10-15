@@ -197,6 +197,16 @@ py_test(
     args = ["--num-workers=2", "--smoke-test"]
 )
 
+py_test(
+    name = "tune_example_3",
+    size = "small",
+    main = "torch/examples/tune_example.py",
+    srcs = ["torch/examples/tune_example.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"],
+    args = ["--num-workers=2", "--smoke-test", "--lr-reduce-on-plateau"]
+)
+
 
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/torch/examples/* directories.
