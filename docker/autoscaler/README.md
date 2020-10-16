@@ -1,9 +1,8 @@
+# DEPRECATED -- Please use [`rayproject/ray-ml`](https://hub.docker.com/repository/docker/rayproject/ray-ml)
 ## About
-This image used to be the base image for using the Ray autoscaler on a Kubernetes cluster. 
+This image used to be the base image for the Ray autoscaler, but it has been replaced by [`rayproject/ray-ml`](https://hub.docker.com/repository/docker/rayproject/ray-ml). 
+Please use that instead, *this image will be removed in the near future*.
 
-It is identical to [`rayproject/ray-ml`](https://hub.docker.com/repository/docker/rayproject/ray-ml).
-
-**Please switch to that image if you are still using this one :)**
 
 ## Tags
 * [`:latest`](https://hub.docker.com/repository/docker/rayproject/autoscaler/tags?page=1&name=latest) - The most recent Ray release.
