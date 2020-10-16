@@ -561,7 +561,7 @@ boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
     const NodeID &node_id) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
-  if (entry != node_cache_.end()) {
+  if (entry != node_cache_.end() && entry->second.state() != rpc::GcsNodeInfo::DEAD) {
     return entry->second;
   }
   return boost::none;
