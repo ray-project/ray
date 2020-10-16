@@ -109,6 +109,12 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
 
 [`Link to integration <https://pypi.org/project/spacy-ray/>`__]
 
+XGBoost |xgboost|
+-----------------
+XGBoost is a popular gradient boosting library for classification and regression. It is one of the most popular tools in data science and workhorse of many top-performing Kaggle kernels.
+
+[`Link to integration <https://github.com/ray-project/xgboost_ray>`__]
+
 .. |classyvision| image:: images/classyvision.png
     :class: inline-figure
     :height: 30
@@ -158,6 +164,10 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :height: 30
 
 .. |spacy| image:: images/spacy.png
+    :class: inline-figure
+    :height: 30
+
+.. |xgboost| image:: images/xgboost_logo.png
     :class: inline-figure
     :height: 30
 
