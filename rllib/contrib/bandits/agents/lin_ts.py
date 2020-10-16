@@ -24,7 +24,10 @@ TS_CONFIG = with_common_config({
 
     "exploration_config": {
         "type": "ray.rllib.contrib.bandits.exploration.ThompsonSampling"
-    }
+    },
+
+    # Disable trajectory view API for now (env infos currently not stored).
+    "_use_trajectory_view_api": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
