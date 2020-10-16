@@ -438,7 +438,7 @@ class SearchSpaceTest(unittest.TestCase):
             _mock_objective,
             config=config,
             search_alg=searcher,
-            num_samples=100)
+            num_samples=10)
 
         for trial in analysis.trials:
             config = trial.config
