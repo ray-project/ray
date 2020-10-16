@@ -129,6 +129,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                                rpc::GetPlacementGroupReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetAllPlacementGroup(const GetAllPlacementGroupRequest &request,
+                                  GetAllPlacementGroupReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
   /// Register placement_group asynchronously.
   ///
   /// \param placement_group The placement group to be created.

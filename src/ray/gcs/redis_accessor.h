@@ -490,6 +490,8 @@ class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
   Status AsyncGet(
       const PlacementGroupID &placement_group_id,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncGetAll(const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
 };
 
 }  // namespace gcs

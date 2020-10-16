@@ -185,17 +185,17 @@ def remove_placement_group(placement_group: PlacementGroup):
     worker.core_worker.remove_placement_group(placement_group.id)
 
 
-def placement_group_table(placement_group: PlacementGroup) -> dict:
+def placement_group_table(placement_group: PlacementGroup = None) -> list:
     """Get the state of the placement group from GCS.
 
     Args:
         placement_group (PlacementGroup): placement group to see
             states.
     """
-    assert placement_group is not None
     worker = ray.worker.global_worker
     worker.check_connected()
-    return ray.state.state.placement_group_table(placement_group.id)
+    placement_group_id = placement_group.id if (placement_group is not None) else None
+    return ray.state.state.placement_group_table(placement_group_id)
 
 
 def get_current_placement_group() -> Optional[PlacementGroup]:
@@ -242,7 +242,7 @@ def check_placement_group_index(placement_group: PlacementGroup,
             raise ValueError("If placement group is not set, "
                              "the value of bundle index must be -1.")
     elif bundle_index >= placement_group.bundle_count \
-            or bundle_index < -1:
+        or bundle_index < -1:
         raise ValueError(f"placement group bundle index {bundle_index} "
                          f"is invalid. Valid placement group indexes: "
                          f"0-{placement_group.bundle_count}")

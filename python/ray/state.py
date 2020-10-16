@@ -388,8 +388,15 @@ class GlobalState:
                                         FromString(placement_group_info))
                 return self._gen_placement_group_info(placement_group_info)
         else:
-            raise NotImplementedError(
-                "Get all placement group is not implemented yet.")
+            placement_group_table = self.global_state_accessor.get_placement_group_table()
+            results = {}
+            for i in range(len(placement_group_table)):
+                placement_group_table_data = gcs_utils.\
+                    PlacementGroupTableData.FromString(placement_group_table[i])
+                results[binary_to_hex(placement_group_table_data.actor_id)] = \
+                    self._gen_placement_group_info(placement_group_table_data)
+
+            return results
 
     def _gen_placement_group_info(self, placement_group_info):
         # This should be imported here, otherwise, it will error doc build.
