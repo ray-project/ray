@@ -18,4 +18,4 @@ client.create_backend("counter", Counter)
 client.create_endpoint("counter", backend="counter", route="/counter")
 
 requests.get("http://127.0.0.1:8000/counter").json()
-# > {"current_counter": self.count}
+# > {"current_counter": 0}

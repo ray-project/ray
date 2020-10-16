@@ -358,7 +358,7 @@ def start(detached: bool = False,
             this to "0.0.0.0". One HTTP server will be started on each node in
             the Ray cluster.
         http_port (int): Port for HTTP server. Defaults to 8000.
-        http_middleswares (list): A list of Starlette middlewares that will be
+        http_middlewares (list): A list of Starlette middlewares that will be
             applied to the HTTP servers in the cluster.
     """
     # Initialize ray if needed.
