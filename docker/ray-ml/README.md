@@ -1,5 +1,5 @@
 ## About
-This image is an extension of the [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) image. It includes all extended requirements of `Tune`, `RLlib` and `SGD`. It is a well-provisioned starting point for trying out the Ray ecosystem. 
+This image is an extension of the [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) image. It includes all extended requirements of `RLlib`, `Serve` and `RLLIB`. It is a well-provisioned starting point for trying out the Ray ecosystem. [Find the Dockerfile here.](https://github.com/ray-project/ray/blob/master/docker/ray-ml/Dockerfile)
 
 
 
@@ -12,11 +12,8 @@ This image is an extension of the [`rayproject/ray`](https://hub.docker.com/repo
 
 ### Suffixes
 * `-gpu` - These are based off of an `NVIDIA CUDA` image. They require the [Nvidia Docker Runtime](https://github.com/NVIDIA/nvidia-docker) to be installed on the host for the container to access GPUs.  
-* `-cpu`- These are based off of an `Ubuntu` iamge.
+* `-cpu`- These are based off of an `Ubuntu` image.
 * Tags without a suffix refer to `-cpu` images
 
 ## Other Images
 * [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) - Ray and all of its dependencies.
-<br></br><br></br>
-* [`rayproject/base-deps`](https://hub.docker.com/repository/docker/rayproject/base-deps) - Internal image with system-level dependencies.
-* [`rayproject/ray-deps`](https://hub.docker.com/repository/docker/rayproject/ray-deps) - Internal image with python-level dependencies. 

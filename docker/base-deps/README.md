@@ -1,5 +1,5 @@
 ## About
-This is an internal iamge that has the system-level dependencies for `Ray` and the `Ray Autoscaler`. The `ray-deps` image is built on top of this. This image is built periodically or when dependencies are added.
+This is an internal image that has the system-level dependencies for `Ray` and the `Ray Autoscaler`. The `ray-deps` image is built on top of this. This image is built periodically or when dependencies are added. [Find the Dockerfile here.](https://github.com/ray-project/ray/blob/master/docker/base-deps/Dockerfile)
 
 
 
@@ -12,7 +12,7 @@ This is an internal iamge that has the system-level dependencies for `Ray` and t
 
 ### Suffixes
 * `-gpu` - These are based off of an `NVIDIA CUDA` image. They require the [Nvidia Docker Runtime](https://github.com/NVIDIA/nvidia-docker) to be installed on the host for the container to access GPUs.  
-* `-cpu`- These are based off of an `Ubuntu` iamge.
+* `-cpu`- These are based off of an `Ubuntu` image.
 * Tags without a suffix refer to `-cpu` images
 
 ## Other Images
