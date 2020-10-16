@@ -98,10 +98,7 @@ DEFAULT_SG_AUX_SUBNET = copy.deepcopy(DEFAULT_SG)
 DEFAULT_SG_AUX_SUBNET["VpcId"] = AUX_SUBNET["VpcId"]
 DEFAULT_SG_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
 
-# Default security group settings once default inbound rules are applied
-# (if used by both head and worker nodes)
-DEFAULT_SG_WITH_RULES = copy.deepcopy(DEFAULT_SG)
-DEFAULT_SG_WITH_RULES["IpPermissions"] = [{
+DEFAULT_IN_BOUND_RULES = [{
     "FromPort": -1,
     "ToPort": -1,
     "IpProtocol": "-1",
@@ -116,6 +113,10 @@ DEFAULT_SG_WITH_RULES["IpPermissions"] = [{
         "CidrIp": "0.0.0.0/0"
     }]
 }]
+# Default security group settings once default inbound rules are applied
+# (if used by both head and worker nodes)
+DEFAULT_SG_WITH_RULES = copy.deepcopy(DEFAULT_SG)
+DEFAULT_SG_WITH_RULES["IpPermissions"] = DEFAULT_IN_BOUND_RULES
 
 # Default security group once default inbound rules are applied
 # (if using separate security groups for head and worker nodes).
@@ -130,11 +131,11 @@ DEFAULT_SG_WITH_RULES_AUX_SUBNET["VpcId"] = AUX_SUBNET["VpcId"]
 DEFAULT_SG_WITH_RULES_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
 
 
-# Default security group with in bound rules and name
-DEFAULT_SG_WITH_RULES_AND_NAME = copy.deepcopy(DEFAULT_SG)
-DEFAULT_SG_WITH_RULES_AND_NAME["GroupName"] = "test_security_group_name"
-print(DEFAULT_SG_WITH_RULES_AND_NAME["IpPermissions"])
-DEFAULT_SG_WITH_RULES_AND_NAME["IpPermissions"] = [{
+# Default security group with custom name
+DEFAULT_SG_WITH_NAME = copy.deepcopy(DEFAULT_SG)
+DEFAULT_SG_WITH_NAME["GroupName"] = "test_security_group_name"
+
+CUSTOM_IN_BOUND_RULES = [{
     "FromPort": 443,
     "ToPort": 443,
     "IpProtocol": "TCP",
@@ -149,3 +150,7 @@ DEFAULT_SG_WITH_RULES_AND_NAME["IpPermissions"] = [{
         "CidrIp": "0.0.0.0/0"
     }]
 }]
+
+# Default security group with custom name once default and custom in bound rules are applied
+DEFAULT_SG_WITH_NAME_AND_RULES =  copy.deepcopy(DEFAULT_SG_WITH_NAME)
+DEFAULT_SG_WITH_NAME_AND_RULES["IpPermissions"] =  DEFAULT_IN_BOUND_RULES + CUSTOM_IN_BOUND_RULES
