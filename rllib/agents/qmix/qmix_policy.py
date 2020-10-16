@@ -4,6 +4,8 @@ import numpy as np
 import tree
 
 import ray
+from ray.rllib.agents.dqn.simple_q_tf_policy import \
+    view_requirements_fn_simple_q
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE
@@ -12,6 +14,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
@@ -143,7 +146,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-# TODO(sven): Make this a TorchPolicy child.
+# TODO(sven): Make this a TorchPolicy child via `build_torch_policy`.
 class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
@@ -162,6 +165,7 @@ class QMixTorchPolicy(Policy):
         self.framework = "torch"
         super().__init__(obs_space, action_space, config)
         self.n_agents = len(obs_space.original_space.spaces)
+        config["model"]["n_agents"] = self.n_agents
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
@@ -215,6 +219,11 @@ class QMixTorchPolicy(Policy):
             default_model=RNNModel).to(self.device)
 
         self.exploration = self._create_exploration()
+
+        # Setup view requirements:
+        self.view_requirements.update(view_requirements_fn_simple_q(self))
+        # Env infos needed for QMix: Contain individual rewards for each agent.
+        self.view_requirements[SampleBatch.INFOS] = ViewRequirement()
 
         # Setup the mixer network.
         if config["mixer"] is None:

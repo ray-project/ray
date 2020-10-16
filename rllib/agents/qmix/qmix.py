@@ -20,7 +20,6 @@ DEFAULT_CONFIG = with_common_config({
     "double_q": True,
     # Optimize over complete episodes by default.
     "batch_mode": "complete_episodes",
-
     # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.

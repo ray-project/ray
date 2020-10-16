@@ -16,6 +16,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import get_placeholder
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -422,10 +423,7 @@ class DynamicTFPolicy(TFPolicy):
                     dtype=np.float32)
             # All others.
             else:
-                input_dict[view_col] = tf1.placeholder(
-                    shape=(None, ) + view_req.space.shape,
-                    dtype=view_req.space.dtype,
-                )
+                input_dict[view_col] = get_placeholder(space=view_req.space)
                 dummy_batch[view_col] = np.zeros_like(
                     [view_req.space.sample()])
         return input_dict, dummy_batch
@@ -471,6 +469,11 @@ class DynamicTFPolicy(TFPolicy):
 
         postprocessed_batch = self.postprocess_trajectory(
             SampleBatch(dummy_batch))
+        # Add new columns automatically to dummy_batch/input_dict.
+        if self.config["_use_trajectory_view_api"]:
+            for new_col in postprocessed_batch.new_columns:
+                self._input_dict[new_col] = get_placeholder(
+                    value=postprocessed_batch[new_col])
 
         # Model forward pass for the loss (needed after postprocess to
         # overwrite any tensor state from that call).

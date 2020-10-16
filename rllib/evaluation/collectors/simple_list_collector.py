@@ -170,8 +170,8 @@ class _AgentCollector:
             if col in self.buffers:
                 continue
             shift = self.shift_before - (1 if col == SampleBatch.OBS else 0)
-            # Python primitive.
-            if isinstance(data, (int, float, bool, str)):
+            # Python primitive or dict (e.g. INFOs).
+            if isinstance(data, (int, float, bool, str, dict)):
                 self.buffers[col] = [0 for _ in range(shift)]
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:
