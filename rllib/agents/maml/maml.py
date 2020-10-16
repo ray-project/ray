@@ -28,6 +28,8 @@ DEFAULT_CONFIG = with_common_config({
     "kl_coeff": 0.0005,
     # Size of batches collected from each worker
     "rollout_fragment_length": 200,
+    # Do create an actual env on the local worker (worker-idx=0).
+    "create_env_on_driver": True,
     # Stepsize of SGD
     "lr": 1e-3,
     # Share layers for value function
@@ -209,15 +211,18 @@ def get_policy_class(config):
 
 def validate_config(config):
     if config["inner_adaptation_steps"] <= 0:
-        raise ValueError("Inner Adaptation Steps must be >=1.")
+        raise ValueError("Inner Adaptation Steps must be >=1!")
     if config["maml_optimizer_steps"] <= 0:
-        raise ValueError("PPO steps for meta-update needs to be >=0")
+        raise ValueError("PPO steps for meta-update needs to be >=0!")
     if config["entropy_coeff"] < 0:
-        raise ValueError("entropy_coeff must be >=0")
+        raise ValueError("`entropy_coeff` must be >=0.0!")
     if config["batch_mode"] != "complete_episodes":
-        raise ValueError("truncate_episodes not supported")
+        raise ValueError("`batch_mode`=truncate_episodes not supported!")
     if config["num_workers"] <= 0:
-        raise ValueError("Must have at least 1 worker/task.")
+        raise ValueError("Must have at least 1 worker/task!")
+    if config["create_env_on_driver"] is False:
+        raise ValueError("Must have an actual Env created on the driver "
+                         "(local) worker! Set `create_env_on_driver` to True.")
 
 
 MAMLTrainer = build_trainer(
