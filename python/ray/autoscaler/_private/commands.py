@@ -359,26 +359,17 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
         def run_docker_stop(node, container_name):
             try:
-                updater = NodeUpdaterThread(
-                    node_id=node,
-                    provider_config=config["provider"],
-                    provider=provider,
-                    auth_config=config["auth"],
-                    cluster_name=config["cluster_name"],
-                    file_mounts=config["file_mounts"],
-                    initialization_commands=[],
-                    setup_commands=[],
-                    ray_start_commands=[],
-                    runtime_hash="",
-                    file_mounts_contents_hash="",
-                    is_head_node=False,
-                    docker_config=config.get("docker"))
-                _exec(
-                    updater,
-                    f"docker stop {container_name}",
-                    False,
-                    False,
-                    run_env="host")
+                exec_cluster(
+                    config_file,
+                    cmd=f"docker stop {container_name}",
+                    run_env="host",
+                    screen=False,
+                    tmux=False,
+                    stop=False,
+                    start=False,
+                    override_cluster_name=override_cluster_name,
+                    port_forward=None,
+                    with_output=False)
             except Exception:
                 cli_logger.warning(f"Docker stop failed on {node}")
                 cli_logger.old_warning(logger, f"Docker stop failed on {node}")
