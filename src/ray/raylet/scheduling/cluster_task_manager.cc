@@ -156,12 +156,7 @@ void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseRepl
                                    std::function<void(void)> callback) {
   Work work = std::make_tuple(task, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
-  auto it = tasks_to_schedule_.find(scheduling_class);
-  if (it == tasks_to_schedule_.end()) {
-    tasks_to_schedule_[scheduling_class] = {work};
-  } else {
-    it->second.push_back(work);
-  }
+  tasks_to_schedule_[scheduling_class].push_back(work);
 }
 
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
