@@ -626,16 +626,14 @@ class Node:
                 if we fail to start the dashboard. Otherwise it will print
                 a warning if we fail to start the dashboard.
         """
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "dashboard", unique=True)
         self._webui_url, process_info = ray._private.services.start_dashboard(
             require_dashboard,
             self._ray_params.dashboard_host,
             self.redis_address,
             self._temp_dir,
             self._logs_dir,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            stdout_file=None,
+            stderr_file=None,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             port=self._ray_params.dashboard_port)

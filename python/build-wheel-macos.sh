@@ -39,6 +39,7 @@ source "$HOME"/.nvm/nvm.sh
 nvm use node
 
 # Build the dashboard so its static assets can be included in the wheel.
+# TODO(mfitton): switch this back when deleting old dashboard code.
 pushd python/ray/new_dashboard/client
   npm ci
   npm run build

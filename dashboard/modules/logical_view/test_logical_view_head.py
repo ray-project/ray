@@ -91,10 +91,10 @@ def test_kill_actor(ray_start_with_dashboard):
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
 
-    def actor_killed(PID):
+    def actor_killed(pid):
         """Check For the existence of a unix pid."""
         try:
-            os.kill(PID, 0)
+            os.kill(pid, 0)
         except OSError:
             return True
         else:
@@ -109,7 +109,7 @@ def test_kill_actor(ray_start_with_dashboard):
         actor = actor_groups["Actor"]["entries"][0]
         return actor
 
-    def kill_actor(actor):
+    def kill_actor_using_dashboard(actor):
         resp = requests.get(
             webui_url + "/logical/kill_actor",
             params={
@@ -126,7 +126,7 @@ def test_kill_actor(ray_start_with_dashboard):
     while time.time() - start <= 10:
         try:
             actor = get_actor()
-            kill_actor(actor)
+            kill_actor_using_dashboard(actor)
             last_exc = None
             break
         except (KeyError, AssertionError) as e:
