@@ -128,3 +128,24 @@ DEFAULT_SG_DUAL_GROUP_RULES["IpPermissions"][0]["UserIdGroupPairs"].append({
 DEFAULT_SG_WITH_RULES_AUX_SUBNET = copy.deepcopy(DEFAULT_SG_DUAL_GROUP_RULES)
 DEFAULT_SG_WITH_RULES_AUX_SUBNET["VpcId"] = AUX_SUBNET["VpcId"]
 DEFAULT_SG_WITH_RULES_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
+
+
+# Default security group with in bound rules and name
+DEFAULT_SG_WITH_RULES_AND_NAME = copy.deepcopy(DEFAULT_SG)
+DEFAULT_SG_WITH_RULES_AND_NAME["GroupName"] = "test_security_group_name"
+print(DEFAULT_SG_WITH_RULES_AND_NAME["IpPermissions"])
+DEFAULT_SG_WITH_RULES_AND_NAME["IpPermissions"] = [{
+    "FromPort": 443,
+    "ToPort": 443,
+    "IpProtocol": "TCP",
+    "IpRanges": [{
+        "CidrIp": "0.0.0.0/0"
+    }]
+}, {
+    "FromPort": 8265,
+    "ToPort": 8265,
+    "IpProtocol": "TCP",
+    "IpRanges": [{
+        "CidrIp": "0.0.0.0/0"
+    }]
+}]
