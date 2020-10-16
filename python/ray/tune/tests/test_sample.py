@@ -408,6 +408,52 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
+    def testConvertHyperOptNested(self):
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+
+        config = {
+            "a": 1,
+            "dict_nested": tune.sample.Categorical([{
+                "a": tune.sample.Categorical(["M", "N"]),
+                "b": tune.sample.Categorical(["O", "P"])
+            }]).uniform(),
+            "list_nested": tune.sample.Categorical([
+                [
+                    tune.sample.Categorical(["M", "N"]),
+                    tune.sample.Categorical(["O", "P"])
+                ],
+                [
+                    tune.sample.Categorical(["Q", "R"]),
+                    tune.sample.Categorical(["S", "T"])
+                ],
+            ]).uniform(),
+            "domain_nested": tune.sample.Categorical([
+                tune.sample.Categorical(["M", "N"]),
+                tune.sample.Categorical(["O", "P"])
+            ]).uniform(),
+        }
+
+        searcher = HyperOptSearch(metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective,
+            config=config,
+            search_alg=searcher,
+            num_samples=100)
+
+        for trial in analysis.trials:
+            config = trial.config
+
+            self.assertIn(config["dict_nested"]["a"], ["M", "N"])
+            self.assertIn(config["dict_nested"]["b"], ["O", "P"])
+
+            if config["list_nested"][0] in ["M", "N"]:
+                self.assertIn(config["list_nested"][1], ["O", "P"])
+            else:
+                self.assertIn(config["list_nested"][0], ["Q", "R"])
+                self.assertIn(config["list_nested"][1], ["S", "T"])
+
+            self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
+
     def testConvertNevergrad(self):
         from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng

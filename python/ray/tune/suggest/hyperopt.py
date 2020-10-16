@@ -304,7 +304,7 @@ class HyperOptSearch(Searcher):
             self.set_state(trials_object)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict:
+    def convert_search_space(spec: Dict, prefix: str = "") -> Dict:
         spec = copy.deepcopy(spec)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -361,7 +361,17 @@ class HyperOptSearch(Searcher):
                     return hpo.hp.randint(par, domain.upper)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
-                    return hpo.hp.choice(par, domain.categories)
+                    return hpo.hp.choice(par, [
+                        HyperOptSearch.convert_search_space(
+                            category, prefix=par)
+                        if isinstance(category, dict) else
+                        HyperOptSearch.convert_search_space(
+                            dict(enumerate(category)), prefix=f"par/{i}")
+                        if isinstance(category, list) else resolve_value(
+                            f"par/{i}", category)
+                        if isinstance(category, Domain) else category
+                        for i, category in enumerate(domain.categories)
+                    ])
 
             raise ValueError("HyperOpt does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(
@@ -369,7 +379,8 @@ class HyperOptSearch(Searcher):
                                  type(domain.sampler).__name__))
 
         for path, domain in domain_vars:
-            par = "/".join(path)
+            par = "/".join(
+                [str(p) for p in ((prefix, ) + path if prefix else path)])
             value = resolve_value(par, domain)
             assign_value(spec, path, value)
 
