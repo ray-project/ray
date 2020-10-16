@@ -157,6 +157,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         config = prepare_config(copy.deepcopy(config))
         try:
             validate_config(config)
+            assert config["provider"]["security_group"]["IpPermissions"] == ip_permissions
         except Exception:
             self.fail(
                 "Failed to validate config with security group in bound rules!"
