@@ -1,5 +1,8 @@
 ## About
-This is an internal image that has the system-level dependencies for `Ray` and the `Ray Autoscaler`. The `ray-deps` image is built on top of this. This image is built periodically or when dependencies are added. [Find the Dockerfile here.](https://github.com/ray-project/ray/blob/master/docker/base-deps/Dockerfile)
+This is an internal image, the [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) or [`rayproject/ray-ml`](https://hub.docker.com/repository/docker/rayproject/ray-ml) should be used!
+
+
+This image  has the system-level dependencies for `Ray` and the `Ray Autoscaler`. The `ray-deps` image is built on top of this. This image is built periodically or when dependencies are added. [Find the Dockerfile here.](https://github.com/ray-project/ray/blob/master/docker/base-deps/Dockerfile)
 
 
 
