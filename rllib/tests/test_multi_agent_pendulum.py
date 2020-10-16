@@ -50,7 +50,7 @@ class TestMultiAgentPendulum(unittest.TestCase):
                 },
                 verbose=1)
             if trials[0].last_result["episode_reward_mean"] < -300.0:
-                raise ValueError("Did not get to -200 reward",
+                raise ValueError("Did not get to -300 reward",
                                  trials[0].last_result)
 
 

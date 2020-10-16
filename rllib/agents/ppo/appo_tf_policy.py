@@ -10,6 +10,7 @@ import logging
 import gym
 from typing import Dict, List, Optional, Type, Union
 
+from ray.rllib.agents.a3c.a3c_tf_policy import view_requirements_fn_w_vf_preds
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, choose_optimizer, view_requirements_fn_impala
@@ -424,6 +425,13 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
+def view_requirements_fn_appo(policy):
+    if policy.config["vtrace"]:
+        return view_requirements_fn_impala(policy)
+    else:
+        return view_requirements_fn_w_vf_preds(policy)
+
+
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
 # above.
 AsyncPPOTFPolicy = build_tf_policy(
@@ -441,6 +449,6 @@ AsyncPPOTFPolicy = build_tf_policy(
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
         ValueNetworkMixin
     ],
-    view_requirements_fn=view_requirements_fn_impala,
+    view_requirements_fn=view_requirements_fn_appo,
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"],
 )
