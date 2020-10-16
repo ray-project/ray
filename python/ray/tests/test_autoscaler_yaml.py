@@ -154,7 +154,7 @@ class AutoscalingConfigTest(unittest.TestCase):
                 "IpPermissions": ip_permissions
             }
         })
-        config = prepare_config(config)
+        config = prepare_config(copy.deepcopy(config))
         try:
             validate_config(config)
         except Exception:
@@ -168,6 +168,7 @@ class AutoscalingConfigTest(unittest.TestCase):
 
         try:
             validate_config(config)
+            assert config["provider"]["security_group"]["GroupName"] == group_name
         except Exception:
             self.fail("Failed to validate config with security group name!")
 
