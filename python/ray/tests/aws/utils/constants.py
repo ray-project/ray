@@ -130,7 +130,6 @@ DEFAULT_SG_WITH_RULES_AUX_SUBNET = copy.deepcopy(DEFAULT_SG_DUAL_GROUP_RULES)
 DEFAULT_SG_WITH_RULES_AUX_SUBNET["VpcId"] = AUX_SUBNET["VpcId"]
 DEFAULT_SG_WITH_RULES_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
 
-
 # Default security group with custom name
 DEFAULT_SG_WITH_NAME = copy.deepcopy(DEFAULT_SG)
 DEFAULT_SG_WITH_NAME["GroupName"] = "test_security_group_name"
@@ -152,5 +151,6 @@ CUSTOM_IN_BOUND_RULES = [{
 }]
 
 # Default security group with custom name once default and custom in bound rules are applied
-DEFAULT_SG_WITH_NAME_AND_RULES =  copy.deepcopy(DEFAULT_SG_WITH_NAME)
-DEFAULT_SG_WITH_NAME_AND_RULES["IpPermissions"] =  DEFAULT_IN_BOUND_RULES + CUSTOM_IN_BOUND_RULES
+DEFAULT_SG_WITH_NAME_AND_RULES = copy.deepcopy(DEFAULT_SG_WITH_NAME)
+DEFAULT_SG_WITH_NAME_AND_RULES[
+    "IpPermissions"] = DEFAULT_IN_BOUND_RULES + CUSTOM_IN_BOUND_RULES
