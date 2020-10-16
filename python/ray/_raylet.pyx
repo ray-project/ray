@@ -595,7 +595,7 @@ cdef void gc_collect() nogil:
         num_freed = gc.collect()
         end = time.perf_counter()
         if num_freed > 0:
-            logger.info(
+            logger.debug(
                 "gc.collect() freed {} refs in {} seconds".format(
                     num_freed, end - start))
 
