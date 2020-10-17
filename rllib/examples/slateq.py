@@ -20,7 +20,7 @@ def main():
 
     slateq_policy = args.policy
     ALL_POLICIES = ["random", "greedy", "dqn", "slateq"]
-    if not slateq_policy in ALL_POLICIES:
+    if slateq_policy not in ALL_POLICIES:
         raise ValueError(slateq_policy)
 
     ray.init()

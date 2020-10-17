@@ -103,7 +103,7 @@ class SlateQModel(TorchModelV2, nn.Module):
         self.slate_size = len(action_space.nvec)
 
     def choose_slate(self, user: TensorType, doc: TensorType) -> TensorType:
-        # Step 1: compute item scores (proportional to item click probabilities)
+        # Step 1: compute item scores (proportional to click probabilities)
         # raw_scores.shape=[batch_size, num_docs+1]
         raw_scores = self.choice_model(user, doc)
         # max_raw_scores.shape=[batch_size, 1]
@@ -156,8 +156,6 @@ class SlateQModel(TorchModelV2, nn.Module):
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
                 seq_lens: TensorType) -> Tuple[TensorType, List[TensorType]]:
-        # input_dict has 3 keys: obs {user/doc/response}, is_training (bool), obs_flat
-
         # user.shape: [batch_size, embedding_size]
         user = input_dict[SampleBatch.OBS]["user"]
         # doc.shape: [batch_size, num_docs, embedding_size]

@@ -1,8 +1,5 @@
-import random
-
 import gym
 import numpy as np
-from gym.spaces import Box
 
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.policy.policy import Policy

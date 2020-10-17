@@ -24,7 +24,7 @@ from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep
-from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -56,7 +56,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # set batchmode
     "batch_mode": "complete_episodes",
-    "rollout_fragment_length": 10000,
 
     # === Exploration Settings ===
     "exploration_config": {
@@ -116,7 +115,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "rollout_fragment_length": 4,
+    "rollout_fragment_length": 10000,
     # Size of a batch sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
