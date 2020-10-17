@@ -108,7 +108,7 @@ def make_recsim_env(config):
     env = interest_evolution.create_environment(env_config)
     env = RecSimResetWrapper(env)
     env = RecSimObservationSpaceWrapper(env)
-    if config and config["convert_to_discrete_action_space"]:
+    if env_config and env_config["convert_to_discrete_action_space"]:
         env = MultiDiscreteToDiscreteActionWrapper(env)
     return env
 
