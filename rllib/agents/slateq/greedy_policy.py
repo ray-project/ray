@@ -30,7 +30,7 @@ class GreedyPolicy(Policy):
         # user.shape: [batch_size(=1), embedding_size]
         user = obs["user"]
         # doc.shape: [batch_size(=1), num_docs, embedding_size]
-        doc = np.stack([item for item in obs["doc"].values()], axis=1)
+        doc = np.stack(list(obs["doc"].values()), axis=1)
         # "scores" represent how likely a doc will be clicked
         # scores.shape: [batch_size(=1), num_docs]
         scores = np.einsum("be,bde->bd", user, doc)
