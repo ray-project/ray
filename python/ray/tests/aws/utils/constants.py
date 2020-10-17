@@ -150,7 +150,8 @@ CUSTOM_IN_BOUND_RULES = [{
     }]
 }]
 
-# Default security group with custom name once default and custom in bound rules are applied
+# Default security group with custom name once...
+# default and custom in bound rules are applied
 DEFAULT_SG_WITH_NAME_AND_RULES = copy.deepcopy(DEFAULT_SG_WITH_NAME)
 DEFAULT_SG_WITH_NAME_AND_RULES[
     "IpPermissions"] = DEFAULT_IN_BOUND_RULES + CUSTOM_IN_BOUND_RULES

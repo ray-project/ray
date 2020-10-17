@@ -106,7 +106,8 @@ def test_create_sg_with_custom_inbound_rules_and_name(iam_client_stub,
     config = helpers.bootstrap_aws_example_config_file(
         "example-security-group.yaml")
 
-    # expect the bootstrapped config to have the custom security group name and in bound rules
+    # expect the bootstrapped config to have the custom security group...
+    # name and in bound rules
     assert config["provider"]["security_group"][
         "GroupName"] == DEFAULT_SG_WITH_NAME_AND_RULES["GroupName"]
     assert config["provider"]["security_group"][
