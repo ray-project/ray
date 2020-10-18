@@ -41,7 +41,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
     && $HOME/anaconda3/bin/conda init \ 
-    && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bash_profile \
+    && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y \
         libgcc python=$PYTHON_VERSION \

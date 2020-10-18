@@ -700,6 +700,16 @@ class DockerCommandRunner(CommandRunnerInterface):
             cleaned_bind_mounts.pop(mnt, None)
 
         if not self._check_container_status():
+            # Get home directory
+            image_env = self.ssh_command_runner.run(
+                "docker inspect -f '{{json .Config.Env}}' " + image,
+                with_output=True).decode().strip()
+            home_directory = "/root"
+            for env_var in json.loads(image_env):
+                if env_var.startswith("HOME="):
+                    home_directory = env_var.split("HOME=")[1]
+                    break
+
             start_command = docker_start_cmds(
                 self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
                 self.container_name,
@@ -707,7 +717,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options",
                         []) + self._configure_runtime(),
-                self.ssh_command_runner.cluster_name)
+                self.ssh_command_runner.cluster_name,
+		home_directory)
             self.run(start_command, run_env="host")
         else:
             running_image = self.run(
