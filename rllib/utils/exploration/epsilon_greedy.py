@@ -4,7 +4,7 @@ import random
 from typing import Union, Optional
 
 
-from ray.rllib.models.torch.torch_action_dist import TorchMultiActionDistribution, TorchMultiCategorical
+from ray.rllib.models.torch.torch_action_dist import TorchMultiActionDistribution, TorchCategorical
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration, TensorType
@@ -155,14 +155,17 @@ class EpsilonGreedy(Exploration):
             # Get the current epsilon.
             exploit_action = tree.flatten(exploit_action)
             epsilon = self.epsilon_schedule(self.last_timestep)
-            if isinstance(action_distribution, TorchMultiActionDistribution):
+            if not isinstance(action_distribution, TorchCategorical):
                 for i in range(batch_size):
                     if random.random() < epsilon:
                         # TODO Mask out actions
                         random_action = tree.flatten(self.action_space.sample())
                         for j in range(len(exploit_action)):
                             exploit_action[j][i] = torch.tensor(random_action[j])
-                return tree.unflatten_as(action_distribution.action_space_struct, exploit_action), action_logp
+                if isinstance(action_distribution, TorchMultiActionDistribution):
+                    exploit_action = tree.unflatten_as(action_distribution.action_space_struct, exploit_action)
+
+                return exploit_action, action_logp
             
             else:
                 # Mask out actions, whose Q-values are -inf, so that we don't
