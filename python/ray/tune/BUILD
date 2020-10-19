@@ -73,7 +73,7 @@ py_test(
 
 py_test(
     name = "test_experiment_analysis",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_experiment_analysis.py"],
     deps = [":tune_lib"],
 )
@@ -142,7 +142,7 @@ py_test(
 
 py_test(
     name = "test_ray_trial_executor",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
 )
