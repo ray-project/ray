@@ -140,17 +140,17 @@ def test_cluster_handle_affinity():
 
     ray.init(head_node.address)
 
-    # Make sure we have two nodes
+    # Make sure we have two nodes.
     node_ids = [n["NodeID"] for n in ray.nodes()]
     assert len(node_ids) == 2
 
-    # Start the backend
+    # Start the backend.
     client = serve.start(http_port=randint(10000, 30000), detached=True)
     client.create_backend("hi:v0", lambda _: "hi")
     client.create_endpoint("hi", backend="hi:v0")
 
     # Try to retrieve the handle from both head and worker node, check the
-    # router's node id
+    # router's node id.
     @ray.remote
     def check_handle_router_id():
         client = serve.connect()
