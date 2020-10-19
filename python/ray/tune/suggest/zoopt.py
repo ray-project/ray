@@ -1,10 +1,10 @@
 import copy
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
+import ray
 import ray.cloudpickle as pickle
-from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
-    Uniform
+from ray.tune.sample import Categorical, Float, Integer, Quantized, Uniform
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 from zoopt import ValueType
@@ -27,7 +27,7 @@ class ZOOptSearch(Searcher):
     Asynchronous Sequential RAndomized COordinate Shrinking (ASRacos)
     is implemented in Tune.
 
-    To use ZOOptSearch, install zoopt (>=0.4.0): ``pip install -U zoopt``.
+    To use ZOOptSearch, install zoopt (>=0.4.1): ``pip install -U zoopt``.
 
     Tune automatically converts search spaces to ZOOpt"s format:
 
@@ -67,11 +67,16 @@ class ZOOptSearch(Searcher):
 
         dim_dict = {
             "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
-            "width": (ValueType.DISCRETE, [-10, 10], False)
+            "width": (ValueType.DISCRETE, [-10, 10], False),
+            "layers": (ValueType.GRID, [4, 8, 16])
         }
 
         "config": {
             "iterations": 10,  # evaluation times
+        }
+
+        zoopt_search_config = {
+            "parallel_num": 8,  # how many workers to parallel
         }
 
         zoopt_search = ZOOptSearch(
@@ -79,7 +84,9 @@ class ZOOptSearch(Searcher):
             budget=20,  # must match `num_samples` in `tune.run()`.
             dim_dict=dim_dict,
             metric="mean_loss",
-            mode="min")
+            mode="min",
+            **zoopt_search_config
+        )
 
         tune.run(my_objective,
             config=config,
@@ -94,26 +101,29 @@ class ZOOptSearch(Searcher):
         budget (int): Number of samples.
         dim_dict (dict): Dimension dictionary.
             For continuous dimensions: (continuous, search_range, precision);
-            For discrete dimensions: (discrete, search_range, has_order).
+            For discrete dimensions: (discrete, search_range, has_order);
+            For grid dimensions: (grid, grid_list).
             More details can be found in zoopt package.
         metric (str): The training result objective value attribute.
             Defaults to "episode_reward_mean".
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
             Defaults to "min".
-
+        parallel_num (int): How many workers to parallel. Note that initial
+            phase may start less workers than this number. More details can
+            be found in zoopt package.
     """
 
     optimizer = None
 
     def __init__(self,
-                 algo: str = "asracos",
-                 budget: Optional[int] = None,
-                 dim_dict: Optional[Dict] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
+                 algo="asracos",
+                 budget=None,
+                 dim_dict=None,
+                 metric=None,
+                 mode=None,
                  **kwargs):
-        assert zoopt is not None, "Zoopt not found - please install zoopt."
+        assert zoopt is not None, "ZOOpt not found - please install zoopt by `pip install -U zoopt`."
         assert budget is not None, "`budget` should not be None!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -137,8 +147,10 @@ class ZOOptSearch(Searcher):
         self.best_solution_list = []
         self.optimizer = None
 
+        self.kwargs = kwargs
+
         super(ZOOptSearch, self).__init__(
-            metric=self._metric, mode=mode, **kwargs)
+            metric=self._metric, mode=mode)
 
         if self._dim_dict:
             self.setup_zoopt()
@@ -153,10 +165,9 @@ class ZOOptSearch(Searcher):
         par = zoopt.Parameter(budget=self._budget)
         if self._algo == "sracos" or self._algo == "asracos":
             from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
-            self.optimizer = SRacosTune(dimension=dim, parameter=par)
+            self.optimizer = SRacosTune(dimension=dim, parameter=par, **self.kwargs)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(self, metric, mode, config):
         if self._dim_dict:
             return False
         space = self.convert_search_space(config)
@@ -175,7 +186,7 @@ class ZOOptSearch(Searcher):
         self.setup_zoopt()
         return True
 
-    def suggest(self, trial_id: str) -> Optional[Dict]:
+    def suggest(self, trial_id):
         if not self._dim_dict or not self.optimizer:
             raise RuntimeError(
                 "Trying to sample a configuration from {}, but no search "
@@ -184,6 +195,13 @@ class ZOOptSearch(Searcher):
                 "`tune.run()`.".format(self.__class__.__name__, "space"))
 
         _solution = self.optimizer.suggest()
+
+        if _solution == "FINISHED":
+            if ray.__version__ >= "0.8.7":
+                return Searcher.FINISHED  # return Searcher.FINISHED when Ray >= 0.8.7
+            else:
+                return None
+
         if _solution:
             self.solution_dict[str(trial_id)] = _solution
             _x = _solution.get_x()
@@ -191,10 +209,7 @@ class ZOOptSearch(Searcher):
             self._live_trial_mapping[trial_id] = new_trial
             return unflatten_dict(new_trial)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
         if result:
             _solution = self.solution_dict[str(trial_id)]
@@ -205,18 +220,18 @@ class ZOOptSearch(Searcher):
 
         del self._live_trial_mapping[trial_id]
 
-    def save(self, checkpoint_path: str):
+    def save(self, checkpoint_path):
         trials_object = self.optimizer
         with open(checkpoint_path, "wb") as output:
             pickle.dump(trials_object, output)
 
-    def restore(self, checkpoint_path: str):
+    def restore(self, checkpoint_path):
         with open(checkpoint_path, "rb") as input:
             trials_object = pickle.load(input)
         self.optimizer = trials_object
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict[str, Tuple]:
+    def convert_search_space(spec: Dict):
         spec = copy.deepcopy(spec)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -228,7 +243,7 @@ class ZOOptSearch(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to a ZOOpt search space.")
 
-        def resolve_value(domain: Domain) -> Tuple:
+        def resolve_value(domain):
             quantize = None
 
             sampler = domain.get_sampler()
@@ -248,14 +263,12 @@ class ZOOptSearch(Searcher):
                             True)
 
             elif isinstance(domain, Categorical):
-                # Categorical variables would use ValjeType.DISCRETE with
+                # Categorical variables would use ValueType.DISCRETE with
                 # has_partial_order=False, however, currently we do not
                 # keep track of category values and cannot automatically
                 # translate back and forth between them.
-                raise ValueError(
-                    "ZOOpt does not support automatic conversion for "
-                    "categorical variables. Please instantiate ZOOpt with "
-                    "a manually defined search space.")
+                if isinstance(sampler, Uniform):
+                    return (ValueType.GRID, domain.categories)
 
             raise ValueError("ZOOpt does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(
@@ -268,3 +281,4 @@ class ZOOptSearch(Searcher):
         }
 
         return spec
+
