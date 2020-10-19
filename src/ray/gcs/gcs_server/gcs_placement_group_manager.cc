@@ -329,17 +329,18 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
 }
 
 void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
-  const rpc::GetAllPlacementGroupRequest &request, rpc::GetAllPlacementGroupReply *reply,
-  rpc::SendReplyCallback send_reply_callback) {
-    RAY_LOG(DEBUG) << "Getting all placement group info.";
-  auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<PlacementGroupID, PlacementGroupTableData> &result) {
-    for (auto &data : result) {
-      reply->add_placement_group_table_data()->CopyFrom(data.second);
-    }
-    RAY_LOG(DEBUG) << "Finished getting all placement group info.";
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
+    const rpc::GetAllPlacementGroupRequest &request,
+    rpc::GetAllPlacementGroupReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all placement group info.";
+  auto on_done =
+      [reply, send_reply_callback](
+          const std::unordered_map<PlacementGroupID, PlacementGroupTableData> &result) {
+        for (auto &data : result) {
+          reply->add_placement_group_table_data()->CopyFrom(data.second);
+        }
+        RAY_LOG(DEBUG) << "Finished getting all placement group info.";
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      };
   Status status = gcs_table_storage_->PlacementGroupTable().GetAll(on_done);
   if (!status.ok()) {
     on_done(std::unordered_map<PlacementGroupID, PlacementGroupTableData>());

@@ -241,7 +241,8 @@ std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {
   std::vector<std::string> placement_group_table_data;
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGetAll(
-      TransformForMultiItemCallback<rpc::PlacementGroupTableData>(placement_group_table_data, promise)));
+      TransformForMultiItemCallback<rpc::PlacementGroupTableData>(
+          placement_group_table_data, promise)));
   promise.get_future().get();
   return placement_group_table_data;
 }

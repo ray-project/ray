@@ -472,8 +472,8 @@ class PlacementGroupInfoGcsServiceHandler {
                                        SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetAllPlacementGroup(const GetAllPlacementGroupRequest &request,
-                                              GetAllPlacementGroupReply *reply,
-                                              SendReplyCallback send_reply_callback) = 0;
+                                          GetAllPlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `PlacementGroupInfoGcsService`.
