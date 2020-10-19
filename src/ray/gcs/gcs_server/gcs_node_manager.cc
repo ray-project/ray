@@ -55,23 +55,11 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   }
 
   iter->second = num_heartbeats_timeout_;
-  if (!light_heartbeat_enabled_ || heartbeat_data.should_global_gc() ||
-      heartbeat_data.resources_total_size() > 0 ||
-      heartbeat_data.resources_available_changed() ||
-      heartbeat_data.resource_load_changed()) {
-    heartbeat_buffer_[node_id] = heartbeat_data;
-  }
-}
-
-void GcsNodeManager::NodeFailureDetector::UpdatePlacementGroupLoad(
-    std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
-  placement_group_load_ = absl::make_optional(placement_group_load);
 }
 
 /// A periodic timer that checks for timed out clients.
 void GcsNodeManager::NodeFailureDetector::Tick() {
   DetectDeadNodes();
-  SendBatchedHeartbeat();
   ScheduleTick();
 }
 
@@ -83,60 +71,10 @@ void GcsNodeManager::NodeFailureDetector::DetectDeadNodes() {
       auto node_id = current->first;
       RAY_LOG(WARNING) << "Node timed out: " << node_id;
       heartbeats_.erase(current);
-      heartbeat_buffer_.erase(node_id);
       if (on_node_death_callback_) {
         on_node_death_callback_(node_id);
       }
     }
-  }
-}
-
-void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
-  if (!heartbeat_buffer_.empty()) {
-    auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
-    std::unordered_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
-    for (auto &heartbeat : heartbeat_buffer_) {
-      // Aggregate the load reported by each raylet.
-      auto load = heartbeat.second.resource_load_by_shape();
-      for (const auto &demand : load.resource_demands()) {
-        auto scheduling_key = ResourceSet(MapFromProtobuf(demand.shape()));
-        auto &aggregate_demand = aggregate_load[scheduling_key];
-        aggregate_demand.set_num_ready_requests_queued(
-            aggregate_demand.num_ready_requests_queued() +
-            demand.num_ready_requests_queued());
-        aggregate_demand.set_num_infeasible_requests_queued(
-            aggregate_demand.num_infeasible_requests_queued() +
-            demand.num_infeasible_requests_queued());
-        if (RayConfig::instance().report_worker_backlog()) {
-          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                            demand.backlog_size());
-        }
-      }
-      heartbeat.second.clear_resource_load_by_shape();
-
-      batch->add_batch()->Swap(&heartbeat.second);
-    }
-
-    for (auto &demand : aggregate_load) {
-      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
-      demand_proto->Swap(&demand.second);
-      for (const auto &resource_pair : demand.first.GetResourceMap()) {
-        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
-      }
-    }
-
-    // Update placement group load to heartbeat batch.
-    // This is updated only one per second.
-    if (placement_group_load_.has_value()) {
-      auto placement_group_load = placement_group_load_.value();
-      auto placement_group_load_proto = batch->mutable_placement_group_load();
-      placement_group_load_proto->Swap(placement_group_load.get());
-      placement_group_load_.reset();
-    }
-
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
-                                       batch->SerializeAsString(), nullptr));
-    heartbeat_buffer_.clear();
   }
 }
 
@@ -184,8 +122,11 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &main_io_service,
             });
           })),
       node_failure_detector_service_(node_failure_detector_io_service),
+      heartbeat_timer_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage) {}
+      gcs_table_storage_(gcs_table_storage) {
+  SendBatchedHeartbeat();
+}
 
 void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::RegisterNodeReply *reply,
@@ -254,6 +195,13 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
 
   // Update node realtime resources.
   UpdateNodeRealtimeResources(node_id, *heartbeat_data);
+
+  if (!RayConfig::instance().light_heartbeat_enabled() ||
+      heartbeat_data->should_global_gc() || heartbeat_data->resources_total_size() > 0 ||
+      heartbeat_data->resources_available_changed() ||
+      heartbeat_data->resource_load_changed()) {
+    heartbeat_buffer_[node_id] = *heartbeat_data;
+  }
 
   // Note: To avoid heartbeats being delayed by main thread, make sure heartbeat is always
   // handled by its own IO service.
@@ -430,6 +378,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     cluster_resources_.erase(node_id);
     // Remove from cluster realtime resources.
     cluster_realtime_resources_.erase(node_id);
+    heartbeat_buffer_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -512,12 +461,8 @@ const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
 }
 
 void GcsNodeManager::UpdatePlacementGroupLoad(
-    std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) const {
-  // Node failure detector code should be running in a separate thread to avoid heartbeat
-  // lagging.
-  node_failure_detector_service_.post([this, placement_group_load] {
-    node_failure_detector_->UpdatePlacementGroupLoad(move(placement_group_load));
-  });
+    const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
+  placement_group_load_ = absl::make_optional(placement_group_load);
 }
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -530,6 +475,69 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
   auto node_id = NodeID::FromBinary(node->node_id());
   dead_nodes_.emplace(node_id, node);
   sorted_dead_node_list_.emplace_back(node_id, node->timestamp());
+}
+
+void GcsNodeManager::SendBatchedHeartbeat() {
+  if (!heartbeat_buffer_.empty()) {
+    auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
+    std::unordered_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
+    for (auto &heartbeat : heartbeat_buffer_) {
+      // Aggregate the load reported by each raylet.
+      auto load = heartbeat.second.resource_load_by_shape();
+      for (const auto &demand : load.resource_demands()) {
+        auto scheduling_key = ResourceSet(MapFromProtobuf(demand.shape()));
+        auto &aggregate_demand = aggregate_load[scheduling_key];
+        aggregate_demand.set_num_ready_requests_queued(
+            aggregate_demand.num_ready_requests_queued() +
+            demand.num_ready_requests_queued());
+        aggregate_demand.set_num_infeasible_requests_queued(
+            aggregate_demand.num_infeasible_requests_queued() +
+            demand.num_infeasible_requests_queued());
+        if (RayConfig::instance().report_worker_backlog()) {
+          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                            demand.backlog_size());
+        }
+      }
+      heartbeat.second.clear_resource_load_by_shape();
+
+      batch->add_batch()->Swap(&heartbeat.second);
+    }
+
+    for (auto &demand : aggregate_load) {
+      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
+      demand_proto->Swap(&demand.second);
+      for (const auto &resource_pair : demand.first.GetResourceMap()) {
+        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+      }
+    }
+
+    // Update placement group load to heartbeat batch.
+    // This is updated only one per second.
+    if (placement_group_load_.has_value()) {
+      auto placement_group_load = placement_group_load_.value();
+      auto placement_group_load_proto = batch->mutable_placement_group_load();
+      placement_group_load_proto->Swap(placement_group_load.get());
+      placement_group_load_.reset();
+    }
+
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
+                                       batch->SerializeAsString(), nullptr));
+    heartbeat_buffer_.clear();
+  }
+
+  auto heartbeat_period = boost::posix_time::milliseconds(
+      RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
+  heartbeat_timer_.expires_from_now(heartbeat_period);
+  heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `heartbeat_timer_` is canceled or destroyed.
+      // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
+      return;
+    }
+    RAY_CHECK(!error) << "Sending batched heartbeat failed with error: "
+                      << error.message();
+    SendBatchedHeartbeat();
+  });
 }
 
 }  // namespace gcs
