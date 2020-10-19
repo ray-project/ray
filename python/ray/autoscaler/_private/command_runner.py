@@ -667,14 +667,14 @@ class DockerCommandRunner(CommandRunnerInterface):
         for mnt in BOOTSTRAP_MOUNTS:
             cleaned_bind_mounts.pop(mnt, None)
 
-        start_command = docker_start_cmds(
-            self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
-            self.container_name,
-            self.docker_config.get("run_options", []) + self.docker_config.get(
-                f"{'head' if as_head else 'worker'}_run_options",
-                []) + self._configure_runtime())
-
         if not self._check_container_status():
+            start_command = docker_start_cmds(
+                self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
+                self.container_name,
+                self.docker_config.get(
+                    "run_options", []) + self.docker_config.get(
+                        f"{'head' if as_head else 'worker'}_run_options",
+                        []) + self._configure_runtime())
             self.run(start_command, run_env="host")
         else:
             running_image = self.run(
@@ -724,5 +724,13 @@ class DockerCommandRunner(CommandRunnerInterface):
             "docker info -f '{{.Runtimes}}' ",
             with_output=True).decode().strip()
         if "nvidia-container-runtime" in runtime_output:
-            return ["--runtime=nvidia"]
+            try:
+                self.ssh_command_runner.run("nvidia-smi", with_output=False)
+                return ["--runtime=nvidia"]
+            except Exception as e:
+                logger.warning(
+                    "Nvidia Container Runtime is present, but no GPUs found.")
+                logger.debug(f"nvidia-smi error: {e}")
+                return []
+
         return []

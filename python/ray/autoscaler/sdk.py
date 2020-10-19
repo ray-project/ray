@@ -1,7 +1,7 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
 from contextlib import contextmanager
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 import json
 import os
 import tempfile
@@ -62,8 +62,8 @@ def run_on_cluster(cluster_config: Union[dict, str],
                    cmd: Optional[str] = None,
                    run_env: str = "auto",
                    no_config_cache: bool = False,
-                   port_forward: Union[int, List[int]] = None,
-                   with_output: bool = False) -> str:
+                   port_forward: Optional[commands.Port_forward] = None,
+                   with_output: bool = False) -> Optional[str]:
     """Runs a command on the specified cluster.
 
     Args:
@@ -74,7 +74,7 @@ def run_on_cluster(cluster_config: Union[dict, str],
             container. Select between "auto", "host" and "docker".
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
-        port_forward (int or list[int]): port(s) to forward.
+        port_forward ( (int,int) or list[(int,int)]): port(s) to forward.
         with_output (bool): Whether to capture command output.
 
     Returns:
@@ -167,7 +167,8 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
         return commands.get_worker_node_ips(config_file)
 
 
-def request_resources(num_cpus=None, bundles=None):
+def request_resources(num_cpus: Optional[int] = None,
+                      bundles: Optional[List[dict]] = None) -> None:
     """Remotely request some CPU or GPU resources from the autoscaler.
 
     This function is to be called e.g. on a node before submitting a bunch of
@@ -185,7 +186,7 @@ def request_resources(num_cpus=None, bundles=None):
 
 
 @contextmanager
-def _as_config_file(cluster_config: Union[dict, str]):
+def _as_config_file(cluster_config: Union[dict, str]) -> Iterator[str]:
     if isinstance(cluster_config, dict):
         tmp = tempfile.NamedTemporaryFile("w", prefix="autoscaler-sdk-tmp-")
         tmp.write(json.dumps(cluster_config))
@@ -196,8 +197,8 @@ def _as_config_file(cluster_config: Union[dict, str]):
     yield cluster_config
 
 
-def bootstrap_config(cluster_config: Dict[str, any],
-                     no_config_cache: bool = False) -> bool:
+def bootstrap_config(cluster_config: Dict[str, Any],
+                     no_config_cache: bool = False) -> Dict[str, Any]:
     """Validate and add provider-specific fields to the config. For example,
        IAM/authentication may be added here."""
     return commands._bootstrap_config(cluster_config, no_config_cache)

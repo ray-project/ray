@@ -12,6 +12,8 @@ import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
 import ray.utils
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+                                          DEBUG_AUTOSCALING_ERROR)
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.new_dashboard.datacenter import DataSource
@@ -95,6 +97,29 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             success=True,
             message="Fetched ray config.",
             **self._ray_config,
+        )
+
+    @routes.get("/api/cluster_status")
+    async def get_cluster_status(self, req):
+        """Returns status information about the cluster.
+
+        Currently contains two fields:
+            autoscaling_status (str): a status message from the autoscaler.
+            autoscaling_error (str): an error message from the autoscaler if
+                anything has gone wrong during autoscaling.
+
+        These fields are both read from the GCS, it's expected that the
+        autoscaler writes them there.
+        """
+
+        aioredis_client = self._dashboard_head.aioredis_client
+        status = await aioredis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
+        error = await aioredis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+        return dashboard_utils.rest_response(
+            success=True,
+            message="Got cluster status.",
+            autoscaling_status=status.decode() if status else None,
+            autoscaling_error=error.decode() if error else None,
         )
 
     async def run(self, server):

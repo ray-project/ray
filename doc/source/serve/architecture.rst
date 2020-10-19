@@ -52,7 +52,7 @@ FAQ
 How does Serve handle fault tolerance?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Application errors like exceptions in your model evaluation code is catched and
+Application errors like exceptions in your model evaluation code are caught and
 wrapped. A 500 status code will be returned with the traceback information. The
 worker replica will be able to continue to handle requests.
 
