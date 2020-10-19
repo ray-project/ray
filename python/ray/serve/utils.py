@@ -302,6 +302,6 @@ def get_all_node_ids():
 
 
 def get_node_id_for_actor(actor_handle):
-    "Given an actor handle, return the node id it's placed on"
+    """Given an actor handle, return the node id it's placed on."""
 
     return ray.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
