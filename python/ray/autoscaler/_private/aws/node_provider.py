@@ -3,6 +3,7 @@ import copy
 import threading
 from collections import defaultdict
 import logging
+import time
 from typing import Any, Dict
 
 import boto3
@@ -21,8 +22,6 @@ from ray.autoscaler._private.aws.utils import boto_exception_handler
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
-
-BATCH_TAG_UPDATE_DELAY = 5
 
 
 def to_aws_format(tags):
@@ -155,13 +154,6 @@ class AWSNodeProvider(NodeProvider):
         return node.private_ip_address
 
     def set_node_tags(self, node_id, tags):
-        # If on main thread, don't wait to update tags.
-        if threading.current_thread() is threading.main_thread():
-            with self.tag_cache_lock:
-                self.tag_cache_pending[node_id].update(tags)
-                self._update_node_tags()
-            return
-
         is_batching_thread = False
         with self.tag_cache_lock:
             if not self.tag_cache_pending:
@@ -172,10 +164,10 @@ class AWSNodeProvider(NodeProvider):
                 self.batch_update_done.clear()
             self.tag_cache_pending[node_id].update(tags)
         if is_batching_thread:
-            # Wait for one second or until main thread runs _update_node_tags()
-            self.batch_update_done.wait(timeout=1)
+            time.sleep(1)
             with self.tag_cache_lock:
                 self._update_node_tags()
+                self.batch_update_done.set()
         else:
             with self.count_lock:
                 self.batch_thread_count += 1
@@ -207,8 +199,6 @@ class AWSNodeProvider(NodeProvider):
                         "Value": v
                     }],
                 )
-
-        self.batch_update_done.set()
 
     def create_node(self, node_config, tags, count):
         tags = copy.deepcopy(tags)
