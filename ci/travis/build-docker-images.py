@@ -261,22 +261,24 @@ def push_and_tag_images(push_base_images: bool):
 
 # Push infra here:
 # https://github.com/christian-korneck/docker-pushrm/blob/master/README-containers.md#push-a-readme-file-to-dockerhub # noqa
-def push_readmes_and_tags():
+def push_readmes():
     if not _merge_build():
-        print("Not pushing because this is a PR build.")
+        print("Not pushing README because this is a PR build.")
         return
     username, password = _get_docker_creds()
     environment = {"DOCKER_USE": username, "DOCKER_PASS": password}
     for image, tag_line in DOCKER_HUB_DESCRIPTION.items():
         cmd_string = (f"--file /myvol/docker/{image}/README.md "
                       f"--short {tag_line} --debug rayproject/{image}")
+        mount_list = [
+            docker.types.Mount(
+                target="/myvol/", source=os.path.abspath(_get_root_dir()))
+        ]
 
         DOCKER_CLIENT.containers.run(
             "chko/docker-pushrm:1",
             command=cmd_string,
-            mounts=[
-                docker.types.Mount(target="/myvol/", source=_get_root_dir())
-            ],
+            mounts=mount_list,
             environment=environment,
             remove=True,
             tty=True)
@@ -296,4 +298,4 @@ if __name__ == "__main__":
             build_ray()
             build_ray_ml()
             push_and_tag_images(freshly_built)
-            push_readmes_and_tags()
+            push_readmes()
