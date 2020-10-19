@@ -5,7 +5,7 @@ from typing import Dict, Optional, Tuple
 import ray
 import ray.cloudpickle as pickle
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
-        Uniform
+    Uniform
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 from zoopt import ValueType
@@ -124,7 +124,8 @@ class ZOOptSearch(Searcher):
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  **kwargs):
-        assert zoopt is not None, "ZOOpt not found - please install zoopt by `pip install -U zoopt`."
+        assert zoopt is not None, "ZOOpt not found - please install zoopt " \
+                                  "by `pip install -U zoopt`."
         assert budget is not None, "`budget` should not be None!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -150,8 +151,7 @@ class ZOOptSearch(Searcher):
 
         self.kwargs = kwargs
 
-        super(ZOOptSearch, self).__init__(
-            metric=self._metric, mode=mode)
+        super(ZOOptSearch, self).__init__(metric=self._metric, mode=mode)
 
         if self._dim_dict:
             self.setup_zoopt()
@@ -166,7 +166,8 @@ class ZOOptSearch(Searcher):
         par = zoopt.Parameter(budget=self._budget)
         if self._algo == "sracos" or self._algo == "asracos":
             from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
-            self.optimizer = SRacosTune(dimension=dim, parameter=par, **self.kwargs)
+            self.optimizer = SRacosTune(
+                dimension=dim, parameter=par, **self.kwargs)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
@@ -200,7 +201,7 @@ class ZOOptSearch(Searcher):
 
         if _solution == "FINISHED":
             if ray.__version__ >= "0.8.7":
-                return Searcher.FINISHED  # return Searcher.FINISHED when Ray >= 0.8.7
+                return Searcher.FINISHED
             else:
                 return None
 
@@ -212,8 +213,8 @@ class ZOOptSearch(Searcher):
             return unflatten_dict(new_trial)
 
     def on_trial_complete(self,
-                          trial_id: str,	
-                          result: Optional[Dict] = None,	
+                          trial_id: str,
+                          result: Optional[Dict] = None,
                           error: bool = False):
         """Notification for the completion of trial."""
         if result:
@@ -286,4 +287,3 @@ class ZOOptSearch(Searcher):
         }
 
         return spec
-

@@ -556,12 +556,12 @@ class SearchSpaceTest(unittest.TestCase):
             "b/z": (ValueType.CONTINUOUS, [-3, 7], 1e-4),
         }
 
-        zoopt_search_config = {
-            "parallel_num": 4
-        }
+        zoopt_search_config = {"parallel_num": 4}
 
-        searcher1 = ZOOptSearch(dim_dict=converted_config, budget=5,  **zoopt_search_config)
-        searcher2 = ZOOptSearch(dim_dict=zoopt_config, budget=5, **zoopt_search_config)
+        searcher1 = ZOOptSearch(
+            dim_dict=converted_config, budget=5, **zoopt_search_config)
+        searcher2 = ZOOptSearch(
+            dim_dict=zoopt_config, budget=5, **zoopt_search_config)
 
         np.random.seed(1234)
         config1 = searcher1.suggest("0")
@@ -574,11 +574,13 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(-3, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 7)
 
-        searcher = ZOOptSearch(budget=5, metric="a", mode="max", **zoopt_search_config)
+        searcher = ZOOptSearch(
+            budget=5, metric="a", mode="max", **zoopt_search_config)
         analysis = tune.run(
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         self.assertIn(trial.config["b"]["y"], [2, 4, 6, 8])
+
 
 if __name__ == "__main__":
     import pytest

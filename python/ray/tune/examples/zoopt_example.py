@@ -65,8 +65,7 @@ if __name__ == "__main__":
         # dim_dict=space,  # If you want to set the space yourself
         metric="mean_loss",
         mode="min",
-        **zoopt_search_config
-    )
+        **zoopt_search_config)
 
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
 
@@ -76,4 +75,3 @@ if __name__ == "__main__":
         name="zoopt_search",
         scheduler=scheduler,
         **tune_kwargs)
-
