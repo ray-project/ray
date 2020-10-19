@@ -31,7 +31,7 @@ DOCKER_HUB_DESCRIPTION = {
 
 
 def _merge_build():
-    return os.environ.get("TRAVIS_PULL_REQUEST") == "false"
+    return os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
 
 
 def _release_build():
@@ -57,7 +57,7 @@ def _get_wheel_name():
         f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}-manylinux*")
     assert len(matches) == 1, (
         f"Found ({len(matches)}) matches "
-        "'*{PYTHON_WHL_VERSION}-manylinux*' instead of 1")
+        f"'*{PYTHON_WHL_VERSION}-manylinux*' instead of 1")
     return os.path.basename(matches[0])
 
 
@@ -190,7 +190,7 @@ def build_ray_ml():
 
 def _get_docker_creds() -> Tuple[str, str]:
     docker_password = os.environ.get("DOCKER_PASSWORD")
-    assert docker_password is not None, "DOCKER_PASSWORD not set."
+    assert docker_password, "DOCKER_PASSWORD not set."
     return DOCKER_USERNAME, docker_password
 
 
