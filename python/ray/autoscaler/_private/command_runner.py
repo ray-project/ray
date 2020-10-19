@@ -25,6 +25,8 @@ from ray.autoscaler._private.subprocess_output_util import (
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.util.debug import log_once
 
+from ray.autoscaler._private.constants import RAY_HOME
+
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
@@ -32,7 +34,6 @@ NODE_START_WAIT_S = 300
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
-RAY_HOME = "/home/ray"  # ray home path in the container image
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
