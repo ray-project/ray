@@ -135,6 +135,8 @@ def test_middleware():
             "This test can only be ran when port sharing is supported."))
 def test_cluster_handle_affinity():
     cluster = Cluster()
+    # HACK: using two different ip address so the placement constraint for
+    # resource check later will work.
     head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=4)
     cluster.add_node(node_ip_address="0.0.0.0", num_cpus=4)
 
