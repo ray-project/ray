@@ -6,7 +6,7 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS", "COPTS_SPDLOG", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
 
 config_setting(
     name = "msvc-cl",
@@ -856,19 +856,6 @@ cc_test(
 )
 
 cc_test(
-    name = "logging_spdlog_test",
-    srcs = ["src/ray/util/logging_test.cc"],
-    args = ["--gtest_filter=PrintLogTest*"],
-    copts = COPTS,
-    deps = [
-        ":ray_util_with_spdlog",
-        "@boost//:asio",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-
-cc_test(
     name = "event_test",
     srcs = ["src/ray/util/event_test.cc"],
     copts = COPTS,
@@ -1336,35 +1323,6 @@ cc_library(
         "//conditions:default": "",
     }),
     visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "ray_util_with_spdlog",
-    srcs = glob(
-        [
-            "src/ray/util/*.cc",
-        ],
-        exclude = [
-            "src/ray/util/*_test.cc",
-        ],
-    ),
-    hdrs = glob([
-        "src/ray/util/*.h",
-    ]),
-    copts = COPTS_SPDLOG,
-    strip_include_prefix = "src",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":sha256",
-        "//src/ray/protobuf:event_cc_proto",
-        "@boost//:asio",
-        "@boost//:property_tree",
-        "@com_github_google_glog//:glog",
-        "@com_github_spdlog//:spdlog",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
-    ],
 )
 
 cc_library(
