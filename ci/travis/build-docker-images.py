@@ -271,9 +271,10 @@ def push_readmes():
             "DOCKER_USER": username,
             "DOCKER_PASS": password,
             "PUSHRM_FILE": f"/myvol/docker/{image}/README.md",
+            "PUSHRM_DEBUG": 1,
             "PUSHRM_SHORT": tag_line
         }
-        cmd_string = (f"rayproject/{image} --debug")
+        cmd_string = (f"rayproject/{image}")
 
         print(
             DOCKER_CLIENT.containers.run(
