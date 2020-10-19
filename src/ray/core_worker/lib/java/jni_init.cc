@@ -107,6 +107,9 @@ jclass java_task_executor_class;
 jmethodID java_task_executor_parse_function_arguments;
 jmethodID java_task_executor_execute;
 
+jclass java_native_task_executor_class;
+jmethodID java_native_task_executor_on_worker_shutdown;
+
 jclass java_placement_group_class;
 jfieldID java_placement_group_id;
 
@@ -267,6 +270,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
+  java_native_task_executor_class =
+      LoadClass(env, "io/ray/runtime/task/NativeTaskExecutor");
+  java_native_task_executor_on_worker_shutdown =
+      env->GetMethodID(java_native_task_executor_class, "onWorkerShutdown", "([B)V");
   return CURRENT_JNI_VERSION;
 }
 
@@ -298,4 +305,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_actor_creation_options_class);
   env->DeleteGlobalRef(java_native_ray_object_class);
   env->DeleteGlobalRef(java_task_executor_class);
+  env->DeleteGlobalRef(java_native_task_executor_class);
 }

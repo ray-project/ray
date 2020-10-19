@@ -13,11 +13,10 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
 from ray.autoscaler._private.command_runner import NODE_START_WAIT_S, \
     ProcessRunnerError
 from ray.autoscaler._private.log_timer import LogTimer
-from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
-
-from ray import ray_constants
-import colorful as cf
+from ray.autoscaler._private.constants import \
+     RESOURCES_ENVIRONMENT_VARIABLE
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +246,8 @@ class NodeUpdater:
                                              self.log_prefix)
 
                         # Run outside of the container
-                        self.cmd_runner.run("uptime", run_env="host")
+                        self.cmd_runner.run(
+                            "uptime", timeout=5, run_env="host")
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
@@ -411,8 +411,7 @@ class NodeUpdater:
                 for cmd in self.ray_start_commands:
                     if self.node_resources:
                         env_vars = {
-                            ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: self.
-                            node_resources
+                            RESOURCES_ENVIRONMENT_VARIABLE: self.node_resources
                         }
                     else:
                         env_vars = {}

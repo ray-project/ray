@@ -7,7 +7,7 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters)
+                             get_random_letters, logger)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
 from ray.actor import ActorHandle
@@ -53,7 +53,15 @@ class Client:
 
     def __del__(self):
         if not self._detached:
+            logger.info("Shutting down Ray Serve because client went out of "
+                        "scope. To prevent this, either keep a reference to "
+                        "the client object or use serve.start(detached=True).")
             self.shutdown()
+
+    def __reduce__(self):
+        raise RayServeException(
+            ("Ray Serve client cannot be serialized. Please use "
+             "serve.connect() to get a client from within a backend."))
 
     def shutdown(self) -> None:
         """Completely shut down the connected Serve instance.
@@ -350,7 +358,7 @@ def start(detached: bool = False,
             this to "0.0.0.0". One HTTP server will be started on each node in
             the Ray cluster.
         http_port (int): Port for HTTP server. Defaults to 8000.
-        http_middleswares (list): A list of Starlette middlewares that will be
+        http_middlewares (list): A list of Starlette middlewares that will be
             applied to the HTTP servers in the cluster.
     """
     # Initialize ray if needed.

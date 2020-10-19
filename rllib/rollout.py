@@ -267,6 +267,9 @@ def run(args, parser):
     if "num_workers" in config:
         config["num_workers"] = min(2, config["num_workers"])
 
+    # Make sure worker 0 has an Env.
+    config["create_env_on_driver"] = True
+
     # Merge with `evaluation_config` (first try from command line, then from
     # pkl file).
     evaluation_config = copy.deepcopy(

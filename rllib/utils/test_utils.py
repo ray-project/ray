@@ -204,9 +204,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                             false=false)
         if torch is not None:
             if isinstance(x, torch.Tensor):
-                x = x.detach().numpy()
+                x = x.detach().cpu().numpy()
             if isinstance(y, torch.Tensor):
-                y = y.detach().numpy()
+                y = y.detach().cpu().numpy()
 
         # Using decimals.
         if atol is None and rtol is None:
@@ -298,7 +298,8 @@ def check_compute_single_action(trainer,
                 except AttributeError:
                     pass
             else:
-                obs_space = worker_set.local_worker().env.observation_space
+                obs_space = worker_set.local_worker().for_policy(
+                    lambda p: p.observation_space)
         else:
             method_to_test = pol.compute_single_action
             obs_space = pol.observation_space

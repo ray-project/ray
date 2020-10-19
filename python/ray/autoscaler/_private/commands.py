@@ -1,4 +1,3 @@
-import colorful as cf
 import copy
 import hashlib
 import json
@@ -9,9 +8,11 @@ import sys
 import subprocess
 import tempfile
 import time
-from typing import Any, Dict, Optional, List
+from types import ModuleType
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import click
+import redis
 import yaml
 try:  # py3
     from shlex import quote
@@ -20,20 +21,22 @@ except ImportError:  # py2
 
 from ray.experimental.internal_kv import _internal_kv_get
 import ray._private.services as services
-from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.autoscaler.node_provider import _get_node_provider, \
+from ray.autoscaler._private.providers import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
 from ray.autoscaler._private.log_timer import LogTimer
-from ray.worker import global_worker
+from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
@@ -46,8 +49,10 @@ RUN_ENV_TYPES = ["auto", "host", "docker"]
 
 POLL_INTERVAL = 5
 
+Port_forward = Union[Tuple[int, int], List[Tuple[int, int]]]
 
-def _redis():
+
+def _redis() -> redis.StrictRedis:
     global redis_client
     if redis_client is None:
         redis_client = services.create_redis_client(
@@ -56,19 +61,21 @@ def _redis():
     return redis_client
 
 
-def try_logging_config(config):
+def try_logging_config(config: Dict[str, Any]) -> None:
     if config["provider"]["type"] == "aws":
         from ray.autoscaler._private.aws.config import log_to_cli
         log_to_cli(config)
 
 
-def try_get_log_state(provider_config):
+def try_get_log_state(provider_config: Dict[str, Any]) -> Optional[dict]:
     if provider_config["type"] == "aws":
         from ray.autoscaler._private.aws.config import get_log_state
         return get_log_state()
+    return None
 
 
-def try_reload_log_state(provider_config, log_state):
+def try_reload_log_state(provider_config: Dict[str, Any],
+                         log_state: dict) -> None:
     if not log_state:
         return
     if provider_config["type"] == "aws":
@@ -76,7 +83,7 @@ def try_reload_log_state(provider_config, log_state):
         return reload_log_state(log_state)
 
 
-def debug_status():
+def debug_status() -> str:
     """Return a debug string for the autoscaler."""
     status = _internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
@@ -90,7 +97,8 @@ def debug_status():
     return status
 
 
-def request_resources(num_cpus=None, bundles=None):
+def request_resources(num_cpus: Optional[int] = None,
+                      bundles: Optional[List[dict]] = None) -> None:
     """Remotely request some CPU or GPU resources from the autoscaler.
 
     This function is to be called e.g. on a node before submitting a bunch of
@@ -120,9 +128,9 @@ def create_or_update_cluster(config_file: str,
                              no_restart: bool,
                              restart_only: bool,
                              yes: bool,
-                             override_cluster_name: Optional[str],
+                             override_cluster_name: Optional[str] = None,
                              no_config_cache: bool = False,
-                             redirect_command_output: bool = False,
+                             redirect_command_output: Optional[bool] = False,
                              use_login_shells: bool = True) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
@@ -260,10 +268,9 @@ def _bootstrap_config(config: Dict[str, Any],
 
     provider_cls = importer(config["provider"])
 
-    with cli_logger.timed(
-            "Checking {} environment settings",
-            _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
-        resolved_config = provider_cls.bootstrap_config(config)
+    cli_logger.print("Checking {} environment settings",
+                     _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"]))
+    resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
@@ -278,7 +285,7 @@ def _bootstrap_config(config: Dict[str, Any],
 
 def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                      override_cluster_name: Optional[str],
-                     keep_min_workers: bool):
+                     keep_min_workers: bool) -> None:
     """Destroys all nodes of a Ray cluster described by a config json."""
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
@@ -306,7 +313,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             # todo: add better exception info
             cli_logger.verbose_error("{}", str(e))
             cli_logger.warning(
-                "Exception occured when stopping the cluster Ray runtime "
+                "Exception occurred when stopping the cluster Ray runtime "
                 "(use -v to dump teardown exceptions).")
             cli_logger.warning(
                 "Ignoring the exception and "
@@ -352,26 +359,17 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
         def run_docker_stop(node, container_name):
             try:
-                updater = NodeUpdaterThread(
-                    node_id=node,
-                    provider_config=config["provider"],
-                    provider=provider,
-                    auth_config=config["auth"],
-                    cluster_name=config["cluster_name"],
-                    file_mounts=config["file_mounts"],
-                    initialization_commands=[],
-                    setup_commands=[],
-                    ray_start_commands=[],
-                    runtime_hash="",
-                    file_mounts_contents_hash="",
-                    is_head_node=False,
-                    docker_config=config.get("docker"))
-                _exec(
-                    updater,
-                    f"docker stop {container_name}",
-                    False,
-                    False,
-                    run_env="host")
+                exec_cluster(
+                    config_file,
+                    cmd=f"docker stop {container_name}",
+                    run_env="host",
+                    screen=False,
+                    tmux=False,
+                    stop=False,
+                    start=False,
+                    override_cluster_name=override_cluster_name,
+                    port_forward=None,
+                    with_output=False)
             except Exception:
                 cli_logger.warning(f"Docker stop failed on {node}")
                 cli_logger.old_warning(logger, f"Docker stop failed on {node}")
@@ -408,7 +406,8 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
         provider.cleanup()
 
 
-def kill_node(config_file, yes, hard, override_cluster_name):
+def kill_node(config_file: str, yes: bool, hard: bool,
+              override_cluster_name: Optional[str]) -> str:
     """Kills a random Raylet worker."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -459,7 +458,8 @@ def kill_node(config_file, yes, hard, override_cluster_name):
     return node_ip
 
 
-def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
+def monitor_cluster(cluster_config_file: str, num_lines: int,
+                    override_cluster_name: Optional[str]) -> None:
     """Tails the autoscaler logs of a Ray cluster."""
     cmd = f"tail -n {num_lines} -f /tmp/ray/session_latest/logs/monitor*"
     exec_cluster(
@@ -474,7 +474,7 @@ def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
         port_forward=None)
 
 
-def warn_about_bad_start_command(start_commands):
+def warn_about_bad_start_command(start_commands: List[str]) -> None:
     ray_start_cmd = list(filter(lambda x: "ray start" in x, start_commands))
     if len(ray_start_cmd) == 0:
         cli_logger.warning(
@@ -499,14 +499,14 @@ def warn_about_bad_start_command(start_commands):
             "to ray start in the head_start_ray_commands section.")
 
 
-def get_or_create_head_node(config,
-                            config_file,
-                            no_restart,
-                            restart_only,
-                            yes,
-                            override_cluster_name,
-                            _provider=None,
-                            _runner=subprocess):
+def get_or_create_head_node(config: Dict[str, Any],
+                            config_file: str,
+                            no_restart: bool,
+                            restart_only: bool,
+                            yes: bool,
+                            override_cluster_name: Optional[str],
+                            _provider: Optional[NodeProvider] = None,
+                            _runner: ModuleType = subprocess) -> None:
     """Create the cluster head node, which in turn creates the workers."""
     provider = (_provider or _get_node_provider(config["provider"],
                                                 config["cluster_name"]))
@@ -604,7 +604,7 @@ def get_or_create_head_node(config,
 
                 start = time.time()
                 head_node = None
-                with cli_logger.timed("Fetching the new head node"):
+                with cli_logger.group("Fetching the new head node"):
                     while True:
                         if time.time() - start > 50:
                             cli_logger.abort(
@@ -767,7 +767,7 @@ def attach_cluster(config_file: str,
                    override_cluster_name: Optional[str],
                    no_config_cache: bool = False,
                    new: bool = False,
-                   port_forward: Any = None):
+                   port_forward: Optional[Port_forward] = None) -> None:
     """Attaches to a screen for the specified cluster.
 
     Arguments:
@@ -777,7 +777,7 @@ def attach_cluster(config_file: str,
         use_tmux: whether to use tmux as multiplexer
         override_cluster_name: set the name of the cluster
         new: whether to force a new screen
-        port_forward (int or list[int]): port(s) to forward
+        port_forward ( (int,int) or list[(int,int)] ): port(s) to forward
     """
 
     if use_tmux:
@@ -820,8 +820,8 @@ def exec_cluster(config_file: str,
                  start: bool = False,
                  override_cluster_name: Optional[str] = None,
                  no_config_cache: bool = False,
-                 port_forward: Any = None,
-                 with_output: bool = False):
+                 port_forward: Optional[Port_forward] = None,
+                 with_output: bool = False) -> str:
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -834,7 +834,7 @@ def exec_cluster(config_file: str,
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
-        port_forward (int or list[int]): port(s) to forward
+        port_forward ( (int, int) or list[(int, int)] ): port(s) to forward
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(
@@ -907,28 +907,28 @@ def exec_cluster(config_file: str,
         provider.cleanup()
 
 
-def _exec(updater,
-          cmd,
-          screen,
-          tmux,
-          port_forward=None,
-          with_output=False,
-          run_env="auto",
-          shutdown_after_run=False):
+def _exec(updater: NodeUpdaterThread,
+          cmd: Optional[str] = None,
+          screen: bool = False,
+          tmux: bool = False,
+          port_forward: Optional[Port_forward] = None,
+          with_output: bool = False,
+          run_env: str = "auto",
+          shutdown_after_run: bool = False) -> str:
     if cmd:
         if screen:
-            cmd = [
+            wrapped_cmd = [
                 "screen", "-L", "-dm", "bash", "-c",
                 quote(cmd + "; exec bash")
             ]
-            cmd = " ".join(cmd)
+            cmd = " ".join(wrapped_cmd)
         elif tmux:
             # TODO: Consider providing named session functionality
-            cmd = [
+            wrapped_cmd = [
                 "tmux", "new", "-d", "bash", "-c",
                 quote(cmd + "; exec bash")
             ]
-            cmd = " ".join(cmd)
+            cmd = " ".join(wrapped_cmd)
     return updater.cmd_runner.run(
         cmd,
         exit_on_fail=True,
@@ -943,8 +943,11 @@ def rsync(config_file: str,
           target: Optional[str],
           override_cluster_name: Optional[str],
           down: bool,
+          ip_address: Optional[str] = None,
+          use_internal_ip: bool = False,
           no_config_cache: bool = False,
-          all_nodes: bool = False):
+          all_nodes: bool = False,
+          _runner: ModuleType = subprocess) -> None:
     """Rsyncs files.
 
     Arguments:
@@ -953,6 +956,10 @@ def rsync(config_file: str,
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
+        ip_address (str): Address of node. Raise Exception
+            if both ip_address and 'all_nodes' are provided.
+        use_internal_ip (bool): Whether the provided ip_address is
+            public or private.
         all_nodes: whether to sync worker nodes in addition to the head node
     """
     if bool(source) != bool(target):
@@ -961,6 +968,9 @@ def rsync(config_file: str,
 
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
+
+    if ip_address and all_nodes:
+        cli_logger.abort("Cannot provide both ip_address and 'all_nodes'.")
 
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
@@ -975,54 +985,60 @@ def rsync(config_file: str,
                 break
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
+
+    def rsync_to_node(node_id, is_head_node):
+        updater = NodeUpdaterThread(
+            node_id=node_id,
+            provider_config=config["provider"],
+            provider=provider,
+            auth_config=config["auth"],
+            cluster_name=config["cluster_name"],
+            file_mounts=config["file_mounts"],
+            initialization_commands=[],
+            setup_commands=[],
+            ray_start_commands=[],
+            runtime_hash="",
+            use_internal_ip=use_internal_ip,
+            process_runner=_runner,
+            file_mounts_contents_hash="",
+            is_head_node=is_head_node,
+            docker_config=config.get("docker"))
+        if down:
+            rsync = updater.rsync_down
+        else:
+            rsync = updater.rsync_up
+
+        if source and target:
+            # print rsync progress for single file rsync
+            cmd_output_util.set_output_redirected(False)
+            set_rsync_silent(False)
+            rsync(source, target, is_file_mount)
+        else:
+            updater.sync_file_mounts(rsync)
+
     try:
         nodes = []
-        if all_nodes:
-            # technically we re-open the provider for no reason
-            # in get_worker_nodes but it's cleaner this way
-            # and _get_head_node does this too
-            nodes = _get_worker_nodes(config, override_cluster_name)
-
         head_node = _get_head_node(
             config, config_file, override_cluster_name, create_if_needed=False)
-
-        nodes += [head_node]
+        if ip_address:
+            nodes = [
+                provider.get_node_id(
+                    ip_address, use_internal_ip=use_internal_ip)
+            ]
+        else:
+            if all_nodes:
+                nodes = _get_worker_nodes(config, override_cluster_name)
+            nodes += [head_node]
 
         for node_id in nodes:
-            updater = NodeUpdaterThread(
-                node_id=node_id,
-                provider_config=config["provider"],
-                provider=provider,
-                auth_config=config["auth"],
-                cluster_name=config["cluster_name"],
-                file_mounts=config["file_mounts"],
-                initialization_commands=[],
-                setup_commands=[],
-                ray_start_commands=[],
-                runtime_hash="",
-                file_mounts_contents_hash="",
-                is_head_node=(node_id == head_node),
-                docker_config=config.get("docker"))
-            if down:
-                rsync = updater.rsync_down
-            else:
-                rsync = updater.rsync_up
-
-            if source and target:
-                # print rsync progress for single file rsync
-                cmd_output_util.set_output_redirected(False)
-                set_rsync_silent(False)
-
-                rsync(source, target, is_file_mount)
-            else:
-                updater.sync_file_mounts(rsync)
+            rsync_to_node(node_id, is_head_node=(node_id == head_node))
 
     finally:
         provider.cleanup()
 
 
 def get_head_node_ip(config_file: str,
-                     override_cluster_name: Optional[str]) -> str:
+                     override_cluster_name: Optional[str] = None) -> str:
     """Returns head node IP for given configuration file if exists."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -1032,7 +1048,7 @@ def get_head_node_ip(config_file: str,
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node = _get_head_node(config, config_file, override_cluster_name)
-        if config.get("provider", {}).get("use_internal_ips", False) is True:
+        if config.get("provider", {}).get("use_internal_ips", False):
             head_node_ip = provider.internal_ip(head_node)
         else:
             head_node_ip = provider.external_ip(head_node)
@@ -1043,7 +1059,8 @@ def get_head_node_ip(config_file: str,
 
 
 def get_worker_node_ips(config_file: str,
-                        override_cluster_name: Optional[str]) -> List[str]:
+                        override_cluster_name: Optional[str] = None
+                        ) -> List[str]:
     """Returns worker node IPs for given configuration file."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -1064,7 +1081,8 @@ def get_worker_node_ips(config_file: str,
         provider.cleanup()
 
 
-def _get_worker_nodes(config, override_cluster_name):
+def _get_worker_nodes(config: Dict[str, Any],
+                      override_cluster_name: Optional[str]) -> List[str]:
     """Returns worker node ids for given configuration."""
     # todo: technically could be reused in get_worker_node_ips
     if override_cluster_name is not None:
@@ -1110,5 +1128,5 @@ def _get_head_node(config: Dict[str, Any],
             config["cluster_name"]))
 
 
-def confirm(msg, yes):
+def confirm(msg: str, yes: bool) -> Optional[bool]:
     return None if yes else click.confirm(msg, abort=True)

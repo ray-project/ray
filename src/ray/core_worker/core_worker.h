@@ -123,6 +123,8 @@ struct CoreWorkerOptions {
   std::string stderr_file;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
+  /// The callback to be called when shutting down a `CoreWorker` instance.
+  std::function<void(const WorkerID &)> on_worker_shutdown;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
@@ -632,11 +634,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// to spill the object.
   Status SpillObjects(const std::vector<ObjectID> &object_ids);
 
-  /// Restore objects from external storage.
-  /// \param[in] object_ids The objects to be restored.
-  /// \return Status
-  Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
-
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
@@ -889,6 +886,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  // Make the this worker exit.
+  void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
+                  rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when

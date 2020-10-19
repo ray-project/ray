@@ -20,7 +20,6 @@ class TestMAML(unittest.TestCase):
         config = maml.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["horizon"] = 200
-        config["rollout_fragment_length"] = 200
         num_iterations = 1
 
         # Test for tf framework (torch not implemented yet).

@@ -1,6 +1,7 @@
 import logging
 
 from kubernetes import client
+from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.kubernetes import auth_api, core_api, log_prefix
 
@@ -28,6 +29,10 @@ def updating_existing_msg(resource_type, name):
 def not_found_msg(resource_type, name):
     return "{} '{}' not found, attempting to create it".format(
         resource_type, name)
+
+
+def not_checking_msg(resource_type, name):
+    return "not checking if {} '{}' exists".format(resource_type, name)
 
 
 def created_msg(resource_type, name):
@@ -58,7 +63,14 @@ def _configure_namespace(provider_config):
 
     namespace = provider_config[namespace_field]
     field_selector = "metadata.name={}".format(namespace)
-    namespaces = core_api().list_namespace(field_selector=field_selector).items
+    try:
+        namespaces = core_api().list_namespace(
+            field_selector=field_selector).items
+    except ApiException:
+        logger.warning(log_prefix +
+                       not_checking_msg(namespace_field, namespace))
+        return namespace
+
     if len(namespaces) > 0:
         assert len(namespaces) == 1
         logger.info(log_prefix +

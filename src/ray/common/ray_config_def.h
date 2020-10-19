@@ -232,6 +232,10 @@ RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 /// Duration to wait between retries for creating placement group in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
+/// Maximum number of destroyed actors in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead nodes in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -283,11 +287,24 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
+/// If true, the worker's queue backlog size will be propagated to the heartbeat batch
+/// data.
+RAY_CONFIG(bool, report_worker_backlog, false)
+
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable multi tenancy features.
-RAY_CONFIG(bool, enable_multi_tenancy, false)
+RAY_CONFIG(bool, enable_multi_tenancy,
+           getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
+               getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
+
+/// The interval of periodic idle worker killing. A negative value means worker capping is
+/// disabled.
+RAY_CONFIG(int64_t, kill_idle_workers_interval_ms, 200)
+
+/// The idle time threshold for an idle worker to be killed.
+RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
@@ -301,3 +318,7 @@ RAY_CONFIG(int, max_io_workers, 1)
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
 RAY_CONFIG(bool, enable_timeline, true)
+
+/// The maximum number of pending placement group entries that are reported to monitor to
+/// autoscale the cluster.
+RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)

@@ -156,6 +156,10 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
+    def current_node_id(self):
+        return self.core_worker.get_current_node_id()
+
+    @property
     def placement_group_id(self):
         return self.core_worker.get_placement_group_id()
 
@@ -1001,7 +1005,8 @@ def print_logs(redis_client, threads_stopped, job_id):
 def print_error_messages_raylet(task_error_queue, threads_stopped):
     """Prints message received in the given output queue.
 
-    This checks periodically if any un-raised errors occured in the background.
+    This checks periodically if any un-raised errors occurred in the
+    background.
 
     Args:
         task_error_queue (queue.Queue): A queue used to receive errors from the
@@ -1160,7 +1165,10 @@ def connect(node,
             job_id).binary()
 
     if mode is not SCRIPT_MODE and setproctitle:
-        setproctitle.setproctitle("ray::IDLE")
+        process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
+        if mode is IO_WORKER_MODE:
+            process_name = ray_constants.WORKER_PROCESS_TYPE_IO_WORKER
+        setproctitle.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -1358,7 +1366,7 @@ def show_in_dashboard(message, key="", dtype="text"):
         message (str): Message to be displayed.
         key (str): The key name for the message. Multiple message under
             different keys will be displayed at the same time. Messages
-            under the same key will be overriden.
+            under the same key will be overridden.
         data_type (str): The type of message for rendering. One of the
             following: text, html.
     """
@@ -1415,10 +1423,10 @@ def get(object_refs, *, timeout=None):
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.debug("Using blocking ray.get inside async actor. "
-                         "This blocks the event loop. Please use `await` "
-                         "on object ref with asyncio.gather if you want to "
-                         "yield execution to the event loop instead.")
+            logger.warning("Using blocking ray.get inside async actor. "
+                           "This blocks the event loop. Please use `await` "
+                           "on object ref with asyncio.gather if you want to "
+                           "yield execution to the event loop instead.")
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
@@ -1673,10 +1681,7 @@ def make_decorator(num_returns=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
-                   worker=None,
-                   placement_group=None,
-                   placement_group_bundle_index=-1,
-                   placement_group_capture_child_tasks=True):
+                   worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1705,9 +1710,7 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries, placement_group,
-                placement_group_bundle_index,
-                placement_group_capture_child_tasks)
+                num_returns, max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1831,15 +1834,6 @@ def remote(*args, **kwargs):
             crashes unexpectedly. The minimum valid value is 0,
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
-        placement_group (:obj:`PlacementGroup`): The placement group
-            this task belongs to, or ``None`` if it doesn't belong
-            to any group.
-        placement_group_bundle_index (int): The index of the bundle
-            if the task belongs to a placement group, which may be
-            -1 to indicate any available bundle.
-        placement_group_capture_child_tasks (bool): Default True.
-            If True, all the child tasks (including actor creation)
-            are scheduled in the same placement group.
 
     """
     worker = global_worker
@@ -1871,9 +1865,6 @@ def remote(*args, **kwargs):
             "max_restarts",
             "max_task_retries",
             "max_retries",
-            "placement_group",
-            "placement_group_bundle_index",
-            "placement_group_capture_child_tasks",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None

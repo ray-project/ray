@@ -94,6 +94,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_docker",
+    size = "small",
+    srcs = ["tests/test_integration_docker.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_integration_kubernetes",
     size = "small",
     srcs = ["tests/test_integration_kubernetes.py"],
@@ -211,7 +219,7 @@ py_test(
 
 py_test(
     name = "test_var",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_var.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -219,7 +227,7 @@ py_test(
 
 py_test(
     name = "test_trial_scheduler",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_scheduler.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
