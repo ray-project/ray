@@ -268,25 +268,29 @@ def push_readmes():
     username, password = _get_docker_creds()
     for image, tag_line in DOCKER_HUB_DESCRIPTION.items():
         environment = {
-            "DOCKER_USE": username,
+            "DOCKER_USER": username,
             "DOCKER_PASS": password,
             "PUSHRM_FILE": f"/myvol/docker/{image}/README.md",
             "PUSHRM_SHORT": tag_line
         }
         cmd_string = (f"rayproject/{image} --debug")
 
-        DOCKER_CLIENT.containers.run(
-            "chko/docker-pushrm:1",
-            command=cmd_string,
-            volumes={
-                os.path.abspath(_get_root_dir()): {
-                    "bind": "/myvol",
-                    "mode": "rw",
-                }
-            },
-            environment=environment,
-            remove=True,
-            tty=True)
+        print(
+            DOCKER_CLIENT.containers.run(
+                "chko/docker-pushrm:1",
+                command=cmd_string,
+                volumes={
+                    os.path.abspath(_get_root_dir()): {
+                        "bind": "/myvol",
+                        "mode": "rw",
+                    }
+                },
+                environment=environment,
+                remove=True,
+                detach=False,
+                stderr=True,
+                stdout=True,
+                tty=False))
 
 
 # Build base-deps/ray-deps only on file change, 2 weeks, per release
