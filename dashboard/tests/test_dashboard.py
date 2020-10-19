@@ -453,8 +453,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
 
     # Check that the cluster_status endpoint works without the underlying data
     # from the GCS, but returns nothing.
+    last_exception = None
     for _ in range(5):
-        time.sleep(1)
         try:
             response = requests.get(f"{webui_url}/api/cluster_status")
             response.raise_for_status()
@@ -464,10 +464,11 @@ def test_get_cluster_status(ray_start_with_dashboard):
             assert "autoscalingError" in response.json()["data"]
             assert response.json()["data"]["autoscalingError"] is None
             break
-        except requests.RequestException:
-            pass
+        except requests.RequestException as e:
+            last_exception = e
+            time.sleep(1)
     else:
-        raise Exception("cluster_status endpoint not working after 5s")
+        raise last_exception
 
     # Populate the GCS field, check that the data is returned from the
     # endpoint.
