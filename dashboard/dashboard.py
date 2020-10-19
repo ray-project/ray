@@ -3,7 +3,6 @@ try:
 except ImportError:
     print("The dashboard requires aiohttp to run.")
     import sys
-
     sys.exit(1)
 
 import argparse
