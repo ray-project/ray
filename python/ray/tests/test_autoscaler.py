@@ -816,7 +816,6 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(3)
 
-
     def testUnmanagedNodes2(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
@@ -862,7 +861,6 @@ class AutoscalingTest(unittest.TestCase):
         # the new node, otherwise it could scale up after this check.
         time.sleep(0.1)
         self.waitForNodes(2)
-
 
     def testDelayedLaunch(self):
         config_path = self.write_config(SMALL_CLUSTER)
