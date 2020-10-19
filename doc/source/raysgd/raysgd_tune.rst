@@ -43,7 +43,7 @@ The info dict contains the following values:
 .. code-block:: python
 
     # The current Tune iteration.
-    # This may be different than the number of epochs trained if each tune step does more than on epoch of training.
+    # This may be different than the number of epochs trained if each tune step does more than one epoch of training.
     iteration
 
 If you would like any other information to be available in the ``info`` dict please file a feature request on `Github Issues <https://github.com/ray-project/ray/issues>`_!
