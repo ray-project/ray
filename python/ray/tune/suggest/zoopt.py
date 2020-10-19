@@ -153,7 +153,8 @@ class ZOOptSearch(Searcher):
         par = zoopt.Parameter(budget=self._budget)
         if self._algo == "sracos" or self._algo == "asracos":
             from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
-            self.optimizer = SRacosTune(dimension=dim, parameter=par)
+            self.optimizer = SRacosTune(
+                dimension=dim, parameter=par, parallel_num=1)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
@@ -185,6 +186,9 @@ class ZOOptSearch(Searcher):
 
         _solution = self.optimizer.suggest()
         if _solution:
+            if isinstance(_solution, str):
+                # _solution == "FINISHED"
+                return None
             self.solution_dict[str(trial_id)] = _solution
             _x = _solution.get_x()
             new_trial = dict(zip(self._dim_keys, _x))
