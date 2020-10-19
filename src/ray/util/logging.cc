@@ -111,8 +111,11 @@ class SpdLogMessage final {
 
   inline void Flush() {
     auto logger = get_logger();
-    if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      stream() << "\n" << ray::GetCallTrace();
+    // To avoid dump duplicated stacktrace with installed failure signal
+    // handler, we have to check whether glog failure signal handler is enabled.
+    if (!RayLog::IsFailureSignalHandlerEnabled() &&
+        loglevel_ == static_cast<int>(spdlog::level::critical)) {
+      stream() << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
     }
     logger->log(static_cast<spdlog::level::level_enum>(loglevel_), "{}", str_.str());
     logger->flush();
@@ -398,6 +401,10 @@ void WriteFailureMessage(const char *data, int size) {
   // lost when logger writes logs to files.
   spdlog::default_logger()->flush();
 #endif
+}
+
+bool RayLog::IsFailureSignalHandlerEnabled() {
+  return is_failure_signal_handler_installed_;
 }
 
 void RayLog::InstallFailureSignalHandler() {

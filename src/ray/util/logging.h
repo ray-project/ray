@@ -148,6 +148,10 @@ class RayLog : public RayLogBase {
   /// If glog is not installed, this function won't do anything.
   static void InstallFailureSignalHandler();
   // Get the log level from environment variable.
+
+  // To check failure signal handler enabled or not.
+  static bool IsFailureSignalHandlerEnabled();
+
   static RayLogLevel GetLogLevelFromEnv();
 
  private:
