@@ -34,6 +34,9 @@ class ReliabilityHelper;
 /// buffers have no data in that moment.
 class DataWriter {
  public:
+  // For mock writer accessing inner fields.
+  friend class MockWriter;
+
   explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
   virtual ~DataWriter();
 
