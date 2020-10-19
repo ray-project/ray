@@ -769,6 +769,12 @@ class PlacementGroupInfoAccessor {
       const PlacementGroupID &placement_group_id,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
+  /// Get all placement group info from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
+
   /// Remove a placement group to GCS synchronously.
   ///
   /// \param placement_group_id The id for the placement group to remove.

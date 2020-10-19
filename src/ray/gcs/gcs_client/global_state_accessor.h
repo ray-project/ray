@@ -147,7 +147,7 @@ class GlobalStateAccessor {
   /// Get information of all placement group from GCS Service.
   ///
   /// \return All placement group info. To support multi-language, we serialize each
-  /// WorkerTableData and return the serialized string. Where used, it needs to be
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllPlacementGroupInfo();
 

@@ -535,7 +535,7 @@ message GetAllPlacementGroupRequest {
 
 message GetAllPlacementGroupReply {
   GcsStatus status = 1;
-  // Data of worker
+  // Data of placement group
   repeated PlacementGroupTableData placement_group_table_data = 2;
 }
 
