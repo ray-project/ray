@@ -495,10 +495,18 @@ def start_ray_process(command,
             process.kill()
             raise
 
+    def _get_stream_name(stream):
+        if stream is not None:
+            try:
+                return stream.name
+            except AttributeError:
+                return str(stream)
+        return None
+
     return ProcessInfo(
         process=process,
-        stdout_file=stdout_file.name if stdout_file is not None else None,
-        stderr_file=stderr_file.name if stderr_file is not None else None,
+        stdout_file=_get_stream_name(stdout_file),
+        stderr_file=_get_stream_name(stderr_file),
         use_valgrind=use_valgrind,
         use_gdb=use_gdb,
         use_valgrind_profiler=use_valgrind_profiler,

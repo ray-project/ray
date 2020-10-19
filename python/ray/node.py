@@ -632,8 +632,8 @@ class Node:
             self.redis_address,
             self._temp_dir,
             self._logs_dir,
-            stdout_file=None,
-            stderr_file=None,
+            stdout_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
+            stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             port=self._ray_params.dashboard_port)
