@@ -614,7 +614,6 @@ class TorchTrainer:
                 custom step functions, for example if you need to
                 manually update the scheduler or want to run more than 1
                 training epoch for each tune iteration.
-            All other args will be passed directly into TorchTrainer.
 
         """
         if override_tune_step is not None:
