@@ -150,7 +150,7 @@ class EpsilonGreedy(Exploration):
         exploit_action = action_distribution.deterministic_sample()
         if len(exploit_action) == 1:
             exploit_action = exploit_action[0]
-        
+
         batch_size = q_values.size()[0]
         action_logp = torch.zeros(batch_size, dtype=torch.float)
 
