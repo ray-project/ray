@@ -266,19 +266,24 @@ def push_readmes():
         print("Not pushing README because this is a PR build.")
         return
     username, password = _get_docker_creds()
-    environment = {"DOCKER_USE": username, "DOCKER_PASS": password}
     for image, tag_line in DOCKER_HUB_DESCRIPTION.items():
-        cmd_string = (f"--file /myvol/docker/{image}/README.md "
-                      f"--short {tag_line} --debug rayproject/{image}")
-        mount_list = [
-            docker.types.Mount(
-                target="/myvol/", source=os.path.abspath(_get_root_dir()))
-        ]
+        environment = {
+            "DOCKER_USE": username,
+            "DOCKER_PASS": password,
+            "PUSHRM_FILE": f"/myvol/docker/{image}/README.md",
+            "PUSHRM_SHORT": tag_line
+        }
+        cmd_string = (f"rayproject/{image} --debug")
 
         DOCKER_CLIENT.containers.run(
             "chko/docker-pushrm:1",
             command=cmd_string,
-            mounts=mount_list,
+            volumes={
+                os.path.abspath(_get_root_dir()): {
+                    "bind": "/myvol",
+                    "mode": "rw",
+                }
+            },
             environment=environment,
             remove=True,
             tty=True)
