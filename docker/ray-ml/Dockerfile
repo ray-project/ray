@@ -1,5 +1,5 @@
 ARG GPU
-FROM rayproject/ray:latest"$GPU"
+FROM rayproject/ray:nightly"$GPU"
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./

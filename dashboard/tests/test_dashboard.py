@@ -4,6 +4,7 @@ import json
 import time
 import logging
 import asyncio
+import collections
 
 import aiohttp.web
 import ray
@@ -19,6 +20,8 @@ from ray.test_utils import (
     wait_until_server_available,
     run_string_as_driver,
 )
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+                                          DEBUG_AUTOSCALING_ERROR)
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules
@@ -104,10 +107,14 @@ def test_basic(ray_start_with_dashboard):
         agent_proc.kill()
         agent_proc.wait()
         # The agent will be restarted for imports failure.
-        for x in range(40):
+        for x in range(50):
             agent_proc = _search_agent(raylet_proc.children())
             if agent_proc:
                 agent_pids.add(agent_proc.pid)
+            # The agent should be restarted,
+            # so we can break if the len(agent_pid) > 1
+            if len(agent_pids) > 1:
+                break
             time.sleep(0.1)
     finally:
         cleanup_test_files()
@@ -362,6 +369,128 @@ assert all(cls.__name__ != "TestAgent" for cls in agent_cls_list)
 print("success")
 """
     run_string_as_driver(test_code)
+
+
+def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 5
+    start_time = time.time()
+    value1_timestamps = []
+    while True:
+        time.sleep(1)
+        try:
+            for x in range(10):
+                response = requests.get(webui_url +
+                                        "/test/aiohttp_cache/t1?value=1")
+                response.raise_for_status()
+                timestamp = response.json()["data"]["timestamp"]
+                value1_timestamps.append(timestamp)
+            assert len(collections.Counter(value1_timestamps)) > 1
+            break
+        except (AssertionError, requests.exceptions.ConnectionError) as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
+
+    sub_path_timestamps = []
+    for x in range(10):
+        response = requests.get(webui_url +
+                                f"/test/aiohttp_cache/tt{x}?value=1")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        sub_path_timestamps.append(timestamp)
+    assert len(collections.Counter(sub_path_timestamps)) == 10
+
+    volatile_value_timestamps = []
+    for x in range(10):
+        response = requests.get(webui_url +
+                                f"/test/aiohttp_cache/tt?value={x}")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        volatile_value_timestamps.append(timestamp)
+    assert len(collections.Counter(volatile_value_timestamps)) == 10
+
+    response = requests.get(webui_url + "/test/aiohttp_cache/raise_exception")
+    response.raise_for_status()
+    result = response.json()
+    assert result["result"] is False
+    assert "KeyError" in result["msg"]
+
+    volatile_value_timestamps = []
+    for x in range(10):
+        response = requests.get(webui_url +
+                                f"/test/aiohttp_cache_lru/tt{x % 4}")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        volatile_value_timestamps.append(timestamp)
+    assert len(collections.Counter(volatile_value_timestamps)) == 4
+
+    volatile_value_timestamps = []
+    data = collections.defaultdict(set)
+    for x in [0, 1, 2, 3, 4, 5, 2, 1, 0, 3]:
+        response = requests.get(webui_url +
+                                f"/test/aiohttp_cache_lru/t1?value={x}")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        data[x].add(timestamp)
+        volatile_value_timestamps.append(timestamp)
+    assert len(collections.Counter(volatile_value_timestamps)) == 8
+    assert len(data[3]) == 2
+    assert len(data[0]) == 2
+
+
+def test_get_cluster_status(ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    # Check that the cluster_status endpoint works without the underlying data
+    # from the GCS, but returns nothing.
+    last_exception = None
+    for _ in range(5):
+        try:
+            response = requests.get(f"{webui_url}/api/cluster_status")
+            response.raise_for_status()
+            assert response.json()["result"]
+            assert "autoscalingStatus" in response.json()["data"]
+            assert response.json()["data"]["autoscalingStatus"] is None
+            assert "autoscalingError" in response.json()["data"]
+            assert response.json()["data"]["autoscalingError"] is None
+            break
+        except requests.RequestException as e:
+            last_exception = e
+            time.sleep(1)
+    else:
+        raise last_exception
+
+    # Populate the GCS field, check that the data is returned from the
+    # endpoint.
+    address = address_info["redis_address"]
+    address = address.split(":")
+    assert len(address) == 2
+
+    client = redis.StrictRedis(
+        host=address[0],
+        port=int(address[1]),
+        password=ray_constants.REDIS_DEFAULT_PASSWORD)
+
+    client.hset(DEBUG_AUTOSCALING_STATUS, "value", "hello")
+    client.hset(DEBUG_AUTOSCALING_ERROR, "value", "world")
+
+    response = requests.get(f"{webui_url}/api/cluster_status")
+    response.raise_for_status()
+    assert response.json()["result"]
+    assert "autoscalingStatus" in response.json()["data"]
+    assert response.json()["data"]["autoscalingStatus"] == "hello"
+    assert "autoscalingError" in response.json()["data"]
+    assert response.json()["data"]["autoscalingError"] == "world"
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ torch, nn = try_import_torch()
 tf1, tf, tfv = try_import_tf()
 
 
-class TestModules(unittest.TestCase):
+class TestAttentionNets(unittest.TestCase):
     """Tests various torch/modules and tf/layers required for AttentionNet"""
 
     def train_torch_full_model(self,

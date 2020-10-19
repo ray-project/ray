@@ -94,23 +94,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         return reporter_pb2.GetProfilingStatsReply(
             profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
-    async def ReportMetrics(self, request, context):
-        # NOTE: Exceptions are not propagated properly
-        # when we don't catch them here.
+    async def ReportOCMetrics(self, request, context):
+        # This function receives a GRPC containing OpenCensus (OC) metrics
+        # from a Ray process, then exposes those metrics to Prometheus.
         try:
-            metrcs_description_required = (
-                self._metrics_agent.record_metrics_points(
-                    request.metrics_points))
-        except Exception as e:
-            logger.error(e)
+            self._metrics_agent.record_metric_points_from_protobuf(
+                request.metrics)
+        except Exception:
             logger.error(traceback.format_exc())
-
-        # If metrics description is missing, we should notify cpp processes
-        # that we need them. Cpp processes will then report them to here.
-        # We need it when (1) a new metric is reported (application metric)
-        # (2) a reporter goes down and restarted (currently not implemented).
-        return reporter_pb2.ReportMetricsReply(
-            metrcs_description_required=metrcs_description_required)
+        return reporter_pb2.ReportOCMetricsReply()
 
     @staticmethod
     def _get_cpu_percent():
@@ -125,8 +117,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         try:
             gpus = gpustat.new_query().gpus
         except Exception as e:
-            logger.debug(
-                "gpustat failed to retrieve GPU information: {}".format(e))
+            logger.debug(f"gpustat failed to retrieve GPU information: {e}")
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
@@ -233,12 +224,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "cmdline": self._get_raylet_cmdline(),
         }
 
-    async def _perform_iteration(self):
+    async def _perform_iteration(self, aioredis_client):
         """Get any changes to the log files and push updates to Redis."""
-        aioredis_client = await aioredis.create_redis_pool(
-            address=self._dashboard_agent.redis_address,
-            password=self._dashboard_agent.redis_password)
-
         while True:
             try:
                 stats = self._get_all_stats()
@@ -249,5 +236,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
+        aioredis_client = await aioredis.create_redis_pool(
+            address=self._dashboard_agent.redis_address,
+            password=self._dashboard_agent.redis_password)
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-        await self._perform_iteration()
+        await self._perform_iteration(aioredis_client)

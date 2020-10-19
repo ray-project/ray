@@ -51,6 +51,10 @@ img.inline-figure {
 #version-warning-banner {
   /* Make version warning clickable */
   z-index: 1;
+  margin-left: 0;
+  /* 20% is for ToC rightbar */
+  /* 2 * 1.5625em is for horizontal margins */
+  width: calc(100% - 20% - 2 * 1.5625em);
 }
 
 span.rst-current-version > span.fa.fa-book {

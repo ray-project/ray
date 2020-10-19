@@ -24,14 +24,10 @@ head_node:
                 VolumeSize: 100
 worker_nodes:
     InstanceType: m5.xlarge
-file_mounts: {}
-cluster_synced_files:
-    - /tmp/ray_tmp_mount/~/blank-serve-test
-file_mounts_sync_continuously: true
 initialization_commands: []
 setup_commands:
     - apt-get install build-essential libssl-dev git -y
-    - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make && cp wrk /usr/local/bin'
+    - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && cp wrk /usr/local/bin'
 head_setup_commands: []
 worker_setup_commands: []
 head_start_ray_commands:
@@ -40,6 +36,3 @@ head_start_ray_commands:
 worker_start_ray_commands:
     - ray stop
     - 'ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076'
-metadata:
-    anyscale:
-        working_dir: ~/blank-serve-test

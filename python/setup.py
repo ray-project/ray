@@ -71,15 +71,13 @@ generated_python_directories = [
 optional_ray_files = ["ray/nightly-wheels.yaml"]
 
 ray_autoscaler_files = [
-    "ray/autoscaler/aws/example-full.yaml",
-    "ray/autoscaler/azure/example-full.yaml",
+    "ray/autoscaler/aws/defaults.yaml", "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/azure/azure-vm-template.json",
     "ray/autoscaler/azure/azure-config-template.json",
-    "ray/autoscaler/gcp/example-full.yaml",
-    "ray/autoscaler/local/example-full.yaml",
-    "ray/autoscaler/kubernetes/example-full.yaml",
+    "ray/autoscaler/gcp/defaults.yaml", "ray/autoscaler/local/defaults.yaml",
+    "ray/autoscaler/kubernetes/defaults.yaml",
     "ray/autoscaler/kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/ray-schema.json"
+    "ray/autoscaler/staroid/defaults.yaml", "ray/autoscaler/ray-schema.json"
 ]
 
 ray_project_files = [

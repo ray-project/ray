@@ -16,7 +16,7 @@ the properties of a particular backend.
 Scaling Out
 ===========
 
-To scale out a backend to multiple workers, simplify configure the number of replicas.
+To scale out a backend to multiple workers, simply configure the number of replicas.
 
 .. code-block:: python
 
@@ -32,7 +32,7 @@ This will scale up or down the number of workers that can accept requests.
 Using Resources (CPUs, GPUs)
 ============================
 
-To assign hardware resource per worker, you can pass resource requirements to
+To assign hardware resources per worker, you can pass resource requirements to
 ``ray_actor_options``. To learn about options to pass in, take a look at
 :ref:`Resources with Actor<actor-resource-guide>` guide.
 
@@ -173,7 +173,7 @@ Session Affinity
 ----------------
 
 Splitting traffic randomly among backends for each request is is general and simple, but it can be an issue when you want to ensure that a given user or client is served by the same backend repeatedly.
-To address this, Serve offers a "shard key" can be specified for each request that will deterministically map to a backend.
+To address this, a "shard key" can be specified for each request that will deterministically map to a backend.
 In practice, this should be something that uniquely identifies the entity that you want to consistently map, like a client ID or session ID.
 The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or :mod:`handle.options(shard_key="key") <ray.serve.handle.RayServeHandle.options>`.
 

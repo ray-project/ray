@@ -24,7 +24,7 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         # hence we merge them together before constructing actor groups.
         actors.update(actor_creation_tasks)
         actor_groups = actor_utils.construct_actor_groups(actors)
-        return await rest_response(
+        return rest_response(
             success=True,
             message="Fetched actor groups.",
             actor_groups=actor_groups)
@@ -36,7 +36,7 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
             ip_address = req.query["ipAddress"]
             port = req.query["port"]
         except KeyError:
-            return await rest_response(success=False, message="Bad Request")
+            return rest_response(success=False, message="Bad Request")
         try:
             channel = aiogrpc.insecure_channel(f"{ip_address}:{port}")
             stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
@@ -51,7 +51,7 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
             # before this handler, however it deletes the actor correctly.
             pass
 
-        return await rest_response(
+        return rest_response(
             success=True, message=f"Killed actor with id {actor_id}")
 
     async def run(self, server):
