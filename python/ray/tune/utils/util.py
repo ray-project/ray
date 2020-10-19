@@ -251,7 +251,7 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
                             "Found delimiter `{}` in key when trying to "
                             "flatten array. Please avoid using the delimiter "
                             "in your specification.")
-                    add[delimiter.join([key, subkey])] = v
+                    add[delimiter.join([key, str(subkey)])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
