@@ -555,7 +555,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
     auto load = data->mutable_resource_load();
     ASSERT_EQ(load->size(), 2);
     ASSERT_EQ((*load)["CPU"], 20);  // 9 + 1 + 10 = 20
-    ASSERT_EQ((*load)["GPU"], 6);  // 5 + 1 = 6
+    ASSERT_EQ((*load)["GPU"], 6);   // 5 + 1 = 6
 
     auto load_by_shape =
         data->mutable_resource_load_by_shape()->mutable_resource_demands();
