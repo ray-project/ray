@@ -211,6 +211,20 @@ class Callback:
         """
         pass
 
+    def on_checkpoint(self, iteration: int, trials: List[Trial], trial: Trial,
+                      checkpoint: Checkpoint, **info):
+        """Called after a trial saved a checkpoint with Tune.
+
+        Arguments:
+            iteration (int): Number of iterations of the tuning loop.
+            trials (List[Trial]): List of trials.
+            trial (Trial): Trial that just has errored.
+            checkpoint (Checkpoint): Checkpoint object that has been saved
+                by the trial.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
 
 class _CallbackList:
     """Call multiple callbacks at once."""
@@ -249,6 +263,10 @@ class _CallbackList:
     def on_trial_fail(self, **info):
         for callback in self._callbacks:
             callback.on_trial_fail(**info)
+
+    def on_checkpoint(self, **info):
+        for callback in self._callbacks:
+            callback.on_checkpoint(**info)
 
 
 class TrialRunner:
@@ -854,6 +872,11 @@ class TrialRunner:
         if checkpoint_value:
             try:
                 trial.saving_to.value = checkpoint_value
+                self._callbacks.on_checkpoint(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial,
+                    checkpoint=trial.saving_to)
                 trial.on_checkpoint(trial.saving_to)
                 self.trial_executor.try_checkpoint_metadata(trial)
             except Exception:
@@ -948,9 +971,7 @@ class TrialRunner:
         self.trial_executor.stop_trial(
             trial,
             error=error_msg is not None,
-            error_msg=error_msg,
-            stop_logger=False)
-        trial.result_logger.flush()
+            error_msg=error_msg)
         if self.trial_executor.has_resources(trial.resources):
             logger.info(
                 "Trial %s: Attempting to restore "

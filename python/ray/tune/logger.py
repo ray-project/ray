@@ -2,11 +2,17 @@ import csv
 import json
 import logging
 import os
+from collections import defaultdict
+from typing import Dict, Iterable, List, Type
+
 import yaml
 import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
+from ray.tune import Callback, DurableTrainable, TuneError
+from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.trial import Trial, create_logdir
 from ray.util.debug import log_once
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
@@ -397,6 +403,81 @@ class UnifiedLogger(Logger):
             logger.error(
                 "Trial %s: Sync attempted to same IP %s. This "
                 "should not occur.", self.trial, worker_ip)
+
+
+class ExperimentLogger(Callback):
+    def on_trial_result(self, iteration: int, trials: List[Trial],
+                        trial: Trial, result: Dict, **info):
+        raise NotImplementedError
+
+    def on_checkpoint(self, iteration: int, trials: List[Trial], trial: Trial,
+                      checkpoint: Checkpoint, **info):
+        self._sync_trial_checkpoint(trial, checkpoint)
+
+    def _sync_trial_checkpoint(self, trial: Trial, checkpoint: Checkpoint):
+        if checkpoint.storage == Checkpoint.MEMORY:
+            return
+        if trial.sync_on_checkpoint:
+            try:
+                # Wait for any other syncs to finish. We need to sync again
+                # after this to handle checkpoints taken mid-sync.
+                trial.result_logger.wait()
+            except TuneError as e:
+                # Errors occurring during this wait are not fatal for this
+                # checkpoint, so it should just be logged.
+                logger.error(
+                    "Trial %s: An error occurred during the "
+                    "checkpoint pre-sync wait - %s", trial, str(e))
+            # Force sync down and wait before tracking the new checkpoint.
+            try:
+                if trial.result_logger.sync_down():
+                    trial.result_logger.wait()
+                else:
+                    logger.error(
+                        "Trial %s: Checkpoint sync skipped. "
+                        "This should not happen.", trial)
+            except TuneError as e:
+                if issubclass(trial.get_trainable_cls(), DurableTrainable):
+                    # Even though rsync failed the trainable can restore
+                    # from remote durable storage.
+                    logger.error("Trial %s: Sync error - %s", trial, str(e))
+                else:
+                    # If the trainable didn't have remote storage to upload
+                    # to then this checkpoint may have been lost, so we
+                    # shouldn't track it with the checkpoint_manager.
+                    raise e
+            if not issubclass(trial.get_trainable_cls(), DurableTrainable):
+                if not os.path.exists(checkpoint.value):
+                    raise TuneError("Trial {}: Checkpoint path {} not "
+                                    "found after successful sync down.".format(
+                                        trial, checkpoint.value))
+
+
+class LegacyExperimentLogger(ExperimentLogger):
+    def __init__(self, logger_classes: Iterable[Type[Logger]]):
+        self._logger_classes = list(logger_classes)
+        self._class_trial_loggers: Dict[Type[Logger], Dict[Trial, Logger]] = {}
+
+    def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial,
+                       **info):
+        if not trial.logdir:
+            trial.logdir = create_logdir(trial._generate_dirname(),
+                                        trial.local_dir)
+        else:
+            os.makedirs(trial.logdir, exist_ok=True)
+
+        for logger_class in self._logger_classes:
+            trial_loggers = self._class_trial_loggers.get(logger_class, {})
+            if not trial in trial_loggers:
+                logger = logger_class(trial.config, trial.logdir, trial)
+                trial_loggers[trial] = logger
+            self._class_trial_loggers[logger_class] = trial_loggers
+
+    def on_trial_result(self, iteration: int, trials: List[Trial],
+                        trial: Trial, result: Dict, **info):
+        for logger_class, trial_loggers in self._class_trial_loggers.items():
+            if trial in trial_loggers:
+                trial_loggers[trial].on_result(result)
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):
