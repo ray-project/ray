@@ -3,7 +3,6 @@ import copy
 import threading
 from collections import defaultdict
 import logging
-import time
 from typing import Any, Dict
 
 import boto3
@@ -71,14 +70,17 @@ class AWSNodeProvider(NodeProvider):
         # Try availability zones round-robin, starting from random offset
         self.subnet_idx = random.randint(0, 100)
 
-        self.tag_cache = {}  # Tags that we believe to actually be on EC2.
-        self.tag_cache_pending = {}  # Tags that we will soon upload.
+        # Tags that we believe to actually be on EC2.
+        self.tag_cache = {}
+        # Tags that we will soon upload.
+        self.tag_cache_pending = defaultdict(dict)
+        # Number of threads waiting for a batched tag update.
+        self.batch_thread_count = 0
+        self.batch_update_done = threading.Event()
+        self.batch_update_done.set()
+        self.ready_for_new_batch = threading.Event()
+        self.ready_for_new_batch.set()
         self.tag_cache_lock = threading.Lock()
-        self.tag_update_thread = threading.Thread()
-        self.tag_update_thread.start()  # Put this thread in finished state.
-        self.tag_batching_in_progress = threading.Event()
-        self.tag_update_thread_lock = threading.Lock()
-        self.tag_thread_count = 0
         self.count_lock = threading.Lock()
 
         # Cache of node objects from the last nodes() call. This avoids
@@ -153,57 +155,45 @@ class AWSNodeProvider(NodeProvider):
         return node.private_ip_address
 
     def set_node_tags(self, node_id, tags):
-        with self.tag_cache_lock:
-            try:
-                self.tag_cache_pending[node_id].update(tags)
-            except KeyError:
-                self.tag_cache_pending[node_id] = tags
-
-        # If on main thread, update tags now
+        # If on main thread, don't wait to update tags.
         if threading.current_thread() is threading.main_thread():
-            self._update_node_tags()
-        # Else, wait for tag_update_thread to update a batch of tags
+            with self.tag_cache_lock:
+                self.tag_cache_pending[node_id].update(tags)
+                self._update_node_tags()
+            return
+
+        is_batching_thread = False
+        with self.tag_cache_lock:
+            if not self.tag_cache_pending:
+                is_batching_thread = True
+                # Wait for threads in the last batch to exit
+                self.ready_for_new_batch.wait()
+                self.ready_for_new_batch.clear()
+                self.batch_update_done.clear()
+            self.tag_cache_pending[node_id].update(tags)
+        if is_batching_thread:
+            # Wait for one second or until main thread runs _update_node_tags()
+            self.batch_update_done.wait(timeout=1)
+            with self.tag_cache_lock:
+                self._update_node_tags()
         else:
-            with self.tag_update_thread_lock:
-                if not self.tag_batching_in_progress.is_set():
-                    # Wait for last batch to finish updating
-                    self.ready_for_new_batch.wait()
-                    self.ready_for_new_batch.clear()
-                    self.tag_batching_in_progress.set()
-                    self.tag_update_thread = threading.Thread(
-                        target=self._batched_tag_update)
-                    # Start the new batch
-                    self.tag_update_thread.start()
-                with self.count_lock:
-                    # Increment number of tag_updates in current batch
-                    self.tag_thread_count += 1
-            # Wait for update to complete before returning
-            self.tag_update_thread.join()
             with self.count_lock:
-                self.tag_thread_count -= 1
-                if self.tag_thread_count == 0:
+                self.batch_thread_count += 1
+            self.batch_update_done.wait()
+            with self.count_lock:
+                self.batch_thread_count -= 1
+                if self.batch_thread_count == 0:
                     self.ready_for_new_batch.set()
-
-    def _batched_tag_update(self):
-        """Update the AWS tags for a cluster after waiting for a specified delay.
-
-        The purpose of this method is to avoid excessive EC2 calls when a large
-        number of nodes are being launched simultaneously.
-        """
-        time.sleep(BATCH_TAG_UPDATE_DELAY)
-        self.tag_batching_in_progress.clear()
-        self._update_node_tags()
 
     def _update_node_tags(self):
         batch_updates = defaultdict(list)
 
-        with self.tag_cache_lock:
-            for node_id, tags in self.tag_cache_pending.items():
-                for x in tags.items():
-                    batch_updates[x].append(node_id)
-                self.tag_cache[node_id].update(tags)
+        for node_id, tags in self.tag_cache_pending.items():
+            for x in tags.items():
+                batch_updates[x].append(node_id)
+            self.tag_cache[node_id].update(tags)
 
-            self.tag_cache_pending = {}
+        self.tag_cache_pending = defaultdict(dict)
 
         for (k, v), node_ids in batch_updates.items():
             m = "Set tag {}={} on {}".format(k, v, node_ids)
@@ -217,6 +207,8 @@ class AWSNodeProvider(NodeProvider):
                         "Value": v
                     }],
                 )
+
+        self.batch_update_done.set()
 
     def create_node(self, node_config, tags, count):
         tags = copy.deepcopy(tags)
