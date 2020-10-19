@@ -36,6 +36,8 @@ DEFINE_int32(min_worker_port, 0,
              "The lowest port that workers' gRPC servers will bind on.");
 DEFINE_int32(max_worker_port, 0,
              "The highest port that workers' gRPC servers will bind on.");
+DEFINE_string(worker_port_list, "",
+              "An explicit list of ports that workers' gRPC servers will bind on.");
 DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
 DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
@@ -75,6 +77,7 @@ int main(int argc, char *argv[]) {
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
+  const std::string worker_port_list = FLAGS_worker_port_list;
   const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
   const int num_initial_python_workers_for_first_job =
       static_cast<int>(FLAGS_num_initial_python_workers_for_first_job);
@@ -150,6 +153,15 @@ int main(int argc, char *argv[]) {
 
         RayConfig::instance().initialize(raylet_config);
 
+        // Parse the worker port list.
+        std::istringstream worker_port_list_string(worker_port_list);
+        std::string worker_port;
+        std::vector<int> worker_ports;
+
+        while (std::getline(worker_port_list_string, worker_port, ',')) {
+          worker_ports.push_back(std::stoi(worker_port));
+        }
+
         // Parse the resource list.
         std::istringstream resource_string(static_resource_list);
         std::string resource_name;
@@ -157,8 +169,6 @@ int main(int argc, char *argv[]) {
 
         while (std::getline(resource_string, resource_name, ',')) {
           RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
-          // TODO(rkn): The line below could throw an exception. What should we do
-          // about this?
           static_resource_conf[resource_name] = std::stod(resource_quantity);
         }
         auto num_cpus_it = static_resource_conf.find("CPU");
@@ -180,6 +190,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
+        node_manager_config.worker_ports = worker_ports;
 
         if (!python_worker_command.empty()) {
           node_manager_config.worker_commands.emplace(
