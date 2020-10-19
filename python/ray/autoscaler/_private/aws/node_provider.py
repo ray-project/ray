@@ -168,14 +168,13 @@ class AWSNodeProvider(NodeProvider):
             with self.tag_cache_lock:
                 self._update_node_tags()
                 self.batch_update_done.set()
-        else:
-            with self.count_lock:
-                self.batch_thread_count += 1
-            self.batch_update_done.wait()
-            with self.count_lock:
-                self.batch_thread_count -= 1
-                if self.batch_thread_count == 0:
-                    self.ready_for_new_batch.set()
+        with self.count_lock:
+            self.batch_thread_count += 1
+        self.batch_update_done.wait()
+        with self.count_lock:
+            self.batch_thread_count -= 1
+            if self.batch_thread_count == 0:
+                self.ready_for_new_batch.set()
 
     def _update_node_tags(self):
         batch_updates = defaultdict(list)
