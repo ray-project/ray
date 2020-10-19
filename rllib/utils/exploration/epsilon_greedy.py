@@ -148,15 +148,18 @@ class EpsilonGreedy(Exploration):
         q_values = action_distribution.inputs
         self.last_timestep = timestep
         exploit_action = action_distribution.deterministic_sample()
+        if len(exploit_action) == 1:
+            exploit_action = exploit_action[0]
+        
         batch_size = q_values.size()[0]
         action_logp = torch.zeros(batch_size, dtype=torch.float)
 
         # Explore.
         if explore:
             # Get the current epsilon.
-            exploit_action = tree.flatten(exploit_action)
             epsilon = self.epsilon_schedule(self.last_timestep)
             if not isinstance(action_distribution, TorchCategorical):
+                exploit_action = tree.flatten(exploit_action)
                 for i in range(batch_size):
                     if random.random() < epsilon:
                         # TODO Mask out actions
