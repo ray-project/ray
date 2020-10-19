@@ -174,19 +174,15 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
 
 How fast is ray serve? 
 ----------------------
-We are continuously benchmark Ray Serve. We can confidently say Ray Serve's
-overhead is single digit millisecond, often times just 1-2 milliseconds. So
-that's the latency. What about throughput? Serve is horizontally scalable. This
-means you can just add more machines. If you double the machine, you can double
-your queries per second. On a single machine with few cores, Serve can achieve
-about 3-4k qps.
+We are continuously benchmarking Ray Serve. We can confidently say Ray Serve's
+overhead is single digit milliseconds, often times just 1-2 milliseconds. For throughput, Serve achieves about 3-4k qps on a single machine, but is horizontally scalable so you can add more machines to increase the overall throughput.
 
-How does Ray Serve make projects scalable without Flask?
+Does Ray Serve use Flask?
 --------------------------------------------------------
 Flask is only used as a web request object for servable to consume the data.
 We actually use the fastest Python web server: uvicorn as our web server,
 alongside with the power of Python asyncio. To emphasize Flask is just the request
-object and data type. Not the web server.
+object and data type, not the web server.
 
 Can I use asyncio along with Ray Serve?
 ---------------------------------------
@@ -198,7 +194,7 @@ Are there any other similar frameworks?
 Yes and no. We truly believe Serve is unique as it gives you end to end control
 over the API while delivering scalability and high performance. To achieve
 something like what Serve offers, you often need to glue together multiple
-frameworks like Tensorflow Serving, SageMaker, or even rolling your own
+frameworks like Tensorflow Serving, SageMaker, or even roll your own
 batching server.
 
 How does Serve compare to TFServing, TorchServe, ONNXRuntime, and others?
@@ -207,7 +203,7 @@ Ray Serve is *framework agnostic*, you can use any Python framework and librarie
 We believe data scientists are not bounded a particular machine learning framework.
 They use the best tool available for the job.
 
-Compare to these framework specific solution, Ray Serve doesn't perform any optimization
+Compared to these framework specific solution, Ray Serve doesn't perform any optimizations
 to make your ML model run faster. However, you can still optimize the models yourself
 and run them in Ray Serve: for example, you can run a model compiled by
 `PyTorch JIT <https://pytorch.org/docs/stable/jit.html>`_.
@@ -216,12 +212,11 @@ How does Serve compare to AWS SageMaker, Azure ML, Google AI Platform?
 ----------------------------------------------------------------------
 Ray Serve brings the scalability and parallelism of these hosted offering to
 your own infrastructure. You can use our :ref:`cluster launcher <cluster-cloud>`
-to deploy Ray Serve to all major public clouds, K8s, as well as on premise.
+to deploy Ray Serve to all major public clouds, K8s, as well as on bare-metal, on-premise machines.
 
-Compare to these offerings, Ray Serve lacks unified user interface and functionality
+Compared to these offerings, Ray Serve lacks a unified user interface and functionality
 let you manage the lifecycle of the models, visualize it's performance, etc. Ray
-Serve focuses on just model serving. You can build your own ML platforms by running
-on top of Ray Serve.
+Serve focuses on just model serving and provides the primitives for you to build your own ML platform on top.
 
 How does Serve compare to Seldon, KFServing, Cortex?
 ----------------------------------------------------
@@ -237,11 +232,12 @@ Ray Serve, you configure everything by Python code.
 
 How does Ray Serve scale behave on spikes?
 ------------------------------------------
-Ray Serve has an experimental autoscaler that scales up your model replicas
+You can easily scale your models just by changing the number of replicas in the `BackendConfig`.
+Ray Serve also has an experimental autoscaler that scales up your model replicas
 based on load. We can improve it and welcome any feedback! We also rely on the
 Ray cluster launcher for adding more machines.
 
 Is Ray Serve only for ML models?
 -------------------------------------------
-Nope. Ray Serve can handle arbitrary Python programs.
-(This means it can handle arbitrary Ray programs as well!)
+Nope! Ray Serve can be used to build any type of Python microservices application.
+You can also use the full power of Ray within your Ray Serve programs, so it's easy to run parallel computations within your backends.
