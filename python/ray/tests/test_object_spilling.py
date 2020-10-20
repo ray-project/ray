@@ -12,7 +12,7 @@ import ray
 
 from ray.external_storage import ExternalStorageConfigInvalidError
 
-bucket_name = "sang-object-spilling-test"
+bucket_name = "object-spilling-test"
 file_system_object_spilling_config = {
     "type": "filesystem",
     "params": {
@@ -36,9 +36,9 @@ s3_object_spilling_botocore_config = {
 @pytest.fixture(
     scope="module",
     params=[
-        # file_system_object_spilling_config,
+        file_system_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
-        s3_object_spilling_config,
+        # s3_object_spilling_config,
         # s3_object_spilling_botocore_config,
     ])
 def object_spilling_config(request):
