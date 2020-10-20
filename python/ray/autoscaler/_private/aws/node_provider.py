@@ -163,14 +163,17 @@ class AWSNodeProvider(NodeProvider):
                 self.ready_for_new_batch.clear()
                 self.batch_update_done.clear()
             self.tag_cache_pending[node_id].update(tags)
+
         if is_batching_thread:
             time.sleep(1)
             with self.tag_cache_lock:
                 self._update_node_tags()
                 self.batch_update_done.set()
+
         with self.count_lock:
             self.batch_thread_count += 1
         self.batch_update_done.wait()
+
         with self.count_lock:
             self.batch_thread_count -= 1
             if self.batch_thread_count == 0:
@@ -186,6 +189,9 @@ class AWSNodeProvider(NodeProvider):
 
         self.tag_cache_pending = defaultdict(dict)
 
+        self._create_tags(batch_updates)
+
+    def _create_tags(self, batch_updates):
         for (k, v), node_ids in batch_updates.items():
             m = "Set tag {}={} on {}".format(k, v, node_ids)
             with LogTimer("AWSNodeProvider: {}".format(m)):
