@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from ax.service.ax_client import AxClient
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
@@ -103,7 +103,7 @@ class AxSearch(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[List[Dict]] = None,
+                 space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  parameter_constraints: Optional[List] = None,
@@ -122,6 +122,12 @@ class AxSearch(Searcher):
             use_early_stopped_trials=use_early_stopped_trials)
 
         self._ax = ax_client
+
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                space = self.convert_search_space(space)
+
         self._space = space
         self._parameter_constraints = parameter_constraints
         self._outcome_constraints = outcome_constraints

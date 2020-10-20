@@ -152,6 +152,11 @@ class SkOptSearch(Searcher):
         self._parameter_names = None
         self._parameter_ranges = None
 
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                space = self.convert_search_space(space)
+
         self._space = space
 
         if self._space:

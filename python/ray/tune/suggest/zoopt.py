@@ -122,6 +122,12 @@ class ZOOptSearch(Searcher):
                          ], "`algo` must be in ['asracos', 'sracos'] currently"
 
         self._algo = _algo
+
+        if isinstance(dim_dict, dict) and dim_dict:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(dim_dict)
+            if domain_vars or grid_vars:
+                dim_dict = self.convert_search_space(dim_dict)
+
         self._dim_dict = dim_dict
         self._budget = budget
 

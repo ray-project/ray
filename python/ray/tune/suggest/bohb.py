@@ -3,7 +3,7 @@
 import copy
 import logging
 import math
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import ConfigSpace
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
@@ -93,7 +93,8 @@ class TuneBOHB(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[ConfigSpace.ConfigurationSpace] = None,
+                 space: Optional[Union[Dict,
+                                       ConfigSpace.ConfigurationSpace]] = None,
                  bohb_config: Optional[Dict] = None,
                  max_concurrent: int = 10,
                  metric: Optional[str] = None,
@@ -109,6 +110,12 @@ class TuneBOHB(Searcher):
         self._metric = metric
 
         self._bohb_config = bohb_config
+
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                space = self.convert_search_space(space)
+
         self._space = space
 
         super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)

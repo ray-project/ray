@@ -5,7 +5,7 @@ from __future__ import print_function
 import inspect
 import logging
 import pickle
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.variant_generator import parse_spec_vars
@@ -53,7 +53,7 @@ class DragonflySearch(Searcher):
         domain (str): Optional domain. Should only be set if you don't pass
             an optimizer as the `optimizer` argument.
             Has to be one of [cartesian, euclidean].
-        space (list): Search space. Should only be set if you don't pass
+        space (list|dict): Search space. Should only be set if you don't pass
             an optimizer as the `optimizer` argument. Defines the search space
             and requires a `domain` to be set. Can be automatically converted
             from the `config` dict passed to `tune.run()`.
@@ -131,7 +131,7 @@ class DragonflySearch(Searcher):
     def __init__(self,
                  optimizer: Optional[BlackboxOptimiser] = None,
                  domain: Optional[str] = None,
-                 space: Optional[List[Dict]] = None,
+                 space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[List]] = None,
@@ -148,6 +148,12 @@ class DragonflySearch(Searcher):
 
         self._opt_arg = optimizer
         self._domain = domain
+
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                space = self.convert_search_space(space)
+
         self._space = space
         self._points_to_evaluate = points_to_evaluate
         self._evaluated_rewards = evaluated_rewards
