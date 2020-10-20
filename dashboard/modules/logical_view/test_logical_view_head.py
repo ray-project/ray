@@ -5,7 +5,7 @@ import requests
 import time
 import traceback
 import ray
-from ray.new_dashboard.tests.conftest import *  # noqa
+import pytest
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -135,5 +135,5 @@ def test_kill_actor(ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    import pytest
+    from ray.new_dashboard.tests.conftest import *  # noqa
     sys.exit(pytest.main(["-v", __file__]))
