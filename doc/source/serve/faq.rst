@@ -47,8 +47,8 @@ endpoint. This returns a Ray ObjectRef whose result can be waited for or retriev
     ray.get(handle.remote(request))
 
 
-How do I call a method on my backend class besides __call__?
--------------------------------------------------------------
+How do I call a method on my replica besides __call__?
+------------------------------------------------------
 
 To call a method via HTTP use the header field ``X-SERVE-CALL-METHOD``.
 
@@ -67,8 +67,11 @@ To call a method via Python, use :mod:`handle.options <ray.serve.handle.RayServe
             self.count += inc
             return True
 
-    handle = client.get_handle("backend_name")
+    handle = client.get_handle("endpoint_name")
     handle.options(method_name="other_method").remote(5)
+
+The call is the same as a regular query except a different method is called
+within the replica. It is compatible with batching as well.
 
 How do I enable CORS and other HTTP features?
 ---------------------------------------------
