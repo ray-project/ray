@@ -1,5 +1,6 @@
 import pytest
 
+from ray.autoscaler._private.aws.config import _get_vpc_id_or_die
 import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
@@ -101,6 +102,7 @@ def test_create_sg_with_custom_inbound_rules_and_name(iam_client_stub,
     # expect the next read of a head security group property to reload it
     stubs.describe_sg_echo(ec2_client_stub, DEFAULT_SG_WITH_NAME_AND_RULES)
 
+    _get_vpc_id_or_die.cache_clear()
     # given our mocks and an example config file as input...
     # expect the config to be loaded, validated, and bootstrapped successfully
     config = helpers.bootstrap_aws_example_config_file(
