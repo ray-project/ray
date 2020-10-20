@@ -40,4 +40,3 @@ TAG_RAY_FILE_MOUNTS_CONTENTS = "ray-file-mounts-contents"
 # dict
 TAG_RAY_FLEET_LAUNCH_SPEC = "ray-fleet-launch-spec"
 TAG_RAY_FLEET_CPU = "ray-fleet-cpu"
-

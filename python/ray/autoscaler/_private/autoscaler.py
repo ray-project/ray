@@ -109,11 +109,7 @@ class StandardAutoscaler:
         self.pending_cpu = ConcurrentCounter()
         for i in range(int(max_batches)):
             resource_launcher = ResourceLauncher(
-                self.provider,
-                self.resource_launch_queue,
-                self.pending_cpu,
-                i
-            )
+                self.provider, self.resource_launch_queue, self.pending_cpu, i)
             resource_launcher.daemon = True
             resource_launcher.start()
 
@@ -249,8 +245,7 @@ class StandardAutoscaler:
 
     def _cpu_resource_for_nodes(self, node_ids: List[str]):
         return sum(self.load_metrics.static_resources_by_ip[
-                   self.provider.internal_ip(node_id)]["CPU"]
-                   for node_id in node_ids)
+            self.provider.internal_ip(node_id)]["CPU"] for node_id in node_ids)
 
     def _terminate_and_launch_fleet(self, now):
         nodes = self.workers()
@@ -263,8 +258,9 @@ class StandardAutoscaler:
         ])
 
         target_cpu = self.target_cpu()
-        current_cpu = self.provider.non_terminated_cpu(
-            {TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        current_cpu = self.provider.non_terminated_cpu({
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+        })
 
         if current_cpu > target_cpu:
             if "CPU" in self.resource_requests:
@@ -280,8 +276,8 @@ class StandardAutoscaler:
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
             cpu_to_terminate = self._cpu_resource_for_nodes(nodes_to_terminate)
-            if ((node_ip in last_used and last_used[node_ip] < horizon) and
-                    (current_cpu - cpu_to_terminate > target_cpu)):
+            if ((node_ip in last_used and last_used[node_ip] < horizon)
+                    and (current_cpu - cpu_to_terminate > target_cpu)):
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node".format(node_id))
                 nodes_to_terminate.append(node_id)
@@ -297,10 +293,10 @@ class StandardAutoscaler:
 
         cpu_to_launch = target_cpu - current_cpu - self.pending_cpu.value
         if cpu_to_launch > 0:
-            logger.info("StandardAutoscaler: Launching %s CPU. "
-                        "(target: %s, current: %s, pending: %s)",
-                        cpu_to_launch,
-                        target_cpu, current_cpu, self.pending_cpu.value)
+            logger.info(
+                "StandardAutoscaler: Launching %s CPU. "
+                "(target: %s, current: %s, pending: %s)", cpu_to_launch,
+                target_cpu, current_cpu, self.pending_cpu.value)
             self.launch_cpu(cpu_to_launch)
             self.log_info_string_cpu(nodes, current_cpu, target_cpu)
         else:
@@ -324,8 +320,7 @@ class StandardAutoscaler:
 
         if fleet_mode:
             nodes, current_cpu, target_cpu = (
-                self._terminate_and_launch_fleet(now)
-            )
+                self._terminate_and_launch_fleet(now))
         else:
             nodes, target_workers = self._terminate_and_launch(now)
 
@@ -463,8 +458,7 @@ class StandardAutoscaler:
 
     def target_cpu(self):
         nodes_used, resources_used, resources_total = (
-            self.load_metrics.get_resource_usage()
-        )
+            self.load_metrics.get_resource_usage())
         cpu_used = resources_used.get("CPU", 0)
 
         target_frac = self.config["target_utilization_fraction"]
@@ -726,12 +720,8 @@ class StandardAutoscaler:
         if self.bringup:
             suffix += " (bringup=True)"
 
-        return "{}/{} target {}{}".format(
-            current,
-            target,
-            "cpu" if cpu else "nodes",
-            suffix
-        )
+        return "{}/{} target {}{}".format(current, target, "cpu"
+                                          if cpu else "nodes", suffix)
 
     def info_string(self, nodes, target_workers):
         return self._info_string(len(nodes), target_workers)

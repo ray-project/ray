@@ -28,7 +28,6 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -150,11 +149,14 @@ class MockProvider(NodeProvider):
         super().__init__(None, None)
 
     def non_terminated_cpu(self, tag_filters):
-        logger.debug("Mock non-terminated CPU = %s",
-                     {node_id: self.node_tags(node_id)[TAG_RAY_FLEET_CPU]
-                      for node_id in self.non_terminated_nodes(tag_filters)})
-        return sum(int(self.node_tags(node_id)[TAG_RAY_FLEET_CPU])
-                   for node_id in self.non_terminated_nodes(tag_filters))
+        logger.debug(
+            "Mock non-terminated CPU = %s", {
+                node_id: self.node_tags(node_id)[TAG_RAY_FLEET_CPU]
+                for node_id in self.non_terminated_nodes(tag_filters)
+            })
+        return sum(
+            int(self.node_tags(node_id)[TAG_RAY_FLEET_CPU])
+            for node_id in self.non_terminated_nodes(tag_filters))
 
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
@@ -212,9 +214,10 @@ class MockProvider(NodeProvider):
                     launch_spec = launch_specs[launch_spec_id]
 
                     total_cpu_launched += launch_spec["cpu"]
-                    tags = {**tags,
-                            TAG_RAY_FLEET_CPU: launch_spec["cpu"],
-                            TAG_RAY_FLEET_LAUNCH_SPEC: launch_spec_id}
+                    tags = {
+                        **tags, TAG_RAY_FLEET_CPU: launch_spec["cpu"],
+                        TAG_RAY_FLEET_LAUNCH_SPEC: launch_spec_id
+                    }
 
                     full_launch_spec = {
                         **base_launch_spec,
@@ -225,8 +228,7 @@ class MockProvider(NodeProvider):
                                 full_launch_spec["InstanceType"])
                     self.mock_nodes[self.next_id] = MockNode(
                         self.next_id, tags, {},
-                        full_launch_spec["InstanceType"]
-                    )
+                        full_launch_spec["InstanceType"])
                     self.next_id += 1
 
             assert total_cpu_launched == cpu_to_launch
@@ -307,7 +309,6 @@ SMALL_CLUSTER = {
     "worker_start_ray_commands": ["start_ray_worker"],
 }
 
-
 SMALL_FLEET_CLUSTER = {
     "cluster_name": "default",
     "min_workers": 2,
@@ -319,8 +320,7 @@ SMALL_FLEET_CLUSTER = {
     "fleet": {
         "enabled": True,
         "iam_fleet_role": "<iam fleet role here>",
-        "base_launch_spec": {
-        },
+        "base_launch_spec": {},
         "launch_specs": {
             "ls-t1.micro": {
                 "cpu": 1,

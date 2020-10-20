@@ -128,8 +128,9 @@ class AWSNodeProvider(NodeProvider):
                 return
 
     def non_terminated_cpu(self, tag_filters):
-        return sum(int(self.node_tags(node_id)[TAG_RAY_FLEET_CPU])
-                   for node_id in self.non_terminated_nodes(tag_filters))
+        return sum(
+            int(self.node_tags(node_id)[TAG_RAY_FLEET_CPU])
+            for node_id in self.non_terminated_nodes(tag_filters))
 
     def non_terminated_nodes(self, tag_filters):
         # Note that these filters are acceptable because they are set on
@@ -253,14 +254,16 @@ class AWSNodeProvider(NodeProvider):
     def create_cpu(self, fleet_config, tags, cpu_to_launch):
         token = str(uuid.uuid4())
 
-        tags = {**to_aws_format(tags),
-                TAG_RAY_CLUSTER_NAME: self.cluster_name,
-                }
+        tags = {
+            **to_aws_format(tags),
+            TAG_RAY_CLUSTER_NAME: self.cluster_name,
+        }
 
         def make_tags(launch_spec_id, launch_spec):
-            tag_dict = {**tags,
-                        TAG_RAY_FLEET_CPU: str(launch_spec["cpu"]),
-                        TAG_RAY_FLEET_LAUNCH_SPEC: launch_spec_id}
+            tag_dict = {
+                **tags, TAG_RAY_FLEET_CPU: str(launch_spec["cpu"]),
+                TAG_RAY_FLEET_LAUNCH_SPEC: launch_spec_id
+            }
             return [{"Key": k, "Value": v} for k, v in tag_dict.items()]
 
         sfr_config = {
@@ -273,25 +276,21 @@ class AWSNodeProvider(NodeProvider):
             'TargetCapacity': cpu_to_launch,
             'OnDemandTargetCapacity': 0,
             'TerminateInstancesWithExpiration': True,
-            'LaunchSpecifications': [
-                {
-                    **fleet_config["base_launch_spec"],
-                    **launch_spec["launch_spec_overrides"],
-                    "WeightedCapacity": launch_spec["cpu"],
-                    "TagSpecifications": [{
-                        "ResourceType": "instance",
-                        "Tags": make_tags(launch_spec_id, launch_spec)
-                    }]
-                }
-                for launch_spec_id, launch_spec in
-                fleet_config["launch_specs"].items()
-            ]
+            'LaunchSpecifications': [{
+                **fleet_config["base_launch_spec"],
+                **launch_spec["launch_spec_overrides"], "WeightedCapacity": launch_spec[
+                    "cpu"],
+                "TagSpecifications": [{
+                    "ResourceType": "instance",
+                    "Tags": make_tags(launch_spec_id, launch_spec)
+                }]
+            } for launch_spec_id, launch_spec in fleet_config["launch_specs"]
+                                     .items()]
         }
 
         logger.debug('Requesting spot fleet with config %s', sfr_config)
         resp = self.ec2_fail_fast.meta.client.request_spot_fleet(
-            SpotFleetRequestConfig=sfr_config
-        )
+            SpotFleetRequestConfig=sfr_config)
         logger.debug('Spot fleet request response: %s', resp)
 
         sfr_id = resp['SpotFleetRequestId']
@@ -300,14 +299,13 @@ class AWSNodeProvider(NodeProvider):
 
         for i in range(100):
             sfrs = self.ec2.meta.client.describe_spot_fleet_requests(
-                SpotFleetRequestIds=[sfr_id]
-            )
+                SpotFleetRequestIds=[sfr_id])
 
-            fulfilled_cpu = (sfrs['SpotFleetRequestConfigs'][0]
-                             ['SpotFleetRequestConfig']['FulfilledCapacity'])
+            fulfilled_cpu = (sfrs['SpotFleetRequestConfigs'][0][
+                'SpotFleetRequestConfig']['FulfilledCapacity'])
 
-            cli_logger.print("{}: {} / {} fulfilled",
-                             sfr_id, fulfilled_cpu, cpu_to_launch)
+            cli_logger.print("{}: {} / {} fulfilled", sfr_id, fulfilled_cpu,
+                             cpu_to_launch)
             if fulfilled_cpu >= cpu_to_launch:
                 break
             time.sleep(5)
