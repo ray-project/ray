@@ -41,10 +41,15 @@ class RandomParametriclPolicy(Policy, ABC):
                         episodes=None,
                         **kwargs):
 
-        obs_batch = restore_original_dimensions(np.array(obs_batch, dtype=np.float32), self.observation_space, tensorlib=np)
+        obs_batch = restore_original_dimensions(
+            np.array(obs_batch, dtype=np.float32),
+            self.observation_space,
+            tensorlib=np)
 
         def pick_legal_action(legal_action):
-            return np.random.choice(len(legal_action), 1, p=(legal_action / legal_action.sum()))[0]
+            return np.random.choice(
+                len(legal_action), 1, p=(legal_action / legal_action.sum()))[0]
+
         return [pick_legal_action(x) for x in obs_batch['action_mask']], [], {}
 
     def learn_on_batch(self, samples):
