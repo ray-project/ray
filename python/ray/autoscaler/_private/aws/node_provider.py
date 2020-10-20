@@ -23,6 +23,8 @@ from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 
+TAG_BATCH_DELAY = 1
+
 
 def to_aws_format(tags):
     """Convert the Ray node name tag to the AWS-specific 'Name' tag."""
@@ -165,7 +167,7 @@ class AWSNodeProvider(NodeProvider):
             self.tag_cache_pending[node_id].update(tags)
 
         if is_batching_thread:
-            time.sleep(1)
+            time.sleep(TAG_BATCH_DELAY)
             with self.tag_cache_lock:
                 self._update_node_tags()
                 self.batch_update_done.set()
