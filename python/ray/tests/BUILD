@@ -93,6 +93,7 @@ py_test_module_list(
     "test_queue.py",
     "test_ray_init.py",
     "test_tempfile.py",
+    "test_webui.py",
   ],
   size = "small",
   extra_srcs = SRCS,
