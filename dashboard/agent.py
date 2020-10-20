@@ -255,35 +255,23 @@ if __name__ == "__main__":
         format(dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT))
     parser.add_argument(
         "--log-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of log directory.")
     parser.add_argument(
         "--temp-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
 
     args = parser.parse_args()
     try:
-        if args.temp_dir:
-            temp_dir = "/" + args.temp_dir.strip("/")
-        else:
-            temp_dir = "/tmp/ray"
-        os.makedirs(temp_dir, exist_ok=True)
-
-        if args.log_dir:
-            log_dir = args.log_dir
-        else:
-            log_dir = os.path.join(temp_dir, "session_latest/logs")
-        os.makedirs(log_dir, exist_ok=True)
-
         if args.logging_filename:
             logging_handlers = [
                 logging.handlers.RotatingFileHandler(
-                    os.path.join(log_dir, args.logging_filename),
+                    os.path.join(args.log_dir, args.logging_filename),
                     maxBytes=args.logging_rotate_bytes,
                     backupCount=args.logging_rotate_backup_count)
             ]
@@ -298,8 +286,8 @@ if __name__ == "__main__":
             args.redis_address,
             args.dashboard_agent_port,
             redis_password=args.redis_password,
-            temp_dir=temp_dir,
-            log_dir=log_dir,
+            temp_dir=args.temp_dir,
+            log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
             object_store_name=args.object_store_name,

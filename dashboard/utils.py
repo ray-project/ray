@@ -15,7 +15,7 @@ import traceback
 from base64 import b64decode
 from collections.abc import MutableMapping, Mapping
 from collections import namedtuple
-from typing import Any
+from typing import Any, Optional
 import os
 import aioredis
 import aiohttp.web

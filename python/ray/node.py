@@ -710,6 +710,7 @@ class Node:
             self._ray_params.worker_path,
             self._temp_dir,
             self._session_dir,
+            self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
