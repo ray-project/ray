@@ -208,7 +208,7 @@ build_dashboard_front_end() {
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
   else
     (
-      cd ray/dashboard/client
+      cd ray/new_dashboard/client
       set +x  # suppress set -x since it'll get very noisy here
       . "${HOME}/.nvm/nvm.sh"
       nvm use --silent node
@@ -334,7 +334,7 @@ lint_bazel() {
 
 lint_web() {
   (
-    cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
+    cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
     set +x # suppress set -x since it'll get very noisy here
     . "${HOME}/.nvm/nvm.sh"
     install_npm_project

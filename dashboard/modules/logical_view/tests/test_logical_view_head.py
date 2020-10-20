@@ -4,8 +4,8 @@ import logging
 import requests
 import time
 import traceback
-import pytest
 import ray
+import pytest
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,

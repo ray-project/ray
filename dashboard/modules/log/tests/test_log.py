@@ -7,9 +7,9 @@ import traceback
 import html.parser
 import urllib.parse
 
+from ray.new_dashboard.tests.conftest import *  # noqa
 import pytest
 import ray
-from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
