@@ -553,5 +553,6 @@ service PlacementGroupInfoGcsService {
   rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
 
   // Get information of all placement group from GCS Service.
-  rpc GetAllPlacementGroup(GetAllPlacementGroupRequest) returns (GetAllPlacementGroupReply);
+  rpc GetAllPlacementGroup(GetAllPlacementGroupRequest)
+      returns (GetAllPlacementGroupReply);
 }
