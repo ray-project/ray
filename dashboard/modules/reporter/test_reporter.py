@@ -6,6 +6,7 @@ import time
 
 import pytest
 import ray
+from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,
     RayTestTimeoutException,
@@ -98,5 +99,4 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
 
 
 if __name__ == "__main__":
-    from ray.new_dashboard.tests.conftest import *  # noqa
     sys.exit(pytest.main(["-v", __file__]))

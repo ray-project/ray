@@ -7,6 +7,7 @@ import traceback
 import html.parser
 import urllib.parse
 
+from ray.new_dashboard.tests.conftest import *  # noqa
 import pytest
 import ray
 from ray.test_utils import (
@@ -110,5 +111,4 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    from ray.new_dashboard.tests.conftest import *  # noqa
     sys.exit(pytest.main(["-v", __file__]))
