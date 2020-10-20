@@ -616,6 +616,12 @@ def with_parameters(fn, **kwargs):
         )
 
     """
+    if not callable(fn):
+        raise ValueError(
+            "`tune.with_parameters()` only works with the function API. "
+            "If you want to pass parameters to Trainable _classes_, consider "
+            "passing them via the `config` parameter.")
+
     prefix = f"{str(fn)}_"
     for k, v in kwargs.items():
         parameter_registry.put(prefix + k, v)
