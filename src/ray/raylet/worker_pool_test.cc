@@ -381,7 +381,7 @@ TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
 
   if (RayConfig::instance().enable_multi_tenancy()) {
     ASSERT_EQ(real_command, std::vector<std::string>(
-                              {"test_op_0", "test_op_1",  "-Dray.job.code-search-path=/test/code_serch_path", "dummy_java_worker_command",
+                              {"test_op_0", "test_op_1", "-Dray.job.code-search-path=/test/code_serch_path", "dummy_java_worker_command",
                                GetNumJavaWorkersPerProcessSystemProperty(1)}));
   } else {
     ASSERT_EQ(real_command, std::vector<std::string>(
