@@ -306,6 +306,6 @@ class RayParams:
         object_spilling_config = self.object_spilling_config or {}
         if object_spilling_config:
             from ray import external_storage
+            # Validate external storage usage.
             external_storage.setup_external_storage(object_spilling_config)
-            external_storage.validate()
             external_storage.reset_external_storage()

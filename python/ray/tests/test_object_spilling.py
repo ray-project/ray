@@ -10,6 +10,9 @@ import pytest
 import psutil
 import ray
 
+from ray.external_storage import ExternalStorageConfigInvalidError
+
+bucket_name = "sang-object-spilling-test"
 file_system_object_spilling_config = {
     "type": "filesystem",
     "params": {
@@ -19,7 +22,13 @@ file_system_object_spilling_config = {
 s3_object_spilling_config = {
     "type": "s3",
     "params": {
-        "bucket_name": "object-spilling-test"
+        "bucket_name": bucket_name
+    }
+}
+s3_object_spilling_botocore_config = {
+    "type": "s3_botocore",
+    "params": {
+        "bucket_name": bucket_name
     }
 }
 
@@ -27,12 +36,63 @@ s3_object_spilling_config = {
 @pytest.fixture(
     scope="module",
     params=[
-        file_system_object_spilling_config,
+        # file_system_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
-        # s3_object_spilling_config,
+        s3_object_spilling_config,
+        # s3_object_spilling_botocore_config,
     ])
 def object_spilling_config(request):
     yield request.param
+
+
+@pytest.mark.skip("This test is for local benchmark.")
+def test_sample_benchmark(object_spilling_config, shutdown_only):
+    # --Config values--
+    max_io_workers = 10
+    object_store_limit = 500 * 1024 * 1024
+    eight_mb = 1024 * 1024
+    object_size = 12 * eight_mb
+    spill_cnt = 50
+
+    # Limit our object store to 200 MiB of memory.
+    ray.init(
+        object_store_memory=object_store_limit,
+        _object_spilling_config=object_spilling_config,
+        _system_config={
+            "object_store_full_max_retries": 0,
+            "max_io_workers": max_io_workers,
+        })
+    arr = np.random.rand(object_size)
+    replay_buffer = []
+    pinned_objects = set()
+
+    # Create objects of more than 200 MiB.
+    spill_start = time.perf_counter()
+    for _ in range(spill_cnt):
+        ref = None
+        while ref is None:
+            try:
+                ref = ray.put(arr)
+                replay_buffer.append(ref)
+                pinned_objects.add(ref)
+            except ray.exceptions.ObjectStoreFullError:
+                ref_to_spill = pinned_objects.pop()
+                ray.experimental.force_spill_objects([ref_to_spill])
+    spill_end = time.perf_counter()
+
+    # Make sure to remove unpinned objects.
+    del pinned_objects
+    restore_start = time.perf_counter()
+    while replay_buffer:
+        ref = replay_buffer.pop()
+        sample = ray.get(ref)  # noqa
+    restore_end = time.perf_counter()
+
+    print(f"Object spilling benchmark for the config {object_spilling_config}")
+    print(f"Spilling {spill_cnt} number of objects of size {object_size}B "
+          f"takes {spill_end - spill_start} seconds with {max_io_workers} "
+          "number of io workers.")
+    print(f"Getting all objects takes {restore_end - restore_start} seconds.")
 
 
 def test_invalid_config_raises_exception(shutdown_only):
@@ -48,7 +108,7 @@ def test_invalid_config_raises_exception(shutdown_only):
         copied_config["params"].update({"random_arg": "abc"})
         ray.init(_object_spilling_config=copied_config)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ExternalStorageConfigInvalidError):
         copied_config = copy.deepcopy(file_system_object_spilling_config)
         copied_config["params"].update({"directory_path": "not_exist_path"})
         ray.init(_object_spilling_config=copied_config)

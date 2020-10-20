@@ -7,12 +7,32 @@ from typing import List
 import ray
 
 
+class ExternalStorageConfigInvalidError(Exception):
+    """Exception that indicates external storage is not properly setup.
+
+    This exception should be thrown when external storage setup is not
+    successful. For example, if the directory path for file system object
+    spilling doesn't exist, that means object spilling wouldn't work. In
+    that case, this exception should be thrown. This should be thrown
+    only from __init__ method inside External storage inherited classes.
+    """
+    pass
+
+
 class ExternalStorage(metaclass=abc.ABCMeta):
     """The base class for external storage.
 
     This class provides some useful functions for zero-copy object
     put/get from plasma store. Also it specifies the interface for
     object spilling.
+
+    When inheriting this class, please make sure to implement validation
+    logic inside __init__ method. When ray instance starts, it will
+    instantiating external storage to validate the config.
+
+    Raises:
+        ExternalStorageConfigInvalidError: when given configuration for
+            the external storage is invalid.
     """
 
     def _get_objects_from_store(self, object_refs):
@@ -49,12 +69,9 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             keys: A list of bytes corresponding to the spilled objects.
         """
 
-    def validate(self):
-        """Check if the external storage configuration is valid.
-
-        Raises:
-            Raise various exceptions if it fails to validate.
-        """
+    @abc.abstractmethod
+    def get_stats(self) -> dict:
+        """Return object spilling internal stats in dict."""
 
 
 class NullStorage(ExternalStorage):
@@ -66,16 +83,25 @@ class NullStorage(ExternalStorage):
     def restore_spilled_objects(self, keys):
         raise NotImplementedError("External storage is not initialized")
 
-    def validate(self):
-        pass
+    def get_stats(self):
+        raise NotImplementedError("External storage is not initialized")
 
 
 class FileSystemStorage(ExternalStorage):
-    """The class for filesystem-like external storage."""
+    """The class for filesystem-like external storage.
+
+    Raises:
+        ExternalStorageConfigInvalidError: Raises directory path to
+            spill objects doesn't exist.
+    """
 
     def __init__(self, directory_path):
         self.directory_path = directory_path
         self.prefix = "ray_spilled_object_"
+        if not os.path.exists(self.directory_path):
+            raise ExternalStorageConfigInvalidError(
+                "The given directory path to store objects, "
+                f"{self.directory_path}, doesn't exist.")
 
     def spill_objects(self, object_refs):
         keys = []
@@ -103,14 +129,13 @@ class FileSystemStorage(ExternalStorage):
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, ref)
 
-    def validate(self):
-        if not os.path.exists(self.directory_path):
-            raise ValueError("The give directory path to store objects, "
-                             f"{self.directory_path}, doesn't exist.")
+    def get_stats(self):
+        # TODO(sang): Implement it for benchmark.
+        return {}
 
 
-class S3Storage(ExternalStorage):
-    """The class for AWS S3.
+class S3StorageBotoCoreImpl(ExternalStorage):
+    """The external storage class implemented by botocore.
 
     Args:
         bucket_name(str): Name of the bucket to store objects.
@@ -119,10 +144,10 @@ class S3Storage(ExternalStorage):
             the default boto3.resource('s3').Object(bucket_name, key).get()
         put_config_override(dict): Configuration dict that will override
             the default boto3.resource('s3').Object(bucket_name, key).put()
+
     Raises:
-        RayError if it fails to setup a S3 client. For example, if boto3 is
-        not downloaded, it raises an RayError. It can also raise S3 related
-        exceptions.
+        ExternalStorageConfigInvalidError: If it fails to setup a S3 client.
+            For example, if boto3 is not downloaded.
     """
 
     def __init__(self,
@@ -133,7 +158,7 @@ class S3Storage(ExternalStorage):
         try:
             import boto3
         except ModuleNotFoundError:
-            raise ray.exceptions.RayError(
+            raise ExternalStorageConfigInvalidError(
                 "S3 storage is chosen to be a object spilling "
                 "external storage, but boto3 is not downloaded.")
 
@@ -142,8 +167,12 @@ class S3Storage(ExternalStorage):
         self._get_config_override = get_config_override or {}
         self._put_config_override = put_config_override or {}
 
-        # Setup the S3 client.
         self.s3 = boto3.resource("s3")
+        bucket = self.s3.Bucket(self.bucket_name)
+        if not bucket.creation_date:
+            raise ExternalStorageConfigInvalidError(
+                f"Bucket name {self.bucket_name} doesn't "
+                "exist or is not reachable.")
 
     def spill_objects(self, object_refs):
         keys = []
@@ -159,6 +188,10 @@ class S3Storage(ExternalStorage):
             key = k.decode()
             ref = ray.ObjectRef(bytes.fromhex(key[len(self.prefix):]))
             self._restore_spilled_object(key, ref)
+
+    def get_stats(self):
+        # TODO(sang): Implement it for benchmark.
+        return {}
 
     def _spill_object(self, key, ref, buf, metadata):
         s3_object = self.s3.Object(self.bucket_name, key)
@@ -203,18 +236,115 @@ class S3Storage(ExternalStorage):
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, file_like, ref)
 
-    def validate(self):
+
+class S3StorageSmartOpenImpl(ExternalStorage):
+    """The external storage class implemented by smart_open.
+    (https://github.com/RaRe-Technologies/smart_open)
+
+    Args:
+        bucket_name(str): Name of the bucket to store objects.
+        prefix(str): Prefix of objects that are stored.
+        override_transport_params(dict): Overriding the default value of
+            transport_params for smart-open library.
+        track_tail_latency(bool): If True, get_stats will return tail latency.
+            Tracking tail latency requires more memory.
+
+    Raises:
+        ExternalStorageConfigInvalidError: If it fails to setup a S3 client.
+            For example, if boto3 is not downloaded.
+    """
+
+    def __init__(self,
+                 bucket_name: str,
+                 prefix: str = "ray_spilled_object_",
+                 override_transport_params: dict = None,
+                 track_tail_latency: bool = False):
         try:
             import boto3
+            from smart_open import open  # noqa
         except ModuleNotFoundError:
-            raise ray.exceptions.RayError(
+            raise ExternalStorageConfigInvalidError(
                 "S3 storage is chosen to be a object spilling "
-                "external storage, but boto3 is not downloaded.")
-        s3 = boto3.resource("s3")
+                "external storage, but boto3 and smart_open[s3] "
+                "is not downloaded.")
+
+        self.bucket_name = bucket_name
+        self.prefix = prefix
+        self.override_transport_params = override_transport_params or {}
+        self.track_tail_latency = track_tail_latency
+
+        self.session = boto3.Session()
+        self.transport_params = {
+            "session": self.session
+        }.update(self.override_transport_params)
+
+        # --validation--
+        s3 = self.session.resource("s3")
+        # Make sure the bucket exists.
         bucket = s3.Bucket(self.bucket_name)
         if not bucket.creation_date:
-            raise ValueError(f"Bucket name {self.bucket_name} doesn't "
-                             "exist or is not reachable.")
+            raise ExternalStorageConfigInvalidError(
+                f"Bucket name {self.bucket_name} doesn't "
+                "exist or is not reachable.")
+
+        # --stats--
+        # SANG-TODO Implement it for benchmark.
+        self.download_count = 0
+        self.upload_count = 0
+        self.download_avg_latency = 0
+        self.upload_avg_latency = 0
+
+        if self.track_tail_latency:
+            self.download_latencies = []
+            self.upload_latencies = []
+
+    def spill_objects(self, object_refs):
+        keys = []
+        ray_object_pairs = self._get_objects_from_store(object_refs)
+        for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
+            key = self.prefix + ref.hex()
+            self._spill_object(key, ref, buf, metadata)
+            keys.append(key.encode())
+        return keys
+
+    def restore_spilled_objects(self, keys):
+        for k in keys:
+            key = k.decode()
+            ref = ray.ObjectRef(bytes.fromhex(key[len(self.prefix):]))
+            self._restore_spilled_object(key, ref)
+
+    def get_stats(self):
+        # TODO(sang): Implement it for benchmark.
+        return {}
+
+    def _spill_object(self, key, ref, buf, metadata):
+        from smart_open import open
+        url = self._build_s3_url(key)
+        with open(
+                url, "wb",
+                transport_params=self.transport_params) as file_like:
+            metadata_len = len(metadata)
+            buf_len = len(buf)
+            file_like.write(metadata_len.to_bytes(8, byteorder="little"))
+            file_like.write(buf_len.to_bytes(8, byteorder="little"))
+            file_like.write(metadata)
+            file_like.write(memoryview(buf))
+
+    def _restore_spilled_object(self, key, ref):
+        from smart_open import open
+        url = self._build_s3_url(key)
+        with open(
+                url, "rb",
+                transport_params=self.transport_params) as file_like:
+            metadata_len = int.from_bytes(
+                file_like.read(8), byteorder="little")
+            buf_len = int.from_bytes(file_like.read(8), byteorder="little")
+            metadata = file_like.read(metadata_len)
+            # read remaining data to our buffer
+            self._put_object_to_store(metadata, buf_len, file_like, ref)
+
+    def _build_s3_url(self, key):
+        return f"s3://{self.bucket_name}/{key}"
 
 
 _external_storage = NullStorage()
@@ -228,7 +358,9 @@ def setup_external_storage(config):
         if storage_type == "filesystem":
             _external_storage = FileSystemStorage(**config["params"])
         elif storage_type == "s3":
-            _external_storage = S3Storage(**config["params"])
+            _external_storage = S3StorageSmartOpenImpl(**config["params"])
+        elif storage_type == "s3_botocore":
+            _external_storage = S3StorageBotoCoreImpl(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
     else:
@@ -260,12 +392,3 @@ def restore_spilled_objects(keys: List[bytes]):
         keys: A list of bytes corresponding to the spilled objects.
     """
     _external_storage.restore_spilled_objects(keys)
-
-
-def validate():
-    """Check if external storage configuration is valid.
-
-    Raises:
-        Raise various exceptions if it fails to validate.
-    """
-    _external_storage.validate()
