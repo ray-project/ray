@@ -77,8 +77,16 @@ class PlacementGroupSpecBuilder {
       auto mutable_bundle_id = message_bundle->mutable_bundle_id();
       mutable_bundle_id->set_bundle_index(i);
       mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
-      message_bundle->mutable_unit_resources()->insert(resources.begin(),
-                                                       resources.end());
+      auto mutable_unit_resources = message_bundle->mutable_unit_resources();
+      for (auto it = resources.begin(); it != resources.end();) {
+        auto current = it++;
+        // Remove a resource with value 0 because they are not allowed.
+        if (current->second == 0) {
+          resources.erase(current);
+        } else {
+          mutable_unit_resources->insert({current->first, current->second});
+        }
+      }
     }
     return *this;
   }

@@ -33,9 +33,8 @@ def test_actor_groups(ray_start_with_dashboard):
     foo_actors = [Foo.remote(4), Foo.remote(5)]
     infeasible_actor = InfeasibleActor.remote()  # noqa
     results = [actor.do_task.remote() for actor in foo_actors]  # noqa
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
-            is True)
     webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
 
     timeout_seconds = 5
@@ -73,6 +72,67 @@ def test_actor_groups(ray_start_with_dashboard):
                     last_ex.__traceback__) if last_ex else []
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+def test_kill_actor(ray_start_with_dashboard):
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def f(self):
+            ray.show_in_dashboard("test")
+            return os.getpid()
+
+    a = Actor.remote()
+    worker_pid = ray.get(a.f.remote())  # noqa
+
+    webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
+
+    def actor_killed(pid):
+        """Check For the existence of a unix pid."""
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return True
+        else:
+            return False
+
+    def get_actor():
+        resp = requests.get(f"{webui_url}/logical/actor_groups")
+        resp.raise_for_status()
+        actor_groups_resp = resp.json()
+        assert actor_groups_resp["result"] is True, actor_groups_resp["msg"]
+        actor_groups = actor_groups_resp["data"]["actorGroups"]
+        actor = actor_groups["Actor"]["entries"][0]
+        return actor
+
+    def kill_actor_using_dashboard(actor):
+        resp = requests.get(
+            webui_url + "/logical/kill_actor",
+            params={
+                "actorId": actor["actorId"],
+                "ipAddress": actor["ipAddress"],
+                "port": actor["port"]
+            })
+        resp.raise_for_status()
+        resp_json = resp.json()
+        assert resp_json["result"] is True, "msg" in resp_json
+
+    start = time.time()
+    last_exc = None
+    while time.time() - start <= 10:
+        try:
+            actor = get_actor()
+            kill_actor_using_dashboard(actor)
+            last_exc = None
+            break
+        except (KeyError, AssertionError) as e:
+            last_exc = e
+            time.sleep(.1)
+    assert last_exc is None
 
 
 if __name__ == "__main__":
