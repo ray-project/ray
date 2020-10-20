@@ -1,4 +1,3 @@
-import higher
 import logging
 
 import ray
@@ -13,6 +12,10 @@ from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
+try:
+    import higher
+except ImportError:
+    higher = None
 
 logger = logging.getLogger(__name__)
 
