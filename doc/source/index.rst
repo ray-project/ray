@@ -231,6 +231,7 @@ Papers
    serve/deployment.rst
    serve/advanced.rst
    serve/architecture.rst
+   serve/faq.rst
    serve/package-ref.rst
 
 .. toctree::
