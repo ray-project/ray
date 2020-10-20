@@ -30,4 +30,4 @@ git+git://github.com/huggingface/transformers.git@bdcc4b78a27775d1ec8f3fd297cb67
 git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
 wandb
 xgboost
-zoopt>=0.4.0
+zoopt>=0.4.1

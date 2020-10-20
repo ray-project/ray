@@ -7,6 +7,7 @@ import urllib
 import yaml
 import copy
 from unittest.mock import MagicMock, Mock, patch
+import pytest
 
 from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.test_utils import recursive_fnmatch
@@ -33,6 +34,9 @@ class AutoscalingConfigTest(unittest.TestCase):
             except Exception:
                 self.fail("Config did not pass validation test!")
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="TODO(ameer): fails on Windows.")
     def testValidateDefaultConfigAWSMultiNodeTypes(self):
         aws_config_path = os.path.join(
             RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")

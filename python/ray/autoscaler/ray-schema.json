@@ -203,7 +203,7 @@
                 "image": {
                     "type": "string",
                     "description": "the docker image name",
-                    "default": "rayproject/ray:0.8.7"
+                    "default": "rayproject/ray:latest"
                 },
                 "container_name": {
                     "type": "string",
