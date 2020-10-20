@@ -212,8 +212,7 @@ TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
   WaitReady(promise1.get_future(), timeout_ms_);
 
   heartbeats = global_state_->GetAllHeartbeat();
-  // TODO (wangtaothetonic) expect value should be 1 once light heartbeat is enabled.
-  ASSERT_EQ(heartbeats.size(), 0);
+  ASSERT_EQ(heartbeats.size(), 1);
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
