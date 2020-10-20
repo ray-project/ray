@@ -148,9 +148,6 @@ class EpsilonGreedy(Exploration):
         q_values = action_distribution.inputs
         self.last_timestep = timestep
         exploit_action = action_distribution.deterministic_sample()
-        if len(exploit_action) == 1:
-            exploit_action = exploit_action[0]
-
         batch_size = q_values.size()[0]
         action_logp = torch.zeros(batch_size, dtype=torch.float)
 
@@ -173,6 +170,8 @@ class EpsilonGreedy(Exploration):
                     exploit_action = tree.unflatten_as(
                         action_distribution.action_space_struct,
                         exploit_action)
+                if len(exploit_action) == 1:
+                    exploit_action = exploit_action[0]
 
                 return exploit_action, action_logp
 
