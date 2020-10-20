@@ -74,7 +74,6 @@ class DataOrganizer:
     @classmethod
     @async_loop_forever(dashboard_consts.ORGANIZE_DATA_INTERVAL_SECONDS)
     async def organize(cls):
-        logger.info("Organize data.")
         job_workers = {}
         node_workers = {}
         core_worker_stats = {}
@@ -217,8 +216,8 @@ class DataOrganizer:
             for actor_id, actor in DataSource.actors.items()
         }
 
-    @classmethod
-    async def _get_actor(cls, actor):
+    @staticmethod
+    async def _get_actor(actor):
         actor = dict(actor)
         worker_id = actor["address"]["workerId"]
         core_worker_stats = DataSource.core_worker_stats.get(worker_id, {})
@@ -291,8 +290,8 @@ class DataOrganizer:
             all_worker_stats, group_by=group_by, sort_by=sort_by)
         return memory_information
 
-    @classmethod
-    def _extract_view_data(cls, views, data_keys):
+    @staticmethod
+    def _extract_view_data(views, data_keys):
         view_data = {}
         for view in views:
             view_name = view["viewName"]

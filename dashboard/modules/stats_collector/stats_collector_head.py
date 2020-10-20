@@ -183,7 +183,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 logger.info("Getting all actor info from GCS.")
                 request = gcs_service_pb2.GetAllActorInfoRequest()
                 reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-                    request, timeout=60)
+                    request, timeout=5)
                 if reply.status.code == 0:
                     actors = {}
                     for message in reply.actor_table_data:
