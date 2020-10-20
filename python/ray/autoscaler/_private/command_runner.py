@@ -262,8 +262,9 @@ class SSHOptions:
             })
         self.arg_dict.update(kwargs)
 
-    def to_ssh_options_list(self, *, timeout=60):
+    def to_ssh_options_list(self, *, timeout=60, attempts=60):
         self.arg_dict["ConnectTimeout"] = "{}s".format(timeout)
+        self.arg_dict["ConnectionAttempts"] = "{}".format(attempts)
         ssh_key_option = ["-i", self.ssh_key] if self.ssh_key else []
         return ssh_key_option + [
             x for y in (["-o", "{}={}".format(k, v)]
