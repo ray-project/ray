@@ -4,6 +4,7 @@ import logging
 import requests
 import time
 
+import pytest
 import ray
 from ray.test_utils import (
     format_web_url,
@@ -97,6 +98,5 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
     from ray.new_dashboard.tests.conftest import *  # noqa
     sys.exit(pytest.main(["-v", __file__]))
