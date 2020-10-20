@@ -9,6 +9,9 @@ import sys
 from pdb import Pdb
 
 
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+
+
 PY3 = sys.version_info[0] == 3
 log = logging.getLogger(__name__)
 
@@ -64,19 +67,22 @@ class RemotePdb(Pdb):
 
     def __init__(self, host, port, patch_stdstreams=False, quiet=False):
         self._quiet = quiet
-        listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-        listen_socket.bind((host, port))
+        self._patch_stdstreams = patch_stdstreams
+        self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+        self._listen_socket.bind((host, port))
+    
+    def listen(self):
         if not self._quiet:
-            cry("RemotePdb session open at %s:%s, waiting for connection ..." % listen_socket.getsockname())
-        listen_socket.listen(1)
-        connection, address = listen_socket.accept()
+            cry("RemotePdb session open at %s:%s, waiting for connection ..." % self._listen_socket.getsockname())
+        self._listen_socket.listen(1)
+        connection, address = self._listen_socket.accept()
         if not self._quiet:
             cry("RemotePdb accepted connection from %s." % repr(address))
         self.handle = LF2CRLF_FileWrapper(connection)
         Pdb.__init__(self, completekey='tab', stdin=self.handle, stdout=self.handle)
         self.backup = []
-        if patch_stdstreams:
+        if self._patch_stdstreams:
             for name in (
                     'stderr',
                     'stdout',
@@ -124,4 +130,6 @@ def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None):
     if quiet is None:
         quiet = bool(os.environ.get('REMOTE_PDB_QUIET', ''))
     rdb = RemotePdb(host=host, port=port, patch_stdstreams=patch_stdstreams, quiet=quiet)
+    _internal_kv_put("RAY_PDB_ADDRESS", str(rdb._listen_socket.getsockname()), overwrite=True)
+    rdb.listen()
     rdb.set_trace(frame=sys._getframe().f_back)
