@@ -9,6 +9,7 @@ import {
   Select,
   Theme,
   Typography,
+  CircularProgress,
 } from "@material-ui/core";
 import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
@@ -17,6 +18,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getMemoryTable,
+  MemoryTable,
   MemoryGroupByKey,
   MemoryTableResponse,
   setMemoryTableCollection,
@@ -69,6 +71,11 @@ const useMemoryInfoStyles = makeStyles((theme: Theme) =>
 );
 
 const memoryTableSelector = (state: StoreState) => state.dashboard.memoryTable;
+const isEmpty = (memoryTable: MemoryTable) => Object.keys(memoryTable.group).length === 0;
+const loadTimerComplete = (mountedAt: Date) => {
+  const secondsBetween = Math.abs((new Date().getTime() - mountedAt.getTime()) / 1000);
+  return secondsBetween > 10; 
+}
 
 const fetchMemoryTable = (
   groupByKey: MemoryGroupByKey,
@@ -83,7 +90,7 @@ const fetchMemoryTable = (
 const MemoryInfo: React.FC<{}> = () => {
   const memoryTable = useSelector(memoryTableSelector);
   const dispatch = useDispatch();
-
+  const mountedAt = new Date();
   const [paused, setPaused] = useState(false);
   const pauseButtonIcon = paused ? <PlayArrowIcon /> : <PauseIcon />;
 
@@ -97,6 +104,7 @@ const MemoryInfo: React.FC<{}> = () => {
       setMemoryTableCollection(false);
     };
   }, []);
+
   // Set up polling memory data
   const fetchData = useCallback(
     fetchMemoryTable(groupBy, (resp) =>
@@ -117,17 +125,17 @@ const MemoryInfo: React.FC<{}> = () => {
       }
     };
     return cleanup;
-  }, [paused, fetchData]);
+  }, [paused, fetchData, dispatch]);
 
-  if (!memoryTable) {
+  if (!memoryTable || (isEmpty(memoryTable) && !loadTimerComplete(mountedAt))) {
     return (
-      <Typography color="textSecondary">Loading memory information</Typography>
+      <Typography align="center" color="textSecondary" variant="h3"><CircularProgress /> Loading</Typography>
     );
   }
-  if (Object.keys(memoryTable.group).length === 0) {
+  if (isEmpty(memoryTable) && loadTimerComplete(mountedAt)) {
     return (
-      <Typography color="textSecondary">
-        Finished loading, but have found no memory data yet.
+      <Typography align="center" color="textSecondary" variant="h3">
+        Finished loading, but nothing found.
       </Typography>
     );
   }
@@ -170,6 +178,10 @@ const MemoryInfo: React.FC<{}> = () => {
         color="primary"
         className={classes.pauseButton}
         onClick={() => {
+          if (intervalId.current) {
+            clearInterval(intervalId.current);
+            intervalId.current = null;
+          }
           setMemoryTableCollection(!paused);
           setPaused(!paused);
         }}
