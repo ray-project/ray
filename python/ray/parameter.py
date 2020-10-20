@@ -264,7 +264,7 @@ class RayParams:
                 except ValueError as e:
                     raise ValueError(
                         "worker_port_list must be a comma-separated " +
-                        "list of integers: {}".format(e))
+                        "list of integers: {}".format(e)) from None
 
                 if port < 1024 or port > 65535:
                     raise ValueError(
