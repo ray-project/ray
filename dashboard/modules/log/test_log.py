@@ -7,9 +7,7 @@ import traceback
 import html.parser
 import urllib.parse
 
-import pytest
 import ray
-from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -111,4 +109,6 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
+    import pytest
+    from ray.new_dashboard.tests.conftest import *  # noqa
     sys.exit(pytest.main(["-v", __file__]))

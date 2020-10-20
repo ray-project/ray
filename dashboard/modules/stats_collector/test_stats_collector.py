@@ -5,9 +5,7 @@ import requests
 import time
 import traceback
 
-import pytest
 import ray
-from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -202,4 +200,6 @@ def test_multi_nodes_info(enable_test_module, disable_aiohttp_cache,
 
 
 if __name__ == "__main__":
+    import pytest
+    from ray.new_dashboard.tests.conftest import *  # noqa
     sys.exit(pytest.main(["-v", __file__]))
