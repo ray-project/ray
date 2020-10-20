@@ -718,7 +718,8 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
-    # Verify that a detached actor is able to create tasks/actors even if the driver of the detached actor has exited.
+    # Verify that a detached actor is able to create tasks/actors
+    # even if the driver of the detached actor has exited.
     assert ray.get(detached_actor.foobar.remote()) == ["bar", "bar"]
 
 
