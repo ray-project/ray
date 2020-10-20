@@ -40,7 +40,7 @@ nvm use node
 
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
-pushd python/ray/new_dashboard/client
+pushd dashboard/client
   npm ci
   npm run build
 popd
@@ -54,7 +54,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.
-  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/dashboard/client
+  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e dashboard/client
 
   # Install Python.
   INST_PATH=python_downloads/$PY_INST
