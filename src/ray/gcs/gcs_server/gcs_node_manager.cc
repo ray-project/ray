@@ -252,9 +252,7 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
 
-  if (RayConfig::instance().light_heartbeat_enabled()) {
-    UpdateNodeHeartbeat(node_id, request);
-  }
+  UpdateNodeHeartbeat(node_id, request);
 
   // Update node realtime resources.
   UpdateNodeRealtimeResources(node_id, *heartbeat_data);
