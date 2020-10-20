@@ -331,6 +331,15 @@ cc_test(
     deps = test_common_deps,
 )
 
+cc_test(
+    name = "data_writer_tests",
+    srcs = [
+        "src/test/data_writer_tests.cc",
+    ],
+    copts = COPTS,
+    deps = test_common_deps,
+)
+
 python_proto_compile(
     name = "streaming_py_proto",
     deps = [":streaming_proto"],

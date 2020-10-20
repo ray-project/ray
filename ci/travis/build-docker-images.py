@@ -19,7 +19,7 @@ PYTHON_WHL_VERSION = "cp37m"
 
 
 def _merge_build():
-    return os.environ.get("TRAVIS_PULL_REQUEST") == "false"
+    return os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
 
 
 def _release_build():
@@ -45,7 +45,7 @@ def _get_wheel_name():
         f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}-manylinux*")
     assert len(matches) == 1, (
         f"Found ({len(matches)}) matches "
-        "'*{PYTHON_WHL_VERSION}-manylinux*' instead of 1")
+        f"'*{PYTHON_WHL_VERSION}-manylinux*' instead of 1")
     return os.path.basename(matches[0])
 
 
@@ -181,7 +181,7 @@ def build_ray_ml():
 def push_and_tag_images(push_base_images: bool):
     if _merge_build():
         docker_password = os.environ.get("DOCKER_PASSWORD")
-        assert docker_password is not None, "DOCKER_PASSWORD not set."
+        assert docker_password, "DOCKER_PASSWORD not set."
         DOCKER_CLIENT.api.login(
             username=DOCKER_USERNAME,
             password=os.environ.get("DOCKER_PASSWORD"))

@@ -23,14 +23,14 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "rayproject/ray:0.8.7-gpu"
-    container_name: "ray-nvidia-docker-test" # e.g. ray_docker
+    image: "rayproject/ray:latest-gpu"
+    container_name: "ray_nvidia_docker" # e.g. ray_docker
 
     # # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray:0.8.7-gpu"
+    # head_image: "rayproject/ray:latest-gpu"
 
 
-    # worker_image: "rayproject/ray:0.8.7"
+    # worker_image: "rayproject/ray:latest"
 
 
 # The autoscaler will scale up the cluster to this target fraction of resource
@@ -129,8 +129,8 @@ initialization_commands:
           done"
 
 # List of shell commands to run to set up nodes.
-# NOTE: rayproject/ray:0.8.7 has ray 0.8.7 bundled
-# setup_commands:
+# NOTE: rayproject/ray:latest has ray latest bundled
+setup_commands: []
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
 
