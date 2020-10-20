@@ -478,7 +478,7 @@ py_test(
 py_test(
     name = "mnist_pytorch_mini",
     size = "medium",
-    srcs = ["examples/mnist_pytorch_lightning.py"],
+    srcs = ["examples/mnist_pytorch_mini.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
     args = ["--smoke-test"]
