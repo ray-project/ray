@@ -808,6 +808,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         # This node has num_cpus=0
+        lm.update(head_ip, {"CPU": 1}, True, {"CPU": 0}, True, {})
         lm.update(unmanaged_ip, {"CPU": 0}, True, {"CPU": 0}, True, {})
         autoscaler.update()
         self.waitForNodes(2)

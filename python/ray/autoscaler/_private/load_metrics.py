@@ -125,17 +125,13 @@ class LoadMetrics:
         return self.dynamic_resources_by_ip
 
     def _get_resource_usage(self):
-        num_nodes = 0
+        num_nodes = len(self.static_resources_by_ip)
         nodes_used = 0.0
         num_nonidle = 0
         has_saturated_node = False
         resources_used = {}
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
-            # Nodes without resources don't count as nodes (e.g. unmanaged
-            # nodes)
-            if any(max_resources.values()):
-                num_nodes += 1
             avail_resources = self.dynamic_resources_by_ip[ip]
             resource_load = self.resource_load_by_ip[ip]
             max_frac = 0.0
