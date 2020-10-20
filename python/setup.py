@@ -87,9 +87,8 @@ ray_project_files = [
 ]
 
 ray_dashboard_files = [
-    os.path.join(dirpath, filename)
-    for dirpath, dirnames, filenames in os.walk("ray/new_dashboard/client/build")
-    for filename in filenames
+    os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
+    os.walk("ray/new_dashboard/client/build") for filename in filenames
 ]
 
 optional_ray_files += ray_autoscaler_files
