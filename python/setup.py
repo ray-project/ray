@@ -88,7 +88,7 @@ ray_project_files = [
 
 ray_dashboard_files = [
     os.path.join(dirpath, filename)
-    for dirpath, dirnames, filenames in os.walk("ray/new_dashboard/client/build")
+    for dirpath, dirnames, filenames in os.walk("ray/new_dashboard")
     for filename in filenames
 ]
 
