@@ -33,6 +33,12 @@ _RESOURCE_CHECK_ENABLED = True
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 1.0
 
+# TypeDefs
+BackendTag = str
+EndpointTag = str
+ReplicaTag = str
+NodeId = str
+
 
 class TrafficPolicy:
     def __init__(self, traffic_dict: Dict[str, float]) -> None:
@@ -74,6 +80,33 @@ class BackendInfo(BaseModel):
         # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
         # model
         arbitrary_types_allowed = True
+
+
+class MetadataInfo(BaseModel):
+    backends: Dict[BackendTag, BackendInfo]
+    traffic_policies: Dict[EndpointTag, TrafficPolicy]
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class LifetimeInfo(BaseModel):
+    # routers_cache: Dict[NodeId, Optional[Any]]  # NodeId -> ActorHandle
+    routers: List[NodeId]
+    routes: Dict[BackendTag, Tuple(EndpointTag, Any)]  # Any == Methods
+    replicas: Dict[BackendTag, List[ReplicaTag]]
+    replicas_to_start: Dict[BackendTag, List[ReplicaTag]]
+    replicas_to_stop: Dict[BackendTag, List[ReplicaTag]]
+    backends_to_remove: List[BackendTag]
+    endpoints_to_remove: List[EndpointTag]
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class Checkpoint(BaseModel):
+    metdata: MetadataInfo
+    lifetime: LifetimeInfo
 
 
 @ray.remote
@@ -245,11 +278,18 @@ class ServeController:
         assert self.write_lock.locked()
         logger.debug("Writing checkpoint")
         start = time.time()
-        checkpoint = pickle.dumps(
-            (self.routes, list(
-                self.routers.keys()), self.backends, self.traffic_policies,
-             self.replicas, self.replicas_to_start, self.replicas_to_stop,
-             self.backends_to_remove, self.endpoints_to_remove))
+        metadata = MetadataInfo(
+            backends=self.backends, traffic_policies=self.traffic_policies)
+        lifetime = LifetimeInfo(
+            routers=list(self.routers.keys()),
+            routes=self.routes,
+            replicas=self.replicas,
+            replicas_to_start=self.replicas_to_start,
+            replicas_to_stop=self.replicas_to_stop,
+            backends_to_remove=self.backends_to_remove,
+            endpoints_to_remove=self.endpoints_to_remove)
+
+        checkpoint = pickle.dumps(Checkpoint(metadata, lifetime))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -276,20 +316,22 @@ class ServeController:
         start = time.time()
         logger.info("Recovering from checkpoint")
 
-        # Load internal state from the checkpoint data.
-        (
-            self.routes,
-            router_node_ids,
-            self.backends,
-            self.traffic_policies,
-            self.replicas,
-            self.replicas_to_start,
-            self.replicas_to_stop,
-            self.backends_to_remove,
-            self.endpoints_to_remove,
-        ) = pickle.loads(checkpoint_bytes)
+        restored_checkpoint: Checkpoint = pickle.loads(checkpoint_bytes)
+        # Restore Metadata
+        self.backends = restored_checkpoint.metdata.backends
+        self.traffic_policies = restored_checkpoint.metdata.traffic_policies
 
-        for node_id in router_node_ids:
+        # Restore Lifetime State
+        self.routes = restored_checkpoint.lifetime.routes
+        self.replicas = restored_checkpoint.lifetime.replicas
+        self.replicas_to_start = restored_checkpoint.lifetime.replicas_to_start
+        self.replicas_to_stop = restored_checkpoint.lifetime.replicas_to_stop
+        self.backends_to_remove = (
+            restored_checkpoint.lifetime.backends_to_remove)
+        self.endpoints_to_remove = (
+            restored_checkpoint.lifetime.endpoints_to_remove)
+
+        for node_id in restored_checkpoint.lifetime.routers:
             router_name = format_actor_name(SERVE_PROXY_NAME,
                                             self.controller_name, node_id)
             self.routers[node_id] = ray.get_actor(router_name)
@@ -385,7 +427,7 @@ class ServeController:
         """Fetched by the router on startup."""
         return self.traffic_policies
 
-    def _list_replicas(self, backend_tag: str) -> List[str]:
+    def _list_replicas(self, backend_tag: BackendTag) -> List[str]:
         """Used only for testing."""
         return self.replicas[backend_tag]
 
@@ -393,7 +435,8 @@ class ServeController:
         """Fetched by serve handles."""
         return self.traffic_policies[endpoint]
 
-    async def _start_backend_worker(self, backend_tag: str, replica_tag: str,
+    async def _start_backend_worker(self, backend_tag: BackendTag,
+                                    replica_tag: ReplicaTag,
                                     replica_name: str) -> ActorHandle:
         """Creates a backend worker and waits for it to start up.
 
@@ -417,7 +460,8 @@ class ServeController:
         await worker_handle.ready.remote()
         return worker_handle
 
-    async def _start_replica(self, backend_tag: str, replica_tag: str) -> None:
+    async def _start_replica(self, backend_tag: BackendTag,
+                             replica_tag: ReplicaTag) -> None:
         # NOTE(edoakes): the replicas may already be created if we
         # failed after creating them but before writing a
         # checkpoint.
@@ -514,7 +558,8 @@ class ServeController:
             ])
         self.endpoints_to_remove.clear()
 
-    def _scale_replicas(self, backend_tag: str, num_replicas: int) -> None:
+    def _scale_replicas(self, backend_tag: BackendTag,
+                        num_replicas: int) -> None:
         """Scale the given backend to the number of replicas.
 
         NOTE: this does not actually start or stop the replicas, but instead
@@ -636,7 +681,7 @@ class ServeController:
         async with self.write_lock:
             await self._set_traffic(endpoint_name, traffic_dict)
 
-    async def shadow_traffic(self, endpoint_name: str, backend_tag: str,
+    async def shadow_traffic(self, endpoint_name: str, backend_tag: BackendTag,
                              proportion: float) -> None:
         """Shadow traffic from the endpoint to the backend."""
         async with self.write_lock:
@@ -749,7 +794,7 @@ class ServeController:
             ])
             await self._remove_pending_endpoints()
 
-    async def create_backend(self, backend_tag: str,
+    async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,
                              replica_config: ReplicaConfig) -> None:
         """Register a new backend under the specified tag."""
@@ -796,7 +841,7 @@ class ServeController:
             ])
             await self.broadcast_backend_config(backend_tag)
 
-    async def delete_backend(self, backend_tag: str) -> None:
+    async def delete_backend(self, backend_tag: BackendTag) -> None:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified backend exists on the client.
@@ -832,7 +877,7 @@ class ServeController:
             await self._remove_pending_backends()
 
     async def update_backend_config(
-            self, backend_tag: str,
+            self, backend_tag: BackendTag,
             config_options: "Union[BackendConfig, Dict[str, Any]]") -> None:
         """Set the config for the specified backend."""
         async with self.write_lock:
@@ -871,7 +916,7 @@ class ServeController:
 
             await self.broadcast_backend_config(backend_tag)
 
-    async def broadcast_backend_config(self, backend_tag: str) -> None:
+    async def broadcast_backend_config(self, backend_tag: BackendTag) -> None:
         backend_config = self.backends[backend_tag].backend_config
         broadcast_futures = []
         for replica_tag in self.replicas[backend_tag]:
@@ -885,7 +930,7 @@ class ServeController:
         if len(broadcast_futures) > 0:
             await asyncio.gather(*broadcast_futures)
 
-    def get_backend_config(self, backend_tag: str) -> BackendConfig:
+    def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
