@@ -11,13 +11,8 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
 from scipy.stats import norm
 import GPy
-from GPy.kern import Kern
-from GPy.core import Param
-from sklearn.metrics import pairwise_distances
-from sklearn.metrics.pairwise import euclidean_distances
 
 from ray.tune import trial_runner
 from ray.tune import trial_executor
@@ -25,161 +20,15 @@ from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.logger import _SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers import PopulationBasedTraining, TrialScheduler
+from ray.tune.schedulers.pbt import make_experiment_tag
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
 from ray.util.debug import log_once
+from ray.tune.schedulers.pb2_utils import *
 
 logger = logging.getLogger(__name__)
 
-
-class PBTTrialState:
-    """Internal PBT state tracked per-trial."""
-
-    def __init__(self, trial: Trial):
-        self.orig_tag = trial.experiment_tag
-        self.last_score = None
-        self.last_checkpoint = None
-        self.last_perturbation_time = 0
-        self.last_train_time = 0  # Used for synchronous mode.
-        self.last_result = None  # Used for synchronous mode.
-
-    def __repr__(self) -> str:
-        return str((self.last_score, self.last_checkpoint,
-                    self.last_train_time, self.last_perturbation_time))
-
-## PB2 time varying kernel
-class TV_SquaredExp(Kern):
-    def __init__(self,input_dim, variance=1.,lengthscale=1.,epsilon=0.,active_dims=None):
-        super().__init__(input_dim, active_dims, 'time_se')
-        self.variance = Param('variance', variance)
-        self.lengthscale = Param('lengthscale', lengthscale)
-        self.epsilon = Param('epsilon', epsilon)
-        self.link_parameters(self.variance, self.lengthscale, self.epsilon)
-        
-    def K(self,X,X2):
-        # time must be in the far left column
-        if self.epsilon > 0.5: # 0.5
-            self.epsilon = 0.5
-        if X2 is None: X2 = np.copy(X)
-        T1 = X[:, 0].reshape(-1, 1)
-        T2 = X2[:, 0].reshape(-1, 1)
-        dists = pairwise_distances(T1,T2, 'cityblock')
-        timekernel=(1-self.epsilon)**(0.5*dists)
-        
-        X = X[:, 1:]
-        X2 = X2[:, 1:]
-
-        RBF = self.variance*np.exp(-np.square(euclidean_distances(X,X2))/self.lengthscale)
-        
-        return RBF * timekernel
-    
-    def Kdiag(self,X):
-        return self.variance*np.ones(X.shape[0])
-    
-    def update_gradients_full(self, dL_dK, X, X2):
-        if X2 is None: X2 = np.copy(X)
-        T1 = X[:, 0].reshape(-1, 1)
-        T2 = X2[:, 0].reshape(-1, 1)
-        
-        X = X[:, 1:]
-        X2 = X2[:, 1:]
-        dist2 = np.square(euclidean_distances(X,X2))/self.lengthscale
-    
-        dvar = np.exp(-np.square((euclidean_distances(X,X2))/self.lengthscale))
-        dl =  - (2 * euclidean_distances(X,X2)**2 * self.variance * np.exp(-dist2)) * self.lengthscale**(-2)
-        n = pairwise_distances(T1,T2, 'cityblock')/2
-        deps = -n * (1-self.epsilon)**(n-1)
-    
-        self.variance.gradient = np.sum(dvar*dL_dK)
-        self.lengthscale.gradient = np.sum(dl*dL_dK)
-        self.epsilon.gradient = np.sum(deps*dL_dK)
-
-
-## PB2 data normalizing functions
-def normalize(data, wrt):
-    # data = data to normalize
-    # wrt = data will be normalized with respect to this
-    return (data - np.min(wrt, axis=0))/(np.max(wrt,axis=0) - np.min(wrt,axis=0))
-
-def standardize(data):
-    data = (data - np.mean(data, axis=0))/(np.std(data, axis=0)+1e-8)
-    return np.clip(data, -2, 2)
-
-## UCB acquisition function
-def UCB(m, m1, x, fixed, kappa=0.5):
-    
-    c1 = 0.2
-    c2 = 0.4
-    beta_t = c1 * np.log(c2 * m.X.shape[0])
-    kappa = np.sqrt(beta_t)
-    
-    xtest = np.concatenate((fixed.reshape(-1, 1), np.array(x).reshape(-1,1))).T
-    
-    preds = m.predict(xtest)
-    mean = preds[0][0][0] 
-    
-    preds = m1.predict(xtest)
-    var = preds[1][0][0]
-    return mean + kappa * var
-
-## optimize acquisition function.
-def optimize_acq(func, m, m1, fixed, num_f):
-    
-    print("Optimizing Acquisition Function...\n")
-    
-    opts = {'maxiter':200, 'maxfun':200, 'disp':False}
-    
-    T=10
-    best_value=-999
-    best_theta = m1.X[0,:]
-    
-    bounds = [(0,1) for _ in range(m.X.shape[1]-num_f)]
-    
-    for ii in range(T):
-        x0 = np.random.uniform(0,1, m.X.shape[1]-num_f)
-        
-        res = minimize(lambda x: -func(m, m1, x, fixed), x0, bounds=bounds, method="L-BFGS-B", options=opts)
-        
-        val = func(m, m1, res.x, fixed)
-        if val > best_value:
-            best_value=val
-            best_theta =res.x
-    
-    return(np.clip(best_theta, 0, 1))
-
-## Select the number of datapoints to keep, using cross validation
-def select_length(Xraw, yraw, current, newpoint, bounds, num_f, num):
-    
-    # use at least 200 rows
-    min_len = 200
-    
-    if Xraw.shape[0] < min_len:
-        return(Xraw.shape[0])
-    else:
-        length = min_len-10   
-        scores = []
-        while length+10 <= Xraw.shape[0]:
-            length += 10
-            
-            base_vals = np.array(list(bounds.values())).T
-            X_len = Xraw[-length:, :]
-            y_len = yraw[-length:]
-            oldpoints = X_len[:, :num_f]
-            old_lims = np.concatenate((np.max(oldpoints, axis=0), np.min(oldpoints, axis=0))).reshape(2, oldpoints.shape[1])
-            limits = np.concatenate((old_lims, base_vals),axis=1)
-            
-            X = normalize(X_len, limits)
-            y = standardize(y_len).reshape(y_len.size, 1)
-            
-            kernel = TV_SquaredExp(input_dim=X.shape[1], variance=1., lengthscale=1., epsilon=0.1)
-            m = GPy.models.GPRegression(X, y, kernel)
-            m.optimize(messages=True)
-
-            scores.append(m.log_likelihood())
-        idx = np.argmax(scores)
-        length = (idx+int((min_len/10))) * 10
-        return(length)
 
 ## select config, given X and y.  
 def select_config(Xraw, yraw, current, newpoint, bounds, num_f, num):
@@ -276,7 +125,8 @@ def explore(data, bounds, current, base, old, config, mutations, resample_probab
                 
         # now specify the dataset for the GP
         y = np.array(df.y.values)
-        t_r = df[['T', 'R_before']] # we use the T and starting reward as features
+        # meta data we keep -> episodes and reward (TODO: convert to curve)
+        t_r = df[['T', 'R_before']] # df[['T', 'R_before']]
         h = df[[key for key in bounds.keys()]]
         X = pd.concat([t_r, h], axis=1).values 
         newpoint = df[df['Trial']==str(base)].iloc[-1, :][['T', 'R_before']].values
@@ -309,20 +159,11 @@ def explore(data, bounds, current, base, old, config, mutations, resample_probab
     return new_config, data
 
 
-def make_experiment_tag(orig_tag, config, mutations):
-    """Appends perturbed params to the trial name to show in the console."""
-
-    resolved_vars = {}
-    for k in mutations.keys():
-        resolved_vars[("config", k)] = config[k]
-    return "{}@perturbed[{}]".format(orig_tag, format_vars(resolved_vars))
-
-
-class PB2(FIFOScheduler):
+class PB2(PopulationBasedTraining):
     """Implements the Population Based Bandit (PB2) algorithm.
     
 
-    PBT trains a group of models (or agents) in parallel. Periodically, poorly
+    PB2 trains a group of models (or agents) in parallel. Periodically, poorly
     performing models clone the state of the top performers, and the hyper-
     parameters are re-selected using GP-bandit optimization. The GP model is
     trained to predict the improvement in the next training period.
@@ -331,7 +172,7 @@ class PB2(FIFOScheduler):
     very fast hyperparameter discovery and also automatically discovers 
     schedules.
 
-    This Tune PBT2 implementation is built on top of the Tune PBT implementation.
+    This Tune PB2 implementation is built on top of the Tune PBT implementation.
     It considers all trials added as part of the PB2 population. If the number 
     of trials exceeds the cluster capacity, they will be time-multiplexed as to 
     balance training progress across the population. To run multiple trials, use 
@@ -339,7 +180,7 @@ class PB2(FIFOScheduler):
 
     In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in
     `pb2_global.txt` and individual policy perturbations are recorded
-    in pbt_policy_{i}.txt. Tune logs: [target trial tag, clone trial tag,
+    in pb2_policy_{i}.txt. Tune logs: [target trial tag, clone trial tag,
     target trial iteration, clone trial iteration, old config, new config]
     on each perturbation step.
 
@@ -366,10 +207,6 @@ class PB2(FIFOScheduler):
             `quantile_fraction` fraction of trials to the bottom
             `quantile_fraction` fraction. Needs to be between 0 and 0.5.
             Setting it to 0 essentially implies doing no exploitation at all.
-        resample_probability (float): The probability of resampling from the
-            original distribution when applying `hyperparam_mutations`. If not
-            resampled, the value will be perturbed by a factor of 1.2 or 0.8
-            if continuous, or changed to an adjacent value if discrete.
         custom_explore_fn (func): You can also specify a custom exploration
             function. This function is invoked as `f(config)` after built-in
             perturbations from `hyperparam_mutations` are applied, and should
@@ -381,18 +218,15 @@ class PB2(FIFOScheduler):
 
     Example:
         >>> pb2 = PB2(
-        >>>     time_attr="training_iteration",
+        >>>     time_attr="timesteps_total",
         >>>     metric="episode_reward_mean",
         >>>     mode="max",
-        >>>     perturbation_interval=10,  # every 10 `time_attr` units
-        >>>                                # (training_iterations in this case)
+        >>>     perturbation_interval=10000,  # every 10000 `time_attr` units
+        >>>                                # (timesteps_total in this case)
         >>>     hyperparam_mutations={
-        >>>         # Perturb factor1 by scaling it by 0.8 or 1.2. Resampling
-        >>>         # resets it to a value sampled from the lambda function.
+        >>>         ## These must be continuous, currently a limitation.
         >>>         "factor_1": lambda: random.uniform(0.0, 20.0),
-        >>>         # Perturb factor2 by changing it to an adjacent value, e.g.
-        >>>         # 10 -> 1 or 10 -> 100. Resampling will choose at random.
-        >>>         "factor_2": [1, 10, 100, 1000, 10000],
+        >>>         "factor_2": [1, 10000]
         >>>     })
         >>> tune.run({...}, num_samples=8, scheduler=pb2)
     """
@@ -405,70 +239,28 @@ class PB2(FIFOScheduler):
                  perturbation_interval: float = 60.0,
                  hyperparam_mutations: Dict = None,
                  quantile_fraction: float = 0.25,
-                 resample_probability: float = 0.25,
                  custom_explore_fn: Optional[Callable] = None,
                  log_config: bool = True,
                  require_attrs: bool = True,
                  synch: bool = False):
 
-        hyperparam_mutations = hyperparam_mutations or {}
-        for value in hyperparam_mutations.values():
-            if not (isinstance(value,
-                               (list, dict, Domain)) or callable(value)):
-                raise TypeError("`hyperparam_mutation` values must be either "
-                                "a List, Dict, a tune search space object, or "
-                                "a callable.")
-            if isinstance(value, Function):
-                raise ValueError("arbitrary tune.sample_from objects are not "
-                                 "supported for `hyperparam_mutation` values."
-                                 "You must use other built in primitives like"
-                                 "tune.uniform, tune.loguniform, etc.")
+        resample_probability = 0
 
-        if not hyperparam_mutations and not custom_explore_fn:
-            raise TuneError(
-                "You must specify at least one of `hyperparam_mutations` or "
-                "`custom_explore_fn` to use PBT.")
+        PopulationBasedTraining.__init__(self, 
+                                    time_attr, 
+                                    reward_attr, 
+                                    metric, 
+                                    mode, 
+                                    perturbation_interval, 
+                                    hyperparam_mutations,
+                                    quantile_fraction,
+                                    resample_probability,
+                                    custom_explore_fn,
+                                    log_config,
+                                    require_attrs,
+                                    synch)
 
-        if quantile_fraction > 0.5 or quantile_fraction < 0:
-            raise ValueError(
-                "You must set `quantile_fraction` to a value between 0 and"
-                "0.5. Current value: '{}'".format(quantile_fraction))
-
-        if perturbation_interval <= 0:
-            raise ValueError(
-                "perturbation_interval must be a positive number greater "
-                "than 0. Current value: '{}'".format(perturbation_interval))
-
-        if mode:
-            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
-
-        FIFOScheduler.__init__(self)
-        self._metric = metric
-        self._mode = mode
-        self._metric_op = None
-        if self._mode == "max":
-            self._metric_op = 1.
-        elif self._mode == "min":
-            self._metric_op = -1.
-        self._time_attr = time_attr
-        self._perturbation_interval = perturbation_interval
-        self._hyperparam_mutations = hyperparam_mutations
-        self._quantile_fraction = quantile_fraction
-        self._resample_probability = resample_probability
-        self._trial_state = {}
-        self._custom_explore_fn = custom_explore_fn
-        self._log_config = log_config
-        self._require_attrs = require_attrs
-        self._synch = synch
-        self._next_perturbation_sync = self._perturbation_interval
+        self._name = "pb2"
         
         self.latest = 0 # when we last explored
         self.data = pd.DataFrame()
@@ -481,8 +273,6 @@ class PB2(FIFOScheduler):
         self._num_checkpoints = 0
         self._num_perturbations = 0
 
-    def on_trial_add(self, trial_runner, trial):
-        self._trial_state[trial] = PBTTrialState(trial)
 
     # same as PBT, but stores the data in one big dataframe.
     def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
@@ -598,66 +388,6 @@ class PB2(FIFOScheduler):
             # the paused trials.
             return TrialScheduler.PAUSE
 
-    def _perturb_trial(
-            self, trial: Trial, trial_runner: "trial_runner.TrialRunner",
-            upper_quantile: List[Trial], lower_quantile: List[Trial]):
-        """Checkpoint if in upper quantile, exploits if in lower."""
-        state = self._trial_state[trial]
-        if trial in upper_quantile:
-            # The trial last result is only updated after the scheduler
-            # callback. So, we override with the current result.
-            logger.debug("Trial {} is in upper quantile".format(trial))
-            logger.debug("Checkpointing {}".format(trial))
-            if trial.status == Trial.PAUSED:
-                # Paused trial will always have an in-memory checkpoint.
-                state.last_checkpoint = trial.checkpoint
-            else:
-                state.last_checkpoint = trial_runner.trial_executor.save(
-                    trial, Checkpoint.MEMORY, result=state.last_result)
-            self._num_checkpoints += 1
-        else:
-            state.last_checkpoint = None  # not a top trial
-
-        if trial in lower_quantile:
-            logger.debug("Trial {} is in lower quantile".format(trial))
-            trial_to_clone = random.choice(upper_quantile)
-            assert trial is not trial_to_clone
-            self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
-
-    # same as PBT, but changed filenames.
-    def _log_config_on_step(self, trial_state: PBTTrialState,
-                            new_state: PBTTrialState, trial: Trial,
-                            trial_to_clone: Trial, new_config: Dict):
-        """Logs transition during exploit/exploit step.
-
-        For each step, logs: [target trial tag, clone trial tag, target trial
-        iteration, clone trial iteration, old config, new config].
-        """
-        trial_name, trial_to_clone_name = (trial_state.orig_tag,
-                                           new_state.orig_tag)
-        trial_id = trial.trial_id
-        trial_to_clone_id = trial_to_clone.trial_id
-        trial_path = os.path.join(trial.local_dir,
-                                  "pb2_policy_" + trial_id + ".txt")
-        trial_to_clone_path = os.path.join(
-            trial_to_clone.local_dir,
-            "pb2_policy_" + trial_to_clone_id + ".txt")
-        policy = [
-            trial_name, trial_to_clone_name,
-            trial.last_result.get(TRAINING_ITERATION, 0),
-            trial_to_clone.last_result.get(TRAINING_ITERATION, 0),
-            trial_to_clone.config, new_config
-        ]
-        # Log to global file.
-        with open(os.path.join(trial.local_dir, "pb2_global.txt"), "a+") as f:
-            print(json.dumps(policy, cls=_SafeFallbackEncoder), file=f)
-        # Overwrite state in target trial from trial_to_clone.
-        if os.path.exists(trial_to_clone_path):
-            shutil.copyfile(trial_to_clone_path, trial_path)
-        # Log new exploit in target trial log.
-        with open(trial_path, "a+") as f:
-            f.write(json.dumps(policy, cls=_SafeFallbackEncoder) + "\n")
-
 
     def _exploit(self, trial_executor: "trial_executor.TrialExecutor",
                  trial: Trial, trial_to_clone: Trial):
@@ -761,64 +491,3 @@ class PB2(FIFOScheduler):
         # Transfer over the last perturbation time as well
         trial_state.last_perturbation_time = new_state.last_perturbation_time
         trial_state.last_train_time = new_state.last_train_time
-
-
-    def _quantiles(self) -> Tuple[List[Trial], List[Trial]]:
-        """Returns trials in the lower and upper `quantile` of the population.
-
-        If there is not enough data to compute this, returns empty lists.
-        """
-        trials = []
-        for trial, state in self._trial_state.items():
-            logger.debug("Trial {}, state {}".format(trial, state))
-            if trial.is_finished():
-                logger.debug("Trial {} is finished".format(trial))
-            if state.last_score is not None and not trial.is_finished():
-                trials.append(trial)
-        trials.sort(key=lambda t: self._trial_state[t].last_score)
-
-        if len(trials) <= 1:
-            return [], []
-        else:
-            num_trials_in_quantile = int(
-                math.ceil(len(trials) * self._quantile_fraction))
-            if num_trials_in_quantile > len(trials) / 2:
-                num_trials_in_quantile = int(math.floor(len(trials) / 2))
-            return (trials[:num_trials_in_quantile],
-                    trials[-num_trials_in_quantile:])
-
-    def choose_trial_to_run(
-            self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
-        """Ensures all trials get fair share of time (as defined by time_attr).
-
-        This enables the PBT scheduler to support a greater number of
-        concurrent trials than can fit in the cluster at any given time.
-        """
-        candidates = []
-        for trial in trial_runner.get_trials():
-            if trial.status in [Trial.PENDING, Trial.PAUSED] and \
-                    trial_runner.has_resources(trial.resources):
-                if not self._synch:
-                    candidates.append(trial)
-                elif self._trial_state[trial].last_train_time < \
-                        self._next_perturbation_sync:
-                    candidates.append(trial)
-        candidates.sort(
-            key=lambda trial: self._trial_state[trial].last_train_time)
-        return candidates[0] if candidates else None
-
-    def reset_stats(self):
-        self._num_perturbations = 0
-        self._num_checkpoints = 0
-
-    def last_scores(self, trials: List[Trial]) -> List[float]:
-        scores = []
-        for trial in trials:
-            state = self._trial_state[trial]
-            if state.last_score is not None and not trial.is_finished():
-                scores.append(state.last_score)
-        return scores
-
-    def debug_string(self) -> str:
-        return "PopulationBasedTraining: {} checkpoints, {} perturbs".format(
-            self._num_checkpoints, self._num_perturbations)
