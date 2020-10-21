@@ -512,7 +512,7 @@ class PopulationBasedTraining(FIFOScheduler):
             f.write(json.dumps(policy, cls=_SafeFallbackEncoder) + "\n")
 
     def _get_new_config(self, trial, trial_to_clone):
-        """Gets new config for trial by mutating trial_to_clone's config."""
+        """Gets new config for trial by exploring trial_to_clone's config."""
         return explore(trial_to_clone.config, self._hyperparam_mutations,
                        self._resample_probability, self._custom_explore_fn)
 
