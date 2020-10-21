@@ -1341,7 +1341,6 @@ def start_raylet(redis_address,
         f"--object_manager_port={object_manager_port}",
         f"--min_worker_port={min_worker_port}",
         f"--max_worker_port={max_worker_port}",
-        f"--worker_port_list={worker_port_list}",
         f"--node_manager_port={node_manager_port}",
         f"--node_ip_address={node_ip_address}",
         f"--redis_address={gcs_ip_address}",
@@ -1359,6 +1358,8 @@ def start_raylet(redis_address,
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
     ]
+    if worker_port_list is not None:
+        command.append(f"--worker_port_list={worker_port_list}")
     if start_initial_python_workers_for_first_job:
         command.append("--num_initial_python_workers_for_first_job={}".format(
             resource_spec.num_cpus))
