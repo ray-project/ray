@@ -77,9 +77,8 @@ def get_cloud_sync_client(remote_path):
         delete_template = "gsutil rm -r {target}"
     elif remote_path.startswith(HDFS_PREFIX):
         if not distutils.spawn.find_executable("hdfs"):
-            raise ValueError(
-                "Upload uri starting with '{}' requires hdfs tool"
-                " to be installed".format(HDFS_PREFIX))
+            raise ValueError("Upload uri starting with '{}' requires hdfs tool"
+                             " to be installed".format(HDFS_PREFIX))
         sync_up_template = "hdfs dfs -put -f {source} {target}"
         sync_down_template = "hdfs dfs -get -f {target} {source}"
         delete_template = "hdfs dfs -rm -r {target}"
