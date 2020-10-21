@@ -1019,10 +1019,11 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
+    port_test_socket = socket.socket()
+    port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if port == ray_constants.DEFAULT_DASHBOARD_PORT:
         while True:
             try:
-                port_test_socket = socket.socket()
                 port_test_socket.bind(("127.0.0.1", port))
                 port_test_socket.close()
                 break
@@ -1030,7 +1031,6 @@ def start_dashboard(require_dashboard,
                 port += 1
     else:
         try:
-            port_test_socket = socket.socket()
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
         except socket.error:

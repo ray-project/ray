@@ -109,17 +109,17 @@ head_node:
         labels:
             component: ray-head
 
+            # Locate this Pod to spot instance or not.
             # https://docs.staroid.com/ske/pod.html
             pod.staroid.com/spot: "false" # use on-demand instance for head.
 
-            # Locate ray head to dedicated Kubernetes node
-            # In dedicated mode, resource requests and limits in the pod spec will be
-            # automatically overrided based on 'pod.staroid.com/instance-type' below.
-            pod.staroid.com/isolation: dedicated # 'sandboxed' or 'dedicated'
+            # Locate ray head to dedicated Kubernetes node or not.
+            # 'sandboxed' (default) or 'dedicated'.
+            pod.staroid.com/isolation: dedicated
 
             # Instance type to use in 'dedicated' mode, such as 'standard-4', 'gpu-1'.
             # See available instance type from https://docs.staroid.com/ske/pod.html.
-            pod.staroid.com/instance-type: standard-4
+            pod.staroid.com/instance-type: gpu-1
     spec:
         automountServiceAccountToken: true
 
@@ -149,8 +149,8 @@ head_node:
           #   - rsync (used for `ray rsync` commands and file mounts)
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
-          # Image will be overridden when 'image_from_project' is true.
-          image: rayproject/ray
+          # Image will be overriden when 'image_from_project' is true.
+          image: rayproject/autoscaler
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -173,6 +173,10 @@ head_node:
               - mountPath: /nfs
                 name: nfs-volume
           resources:
+              # in case of 'pod.staroid.com/isolation' is 'dedicated',
+              # cpu and memory requests/limits in resources field will be
+              # automatically configured based on
+              # 'pod.staroid.com/instance-type'
               requests:
                   cpu: 4000m
                   memory: 8Gi
@@ -210,17 +214,17 @@ worker_nodes:
         labels:
             component: ray-worker
 
+            # Locate this Pod to spot instance or not.
             # https://docs.staroid.com/ske/pod.html
-            pod.staroid.com/spot: "true"
+            pod.staroid.com/spot: "true" # use on-demand instance for head.
 
-            # Locate ray head to dedicated Kubernetes node
-            # In dedicated mode, resource requests and limits in the pod spec will be
-            # automatically overrided based on 'pod.staroid.com/instance-type' below.
-            pod.staroid.com/isolation: dedicated # 'sandboxed' or 'dedicated'
+            # Locate ray head to dedicated Kubernetes node or not.
+            # 'sandboxed' (default) or 'dedicated'.
+            pod.staroid.com/isolation: dedicated
 
             # Instance type to use in 'dedicated' mode, such as 'standard-4', 'gpu-1'.
             # See available instance type from https://docs.staroid.com/ske/pod.html.
-            pod.staroid.com/instance-type: standard-4
+            pod.staroid.com/instance-type: gpu-1
     spec:
         serviceAccountName: default
 
@@ -266,6 +270,10 @@ worker_nodes:
               - mountPath: /nfs
                 name: nfs-volume
           resources:
+              # in case of 'pod.staroid.com/isolation' is 'dedicated',
+              # cpu and memory requests/limits in resources field will be
+              # automatically configured based on
+              # 'pod.staroid.com/instance-type'
               requests:
                   cpu: 4000m
                   memory: 8Gi
@@ -282,49 +290,3 @@ worker_nodes:
                 valueFrom:
                     resourceFieldRef:
                         resource: limits.cpu
-
-# Files or directories to copy to the head and worker nodes. The format is a
-# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
-file_mounts: {
-#    "/path1/on/remote/machine": "/path1/on/local/machine",
-#    "/path2/on/remote/machine": "/path2/on/local/machine",
-}
-
-# Files or directories to copy from the head node to the worker nodes. The format is a
-# list of paths. The same path on the head node will be copied to the worker node.
-# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
-# you should just use file_mounts. Only use this if you know what you're doing!
-cluster_synced_files: []
-
-# List of commands that will be run before `setup_commands`. If docker is
-# enabled, these commands will run outside the container and before docker
-# is setup.
-initialization_commands: []
-
-# List of shell commands to run to set up nodes.
-setup_commands: []
-
-# Custom commands that will be run on the head node after common setup.
-head_setup_commands:
-    # install staroid and kubernetes packages. Staroid node provider depends on them which autoscaler will use.
-    - pip install -q staroid kubernetes
-    # install jupyterlab
-    - pip install -q jupyterlab
-    - ln -s /nfs /home/ray/nfs
-    - bash -c 'jupyter-lab --ip="*" --NotebookApp.token="" --NotebookApp.password="" --NotebookApp.allow_origin="*" --NotebookApp.notebook_dir="/home/ray"' &
-    # show 'notebook' link in staroid management console to access jupyter notebook.
-    - 'echo -e "kind: Service\napiVersion: v1\nmetadata:\n  name: notebook\n  annotations:\n    service.staroid.com/link: show\nspec:\n  ports:\n  - name: http\n    port: 8888\n  selector:\n    component: ray-head" | kubectl apply -f -'
-
-# Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
-
-# Command to start ray on the head node. You don't need to change this.
-# Note webui-host is set to 0.0.0.0 so that kubernetes can port forward.
-head_start_ray_commands:
-    - ray stop
-    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host 0.0.0.0
-
-# Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands:
-    - ray stop
-    - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

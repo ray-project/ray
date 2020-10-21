@@ -82,7 +82,7 @@ class TestExplorations(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls):
