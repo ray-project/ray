@@ -64,6 +64,15 @@ py_test(
 # )
 
 py_test(
+    name = "tune-pytorch-lightning",
+    size = "small",
+    main = "source/tune/_tutorials/tune-pytorch-lightning.py",
+    srcs = ["source/tune/_tutorials/tune-pytorch-lightning.py"],
+    tags = ["exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "tune_serve_integration_mnist",
     size = "medium",
     main = "source/tune/_tutorials/tune-serve-integration-mnist.py",

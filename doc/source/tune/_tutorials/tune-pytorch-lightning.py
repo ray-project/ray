@@ -1,3 +1,4 @@
+# flake8: noqa
 """
 .. _tune-pytorch-lightning:
 
@@ -50,6 +51,7 @@ from torch.nn import functional as F
 from torchvision.datasets import MNIST
 from torchvision import transforms
 import os
+
 
 #################################################################
 # And then there is the Lightning model adapted from the blog post.
@@ -124,11 +126,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
         logs = {"ptl/val_loss": avg_loss, "ptl/val_accuracy": avg_acc}
 
-        return {
-            "val_loss": avg_loss,
-            "val_accuracy": avg_acc,
-            "log": logs
-        }
+        return {"val_loss": avg_loss, "val_accuracy": avg_acc, "log": logs}
 
     @staticmethod
     def download_data(data_dir):
@@ -160,6 +158,7 @@ def train_mnist(config):
     trainer = pl.Trainer(max_epochs=10, show_progress_bar=False)
 
     trainer.fit(model)
+
 
 ##################################################################
 # And that's it! You can now run ``train_mnist(config)`` to train the classifier, e.g.
@@ -209,10 +208,12 @@ from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
 # back to Tune after each validation epoch, we will use the ``TuneReportCallback``:
 
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
-callback = TuneReportCallback({
-    "loss": "avg_val_loss",
-    "mean_accuracy": "avg_val_accuracy"
-}, on="validation_end")
+callback = TuneReportCallback(
+    {
+        "loss": "avg_val_loss",
+        "mean_accuracy": "avg_val_accuracy"
+    },
+    on="validation_end")
 
 ###############################################
 # This callback will take the ``avg_val_loss`` and ``avg_val_accuracy`` values
@@ -233,6 +234,7 @@ callback = TuneReportCallback({
 # Lightning would create subdirectories, and each trial would thus be shown twice in
 # TensorBoard, one time for Tune's logs, and another time for PyTorch Lightning's logs.
 
+
 def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
     model = LightningMNISTClassifier(config, data_dir)
     trainer = pl.Trainer(
@@ -252,6 +254,7 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
 
     trainer.fit(model)
 
+
 #####################################################################
 # Sharing the data
 # ~~~~~~~~~~~~~~~~
@@ -266,7 +269,6 @@ LightningMNISTClassifier.download_data(data_dir)
 # We also delete this data after training to avoid filling up our disk or memory space.
 
 shutil.rmtree(data_dir)
-
 
 ############################################################
 # Configuring the search space
@@ -285,7 +287,6 @@ config = {
     "batch_size": tune.choice([32, 64, 128]),
 }
 
-
 ############################################################
 # Selecting a scheduler
 # ~~~~~~~~~~~~~~~~~~~~~
@@ -296,12 +297,7 @@ config = {
 # configurations.
 
 scheduler = ASHAScheduler(
-    metric="loss",
-    mode="min",
-    max_t=num_epochs,
-    grace_period=1,
-    reduction_factor=2)
-
+    metric="loss", mode="min", grace_period=1, reduction_factor=2)
 
 #########################################################
 # Changing the CLI output
@@ -342,7 +338,7 @@ reporter = CLIReporter(
 # nothing more to do here other than to specify the number of GPUs
 # we would like to use:
 
-resources_per_trial={
+resources_per_trial = {
     "cpu": 1,
     "gpu": 0  # set this to enable GPU
 }
@@ -360,6 +356,7 @@ resources_per_trial={
 # Lastly, we need to start Tune with ``tune.run()``.
 #
 # The full code looks like this:
+
 
 def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
     data_dir = mkdtemp(prefix="mnist_data_")
@@ -396,6 +393,7 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
         name="tune_mnist_asha")
 
     shutil.rmtree(data_dir)
+
 
 ##########################################################
 #
@@ -446,7 +444,10 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
 from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 callback = TuneReportCheckpointCallback(
-    metrics={"loss": "val_loss", "mean_accuracy": "val_accuracy"},
+    metrics={
+        "loss": "val_loss",
+        "mean_accuracy": "val_accuracy"
+    },
     filename="checkpoint",
     on="validation_end")
 
@@ -455,6 +456,7 @@ callback = TuneReportCheckpointCallback(
 # checkpoint directory.
 #
 # We also include checkpoint loading in our training function:
+
 
 def train_mnist_tune_checkpoint(config,
                                 checkpoint_dir=None,
@@ -499,6 +501,7 @@ def train_mnist_tune_checkpoint(config,
 #
 # We need to call Tune slightly differently:
 
+
 def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
     data_dir = mkdtemp(prefix="mnist_data_")
     LightningMNISTClassifier.download_data(data_dir)
@@ -538,6 +541,7 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
     shutil.rmtree(data_dir)
 
+
 ##########################################################
 # Instead of passing tune parameters to the ``config`` dict, we start
 # with fixed values, though we are also able to sample some of them, like the
@@ -572,3 +576,19 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
 # In summary, PyTorch Lightning Modules are easy to extend to use with Tune. It just took
 # us importing one or two callbacks and a small wrapper function to get great performing
 # parameter configurations.
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    args, _ = parser.parse_known_args()
+
+    if args.smoke_test:
+        tune_mnist_asha(num_samples=1, num_epochs=1, gpus_per_trial=0)
+        tune_mnist_pbt(num_samples=1, num_epochs=1, gpus_per_trial=0)
+    else:
+        # ASHA scheduler
+        tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0)
+        # Population based training
+        tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0)
