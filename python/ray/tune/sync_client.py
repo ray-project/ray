@@ -78,7 +78,7 @@ def get_cloud_sync_client(remote_path):
     elif remote_path.startswith(HDFS_PREFIX):
         if not distutils.spawn.find_executable("hdfs"):
             raise ValueError(
-                "Upload uri starts with '{}' requires hdfs tool"
+                "Upload uri starting with '{}' requires hdfs tool"
                 " to be installed".format(HDFS_PREFIX))
         sync_up_template = "hdfs dfs -put -f {source} {target}"
         sync_down_template = "hdfs dfs -get -f {target} {source}"
@@ -86,7 +86,8 @@ def get_cloud_sync_client(remote_path):
     else:
         raise ValueError("Upload uri must start with one of: {}"
                          "".format(ALLOWED_REMOTE_PREFIXES))
-    return CommandBasedClient(sync_up_template, sync_down_template, delete_template)
+    return CommandBasedClient(sync_up_template, sync_down_template,
+                              delete_template)
 
 
 class SyncClient:
