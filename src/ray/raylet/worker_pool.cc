@@ -58,7 +58,8 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
                        int num_workers_soft_limit,
                        int num_initial_python_workers_for_first_job,
                        int maximum_startup_concurrency, int min_worker_port,
-                       int max_worker_port, std::shared_ptr<gcs::GcsClient> gcs_client,
+                       int max_worker_port, const std::vector<int> &worker_ports,
+                       std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
                        const std::unordered_map<std::string, std::string> &raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
@@ -114,7 +115,12 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
   }
   // Initialize free ports list with all ports in the specified range.
-  if (min_worker_port != 0) {
+  if (!worker_ports.empty()) {
+    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    for (int port : worker_ports) {
+      free_ports_->push(port);
+    }
+  } else if (min_worker_port != 0) {
     if (max_worker_port == 0) {
       max_worker_port = 65535;  // Maximum valid port number.
     }

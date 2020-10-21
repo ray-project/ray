@@ -142,8 +142,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           io_service, config.num_initial_workers, config.num_workers_soft_limit,
           config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
-          config.max_worker_port, gcs_client_, config.worker_commands,
-          config.raylet_config,
+          config.max_worker_port, config.worker_ports, gcs_client_,
+          config.worker_commands, config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
