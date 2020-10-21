@@ -3,6 +3,8 @@
 Cluster Autoscaling
 ===================
 
+.. tip:: Before you continue, be sure to have read :ref:`cluster-cloud`.
+
 Basics
 ------
 
@@ -137,3 +139,24 @@ The ``worker_setup_commands`` field (and also the ``initialization_commands`` fi
     worker_setup_commands:
         - pip install tensorflow-gpu  # Example command.
 
+Docker Support for Multi-type clusters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For each node type, you can specify ``worker_image`` and ``pull_before_run`` fields. These will override any top level ``docker`` section values (see :ref:`autoscaler-docker`). The ``worker_run_options`` field is combined with top level ``docker: run_options`` field to produce the docker run command for the given node_type.  Ray will automatically select the Nvidia docker runtime if it is available.
+
+The following configuration is for a GPU enabled node type:
+
+.. code-block:: yaml
+
+    available_node_types:
+        gpu_1_ondemand:
+            max_workers: 2
+            worker_setup_commands:
+                - pip install tensorflow-gpu  # Example command.
+
+            # Docker specific commands for gpu_1_ondemand
+            pull_before_run: True
+            worker_image:
+                - rayproject/ray-ml:latest-gpu
+            worker_run_options:  # Appended to top-level docker field.
+                - "-v /home:/home"

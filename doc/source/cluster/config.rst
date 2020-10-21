@@ -3,6 +3,8 @@
 Configuring your Cluster
 ========================
 
+.. tip:: Before you continue, be sure to have read :ref:`cluster-cloud`.
+
 To launch a cluster, you must first create a *cluster configuration file*, which specifies some important details about the cluster.
 
 At a minimum, we need to specify:
@@ -52,10 +54,14 @@ Setup Commands
 
 The setup commands you use should ideally be *idempotent*, that is, can be run more than once. This allows Ray to update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
 
+.. _autoscaler-docker:
+
 Docker Support
 --------------
 
-The cluster launcher is fully compatible with docker images. To get started with using docker, provide a ``docker_image`` and ``container_name`` in the ``docker`` field of the YAML. We provide docker images on [DockerHub](https://hub.docker.com/u/rayproject); the ``rayproject/ray-ml:latest`` image is a quick way to get up and running . When the cluster is launched, all of the Ray tasks will be executed inside of the container. For GPU support, Ray will automatically select the Nvidia docker runtime if it is available and you just need to specify a docker image with the CUDA support (``rayproject/ray-ml:latest-gpu`` and all of our ``-gpu`` images have this).
+The cluster launcher is fully compatible with docker images. To get started with using docker, provide a ``docker_image`` and ``container_name`` in the ``docker`` field of the YAML. We provide docker images on `DockerHub <https://hub.docker.com/u/rayproject>`__. The ``rayproject/ray-ml:latest`` image is a quick way to get up and running .
+
+When the cluster is launched, all of the Ray tasks will be executed inside of the container. For GPU support, Ray will automatically select the Nvidia docker runtime if available, and you just need to specify a docker image with the CUDA support (``rayproject/ray-ml:latest-gpu`` and all of our ``-gpu`` images have this).
 
 .. code-block:: yaml
 
@@ -63,10 +69,23 @@ The cluster launcher is fully compatible with docker images. To get started with
         container_name: "ray_container"
         image: "rayproject/ray-ml:latest-gpu"
 
+
+If Docker is not installed, add the following commands to ``initialization_commands`` to install it.
+
+.. code-block:: yaml
+
+    initialization_commands:
+        - curl -fsSL https://get.docker.com -o get-docker.sh
+        - sudo sh get-docker.sh
+        - sudo usermod -aG docker $USER
+        - sudo systemctl restart docker -f
+
 Common cluster configurations
 -----------------------------
 
-The ``example-full.yaml`` configuration is enough to get started with Ray, but for more compute intensive workloads you will want to change the instance types to e.g. use GPU or larger compute instance by editing the yaml file. Here are a few common configurations:
+The `example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ configuration is enough to get started with Ray, but for more compute intensive workloads you will want to change the instance types to e.g. use GPU or larger compute instance by editing the yaml file.
+
+Here are a few common configurations (note that we use AWS in the examples, but these examples are generic):
 
 **GPU single node**: use Ray on a single large GPU instance.
 
@@ -75,25 +94,6 @@ The ``example-full.yaml`` configuration is enough to get started with Ray, but f
     max_workers: 0
     head_node:
         InstanceType: p2.8xlarge
-
-**Docker**: Specify docker image. This executes all commands on all nodes in the docker container,
-and opens all the necessary ports to support the Ray cluster.
-
-.. code-block:: yaml
-
-    docker:
-        image: rayproject/ray:0.8.7
-        container_name: ray_docker
-
-If Docker is not installed, add the following commands to ``initialization_commands`` to install it.
-
-.. code-block:: yaml
-
-    initialization_commands:
-    - curl -fsSL https://get.docker.com -o get-docker.sh
-    - sudo sh get-docker.sh
-    - sudo usermod -aG docker $USER
-    - sudo systemctl restart docker -f
 
 
 **Mixed GPU and CPU nodes**: for RL applications that require proportionally more

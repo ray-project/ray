@@ -5,7 +5,7 @@ User Guide & Configuring Tune
 These pages will demonstrate the various features and configurations of Tune.
 
 
-.. warning:: Before you continue, be sure to have read :ref:`tune-60-seconds`.
+.. tip:: Before you continue, be sure to have read :ref:`tune-60-seconds`.
 
 This document provides an overview of the core concepts as well as some of the configurations for running Tune.
 

@@ -1,3 +1,5 @@
+.. _cluster-commands:
+
 Cluster Launcher Commands
 =========================
 

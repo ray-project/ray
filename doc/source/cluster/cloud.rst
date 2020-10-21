@@ -290,6 +290,18 @@ Security
 On cloud providers, nodes will be launched into their own security group by default, with traffic allowed only between nodes in the same group. A new SSH key will also be created and saved to your local machine for access to the cluster.
 
 
+What's Next?
+-------------
+
+Now that you have a working understanding of the cluster launcher, check out:
+
+* :ref:`cluster-config`: A guide to configuring your Ray cluster.
+* :ref:`cluster-commands`: A short user guide to the various cluster launcher commands.
+* A `step by step guide`_ to using the cluster launcher
+* :ref:`ref-autoscaling`: An overview of how Ray autoscaling works.
+
+
+
 Questions or Issues?
 --------------------
 
