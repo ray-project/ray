@@ -130,6 +130,8 @@ def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None):
     if quiet is None:
         quiet = bool(os.environ.get('REMOTE_PDB_QUIET', ''))
     rdb = RemotePdb(host=host, port=port, patch_stdstreams=patch_stdstreams, quiet=quiet)
-    _internal_kv_put("RAY_PDB_ADDRESS", str(rdb._listen_socket.getsockname()), overwrite=True)
+    sockname = rdb._listen_socket.getsockname()
+    pdb_address = "{}:{}".format(sockname[0], sockname[1])
+    _internal_kv_put("RAY_PDB_ADDRESS", pdb_address, overwrite=True)
     rdb.listen()
     rdb.set_trace(frame=sys._getframe().f_back)
