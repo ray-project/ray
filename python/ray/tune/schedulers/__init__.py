@@ -8,6 +8,7 @@ from ray.tune.schedulers.pbt import (PopulationBasedTraining,
                                      PopulationBasedTrainingReplay)
 from ray.tune.schedulers.pb2 import PB2
 
+
 def create_scheduler(
         scheduler,
         **kwargs,
