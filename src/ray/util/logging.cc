@@ -47,6 +47,14 @@
 
 namespace ray {
 
+std::string GetCallTrace() {
+  std::string return_message = "Cannot get callstack information.";
+#ifdef RAY_USE_GLOG
+  return google::GetStackTraceToString();
+#endif
+  return return_message;
+}
+
 #ifdef RAY_USE_GLOG
 struct StdoutLogger : public google::base::Logger {
   std::ostream &out() { return std::cout; }

@@ -26,9 +26,10 @@ from ray.autoscaler._private.resource_demand_scheduler import \
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
-from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
-    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
-    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -210,12 +211,14 @@ class StandardAutoscaler:
         if self.resource_demand_scheduler:
             resource_demand_vector = self.resource_demand_vector + \
                 self.load_metrics.get_resource_demand_vector()
-            to_launch = (self.resource_demand_scheduler.get_nodes_to_launch(
+            pending_placement_groups = \
+                self.load_metrics.get_pending_placement_groups()
+            to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
                 self.provider.non_terminated_nodes(tag_filters={}),
                 self.pending_launches.breakdown(),
                 resource_demand_vector,
-                self.load_metrics.get_resource_utilization()))
-            # TODO(ekl) also enforce max launch concurrency here?
+                self.load_metrics.get_resource_utilization(),
+                pending_placement_groups)
             for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
 
