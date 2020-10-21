@@ -112,19 +112,31 @@ def test_global_state_actor_table(ray_start_regular):
 
 def test_global_state_worker_table(ray_start_regular):
 
-    # worker table should be empty at first
+    # Worker table should be empty at first.
     assert len(ray.state.workers()) == 0
 
-    # add global_worker
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+    # Actor table should contain only one entry.
+    user_actor = Actor.remote()
+    ray.get(user_actor.ready.remote())
+    assert len(ray.actors()) == 1
+
+    del user_actor
+
+    # Add global_worker.
     worker_id = ray.worker.global_worker.worker_id
     worker_type = gcs_utils.WORKER
     worker_info = {"key1": "value1"}
     result = ray.state.state.add_worker(worker_id, worker_type, worker_info)
 
-    # add worker success
+    # Add worker success.
     assert result is True
 
-    # get worker table from gcs
+    # Get worker table from gcs.
     workers_data = ray.state.workers()
 
     assert len(workers_data) == 1
