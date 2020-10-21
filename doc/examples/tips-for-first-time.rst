@@ -272,16 +272,18 @@ To avoid copying array a every time ``no_work()`` is invoked, one simple solutio
     import time
     import numpy as np
     import ray
+    import ray.cloudpickle as cp
 
     ray.init(num_cpus = 4)
 
     @ray.remote
-    def no_work(a):
+    def no_work(a_id):
+        a = ray.get(cp.loads(a_id))
         return
 
     start = time.time()
     a_id = ray.put(np.zeros((5000, 5000)))
-    result_ids = [no_work.remote(a_id) for x in range(10)]
+    result_ids = [no_work.remote(cp.dumps(a_id)) for x in range(10)]
     results = ray.get(result_ids)
     print("duration =", time.time() - start)
 
