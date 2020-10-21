@@ -49,6 +49,10 @@ def teardown_cluster(cluster_config: Union[dict, str],
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
+        workers_only (bool): Whether to keep the head node running and only
+            teardown worker nodes.
+        keep_min_workers (bool): Whether to keep min_workers (as specified
+            in the YAML) still running.
     """
     with _as_config_file(cluster_config) as config_file:
         return commands.teardown_cluster(
@@ -119,6 +123,7 @@ def rsync(cluster_config: Union[dict, str],
             public or private.
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
+        all_nodes (bool): Whether to sync files to worker nodes as well.
 
     Raises:
         RuntimeError if the cluster head node is not found.
