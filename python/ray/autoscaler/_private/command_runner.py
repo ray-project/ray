@@ -489,7 +489,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             return self._run_helper(final_cmd, with_output, exit_on_fail)
 
-    def _create_rsync_filter_args(self, options=None):
+    def _create_rsync_filter_args(self, options):
         rsync_excludes = options.get("rsync_exclude") or []
         rsync_filters = options.get("rsync_filter") or []
 
