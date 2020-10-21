@@ -447,7 +447,7 @@ User-provided fields will be outputted automatically on a best-effort basis. You
 Uploading Results
 -----------------
 
-If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory, natively supporting standard S3/gsutil URIs.
+If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory, natively supporting standard S3/gsutil/HDFS URIs.
 
 .. code-block:: python
 
