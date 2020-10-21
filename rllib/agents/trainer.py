@@ -293,20 +293,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune. Otherwise, the trainer runs in the main program.
     "num_cpus_for_driver": 1,
-    # You can set these memory quotas to tell Ray to reserve memory for your
-    # training run. This forces the Ray scheduler to spread actors across
-    # more machines if insufficient memory is available.
+    # Deprecated.
     "memory": 0,
-    # Object store memory to reserve for the trainer process. Being large
-    # enough to fit a few copies of the model weights should be sufficient.
-    # This is enabled by default since models are typically quite small.
     "object_store_memory": 0,
-    # Heap memory to reserve for each worker. Should generally be small unless
-    # your environment is very heavyweight.
     "memory_per_worker": 0,
-    # Object store memory to reserve for each worker. This only needs to be
-    # large enough to fit a few sample batches at a time. This is enabled
-    # by default since it almost never needs to be larger than ~200MB.
     "object_store_memory_per_worker": 0,
 
     # === Offline Datasets ===
