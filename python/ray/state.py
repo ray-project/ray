@@ -874,6 +874,7 @@ def workers():
     """
     return state.workers()
 
+
 def current_node_id():
     """Return the node id of the current node.
 
