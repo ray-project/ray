@@ -290,12 +290,12 @@ build_wheels() {
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
       # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-      keep_alive suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
+      keep_alive docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
         rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      keep_alive suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      keep_alive "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
