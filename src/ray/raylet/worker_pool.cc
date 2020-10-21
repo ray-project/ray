@@ -433,6 +433,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
 void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // Currently we don't erase the job from `all_jobs_` , as a workaround for
   // https://github.com/ray-project/ray/issues/11437.
+  // unfinished_jobs_.erase(job_id);
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
