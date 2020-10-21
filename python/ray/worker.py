@@ -630,8 +630,12 @@ def init(
         if soft < hard:
             logger.debug("Automatically increasing RLIMIT_NOFILE to max "
                          "value of {}".format(hard))
-            resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
-        if hard < 4096:
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+            except ValueError:
+                logger.debug("Failed to raise limit.")
+        soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < 4096:
             logger.warning(
                 "File descriptor limit {} is too low for production "
                 "servers and may result in connection errors. "
