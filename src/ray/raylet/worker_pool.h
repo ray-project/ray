@@ -414,7 +414,7 @@ class WorkerPool : public WorkerPoolInterface {
   int num_initial_python_workers_for_first_job_;
 
   /// This map tracks the latest infos of unfinished jobs.
-  absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
+  absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
 
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
   /// workers in FIFO order. The second element of std::pair is the time a worker becomes
