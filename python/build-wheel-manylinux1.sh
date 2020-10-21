@@ -36,8 +36,10 @@ nvm use node
 
 # Build the dashboard so its static assets can be included in the wheel.
 pushd python/ray/dashboard/client
-  npm ci
-  npm run build
+  echo "Running npm ci"
+  npm ci --verbose
+  echo "Running npm build"
+  npm run build --verbose
 popd
 set -x
 
