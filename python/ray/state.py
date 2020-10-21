@@ -866,6 +866,14 @@ def nodes():
     return state.node_table()
 
 
+def workers():
+    """Get a list of the workers in the cluster.
+
+    Returns:
+        Information about the Ray workers in the cluster.
+    """
+    return state.workers()
+
 def current_node_id():
     """Return the node id of the current node.
 

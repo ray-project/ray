@@ -8,6 +8,8 @@ import time
 import ray
 import ray.ray_constants
 import ray.test_utils
+from ray import gcs_utils
+from ray.utils import (binary_to_hex)
 
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
@@ -106,6 +108,27 @@ def test_global_state_actor_table(ray_start_regular):
         else:
             time.sleep(0.5)
     assert get_state() == dead_state
+
+
+def test_global_state_worker_table(ray_start_regular):
+
+    # worker table should be empty at first
+    assert len(ray.state.workers()) == 0
+
+    # add global_worker
+    worker_id = ray.worker.global_worker.worker_id
+    worker_type = gcs_utils.WORKER
+    worker_info = {"key1": "value1"}
+    result = ray.state.state.add_worker(worker_id, worker_type, worker_info)
+
+    # add worker success
+    assert result is True
+
+    # get worker table from gcs
+    workers_data = ray.state.workers()
+
+    assert len(workers_data) == 1
+    assert (binary_to_hex(worker_id) in workers_data) is True
 
 
 def test_global_state_actor_entry(ray_start_regular):
