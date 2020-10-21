@@ -97,6 +97,33 @@ TEST(LogPerfTest, PerfTest) {
   RayLog::ShutDownRayLog();
 }
 
+std::string TestFunctionLevel0() {
+  std::string call_trace = GetCallTrace();
+  RAY_LOG(INFO) << "TestFunctionLevel0\n" << call_trace;
+  return call_trace;
+}
+
+std::string TestFunctionLevel1() {
+  RAY_LOG(INFO) << "TestFunctionLevel1:";
+  return TestFunctionLevel0();
+}
+
+std::string TestFunctionLevel2() {
+  RAY_LOG(INFO) << "TestFunctionLevel2:";
+  return TestFunctionLevel1();
+}
+
+#ifndef _WIN32
+TEST(PrintLogTest, CallstackTraceTest) {
+  auto ret0 = TestFunctionLevel0();
+  EXPECT_TRUE(ret0.find("TestFunctionLevel0") != std::string::npos);
+  auto ret1 = TestFunctionLevel1();
+  EXPECT_TRUE(ret1.find("TestFunctionLevel1") != std::string::npos);
+  auto ret2 = TestFunctionLevel2();
+  EXPECT_TRUE(ret2.find("TestFunctionLevel2") != std::string::npos);
+}
+#endif
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

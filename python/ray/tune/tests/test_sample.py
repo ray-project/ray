@@ -408,6 +408,52 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
+    def testConvertHyperOptNested(self):
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+
+        config = {
+            "a": 1,
+            "dict_nested": tune.sample.Categorical([{
+                "a": tune.sample.Categorical(["M", "N"]),
+                "b": tune.sample.Categorical(["O", "P"])
+            }]).uniform(),
+            "list_nested": tune.sample.Categorical([
+                [
+                    tune.sample.Categorical(["M", "N"]),
+                    tune.sample.Categorical(["O", "P"])
+                ],
+                [
+                    tune.sample.Categorical(["Q", "R"]),
+                    tune.sample.Categorical(["S", "T"])
+                ],
+            ]).uniform(),
+            "domain_nested": tune.sample.Categorical([
+                tune.sample.Categorical(["M", "N"]),
+                tune.sample.Categorical(["O", "P"])
+            ]).uniform(),
+        }
+
+        searcher = HyperOptSearch(metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective,
+            config=config,
+            search_alg=searcher,
+            num_samples=10)
+
+        for trial in analysis.trials:
+            config = trial.config
+
+            self.assertIn(config["dict_nested"]["a"], ["M", "N"])
+            self.assertIn(config["dict_nested"]["b"], ["O", "P"])
+
+            if config["list_nested"][0] in ["M", "N"]:
+                self.assertIn(config["list_nested"][1], ["O", "P"])
+            else:
+                self.assertIn(config["list_nested"][0], ["Q", "R"])
+                self.assertIn(config["list_nested"][1], ["S", "T"])
+
+            self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
+
     def testConvertNevergrad(self):
         from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
@@ -533,7 +579,7 @@ class SearchSpaceTest(unittest.TestCase):
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
                 "x": tune.sample.Integer(0, 5).quantized(2),
-                "y": 4,
+                "y": tune.sample.Categorical([2, 4, 6, 8]).uniform(),
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
         }
@@ -544,7 +590,7 @@ class SearchSpaceTest(unittest.TestCase):
             "a": 2,
             "b": {
                 "x": tune.sample.Integer(0, 5).uniform(),
-                "y": 4,
+                "y": tune.sample.Categorical([2, 4, 6, 8]).uniform(),
                 "z": tune.sample.Float(-3, 7).uniform().quantized(1e-4)
             }
         }
@@ -552,11 +598,16 @@ class SearchSpaceTest(unittest.TestCase):
 
         zoopt_config = {
             "b/x": (ValueType.DISCRETE, [0, 5], True),
-            "b/z": (ValueType.CONTINUOUS, [-3, 7], 1e-4)
+            "b/y": (ValueType.GRID, [2, 4, 6, 8]),
+            "b/z": (ValueType.CONTINUOUS, [-3, 7], 1e-4),
         }
 
-        searcher1 = ZOOptSearch(dim_dict=converted_config, budget=5)
-        searcher2 = ZOOptSearch(dim_dict=zoopt_config, budget=5)
+        zoopt_search_config = {"parallel_num": 4}
+
+        searcher1 = ZOOptSearch(
+            dim_dict=converted_config, budget=5, **zoopt_search_config)
+        searcher2 = ZOOptSearch(
+            dim_dict=zoopt_config, budget=5, **zoopt_search_config)
 
         np.random.seed(1234)
         config1 = searcher1.suggest("0")
@@ -565,14 +616,16 @@ class SearchSpaceTest(unittest.TestCase):
 
         self.assertEqual(config1, config2)
         self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertIn(config1["b"]["y"], [2, 4, 6, 8])
         self.assertLess(-3, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 7)
 
-        searcher = ZOOptSearch(budget=5, metric="a", mode="max")
+        searcher = ZOOptSearch(
+            budget=5, metric="a", mode="max", **zoopt_search_config)
         analysis = tune.run(
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
-        self.assertEqual(trial.config["b"]["y"], 4)
+        self.assertIn(trial.config["b"]["y"], [2, 4, 6, 8])
 
 
 if __name__ == "__main__":

@@ -238,7 +238,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
         break;
       }
       case Language::JAVA: {
-        code_search_path_str = "-Dray.job.code-search-path" + code_search_path_str;
+        code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
         break;
       }
       default:
@@ -903,30 +903,40 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasks
   return workers;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers()
-    const {
+const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
+    bool filter_dead_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
-      if (worker->IsRegistered()) {
-        workers.push_back(worker);
+      if (!worker->IsRegistered()) {
+        continue;
       }
+
+      if (filter_dead_workers && worker->IsDead()) {
+        continue;
+      }
+      workers.push_back(worker);
     }
   }
 
   return workers;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers()
-    const {
+const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
+    bool filter_dead_drivers) const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &driver : entry.second.registered_drivers) {
-      if (driver->IsRegistered()) {
-        drivers.push_back(driver);
+      if (!driver->IsRegistered()) {
+        continue;
       }
+
+      if (filter_dead_drivers && driver->IsDead()) {
+        continue;
+      }
+      drivers.push_back(driver);
     }
   }
 

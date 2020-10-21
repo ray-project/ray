@@ -19,7 +19,7 @@ os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 logger = logging.getLogger(__name__)
 
 
-def test_node_info(ray_start_with_dashboard):
+def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
     @ray.remote
     class Actor:
         def getpid(self):
@@ -168,7 +168,8 @@ def test_get_all_node_details(ray_start_with_dashboard):
     "ray_start_cluster_head", [{
         "include_dashboard": True
     }], indirect=True)
-def test_multi_nodes_info(enable_test_module, ray_start_cluster_head):
+def test_multi_nodes_info(enable_test_module, disable_aiohttp_cache,
+                          ray_start_cluster_head):
     cluster = ray_start_cluster_head
     assert (wait_until_server_available(cluster.webui_url) is True)
     webui_url = cluster.webui_url

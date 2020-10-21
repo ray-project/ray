@@ -14,6 +14,7 @@ from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -52,6 +53,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     # model inference batching, which can improve performance for inference
     # bottlenecked workloads.
     "num_envs_per_worker": 1,
+    # When `num_workers` > 0, the driver (local_worker; worker-idx=0) does not
+    # need an environment. This is because it doesn't have to sample (done by
+    # remote_workers; worker_indices > 0) nor evaluate (done by evaluation
+    # workers; see below).
+    "create_env_on_driver": False,
     # Divide episodes into fragments of this many steps each during rollouts.
     # Sample batches of this size are collected from rollout workers and
     # combined into a larger batch of `train_batch_size` for learning.
@@ -307,16 +313,17 @@ COMMON_CONFIG: TrainerConfigDict = {
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
-    #  - "sampler": generate experiences via online simulation (default)
-    #  - a local directory or file glob expression (e.g., "/tmp/*.json")
-    #  - a list of individual file paths/URIs (e.g., ["/tmp/1.json",
-    #    "s3://bucket/2.json"])
-    #  - a dict with string keys and sampling probabilities as values (e.g.,
+    #  - "sampler": Generate experiences via online (env) simulation (default).
+    #  - A local directory or file glob expression (e.g., "/tmp/*.json").
+    #  - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
+    #    "s3://bucket/2.json"]).
+    #  - A dict with string keys and sampling probabilities as values (e.g.,
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-    #  - a function that returns a rllib.offline.InputReader
+    #  - A callable that returns a ray.rllib.offline.InputReader.
     "input": "sampler",
     # Specify how to evaluate the current policy. This only has an effect when
-    # reading offline experiences. Available options:
+    # reading offline experiences ("input" is not "sampler").
+    # Available options:
     #  - "wis": the weighted step-wise importance sampling estimator.
     #  - "is": the step-wise importance sampling estimator.
     #  - "simulation": run the environment in the background, but use
@@ -556,12 +563,12 @@ class Trainer(Trainable):
             # A class specifier.
             elif "." in env:
                 self.env_creator = \
-                    lambda env_config: from_config(env, env_config)
+                    lambda env_context: from_config(env, env_context)
             # Try gym.
             else:
                 import gym  # soft dependency
                 self.env_creator = \
-                    lambda env_config: gym.make(env, **env_config)
+                    lambda env_context: gym.make(env, **env_context)
         else:
             self.env_creator = lambda env_config: None
 
@@ -712,13 +719,10 @@ class Trainer(Trainable):
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
+        # Call the `_before_evaluate` hook.
         self._before_evaluate()
-
-        # Broadcast the new policy weights to all evaluation workers.
-        logger.info("Synchronizing weights to evaluation workers.")
-        weights = ray.put(self.workers.local_worker().save())
-        self.evaluation_workers.foreach_worker(
-            lambda w: w.restore(ray.get(weights)))
+        # Sync weights to the evaluation WorkerSet.
+        self._sync_weights_to_workers(worker_set=self.evaluation_workers)
         self._sync_filters_if_needed(self.evaluation_workers)
 
         if self.config["custom_eval_function"]:
@@ -758,6 +762,20 @@ class Trainer(Trainable):
     def _before_evaluate(self):
         """Pre-evaluation callback."""
         pass
+
+    @DeveloperAPI
+    def _sync_weights_to_workers(
+            self,
+            *,
+            worker_set: Optional[WorkerSet] = None,
+            workers: Optional[List[RolloutWorker]] = None,
+    ) -> None:
+        """Sync "main" weights to given WorkerSet or list of workers."""
+        assert worker_set is not None
+        # Broadcast the new policy weights to all evaluation workers.
+        logger.info("Synchronizing weights to evaluation workers.")
+        weights = ray.put(self.workers.local_worker().save())
+        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     @PublicAPI
     def compute_action(self,

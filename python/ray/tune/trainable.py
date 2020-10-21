@@ -552,7 +552,22 @@ class Trainable:
         self._close_logfiles()
         self._open_logfiles(stdout_file, stderr_file)
 
-        return self.reset_config(new_config)
+        success = self.reset_config(new_config)
+        if not success:
+            return False
+
+        # Reset attributes. Will be overwritten by `restore` if a checkpoint
+        # is provided.
+        self._iteration = 0
+        self._time_total = 0.0
+        self._timesteps_total = None
+        self._episodes_total = None
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
+        self._restored = False
+
+        return True
 
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.

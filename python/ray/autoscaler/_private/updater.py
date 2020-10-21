@@ -246,7 +246,8 @@ class NodeUpdater:
                                              self.log_prefix)
 
                         # Run outside of the container
-                        self.cmd_runner.run("uptime", run_env="host")
+                        self.cmd_runner.run(
+                            "uptime", timeout=5, run_env="host")
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True

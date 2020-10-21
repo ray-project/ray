@@ -18,6 +18,44 @@ import redis
 logger = logging.getLogger(__name__)
 
 
+def parse_resource_demands(resource_load_by_shape):
+    """Handle the message.resource_load_by_shape protobuf for the demand
+    based autoscaling. Catch and log all exceptions so this doesn't
+    interfere with the utilization based autoscaler until we're confident
+    this is stable. Worker queue backlogs are added to the appropriate
+    resource demand vector.
+
+    Args:
+        resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
+            in protobuf form or None.
+
+    Returns:
+        List[ResourceDict]: Waiting bundles (ready and feasible).
+        List[ResourceDict]: Infeasible bundles.
+    """
+    waiting_bundles, infeasible_bundles = [], []
+    try:
+        for resource_demand_pb in list(
+                resource_load_by_shape.resource_demands):
+            request_shape = dict(resource_demand_pb.shape)
+            for _ in range(resource_demand_pb.num_ready_requests_queued):
+                waiting_bundles.append(request_shape)
+            for _ in range(resource_demand_pb.num_infeasible_requests_queued):
+                infeasible_bundles.append(request_shape)
+
+            # Infeasible and ready states for tasks are (logically)
+            # mutually exclusive.
+            if resource_demand_pb.num_infeasible_requests_queued > 0:
+                backlog_queue = infeasible_bundles
+            else:
+                backlog_queue = waiting_bundles
+            for _ in range(resource_demand_pb.backlog_size):
+                backlog_queue.append(request_shape)
+    except Exception:
+        logger.exception("Failed to parse resource demands.")
+    return waiting_bundles, infeasible_bundles
+
+
 class Monitor:
     """A monitor for Ray processes.
 
@@ -89,32 +127,6 @@ class Monitor:
         """
         self.primary_subscribe_client.psubscribe(pattern)
 
-    def parse_resource_demands(self, resource_load_by_shape):
-        """Handle the message.resource_load_by_shape protobuf for the demand
-        based autoscaling. Catch and log all exceptions so this doesn't
-        interfere with the utilization based autoscaler until we're confident
-        this is stable.
-
-        Args:
-            resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
-                in protobuf form or None.
-        """
-        waiting_bundles, infeasible_bundles = [], []
-        try:
-            if self.autoscaler:
-                for resource_demand_pb in list(
-                        resource_load_by_shape.resource_demands):
-                    request_shape = dict(resource_demand_pb.shape)
-                    for _ in range(
-                            resource_demand_pb.num_ready_requests_queued):
-                        waiting_bundles.append(request_shape)
-                    for _ in range(
-                            resource_demand_pb.num_infeasible_requests_queued):
-                        infeasible_bundles.append(request_shape)
-        except Exception as e:
-            logger.exception(e)
-        return waiting_bundles, infeasible_bundles
-
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
 
@@ -129,7 +141,10 @@ class Monitor:
             available_resources = dict(heartbeat_message.resources_available)
 
             waiting_bundles, infeasible_bundles = \
-                self.parse_resource_demands(message.resource_load_by_shape)
+                parse_resource_demands(message.resource_load_by_shape)
+
+            pending_placement_groups = list(
+                message.placement_group_load.placement_group_data)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
@@ -142,7 +157,8 @@ class Monitor:
                 self.load_metrics.update(
                     ip, total_resources, update_available_resources,
                     available_resources, update_resource_load, resource_load,
-                    waiting_bundles, infeasible_bundles)
+                    waiting_bundles, infeasible_bundles,
+                    pending_placement_groups)
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")
