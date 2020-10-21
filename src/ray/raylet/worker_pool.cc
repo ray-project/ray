@@ -175,8 +175,8 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   if (RayConfig::instance().enable_multi_tenancy() &&
       worker_type != rpc::WorkerType::IO_WORKER) {
     RAY_CHECK(!job_id.IsNil());
-    auto it = unfinished_jobs_.find(job_id);
-    if (it == unfinished_jobs_.end()) {
+    auto it = all_jobs_.find(job_id);
+    if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
       // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
       return Process();
@@ -238,7 +238,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
         break;
       }
       case Language::JAVA: {
-        code_search_path_str = "-Dray.job.code-search-path" + code_search_path_str;
+        code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
         break;
       }
       default:
@@ -427,11 +427,13 @@ void WorkerPool::MarkPortAsFree(int port) {
 }
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
-  unfinished_jobs_[job_id] = job_config;
+  all_jobs_[job_id] = job_config;
 }
 
 void WorkerPool::HandleJobFinished(const JobID &job_id) {
-  unfinished_jobs_.erase(job_id);
+  // Currently we don't erase the job from `all_jobs_` , as a workaround for
+  // https://github.com/ray-project/ray/issues/11437.
+  // unfinished_jobs_.erase(job_id);
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
@@ -471,12 +473,12 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     RAY_CHECK(dedicated_workers_it != state.worker_pids_to_assigned_jobs.end());
     auto job_id = dedicated_workers_it->second;
 
-    // If the job is finished, we don't allow new registrations.
-    if (!unfinished_jobs_.contains(job_id)) {
+    // If the job is unknown to Raylet, we don't allow new registrations.
+    if (!all_jobs_.contains(job_id)) {
       auto process = Process::FromPid(pid);
       state.starting_worker_processes.erase(process);
       Status status =
-          Status::Invalid("The job is not running anymore. Reject registration.");
+          Status::Invalid("The provided job ID is unknown. Reject registration.");
       send_reply_callback(status, /*port=*/0);
       return status;
     }
@@ -541,7 +543,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   driver->AssignJobId(job_id);
-  unfinished_jobs_[job_id] = job_config;
+  all_jobs_[job_id] = job_config;
 
   // This is a workaround to start initial workers on this node if and only if Raylet is
   // started by a Python driver and the job config is not set in `ray.init(...)`.
