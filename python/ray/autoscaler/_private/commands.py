@@ -698,6 +698,10 @@ def get_or_create_head_node(config: Dict[str, Any],
                 runtime_hash=runtime_hash,
                 file_mounts_contents_hash=file_mounts_contents_hash,
                 is_head_node=True,
+                rsync_options={
+                    "rsync_exclude": config.get("rsync_exclude"),
+                    "rsync_filter": config.get("rsync_filter")
+                },
                 docker_config=config.get("docker"))
             updater.start()
             updater.join()
@@ -867,6 +871,10 @@ def exec_cluster(config_file: str,
             runtime_hash="",
             file_mounts_contents_hash="",
             is_head_node=True,
+            rsync_options={
+                "rsync_exclude": config.get("rsync_exclude"),
+                "rsync_filter": config.get("rsync_filter")
+            },
             docker_config=config.get("docker"))
         shutdown_after_run = False
         if cmd and stop:
@@ -1002,6 +1010,10 @@ def rsync(config_file: str,
             process_runner=_runner,
             file_mounts_contents_hash="",
             is_head_node=is_head_node,
+            rsync_options={
+                "rsync_exclude": config.get("rsync_exclude"),
+                "rsync_filter": config.get("rsync_filter")
+            },
             docker_config=config.get("docker"))
         if down:
             rsync = updater.rsync_down
