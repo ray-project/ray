@@ -6,6 +6,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     Uniform
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 from zoopt import ValueType
@@ -138,6 +139,9 @@ class ZOOptSearch(Searcher):
         if isinstance(dim_dict, dict) and dim_dict:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(dim_dict)
             if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="dim_dict", cls=type(self)))
                 dim_dict = self.convert_search_space(dim_dict)
 
         self._dim_dict = dim_dict
