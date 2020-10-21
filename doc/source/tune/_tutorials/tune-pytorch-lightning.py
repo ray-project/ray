@@ -179,10 +179,10 @@ train_mnist(config)
 # The parameters above should give you a good accuracy of over 90% already. However,
 # we might improve on this simply by changing some of the hyperparameters. For instance,
 # maybe we get an even higher accuracy if we used a larger batch size.
-
+#
 # Instead of guessing the parameter values, let's use Tune to systematically try out
 # parameter combinations and find the best performing set.
-
+#
 # First, we need some additional imports:
 
 import shutil
@@ -207,27 +207,26 @@ from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
 #
 # Ray Tune comes with ready-to-use PyTorch Lightning callbacks. To report metrics
 # back to Tune after each validation epoch, we will use the ``TuneReportCallback``:
-#
-# .. code-block:: python
-#
-#     from ray.tune.integration.pytorch_lightning import TuneReportCallback
-#     callback = TuneReportCallback({
-#         "loss": "avg_val_loss",
-#         "mean_accuracy": "avg_val_accuracy"
-#     }, on="validation_end")
-#
+
+from ray.tune.integration.pytorch_lightning import TuneReportCallback
+callback = TuneReportCallback({
+    "loss": "avg_val_loss",
+    "mean_accuracy": "avg_val_accuracy"
+}, on="validation_end")
+
+###############################################
 # This callback will take the ``avg_val_loss`` and ``avg_val_accuracy`` values
 # from the PyTorch Lightning trainer and report them to Tune as the ``loss``
 # and ``mean_accuracy``, respectively.
-
+#
 # Adding the Tune training function
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+#
 # Then we specify our training function. Note that we added the ``data_dir`` as a
 # parameter here to avoid
 # that each training run downloads the full MNIST dataset. Instead, we want to access
 # a shared data location.
-
+#
 # We are also able to specify the number of epochs to train each model, and the number
 # of GPUs we want to use for training. We also create a TensorBoard logger that writes
 # logfiles directly into Tune's root trial directory - if we didn't do that PyTorch
@@ -252,6 +251,7 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
         ])
 
     trainer.fit(model)
+
 #####################################################################
 # Sharing the data
 # ~~~~~~~~~~~~~~~~
@@ -271,7 +271,7 @@ shutil.rmtree(data_dir)
 ############################################################
 # Configuring the search space
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+#
 # Now we configure the parameter search space. We would like to choose between three
 # different layer and batch sizes. The learning rate should be sampled uniformly between
 # ``0.0001`` and ``0.1``. The ``tune.loguniform()`` function is syntactic sugar to make
@@ -341,14 +341,13 @@ reporter = CLIReporter(
 # already made sure that our code is compatible with that, so there's
 # nothing more to do here other than to specify the number of GPUs
 # we would like to use:
-#
-# .. code-block:: python
-#
-#     resources_per_trial={
-#         "cpu": 1,
-#         "gpu": gpus_per_trial
-#     },
-#
+
+resources_per_trial={
+    "cpu": 1,
+    "gpu": 0  # set this to enable GPU
+}
+
+###########################################################
 # Please note that in the current state of PyTorch Lightning, training
 # on :doc:`fractional GPUs </using-ray-with-gpus>` or
 # multiple GPUs requires some workarounds. We will address these in a
@@ -379,10 +378,6 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
         max_t=num_epochs,
         grace_period=1,
         reduction_factor=2)
-
-    reporter = CLIReporter(
-        parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
-        metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
     tune.run(
         partial(
@@ -435,7 +430,7 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
 # The ``ASHAScheduler`` terminates those trials early that show bad performance.
 # Sometimes, this stops trials that would get better after more training steps,
 # and which might eventually even show better performance than other configurations.
-
+#
 # Another popular method for hyperparameter tuning, called
 # `Population Based Training <https://deepmind.com/blog/article/population-based-training-neural-networks>`_,
 # instead perturbs hyperparameters during the training run. Tune implements PBT, and
@@ -448,18 +443,17 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
 # another callback to save model checkpoints. Since Tune requires a call to
 # ``tune.report()`` after creating a new checkpoint to register it, we will use
 # a combined reporting and checkpointing callback:
-#
-# .. code-block:: python
-#
-#     from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
-#     callback = TuneReportCheckpointCallback(
-#         metrics={"loss": "val_loss", "mean_accuracy": "val_accuracy"},
-#         filename="checkpoint",
-#         on="validation_end")
 
+from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
+callback = TuneReportCheckpointCallback(
+    metrics={"loss": "val_loss", "mean_accuracy": "val_accuracy"},
+    filename="checkpoint",
+    on="validation_end")
+
+#####################################################
 # The ``checkpoint`` value is the name of the checkpoint file within the
 # checkpoint directory.
-
+#
 # We also include checkpoint loading in our training function:
 
 def train_mnist_tune_checkpoint(config,
@@ -525,10 +519,6 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
             "lr": lambda: tune.loguniform(1e-4, 1e-1).func(None),
             "batch_size": [32, 64, 128]
         })
-
-    reporter = CLIReporter(
-        parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
-        metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
     tune.run(
         partial(
