@@ -1,5 +1,6 @@
 import atexit
 from functools import wraps
+import random
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -7,7 +8,7 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger)
+                             get_random_letters, logger, get_node_id_for_actor)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
 from ray.actor import ActorHandle
@@ -317,23 +318,38 @@ class Client:
                                                    proportion))
 
     @_ensure_connected
-    def get_handle(self, endpoint_name: str) -> RayServeHandle:
+    def get_handle(self,
+                   endpoint_name: str,
+                   missing_ok: Optional[bool] = False) -> RayServeHandle:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
         Args:
             endpoint_name (str): A registered service endpoint.
+            missing_ok (bool): If true, then Serve won't check the endpoint is
+                registered. False by default.
 
         Returns:
             RayServeHandle
         """
-        if endpoint_name not in ray.get(
+        if not missing_ok and endpoint_name not in ray.get(
                 self._controller.get_all_endpoints.remote()):
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
-        # TODO(edoakes): we should choose the router on the same node.
-        routers = ray.get(self._controller.get_routers.remote())
+        routers = list(ray.get(self._controller.get_routers.remote()).values())
+        current_node_id = ray.get_runtime_context().node_id.hex()
+
+        try:
+            router_chosen = next(
+                filter(lambda r: get_node_id_for_actor(r) == current_node_id,
+                       routers))
+        except StopIteration:
+            logger.warning(
+                f"When getting a handle for {endpoint_name}, Serve can't find "
+                "a router on the same node. Serve will use a random router.")
+            router_chosen = random.choice(routers)
+
         return RayServeHandle(
-            list(routers.values())[0],
+            router_chosen,
             endpoint_name,
         )
 
@@ -358,7 +374,7 @@ def start(detached: bool = False,
             this to "0.0.0.0". One HTTP server will be started on each node in
             the Ray cluster.
         http_port (int): Port for HTTP server. Defaults to 8000.
-        http_middleswares (list): A list of Starlette middlewares that will be
+        http_middlewares (list): A list of Starlette middlewares that will be
             applied to the HTTP servers in the cluster.
     """
     # Initialize ray if needed.

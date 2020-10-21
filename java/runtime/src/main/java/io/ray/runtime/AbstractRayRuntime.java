@@ -283,6 +283,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
+  public TaskExecutor getTaskExecutor() {
+    return taskExecutor;
+  }
+
+  @Override
   public FunctionManager getFunctionManager() {
     return functionManager;
   }

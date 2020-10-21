@@ -142,6 +142,7 @@ class Exporter(threading.Thread):
                             self.dashboard_controller.tune_info(),
                             self.dashboard_controller.tune_availability())
             except Exception as e:
-                logger.error("Exception occured while exporting metrics: {}.\n"
-                             "Traceback: {}".format(e, traceback.format_exc()))
+                logger.error(
+                    "Exception occurred while exporting metrics: {}.\n"
+                    "Traceback: {}".format(e, traceback.format_exc()))
                 continue

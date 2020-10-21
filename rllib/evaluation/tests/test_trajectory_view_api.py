@@ -33,7 +33,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             view_req_model = policy.model.inference_view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
-            assert len(view_req_policy) == 11, view_req_policy
+            assert len(view_req_policy) == 12, view_req_policy
             for key in [
                     SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
                     SampleBatch.DONES, SampleBatch.NEXT_OBS,
@@ -64,8 +64,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             policy = trainer.get_policy()
             view_req_model = policy.model.inference_view_requirements
             view_req_policy = policy.view_requirements
-            assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 17, view_req_policy
+            assert len(view_req_model) == 5, view_req_model
+            assert len(view_req_policy) == 18, view_req_policy
             for key in [
                     SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
                     SampleBatch.DONES, SampleBatch.NEXT_OBS,
@@ -220,7 +220,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
             policy_config=dict(config, **{"_use_trajectory_view_api": True}),
             rollout_fragment_length=rollout_fragment_length,
-            policy=policies,
+            policy_spec=policies,
             policy_mapping_fn=policy_fn,
             num_envs=1,
         )
@@ -228,7 +228,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
             policy_config=dict(config, **{"_use_trajectory_view_api": False}),
             rollout_fragment_length=rollout_fragment_length,
-            policy=policies,
+            policy_spec=policies,
             policy_mapping_fn=policy_fn,
             num_envs=1,
         )
