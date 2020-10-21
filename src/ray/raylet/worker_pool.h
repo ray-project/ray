@@ -211,13 +211,17 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Get all the registered workers.
   ///
-  /// \return A list containing all the workers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers() const;
+  /// \param filter_dead_workers whether or not if this method will filter dead workers
+  /// that are still registered. \return A list containing all the workers.
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers = false) const;
 
   /// Get all the registered drivers.
   ///
-  /// \return A list containing all the drivers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers() const;
+  /// \param filter_dead_drivers whether or not if this method will filter dead drivers
+  /// that are still registered. \return A list containing all the drivers.
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+      bool filter_dead_drivers = false) const;
 
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.

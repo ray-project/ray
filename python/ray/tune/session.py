@@ -111,6 +111,14 @@ def checkpoint_dir(step):
     Store any files related to restoring state within the
     provided checkpoint dir.
 
+    You should call this *before* calling ``tune.report``. The reason is
+    because we want checkpoints to be correlated with the result
+    (i.e., be able to retrieve the best checkpoint, etc). Many algorithms
+    depend on this behavior too.
+
+    Calling ``checkpoint_dir`` after report could introduce
+    inconsistencies.
+
     Args:
         step (int): Index for the checkpoint. Expected to be a
             monotonically increasing quantity.
