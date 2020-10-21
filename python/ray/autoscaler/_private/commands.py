@@ -1026,9 +1026,9 @@ def rsync(config_file: str,
                     ip_address, use_internal_ip=use_internal_ip)
             ]
         else:
+            nodes = [head_node]
             if all_nodes:
-                nodes = _get_worker_nodes(config, override_cluster_name)
-            nodes += [head_node]
+                nodes.extend(_get_worker_nodes(config, override_cluster_name))
 
         for node_id in nodes:
             rsync_to_node(node_id, is_head_node=(node_id == head_node))

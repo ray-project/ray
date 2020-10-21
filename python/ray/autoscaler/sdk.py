@@ -41,7 +41,9 @@ def create_or_update_cluster(cluster_config: Union[dict, str],
             use_login_shells=True)
 
 
-def teardown_cluster(cluster_config: Union[dict, str]) -> None:
+def teardown_cluster(cluster_config: Union[dict, str],
+                     workers_only: bool = False,
+                     keep_min_workers: bool = False) -> None:
     """Destroys all nodes of a Ray cluster described by a config json.
 
     Args:
@@ -52,9 +54,9 @@ def teardown_cluster(cluster_config: Union[dict, str]) -> None:
         return commands.teardown_cluster(
             config_file=config_file,
             yes=True,
-            workers_only=False,
+            workers_only=workers_only,
             override_cluster_name=None,
-            keep_min_workers=False)
+            keep_min_workers=keep_min_workers)
 
 
 def run_on_cluster(cluster_config: Union[dict, str],
@@ -102,7 +104,8 @@ def rsync(cluster_config: Union[dict, str],
           down: bool,
           ip_address: str = None,
           use_internal_ip: bool = False,
-          no_config_cache: bool = False):
+          no_config_cache: bool = False,
+          all_nodes: bool = False):
     """Rsyncs files to or from the cluster.
 
     Args:
@@ -130,7 +133,7 @@ def rsync(cluster_config: Union[dict, str],
             ip_address=ip_address,
             use_internal_ip=use_internal_ip,
             no_config_cache=no_config_cache,
-            all_nodes=False)
+            all_nodes=all_nodes)
 
 
 def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
