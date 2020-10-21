@@ -155,7 +155,7 @@ class EpsilonGreedy(Exploration):
         if explore:
             # Get the current epsilon.
             epsilon = self.epsilon_schedule(self.last_timestep)
-            if not isinstance(action_distribution, TorchCategorical):
+            if isinstance(action_distribution, TorchMultiActionDistribution):
                 exploit_action = tree.flatten(exploit_action)
                 for i in range(batch_size):
                     if random.random() < epsilon:
@@ -165,13 +165,9 @@ class EpsilonGreedy(Exploration):
                         for j in range(len(exploit_action)):
                             exploit_action[j][i] = torch.tensor(
                                 random_action[j])
-                if isinstance(action_distribution,
-                              TorchMultiActionDistribution):
-                    exploit_action = tree.unflatten_as(
-                        action_distribution.action_space_struct,
-                        exploit_action)
-                if len(exploit_action) == 1:
-                    exploit_action = exploit_action[0]
+                exploit_action = tree.unflatten_as(
+                    action_distribution.action_space_struct,
+                    exploit_action)
 
                 return exploit_action, action_logp
 
