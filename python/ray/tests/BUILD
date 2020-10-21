@@ -123,7 +123,7 @@ py_test(
 )
 
 py_test(
-    name = "test_aws_batch_tag_update.py",
+    name = "test_aws_batch_tag_update",
     size = "small",
     srcs = SRCS + ["aws/test_aws_batch_tag_update.py"],
     deps = ["//:ray_lib"],
