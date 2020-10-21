@@ -1057,7 +1057,7 @@ def start_dashboard(require_dashboard,
         f"--temp-dir={temp_dir}",
         f"--log-dir={logdir}",
     ]
-    
+
     if redis_password:
         command += ["--redis-password", redis_password]
 

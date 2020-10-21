@@ -24,13 +24,13 @@ def test_dashboard(shutdown_only):
             resp = requests.get(node_info_url, params={"view": "summary"})
             resp.raise_for_status()
             summaries = resp.json()
-            assert summaries["result"] == True
+            assert summaries["result"] is True
             assert "msg" in summaries
-            assert summaries["data"]["summary"][0]["raylet"]["state"] == "ALIVE"
+            assert summaries["data"]["summary"][0]["raylet"][
+                "state"] == "ALIVE"
             break
         except (requests.exceptions.ConnectionError, AssertionError):
             if time.time() > start_time + 30:
-                error_log = None
                 out_log = None
                 with open(
                         "{}/logs/dashboard.log".format(
@@ -39,7 +39,7 @@ def test_dashboard(shutdown_only):
                 raise Exception(
                     "Timed out while waiting for dashboard to start. "
                     f"Dashboard output log: {out_log}\n")
-    
+
 
 if __name__ == "__main__":
     import pytest
