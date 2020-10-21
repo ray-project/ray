@@ -709,7 +709,7 @@ class ServeController:
                 ) for router in self.routers.values()
             ])
 
-    # TODO(architkulkarni): add optional type hints after upgrading cloudpickle
+    # TODO(architkulkarni): add Optional[str] for route after upgrading cloudpickle
     async def create_endpoint(self, endpoint: str,
                               traffic_dict: Dict[str, float], route,
                               methods) -> None:
