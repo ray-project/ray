@@ -294,10 +294,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     # when running in Tune. Otherwise, the trainer runs in the main program.
     "num_cpus_for_driver": 1,
     # You can set these memory quotas to tell Ray to reserve memory for your
-    # training run. This guarantees predictable execution, but the tradeoff is
-    # if your workload exceeeds the memory quota it will fail.
-    # Heap memory to reserve for the trainer process (0 for unlimited). This
-    # can be large if your are using large train batches, replay buffers, etc.
+    # training run. This forces the Ray scheduler to spread actors across
+    # more machines if insufficient memory is available.
     "memory": 0,
     # Object store memory to reserve for the trainer process. Being large
     # enough to fit a few copies of the model weights should be sufficient.
