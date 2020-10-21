@@ -7,6 +7,9 @@ Configuring your Cluster
 
 To launch a cluster, you must first create a *cluster configuration file*, which specifies some important details about the cluster.
 
+Quickstart
+----------
+
 At a minimum, we need to specify:
 
 * the name of your cluster,
@@ -45,23 +48,23 @@ Most of the example YAML file is optional. Here is a `reference minimal YAML fil
 
 In another example, the `AWS example configuration file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with an m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
 
-You are encouraged to copy the example YAML file and modify it to your needs. This may include adding additional setup commands to install libraries or sync local data files.
+**You are encouraged to copy the example YAML file and modify it to your needs. This may include adding additional setup commands to install libraries or sync local data files.**
 
 Setup Commands
 --------------
 
-.. note:: After you have customized the nodes, it is also a good idea to create a new machine image (or docker container) and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
+.. tip:: After you have customized the nodes, create a new machine image (or docker container) and use that in the config file to reduce setup times.
 
-The setup commands you use should ideally be *idempotent*, that is, can be run more than once. This allows Ray to update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
+The setup commands you use should ideally be *idempotent* (i.e., can be run multiple times without changing the result). This allows Ray to safely update nodes after they have been created.
+
+You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
 
 .. _autoscaler-docker:
 
 Docker Support
 --------------
 
-The cluster launcher is fully compatible with docker images. To get started with using docker, provide a ``docker_image`` and ``container_name`` in the ``docker`` field of the YAML. We provide docker images on `DockerHub <https://hub.docker.com/u/rayproject>`__. The ``rayproject/ray-ml:latest`` image is a quick way to get up and running .
-
-When the cluster is launched, all of the Ray tasks will be executed inside of the container. For GPU support, Ray will automatically select the Nvidia docker runtime if available, and you just need to specify a docker image with the CUDA support (``rayproject/ray-ml:latest-gpu`` and all of our ``-gpu`` images have this).
+The cluster launcher is fully compatible with Docker images. To use Docker, provide a ``docker_image`` and ``container_name`` in the ``docker`` field of the YAML.
 
 .. code-block:: yaml
 
@@ -69,6 +72,9 @@ When the cluster is launched, all of the Ray tasks will be executed inside of th
         container_name: "ray_container"
         image: "rayproject/ray-ml:latest-gpu"
 
+We provide docker images on `DockerHub <https://hub.docker.com/u/rayproject>`__. The ``rayproject/ray-ml:latest`` image is a quick way to get up and running .
+
+When the cluster is launched, all of the Ray tasks will be executed completely inside of the container. For GPU support, Ray will automatically select the Nvidia docker runtime if available, and you just need to specify a docker image with the CUDA support (``rayproject/ray-ml:latest-gpu`` and all of our ``-gpu`` images have this).
 
 If Docker is not installed, add the following commands to ``initialization_commands`` to install it.
 
