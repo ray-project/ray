@@ -152,6 +152,7 @@ install_requires = [
     "redis >= 3.3.2, < 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",
+    "pytest",
 ]
 
 
