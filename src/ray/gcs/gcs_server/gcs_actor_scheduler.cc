@@ -67,9 +67,10 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetWorkerID().IsNil()) {
-    RAY_LOG(INFO)
-        << "Actor " << actor->GetActorID()
-        << " is already tied to a leased worker. Create actor directly on worker.";
+    RAY_LOG(INFO) << "Actor " << actor->GetActorID()
+                  << " is already tied to a leased worker. Create actor directly on "
+                     "worker. Job id = "
+                  << actor->GetActorID().JobId();
     auto leased_worker = std::make_shared<GcsLeasedWorker>(
         actor->GetAddress(),
         VectorFromProtobuf(actor->GetMutableActorTableData()->resource_mapping()),
@@ -193,7 +194,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
 
   auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Start leasing worker from node " << node_id << " for actor "
-                << actor->GetActorID();
+                << actor->GetActorID() << ", job id = " << actor->GetActorID().JobId();
 
   // We need to ensure that the RequestWorkerLease won't be sent before the reply of
   // ReleaseUnusedWorkers is returned.
@@ -222,10 +223,12 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
           auto actor_iter = iter->second.find(actor->GetActorID());
           if (actor_iter == iter->second.end()) {
             // if actor is not in leasing state, it means it is cancelled.
-            RAY_LOG(INFO) << "Raylet granted a lease request, but the outstanding lease "
-                             "request for "
-                          << actor->GetActorID()
-                          << " has been already cancelled. The response will be ignored.";
+            RAY_LOG(INFO)
+                << "Raylet granted a lease request, but the outstanding lease "
+                   "request for "
+                << actor->GetActorID()
+                << " has been already cancelled. The response will be ignored. Job id = "
+                << actor->GetActorID().JobId();
             return;
           }
 
@@ -237,7 +240,8 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
               node_to_actors_when_leasing_.erase(iter);
             }
             RAY_LOG(INFO) << "Finished leasing worker from " << node_id << " for actor "
-                          << actor->GetActorID();
+                          << actor->GetActorID()
+                          << ", job id = " << actor->GetActorID().JobId();
             HandleWorkerLeasedReply(actor, reply);
           } else {
             RetryLeasingWorkerFromNode(actor, node);
@@ -263,7 +267,7 @@ void GcsActorScheduler::DoRetryLeasingWorkerFromNode(
     // the node, so try leasing again.
     RAY_CHECK(iter->second.count(actor->GetActorID()) != 0);
     RAY_LOG(INFO) << "Retry leasing worker from " << actor->GetNodeID() << " for actor "
-                  << actor->GetActorID();
+                  << actor->GetActorID() << ", job id = " << actor->GetActorID().JobId();
     LeaseWorkerFromNode(actor, node);
   }
 }
@@ -321,7 +325,8 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                                             std::shared_ptr<GcsLeasedWorker> worker) {
   RAY_CHECK(actor && worker);
   RAY_LOG(INFO) << "Start creating actor " << actor->GetActorID() << " on worker "
-                << worker->GetWorkerID() << " at node " << actor->GetNodeID();
+                << worker->GetWorkerID() << " at node " << actor->GetNodeID()
+                << ", job id = " << actor->GetActorID().JobId();
 
   std::unique_ptr<rpc::PushTaskRequest> request(new rpc::PushTaskRequest());
   request->set_intended_worker_id(worker->GetWorkerID().Binary());
@@ -359,7 +364,8 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
               }
               RAY_LOG(INFO) << "Succeeded in creating actor " << actor->GetActorID()
                             << " on worker " << worker->GetWorkerID() << " at node "
-                            << actor->GetNodeID();
+                            << actor->GetNodeID()
+                            << ", job id = " << actor->GetActorID().JobId();
               schedule_success_handler_(actor);
             } else {
               RetryCreatingActorOnWorker(actor, worker);
@@ -386,7 +392,8 @@ void GcsActorScheduler::DoRetryCreatingActorOnWorker(
       // The worker is erased from creating map only when `CancelOnNode`
       // or `CancelOnWorker` or the actor is created successfully.
       RAY_LOG(INFO) << "Retry creating actor " << actor->GetActorID() << " on worker "
-                    << worker->GetWorkerID() << " at node " << actor->GetNodeID();
+                    << worker->GetWorkerID() << " at node " << actor->GetNodeID()
+                    << ", job id = " << actor->GetActorID().JobId();
       CreateActorOnWorker(actor, worker);
     }
   }

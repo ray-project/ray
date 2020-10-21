@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-ray_version="" 
+ray_version=""
 commit=""
 ray_branch=""
 
@@ -42,11 +42,11 @@ echo "version: $ray_version"
 echo "commit: $commit"
 echo "branch: $ray_branch"
 
-rm "ray-$ray_version-cp36-cp36m-manylinux1_x86_64.whl" || true
-wget "https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux1_x86_64.whl"
-      
+rm "ray-$ray_version-cp38-cp38-manylinux1_x86_64.whl" || true
+wget "https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp38-cp38-manylinux1_x86_64.whl"
+
 pip uninstall -y -q ray
-pip install -U "ray-$ray_version-cp36-cp36m-manylinux1_x86_64.whl"
+pip install -U "ray-$ray_version-cp38-cp38-manylinux1_x86_64.whl"
 
 unset RAY_ADDRESS
 OMP_NUM_THREADS=64 ray microbenchmark

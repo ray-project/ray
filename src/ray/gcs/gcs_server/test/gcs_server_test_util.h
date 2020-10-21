@@ -172,8 +172,7 @@ struct GcsServerMocker {
         const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
         override {
       num_commit_requested += 1;
-      rpc::CommitBundleResourcesReply reply;
-      callback(Status::OK(), reply);
+      commit_callbacks.push_back(callback);
     }
 
     void CancelResourceReserve(
@@ -184,7 +183,7 @@ struct GcsServerMocker {
       return_callbacks.push_back(callback);
     }
 
-    // Trigger reply to RequestWorkerLease.
+    // Trigger reply to PrepareBundleResources.
     bool GrantPrepareBundleResources(bool success = true) {
       Status status = Status::OK();
       rpc::PrepareBundleResourcesReply reply;
@@ -195,6 +194,20 @@ struct GcsServerMocker {
         auto callback = lease_callbacks.front();
         callback(status, reply);
         lease_callbacks.pop_front();
+        return true;
+      }
+    }
+
+    // Trigger reply to CommitBundleResources.
+    bool GrantCommitBundleResources(bool success = true) {
+      Status status = Status::OK();
+      rpc::CommitBundleResourcesReply reply;
+      if (commit_callbacks.size() == 0) {
+        return false;
+      } else {
+        auto callback = commit_callbacks.front();
+        callback(status, reply);
+        commit_callbacks.pop_front();
         return true;
       }
     }
@@ -220,6 +233,7 @@ struct GcsServerMocker {
     int num_commit_requested = 0;
     NodeID node_id = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::CommitBundleResourcesReply>> commit_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
   class MockedGcsActorScheduler : public gcs::GcsActorScheduler {

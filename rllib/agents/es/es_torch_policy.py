@@ -48,7 +48,7 @@ def before_init(policy, observation_space, action_space, config):
         for k in sorted(theta_dict.keys()):
             theta_list.append(torch.reshape(theta_dict[k], (-1, )))
         cat = torch.cat(theta_list, dim=0)
-        return cat.numpy()
+        return cat.cpu().numpy()
 
     type(policy).set_flat_weights = _set_flat_weights
     type(policy).get_flat_weights = _get_flat_weights
@@ -73,7 +73,7 @@ def before_init(policy, observation_space, action_space, config):
         action = dist.sample()
 
         def _add_noise(single_action, single_action_space):
-            single_action = single_action.detach().numpy()
+            single_action = single_action.detach().cpu().numpy()
             if add_noise and isinstance(single_action_space, gym.spaces.Box):
                 single_action += np.random.randn(*single_action.shape) * \
                                  policy.action_noise_std
@@ -82,9 +82,19 @@ def before_init(policy, observation_space, action_space, config):
         action = tree.map_structure(_add_noise, action,
                                     policy.action_space_struct)
         action = unbatch(action)
-        return action
+        return action, [], {}
+
+    def _compute_single_action(policy,
+                               observation,
+                               add_noise=False,
+                               update=True,
+                               **kwargs):
+        action, state_outs, extra_fetches = policy.compute_actions(
+            [observation], add_noise=add_noise, update=update, **kwargs)
+        return action[0], state_outs, extra_fetches
 
     type(policy).compute_actions = _compute_actions
+    type(policy).compute_single_action = _compute_single_action
 
 
 def after_init(policy, observation_space, action_space, config):

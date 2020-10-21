@@ -1,5 +1,5 @@
 ARG GPU
-FROM rayproject/ray-deps:latest"$GPU"
+FROM rayproject/ray-deps:nightly"$GPU"
 ARG WHEEL_PATH
 # For Click
 ENV LC_ALL=C.UTF-8

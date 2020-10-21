@@ -622,6 +622,29 @@ def init(
             arguments is passed in.
     """
 
+    # Try to increase the file descriptor limit, which is too low by
+    # default for Ray: https://github.com/ray-project/ray/issues/11239
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < hard:
+            logger.debug("Automatically increasing RLIMIT_NOFILE to max "
+                         "value of {}".format(hard))
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+            except ValueError:
+                logger.debug("Failed to raise limit.")
+        soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < 4096:
+            logger.warning(
+                "File descriptor limit {} is too low for production "
+                "servers and may result in connection errors. "
+                "At least 8192 is recommended. --- "
+                "Fix with 'ulimit -n 8192'".format(soft))
+    except ImportError:
+        logger.debug("Could not import resource module (on Windows)")
+        pass
+
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
@@ -1005,7 +1028,8 @@ def print_logs(redis_client, threads_stopped, job_id):
 def print_error_messages_raylet(task_error_queue, threads_stopped):
     """Prints message received in the given output queue.
 
-    This checks periodically if any un-raised errors occured in the background.
+    This checks periodically if any un-raised errors occurred in the
+    background.
 
     Args:
         task_error_queue (queue.Queue): A queue used to receive errors from the
@@ -1365,7 +1389,7 @@ def show_in_dashboard(message, key="", dtype="text"):
         message (str): Message to be displayed.
         key (str): The key name for the message. Multiple message under
             different keys will be displayed at the same time. Messages
-            under the same key will be overriden.
+            under the same key will be overridden.
         data_type (str): The type of message for rendering. One of the
             following: text, html.
     """
@@ -1680,10 +1704,7 @@ def make_decorator(num_returns=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
-                   worker=None,
-                   placement_group=None,
-                   placement_group_bundle_index=-1,
-                   placement_group_capture_child_tasks=True):
+                   worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1712,9 +1733,7 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries, placement_group,
-                placement_group_bundle_index,
-                placement_group_capture_child_tasks)
+                num_returns, max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1838,15 +1857,6 @@ def remote(*args, **kwargs):
             crashes unexpectedly. The minimum valid value is 0,
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
-        placement_group (:obj:`PlacementGroup`): The placement group
-            this task belongs to, or ``None`` if it doesn't belong
-            to any group.
-        placement_group_bundle_index (int): The index of the bundle
-            if the task belongs to a placement group, which may be
-            -1 to indicate any available bundle.
-        placement_group_capture_child_tasks (bool): Default True.
-            If True, all the child tasks (including actor creation)
-            are scheduled in the same placement group.
 
     """
     worker = global_worker
@@ -1878,9 +1888,6 @@ def remote(*args, **kwargs):
             "max_restarts",
             "max_task_retries",
             "max_retries",
-            "placement_group",
-            "placement_group_bundle_index",
-            "placement_group_capture_child_tasks",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
