@@ -3,7 +3,6 @@ from collections import namedtuple
 import logging
 import os
 import re
-import resource
 import subprocess
 import sys
 
@@ -151,20 +150,6 @@ class ResourceSpec(
         num_cpus = self.num_cpus
         if num_cpus is None:
             num_cpus = ray.utils.get_num_cpus()
-
-        # Try to increase the file descriptor limit, which is too low by
-        # default for Ray: https://github.com/ray-project/ray/issues/11239
-        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        if soft < hard:
-            logger.debug("Automatically increasing RLIMIT_NOFILE to max "
-                         "value of {}".format(hard))
-            resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
-        if hard < 4096:
-            logger.warning(
-                "File descriptor limit {} is too low for production "
-                "servers and may result in connection errors. "
-                "At least 8192 is recommended. --- "
-                "Fix with 'ulimit -n 8192'".format(soft))
 
         num_gpus = self.num_gpus
         gpu_ids = ray.utils.get_cuda_visible_devices()

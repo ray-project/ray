@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import redis
+import resource
 from six.moves import queue
 import sys
 import threading
@@ -621,6 +622,19 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    # Try to increase the file descriptor limit, which is too low by
+    # default for Ray: https://github.com/ray-project/ray/issues/11239
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if soft < hard:
+        logger.debug("Automatically increasing RLIMIT_NOFILE to max "
+                     "value of {}".format(hard))
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+    if hard < 4096:
+        logger.warning("File descriptor limit {} is too low for production "
+                       "servers and may result in connection errors. "
+                       "At least 8192 is recommended. --- "
+                       "Fix with 'ulimit -n 8192'".format(soft))
 
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
