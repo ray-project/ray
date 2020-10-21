@@ -113,6 +113,7 @@ std::string TestFunctionLevel2() {
   return TestFunctionLevel1();
 }
 
+#ifndef _WIN32
 TEST(PrintLogTest, CallstackTraceTest) {
   auto ret0 = TestFunctionLevel0();
   EXPECT_TRUE(ret0.find("TestFunctionLevel0") != std::string::npos);
@@ -121,6 +122,7 @@ TEST(PrintLogTest, CallstackTraceTest) {
   auto ret2 = TestFunctionLevel2();
   EXPECT_TRUE(ret2.find("TestFunctionLevel2") != std::string::npos);
 }
+#endif
 
 }  // namespace ray
 
