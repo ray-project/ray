@@ -860,7 +860,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # If the autoscaler was behaving incorrectly, it needs time to start
         # the new node, otherwise it could scale up after this check.
-        time.sleep(0.1)
+        time.sleep(0.2)
         self.waitForNodes(2)
 
     def testDelayedLaunch(self):
