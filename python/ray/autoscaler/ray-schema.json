@@ -259,7 +259,7 @@
         },
         "rsync_filter": {
             "type": "array",
-            "description": "Pattern file to lookup patterns to exclude when using rsync up or rsync down. This file is checked for recursively in all directories. For example, if .gitignore is provided here, the behavior will match git's .gitignore behavior."
+            "description": "Pattern files to lookup patterns to exclude when using rsync up or rsync down. This file is checked for recursively in all directories. For example, if .gitignore is provided here, the behavior will match git's .gitignore behavior."
         },
         "metadata": {
             "type": "object",
