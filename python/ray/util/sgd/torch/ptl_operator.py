@@ -269,7 +269,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 return_output = meter_collection.summary()
 
         if self.is_function_implemented("on_train_epoch_end", model):
-            model.on_train_epoch_end()
+            model.on_train_epoch_end(
+                [eo.get("raw_output") for eo in epoch_outputs])
 
         for s_dict, scheduler in zip(self.scheduler_dicts, self.schedulers):
             if s_dict["interval"] == SCHEDULER_STEP_EPOCH:
@@ -348,10 +349,9 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         with self.timers.record("grad"):
             if self.use_fp16:
                 with self._amp.scale_loss(loss, optimizer) as scaled_loss:
-                    model.backward(
-                        self, scaled_loss, optimizer, optimizer_idx=0)
+                    model.backward(scaled_loss, optimizer, optimizer_idx=0)
             else:
-                model.backward(self, loss, optimizer, optimizer_idx=0)
+                model.backward(loss, optimizer, optimizer_idx=0)
 
         if self.is_function_implemented("on_after_backward", model):
             model.on_after_backward()
@@ -373,7 +373,10 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
 
         if self.is_function_implemented("on_train_batch_end", model):
             model.on_train_batch_end(
-                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
+                outputs=output,
+                batch=batch,
+                batch_idx=batch_idx,
+                dataloader_idx=0)
 
         return {
             "signal": 0,
@@ -471,7 +474,10 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
 
         if self.is_function_implemented("on_validation_batch_end", model):
             model.on_validation_batch_end(
-                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
+                outputs=output,
+                batch=batch,
+                batch_idx=batch_idx,
+                dataloader_idx=0)
         return {
             "raw_output": output,
             # NUM_SAMPLES: len(batch)
