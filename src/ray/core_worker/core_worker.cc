@@ -541,6 +541,9 @@ void CoreWorker::Shutdown() {
   if (options_.worker_type == WorkerType::WORKER) {
     task_execution_service_.stop();
   }
+  if (options_.on_worker_shutdown) {
+    options_.on_worker_shutdown(GetWorkerID());
+  }
 }
 
 void CoreWorker::Disconnect() {
@@ -2261,6 +2264,12 @@ void CoreWorker::HandleRestoreSpilledObjects(
         Status::NotImplemented("Restore spilled objects callback not defined"), nullptr,
         nullptr);
   }
+}
+
+void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+  Exit(/*intentional=*/true);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

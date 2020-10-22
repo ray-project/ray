@@ -141,8 +141,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           io_service, config.num_initial_workers, config.num_workers_soft_limit,
           config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
-          config.max_worker_port, gcs_client_, config.worker_commands,
-          config.raylet_config,
+          config.max_worker_port, config.worker_ports, gcs_client_,
+          config.worker_commands, config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
@@ -169,7 +169,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                               object_manager_.FreeObjects(object_ids,
                                                           /*local_only=*/false);
                             }),
-      new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
+      new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
+      report_worker_backlog_(RayConfig::instance().report_worker_backlog()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -346,7 +347,11 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
     // Tasks of this job may already arrived but failed to pop a worker because the job
     // config is not local yet. So we trigger dispatching again here to try to
     // reschedule these tasks.
-    DispatchTasks(local_queues_.GetReadyTasksByClass());
+    if (new_scheduler_enabled_) {
+      ScheduleAndDispatch();
+    } else {
+      DispatchTasks(local_queues_.GetReadyTasksByClass());
+    }
   }
 }
 
@@ -370,15 +375,17 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
     }
   }
 
-  // Remove all tasks for this job from the scheduling queues, mark
-  // the results for these tasks as not required, cancel any attempts
-  // at reconstruction. Note that at this time the workers are likely
-  // alive because of the delay in killing workers.
-  auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
-  task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
-  // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
-  // call it last.
-  local_queues_.RemoveTasks(tasks_to_remove);
+  if (!new_scheduler_enabled_) {
+    // Remove all tasks for this job from the scheduling queues, mark
+    // the results for these tasks as not required, cancel any attempts
+    // at reconstruction. Note that at this time the workers are likely
+    // alive because of the delay in killing workers.
+    auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
+    task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
+    // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
+    // call it last.
+    local_queues_.RemoveTasks(tasks_to_remove);
+  }
 }
 
 void NodeManager::Heartbeat() {
@@ -397,64 +404,70 @@ void NodeManager::Heartbeat() {
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   heartbeat_data->set_client_id(self_node_id_.Binary());
 
-  // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
-  // TODO(atumanov): implement a ResourceSet const_iterator.
-  // If light heartbeat enabled, we only set filed that represent resources changed.
-  if (light_heartbeat_enabled_) {
-    if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
-            local_resources.GetTotalResources())) {
+  if (new_scheduler_enabled_) {
+    new_resource_scheduler_->Heartbeat(light_heartbeat_enabled_, heartbeat_data);
+    cluster_task_manager_->Heartbeat(light_heartbeat_enabled_, heartbeat_data);
+  } else {
+    // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
+    // directly.
+    // TODO(atumanov): implement a ResourceSet const_iterator.
+    // If light heartbeat enabled, we only set filed that represent resources changed.
+    if (light_heartbeat_enabled_) {
+      if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
+              local_resources.GetTotalResources())) {
+        for (const auto &resource_pair :
+             local_resources.GetTotalResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
+              resource_pair.second;
+        }
+        last_heartbeat_resources_.SetTotalResources(
+            ResourceSet(local_resources.GetTotalResources()));
+      }
+
+      if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
+              local_resources.GetAvailableResources())) {
+        heartbeat_data->set_resources_available_changed(true);
+        for (const auto &resource_pair :
+             local_resources.GetAvailableResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+              resource_pair.second;
+        }
+        last_heartbeat_resources_.SetAvailableResources(
+            ResourceSet(local_resources.GetAvailableResources()));
+      }
+
+      local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
+      if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
+              local_resources.GetLoadResources())) {
+        heartbeat_data->set_resource_load_changed(true);
+        for (const auto &resource_pair :
+             local_resources.GetLoadResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+              resource_pair.second;
+        }
+        last_heartbeat_resources_.SetLoadResources(
+            ResourceSet(local_resources.GetLoadResources()));
+      }
+    } else {
+      // If light heartbeat disabled, we send whole resources information every time.
       for (const auto &resource_pair :
            local_resources.GetTotalResources().GetResourceMap()) {
         (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
             resource_pair.second;
       }
-      last_heartbeat_resources_.SetTotalResources(
-          ResourceSet(local_resources.GetTotalResources()));
-    }
 
-    if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
-            local_resources.GetAvailableResources())) {
-      heartbeat_data->set_resources_available_changed(true);
       for (const auto &resource_pair :
            local_resources.GetAvailableResources().GetResourceMap()) {
         (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
             resource_pair.second;
       }
-      last_heartbeat_resources_.SetAvailableResources(
-          ResourceSet(local_resources.GetAvailableResources()));
-    }
 
-    local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-    if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
-            local_resources.GetLoadResources())) {
-      heartbeat_data->set_resource_load_changed(true);
+      local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
       for (const auto &resource_pair :
            local_resources.GetLoadResources().GetResourceMap()) {
         (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
             resource_pair.second;
       }
-      last_heartbeat_resources_.SetLoadResources(
-          ResourceSet(local_resources.GetLoadResources()));
-    }
-  } else {
-    // If light heartbeat disabled, we send whole resources information every time.
-    for (const auto &resource_pair :
-         local_resources.GetTotalResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    for (const auto &resource_pair :
-         local_resources.GetAvailableResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-    for (const auto &resource_pair :
-         local_resources.GetLoadResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
-          resource_pair.second;
     }
   }
 
@@ -1259,11 +1272,6 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     // Call task dispatch to assign work to the new worker.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
-  if (RayConfig::instance().enable_multi_tenancy()) {
-    // We trigger killing here instead of inside `Worker::PushWorker` because we
-    // only kill an idle worker if it remains idle after scheduling.
-    worker_pool_.TryKillingIdleWorkers();
-  }
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -1605,7 +1613,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
-  Task task(task_message);
+  auto backlog_size = -1;
+  if (report_worker_backlog_) {
+    backlog_size = request.backlog_size();
+  }
+  Task task(task_message, backlog_size);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
 
@@ -1752,11 +1764,10 @@ void NodeManager::HandleCancelResourceReserve(
   }
 
   // Return bundle resources.
-  if (ReturnBundleResources(bundle_spec)) {
-    // Call task dispatch to assign work to the released resources.
-    TryLocalInfeasibleTaskScheduling();
-    DispatchTasks(local_queues_.GetReadyTasksByClass());
-  }
+  ReturnBundleResources(bundle_spec);
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2068,10 +2079,10 @@ void NodeManager::ScheduleTasks(
           << task.GetTaskSpecification().GetRequiredResources().ToString()
           << " for execution and "
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-          << " for placement, however there are no nodes in the cluster that can "
-          << "provide the requested resources. To resolve this issue, consider "
-          << "reducing the resource requests of this task or add nodes that "
-          << "can fit the task.";
+          << " for placement, however the cluster currently cannot provide the requested "
+             "resources. The required resources may be added as autoscaling takes place "
+             "or placement groups are scheduled. Otherwise, consider reducing the "
+             "resource requirements of the task.";
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
                                     task.GetTaskSpecification().JobId());
@@ -3074,9 +3085,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   // and return the information from HandleNodesStatsRequest. The caller of
   // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers();
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
   absl::flat_hash_set<WorkerID> driver_ids;
-  for (auto driver : worker_pool_.GetAllRegisteredDrivers()) {
+  for (auto driver :
+       worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
   }
@@ -3085,6 +3097,9 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     return;
   }
   for (const auto &worker : all_workers) {
+    if (worker->IsDead()) {
+      continue;
+    }
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(node_stats_request.include_memory_info());
@@ -3100,8 +3115,11 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
           if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
           } else {
-            RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
-                           << status.ToString();
+            RAY_LOG(WARNING) << "Failed to send get core worker stats request, "
+                             << "worker id is " << worker->WorkerId() << ", status is "
+                             << status.ToString()
+                             << ". This is likely since the worker has died before the "
+                                "request was sent.";
             worker_stats->set_fetch_error(status.ToString());
           }
           if (reply->num_workers() == all_workers.size()) {

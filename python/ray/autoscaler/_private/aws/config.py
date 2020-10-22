@@ -11,14 +11,12 @@ import boto3
 from botocore.config import Config
 import botocore
 
-from ray.ray_constants import BOTO_MAX_RETRIES
+from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 from ray.autoscaler.tags import NODE_KIND_WORKER, NODE_KIND_HEAD
-from ray.autoscaler.node_provider import _PROVIDER_PRETTY_NAMES
+from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
     handle_boto_error
-from ray.autoscaler._private.cli_logger import cli_logger
-
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 
@@ -525,7 +523,9 @@ def _get_or_create_vpc_security_groups(conf, node_types):
     }
 
     # Generate the name of the security group we're looking for...
-    expected_sg_name = SECURITY_GROUP_TEMPLATE.format(conf["cluster_name"])
+    expected_sg_name = conf["provider"] \
+        .get("security_group", {}) \
+        .get("GroupName", SECURITY_GROUP_TEMPLATE.format(conf["cluster_name"]))
 
     # Figure out which security groups with this name exist for each VPC...
     vpc_to_existing_sg = {
@@ -593,6 +593,8 @@ def _create_security_group(config, vpc_id, group_name):
         GroupName=group_name,
         VpcId=vpc_id)
     security_group = _get_security_group(config, vpc_id, group_name)
+    cli_logger.doassert(security_group,
+                        "Failed to create security group")  # err msg
 
     cli_logger.verbose(
         "Created new security group {}",
@@ -601,9 +603,6 @@ def _create_security_group(config, vpc_id, group_name):
     cli_logger.old_info(
         logger, "_create_security_group: Created new security group {} ({})",
         security_group.group_name, security_group.id)
-
-    cli_logger.doassert(security_group,
-                        "Failed to create security group")  # err msg
     assert security_group, "Failed to create security group"
     return security_group
 

@@ -28,7 +28,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
 
@@ -40,7 +40,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -55,7 +55,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -84,7 +84,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
 
@@ -97,7 +97,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -113,7 +113,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -186,6 +186,7 @@ matrix:
     # Build Linux wheels and jars.
     - os: linux
       env:
+        # - PYTHON=3.6
         - LINUX_WHEELS=1 LINUX_JARS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
@@ -197,7 +198,9 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then . $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh; fi
+        - export PATH="$HOME/miniconda3/bin:$PATH"
+        - python -m pip install docker
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py; fi
         - bash ./java/build-jar-multiplatform.sh linux
       cache: false
 
@@ -496,7 +499,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py
     skip_cleanup: true
     on:
       repo: ray-project/ray

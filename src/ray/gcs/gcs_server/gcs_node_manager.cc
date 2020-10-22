@@ -63,6 +63,11 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   }
 }
 
+void GcsNodeManager::NodeFailureDetector::UpdatePlacementGroupLoad(
+    std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
+  placement_group_load_ = absl::make_optional(placement_group_load);
+}
+
 /// A periodic timer that checks for timed out clients.
 void GcsNodeManager::NodeFailureDetector::Tick() {
   DetectDeadNodes();
@@ -102,6 +107,10 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
+        if (RayConfig::instance().report_worker_backlog()) {
+          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                            demand.backlog_size());
+        }
       }
       heartbeat.second.clear_resource_load_by_shape();
 
@@ -114,6 +123,15 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
       for (const auto &resource_pair : demand.first.GetResourceMap()) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
       }
+    }
+
+    // Update placement group load to heartbeat batch.
+    // This is updated only one per second.
+    if (placement_group_load_.has_value()) {
+      auto placement_group_load = placement_group_load_.value();
+      auto placement_group_load_proto = batch->mutable_placement_group_load();
+      placement_group_load_proto->Swap(placement_group_load.get());
+      placement_group_load_.reset();
     }
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
@@ -150,7 +168,8 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &main_io_service,
             main_io_service_.post([this, node_id] {
               if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
                 node->set_state(rpc::GcsNodeInfo::DEAD);
-                RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
+                node->set_timestamp(current_sys_time_ms());
+                AddDeadNodeToCache(node);
                 auto on_done = [this, node_id, node](const Status &status) {
                   auto on_done = [this, node_id, node](const Status &status) {
                     RAY_CHECK_OK(gcs_pub_sub_->Publish(
@@ -195,7 +214,8 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
-    RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
+    node->set_timestamp(current_sys_time_ms());
+    AddDeadNodeToCache(node);
 
     auto on_done = [this, node_id, node, reply,
                     send_reply_callback](const Status &status) {
@@ -241,8 +261,6 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
     node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
   });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_CHANNEL, node_id.Hex(),
-                                     heartbeat_data->SerializeAsString(), nullptr));
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -331,7 +349,7 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
 void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
                                              rpc::SetInternalConfigReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
-  auto on_done = [reply, send_reply_callback, request](const Status status) {
+  auto on_done = [reply, send_reply_callback, request](const Status &status) {
     RAY_LOG(DEBUG) << "Set internal config: " << request.config().DebugString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -343,7 +361,7 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
                                              rpc::GetInternalConfigReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
   auto get_system_config = [reply, send_reply_callback](
-                               ray::Status status,
+                               const ray::Status &status,
                                const boost::optional<rpc::StoredConfig> &config) {
     if (config.has_value()) {
       reply->mutable_config()->CopyFrom(config.get());
@@ -361,7 +379,7 @@ void GcsNodeManager::HandleGetAllAvailableResources(
   for (const auto &iter : GetClusterRealtimeResources()) {
     rpc::AvailableResources resource;
     resource.set_node_id(iter.first.Binary());
-    for (auto res : iter.second->GetResourceAmountMap()) {
+    for (const auto &res : iter.second->GetResourceAmountMap()) {
       (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
     }
     reply->add_resources_list()->CopyFrom(resource);
@@ -369,11 +387,11 @@ void GcsNodeManager::HandleGetAllAvailableResources(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
+absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
-    return nullptr;
+    return {};
   }
 
   return iter->second;
@@ -448,8 +466,13 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
         AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
       } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
         dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+        sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
       }
     }
+    sorted_dead_node_list_.sort([](const std::pair<NodeID, int64_t> &left,
+                                   const std::pair<NodeID, int64_t> &right) {
+      return left.second < right.second;
+    });
 
     auto get_node_resource_callback =
         [this, done](const std::unordered_map<NodeID, ResourceMap> &result) {
@@ -486,6 +509,27 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
 const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
     &GcsNodeManager::GetClusterRealtimeResources() const {
   return cluster_realtime_resources_;
+}
+
+void GcsNodeManager::UpdatePlacementGroupLoad(
+    std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) const {
+  // Node failure detector code should be running in a separate thread to avoid heartbeat
+  // lagging.
+  node_failure_detector_service_.post([this, placement_group_load] {
+    node_failure_detector_->UpdatePlacementGroupLoad(move(placement_group_load));
+  });
+}
+
+void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
+  if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
+    const auto &node_id = sorted_dead_node_list_.begin()->first;
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(node_id, nullptr));
+    dead_nodes_.erase(sorted_dead_node_list_.begin()->first);
+    sorted_dead_node_list_.erase(sorted_dead_node_list_.begin());
+  }
+  auto node_id = NodeID::FromBinary(node->node_id());
+  dead_nodes_.emplace(node_id, node);
+  sorted_dead_node_list_.emplace_back(node_id, node->timestamp());
 }
 
 }  // namespace gcs

@@ -37,7 +37,7 @@ class FixedPoint {
   bool operator==(FixedPoint const &ru1) const;
   bool operator!=(FixedPoint const &ru1) const;
 
-  double Double();
+  double Double() const;
 
   friend std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1);
 };

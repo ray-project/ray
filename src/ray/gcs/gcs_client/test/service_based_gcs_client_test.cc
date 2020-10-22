@@ -20,6 +20,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -27,7 +28,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
-        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)}});
+        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)},
+         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)},
+         {"maximum_gcs_dead_node_cached_count", std::to_string(10)}});
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -157,19 +160,37 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(
-        actor_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
+  bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data,
+                     bool is_detached = true, bool skip_wait = false) {
+    rpc::TaskSpec message;
+    auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
+    message.set_job_id(actor_id.JobId().Binary());
+    message.set_type(TaskType::ACTOR_CREATION_TASK);
+    message.set_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
+    message.set_caller_id(actor_id.Binary());
+    message.set_max_retries(0);
+    message.set_num_returns(1);
+    message.set_parent_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
+    message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
+    message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
+    // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
+    // worker client is called during the actor registration process. In order to simulate
+    // the scenario of registration failure, we set the address to an illegal value.
+    if (!is_detached) {
+      rpc::Address address;
+      address.set_ip_address("");
+      message.mutable_caller_address()->CopyFrom(address);
+    }
+    TaskSpecification task_spec(message);
 
-  bool UpdateActor(const ActorID &actor_id,
-                   const std::shared_ptr<rpc::ActorTableData> &actor_table_data) {
+    if (skip_wait) {
+      return gcs_client_->Actors()
+          .AsyncRegisterActor(task_spec, [](Status status) {})
+          .ok();
+    }
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(
-        actor_id, actor_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegisterActor(
+        task_spec, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -185,6 +206,21 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actor_table_data;
+  }
+
+  std::vector<rpc::ActorTableData> GetAllActors() {
+    std::promise<bool> promise;
+    std::vector<rpc::ActorTableData> actors;
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
+        [&actors, &promise](Status status,
+                            const std::vector<rpc::ActorTableData> &result) {
+          if (!result.empty()) {
+            actors.assign(result.begin(), result.end());
+          }
+          promise.set_value(true);
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return actors;
   }
 
   bool AddCheckpoint(
@@ -536,6 +572,18 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     ASSERT_TRUE(actor.state() == expected_state);
   }
 
+  absl::flat_hash_set<NodeID> RegisterNodeAndMarkDead(int node_count) {
+    absl::flat_hash_set<NodeID> node_ids;
+    for (int index = 0; index < node_count; ++index) {
+      auto node_info = Mocker::GenNodeInfo();
+      auto node_id = NodeID::FromBinary(node_info->node_id());
+      EXPECT_TRUE(RegisterNode(*node_info));
+      EXPECT_TRUE(UnregisterNode(node_id));
+      node_ids.insert(node_id);
+    }
+    return node_ids;
+  }
+
   // GCS server.
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -584,17 +632,11 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
 
   // Register an actor to GCS.
   ASSERT_TRUE(RegisterActor(actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::ALIVE);
+  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::DEPENDENCIES_UNREADY);
 
   // Cancel subscription to an actor.
   UnsubscribeActor(actor_id);
   WaitForActorUnsubscribed(actor_id);
-
-  // Update dynamic states of actor in GCS.
-  actor_table_data->set_state(rpc::ActorTableData::DEAD);
-  ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::DEAD);
-  WaitForExpectedCount(actor_update_count, 1);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorCheckpoint) {
@@ -637,8 +679,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   ASSERT_TRUE(SubscribeAllActors(on_subscribe));
 
   // Register an actor to GCS.
-  ASSERT_TRUE(RegisterActor(actor_table_data1));
-  ASSERT_TRUE(RegisterActor(actor_table_data2));
+  RegisterActor(actor_table_data1, false);
+  RegisterActor(actor_table_data2, false);
   WaitForExpectedCount(actor_update_count, 2);
 }
 
@@ -984,13 +1026,13 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Subscribe to updates for this actor.
   ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
 
-  ASSERT_TRUE(RegisterActor(actor_table_data));
+  ASSERT_FALSE(RegisterActor(actor_table_data, false));
 
-  // We should receive a new ALIVE notification from the subscribe channel.
+  // We should receive a new DEAD notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
   WaitForExpectedCount(num_subscribe_one_notifications, 1);
-  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::ALIVE);
-  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::ALIVE);
+  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::DEAD);
+  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::DEAD);
 
   // Restart GCS server.
   RestartGcsServer();
@@ -999,20 +1041,15 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // didn't restart, it will fetch data again from the GCS server. The GCS will destroy
   // the actor because it finds that the actor is out of scope, so we'll receive another
   // notification of DEAD state.
-  WaitForExpectedCount(num_subscribe_all_notifications, 2);
-  WaitForExpectedCount(num_subscribe_one_notifications, 2);
-  CheckActorData(subscribe_all_notifications[1], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[1], rpc::ActorTableData::DEAD);
-
-  // Update the actor state to ALIVE.
-  actor_table_data->set_state(rpc::ActorTableData::ALIVE);
-  ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
-
-  // We should receive a new ALIVE notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 3);
   WaitForExpectedCount(num_subscribe_one_notifications, 3);
-  CheckActorData(subscribe_all_notifications[2], rpc::ActorTableData::ALIVE);
-  CheckActorData(subscribe_one_notifications[2], rpc::ActorTableData::ALIVE);
+  /// NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
+  /// client will register the actor again. When an actor is registered, the status in GCS
+  /// is `DEPENDENCIES_UNREADY`. When GCS finds that the owner of an actor is nil, it will
+  /// destroy the actor and the status of the actor will change to `DEAD`. The GCS client
+  /// fetch actor info from the GCS server, and the status of the actor may be
+  /// `DEPENDENCIES_UNREADY` or `DEAD`, so we do not assert the actor status here any
+  /// more.
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
@@ -1257,6 +1294,91 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   for (auto &thread : threads) {
     thread->join();
     thread.reset();
+  }
+}
+
+// This UT is only used to test the query actor info performance.
+// We disable it by default.
+TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
+  // Register actors.
+  JobID job_id = JobID::FromInt(1);
+  int actor_count = 5000;
+  rpc::TaskSpec task_spec;
+  rpc::TaskArg task_arg;
+  task_arg.set_data("0123456789");
+  for (int index = 0; index < 10000; ++index) {
+    task_spec.add_args()->CopyFrom(task_arg);
+  }
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    actor_table_data->mutable_task_spec()->CopyFrom(task_spec);
+    RegisterActor(actor_table_data, false, true);
+  }
+
+  // Get all actors.
+  auto condition = [this, actor_count]() {
+    return (int)GetAllActors().size() == actor_count;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  int64_t start_time = current_time_ms();
+  auto actors = GetAllActors();
+  RAY_LOG(INFO) << "It takes " << current_time_ms() - start_time << "ms to query "
+                << actor_count << " actors.";
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
+  // Register actors and the actors will be destroyed.
+  JobID job_id = JobID::FromInt(1);
+  int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    RegisterActor(actor_table_data, false);
+  }
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  absl::flat_hash_set<ActorID> actor_ids;
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    RegisterActor(actor_table_data, false);
+    actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
+  }
+
+  // Get all actors.
+  auto condition = [this]() {
+    return GetAllActors().size() ==
+           RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  auto actors = GetAllActors();
+  for (const auto &actor : actors) {
+    EXPECT_TRUE(actor_ids.contains(ActorID::FromBinary(actor.actor_id())));
+  }
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDeadNodes) {
+  // Simulate the scenario of node dead.
+  int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  RegisterNodeAndMarkDead(node_count);
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  const auto &node_ids = RegisterNodeAndMarkDead(node_count);
+
+  // Get all nodes.
+  auto condition = [this]() {
+    return GetNodeInfoList().size() ==
+           RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  auto nodes = GetNodeInfoList();
+  for (const auto &node : nodes) {
+    EXPECT_TRUE(node_ids.contains(NodeID::FromBinary(node.node_id())));
   }
 }
 

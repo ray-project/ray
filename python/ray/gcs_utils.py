@@ -15,6 +15,8 @@ from ray.core.generated.gcs_pb2 import (
     TablePrefix,
     TablePubsub,
     TaskTableData,
+    ResourceDemand,
+    ResourceLoad,
     ResourceMap,
     ResourceTableData,
     ObjectLocationInfo,
@@ -40,6 +42,8 @@ __all__ = [
     "TablePrefix",
     "TablePubsub",
     "TaskTableData",
+    "ResourceDemand",
+    "ResourceLoad",
     "ResourceMap",
     "ResourceTableData",
     "construct_error_message",
@@ -54,7 +58,6 @@ LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
 REPORTER_CHANNEL = "RAY_REPORTER"
 
 # xray heartbeats
-XRAY_HEARTBEAT_PATTERN = "HEARTBEAT:*".encode("ascii")
 XRAY_HEARTBEAT_BATCH_PATTERN = "HEARTBEAT_BATCH:".encode("ascii")
 
 # xray job updates

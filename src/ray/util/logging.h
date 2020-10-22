@@ -43,6 +43,11 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
+/// In order to use the get stacktrace method in other non-glog scenarios, we
+/// have added a patch to allow glog to return the current call stack information
+/// through the internal interface. This function `GetCallTrace` is a wrapper
+/// providing a new detection function for debug or something like that.
+std::string GetCallTrace();
 
 enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
 

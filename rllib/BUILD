@@ -222,6 +222,18 @@ py_test(
     args = ["--yaml-dir=tuned_examples/impala", "--torch"]
 )
 
+# Working, but takes a long time to learn (>15min).
+## MB-MPO
+#py_test(
+#    name = "run_regression_tests_pendulum_mbmpo_torch",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["learning_tests_torch", "learning_tests_pendulum"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/mbmpo/pendulum-mbmpo.yaml"],
+#    args = ["--torch", "--yaml-dir=tuned_examples/mbmpo"]
+#)
+
 # PG
 py_test(
     name = "run_regression_tests_cartpole_pg_tf",
@@ -484,6 +496,14 @@ py_test(
     tags = ["agents_dir"],
     size = "medium",
     srcs = ["agents/maml/tests/test_maml.py"]
+)
+
+# MBMPOTrainer
+py_test(
+    name = "test_mbmpo",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
 )
 
 # PGTrainer
@@ -1006,6 +1026,13 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
+py_test(
+    name = "env/wrappers/tests/test_recsim_wrapper",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -1014,19 +1041,26 @@ sh_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_distributions",
-    tags = ["models"],
-    size = "medium",
-    srcs = ["models/tests/test_distributions.py"]
-)
-
-py_test(
     name = "test_attention_nets",
     tags = ["models"],
     size = "small",
     srcs = ["models/tests/test_attention_nets.py"]
 )
 
+py_test(
+    name = "test_convtranspose2d_stack",
+    tags = ["models"],
+    size = "small",
+    data = glob(["tests/data/images/obstacle_tower.png"]),
+    srcs = ["models/tests/test_convtranspose2d_stack.py"]
+)
+
+py_test(
+    name = "test_distributions",
+    tags = ["models"],
+    size = "medium",
+    srcs = ["models/tests/test_distributions.py"]
+)
 
 # --------------------------------------------------------------------
 # Evaluation components
@@ -1150,7 +1184,7 @@ py_test(
 py_test(
     name = "tests/test_catalog",
     tags = ["tests_dir", "tests_dir_C"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_catalog.py"]
 )
 
@@ -1395,6 +1429,13 @@ py_test(
     size = "large",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]
+)
+
+py_test(
+    name = "tests/test_timesteps",
+    tags = ["tests_dir", "tests_dir_T"],
+    size = "small",
+    srcs = ["tests/test_timesteps.py"]
 )
 
 # --------------------------------------------------------------------

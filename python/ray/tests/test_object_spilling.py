@@ -1,13 +1,17 @@
 import json
 import random
+import platform
 import sys
 import time
 
 import numpy as np
 import pytest
+import psutil
 import ray
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_objects_manually(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
@@ -38,6 +42,16 @@ def test_spill_objects_manually(shutdown_only):
                 ref_to_spill = pinned_objects.pop()
                 ray.experimental.force_spill_objects([ref_to_spill])
 
+    def is_worker(cmdline):
+        return cmdline and cmdline[0].startswith("ray::")
+
+    # Make sure io workers are spawned with proper name.
+    processes = [
+        x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
+        if is_worker(x.info["cmdline"])
+    ]
+    assert ray.ray_constants.WORKER_PROCESS_TYPE_IO_WORKER in processes
+
     # Spill 2 more objects so we will always have enough space for
     # restoring objects back.
     refs_to_spill = (pinned_objects.pop(), pinned_objects.pop())
@@ -50,6 +64,8 @@ def test_spill_objects_manually(shutdown_only):
         assert np.array_equal(sample, arr)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_objects_manually_from_workers(shutdown_only):
     # Limit our object store to 100 MiB of memory.
     ray.init(
@@ -74,7 +90,7 @@ def test_spill_objects_manually_from_workers(shutdown_only):
 
     # Create objects of more than 200 MiB.
     replay_buffer = [ray.get(_worker.remote()) for _ in range(25)]
-    values = dict((ref, np.copy(ray.get(ref))) for ref in replay_buffer)
+    values = {ref: np.copy(ray.get(ref)) for ref in replay_buffer}
     # Randomly sample objects.
     for _ in range(100):
         ref = random.choice(replay_buffer)
@@ -110,6 +126,8 @@ def test_spill_objects_manually_with_workers(shutdown_only):
         assert np.array_equal(restored, arr)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
@@ -166,7 +184,6 @@ def test_spill_remote_object(ray_start_cluster_head):
     # Test passing the spilled object as an arg to another task.
     ray.get(depends.remote(ref))
 
-
 @pytest.mark.skip(reason="Not implemented yet.")
 def test_spill_objects_automatically(shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -201,4 +218,4 @@ def test_spill_objects_automatically(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

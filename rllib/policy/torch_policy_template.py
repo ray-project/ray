@@ -22,9 +22,9 @@ torch, _ = try_import_torch()
 def build_torch_policy(
         name: str,
         *,
-        loss_fn: Callable[[
+        loss_fn: Optional[Callable[[
             Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
-        ], Union[TensorType, List[TensorType]]],
+        ], Union[TensorType, List[TensorType]]]],
         get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,
@@ -64,15 +64,17 @@ def build_torch_policy(
         apply_gradients_fn: Optional[Callable[
             [Policy, "torch.optim.Optimizer"], None]] = None,
         mixins: Optional[List[type]] = None,
-        training_view_requirements_fn: Optional[Callable[[], Dict[
+        view_requirements_fn: Optional[Callable[[], Dict[
             str, ViewRequirement]]] = None,
-        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None):
+        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
+) -> Type[TorchPolicy]:
     """Helper function for creating a torch policy class at runtime.
 
     Args:
         name (str): name of the policy (e.g., "PPOTorchPolicy")
-        loss_fn (Callable[[Policy, ModelV2, type, SampleBatch], TensorType]):
-            Callable that returns a loss tensor.
+        loss_fn (Optional[Callable[[Policy, ModelV2,
+            Type[TorchDistributionWrapper], SampleBatch], Union[TensorType,
+            List[TensorType]]]]): Callable that returns a loss tensor.
         get_default_config (Optional[Callable[[None], TrainerConfigDict]]):
             Optional callable that returns the default config to merge with any
             overrides. If None, uses only(!) the user-provided
@@ -159,7 +161,7 @@ def build_torch_policy(
         mixins (Optional[List[type]]): Optional list of any class mixins for
             the returned policy class. These mixins will be applied in order
             and will have higher precedence than the TorchPolicy class.
-        training_view_requirements_fn (Callable[[],
+        view_requirements_fn (Callable[[],
             Dict[str, ViewRequirement]]): An optional callable to retrieve
             additional train view requirements for this policy.
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
@@ -167,7 +169,8 @@ def build_torch_policy(
             sample batches. If None, will assume a value of 1.
 
     Returns:
-        type: TorchPolicy child class constructed from the specified args.
+        Type[TorchPolicy]: TorchPolicy child class constructed from the
+            specified args.
     """
 
     original_kwargs = locals().copy()
@@ -226,9 +229,8 @@ def build_torch_policy(
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
 
-            if callable(training_view_requirements_fn):
-                self.training_view_requirements.update(
-                    training_view_requirements_fn(self))
+            if callable(view_requirements_fn):
+                self.view_requirements.update(view_requirements_fn(self))
 
             if after_init:
                 after_init(self, obs_space, action_space, config)

@@ -67,6 +67,9 @@ struct NodeManagerConfig {
   /// The highest port number that workers started will bind on.
   /// If this is not set to 0, min_worker_port must also not be set to 0.
   int max_worker_port;
+  /// An explicit list of open ports that workers started will bind
+  /// on. This takes precedence over min_worker_port and max_worker_port.
+  std::vector<int> worker_ports;
   /// The initial number of workers to create.
   int num_initial_workers;
   /// The soft limit of the number of workers.
@@ -772,6 +775,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
+
+  /// Whether to report the worker's backlog size in the GCS heartbeat.
+  const bool report_worker_backlog_;
 
   /// Whether to trigger global GC in the next heartbeat. This will broadcast
   /// a global GC message to all raylets except for this one.
