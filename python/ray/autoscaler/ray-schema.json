@@ -140,6 +140,21 @@
                     "type": ["string", "null"],
                     "description": "GCP globally unique project id"
                 },
+                "security_group": {
+                    "type": "object",
+                    "description": "AWS security group",
+                    "additionalProperties": false,
+                    "properties": {
+                      "GroupName": {
+                        "type": "string",
+                        "description": "Security group name"
+                      },
+                      "IpPermissions": {
+                        "type": "array",
+                        "description": "Security group in bound rules"
+                      }
+                    }
+                },
                 "gcp_credentials": {
                     "type": "object",
                     "description": "Credentials for authenticating with the GCP client",
