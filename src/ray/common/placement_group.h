@@ -67,10 +67,18 @@ class PlacementGroupSpecBuilder {
   PlacementGroupSpecBuilder &SetPlacementGroupSpec(
       const PlacementGroupID &placement_group_id, std::string name,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
-      const rpc::PlacementStrategy strategy) {
+      const rpc::PlacementStrategy strategy, const JobID &creator_job_id,
+      const ActorID &creator_actor_id) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
+    // Configure creator job and actor ID for automatic lifecycle management.
+    RAY_CHECK(creator_job_id != JobID::Nil());
+    message_->set_creator_job_id(creator_job_id.Binary());
+    message_->set_creator_job_dead(false);
+    message_->set_creator_actor_id(creator_actor_id.Binary());
+    message_->set_creator_actor_dead(creator_actor_id == ActorID::Nil());
+
     for (size_t i = 0; i < bundles.size(); i++) {
       auto resources = bundles[i];
       auto message_bundle = message_->add_bundles();

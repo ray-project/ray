@@ -351,6 +351,224 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
             placement_group->GetPlacementGroupID());
 }
 
+TEST_F(GcsPlacementGroupManagerTest, TestRegisteredPlacementGroupIndex) {
+  // Test the case where the placement group has only a job id.
+  gcs::RegisteredPlacementGroupIndex registered_placement_groups;
+  auto request = Mocker::GenCreatePlacementGroupRequest(
+      /* name */ "", rpc::PlacementStrategy::SPREAD,
+      /* bundles_count */ 2,
+      /* cpu_num */ 1.0,
+      /* job_id */ JobID::FromInt(1),
+      /* actor_id */ ActorID::Nil());
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(gcs::GcsPlacementGroup(request));
+  auto job_id = placement_group->GetCreatorJobId();
+  // Make sure when we emplace twice, the second function won't do anything and return
+  // false.
+  ASSERT_TRUE(registered_placement_groups.Emplace(placement_group->GetPlacementGroupID(),
+                                                  placement_group));
+  ASSERT_FALSE(registered_placement_groups.Emplace(placement_group->GetPlacementGroupID(),
+                                                   placement_group));
+  // Make sure we can get entries that exist.
+  ASSERT_TRUE(registered_placement_groups.GetPlacementGroupsOwnedByJob(job_id).size() ==
+              1);
+  ASSERT_TRUE(placement_group ==
+              registered_placement_groups.Get(placement_group->GetPlacementGroupID()));
+  ASSERT_TRUE(registered_placement_groups
+                  .GetPlacementGroupsOwnedByActor(ActorID::Of(job_id, TaskID::Nil(), 0))
+                  .size() == 0);
+  // Make sure we cannot get entries that don'e exist.
+  ASSERT_TRUE(registered_placement_groups.GetPlacementGroupsOwnedByJob(JobID::FromInt(2))
+                  .size() == 0);
+  ASSERT_TRUE(registered_placement_groups
+                  .GetPlacementGroupsOwnedByActor(
+                      ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0))
+                  .size() == 0);
+  ASSERT_FALSE(registered_placement_groups.Get(PlacementGroupID::FromRandom()) ==
+               placement_group);
+  // Make sure things are cleaned after erasing them.
+  registered_placement_groups.Erase(placement_group->GetPlacementGroupID());
+  ASSERT_TRUE(registered_placement_groups.GetPlacementGroupsOwnedByJob(job_id).size() ==
+              0);
+  ASSERT_FALSE(registered_placement_groups.Get(placement_group->GetPlacementGroupID()) ==
+               placement_group);
+  // Make sure we can emplace the same entry again.
+  ASSERT_TRUE(registered_placement_groups.Emplace(placement_group->GetPlacementGroupID(),
+                                                  placement_group));
+  registered_placement_groups.Erase(placement_group->GetPlacementGroupID());
+
+  // Test the case where placement group has both actor id and job id.
+  auto job_id2 = JobID::FromInt(2);
+  auto actor_id = ActorID::Of(job_id2, TaskID::Nil(), 0);
+  auto request2 = Mocker::GenCreatePlacementGroupRequest(
+      /* name */ "", rpc::PlacementStrategy::SPREAD,
+      /* bundles_count */ 2,
+      /* cpu_num */ 1.0,
+      /* job_id */ job_id2,
+      /* actor_id */ actor_id);
+  auto placement_group2 =
+      std::make_shared<gcs::GcsPlacementGroup>(gcs::GcsPlacementGroup(request2));
+  ASSERT_TRUE(registered_placement_groups.Emplace(placement_group2->GetPlacementGroupID(),
+                                                  placement_group2));
+  ASSERT_TRUE(registered_placement_groups.GetPlacementGroupsOwnedByJob(job_id2).size() ==
+              1);
+  ASSERT_TRUE(placement_group2 ==
+              registered_placement_groups.Get(placement_group2->GetPlacementGroupID()));
+  ASSERT_TRUE(
+      registered_placement_groups.GetPlacementGroupsOwnedByActor(actor_id).size() == 1);
+  registered_placement_groups.Erase(placement_group2->GetPlacementGroupID());
+  ASSERT_TRUE(registered_placement_groups.GetPlacementGroupsOwnedByJob(job_id2).size() ==
+              0);
+  ASSERT_FALSE(placement_group2 ==
+               registered_placement_groups.Get(placement_group2->GetPlacementGroupID()));
+  ASSERT_TRUE(
+      registered_placement_groups.GetPlacementGroupsOwnedByActor(actor_id).size() == 0);
+
+  // Register 2 placement groups with the same job id.
+  auto request3 = Mocker::GenCreatePlacementGroupRequest(
+      /* name */ "", rpc::PlacementStrategy::SPREAD,
+      /* bundles_count */ 2,
+      /* cpu_num */ 1.0,
+      /* job_id */ job_id2,
+      /* actor_id */ ActorID::Nil());
+  auto placement_group3 =
+      std::make_shared<gcs::GcsPlacementGroup>(gcs::GcsPlacementGroup(request3));
+  ASSERT_TRUE(registered_placement_groups.Emplace(placement_group2->GetPlacementGroupID(),
+                                                  placement_group2));
+  ASSERT_TRUE(registered_placement_groups.Emplace(placement_group3->GetPlacementGroupID(),
+                                                  placement_group3));
+  ASSERT_TRUE(registered_placement_groups.GetPlacementGroupsOwnedByJob(job_id2).size() ==
+              2);
+  ASSERT_TRUE(
+      registered_placement_groups.GetPlacementGroupsOwnedByActor(actor_id).size() == 1);
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenActorDeadAndJobDead) {
+  // Test the scenario where actor dead -> job dead.
+  auto job_id = JobID::FromInt(1);
+  auto actor_id = ActorID::Of(job_id, TaskID::Nil(), 0);
+  auto request = Mocker::GenCreatePlacementGroupRequest(
+      /* name */ "", rpc::PlacementStrategy::SPREAD,
+      /* bundles_count */ 2,
+      /* cpu_num */ 1.0,
+      /* job_id */ job_id,
+      /* actor_id */ actor_id);
+  std::atomic<int> finished_placement_group_count(0);
+  gcs_placement_group_manager_->RegisterPlacementGroup(
+      std::make_shared<gcs::GcsPlacementGroup>(request),
+      [&finished_placement_group_count](Status status) {
+        ++finished_placement_group_count;
+      });
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  auto placement_group_id = placement_group->GetPlacementGroupID();
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  WaitForExpectedCount(finished_placement_group_count, 1);
+  // When both job and actor is dead, placement group should be destroyed.
+  EXPECT_CALL(*mock_placement_group_scheduler_,
+              DestroyPlacementGroupBundleResourcesIfExists(placement_group_id))
+      .Times(0);
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+  // Placement group shouldn't be cleaned when only an actor is killed.
+  // When both job and actor is dead, placement group should be destroyed.
+  EXPECT_CALL(*mock_placement_group_scheduler_,
+              DestroyPlacementGroupBundleResourcesIfExists(placement_group_id))
+      .Times(1);
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenActorAndJobDead) {
+  // Test the scenario where job dead -> actor dead.
+  auto job_id = JobID::FromInt(1);
+  auto actor_id = ActorID::Of(job_id, TaskID::Nil(), 0);
+  auto request = Mocker::GenCreatePlacementGroupRequest(
+      /* name */ "", rpc::PlacementStrategy::SPREAD,
+      /* bundles_count */ 2,
+      /* cpu_num */ 1.0,
+      /* job_id */ job_id,
+      /* actor_id */ actor_id);
+  std::atomic<int> finished_placement_group_count(0);
+  gcs_placement_group_manager_->RegisterPlacementGroup(
+      std::make_shared<gcs::GcsPlacementGroup>(request),
+      [&finished_placement_group_count](Status status) {
+        ++finished_placement_group_count;
+      });
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  auto placement_group_id = placement_group->GetPlacementGroupID();
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  WaitForExpectedCount(finished_placement_group_count, 1);
+  EXPECT_CALL(*mock_placement_group_scheduler_,
+              DestroyPlacementGroupBundleResourcesIfExists(placement_group_id))
+      .Times(0);
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
+  // Placement group shouldn't be cleaned when only an actor is killed.
+  EXPECT_CALL(*mock_placement_group_scheduler_,
+              DestroyPlacementGroupBundleResourcesIfExists(placement_group_id))
+      .Times(1);
+  // This method should ensure idempotency.
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenOnlyJobDead) {
+  // Test placement group is cleaned when both actor & job are dead.
+  auto job_id = JobID::FromInt(1);
+  auto request = Mocker::GenCreatePlacementGroupRequest(
+      /* name */ "", rpc::PlacementStrategy::SPREAD,
+      /* bundles_count */ 2,
+      /* cpu_num */ 1.0,
+      /* job_id */ job_id,
+      /* actor_id */ ActorID::Nil());
+  std::atomic<int> finished_placement_group_count(0);
+  gcs_placement_group_manager_->RegisterPlacementGroup(
+      std::make_shared<gcs::GcsPlacementGroup>(request),
+      [&finished_placement_group_count](Status status) {
+        ++finished_placement_group_count;
+      });
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  auto placement_group_id = placement_group->GetPlacementGroupID();
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  WaitForExpectedCount(finished_placement_group_count, 1);
+  EXPECT_CALL(*mock_placement_group_scheduler_,
+              DestroyPlacementGroupBundleResourcesIfExists(placement_group_id))
+      .Times(1);
+  // This method should ensure idempotency.
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
+}
+
+TEST_F(GcsPlacementGroupManagerTest,
+       TestAutomaticCleanupDoNothingWhenDifferentJobIsDead) {
+  // Test placement group is cleaned when both actor & job are dead.
+  auto job_id = JobID::FromInt(1);
+  auto different_job_id = JobID::FromInt(3);
+  auto request = Mocker::GenCreatePlacementGroupRequest(
+      /* name */ "", rpc::PlacementStrategy::SPREAD,
+      /* bundles_count */ 2,
+      /* cpu_num */ 1.0,
+      /* job_id */ job_id,
+      /* actor_id */ ActorID::Nil());
+  std::atomic<int> finished_placement_group_count(0);
+  gcs_placement_group_manager_->RegisterPlacementGroup(
+      std::make_shared<gcs::GcsPlacementGroup>(request),
+      [&finished_placement_group_count](Status status) {
+        ++finished_placement_group_count;
+      });
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  auto placement_group_id = placement_group->GetPlacementGroupID();
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  WaitForExpectedCount(finished_placement_group_count, 1);
+  // This shouldn't have been called.
+  EXPECT_CALL(*mock_placement_group_scheduler_,
+              DestroyPlacementGroupBundleResourcesIfExists(placement_group_id))
+      .Times(0);
+  // This method should ensure idempotency.
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
+  gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

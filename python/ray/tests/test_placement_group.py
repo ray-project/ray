@@ -12,6 +12,7 @@ from ray.test_utils import (get_other_nodes, wait_for_condition,
                             get_error_message)
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
+from ray.test_utils import run_string_as_driver
 from ray.util.placement_group import (PlacementGroup,
                                       get_current_placement_group)
 
@@ -970,6 +971,74 @@ def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
     errors = get_error_message(
         p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1)
     assert len(errors) == 0
+
+
+def test_automatic_cleanup_job(ray_start_cluster):
+    # Make sure the placement groups created by a
+    # job, actor, and task are cleaned when the job is done.
+    cluster = ray_start_cluster
+    num_nodes = 3
+    num_cpu_per_node = 3
+    # Create 3 nodes cluster.
+    cluster.add_node(num_cpus=num_cpu_per_node)
+    cluster.add_node(num_cpus=num_cpu_per_node)
+    cluster.add_node(num_cpus=num_cpu_per_node)
+
+    info = ray.init(address=cluster.address)
+    available_cpus = ray.available_resources()["CPU"]
+    assert available_cpus == num_nodes * num_cpu_per_node
+
+    driver_code = f"""
+import ray
+
+ray.init(address="{info["redis_address"]}")
+
+def create_pg():
+    pg = ray.util.placement_group(
+            [{{"CPU": 1}} for _ in range(3)],
+            strategy="STRICT_SPREAD")
+    ray.get(pg.ready())
+    return pg
+
+@ray.remote(num_cpus=0)
+def f():
+    create_pg()
+
+@ray.remote(num_cpus=0)
+class A:
+    def create_pg(self):
+        create_pg()
+
+ray.get(f.remote())
+a = A.remote()
+ray.get(a.create_pg.remote())
+create_pg()
+
+ray.shutdown()
+    """
+
+    run_string_as_driver(driver_code)
+
+    # Wait until the driver is reported as dead by GCS.
+    def is_job_done():
+        jobs = ray.jobs()
+        for job in jobs:
+            if "StopTime" in job:
+                return True
+        return False
+
+    wait_for_condition(is_job_done)
+    available_cpus = ray.available_resources()["CPU"]
+    assert available_cpus == num_nodes * num_cpu_per_node
+
+
+def test_automatic_cleanup_detached_actors(ray_start_cluster):
+    # cluster = ray_start_cluster
+    pass
+    # Test
+    # 1. Placement group created by a detached actor.
+    # 2. Placement group created by a task inside detached actor.
+    # 3. Placement group created by an actor inside detached actor.
 
 
 if __name__ == "__main__":

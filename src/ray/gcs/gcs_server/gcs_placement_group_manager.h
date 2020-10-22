@@ -53,6 +53,13 @@ class GcsPlacementGroup {
     placement_group_table_data_.mutable_bundles()->CopyFrom(
         placement_group_spec.bundles());
     placement_group_table_data_.set_strategy(placement_group_spec.strategy());
+    placement_group_table_data_.set_creator_job_id(placement_group_spec.creator_job_id());
+    placement_group_table_data_.set_creator_actor_id(
+        placement_group_spec.creator_actor_id());
+    placement_group_table_data_.set_creator_job_dead(
+        placement_group_spec.creator_job_dead());
+    placement_group_table_data_.set_creator_actor_dead(
+        placement_group_spec.creator_actor_dead());
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
@@ -85,14 +92,42 @@ class GcsPlacementGroup {
   // Get debug string for the placement group.
   std::string DebugString() const;
 
+  // SANG-TODO Create a method to report actor/job death.
+  const ActorID GetCreatorActorId() const;
+  const JobID GetCreatorJobId() const;
+  void MarkCreatorJobDead();
+  void MarkCreatorActorDead();
+  bool IsPlacementGroupRemovable() const;
+
  private:
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).
   rpc::PlacementGroupTableData placement_group_table_data_;
 };
 
-using RegisterPlacementGroupCallback =
-    std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
+using PlacementGroupMap =
+    absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>;
+
+/// An index to obtain GcsPlacementGroup from multiple keys.
+class RegisteredPlacementGroupIndex {
+ public:
+  explicit RegisteredPlacementGroupIndex() {}
+  ~RegisteredPlacementGroupIndex() = default;
+
+  bool Emplace(const PlacementGroupID &placement_group_id,
+               std::shared_ptr<GcsPlacementGroup> placement_group);
+  void Erase(const PlacementGroupID &placement_group_id);
+  absl::optional<std::shared_ptr<GcsPlacementGroup>> Get(
+      const PlacementGroupID &placement_group_id) const;
+  const PlacementGroupMap &GetPlacementGroupsOwnedByActor(const ActorID &actor_id);
+  const PlacementGroupMap &GetPlacementGroupsOwnedByJob(const JobID &job_id);
+  const PlacementGroupMap &GetRegisteredPlacementGroups() const;
+
+ private:
+  PlacementGroupMap placement_groups_;
+  absl::flat_hash_map<ActorID, PlacementGroupMap> placement_groups_by_actor_id_;
+  absl::flat_hash_map<JobID, PlacementGroupMap> placement_groups_by_job_id_;
+};
 
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
 /// group. This class is not thread-safe.
@@ -172,6 +207,37 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
+  /// Clean placement group that belongs to the job id if necessary.
+  ///
+  /// This interface is a part of automatic lifecycle management for placement groups.
+  /// When a job is killed, this method should be invoked to clean up
+  /// placement groups that belong to the given job id.
+  ///
+  /// Calling this method doesn't mean placement groups that belong to the given job
+  /// will be cleaned. Placement groups are cleaned only when the creator job AND actor
+  /// are both dead.
+  ///
+  /// NOTE: This method is idempotent.
+  ///
+  /// \param job_id The job id where placement groups that need to be cleaned belong to.
+  void CleanPlacementGroupIfNeededWhenJobDead(JobID &job_id);
+
+  /// Clean placement group that belongs to the actor id if necessary.
+  ///
+  /// This interface is a part of automatic lifecycle management for placement groups.
+  /// When an actor is killed, this method should be invoked to clean up
+  /// placement groups that belong to the given actor id.
+  ///
+  /// Calling this method doesn't mean placement groups that belong to the given actor
+  /// will be cleaned. Placement groups are cleaned only when the creator job AND actor
+  /// are both dead.
+  ///
+  /// NOTE: This method is idempotent.
+  ///
+  /// \param actor_id The actor id where placement groups that need to be cleaned belong
+  /// to.
+  void CleanPlacementGroupIfNeededWhenActorDead(ActorID &actor_id);
+
  private:
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
@@ -209,8 +275,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
       placement_group_to_register_callback_;
 
   /// All registered placement_groups (pending placement_groups are also included).
-  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
-      registered_placement_groups_;
+  RegisteredPlacementGroupIndex registered_placement_groups_;
 
   /// The pending placement_groups which will not be scheduled until there's a resource
   /// change.

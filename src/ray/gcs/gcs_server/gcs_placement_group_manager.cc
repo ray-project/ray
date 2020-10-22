@@ -71,12 +71,130 @@ const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableDat
 std::string GcsPlacementGroup::DebugString() const {
   std::stringstream stream;
   stream << "placement group id = " << GetPlacementGroupID() << ", name = " << GetName()
-         << ", strategy = " << GetStrategy();
+         << ", strategy = " << GetStrategy()
+         << ", creator job dead: " << placement_group_table_data_.creator_job_dead()
+         << ", creator actor dead: " << placement_group_table_data_.creator_actor_dead();
   return stream.str();
 }
 
 rpc::Bundle *GcsPlacementGroup::GetMutableBundle(int bundle_index) {
   return placement_group_table_data_.mutable_bundles(bundle_index);
+}
+
+const ActorID GcsPlacementGroup::GetCreatorActorId() const {
+  return ActorID::FromBinary(placement_group_table_data_.creator_actor_id());
+}
+
+const JobID GcsPlacementGroup::GetCreatorJobId() const {
+  return JobID::FromBinary(placement_group_table_data_.creator_job_id());
+}
+
+void GcsPlacementGroup::MarkCreatorJobDead() {
+  placement_group_table_data_.set_creator_job_dead(true);
+}
+
+void GcsPlacementGroup::MarkCreatorActorDead() {
+  placement_group_table_data_.set_creator_actor_dead(true);
+}
+
+bool GcsPlacementGroup::IsPlacementGroupRemovable() const {
+  return placement_group_table_data_.creator_job_dead() &&
+         placement_group_table_data_.creator_actor_dead();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+bool RegisteredPlacementGroupIndex::Emplace(
+    const PlacementGroupID &placement_group_id,
+    std::shared_ptr<GcsPlacementGroup> placement_group) {
+  if (placement_groups_.find(placement_group_id) != placement_groups_.end()) {
+    return false;
+  }
+  RAY_CHECK(placement_groups_.emplace(placement_group_id, placement_group).second);
+
+  // Fill in actor index.
+  const ActorID &actor_id = placement_group->GetCreatorActorId();
+  if (!actor_id.IsNil()) {
+    if (placement_groups_by_actor_id_.find(actor_id) ==
+        placement_groups_by_actor_id_.end()) {
+      placement_groups_by_actor_id_[actor_id] = PlacementGroupMap();
+    }
+    auto it = placement_groups_by_actor_id_.find(actor_id);
+    it->second.emplace(placement_group_id, placement_group);
+  }
+
+  // Fill in job index.
+  const JobID &job_id = placement_group->GetCreatorJobId();
+  if (!job_id.IsNil()) {
+    if (placement_groups_by_job_id_.find(job_id) == placement_groups_by_job_id_.end()) {
+      placement_groups_by_job_id_[job_id] = PlacementGroupMap();
+    }
+    auto it = placement_groups_by_job_id_.find(job_id);
+    it->second.emplace(placement_group_id, placement_group);
+  }
+  return true;
+}
+
+void RegisteredPlacementGroupIndex::Erase(const PlacementGroupID &placement_group_id) {
+  auto it = placement_groups_.find(placement_group_id);
+  if (it == placement_groups_.end()) {
+    return;
+  }
+
+  const auto &placement_group = it->second;
+  const ActorID &actor_id = placement_group->GetCreatorActorId();
+  const JobID &job_id = placement_group->GetCreatorJobId();
+  if (!actor_id.IsNil()) {
+    const auto &it = placement_groups_by_actor_id_.find(actor_id);
+    if (it != placement_groups_by_actor_id_.end()) {
+      const auto &pg_it = it->second.find(placement_group_id);
+      if (pg_it != it->second.end()) {
+        it->second.erase(pg_it);
+      }
+    }
+  }
+  if (!job_id.IsNil()) {
+    const auto &it = placement_groups_by_job_id_.find(job_id);
+    if (it != placement_groups_by_job_id_.end()) {
+      const auto &pg_it = it->second.find(placement_group_id);
+      if (pg_it != it->second.end()) {
+        it->second.erase(pg_it);
+      }
+    }
+  }
+  placement_groups_.erase(it);
+}
+
+absl::optional<std::shared_ptr<GcsPlacementGroup>> RegisteredPlacementGroupIndex::Get(
+    const PlacementGroupID &placement_group_id) const {
+  auto it = placement_groups_.find(placement_group_id);
+  if (it == placement_groups_.end()) {
+    return {};
+  }
+  return it->second;
+}
+
+const absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>> &
+RegisteredPlacementGroupIndex::GetPlacementGroupsOwnedByActor(const ActorID &actor_id) {
+  auto it = placement_groups_by_actor_id_.find(actor_id);
+  if (it == placement_groups_by_actor_id_.end()) {
+    placement_groups_by_actor_id_[actor_id] = PlacementGroupMap();
+  }
+  return placement_groups_by_actor_id_.find(actor_id)->second;
+}
+
+const absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
+    &RegisteredPlacementGroupIndex::GetPlacementGroupsOwnedByJob(const JobID &job_id) {
+  auto it = placement_groups_by_job_id_.find(job_id);
+  if (it == placement_groups_by_job_id_.end()) {
+    placement_groups_by_job_id_[job_id] = PlacementGroupMap();
+  }
+  return placement_groups_by_job_id_.find(job_id)->second;
+}
+
+const absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
+    &RegisteredPlacementGroupIndex::GetRegisteredPlacementGroups() const {
+  return placement_groups_;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -104,7 +222,7 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   // successfully created.
   placement_group_to_register_callback_[placement_group->GetPlacementGroupID()] =
       std::move(callback);
-  registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
+  registered_placement_groups_.Emplace(placement_group->GetPlacementGroupID(),
                                        placement_group);
   pending_placement_groups_.emplace_back(std::move(placement_group));
   SchedulePendingPlacementGroups();
@@ -113,7 +231,7 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
 PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
     const std::string &name) {
   PlacementGroupID placement_group_id = PlacementGroupID::Nil();
-  for (const auto &iter : registered_placement_groups_) {
+  for (const auto &iter : registered_placement_groups_.GetRegisteredPlacementGroups()) {
     if (iter.second->GetName() == name) {
       placement_group_id = iter.first;
       break;
@@ -177,8 +295,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   const auto placement_group = pending_placement_groups_.front();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   // Do not reschedule if the placement group has removed already.
-  if (registered_placement_groups_.find(placement_group_id) !=
-      registered_placement_groups_.end()) {
+  if (registered_placement_groups_.Get(placement_group_id)) {
     MarkSchedulingStarted(placement_group_id);
     gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
         placement_group,
@@ -203,15 +320,14 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
   RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
   // We need this call here because otherwise, if placement group is removed right after
   // here, it can cause inconsistent states.
-  registered_placement_groups_.emplace(placement_group_id, placement_group);
+  registered_placement_groups_.Emplace(placement_group_id, placement_group);
 
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
       [this, request, reply, send_reply_callback, placement_group_id,
        placement_group](Status status) {
         RAY_CHECK_OK(status);
-        if (registered_placement_groups_.find(placement_group_id) ==
-            registered_placement_groups_.end()) {
+        if (!registered_placement_groups_.Get(placement_group_id)) {
           std::stringstream stream;
           stream << "Placement group of id " << placement_group_id
                  << " has been removed before registration.";
@@ -255,13 +371,13 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     StatusCallback on_placement_group_removed) {
   RAY_CHECK(on_placement_group_removed);
   // If the placement group has been already removed, don't do anything.
-  auto placement_group_it = registered_placement_groups_.find(placement_group_id);
-  if (placement_group_it == registered_placement_groups_.end()) {
+  auto maybe_placement_group = registered_placement_groups_.Get(placement_group_id);
+  if (!maybe_placement_group) {
     on_placement_group_removed(Status::OK());
     return;
   }
-  auto placement_group = placement_group_it->second;
-  registered_placement_groups_.erase(placement_group_it);
+  auto placement_group = maybe_placement_group.value();
+  registered_placement_groups_.Erase(placement_group_id);
 
   // Destroy all bundles.
   gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
@@ -338,22 +454,68 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
                 << " failed, rescheduling the placement groups on the dead node.";
   auto bundles = gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
   for (const auto &bundle : bundles) {
-    auto iter = registered_placement_groups_.find(bundle.first);
-    if (iter != registered_placement_groups_.end()) {
+    auto maybe_placement_group = registered_placement_groups_.Get(bundle.first);
+    if (maybe_placement_group) {
+      auto &placement_group = maybe_placement_group.value();
       for (const auto &bundle_index : bundle.second) {
-        iter->second->GetMutableBundle(bundle_index)->clear_node_id();
+        placement_group->GetMutableBundle(bundle_index)->clear_node_id();
       }
       // TODO(ffbin): If we have a placement group bundle that requires a unique resource
       // (for example gpu resource when there’s only one gpu node), this can postpone
       // creating until a node with the resources is added. we will solve it in next pr.
-      if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
-        iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-        pending_placement_groups_.emplace_front(iter->second);
+      if (placement_group->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
+        placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+        pending_placement_groups_.emplace_front(placement_group);
       }
     }
   }
 
   SchedulePendingPlacementGroups();
+}
+
+void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(JobID &job_id) {
+  const auto &placement_groups =
+      registered_placement_groups_.GetPlacementGroupsOwnedByJob(job_id);
+  // 0 length vector is returned if index cannot find the entry.
+  if (placement_groups.size() == 0) {
+    return;
+  }
+
+  std::vector<std::shared_ptr<GcsPlacementGroup>> placement_group_to_delete;
+  for (const auto &it : placement_groups) {
+    auto &placement_group = it.second;
+    placement_group->MarkCreatorJobDead();
+    if (placement_group->IsPlacementGroupRemovable()) {
+      placement_group_to_delete.emplace_back(placement_group);
+    }
+  }
+
+  for (const auto &placement_group : placement_group_to_delete) {
+    RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+  }
+}
+
+void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
+    ActorID &actor_id) {
+  const auto &placement_groups =
+      registered_placement_groups_.GetPlacementGroupsOwnedByActor(actor_id);
+  // 0 length vector is returned if index cannot find the entry.
+  if (placement_groups.size() == 0) {
+    return;
+  }
+
+  std::vector<std::shared_ptr<GcsPlacementGroup>> placement_group_to_delete;
+  for (const auto &it : placement_groups) {
+    auto &placement_group = it.second;
+    placement_group->MarkCreatorActorDead();
+    if (placement_group->IsPlacementGroupRemovable()) {
+      placement_group_to_delete.emplace_back(placement_group);
+    }
+  }
+
+  for (const auto &placement_group : placement_group_to_delete) {
+    RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+  }
 }
 
 void GcsPlacementGroupManager::Tick() const {

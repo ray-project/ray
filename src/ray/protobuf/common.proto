@@ -212,6 +212,11 @@ message PlacementGroupSpec {
   repeated Bundle bundles = 3;
   // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;
+  // SANG-TODO Add comments.
+  bytes creator_job_id = 5;
+  bytes creator_actor_id = 6;
+  bool creator_job_dead = 7;
+  bool creator_actor_dead = 8;
 }
 
 message ObjectReference {

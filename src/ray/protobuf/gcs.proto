@@ -181,6 +181,13 @@ message PlacementGroupTableData {
   PlacementStrategy strategy = 4;
   // Current state of this placement group.
   PlacementGroupState state = 5;
+  // Fields to detect the owner of the placement group
+  // for automatic lifecycle management.
+  // SANG-TODO Add comments.
+  bytes creator_job_id = 6;
+  bytes creator_actor_id = 7;
+  bool creator_job_dead = 8;
+  bool creator_actor_dead = 9;
 }
 
 message ScheduleData {
