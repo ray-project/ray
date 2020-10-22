@@ -1,15 +1,19 @@
 from __future__ import print_function
 
 import errno
+import inspect
+import json
 import logging
 import os
 import re
 import socket
 import sys
+import uuid
 from pdb import Pdb
+import setproctitle
 
 
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 
 
 PY3 = sys.version_info[0] == 3
@@ -132,6 +136,15 @@ def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None):
     rdb = RemotePdb(host=host, port=port, patch_stdstreams=patch_stdstreams, quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
     pdb_address = "{}:{}".format(sockname[0], sockname[1])
-    _internal_kv_put("RAY_PDB_ADDRESS", pdb_address, overwrite=True)
+    parentframeinfo = inspect.getouterframes(inspect.currentframe())[1]
+    data = {
+        "proctitle": setproctitle.getproctitle(),
+        "pdb_address": pdb_address,
+        "filename": parentframeinfo.filename,
+        "lineno": parentframeinfo.lineno
+    }
+    breakpoint_uuid = uuid.uuid4()
+    _internal_kv_put("RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)
     rdb.listen()
+    _internal_kv_del("RAY_PDB_{}".format(breakpoint_uuid))
     rdb.set_trace(frame=sys._getframe().f_back)

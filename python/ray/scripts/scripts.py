@@ -164,14 +164,21 @@ def debug(address):
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     while True:
-        address = ray.experimental.internal_kv._internal_kv_get("RAY_PDB_ADDRESS")
-        if address:
-            host, port = address.split(b":")
+        active_sessions = ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")
+        print("Active breakpoints:")
+        for i, active_session in enumerate(active_sessions):
+            data = json.loads(ray.experimental.internal_kv._internal_kv_get(active_session))
+            print(str(i) + ": " + data["proctitle"] + " | " + data["filename"] + ":" + str(data["lineno"]))
+        inp = input("Enter breakpoing index or press enter to refresh: ")
+        if inp == "":
+            print()
+            continue
+        else:
+            index = int(inp)
+            session = json.loads(ray.experimental.internal_kv._internal_kv_get(active_sessions[index]))
+            host, port = session["pdb_address"].split(":")
             with Telnet(host, int(port)) as tn:
                 tn.interact()
-        else:
-            print("Waiting for breakpoint")
-            time.sleep(5.0)
 
 
 @cli.command()
