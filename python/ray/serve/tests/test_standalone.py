@@ -172,5 +172,36 @@ def test_cluster_handle_affinity():
     cluster.shutdown()
 
 
+def test_detached_deployment():
+    # https://github.com/ray-project/ray/issues/11437
+
+    cluster = Cluster()
+    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
+
+    # Create first job, check we can run a simple serve endpoint
+    ray.init(head_node.address)
+    first_job_id = ray.get_runtime_context().job_id
+    client = serve.start(detached=True)
+    client.create_backend("f", lambda _: "hello")
+    client.create_endpoint("f", backend="f")
+    assert ray.get(client.get_handle("f").remote()) == "hello"
+
+    ray.shutdown()
+
+    # Create the second job, make sure we can still create new backends.
+    ray.init(head_node.address)
+    assert ray.get_runtime_context().job_id != first_job_id
+
+    client = serve.connect()
+    client.create_backend("g", lambda _: "world")
+    client.create_endpoint("g", backend="g")
+    assert ray.get(client.get_handle("g").remote()) == "world"
+
+    # Test passed, clean up.
+    client.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
