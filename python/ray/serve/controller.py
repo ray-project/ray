@@ -97,7 +97,8 @@ class MetadataInfo:
     ) -> Dict[BackendTag, Union[BackendConfig, Dict[str, Any]]]:
         result = {}
         for tag, info in self.backends.items():
-            result[tag] = info.__dict__ if as_dict else info
+            config = info.backend_config
+            result[tag] = config.__dict__ if as_dict else config
         return result
 
 
