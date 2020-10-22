@@ -374,6 +374,7 @@ def test_remove_pending_placement_group(ray_start_cluster):
     # Make sure this task is still schedulable.
     assert ray.get(f.remote()) == 3
 
+
 def test_placement_group_table(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
@@ -415,9 +416,29 @@ def test_placement_group_table(ray_start_cluster):
     result = ray.util.placement_group_table(placement_group)
     assert result["state"] == "CREATED"
 
-    # Test get all placement group.
+    # Add tow more placement group for placement group table test.
+    second_strategy = "SPREAD"
+    second_placement_group = ray.util.placement_group(
+        name="second_placement_group",
+        strategy=second_strategy,
+        bundles=bundles)
+    third_placement_group = ray.util.placement_group(
+        name="third_placement_group",
+        strategy=second_strategy,
+        bundles=bundles)
+
     placement_group_table = ray.util.placement_group_table()
-    assert len(placement_group_table) == 1
+    assert len(placement_group_table) == 3
+
+    true_name_set = {"name", "second_placement_group", "third_placement_group"}
+    get_name_set = set()
+
+    for placement_group_id, placement_group_data in placement_group_table.items(
+    ):
+        get_name_set.add(placement_group_data["name"])
+
+    assert true_name_set == get_name_set
+
 
 def test_cuda_visible_devices(ray_start_cluster):
     @ray.remote(num_gpus=1)

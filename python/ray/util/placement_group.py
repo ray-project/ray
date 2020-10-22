@@ -194,7 +194,8 @@ def placement_group_table(placement_group: PlacementGroup = None) -> list:
     """
     worker = ray.worker.global_worker
     worker.check_connected()
-    placement_group_id = placement_group.id if (placement_group is not None) else None
+    placement_group_id = placement_group.id if (placement_group is
+                                                not None) else None
     return ray.state.state.placement_group_table(placement_group_id)
 
 

@@ -1543,8 +1543,7 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetAll(
   client_impl_->GetGcsRpcClient().GetAllPlacementGroup(
       request,
       [callback](const Status &status, const rpc::GetAllPlacementGroupReply &reply) {
-        auto result = VectorFromProtobuf(reply.placement_group_table_data());
-        callback(status, result);
+        callback(status, VectorFromProtobuf(reply.placement_group_table_data()));
         RAY_LOG(DEBUG) << "Finished getting all placement group info, status = "
                        << status;
       });
