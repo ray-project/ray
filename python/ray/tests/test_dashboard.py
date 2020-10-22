@@ -26,8 +26,6 @@ def test_dashboard(shutdown_only):
             summaries = resp.json()
             assert summaries["result"] is True
             assert "msg" in summaries
-            assert summaries["data"]["summary"][0]["raylet"][
-                "state"] == "ALIVE"
             break
         except (requests.exceptions.ConnectionError, AssertionError):
             if time.time() > start_time + 30:
