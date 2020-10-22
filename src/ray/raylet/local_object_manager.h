@@ -32,56 +32,73 @@ namespace raylet {
 /// have been freed, and objects that have been spilled.
 class LocalObjectManager {
  public:
-  LocalObjectManager(
-      size_t free_objects_batch_size,
-      int64_t free_objects_period_ms,
-      IOWorkerPoolInterface &io_worker_pool,
-      gcs::ObjectInfoAccessor &object_info_accessor,
-      rpc::CoreWorkerClientPool &owner_client_pool,
-      std::function<void(const std::vector<ObjectID> &)> on_objects_freed) :
-    free_objects_period_ms_(free_objects_period_ms),
-    free_objects_batch_size_(free_objects_batch_size),
-    io_worker_pool_(io_worker_pool),
-    object_info_accessor_(object_info_accessor),
-    owner_client_pool_(owner_client_pool),
-    on_objects_freed_(on_objects_freed),
-    last_free_objects_at_ms_(current_time_ms()) {}
+  LocalObjectManager(size_t free_objects_batch_size, int64_t free_objects_period_ms,
+                     IOWorkerPoolInterface &io_worker_pool,
+                     gcs::ObjectInfoAccessor &object_info_accessor,
+                     rpc::CoreWorkerClientPool &owner_client_pool,
+                     std::function<void(const std::vector<ObjectID> &)> on_objects_freed)
+      : free_objects_period_ms_(free_objects_period_ms),
+        free_objects_batch_size_(free_objects_batch_size),
+        io_worker_pool_(io_worker_pool),
+        object_info_accessor_(object_info_accessor),
+        owner_client_pool_(owner_client_pool),
+        on_objects_freed_(on_objects_freed),
+        last_free_objects_at_ms_(current_time_ms()) {}
 
-  void PinObjects(const rpc::Address &owner_address, std::unique_ptr<rpc::CoreWorkerClient> &owner_client, const std::vector<ObjectID> &object_ids, std::vector<std::unique_ptr<RayObject>> &objects);
+  /// Pin objects.
+  ///
+  /// The objects will be released when the owner at the given address fails or
+  /// replies that the object has been evicted.
+  ///
+  /// \param owner_address The address of the owner of the objects.
+  /// \param object_ids The objects to be pinned.
+  /// \param objects Pointers to the objects to be pinned. The pointer should
+  /// be kept in scope until the object can be released.
+  void PinObjects(const rpc::Address &owner_address,
+                  const std::vector<ObjectID> &object_ids,
+                  std::vector<std::unique_ptr<RayObject>> &objects);
 
   /// Spill objects to external storage.
+  ///
   /// \param objects_ids_to_spill The objects to be spilled.
+  /// \param callback A callback to call once the objects have been spilled, or
+  /// there is anerror.
   void SpillObjects(const std::vector<ObjectID> &objects_ids,
-                               std::function<void(const ray::Status &)> callback);
+                    std::function<void(const ray::Status &)> callback);
 
   /// Restore a spilled object from external storage back into local memory.
+  ///
   /// \param object_id The ID of the object to restore.
   /// \param object_url The URL in external storage from which the object can be restored.
   /// \param callback A callback to call when the restoration is done. Status
   /// will contain the error during restoration, if any.
-  void AsyncRestoreSpilledObject(
-      const ObjectID &object_id, const std::string &object_url,
-      std::function<void(const ray::Status &)> callback);
+  void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
+                                 std::function<void(const ray::Status &)> callback);
 
+  /// Try to delete any objects that have been freed.
   void FlushIfNeeded(int64_t now_ms);
 
  private:
-
+  /// Delete freed objects.
   void Flush();
 
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;
 
+  /// The number of freed objects to accumulate before flushing.
   const size_t free_objects_batch_size_;
 
+  /// A worker pool, used for spilling and restoring objects.
   IOWorkerPoolInterface &io_worker_pool_;
 
+  /// A GCS client, used to update locations for spilled objects.
   gcs::ObjectInfoAccessor &object_info_accessor_;
 
   /// Cache of gRPC clients to owners of objects pinned on
   /// this node.
   rpc::CoreWorkerClientPool &owner_client_pool_;
 
+  /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
   // Objects that are pinned on this node.
@@ -89,10 +106,10 @@ class LocalObjectManager {
 
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.
-  uint64_t last_free_objects_at_ms_;
+  uint64_t last_free_objects_at_ms_ = 0;
 
   /// Objects that are out of scope in the application and that should be freed
-  /// from plasma. The cache is flushed when it reaches the 
+  /// from plasma. The cache is flushed when it reaches the
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
   std::vector<ObjectID> objects_to_free_;

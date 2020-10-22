@@ -18,8 +18,9 @@ namespace ray {
 
 namespace raylet {
 
-
-void LocalObjectManager::PinObjects(const rpc::Address &owner_address, std::unique_ptr<rpc::CoreWorkerClient> &owner_client, const std::vector<ObjectID> &object_ids, std::vector<std::unique_ptr<RayObject>> &objects) {
+void LocalObjectManager::PinObjects(const rpc::Address &owner_address,
+                                    const std::vector<ObjectID> &object_ids,
+                                    std::vector<std::unique_ptr<RayObject>> &objects) {
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];
@@ -40,11 +41,10 @@ void LocalObjectManager::PinObjects(const rpc::Address &owner_address, std::uniq
     wait_request.set_intended_worker_id(owner_address.worker_id());
     auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
     owner_client->WaitForObjectEviction(
-        wait_request, [this, object_id](
-                          Status status, const rpc::WaitForObjectEvictionReply &reply) {
+        wait_request,
+        [this, object_id](Status status, const rpc::WaitForObjectEvictionReply &reply) {
           if (!status.ok()) {
-            RAY_LOG(WARNING) << "Worker failed. Unpinning object "
-                             << object_id;
+            RAY_LOG(WARNING) << "Worker failed. Unpinning object " << object_id;
           }
           RAY_LOG(DEBUG) << "Unpinning object " << object_id;
           pinned_objects_.erase(object_id);
@@ -53,8 +53,7 @@ void LocalObjectManager::PinObjects(const rpc::Address &owner_address, std::uniq
           if (free_objects_period_ms_ >= 0) {
             objects_to_free_.push_back(object_id);
           }
-          if (objects_to_free_.size() ==
-                  free_objects_batch_size_ ||
+          if (objects_to_free_.size() == free_objects_batch_size_ ||
               free_objects_period_ms_ == 0) {
             Flush();
           }
@@ -79,7 +78,7 @@ void LocalObjectManager::FlushIfNeeded(int64_t now_ms) {
 }
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
-                             std::function<void(const ray::Status &)> callback) {
+                                      std::function<void(const ray::Status &)> callback) {
   for (const auto &id : object_ids) {
     // We should not spill an object that we are not the primary copy for.
     // TODO(swang): We should really return an error here but right now there
@@ -92,7 +91,7 @@ void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
     }
   }
   io_worker_pool_.PopIOWorker([this, object_ids,
-                            callback](std::shared_ptr<WorkerInterface> io_worker) {
+                               callback](std::shared_ptr<WorkerInterface> io_worker) {
     rpc::SpillObjectsRequest request;
     for (const auto &object_id : object_ids) {
       RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
@@ -141,7 +140,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
   io_worker_pool_.PopIOWorker([this, object_url,
-                            callback](std::shared_ptr<WorkerInterface> io_worker) {
+                               callback](std::shared_ptr<WorkerInterface> io_worker) {
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
@@ -159,7 +158,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
         });
   });
 }
-
 
 };  // namespace raylet
 

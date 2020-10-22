@@ -162,6 +162,13 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
+      local_object_manager_(RayConfig::instance().free_objects_batch_size(),
+                            RayConfig::instance().free_objects_period_milliseconds(),
+                            worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
+                            [this](const std::vector<ObjectID> &object_ids) {
+                              object_manager_.FreeObjects(object_ids,
+                                                          /*local_only=*/false);
+                            }),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
@@ -301,7 +308,6 @@ ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
   last_debug_dump_at_ms_ = current_time_ms();
-  last_free_objects_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -513,13 +519,14 @@ void NodeManager::DoLocalGC() {
 void NodeManager::HandleRequestObjectSpillage(
     const rpc::RequestObjectSpillageRequest &request,
     rpc::RequestObjectSpillageReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  local_object_manager_.SpillObjects({ObjectID::FromBinary(request.object_id())},
-               [reply, send_reply_callback](const ray::Status &status) {
-                 if (status.ok()) {
-                   reply->set_success(true);
-                 }
-                 send_reply_callback(Status::OK(), nullptr, nullptr);
-               });
+  local_object_manager_.SpillObjects(
+      {ObjectID::FromBinary(request.object_id())},
+      [reply, send_reply_callback](const ray::Status &status) {
+        if (status.ok()) {
+          reply->set_success(true);
+        }
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
 }
 
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
@@ -2992,15 +2999,13 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
 
     std::vector<std::unique_ptr<RayObject>> objects;
     for (int64_t i = 0; i < request.object_ids().size(); i++) {
-      ObjectID object_id = ObjectID::FromBinary(request.object_ids(i));
-
       if (plasma_results[i].data == nullptr) {
         objects.push_back(nullptr);
       } else {
-        objects.emplace_back(
-                  std::unique_ptr<RayObject>(new RayObject(
-                      std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                      std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
+        objects.emplace_back(std::unique_ptr<RayObject>(new RayObject(
+            std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+            std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
+      }
     }
     local_object_manager_.PinObjects(request.owner_address(), object_ids, objects);
   }

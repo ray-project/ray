@@ -167,9 +167,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
-  WorkerPool &GetWorkerPool() {
-    return worker_pool_;
-  }
+  LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
 
  private:
   /// Methods for handling clients.
@@ -752,7 +750,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
   /// as well as all `CoreWorkerClient`s.
-  rpc::ClientCallManager &client_call_manager_;
+  rpc::ClientCallManager client_call_manager_;
+
+  /// Pool of RPC client connections to core workers.
+  rpc::CoreWorkerClientPool worker_rpc_pool_;
+
+  /// Manages all local objects that are pinned (primary
+  /// copies), freed, and/or spilled.
+  LocalObjectManager local_object_manager_;
 
   /// Map from node ids to clients of the remote node managers.
   std::unordered_map<NodeID, std::unique_ptr<rpc::NodeManagerClient>>
