@@ -115,18 +115,6 @@ def test_global_state_worker_table(ray_start_regular):
     # Worker table should be empty at first.
     assert len(ray.state.workers()) == 0
 
-    @ray.remote
-    class Actor:
-        def ready(self):
-            pass
-
-    # Actor table should contain only one entry.
-    user_actor = Actor.remote()
-    ray.get(user_actor.ready.remote())
-    assert len(ray.actors()) == 1
-
-    del user_actor
-
     # Add global_worker.
     worker_id = ray.worker.global_worker.worker_id
     worker_type = gcs_utils.WORKER
@@ -140,7 +128,7 @@ def test_global_state_worker_table(ray_start_regular):
     workers_data = ray.state.workers()
 
     assert len(workers_data) == 1
-    assert (binary_to_hex(worker_id) in workers_data) is True
+    assert workers_data[binary_to_hex(worker_id)] is not None
 
 
 def test_global_state_actor_entry(ray_start_regular):
