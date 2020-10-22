@@ -655,6 +655,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                            actor_table_data->SerializeAsString(),
                                            nullptr));
+        NotifyActorDeathToListener(actor_id);
       }));
 }
 
@@ -848,7 +849,13 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           // if actor was an detached actor, make sure to destroy it.
           // We need to do this because detached actors are not destroyed
           // when its owners are dead because it doesn't have owners.
-          if (actor->IsDetached()) DestroyActor(actor_id);
+          if (actor->IsDetached()) {
+            DestroyActor(actor_id);
+            // NOTE: This method won't be invoked inside DestroyActor if the actor is
+            // detached because the actor state is already DEAD, so we should invoke here.
+            // TODO(sang): Refactor this to be cleaner.
+            NotifyActorDeathToListener(actor_id);
+          }
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
@@ -1055,6 +1062,12 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetByJobId(job_id, on_done));
 }
 
+void GcsActorManager::AddActorDeadListener(
+    std::function<void(const ActorID &)> listener) {
+  RAY_CHECK(listener);
+  actor_death_listeners_.emplace_back(std::move(listener));
+}
+
 const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
     &GcsActorManager::GetCreatedActors() const {
   return created_actors_;
@@ -1128,6 +1141,13 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   destroyed_actors_.emplace(actor->GetActorID(), actor);
   sorted_destroyed_actor_list_.emplace_back(
       actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
+}
+
+void GcsActorManager::NotifyActorDeathToListener(const ActorID &actor_id) {
+  // Notify all listeners.
+  for (auto &listener : actor_death_listeners_) {
+    listener(actor_id);
+  }
 }
 
 }  // namespace gcs

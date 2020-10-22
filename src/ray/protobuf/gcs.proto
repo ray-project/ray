@@ -183,10 +183,13 @@ message PlacementGroupTableData {
   PlacementGroupState state = 5;
   // Fields to detect the owner of the placement group
   // for automatic lifecycle management.
-  // SANG-TODO Add comments.
+  // The job id that created this placement group.
   bytes creator_job_id = 6;
+  // The actor id that created this placement group.
   bytes creator_actor_id = 7;
+  // Whether or not if the creator job is dead.
   bool creator_job_dead = 8;
+  // Whether or not if the creator actor is dead.
   bool creator_actor_dead = 9;
 }
 

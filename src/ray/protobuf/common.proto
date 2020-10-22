@@ -212,10 +212,13 @@ message PlacementGroupSpec {
   repeated Bundle bundles = 3;
   // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;
-  // SANG-TODO Add comments.
+  // The job id that created this placement group.
   bytes creator_job_id = 5;
+  // The actor id that created this placement group.
   bytes creator_actor_id = 6;
+  // Whether or not if the creator job is dead.
   bool creator_job_dead = 7;
+  // Whether or not if the creator actor is dead.
   bool creator_actor_dead = 8;
 }
 

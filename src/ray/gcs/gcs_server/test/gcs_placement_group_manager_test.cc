@@ -446,7 +446,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRegisteredPlacementGroupIndex) {
 TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenActorDeadAndJobDead) {
   // Test the scenario where actor dead -> job dead.
   auto job_id = JobID::FromInt(1);
-  auto actor_id = ActorID::Of(job_id, TaskID::Nil(), 0);
+  const auto actor_id = ActorID::Of(job_id, TaskID::Nil(), 0);
   auto request = Mocker::GenCreatePlacementGroupRequest(
       /* name */ "", rpc::PlacementStrategy::SPREAD,
       /* bundles_count */ 2,
@@ -479,7 +479,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenActorDeadAndJobDead
 TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenActorAndJobDead) {
   // Test the scenario where job dead -> actor dead.
   auto job_id = JobID::FromInt(1);
-  auto actor_id = ActorID::Of(job_id, TaskID::Nil(), 0);
+  const auto actor_id = ActorID::Of(job_id, TaskID::Nil(), 0);
   auto request = Mocker::GenCreatePlacementGroupRequest(
       /* name */ "", rpc::PlacementStrategy::SPREAD,
       /* bundles_count */ 2,

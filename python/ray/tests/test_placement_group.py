@@ -978,7 +978,7 @@ def test_automatic_cleanup_job(ray_start_cluster):
     # job, actor, and task are cleaned when the job is done.
     cluster = ray_start_cluster
     num_nodes = 3
-    num_cpu_per_node = 3
+    num_cpu_per_node = 4
     # Create 3 nodes cluster.
     cluster.add_node(num_cpus=num_cpu_per_node)
     cluster.add_node(num_cpus=num_cpu_per_node)
@@ -1000,21 +1000,23 @@ def create_pg():
     ray.get(pg.ready())
     return pg
 
-# @ray.remote(num_cpus=0)
-# def f():
-#     create_pg()
+@ray.remote(num_cpus=0)
+def f():
+    create_pg()
 
-# @ray.remote(num_cpus=0)
-# class A:
-#     def create_pg(self):
-#         create_pg()
+@ray.remote(num_cpus=0)
+class A:
+    def create_pg(self):
+        create_pg()
 
-# ray.get(f.remote())
-# a = A.remote()
-# ray.get(a.create_pg.remote())
+ray.get(f.remote())
+a = A.remote()
+ray.get(a.create_pg.remote())
+# Create 2 pgs to make sure multiple placement groups that belong
+# to a single job will be properly cleaned.
 create_pg()
-import time
-time.sleep(5)
+create_pg()
+
 ray.shutdown()
     """
 
@@ -1034,12 +1036,90 @@ ray.shutdown()
 
 
 def test_automatic_cleanup_detached_actors(ray_start_cluster):
-    # cluster = ray_start_cluster
-    pass
-    # Test
-    # 1. Placement group created by a detached actor.
-    # 2. Placement group created by a task inside detached actor.
-    # 3. Placement group created by an actor inside detached actor.
+    # Make sure the placement groups created by a
+    # detached actors are cleaned properly.
+    cluster = ray_start_cluster
+    num_nodes = 3
+    num_cpu_per_node = 2
+    # Create 3 nodes cluster.
+    cluster.add_node(num_cpus=num_cpu_per_node)
+    cluster.add_node(num_cpus=num_cpu_per_node)
+    cluster.add_node(num_cpus=num_cpu_per_node)
+
+    info = ray.init(address=cluster.address)
+    available_cpus = ray.available_resources()["CPU"]
+    assert available_cpus == num_nodes * num_cpu_per_node
+
+    driver_code = f"""
+import ray
+
+ray.init(address="{info["redis_address"]}")
+
+def create_pg():
+    pg = ray.util.placement_group(
+            [{{"CPU": 1}} for _ in range(3)],
+            strategy="STRICT_SPREAD")
+    ray.get(pg.ready())
+    return pg
+
+# TODO(sang): Placement groups created by tasks launched by detached actor
+# is not cleaned with the current protocol.
+# @ray.remote(num_cpus=0)
+# def f():
+#     create_pg()
+
+@ray.remote(num_cpus=0)
+class A:
+    def create_pg(self):
+        create_pg()
+    def create_child_pg(self):
+        self.a = A.options(name="B").remote()
+        ray.get(self.a.create_pg.remote())
+    def kill_child_actor(self):
+        ray.kill(self.a)
+        try:
+            ray.get(self.a.create_pg.remote())
+        except Exception:
+            pass
+
+a = A.options(lifetime="detached", name="A").remote()
+ray.get(a.create_pg.remote())
+# TODO(sang): Currently, child tasks are cleaned when a detached actor
+# is dead. We cannot test this scenario until it is fixed.
+# ray.get(a.create_child_pg.remote())
+
+ray.shutdown()
+    """
+
+    run_string_as_driver(driver_code)
+
+    # Wait until the driver is reported as dead by GCS.
+    def is_job_done():
+        jobs = ray.jobs()
+        for job in jobs:
+            if "StopTime" in job:
+                return True
+        return False
+
+    def assert_num_cpus(expected_num_cpus):
+        if expected_num_cpus == 0:
+            return "CPU" not in ray.available_resources()
+        return ray.available_resources()["CPU"] == expected_num_cpus
+
+    wait_for_condition(is_job_done)
+    assert assert_num_cpus(num_nodes)
+    # Make sure when a child actor spawned by a detached actor
+    # is killed, the placement group is removed.
+    a = ray.get_actor("A")
+    # TODO(sang): child of detached actors
+    # seem to be killed when jobs are done. We should fix this before
+    # testing this scenario.
+    # ray.get(a.kill_child_actor.remote())
+    # assert assert_num_cpus(num_nodes)
+
+    # Make sure placement groups are cleaned when detached actors are killed.
+    ray.kill(a)
+    wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
 if __name__ == "__main__":

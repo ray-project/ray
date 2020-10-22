@@ -496,7 +496,7 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(JobID &job
 }
 
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
-    ActorID &actor_id) {
+    const ActorID &actor_id) {
   const auto &placement_groups =
       registered_placement_groups_.GetPlacementGroupsOwnedByActor(actor_id);
   // 0 length vector is returned if index cannot find the entry.

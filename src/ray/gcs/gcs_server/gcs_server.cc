@@ -194,6 +194,10 @@ void GcsServer::InitGcsActorManager() {
       scheduler, gcs_table_storage_, gcs_pub_sub_, [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
+  gcs_actor_manager_->AddActorDeadListener([this](const ActorID &actor_id) {
+    gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+  });
+
   gcs_node_manager_->AddNodeAddedListener(
       [this](const std::shared_ptr<rpc::GcsNodeInfo> &) {
         // Because a new node has been added, we need to try to schedule the pending

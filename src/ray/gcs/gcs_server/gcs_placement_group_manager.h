@@ -89,14 +89,24 @@ class GcsPlacementGroup {
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
 
-  // Get debug string for the placement group.
+  /// Get debug string for the placement group.
   std::string DebugString() const;
 
-  // SANG-TODO Create a method to report actor/job death.
+  /// Below fields are used for automatic cleanup of placement groups.
+
+  /// Get the actor id that created the placement group.
   const ActorID GetCreatorActorId() const;
+
+  /// Get the job id that created the placement group.
   const JobID GetCreatorJobId() const;
+
+  /// Mark that the creator job of this placement group is dead.
   void MarkCreatorJobDead();
+
+  /// Mark that the creator actor of this placement group is dead.
   void MarkCreatorActorDead();
+
+  /// Return True if the placement group is removable. False otherwise.
   bool IsPlacementGroupRemovable() const;
 
  private:
@@ -114,18 +124,35 @@ class RegisteredPlacementGroupIndex {
   explicit RegisteredPlacementGroupIndex() {}
   ~RegisteredPlacementGroupIndex() = default;
 
+  /// Emplace the index of the placement of a given id.
   bool Emplace(const PlacementGroupID &placement_group_id,
                std::shared_ptr<GcsPlacementGroup> placement_group);
+
+  /// Erase the index of the placement group of a given id.
   void Erase(const PlacementGroupID &placement_group_id);
+
+  /// Get the placement group of the corresponding id.
   absl::optional<std::shared_ptr<GcsPlacementGroup>> Get(
       const PlacementGroupID &placement_group_id) const;
+
+  /// Return the map of placement groups owned by a given actor id.
   const PlacementGroupMap &GetPlacementGroupsOwnedByActor(const ActorID &actor_id);
+
+  /// Return the map of placement groups owned by a given job id.
   const PlacementGroupMap &GetPlacementGroupsOwnedByJob(const JobID &job_id);
+
+  /// Return the map of registered placement groups. This is used to iterate
+  /// registered placement groups.
   const PlacementGroupMap &GetRegisteredPlacementGroups() const;
 
  private:
+  /// Map of the registered placement groups.
   PlacementGroupMap placement_groups_;
+
+  /// Map of placement groups owned by actor ids.
   absl::flat_hash_map<ActorID, PlacementGroupMap> placement_groups_by_actor_id_;
+
+  /// Map of the placement group owned by job ids.
   absl::flat_hash_map<JobID, PlacementGroupMap> placement_groups_by_job_id_;
 };
 
@@ -236,7 +263,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   ///
   /// \param actor_id The actor id where placement groups that need to be cleaned belong
   /// to.
-  void CleanPlacementGroupIfNeededWhenActorDead(ActorID &actor_id);
+  void CleanPlacementGroupIfNeededWhenActorDead(const ActorID &actor_id);
 
  private:
   /// Try to create placement group after a short time.
