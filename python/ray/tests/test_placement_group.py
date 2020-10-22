@@ -1000,20 +1000,21 @@ def create_pg():
     ray.get(pg.ready())
     return pg
 
-@ray.remote(num_cpus=0)
-def f():
-    create_pg()
+# @ray.remote(num_cpus=0)
+# def f():
+#     create_pg()
 
-@ray.remote(num_cpus=0)
-class A:
-    def create_pg(self):
-        create_pg()
+# @ray.remote(num_cpus=0)
+# class A:
+#     def create_pg(self):
+#         create_pg()
 
-ray.get(f.remote())
-a = A.remote()
-ray.get(a.create_pg.remote())
+# ray.get(f.remote())
+# a = A.remote()
+# ray.get(a.create_pg.remote())
 create_pg()
-
+import time
+time.sleep(5)
 ray.shutdown()
     """
 
