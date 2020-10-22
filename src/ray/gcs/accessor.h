@@ -495,9 +495,11 @@ class NodeInfoAccessor {
   /// is called before.
   ///
   /// \param node_id The ID of node to look up in local cache.
+  /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
   /// dead, this optional object is empty.
-  virtual boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id) const = 0;
+  virtual boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+                                                bool filter_dead_nodes = true) const = 0;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
