@@ -154,6 +154,8 @@ class RayLog : public RayLogBase {
 
   static RayLogLevel GetLogLevelFromEnv();
 
+  static std::string GetLogFormatPattern();
+
  private:
   // Hide the implementation of log provider by void *.
   // Otherwise, lib user may define the same macro to use the correct header file.
@@ -170,6 +172,12 @@ class RayLog : public RayLogBase {
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;
+  // Log format content.
+  static std::string log_format_pattern_;
+  // Log rotation file size limitation.
+  static long log_rotation_max_size_;
+  // Log rotation file number.
+  static long log_rotation_file_num_;
 
  protected:
   virtual std::ostream &Stream();

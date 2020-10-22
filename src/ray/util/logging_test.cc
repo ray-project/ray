@@ -15,7 +15,6 @@
 #include "ray/util/logging.h"
 
 #include <chrono>
-#include <csignal>
 #include <cstdlib>
 #include <iostream>
 
@@ -136,7 +135,7 @@ void signal_handler(int signum) {
 
 TEST(PrintLogTest, RayCheckAbortTest) {
   get_abort_signal = false;
-  signal(SIGABRT, signal_handler);
+  // signal(SIGABRT, signal_handler);
   ray::RayLog::InstallFailureSignalHandler();
   RAY_CHECK(0) << "Check for aborting";
   sleep(1);

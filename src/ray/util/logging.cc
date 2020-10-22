@@ -101,10 +101,11 @@ class SpdLogMessage final {
     if (!logger) {
       logger = spdlog::get("stderr");
     }
-    // If no default logger we just emit all log informations to stderr.
+    // We just emit all log informations to stderr when no default logger has been created
+    // before starting ray log, which is for glog compatible.
     if (!logger) {
       logger = spdlog::stderr_color_mt("stderr");
-      logger->set_pattern("[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v");
+      logger->set_pattern(RayLog::GetLogFormatPattern());
     }
     return logger;
   }
@@ -117,7 +118,9 @@ class SpdLogMessage final {
         loglevel_ == static_cast<int>(spdlog::level::critical)) {
       stream() << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
     }
-    logger->log(static_cast<spdlog::level::level_enum>(loglevel_), "{}", str_.str());
+    // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
+    logger->log(static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}",
+                str_.str());
     logger->flush();
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
       // For keeping same action with glog, process will be abort if it's fatal log.
@@ -191,6 +194,11 @@ typedef ray::CerrLog LoggingProvider;
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
 std::string RayLog::log_dir_ = "";
+// Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
+// %L is loglevel, %P is process id, %t for thread id.
+std::string RayLog::log_format_pattern_ = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
+long RayLog::log_rotation_max_size_ = 1 << 29;
+long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
 
 #ifdef RAY_USE_GLOG
@@ -298,10 +306,14 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     pid_t pid = getpid();
 #endif
     // Reset log pattern and level and we assume a log file can be rotated with
-    // 10 files in max size 512M.
-    // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
-    // %L is loglevel, %P is process id, %t for thread id.
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v");
+    // 10 files in max size 512M by default.
+    if (getenv("RAY_ROTATION_MAX_SIZE")) {
+      log_rotation_max_size_ = std::atol(getenv("RAY_RAOTATION_MAX_SIZE"));
+    }
+    if (getenv("RAY_ROTATION_FILE_NUM")) {
+      log_rotation_file_num_ = std::atol(getenv("RAY_ROTATION_FILE_NUM"));
+    }
+    spdlog::set_pattern(log_format_pattern_);
     spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
@@ -311,7 +323,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
           spdlog::rotating_logger_mt("ray_log_sink",
                                      dir_ends_with_slash + app_name_without_path + "_" +
                                          std::to_string(pid) + ".log",
-                                     1 << 29, 10);
+                                     log_rotation_max_size_, log_rotation_file_num_);
     }
     spdlog::set_default_logger(file_logger);
 #endif
@@ -322,12 +334,12 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     google::base::SetLogger(level, &stdout_logger_singleton);
 #else
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    console_sink->set_pattern("[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v");
+    console_sink->set_pattern(log_format_pattern_);
     auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
     console_sink->set_level(level);
 
     auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
-    err_sink->set_pattern("[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v");
+    err_sink->set_pattern(log_format_pattern_);
     err_sink->set_level(spdlog::level::err);
 
     auto logger = std::shared_ptr<spdlog::logger>(
@@ -384,7 +396,9 @@ void RayLog::ShutDownRayLog() {
 #if defined(RAY_USE_GLOG)
   google::ShutdownGoogleLogging();
 #elif defined(RAY_USE_SPDLOG)
-  spdlog::default_logger()->flush();
+  if (spdlog::default_logger()) {
+    spdlog::default_logger()->flush();
+  }
   spdlog::drop_all();
   spdlog::shutdown();
 #endif
@@ -394,12 +408,16 @@ void WriteFailureMessage(const char *data, int size) {
   // The data & size represent one line failure message.
   // The second parameter `size-1` means we should strip last char `\n`
   // for pretty printing.
-  RAY_LOG(ERROR) << std::string(data, size - 1);
+  if (nullptr != data and size > 0) {
+    RAY_LOG(ERROR) << std::string(data, size - 1);
+  }
 #ifdef RAY_USE_SPDLOG
   // If logger writes logs to files, logs are fully-buffered, which is different from
   // stdout (line-buffered) and stderr (unbuffered). So always flush here in case logs are
   // lost when logger writes logs to files.
-  spdlog::default_logger()->flush();
+  if (spdlog::default_logger()) {
+    spdlog::default_logger()->flush();
+  }
 #endif
 }
 
@@ -427,6 +445,8 @@ void RayLog::InstallFailureSignalHandler() {
 bool RayLog::IsLevelEnabled(RayLogLevel log_level) {
   return log_level >= severity_threshold_;
 }
+
+std::string RayLog::GetLogFormatPattern() { return log_format_pattern_; }
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     // glog does not have DEBUG level, we can handle it using is_enabled_.
