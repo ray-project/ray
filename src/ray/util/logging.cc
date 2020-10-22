@@ -408,7 +408,7 @@ void WriteFailureMessage(const char *data, int size) {
   // The data & size represent one line failure message.
   // The second parameter `size-1` means we should strip last char `\n`
   // for pretty printing.
-  if (nullptr != data and size > 0) {
+  if (nullptr != data && size > 0) {
     RAY_LOG(ERROR) << std::string(data, size - 1);
   }
 #ifdef RAY_USE_SPDLOG
