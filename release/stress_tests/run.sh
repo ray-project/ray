@@ -42,7 +42,8 @@ wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ra
 
 # Install Anaconda.
 wget --quiet https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
-bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
+bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p "$HOME/anaconda3" || true
+# shellcheck disable=SC2016
 echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
 
 conda uninstall -y terminado

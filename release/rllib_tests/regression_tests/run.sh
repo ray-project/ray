@@ -2,7 +2,6 @@
 ray_version="" 
 commit=""
 ray_branch=""
-workload=""
 
 for i in "$@"
 do
@@ -19,7 +18,6 @@ case "$i" in
     ray_branch="${i#*=}"
     ;;
     --workload=*)
-    workload="${i#*=}"
     ;;
     --help)
     usage
@@ -48,7 +46,7 @@ wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ra
 conda uninstall -y terminado
 source activate tensorflow_p36 && pip install -U pip
 source activate tensorflow_p36 && pip install -U "$wheel"
-source activate tensorflow_p36 && pip install ray[rllib] ray[debug]
+source activate tensorflow_p36 && pip install "ray[rllib]" "ray[debug]"
 source activate tensorflow_p36 && pip install torch==1.6 torchvision
 source activate tensorflow_p36 && pip install boto3==1.4.8 cython==0.29.0
 source activate tensorflow_p36 && rllib train -f compact-regression-test.yaml

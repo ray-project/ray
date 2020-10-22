@@ -47,8 +47,8 @@ wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ra
 conda uninstall -y terminado || true
 pip install -U pip
 pip install terminado
-pip install -U $wheel
-pip install ray[rllib]
+pip install -U "$wheel"
+pip install "ray[rllib]"
 pip install -U ipdb
 # There have been some recent problems with torch 1.5 and torchvision 0.6
 # not recognizing GPUs.
