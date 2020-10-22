@@ -20,7 +20,7 @@ install_java() {
   java -version
   java_bin=$(readlink -f "$(command -v java)")
   echo "java_bin path $java_bin"
-  java_home=$(java_bin%jre/bin/java)
+  java_home=${java_bin%jre/bin/java}
   export JAVA_HOME="$java_home"
 }
 
