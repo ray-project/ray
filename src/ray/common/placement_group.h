@@ -73,11 +73,11 @@ class PlacementGroupSpecBuilder {
     message_->set_name(name);
     message_->set_strategy(strategy);
     // Configure creator job and actor ID for automatic lifecycle management.
-    RAY_CHECK(creator_job_id != JobID::Nil());
+    RAY_CHECK(!creator_job_id.IsNil());
     message_->set_creator_job_id(creator_job_id.Binary());
     message_->set_creator_job_dead(false);
     message_->set_creator_actor_id(creator_actor_id.Binary());
-    message_->set_creator_actor_dead(creator_actor_id == ActorID::Nil());
+    message_->set_creator_actor_dead(creator_actor_id.IsNil());
 
     for (size_t i = 0; i < bundles.size(); i++) {
       auto resources = bundles[i];

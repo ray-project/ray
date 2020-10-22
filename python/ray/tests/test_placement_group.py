@@ -980,9 +980,8 @@ def test_automatic_cleanup_job(ray_start_cluster):
     num_nodes = 3
     num_cpu_per_node = 4
     # Create 3 nodes cluster.
-    cluster.add_node(num_cpus=num_cpu_per_node)
-    cluster.add_node(num_cpus=num_cpu_per_node)
-    cluster.add_node(num_cpus=num_cpu_per_node)
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=num_cpu_per_node)
 
     info = ray.init(address=cluster.address)
     available_cpus = ray.available_resources()["CPU"]
@@ -1042,9 +1041,8 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
     num_nodes = 3
     num_cpu_per_node = 2
     # Create 3 nodes cluster.
-    cluster.add_node(num_cpus=num_cpu_per_node)
-    cluster.add_node(num_cpus=num_cpu_per_node)
-    cluster.add_node(num_cpus=num_cpu_per_node)
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=num_cpu_per_node)
 
     info = ray.init(address=cluster.address)
     available_cpus = ray.available_resources()["CPU"]
