@@ -101,7 +101,7 @@ from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import util  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
-__commit__ = "{{RAY_COMMIT_SHA}}"
+__commit__ = "da2d3fbcfc31fda5a12d072bf09d2417db3cb40c"
 __version__ = "1.1.0.dev0"
 
 __all__ = [

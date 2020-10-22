@@ -22,18 +22,21 @@ NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5")
 
-sudo apt-get install unzip
+yum -y install unzip zip
+yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 /ray/ci/travis/install-bazel.sh
+echo "build --config=manylinux2010" >> /root/.bazelrc
 
 # Put bazel into the PATH
-export PATH=$PATH:/root/bin
+export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
+export BAZEL_PATH=/root/bazel-3.2.0/output/bazel
 
 # Install and use the latest version of Node.js in order to build the dashboard.
-set +x
+set -x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
 source "$HOME"/.nvm/nvm.sh
-nvm install $NODE_VERSION
-nvm use node
+nvm install v10.22.1  # previous lts
+nvm use v10.22.1
 
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
@@ -52,7 +55,14 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory and the
   # dashboard directory.
+<<<<<<< HEAD
   git clean -f -f -x -d -e .whl -e python/ray/new_dashboard/client -e dashboard/client
+||||||| parent of c0a6a3c83 (necessary changes)
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
+=======
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
+  export BAZEL_LINKLIBS="-l%:libstdc++.a"
+>>>>>>> c0a6a3c83 (necessary changes)
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
@@ -66,7 +76,9 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
       exit 1
     fi
 
-    PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
+    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
+    BAZEL_PATH=/root/bazel-3.2.0/output/bazel \
+    /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
   popd
