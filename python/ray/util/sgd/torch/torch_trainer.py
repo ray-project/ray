@@ -1,3 +1,4 @@
+import inspect
 import time
 
 import numpy as np
@@ -571,25 +572,58 @@ class TorchTrainer:
         self.worker_group = DeactivatedWorkerGroup()
 
     @classmethod
-    def as_trainable(cls, *args, **kwargs):
+    def as_trainable(cls, *args, override_tune_step=None, **kwargs):
         """Creates a BaseTorchTrainable class compatible with Tune.
 
         Any configuration parameters will be overridden by the Tune
-        Trial configuration. You can also subclass the provided Trainable
-        to implement your own iterative optimization routine.
+        Trial configuration. You can also pass in a custom
+        ``override_tune_step`` to implement your own iterative optimization
+        routine and override the default implementation.
 
         .. code-block:: python
 
+            def step(trainer, info):
+                # Implement custom objective function here.
+                train_stats = trainer.train()
+                ...
+                # Return the metrics to report to tune.
+                # Do not call tune.report here.
+                return train_stats
+
             TorchTrainable = TorchTrainer.as_trainable(
                 training_operator_cls=MyTrainingOperator,
-                num_gpus=2
+                num_gpus=2,
+                override_tune_step=step
             )
             analysis = tune.run(
                 TorchTrainable,
                 config={"lr": tune.grid_search([0.01, 0.1])}
             )
 
+        Args:
+            override_tune_step (Callable[[TorchTrainer, Dict], Dict]): A
+                function to override the default training step to be used
+                for Ray Tune. It accepts two arguments: the first one is an
+                instance of your TorchTrainer, and the second one is a info
+                dictionary, containing information about the Trainer
+                state. If None is passed in, the default step
+                function will be
+                used: run 1 epoch of training, 1 epoch of validation,
+                and report both results to Tune. Passing in
+                ``override_tune_step`` is useful to define
+                custom step functions, for example if you need to
+                manually update the scheduler or want to run more than 1
+                training epoch for each tune iteration.
+
         """
+        if override_tune_step is not None:
+            callback_args = inspect.signature(override_tune_step)
+            if not len(callback_args.parameters) == 2:
+                raise ValueError("override_tune_step must take in exactly 2 "
+                                 "arguments. The passed in function "
+                                 "currently takes in {} "
+                                 "args".format(
+                                     str(len(callback_args.parameters))))
 
         class TorchTrainable(BaseTorchTrainable):
             @classmethod
@@ -618,6 +652,14 @@ class TorchTrainer:
                     extra_cpu=int(remote_worker_count * num_cpus_per_worker),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
 
+            def step(self):
+                if override_tune_step is not None:
+                    output = override_tune_step(
+                        self._trainer, {"iteration": self.training_iteration})
+                    return output
+                else:
+                    return super(TorchTrainable, self).step()
+
             def _create_trainer(self, tune_config):
                 """Overrides the provided config with Tune config."""
                 provided_config = kwargs.get("config", {}).copy()
@@ -634,27 +676,29 @@ class BaseTorchTrainable(Trainable):
 
     This class is produced when you call ``TorchTrainer.as_trainable(...)``.
 
-    You can override the produced Trainable to implement custom iterative
-    training procedures:
+    By default one step of training runs ``trainer.train()`` once and
+    ``trainer.validate()`` once. You can implement custom iterative
+    training procedures by passing in a ``override_tune_step`` function to
+    ``as_trainable``:
 
     .. code-block:: python
 
+        def custom_step(trainer, info):
+            for i in range(5):
+                train_stats = trainer.train()
+            validation_stats = trainer.validate()
+            train_stats.update(validation_stats)
+            return train_stats
+
+        # TorchTrainable is subclass of BaseTorchTrainable.
         TorchTrainable = TorchTrainer.as_trainable(
             training_operator_cls=MyTrainingOperator,
-            num_gpus=2
+            num_gpus=2,
+            override_tune_step=custom_step
         )
-        # TorchTrainable is subclass of BaseTorchTrainable.
-
-        class CustomTrainable(TorchTrainable):
-            def step(self):
-                for i in range(5):
-                    train_stats = self.trainer.train()
-                validation_stats = self.trainer.validate()
-                train_stats.update(validation_stats)
-                return train_stats
 
         analysis = tune.run(
-            CustomTrainable,
+            TorchTrainable,
             config={"lr": tune.grid_search([0.01, 0.1])}
         )
 
@@ -665,10 +709,7 @@ class BaseTorchTrainable(Trainable):
         self._trainer = self._create_trainer(config)
 
     def step(self):
-        """Calls `self.trainer.train()` and `self.trainer.validate()` once.
-
-        You may want to override this if using a custom LR scheduler.
-        """
+        """Calls `self.trainer.train()` and `self.trainer.validate()` once."""
         if self._is_overridden("_train"):
             raise DeprecationWarning(
                 "Trainable._train is deprecated and will be "

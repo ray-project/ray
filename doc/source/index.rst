@@ -217,7 +217,6 @@ Papers
    cluster/index.rst
    cluster/launcher.rst
    cluster/autoscaling.rst
-   cluster/cloud.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -231,6 +230,7 @@ Papers
    serve/deployment.rst
    serve/advanced.rst
    serve/architecture.rst
+   serve/faq.rst
    serve/package-ref.rst
 
 .. toctree::

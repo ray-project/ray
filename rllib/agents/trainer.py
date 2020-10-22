@@ -53,6 +53,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     # model inference batching, which can improve performance for inference
     # bottlenecked workloads.
     "num_envs_per_worker": 1,
+    # When `num_workers` > 0, the driver (local_worker; worker-idx=0) does not
+    # need an environment. This is because it doesn't have to sample (done by
+    # remote_workers; worker_indices > 0) nor evaluate (done by evaluation
+    # workers; see below).
+    "create_env_on_driver": False,
     # Divide episodes into fragments of this many steps each during rollouts.
     # Sample batches of this size are collected from rollout workers and
     # combined into a larger batch of `train_batch_size` for learning.
@@ -288,36 +293,25 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune. Otherwise, the trainer runs in the main program.
     "num_cpus_for_driver": 1,
-    # You can set these memory quotas to tell Ray to reserve memory for your
-    # training run. This guarantees predictable execution, but the tradeoff is
-    # if your workload exceeeds the memory quota it will fail.
-    # Heap memory to reserve for the trainer process (0 for unlimited). This
-    # can be large if your are using large train batches, replay buffers, etc.
+    # Deprecated.
     "memory": 0,
-    # Object store memory to reserve for the trainer process. Being large
-    # enough to fit a few copies of the model weights should be sufficient.
-    # This is enabled by default since models are typically quite small.
     "object_store_memory": 0,
-    # Heap memory to reserve for each worker. Should generally be small unless
-    # your environment is very heavyweight.
     "memory_per_worker": 0,
-    # Object store memory to reserve for each worker. This only needs to be
-    # large enough to fit a few sample batches at a time. This is enabled
-    # by default since it almost never needs to be larger than ~200MB.
     "object_store_memory_per_worker": 0,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
-    #  - "sampler": generate experiences via online simulation (default)
-    #  - a local directory or file glob expression (e.g., "/tmp/*.json")
-    #  - a list of individual file paths/URIs (e.g., ["/tmp/1.json",
-    #    "s3://bucket/2.json"])
-    #  - a dict with string keys and sampling probabilities as values (e.g.,
+    #  - "sampler": Generate experiences via online (env) simulation (default).
+    #  - A local directory or file glob expression (e.g., "/tmp/*.json").
+    #  - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
+    #    "s3://bucket/2.json"]).
+    #  - A dict with string keys and sampling probabilities as values (e.g.,
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-    #  - a function that returns a rllib.offline.InputReader
+    #  - A callable that returns a ray.rllib.offline.InputReader.
     "input": "sampler",
     # Specify how to evaluate the current policy. This only has an effect when
-    # reading offline experiences. Available options:
+    # reading offline experiences ("input" is not "sampler").
+    # Available options:
     #  - "wis": the weighted step-wise importance sampling estimator.
     #  - "is": the step-wise importance sampling estimator.
     #  - "simulation": run the environment in the background, but use
@@ -557,12 +551,12 @@ class Trainer(Trainable):
             # A class specifier.
             elif "." in env:
                 self.env_creator = \
-                    lambda env_config: from_config(env, env_config)
+                    lambda env_context: from_config(env, env_context)
             # Try gym.
             else:
                 import gym  # soft dependency
                 self.env_creator = \
-                    lambda env_config: gym.make(env, **env_config)
+                    lambda env_context: gym.make(env, **env_context)
         else:
             self.env_creator = lambda env_config: None
 
