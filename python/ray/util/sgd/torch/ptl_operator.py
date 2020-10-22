@@ -57,9 +57,12 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         """Returns list of scheduler dictionaries.
 
         List is empty if no schedulers are returned in the
-        configure_optimizers method of your LightningModule. Default
-        configuration is used if configure_optimizers returns scheduler
-        objects instead of scheduler dicts. See
+        configure_optimizers method of your LightningModule.
+
+        Default configuration is used if configure_optimizers
+        returns scheduler objects.
+
+        See
         https://pytorch-lightning.readthedocs.io/en/latest/lightning_module.html#configure-optimizers
         """
         return self._scheduler_dicts
