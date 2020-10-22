@@ -11,6 +11,21 @@ echo 10
 EOF
 chmod +x /usr/bin/nproc
 
+install_java() {
+  sudo apt-get install -y software-properties-common
+  sudo add-apt-repository -y ppa:openjdk-r/ppa
+  sudo apt-get update
+  sudo apt-get install -y openjdk-8-jdk
+  update-java-alternatives -l
+  java -version
+  java_bin=$(readlink -f "$(command -v java)")
+  echo "java_bin path $java_bin"
+  java_home=$(java_bin%jre/bin/java)
+  export JAVA_HOME="$java_home"
+}
+
+source install_java
+
 NODE_VERSION="14"
 PYTHONS=("cp36-cp36m"
          "cp37-cp37m"
