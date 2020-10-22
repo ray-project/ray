@@ -87,6 +87,9 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Custom preprocessors are deprecated. Please use a wrapper class around
     # your environment instead to preprocess observations.
     "custom_preprocessor": None,
+    # Overrides model interface; Custom model does not inherit from model
+    # interface.
+    "custom_model_override": False,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -303,9 +306,11 @@ class ModelCatalog:
                     "`model_cls` must be a ModelV2 sub-class, but is"
                     " {}!".format(model_cls))
 
-            logger.info("Wrapping {} as {}".format(model_cls, model_interface))
-            model_cls = ModelCatalog._wrap_if_needed(model_cls,
-                                                     model_interface)
+            if not model_config.get("custom_model_override"):
+                logger.info("Wrapping {} as {}".format(model_cls,
+                                                       model_interface))
+                model_cls = ModelCatalog._wrap_if_needed(
+                    model_cls, model_interface)
 
             if framework in ["tf2", "tf", "tfe"]:
                 # Track and warn if vars were created but not registered.
