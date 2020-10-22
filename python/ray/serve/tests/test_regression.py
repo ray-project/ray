@@ -1,9 +1,7 @@
 import numpy as np
 import requests
 
-import ray
 from ray import serve
-from ray.cluster_utils import Cluster
 
 
 def test_np_in_composed_model(serve_instance):
