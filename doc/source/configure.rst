@@ -78,10 +78,9 @@ For each session, Ray will place all its temporary files under the
 so the default session directory is ``/tmp/ray/{ray_session_name}``.
 You can sort by their names to find the latest session.
 
-Change the *root temporary directory* in one of these ways:
+Change the *root temporary directory* by passing ``--temp-dir={your temp path}`` to ``ray start``.
 
-* Pass ``--temp-dir={your temp path}`` to ``ray start``
-* Specify ``temp_dir`` when call ``ray.init()``
+(There is not currently a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``.)
 
 You can also use ``default_worker.py --temp-dir={your temp path}`` to
 start a new worker with the given *root temporary directory*.
