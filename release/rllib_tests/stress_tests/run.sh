@@ -3,11 +3,6 @@
 ray_version="" 
 commit=""
 ray_branch=""
-workload=""
-
-usage() {
-    echo "Start one microbenchmark trial."
-}
 
 for i in "$@"
 do
@@ -24,7 +19,6 @@ case "$i" in
     ray_branch="${i#*=}"
     ;;
     --workload=*)
-    workload="${i#*=}"
     ;;
     --help)
     usage
@@ -46,13 +40,17 @@ fi
 echo "version: $ray_version"
 echo "commit: $commit"
 echo "branch: $ray_branch"
-echo "workload: $workload"
+echo "workload: ignored"
 
 wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux1_x86_64.whl"
 
-pip install -U pip
-unset RAY_ADDRESS
-source activate tensorflow_p36 && pip install -q -U "$wheel" Click
-source activate tensorflow_p36 && pip install -q "ray[all]" "gym[atari]"
-source activate tensorflow_p36 && python "workloads/$workload.py"
+conda uninstall -y terminado
+source activate tensorflow_p36 && pip install -U pip
+source activate tensorflow_p36 && pip install -U "$wheel"
+source activate tensorflow_p36 && pip install "ray[rllib]" "ray[debug]"
+source activate tensorflow_p36 && pip install boto3==1.4.8 cython==0.29.0
+source activate tensorflow_p36
 
+python3 wait_cluster.py
+
+rllib train -f atari_impala_xlarge.yaml --ray-address=auto --queue-trials
