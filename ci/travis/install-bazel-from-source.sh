@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -xeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
@@ -44,23 +44,24 @@ esac
   fi
 )
 
+export PATH=/opt/python/cp36-cp36m/bin:$PATH
 python="$(command -v python3 || command -v python || echo python)"
-version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
+#python="/opt/python/cp36-cp36m/bin/python3"
+version="$("${python}" -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
 if [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
 else
-  target="./install.sh"
-  curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
-  chmod +x "${target}"
-  if [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
-    "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
-    which bazel > /dev/null
-  else
-    "${target}" --user > /dev/null
-  fi
-  rm -f "${target}"
+  gcc -v
+  echo $version
+  curl -f -s -L -R -O https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-dist.zip
+  unzip bazel-${version}-dist.zip -d bazel-${version}
+  cd bazel-${version}
+  export BAZEL_LINKLIBS="-l%:libstdc++.a"
+  ./compile.sh
+  cd ..
+  mv bazel-${version} /root/
 fi
 
 for bazel_cfg in ${BAZEL_CONFIG-}; do
