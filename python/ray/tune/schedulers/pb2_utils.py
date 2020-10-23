@@ -7,9 +7,11 @@ from GPy.core import Param
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import euclidean_distances
 
-
-## PB2 time varying kernel
 class TV_SquaredExp(Kern):
+    """ Time varying squared exponential kernel.
+        For more info see the TV-GP-UCB paper:
+        http://proceedings.mlr.press/v51/bogunovic16.pdf
+    """
     def __init__(self,
                  input_dim,
                  variance=1.,
@@ -66,21 +68,32 @@ class TV_SquaredExp(Kern):
         self.epsilon.gradient = np.sum(deps * dL_dK)
 
 
-## PB2 data normalizing functions
 def normalize(data, wrt):
-    # data = data to normalize
-    # wrt = data will be normalized with respect to this
+    """ Normalize data to be in range (0,1), with respect to (wrt) boundaries, 
+        which can be specified.
+    """
     return (data - np.min(wrt, axis=0)) / (
         np.max(wrt, axis=0) - np.min(wrt, axis=0))
 
 
 def standardize(data):
+    """ Standardize to be Gaussian N(0,1). Clip final values.
+    """
     data = (data - np.mean(data, axis=0)) / (np.std(data, axis=0) + 1e-8)
     return np.clip(data, -2, 2)
 
-
-## UCB acquisition function
 def UCB(m, m1, x, fixed, kappa=0.5):
+    """ UCB acquisition function. Interesting points to note:
+        1) We concat with the fixed points, because we are not optimizing wrt
+           these. This is the Reward and Time, which we can't change. We want
+           to find the best hyperparameters *given* the reward and time.
+        2) We use m to get the mean and m1 to get the variance. If we already
+           have trials running, then m1 contains this information. This reduces
+           the variance at points currently running, even if we don't have their
+           label. 
+           Ref: https://jmlr.org/papers/volume15/desautels14a/desautels14a.pdf
+
+    """
 
     c1 = 0.2
     c2 = 0.4
@@ -98,11 +111,10 @@ def UCB(m, m1, x, fixed, kappa=0.5):
     return mean + kappa * var
 
 
-## optimize acquisition function.
 def optimize_acq(func, m, m1, fixed, num_f):
-
-    print("Optimizing Acquisition Function...\n")
-
+    """ Optimize acquisition function.
+    """
+    
     opts = {'maxiter': 200, 'maxfun': 200, 'disp': False}
 
     T = 10
@@ -129,9 +141,9 @@ def optimize_acq(func, m, m1, fixed, num_f):
     return (np.clip(best_theta, 0, 1))
 
 
-## Select the number of datapoints to keep, using cross validation
 def select_length(Xraw, yraw, bounds, num_f):
-
+    """Select the number of datapoints to keep, using cross validation
+    """ 
     min_len = 200
 
     if Xraw.shape[0] < min_len:

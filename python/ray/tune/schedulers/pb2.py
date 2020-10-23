@@ -4,20 +4,42 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
-import GPy
+try:
+    import GPy
+except ImportError:
+    GPy = None
 
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.schedulers.pb2_utils import normalize, optimize_acq, \
-    select_length, \
+    select_length, UCB, \
     standardize, TV_SquaredExp
 
 logger = logging.getLogger(__name__)
 
 
-## select config, given X and y.
 def select_config(Xraw, yraw, current, newpoint, bounds, num_f, num):
+    """Selects the next hyperparameter config to try.
 
-    length = select_length(Xraw, yraw, current, newpoint, bounds, num_f, num)
+    This function takes the formatted data, fits the GP model and optimizes the
+    UCB acquisition function to select the next point.
+
+    Args:
+        Xraw (np.array): The un-normalized array of hyperparams + Time and Reward
+        yraw (np.array): The un-normalized vector of reward changes.
+        current (list): The hyperparams of trials currently running. This is important
+                        so we do not select the same config twice. If there is data 
+                        here then we fit a second GP including it (with fake y labels).
+                        The GP variance doesn't depend on the y labels so it is ok.
+        newpoint (np.array): The Reward and Time for the new point. We cannot change
+                        these as they are based on the *new weights*. 
+        bounds (dict): Bounds for the hyperparameters. Used to normalize.
+        num_f (int): The number of fixed params. Almost always 2 (reward+time)
+    
+    Return:
+        xt (np.array): A vector of new hyperparameters. 
+
+    """
+    length = select_length(Xraw, yraw, bounds, num_f)
 
     Xraw = Xraw[-length:, :]
     yraw = yraw[-length:]
@@ -54,7 +76,6 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f, num):
 
     m.kern.lengthscale.fix(m.kern.lengthscale.clip(1e-5, 1))
 
-    # m1 is used to reduce redundancy. If there are trials already running (current) we can use this info in the acquisition function
     if current is None:
         m1 = deepcopy(m)
     else:
@@ -84,19 +105,21 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f, num):
     return (xt)
 
 
-## Outer loop: set up data/bounds, pass into select_config function
 def explore(data, bounds, current, base, old, config):
+    """ This function primarily processes the data from completed trials
+        and then requests the next config from the select_config function.
+        It then adds the new trial to the dataframe, so that the reward change
+        can be computed using the new weights.
+        It returns the new point and the dataframe with the new entry.
+    """
 
-    data['Trial'] = data['Trial'].astype(str)
-    data.to_csv('old.csv')
-
-    df = data.sort_values(by='T').reset_index(drop=True)
+    df = data.sort_values(by='Time').reset_index(drop=True)
 
     # group by trial ID and hyperparams. Compute change in timesteps and reward.
     df['y'] = df.groupby(['Trial'] +
                          [key for key in bounds.keys()])['Reward'].diff()
     df['t_change'] = df.groupby(['Trial'] +
-                                [key for key in bounds.keys()])['T'].diff()
+                                [key for key in bounds.keys()])['Time'].diff()
 
     # delete entries without positive change in t.
     df = df[df['t_change'] > 0].reset_index(drop=True)
@@ -105,7 +128,7 @@ def explore(data, bounds, current, base, old, config):
     # normalize the reward change by the update size. For example if trials took diff lengths of time.
     df['y'] = df.y / df.t_change
     df = df[~df.y.isna()].reset_index(drop=True)
-    df = df.sort_values(by='T').reset_index(drop=True)
+    df = df.sort_values(by='Time').reset_index(drop=True)
 
     # only use the last 1k datapoints, so the GP is not too slow
     df = df.iloc[-1000:, :].reset_index(drop=True)
@@ -118,10 +141,10 @@ def explore(data, bounds, current, base, old, config):
         # now specify the dataset for the GP
         y = np.array(df.y.values)
         # meta data we keep -> episodes and reward (TODO: convert to curve)
-        t_r = df[['T', 'R_before']]  # df[['T', 'R_before']]
+        t_r = df[['Time', 'R_before']]  
         h = df[[key for key in bounds.keys()]]
         X = pd.concat([t_r, h], axis=1).values
-        newpoint = df[df['Trial'] == str(base)].iloc[-1, :][['T', 'R_before'
+        newpoint = df[df['Trial'] == str(base)].iloc[-1, :][['Time', 'R_before'
                                                              ]].values
         new = select_config(
             X,
@@ -143,11 +166,11 @@ def explore(data, bounds, current, base, old, config):
                 new_config[col] = new[i]
                 values.append(new[i])
 
-        new_T = df[df['Trial'] == str(base)].iloc[-1, :]['T']
+        new_T = df[df['Trial'] == str(base)].iloc[-1, :]['Time']
         new_Reward = df[df['Trial'] == str(base)].iloc[-1, :].Reward
 
         lst = [[old] + [new_T] + values + [new_Reward]]
-        cols = ['Trial', 'T'] + [key for key in bounds.keys()] + ['Reward']
+        cols = ['Trial', 'Time'] + [key for key in bounds.keys()] + ['Reward']
         new_entry = pd.DataFrame(lst, columns=cols)
 
         # create an entry for the new config, with the reward from the copied agent.
@@ -197,16 +220,9 @@ class PB2(PopulationBasedTraining):
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
-        hyperparam_mutations (dict): Hyperparams to mutate. The format is
-            as follows: for each key, either a function
-            or a tune search space object (tune.loguniform, tune.uniform,
-            etc.) can be provided. The function or tune search space object
-            specifies the distribution of a continuous parameter. You must
-            use tune.choice, tune.uniform, tune.loguniform, etc.. Arbitrary
-            tune.sample_from objects are not supported.
-            Tune will use the search space provided by
-            `hyperparam_mutations` for the initial samples if the
-            corresponding attributes are not present in `config`.
+        hyperparam_bounds (dict): Hyperparams to mutate. The format is
+            as follows: for each key, enter a list of the form [min, max]
+            representing the minimum and maximum possible hyperparameter values.
         quantile_fraction (float): Parameters are transferred from the top
             `quantile_fraction` fraction of trials to the bottom
             `quantile_fraction` fraction. Needs to be between 0 and 0.5.
@@ -244,33 +260,36 @@ class PB2(PopulationBasedTraining):
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  perturbation_interval: float = 60.0,
-                 hyperparam_mutations: Dict = None,
+                 hyperparam_bounds: Dict = None,
                  quantile_fraction: float = 0.25,
                  log_config: bool = True,
                  require_attrs: bool = True,
                  synch: bool = False):
 
+        if GPy is None:
+            raise RuntimeError("Need to install GPy to use PB2")
+
         resample_probability = 0
         custom_explore_fn = None
+        hyperparam_mutations = None
 
         super(PopulationBasedTraining, self).__init__(
             self, time_attr, reward_attr, metric, mode, perturbation_interval,
             hyperparam_mutations, quantile_fraction, resample_probability,
             custom_explore_fn, log_config, require_attrs, synch)
 
-        self._name = "pb2"
-
-        self.latest = 0  # when we last explored
+        self.last_exploration_time = 0  # when we last explored
         self.data = pd.DataFrame()
 
-        self.bounds = {}
-        for key, distribution in self._hyperparam_mutations.items():
-            self.bounds[key] = [
-                np.min([distribution() for _ in range(999999)]),
-                np.max([distribution() for _ in range(999999)])
-            ]
+        self.hyperparam_bounds = hyperparam_bounds
+
+        # Current = trials running that have already re-started after reaching
+        #           the checkpoint. When exploring we care if these trials
+        #           are already in or scheduled to be in the next round. 
+        self.current = None 
 
     def _save_trial_state(self, state, time, result, trial):
+
         score = super(PopulationBasedTraining, self)._save_trial_state(
             state, time, result, trial)
 
@@ -286,7 +305,7 @@ class PB2(PopulationBasedTraining):
         # Store trial state and hyperparams in dataframe.
         # this needs to be made more general.
         lst = [[trial, result[self._time_attr]] + values + [score]]
-        cols = ['Trial', 'T'] + names + ['Reward']
+        cols = ['Trial', 'Time'] + names + ['Reward']
         entry = pd.DataFrame(lst, columns=cols)
 
         self.data = pd.concat([self.data, entry]).reset_index(drop=True)
@@ -295,10 +314,10 @@ class PB2(PopulationBasedTraining):
     def _get_new_config(self, trial, trial_to_clone):
         # If we are at a new timestep, we dont want to penalise for trials
         # still going
-        if self.data['T'].max() > self.latest:
+        if self.data['Time'].max() > self.last_exploration_time:
             self.current = None
 
-        new_config, data = explore(self.data, self.bounds, self.current,
+        new_config, data = explore(self.data, self.hyperparam_bounds, self.current,
                                    trial_to_clone, trial,
                                    trial_to_clone.config)
 
@@ -314,9 +333,9 @@ class PB2(PopulationBasedTraining):
 
         new = np.array(new)
         new = new.reshape(1, new.size)
-        if self.data['T'].max() > self.latest:
-            self.latest = self.data['T'].max()
+        if self.data['Time'].max() > self.last_exploration_time:
+            self.last_exploration_time = self.data['Time'].max()
             self.current = new.copy()
         else:
             self.current = np.concatenate((self.current, new), axis=0)
-            print(self.current)
+            logger.debug(self.current)
