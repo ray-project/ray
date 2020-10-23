@@ -2784,7 +2784,6 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
       // Filter out direct call actors. These are not tracked by the raylet and
       // their assigned task ID is the actor ID.
       for (const auto &id : ready_task_id_set_copy) {
-        RAY_CHECK(actor_registry_.count(id.ActorId()) > 0);
         ready_task_id_set.erase(id);
       }
 
