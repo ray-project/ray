@@ -18,11 +18,13 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
     values = model.value_function()
     dist = dist_class(logits, model)
     log_probs = dist.logp(train_batch[SampleBatch.ACTIONS])
-    policy.entropy = dist.entropy().mean()
+    policy.entropy = dist.entropy().sum()
     policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
         log_probs.reshape(-1))
-    policy.value_err = nn.functional.mse_loss(
-        values.reshape(-1), train_batch[Postprocessing.VALUE_TARGETS])
+    policy.value_err = torch.sum(
+        torch.pow(
+            values.reshape(-1) - train_batch[Postprocessing.VALUE_TARGETS],
+            2.0))
     overall_err = sum([
         policy.pi_err,
         policy.config["vf_loss_coeff"] * policy.value_err,

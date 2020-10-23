@@ -495,18 +495,10 @@ def start_ray_process(command,
             process.kill()
             raise
 
-    def _get_stream_name(stream):
-        if stream is not None:
-            try:
-                return stream.name
-            except AttributeError:
-                return str(stream)
-        return None
-
     return ProcessInfo(
         process=process,
-        stdout_file=_get_stream_name(stdout_file),
-        stderr_file=_get_stream_name(stderr_file),
+        stdout_file=stdout_file.name if stdout_file is not None else None,
+        stderr_file=stderr_file.name if stderr_file is not None else None,
         use_valgrind=use_valgrind,
         use_gdb=use_gdb,
         use_valgrind_profiler=use_valgrind_profiler,
@@ -1027,10 +1019,11 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
+    port_test_socket = socket.socket()
+    port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if port == ray_constants.DEFAULT_DASHBOARD_PORT:
         while True:
             try:
-                port_test_socket = socket.socket()
                 port_test_socket.bind(("127.0.0.1", port))
                 port_test_socket.close()
                 break
@@ -1038,14 +1031,18 @@ def start_dashboard(require_dashboard,
                 port += 1
     else:
         try:
-            port_test_socket = socket.socket()
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
         except socket.error:
             raise ValueError(
                 f"The given dashboard port {port} is already in use")
 
-    dashboard_dir = "new_dashboard"
+    if "RAY_USE_NEW_DASHBOARD" in os.environ:
+        dashboard_dir = "new_dashboard"
+    else:
+        dashboard_dir = "dashboard"
+        logdir = None
+
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
     command = [
         sys.executable,
@@ -1061,12 +1058,12 @@ def start_dashboard(require_dashboard,
     if redis_password:
         command += ["--redis-password", redis_password]
 
-    dashboard_dependencies_present = True
+    webui_dependencies_present = True
     try:
         import aiohttp  # noqa: F401
         import grpc  # noqa: F401
     except ImportError:
-        dashboard_dependencies_present = False
+        webui_dependencies_present = False
         warning_message = (
             "Failed to start the dashboard. The dashboard requires Python 3 "
             "as well as 'pip install aiohttp grpcio'.")
@@ -1074,7 +1071,8 @@ def start_dashboard(require_dashboard,
             raise ImportError(warning_message)
         else:
             logger.warning(warning_message)
-    if dashboard_dependencies_present:
+
+    if webui_dependencies_present:
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1158,6 +1156,7 @@ def start_raylet(redis_address,
                  object_store_memory,
                  min_worker_port=None,
                  max_worker_port=None,
+                 worker_port_list=None,
                  object_manager_port=None,
                  redis_password=None,
                  metrics_agent_port=None,
@@ -1321,13 +1320,12 @@ def start_raylet(redis_address,
         sys.executable,
         "-u",
         os.path.join(RAY_PATH, "new_dashboard/agent.py"),
-        f"--redis-address={redis_address}",
-        f"--metrics-export-port={metrics_export_port}",
-        f"--dashboard-agent-port={metrics_agent_port}",
-        f"--node-manager-port={node_manager_port}",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--temp-dir={temp_dir}",
+        "--redis-address={}".format(redis_address),
+        "--metrics-export-port={}".format(metrics_export_port),
+        "--node-manager-port={}".format(node_manager_port),
+        "--object-store-name={}".format(plasma_store_name),
+        "--raylet-name={}".format(raylet_name),
+        "--temp-dir={}".format(temp_dir),
     ]
 
     if redis_password is not None and len(redis_password) != 0:
@@ -1357,11 +1355,14 @@ def start_raylet(redis_address,
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
     ]
+    if worker_port_list is not None:
+        command.append(f"--worker_port_list={worker_port_list}")
     if start_initial_python_workers_for_first_job:
         command.append("--num_initial_python_workers_for_first_job={}".format(
             resource_spec.num_cpus))
-    command.append("--agent_command={}".format(
-        subprocess.list2cmdline(agent_command)))
+    if "RAY_USE_NEW_DASHBOARD" in os.environ:
+        command.append("--agent_command={}".format(
+            subprocess.list2cmdline(agent_command)))
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store
         command += [

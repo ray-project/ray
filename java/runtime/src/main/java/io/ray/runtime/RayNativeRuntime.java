@@ -174,7 +174,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    Lock writeLock = shutdownLock.readLock();
+    // `shutdown` won't be called concurrently, but the lock is also used in `NativeObjectStore`.
+    // When an object is garbage collected, the object will be unregistered from core worker.
+    // Since GC runs in a separate thread, we need to make sure that core worker is available
+    // when `NativeObjectStore` is accessing core worker in the GC thread.
+    Lock writeLock = shutdownLock.writeLock();
     writeLock.lock();
     try {
       if (rayConfig.workerMode == WorkerType.DRIVER) {

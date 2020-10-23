@@ -523,7 +523,9 @@ def _get_or_create_vpc_security_groups(conf, node_types):
     }
 
     # Generate the name of the security group we're looking for...
-    expected_sg_name = SECURITY_GROUP_TEMPLATE.format(conf["cluster_name"])
+    expected_sg_name = conf["provider"] \
+        .get("security_group", {}) \
+        .get("GroupName", SECURITY_GROUP_TEMPLATE.format(conf["cluster_name"]))
 
     # Figure out which security groups with this name exist for each VPC...
     vpc_to_existing_sg = {
