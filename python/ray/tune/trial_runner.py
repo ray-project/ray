@@ -817,7 +817,10 @@ class TrialRunner:
             elif scheduler_metric and scheduler_metric not in result:
                 report_metric = scheduler_metric
                 location = type(self._scheduler_alg).__name__
-            elif search_metrics and any([search_metric not in result for search_metric in search_metrics]):
+            elif search_metrics and any([
+                    search_metric not in result
+                    for search_metric in search_metrics
+            ]):
                 report_metric = search_metrics
                 location = type(self._search_alg).__name__
             else:
