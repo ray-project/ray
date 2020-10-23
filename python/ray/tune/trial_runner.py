@@ -824,6 +824,8 @@ class TrialRunner:
                 report_metric = list(
                     filter(lambda search_metric: search_metric not in result,
                            search_metrics))
+                if len(report_metric) == 1:
+                    report_metric = report_metric[0]
                 location = type(self._search_alg).__name__
             else:
                 report_metric = None
