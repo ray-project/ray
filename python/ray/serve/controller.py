@@ -502,8 +502,8 @@ class ServeController:
                 router_name)
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these workers are guaranteed to already exist because they
-        # would not be written to a checkpoint in self.actor_nursery.workers until they
-        # were created.
+        # would not be written to a checkpoint in self.actor_nursery.workers
+        # until they were created.
         for backend_tag, replica_tags in self.actor_nursery.replicas.items():
             for replica_tag in replica_tags:
                 replica_name = format_actor_name(replica_tag,
@@ -574,8 +574,8 @@ class ServeController:
             await self.do_autoscale()
             async with self.write_lock:
                 self.actor_nursery._start_routers_if_needed(self)
-                checkpoint_required = self.actor_nursery._stop_routers_if_needed(
-                )
+                checkpoint_required = self.actor_nursery.\
+                    _stop_routers_if_needed()
                 if checkpoint_required:
                     self._checkpoint()
 
@@ -855,7 +855,8 @@ class ServeController:
                                      "again.".format(backend_tag, endpoint))
 
             # Scale its replicas down to 0. This will also remove the backend
-            # from self.configuration_store.backends and self.actor_nursery.replicas.
+            # from self.configuration_store.backends and
+            # self.actor_nursery.replicas.
             self.actor_nursery._scale_replicas(
                 self.configuration_store.backends, backend_tag, 0)
 
