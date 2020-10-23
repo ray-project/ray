@@ -9,7 +9,7 @@ import ray
 import ray.ray_constants
 import ray.test_utils
 from ray import gcs_utils
-from ray.utils import (binary_to_hex)
+from ray.utils import binary_to_hex
 
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
@@ -128,7 +128,7 @@ def test_global_state_worker_table(ray_start_regular):
     workers_data = ray.state.workers()
 
     assert len(workers_data) == 1
-    assert workers_data[binary_to_hex(worker_id)] is not None
+    assert binary_to_hex(worker_id) in workers_data
 
 
 def test_global_state_actor_entry(ray_start_regular):
