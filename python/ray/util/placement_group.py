@@ -243,7 +243,7 @@ def check_placement_group_index(placement_group: PlacementGroup,
             raise ValueError("If placement group is not set, "
                              "the value of bundle index must be -1.")
     elif bundle_index >= placement_group.bundle_count \
-        or bundle_index < -1:
+            or bundle_index < -1:
         raise ValueError(f"placement group bundle index {bundle_index} "
                          f"is invalid. Valid placement group indexes: "
                          f"0-{placement_group.bundle_count}")
