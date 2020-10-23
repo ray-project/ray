@@ -706,24 +706,6 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
   }
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
-    const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-    const StatusCallback &done) {
-  const std::string error_msg =
-      "Unsupported method of AsyncSubscribeHeartbeat in ServiceBasedNodeInfoAccessor.";
-  RAY_LOG(FATAL) << error_msg;
-  return Status::Invalid(error_msg);
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
-    const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-    const StatusCallback &callback) {
-  const std::string error_msg =
-      "Unsupported method of AsyncReportBatchHeartbeat in ServiceBasedNodeInfoAccessor.";
-  RAY_LOG(FATAL) << error_msg;
-  return Status::Invalid(error_msg);
-}
-
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
     const StatusCallback &done) {
