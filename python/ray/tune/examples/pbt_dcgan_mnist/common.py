@@ -192,7 +192,7 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration, device,
         errD_real.backward()
         D_x = output.mean().item()
 
-        noise = torch.randn(b_size, nz, 1, 1, dtype=torch.float, device=device)
+        noise = torch.randn(b_size, nz, 1, 1, device=device)
         fake = netG(noise)
         label.fill_(fake_label)
         output = netD(fake.detach()).view(-1)
