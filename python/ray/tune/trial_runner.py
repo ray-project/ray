@@ -821,7 +821,9 @@ class TrialRunner:
                     search_metric not in result
                     for search_metric in search_metrics
             ]):
-                report_metric = search_metrics
+                report_metric = list(
+                    filter(lambda search_metric: search_metric not in result,
+                           search_metrics))
                 location = type(self._search_alg).__name__
             else:
                 report_metric = None
@@ -830,7 +832,7 @@ class TrialRunner:
             if report_metric:
                 raise ValueError(
                     "Trial returned a result which did not include the "
-                    "specified metric `{}` that `{}` expects. "
+                    "specified metric(s) `{}` that `{}` expects. "
                     "Make sure your calls to `tune.report()` include the "
                     "metric, or set the "
                     "TUNE_DISABLE_STRICT_METRIC_CHECKING "
