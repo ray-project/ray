@@ -781,6 +781,11 @@ Status RedisPlacementGroupInfoAccessor::AsyncGet(
   return Status::Invalid("Not implemented");
 }
 
+Status RedisPlacementGroupInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
+  return Status::Invalid("Not implemented");
+}
+
 }  // namespace gcs
 
 }  // namespace ray

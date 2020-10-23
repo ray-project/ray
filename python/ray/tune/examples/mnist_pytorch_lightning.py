@@ -247,7 +247,7 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
         mode="min",
         perturbation_interval=4,
         hyperparam_mutations={
-            "lr": lambda: tune.loguniform(1e-4, 1e-1).func(None),
+            "lr": tune.loguniform(1e-4, 1e-1),
             "batch_size": [32, 64, 128]
         })
 
@@ -284,8 +284,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_mnist_asha(num_samples=1, num_epochs=1, gpus_per_trial=0)
-        tune_mnist_pbt(num_samples=1, num_epochs=1, gpus_per_trial=0)
+        tune_mnist_asha(num_samples=1, num_epochs=6, gpus_per_trial=0)
+        tune_mnist_pbt(num_samples=1, num_epochs=6, gpus_per_trial=0)
     else:
         # ASHA scheduler
         tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0)
