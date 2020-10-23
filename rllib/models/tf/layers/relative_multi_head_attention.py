@@ -13,19 +13,22 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
                  out_dim,
                  num_heads,
                  head_dim,
-                 rel_pos_encoder,
+                 rel_pos_encoder_inference,
+                 rel_pos_encoder_training,
                  input_layernorm=False,
                  output_activation=None,
                  **kwargs):
+        #TODO: docstring
         """Initializes a RelativeMultiHeadAttention keras Layer object.
 
         Args:
-            out_dim (int):
+            out_dim (int): 
             num_heads (int): The number of attention heads to use.
                 Denoted `H` in [2].
             head_dim (int): The dimension of a single(!) attention head
                 Denoted `D` in [2].
-            rel_pos_encoder (:
+            rel_pos_encoder (List["TfOps"]): List of 2 tf ops to be used as
+                relative positional encoders of the input sequence(s).
             input_layernorm (bool): Whether to prepend a LayerNorm before
                 everything else. Should be True for building a GTrXL.
             output_activation (Optional[tf.nn.activation]): Optional tf.nn
@@ -49,22 +52,23 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
 
         self._pos_proj = tf.keras.layers.Dense(
             num_heads * head_dim, use_bias=False)
-        self._rel_pos_encoder = rel_pos_encoder
+        self._rel_pos_encoder_inference = rel_pos_encoder_inference
+        self._rel_pos_encoder_training = rel_pos_encoder_training
 
         self._input_layernorm = None
         if input_layernorm:
             self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
-    def call(self, inputs, memory=None):
+    def call(self, inputs, memory, is_training=False):
         T = tf.shape(inputs)[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads
         d = self._head_dim  # attention head dimension
 
         # Add previous memory chunk (as const, w/o gradient) to input.
         # Tau (number of (prev) time slices in each memory chunk).
-        Tau = memory.shape.as_list()[1] if memory is not None else 0
-        if memory is not None:
-            inputs = tf.concat((tf.stop_gradient(memory), inputs), axis=1)
+        Tau = tf.shape(memory)[1]  #if memory is not None else 0
+        #if memory is not None:
+        inputs = tf.concat((tf.stop_gradient(memory), inputs), axis=1)
 
         # Apply the Layer-Norm.
         if self._input_layernorm is not None:
@@ -73,15 +77,18 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         qkv = self._qkv_layer(inputs)
 
         queries, keys, values = tf.split(qkv, 3, -1)
-        # Cut out Tau memory timesteps from query.
+        # Cut out memory timesteps from query.
         queries = queries[:, -T:]
 
         queries = tf.reshape(queries, [-1, T, H, d])
-        keys = tf.reshape(keys, [-1, T + Tau, H, d])
-        values = tf.reshape(values, [-1, T + Tau, H, d])
+        keys = tf.reshape(keys, [-1, Tau + T, H, d])
+        values = tf.reshape(values, [-1, Tau + T, H, d])
 
-        R = self._pos_proj(self._rel_pos_encoder)
-        R = tf.reshape(R, [T + Tau, H, d])
+        R = tf.cond(is_training, true_fn=lambda: self._rel_pos_encoder_training, false_fn=lambda: self._rel_pos_encoder_inference)
+        R = self._pos_proj(R)
+            #self._rel_pos_encoder_training if
+            #else self._rel_pos_encoder_inference)
+        R = tf.reshape(R, [Tau + T, H, d])
 
         # b=batch
         # i and j=time indices (i=max-timesteps (inputs); j=Tau memory space)
@@ -92,9 +99,9 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         score = score + self.rel_shift(pos_score)
         score = score / d**0.5
 
-        # causal mask of the same length as the sequence
+        # Causal mask of the same length as the sequence.
         mask = tf.sequence_mask(
-            tf.range(Tau + 1, T + Tau + 1), dtype=score.dtype)
+            tf.range(Tau + 1, Tau + T + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask - 1.)

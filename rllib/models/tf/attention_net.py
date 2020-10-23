@@ -14,6 +14,8 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
@@ -51,7 +53,7 @@ class TrXLNet(RecurrentNetwork):
     def __init__(self, observation_space, action_space, num_outputs,
                  model_config, name, num_transformer_units, attn_dim,
                  num_heads, head_dim, ff_hidden_dim):
-        """Initializes a TfXLNet object.
+        """Initializes a TrXLNet object.
 
         Args:
             num_transformer_units (int): The number of Transformer repeats to
@@ -164,11 +166,12 @@ class GTrXLNet(RecurrentNetwork):
                  num_transformer_units,
                  attn_dim,
                  num_heads,
-                 memory_tau,
+                 memory_inference,
+                 memory_training,
                  head_dim,
                  ff_hidden_dim,
                  init_gate_bias=2.0):
-        """Initializes a GTrXLNet.
+        """Initializes a GTrXLNet instance.
 
         Args:
             num_transformer_units (int): The number of Transformer repeats to
@@ -177,9 +180,15 @@ class GTrXLNet(RecurrentNetwork):
                 unit.
             num_heads (int): The number of attention heads to use in parallel.
                 Denoted as `H` in [3].
-            memory_tau (int): The number of timesteps to store in each
-                transformer block's memory M (concat'd over time and fed into
-                next transformer block as input).
+            memory_inference (int): The number of timesteps to concat (time
+                axis) and feed into the next transformer unit as inference
+                input. The first transformer unit will receive this number of
+                past observations (plus the current one), instead.
+            memory_training (int): The number of timesteps to concat (time
+                axis) and feed into the next transformer unit as training
+                input (plus the actual input sequence of len=max_seq_len).
+                The first transformer unit will receive this number of
+                past observations (plus the input sequence), instead.
             head_dim (int): The dimension of a single(!) head.
                 Denoted as `d` in [3].
             ff_hidden_dim (int): The dimension of the hidden layer within
@@ -198,25 +207,35 @@ class GTrXLNet(RecurrentNetwork):
         self.num_transformer_units = num_transformer_units
         self.attn_dim = attn_dim
         self.num_heads = num_heads
-        self.memory_tau = memory_tau
+        self.memory_inference = memory_inference
+        self.memory_training = memory_training
         self.head_dim = head_dim
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
 
-        # Constant (non-trainable) sinusoid rel pos encoding matrix.
-        Phi = relative_position_embedding(self.max_seq_len + self.memory_tau,
-                                          self.attn_dim)
+        # Constant (non-trainable) sinusoid rel pos encoding matrices
+        # (use different ones for inference and training due to the different
+        # memory sizes used).
+        # For inference, we prepend the memory to the current timestep's input.
+        Phi_inf = relative_position_embedding(
+            self.memory_inference + 1, self.attn_dim)
+        # For training, we prepend the memory to the input sequence.
+        Phi_train = relative_position_embedding(
+            self.memory_training + self.max_seq_len, self.attn_dim)
 
-        # Raw observation input.
+        # Raw observation input (plus (None) time axis).
         input_layer = tf.keras.layers.Input(
-            shape=(self.max_seq_len, self.obs_dim), name="inputs")
+            shape=(None, self.obs_dim), name="inputs")
         memory_ins = [
             tf.keras.layers.Input(
-                shape=(self.memory_tau, self.attn_dim),
+                shape=(None, self.attn_dim),
                 dtype=tf.float32,
                 name="memory_in_{}".format(i))
             for i in range(self.num_transformer_units)
         ]
+
+        is_training = tf.keras.layers.Input(
+            shape=(), dtype=tf.bool, batch_size=1, name="is_training")
 
         # Map observation dim to input/output transformer (attention) dim.
         E_out = tf.keras.layers.Dense(self.attn_dim)(input_layer)
@@ -232,12 +251,13 @@ class GTrXLNet(RecurrentNetwork):
                     out_dim=self.attn_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
-                    rel_pos_encoder=Phi,
+                    rel_pos_encoder_inference=Phi_inf,
+                    rel_pos_encoder_training=Phi_train,
                     input_layernorm=True,
                     output_activation=tf.nn.relu),
                 fan_in_layer=GRUGate(init_gate_bias),
                 name="mha_{}".format(i + 1))(
-                    E_out, memory=memory_ins[i])
+                    E_out, memory=memory_ins[i], is_training=is_training[0])
             # Position-wise MLP part.
             E_out = SkipConnection(
                 tf.keras.Sequential(
@@ -264,51 +284,77 @@ class GTrXLNet(RecurrentNetwork):
             1, activation=None, name="values")(E_out)
 
         self.trxl_model = tf.keras.Model(
-            inputs=[input_layer] + memory_ins,
+            inputs=[input_layer] + memory_ins + [is_training],
             outputs=[logits, values_out] + memory_outs[:-1])
 
         self.register_variables(self.trxl_model.variables)
         self.trxl_model.summary()
 
-    @override(RecurrentNetwork)
-    def forward_rnn(self, inputs, state, seq_lens):
-        # To make Attention work with current RLlib's ModelV2 API:
-        # We assume `state` is the history of L recent observations (all
-        # concatenated into one tensor) and append the current inputs to the
-        # end and only keep the most recent (up to `max_seq_len`). This allows
-        # us to deal with timestep-wise inference and full sequence training
-        # within the same logic.
-        observations = state[0]
-        memory = state[1:]
+        # Setup inference view (memory-inference x past observations +
+        # current one (0))
+        self.inference_view_requirements.update({
+            SampleBatch.OBS: ViewRequirement(
+                shift="-{}:0".format(self.memory_inference))
+        })
 
-        observations = tf.concat(
-            (observations, inputs), axis=1)[:, -self.max_seq_len:]
-        all_out = self.trxl_model([observations] + memory)
-        logits, self._value_out = all_out[0], all_out[1]
+    @override(ModelV2)
+    def forward(self, input_dict, state, seq_lens):
+        is_training = input_dict["is_training"]
+        observations = input_dict[SampleBatch.OBS]
+
+        all_out = self.trxl_model([observations] + state + [is_training])
+        logits = all_out[0]
+        self._value_out = all_out[1]
         memory_outs = all_out[2:]
-        # If memory_tau > max_seq_len -> overlap w/ previous `memory` input.
-        if self.memory_tau > self.max_seq_len:
-            memory_outs = [
-                tf.concat(
-                    [memory[i][:, -(self.memory_tau - self.max_seq_len):], m],
-                    axis=1) for i, m in enumerate(memory_outs)
-            ]
-        else:
-            memory_outs = [m[:, -self.memory_tau:] for m in memory_outs]
+        ## If memory_tau > max_seq_len -> overlap w/ previous `memory` input.
+        #if self.memory_tau > self.max_seq_len:
+        #    memory_outs = [
+        #        tf.concat(
+        #            [memory[i][:, -(self.memory_tau - self.max_seq_len):], m],
+        #            axis=1) for i, m in enumerate(memory_outs)
+        #    ]
+        #else:
+        #memory_outs = [m[:, -self.memory_tau:] for m in memory_outs]
+        #logits = logits[:, -T:]
+        #self._value_out = self._value_out[:, -T:]
 
-        T = tf.shape(inputs)[1]  # Length of input segment (time).
-        logits = logits[:, -T:]
-        self._value_out = self._value_out[:, -T:]
+        return logits, memory_outs
 
-        return logits, [observations] + memory_outs
+    #@override(RecurrentNetwork)
+    #def forward_rnn(self, observations, states, seq_lens):
+        #T = tf.shape(observations)[1]  # Length of input segment (time).
+
+        #TODO: make work with traj. view API.
+        #observations = state[0]
+        #memory = state[1:]
+
+        #observations = tf.concat(
+        #    (observations, inputs), axis=1)[:, -self.max_seq_len:]
+    #    all_out = self.trxl_model([observations] + states + [])
+    #    logits = all_out[0]
+    #    self._value_out = all_out[1]
+    #    memory_outs = all_out[2:]
+        ## If memory_tau > max_seq_len -> overlap w/ previous `memory` input.
+        #if self.memory_tau > self.max_seq_len:
+        #    memory_outs = [
+        #        tf.concat(
+        #            [memory[i][:, -(self.memory_tau - self.max_seq_len):], m],
+        #            axis=1) for i, m in enumerate(memory_outs)
+        #    ]
+        #else:
+        #memory_outs = [m[:, -self.memory_tau:] for m in memory_outs]
+        #logits = logits[:, -T:]
+        #self._value_out = self._value_out[:, -T:]
+
+    #    return logits, memory_outs
 
     @override(RecurrentNetwork)
     def get_initial_state(self):
-        # State is the T last observations concat'd together into one Tensor.
+        # State is the tau last observations concat'd together into one Tensor.
         # Plus all Transformer blocks' E(l) outputs concat'd together (up to
-        # tau timesteps).
-        return [np.zeros((self.max_seq_len, self.obs_dim), np.float32)] + \
-               [np.zeros((self.memory_tau, self.attn_dim), np.float32)
+        # tau timesteps). Tau=memory size in inference mode.
+        #return #[np.zeros((self.memory_inference, self.obs_dim), np.float32)] + \
+        return [np.zeros((self.memory_inference, self.attn_dim), np.float32)
                 for _ in range(self.num_transformer_units)]
 
     @override(ModelV2)

@@ -96,33 +96,22 @@ class TestAttentionNets(unittest.TestCase):
     def train_tf_model(self,
                        model,
                        inputs,
-                       outputs,
-                       num_epochs=250,
-                       minibatch_size=32):
-        """Convenience method that trains a Tensorflow model for num_epochs
-            epochs and tests whether loss decreased, as expected.
+                       labels,
+                       num_epochs=250):
+        optim = tf.keras.optimizers.Adam(lr=0.0001)
+        init_loss = final_loss = None
+        for _ in range(num_epochs):
+            with tf.GradientTape() as tape:
+                outputs = model(inputs)
+                final_loss = tf.reduce_mean(tf.square(outputs[0] - labels[0]))
+            if init_loss is None:
+                init_loss = final_loss
+            # Optimizer step.
+            grads = tape.gradient(final_loss, model.trainable_variables)
+            optim.apply_gradients(
+                [(g, v) for g, v in zip(grads, model.trainable_variables)])
 
-        Args:
-            model (tf.Model): Torch model to be trained.
-            inputs (np.array): Training data
-            outputs (np.array): Training labels
-            num_epochs (int): Number of training epochs
-            batch_size (int): Number of samples in each minibatch
-        """
-
-        # Configure a model for mean-squared error loss.
-        model.compile(optimizer="SGD", loss="mse", metrics=["mae"])
-
-        hist = model.fit(
-            inputs,
-            outputs,
-            verbose=0,
-            epochs=num_epochs,
-            batch_size=minibatch_size).history
-        init_loss = hist["loss"][0]
-        final_loss = hist["loss"][-1]
-
-        self.assertLess(final_loss / init_loss, 0.5)
+        self.assertLess(final_loss, init_loss)
 
     def test_multi_head_attention(self):
         """Tests the MultiHeadAttention mechanism of Vaswani et al."""
@@ -171,35 +160,53 @@ class TestAttentionNets(unittest.TestCase):
                 relative_position_embedding(20, 15).eval(session=sess),
                 relative_position_embedding_torch(20, 15).numpy())
 
-        # B is batch size
+        # Batch size.
         B = 32
-        # D_in is attention dim, L is memory_tau
-        L, D_in, D_out = 2, 16, 2
+        # Max seq-len.
+        max_seq_len = 10
+        # Memory size (inference).
+        memory_size = max_seq_len * 2
+        # Memory size (training).
+        memory_training = max_seq_len
+        # Number of transformer units.
+        num_transformer_units = 2
+        # Memory size.
+        #tau = 10
+        # Input dim.
+        observation_dim = 8
+        # Head dim.
+        head_dim = 12
+        # Attention dim.
+        attention_dim = 16
+        # Action dim.
+        action_dim = 2
 
         for fw, sess in framework_iterator(session=True):
 
+            # Create random Tensors to hold inputs and labels.
+            x = np.random.random((B, max_seq_len, observation_dim)).astype(
+                np.float32)
+            y = np.random.random((B, max_seq_len, action_dim))
+
             # Create a single attention layer with 2 heads
             if fw == "torch":
-                # Create random Tensors to hold inputs and outputs
-                x = torch.randn(B, L, D_in)
-                y = torch.randn(B, L, D_out)
-
-                value_labels = torch.randn(B, L, D_in)
-                memory_labels = torch.randn(B, L, D_out)
+                value_labels = torch.randn(B, max_seq_len)
+                memory_labels = torch.randn(B, max_seq_len, attention_dim)
 
                 attention_net = TorchGTrXLNet(
                     observation_space=gym.spaces.Box(
-                        low=float("-inf"), high=float("inf"), shape=(D_in, )),
-                    action_space=gym.spaces.Discrete(D_out),
-                    num_outputs=D_out,
+                        low=float("-inf"), high=float("inf"), shape=(observation_dim, )),
+                    action_space=gym.spaces.Discrete(action_dim),
+                    num_outputs=action_dim,
                     model_config={"max_seq_len": 2},
                     name="TestTorchAttentionNet",
-                    num_transformer_units=2,
-                    attn_dim=D_in,
+                    num_transformer_units=num_transformer_units,
+                    attn_dim=attention_dim,
                     num_heads=2,
-                    memory_tau=L,
-                    head_dim=D_out,
-                    ff_hidden_dim=16,
+                    memory_inference=memory_size,
+                    memory_training=memory_training,
+                    head_dim=head_dim,
+                    ff_hidden_dim=24,
                     init_gate_bias=2.0)
 
                 init_state = attention_net.get_initial_state()
@@ -220,40 +227,38 @@ class TestAttentionNets(unittest.TestCase):
                     seq_lens=seq_lens_init)
             # Framework is tensorflow or tensorflow-eager.
             else:
-                x = np.random.random((B, L, D_in))
-                y = np.random.random((B, L, D_out))
-
-                value_labels = np.random.random((B, L, 1))
-                memory_labels = np.random.random((B, L, D_in))
-
-                # We need to create (N-1) MLP labels for N transformer units
-                mlp_labels = np.random.random((B, L, D_in))
+                value_labels = np.random.random((B, max_seq_len))
+                memory_labels = [
+                    np.random.random((B, memory_size, attention_dim)) for _ in
+                    range(num_transformer_units)]
 
                 attention_net = GTrXLNet(
                     observation_space=gym.spaces.Box(
-                        low=float("-inf"), high=float("inf"), shape=(D_in, )),
-                    action_space=gym.spaces.Discrete(D_out),
-                    num_outputs=D_out,
-                    model_config={"max_seq_len": 2},
+                        low=float("-inf"), high=float("inf"), shape=(observation_dim, )),
+                    action_space=gym.spaces.Discrete(action_dim),
+                    num_outputs=action_dim,
+                    model_config={"max_seq_len": max_seq_len},
                     name="TestTFAttentionNet",
-                    num_transformer_units=2,
-                    attn_dim=D_in,
+                    num_transformer_units=num_transformer_units,
+                    attn_dim=attention_dim,
                     num_heads=2,
-                    memory_tau=L,
-                    head_dim=D_out,
-                    ff_hidden_dim=16,
+                    memory_inference=memory_size,
+                    memory_training=memory_training,
+                    head_dim=head_dim,
+                    ff_hidden_dim=24,
                     init_gate_bias=2.0)
                 model = attention_net.trxl_model
 
-                # Get initial state and add a batch dimension.
-                init_state = attention_net.get_initial_state()
+                # Get initial state (for training!) and add a batch dimension.
+                init_state = [
+                    np.zeros((memory_training, attention_dim), np.float32) for
+                    _ in range(num_transformer_units)]
                 init_state = [np.tile(s, (B, 1, 1)) for s in init_state]
 
                 self.train_tf_model(
-                    model, [x] + init_state,
-                    [y, value_labels, memory_labels, mlp_labels],
-                    num_epochs=200,
-                    minibatch_size=B)
+                    model, [x] + init_state + [np.array([True])],
+                    [y, value_labels] + memory_labels,
+                    num_epochs=20)
 
 
 if __name__ == "__main__":
