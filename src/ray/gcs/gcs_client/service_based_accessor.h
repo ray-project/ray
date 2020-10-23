@@ -460,6 +460,9 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
       const PlacementGroupID &placement_group_id,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
+  Status AsyncGetAll(
+      const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
  private:
   ServiceBasedGcsClient *client_impl_;
 };
