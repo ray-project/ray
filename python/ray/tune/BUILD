@@ -512,6 +512,15 @@ py_test(
 )
 
 py_test(
+    name = "pb2_example",
+    size = "medium",
+    srcs = ["examples/pb2_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "pbt_convnet_example",
     size = "medium",
     srcs = ["examples/pbt_convnet_example.py"],
