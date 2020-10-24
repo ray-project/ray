@@ -48,10 +48,11 @@ When using schedulers, you may face compatibility issues, as shown in the below 
    * - :ref:`Population Based Training <tune-scheduler-pbt>`
      - Yes
      - Not Compatible
-     - :doc:`Link </tune/examples/pbt_example>`
+     - :doc:`Link </tune/examples/pbt_function>`
    * - :ref:`Population Based Bandits <tune-scheduler-pb2>`
      - Yes
      - Not Compatible
+    - :doc:`Link </tune/examples/pb2_example>`
 
 .. _tune-scheduler-hyperband:
 
