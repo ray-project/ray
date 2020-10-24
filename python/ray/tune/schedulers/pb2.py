@@ -339,7 +339,7 @@ class PB2(PopulationBasedTraining):
         # Collect hyperparams names and current values for this trial.
         names = []
         values = []
-        for key in self._hyperparam_bounds.keys():
+        for key in self._hyperparam_bounds:
             names.append(str(key))
             values.append(trial.config[key])
 
