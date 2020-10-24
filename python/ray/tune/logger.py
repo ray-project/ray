@@ -223,8 +223,8 @@ class TBXLogger(Logger):
                 valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)
-            elif (isinstance(value, list) and len(value) > 0) or
-                 (isinstance(value, np.ndarray) and value.size > 0):
+            elif ((isinstance(value, list) and len(value) > 0) or
+                  (isinstance(value, np.ndarray) and value.size > 0)):
                 valid_result[full_attr] = value
 
                 # Must be video
