@@ -22,21 +22,22 @@ NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5")
 
-yum -y install unzip zip
+yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
-/ray/ci/travis/install-bazel.sh
-echo "build --config=manylinux2010" >> /root/.bazelrc
 
-# Put bazel into the PATH
-export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
-export BAZEL_PATH=/root/bazel-3.2.0/output/bazel
+/ray/ci/travis/install-bazel.sh
+# Put bazel into the PATH if building Bazel from source
+# export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
+
+echo "build --config=manylinux2014" >> /root/.bazelrc
+
 
 # Install and use the latest version of Node.js in order to build the dashboard.
-set -x
+set +x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
 source "$HOME"/.nvm/nvm.sh
-nvm install v10.22.1  # previous lts
-nvm use v10.22.1
+nvm install "$NODE_VERSION"
+nvm use "$NODE_VERSION"
 
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
@@ -77,7 +78,6 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     fi
 
     PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
-    BAZEL_PATH=/root/bazel-3.2.0/output/bazel \
     /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
@@ -88,6 +88,6 @@ done
 # hack, we should use auditwheel instead.
 for path in .whl/*.whl; do
   if [ -f "${path}" ]; then
-    mv "${path}" "${path//linux/manylinux1}"
+    mv "${path}" "${path//linux/manylinux2014}"
   fi
 done
