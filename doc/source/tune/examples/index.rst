@@ -18,6 +18,7 @@ General Examples
 - :doc:`/tune/examples/pbt_example`: Example of using a Trainable class with PopulationBasedTraining scheduler.
 - :doc:`/tune/examples/pbt_function`: Example of using the function API with a PopulationBasedTraining scheduler.
 - :doc:`/tune/examples/pbt_ppo_example`: Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
+- :doc:`/tune/examples/pb2_ppo_example`: Example of optimizing a distributed RLlib algorithm (PPO) with the PB2 scheduler. Uses a small population size of 4, so can train on a laptop.
 - :doc:`/tune/examples/logging_example`: Example of custom loggers and custom trial directory naming.
 
 Search Algorithm Examples

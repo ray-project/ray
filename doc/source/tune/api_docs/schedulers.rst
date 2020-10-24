@@ -191,9 +191,9 @@ Tune includes a distributed implementation of `Population Based Bandits (PB2) <h
             metric='mean_accuracy',
             mode='max',
             perturbation_interval=600.0,
-            hyperparam_mutations={
-                "lr": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
-                "alpha": lambda: random.uniform(0.0, 1.0),
+            hyperparam_bounds={
+                "lr": [1e-3, 1e-5],
+                "alpha": [0.0, 1.0],
             ...
             })
     tune.run( ... , scheduler=pb2_scheduler)
@@ -202,6 +202,7 @@ This code builds upon PBT, with the main difference being that instead of using 
 
 When the PB2 scheduler is enabled, each trial variant is treated as a member of the population. Periodically, top-performing trials are checkpointed (this requires your Trainable to support :ref:`save and restore <tune-checkpoint>`). Low-performing trials clone the checkpoints of top performers and perturb the configurations in the hope of discovering an even better variation.
 
+The primary motivation for PB2 is the ability to find promising hyperparamters with only a small population size. With that in mind, you can run this :doc:`PB2 PPO example </tune/examples/pb2_ppo_example>` to compare PB2 vs. PBT, with a population size of ``4`` (as in the paper). The example uses the ``BipedalWalker`` environment so does not require any additional licenses.
 
 
 .. autoclass:: ray.tune.schedulers.PB2

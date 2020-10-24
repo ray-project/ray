@@ -111,11 +111,18 @@ def UCB(m, m1, x, fixed, kappa=0.5):
     xtest = np.concatenate((fixed.reshape(-1, 1), np.array(x).reshape(-1,
                                                                       1))).T
 
-    preds = m.predict(xtest)
-    mean = preds[0][0][0]
+    try:
+        preds = m.predict(xtest)
+        preds = m.predict(xtest)
+        mean = preds[0][0][0]
+    except ValueError:
+        mean = -9999
 
-    preds = m1.predict(xtest)
-    var = preds[1][0][0]
+    try:
+        preds = m1.predict(xtest)
+        var = preds[1][0][0]
+    except ValueError:
+        var = 0
     return mean + kappa * var
 
 
