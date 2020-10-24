@@ -354,7 +354,7 @@ class PB2(PopulationBasedTraining):
 
     def _get_new_config(self, trial, trial_to_clone):
         # If we are at a new timestep, we dont want to penalise for trials
-        # still going
+        # still going.
         if self.data["Time"].max() > self.last_exploration_time:
             self.current = None
 
@@ -362,7 +362,7 @@ class PB2(PopulationBasedTraining):
                                    self.current, trial_to_clone, trial,
                                    trial_to_clone.config)
 
-        # important to replace the old values, since we are copying across
+        # Important to replace the old values, since we are copying across
         self.data = data.copy()
 
         # If the current guy being selecting is at a point that is already
