@@ -556,33 +556,29 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
         data->mutable_resource_load_by_shape()->mutable_resource_demands();
     ASSERT_EQ(load_by_shape->size(), 3);
 
-    std::vector<std::vector<int>> expected = {
-      // infeasible, ready, CPU, GPU, size
-      {1, 0, 10, 1, 2},
-      {1, 0, 9, 5, 2},
-      {0, 1, 1, 0, 1}
-    };
+    std::vector<std::vector<int>> expected = {// infeasible, ready, CPU, GPU, size
+                                              {1, 0, 10, 1, 2},
+                                              {1, 0, 9, 5, 2},
+                                              {0, 1, 1, 0, 1}};
 
     for (auto &load : *load_by_shape) {
       bool found = false;
       for (int i = 0; i < expected.size(); i++) {
         auto expected_load = expected[i];
         auto shape = *load.mutable_shape();
-        bool match = (
-              expected_load[0] == load.num_infeasible_requests_queued() &&
-              expected_load[1] == load.num_ready_requests_queued() &&
-              expected_load[2] == shape["CPU"] &&
-              expected_load[4] == shape.size()
-        );
+        bool match =
+            (expected_load[0] == load.num_infeasible_requests_queued() &&
+             expected_load[1] == load.num_ready_requests_queued() &&
+             expected_load[2] == shape["CPU"] && expected_load[4] == shape.size());
         if (expected_load[3]) {
           match = match && shape["GPU"];
         }
         /* These logs are very useful for debugging.
         RAY_LOG(ERROR) << "==========================";
-        RAY_LOG(ERROR) << expected_load[0] << "\t" << load.num_infeasible_requests_queued();
-        RAY_LOG(ERROR) << expected_load[1] << "\t" << load.num_ready_requests_queued();
-        RAY_LOG(ERROR) << expected_load[2] << "\t" << shape["CPU"];
-        RAY_LOG(ERROR) << expected_load[3] << "\t" << shape["GPU"];
+        RAY_LOG(ERROR) << expected_load[0] << "\t" <<
+        load.num_infeasible_requests_queued(); RAY_LOG(ERROR) << expected_load[1] << "\t"
+        << load.num_ready_requests_queued(); RAY_LOG(ERROR) << expected_load[2] << "\t" <<
+        shape["CPU"]; RAY_LOG(ERROR) << expected_load[3] << "\t" << shape["GPU"];
         RAY_LOG(ERROR) << expected_load[4] << "\t" << shape.size();
         RAY_LOG(ERROR) << "==========================";
         RAY_LOG(ERROR) << load.DebugString();
