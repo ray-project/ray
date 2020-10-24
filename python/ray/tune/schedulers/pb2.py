@@ -368,9 +368,7 @@ class PB2(PopulationBasedTraining):
         # If the current guy being selecting is at a point that is already
         # done, then append the data to the "current" which contains the
         # points in the current batch.
-        new = []
-        for key in self._hyperparam_bounds.keys():
-            new.append(new_config[key])
+        new = [new_config[key] for key in self._hyperparam_bounds]
 
         new = np.array(new)
         new = new.reshape(1, new.size)
