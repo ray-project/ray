@@ -243,10 +243,10 @@ class PopulationBasedTraining(FIFOScheduler):
                                  "You must use other built in primitives like"
                                  "tune.uniform, tune.loguniform, etc.")
 
-        if not hyperparam_mutations and not custom_explore_fn:
-            raise TuneError(
-                "You must specify at least one of `hyperparam_mutations` or "
-                "`custom_explore_fn` to use PBT.")
+            if not hyperparam_mutations and not custom_explore_fn:
+                raise TuneError(
+                    "You must specify at least one of `hyperparam_mutations` or "
+                    "`custom_explore_fn` to use PBT.")
 
         if quantile_fraction > 0.5 or quantile_fraction < 0:
             raise ValueError(

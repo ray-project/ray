@@ -4,20 +4,36 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
-try:
-    import GPy
-except ImportError:
-    GPy = None
 
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.schedulers.pb2_utils import normalize, optimize_acq, \
+
+try:
+    import GPy
+    _has_gpy = True
+except ImportError:
+    _has_gpy = False
+
+try:
+    import sklearn
+    _has_sklearn = True
+except ImportError:
+    _has_sklearn = False
+
+def is_gpy_available():
+    return _has_gpy
+
+def is_sklearn_available():
+    return _has_sklearn
+
+if is_gpy_available():
+    from ray.tune.schedulers.pb2_utils import normalize, optimize_acq, \
     select_length, UCB, \
     standardize, TV_SquaredExp
 
 logger = logging.getLogger(__name__)
 
 
-def select_config(Xraw, yraw, current, newpoint, bounds, num_f, num):
+def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
     """Selects the next hyperparameter config to try.
 
     This function takes the formatted data, fits the GP model and optimizes the
@@ -220,7 +236,7 @@ class PB2(PopulationBasedTraining):
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
-        hyperparam_bounds (dict): Hyperparams to mutate. The format is
+        hyperparam_bounds (dict): Hyperparameters to mutate. The format is
             as follows: for each key, enter a list of the form [min, max]
             representing the minimum and maximum possible hyperparameter values.
         quantile_fraction (float): Parameters are transferred from the top
@@ -266,17 +282,24 @@ class PB2(PopulationBasedTraining):
                  require_attrs: bool = True,
                  synch: bool = False):
 
-        if GPy is None:
-            raise RuntimeError("Need to install GPy to use PB2")
+        if not is_gpy_available():
+            raise RuntimeError("Please install GPy to use PB2.")
+
+        if not is_sklearn_available():
+            raise RuntimeError("Please install scikit-learn to use PB2.")
 
         resample_probability = 0
-        custom_explore_fn = None
         hyperparam_mutations = None
 
-        super(PopulationBasedTraining, self).__init__(
-            self, time_attr, reward_attr, metric, mode, perturbation_interval,
-            hyperparam_mutations, quantile_fraction, resample_probability,
-            custom_explore_fn, log_config, require_attrs, synch)
+        super(PB2, self).__init__(
+            time_attr=time_attr, reward_attr=reward_attr, metric=metric,
+            mode=mode,
+            perturbation_interval=perturbation_interval,
+            hyperparam_mutations=hyperparam_mutations, quantile_fraction=quantile_fraction,
+            resample_probability=resample_probability,
+            custom_explore_fn=explore, log_config=log_config,
+            require_attrs=require_attrs,
+            synch=synch)
 
         self.last_exploration_time = 0  # when we last explored
         self.data = pd.DataFrame()
@@ -290,7 +313,7 @@ class PB2(PopulationBasedTraining):
 
     def _save_trial_state(self, state, time, result, trial):
 
-        score = super(PopulationBasedTraining, self)._save_trial_state(
+        score = super(PB2, self)._save_trial_state(
             state, time, result, trial)
 
         # Data logging for PB2.

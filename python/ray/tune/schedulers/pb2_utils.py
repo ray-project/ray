@@ -1,11 +1,15 @@
 import numpy as np
 from scipy.optimize import minimize
 
-import GPy
-from GPy.kern import Kern
-from GPy.core import Param
-from sklearn.metrics import pairwise_distances
-from sklearn.metrics.pairwise import euclidean_distances
+from ray.tune.schedulers.pb2 import is_gpy_available, is_sklearn_available
+
+if is_gpy_available():
+    from GPy.kern import Kern
+    from GPy.core import Param
+
+if is_sklearn_available():
+    from sklearn.metrics import pairwise_distances
+    from sklearn.metrics.pairwise import euclidean_distances
 
 class TV_SquaredExp(Kern):
     """ Time varying squared exponential kernel.
