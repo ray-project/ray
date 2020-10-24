@@ -13,6 +13,7 @@ sudo -u "$USERNAME" -i /bin/bash -l -c "conda activate $CONDA_ENV; pip install $
 echo "Setting up service scripts..."
 cat > /home/"$USERNAME"/ray-head.sh << EOM
 #!/bin/bash
+
 eval "$(conda shell.bash hook)"
 conda activate $CONDA_ENV
 
@@ -25,6 +26,7 @@ EOM
 
 cat > /home/"$USERNAME"/ray-worker.sh << EOM
 #!/bin/bash
+
 eval "$(conda shell.bash hook)"
 conda activate $CONDA_ENV
 
@@ -44,6 +46,7 @@ EOM
 cat > /home/"$USERNAME"/tensorboard.sh << EOM
 #!/bin/bash
 
+eval "$(conda shell.bash hook)"
 conda activate $CONDA_ENV
 mkdir -p /home/$USERNAME/ray_results
 
