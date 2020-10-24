@@ -40,12 +40,12 @@ enum TablePrefix {
   DIRECT_ACTOR = 17;
   // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 18;
-  INTERNAL_CONFIG = 29;
-  TABLE_PREFIX_MAX = 20;
-  PLACEMENT_GROUP_SCHEDULE = 21;
-  PLACEMENT_GROUP = 22;
-  KV = 23;
-  ACTOR_TASK_SPEC = 24;
+  INTERNAL_CONFIG = 19;
+  PLACEMENT_GROUP_SCHEDULE = 20;
+  PLACEMENT_GROUP = 21;
+  KV = 22;
+  ACTOR_TASK_SPEC = 23;
+  TABLE_PREFIX_MAX = 24;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
