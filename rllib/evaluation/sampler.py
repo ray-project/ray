@@ -364,7 +364,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.clip_actions, self.multiple_episodes_in_batch, self.callbacks,
             self.tf_sess, self.perf_stats, self.soft_horizon,
             self.no_done_at_end, self.observation_fn,
-            self._use_trajectory_view_api)
+            self._use_trajectory_view_api, self.sample_collector)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -1029,7 +1029,9 @@ def _process_observations_w_trajectory_view_api(
                 agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
             episode._set_last_raw_obs(agent_id, raw_obs)
-            episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
+            # Infos from the environment.
+            agent_infos = infos[env_id].get(agent_id, {})
+            episode._set_last_info(agent_id, agent_infos)
 
             # Record transition info if applicable.
             if last_observation is None:
@@ -1052,6 +1054,8 @@ def _process_observations_w_trajectory_view_api(
                               agent_done),
                     # Next observation.
                     "new_obs": filtered_obs,
+                    # Env infos for this agent.
+                    "infos": agent_infos,
                 }
                 # Add extra-action-fetches to collectors.
                 values_dict.update(**episode.last_pi_info_for(agent_id))
@@ -1061,8 +1065,8 @@ def _process_observations_w_trajectory_view_api(
 
             if not agent_done:
                 item = PolicyEvalData(
-                    env_id, agent_id, filtered_obs, infos[env_id].get(
-                        agent_id, {}), None if last_observation is None else
+                    env_id, agent_id, filtered_obs, agent_infos, None
+                    if last_observation is None else
                     episode.rnn_state_for(agent_id), None
                     if last_observation is None else
                     episode.last_action_for(agent_id),

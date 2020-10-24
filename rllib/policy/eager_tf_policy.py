@@ -11,6 +11,7 @@ from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import get_default_view_requirements
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -184,6 +185,7 @@ def build_eager_tf_policy(name,
                           action_sampler_fn=None,
                           action_distribution_fn=None,
                           mixins=None,
+                          view_requirements_fn=None,
                           obs_include_prev_action_reward=True,
                           get_batch_divisibility_req=None):
     """Build an eager TF policy.
@@ -239,11 +241,25 @@ def build_eager_tf_policy(name,
                     config["model"],
                     framework=self.framework,
                 )
+            # Combine view_requirements for Model and Policy.
+            self.view_requirements.update(
+                self.model.inference_view_requirements)
+
             self.exploration = self._create_exploration()
             self._state_in = [
                 tf.convert_to_tensor([s])
                 for s in self.model.get_initial_state()
             ]
+
+            # Update this Policy's ViewRequirements (if function given).
+            if callable(view_requirements_fn):
+                self.view_requirements.update(view_requirements_fn(self))
+            # If no view-requirements given, use default settings.
+            # Add NEXT_OBS, STATE_IN_0.., and others.
+            else:
+                self.view_requirements.update(
+                    get_default_view_requirements(self))
+
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
@@ -334,8 +350,8 @@ def build_eager_tf_policy(name,
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
-            n = input_dict[SampleBatch.CUR_OBS].shape[0]
-            seq_lens = tf.ones(n, dtype=tf.int32)
+            batch_size = input_dict[SampleBatch.CUR_OBS].shape[0]
+            seq_lens = tf.ones(batch_size, dtype=tf.int32)
             if obs_include_prev_action_reward:
                 if prev_action_batch is not None:
                     input_dict[SampleBatch.PREV_ACTIONS] = \
@@ -396,7 +412,7 @@ def build_eager_tf_policy(name,
                 extra_fetches.update(extra_action_fetches_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += len(obs_batch)
+            self.global_timestep += int(batch_size)
 
             return actions, state_out, extra_fetches
 

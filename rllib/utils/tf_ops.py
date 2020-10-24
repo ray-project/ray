@@ -1,3 +1,5 @@
+import numpy as np
+
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -7,6 +9,21 @@ def explained_variance(y, pred):
     _, y_var = tf.nn.moments(y, axes=[0])
     _, diff_var = tf.nn.moments(y - pred, axes=[0])
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
+
+
+def get_placeholder(*, space=None, value=None):
+    if space is not None:
+        return tf1.placeholder(
+            shape=(None, ) + space.shape,
+            dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
+        )
+    else:
+        assert value is not None
+        return tf1.placeholder(
+            shape=(None, ) + value.shape[1:],
+            dtype=tf.float32
+            if value.dtype in [np.float64, tf.float64] else value.dtype,
+        )
 
 
 def huber_loss(x, delta=1.0):

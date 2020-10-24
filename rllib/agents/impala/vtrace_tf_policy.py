@@ -80,7 +80,8 @@ class VTraceLoss:
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
-                discounts=tf.cast(~dones, tf.float32) * discount,
+                discounts=tf.cast(~tf.cast(dones, tf.bool), tf.float32) *
+                discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
