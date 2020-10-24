@@ -276,7 +276,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -297,7 +297,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -318,7 +318,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_L=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -336,7 +336,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_M_TO_Z=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -357,7 +357,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.2.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
@@ -447,9 +447,6 @@ script:
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...; fi
-
-  # ray dashboard tests
-  - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/dashboard/...; fi
 
   # ray new dashboard tests
   - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi

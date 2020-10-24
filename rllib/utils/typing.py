@@ -34,8 +34,8 @@ AgentID = Any
 PolicyID = str
 
 # Type of the config["multiagent"]["policies"] dict for multi-agent training.
-MultiAgentPolicyConfigDict = Dict[PolicyID, Tuple[type, gym.Space, gym.Space,
-                                                  PartialTrainerConfigDict]]
+MultiAgentPolicyConfigDict = Dict[PolicyID, Tuple[Union[
+    type, None], gym.Space, gym.Space, PartialTrainerConfigDict]]
 
 # Represents an environment id.
 EnvID = int

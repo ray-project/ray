@@ -7,11 +7,29 @@ import unittest
 
 import ray
 from ray import tune
+from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.utils.test_utils import check_learning_achieved, \
     framework_iterator
 from ray.rllib.utils.numpy import one_hot
 from ray.tune import register_env
+
+
+class MyCallBack(DefaultCallbacks):
+    def __init__(self):
+        super().__init__()
+        self.deltas = []
+
+    def on_postprocess_trajectory(self, *, worker, episode, agent_id,
+                                  policy_id, policies, postprocessed_batch,
+                                  original_batches, **kwargs):
+        pos = np.argmax(postprocessed_batch["obs"], -1)
+        x, y = pos % 10, pos // 10
+        self.deltas.extend((x**2 + y**2)**0.5)
+
+    def on_sample_end(self, *, worker, samples, **kwargs):
+        print("mean. distance from origin={}".format(np.mean(self.deltas)))
+        self.deltas = []
 
 
 class OneHotWrapper(gym.core.ObservationWrapper):
@@ -114,38 +132,35 @@ class TestCuriosity(unittest.TestCase):
         config["env"] = "FrozenLake-v0"
         config["env_config"] = {
             "desc": [
-                "SFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFF",
-                "FFFFFFFFFFFFFFFG",
+                "SFFFFFFFFF",
+                "FFFFFFFFFF",
+                "FFFFFFFFFF",
+                "FFFFFFFFFF",
+                "FFFFFFFFFF",
+                "FFFFFFFFFF",
+                "FFFFFFFFFF",
+                "FFFFFFFFFF",
+                "FFFFFFFFFF",
+                "FFFFFFFFFG",
             ],
             "is_slippery": False
         }
+        # Print out observations to see how far we already get inside the Env.
+        config["callbacks"] = MyCallBack
         # Limit horizon to make it really hard for non-curious agent to reach
         # the goal state.
-        config["horizon"] = 40
-        # config["train_batch_size"] = 2048
-        # config["num_sgd_iter"] = 15
-        config["num_workers"] = 0  # local only
+        config["horizon"] = 23
+        # Local only.
+        config["num_workers"] = 0
+        config["lr"] = 0.001
 
-        num_iterations = 40
+        num_iterations = 10
         for _ in framework_iterator(config, frameworks="torch"):
             # W/ Curiosity. Expect to learn something.
             config["exploration_config"] = {
                 "type": "Curiosity",
-                "lr": 0.0003,
+                "eta": 0.2,
+                "lr": 0.001,
                 "feature_dim": 128,
                 "feature_net_config": {
                     "fcnet_hiddens": [],
@@ -157,29 +172,28 @@ class TestCuriosity(unittest.TestCase):
             }
             trainer = ppo.PPOTrainer(config=config)
             learnt = False
-            for _ in range(num_iterations):
+            for i in range(num_iterations):
                 result = trainer.train()
                 print(result)
-                if result["episode_reward_mean"] >= 0.001:
-                    print("Learnt something!")
+                if result["episode_reward_max"] > 0.0:
+                    print("Reached goal after {} iters!".format(i))
                     learnt = True
                     break
             trainer.stop()
             self.assertTrue(learnt)
 
-            # # W/o Curiosity. Expect to learn nothing.
-            # config["exploration_config"] = {
-            #     "type": "StochasticSampling",
-            # }
-            # trainer = ppo.PPOTrainer(config=config)
-            # rewards_wo = 0.0
-            # for _ in range(num_iterations):
-            #     result = trainer.train()
-            #     rewards_wo += result["episode_reward_mean"]
-            #     print(result)
-            # trainer.stop()
-
-            # self.assertTrue(rewards_wo == 0.0)
+            # W/o Curiosity. Expect to learn nothing.
+            config["exploration_config"] = {
+                "type": "StochasticSampling",
+            }
+            trainer = ppo.PPOTrainer(config=config)
+            rewards_wo = 0.0
+            for _ in range(num_iterations):
+                result = trainer.train()
+                rewards_wo += result["episode_reward_mean"]
+                print(result)
+            trainer.stop()
+            self.assertTrue(rewards_wo == 0.0)
 
     def test_curiosity_on_partially_observable_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()

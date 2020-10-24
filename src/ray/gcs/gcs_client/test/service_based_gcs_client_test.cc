@@ -1043,10 +1043,13 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // notification of DEAD state.
   WaitForExpectedCount(num_subscribe_all_notifications, 3);
   WaitForExpectedCount(num_subscribe_one_notifications, 3);
-  CheckActorData(subscribe_all_notifications[1], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[1], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_all_notifications[2], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[2], rpc::ActorTableData::DEAD);
+  /// NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
+  /// client will register the actor again. When an actor is registered, the status in GCS
+  /// is `DEPENDENCIES_UNREADY`. When GCS finds that the owner of an actor is nil, it will
+  /// destroy the actor and the status of the actor will change to `DEAD`. The GCS client
+  /// fetch actor info from the GCS server, and the status of the actor may be
+  /// `DEPENDENCIES_UNREADY` or `DEAD`, so we do not assert the actor status here any
+  /// more.
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {

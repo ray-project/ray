@@ -68,26 +68,6 @@ class TestMemoryScheduling(unittest.TestCase):
         finally:
             ray.shutdown()
 
-    def testTuneDriverHeapLimit(self):
-        try:
-            ray.init(num_cpus=4, _memory=100 * MB)
-            _register_all()
-            result = tune.run(
-                "PG",
-                stop={"timesteps_total": 10000},
-                config={
-                    "env": "CartPole-v0",
-                    "memory": 100 * 1024 * 1024,  # too little
-                    "framework": "tf",
-                },
-                raise_on_failed_trial=False)
-            self.assertEqual(result.trials[0].status, "ERROR")
-            self.assertTrue(
-                "RayOutOfMemoryError: Heap memory usage for ray_PG_" in
-                result.trials[0].error_msg)
-        finally:
-            ray.shutdown()
-
     def testTuneDriverStoreLimit(self):
         try:
             ray.init(
@@ -108,27 +88,6 @@ class TestMemoryScheduling(unittest.TestCase):
                         "object_store_memory": 10000 * 1024 * 1024,
                         "framework": "tf",
                     }))
-        finally:
-            ray.shutdown()
-
-    def testTuneWorkerHeapLimit(self):
-        try:
-            ray.init(num_cpus=4, _memory=100 * MB)
-            _register_all()
-            result = tune.run(
-                "PG",
-                stop={"timesteps_total": 10000},
-                config={
-                    "env": "CartPole-v0",
-                    "num_workers": 1,
-                    "memory_per_worker": 100 * 1024 * 1024,  # too little
-                    "framework": "tf",
-                },
-                raise_on_failed_trial=False)
-            self.assertEqual(result.trials[0].status, "ERROR")
-            self.assertTrue(
-                "RayOutOfMemoryError: Heap memory usage for ray_Rollout" in
-                result.trials[0].error_msg)
         finally:
             ray.shutdown()
 

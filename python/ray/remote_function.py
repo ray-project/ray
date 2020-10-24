@@ -65,9 +65,7 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 accelerator_type, num_returns, max_calls, max_retries,
-                 placement_group, placement_group_bundle_index,
-                 placement_group_capture_child_tasks):
+                 accelerator_type, num_returns, max_calls, max_retries):
         self._language = language
         self._function = function
         self._function_name = (

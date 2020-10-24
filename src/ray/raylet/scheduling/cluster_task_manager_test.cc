@@ -534,31 +534,53 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   }
 
   {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 10}, {ray::kGPU_ResourceLabel, 1}});
+    rpc::RequestWorkerLeaseReply reply;
+
+    bool callback_called = false;
+    bool *callback_called_ptr = &callback_called;
+    auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
+
+    task_manager_.QueueTask(task, &reply, callback);
+    task_manager_.SchedulePendingTasks();
+    task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+    ASSERT_FALSE(callback_called);  // Infeasible.
+    // Now there is also an infeasible task {CPU: 10}.
+  }
+
+  {
     auto data = std::make_shared<rpc::HeartbeatTableData>();
     task_manager_.Heartbeat(false, data);
 
     auto load = data->mutable_resource_load();
     ASSERT_EQ(load->size(), 2);
-    ASSERT_EQ((*load)["CPU"], 10);  // 9 + 1 = 10
-    ASSERT_EQ((*load)["GPU"], 5);
+    ASSERT_EQ((*load)["CPU"], 20);  // 9 + 1 + 10 = 20
+    ASSERT_EQ((*load)["GPU"], 6);   // 5 + 1 = 6
 
     auto load_by_shape =
         data->mutable_resource_load_by_shape()->mutable_resource_demands();
-    ASSERT_EQ(load_by_shape->size(), 2);
+    ASSERT_EQ(load_by_shape->size(), 3);
 
     auto load1 = (*load_by_shape)[0];
     auto load2 = (*load_by_shape)[1];
+    auto load3 = (*load_by_shape)[2];
 
     ASSERT_EQ(load1.num_infeasible_requests_queued(), 1);
     ASSERT_EQ(load1.num_ready_requests_queued(), 0);
-    ASSERT_EQ((*load1.mutable_shape())["CPU"], 9);
-    ASSERT_EQ((*load1.mutable_shape())["GPU"], 5);
+    ASSERT_EQ((*load1.mutable_shape())["CPU"], 10);
+    ASSERT_EQ((*load1.mutable_shape())["GPU"], 1);
     ASSERT_EQ((*load1.mutable_shape()).size(), 2);
 
-    ASSERT_EQ(load2.num_infeasible_requests_queued(), 0);
-    ASSERT_EQ(load2.num_ready_requests_queued(), 1);
-    ASSERT_EQ((*load2.mutable_shape())["CPU"], 1);
-    ASSERT_EQ((*load2.mutable_shape()).size(), 1);
+    ASSERT_EQ(load2.num_infeasible_requests_queued(), 1);
+    ASSERT_EQ(load2.num_ready_requests_queued(), 0);
+    ASSERT_EQ((*load2.mutable_shape())["CPU"], 9);
+    ASSERT_EQ((*load2.mutable_shape())["GPU"], 5);
+    ASSERT_EQ((*load2.mutable_shape()).size(), 2);
+
+    ASSERT_EQ(load3.num_infeasible_requests_queued(), 0);
+    ASSERT_EQ(load3.num_ready_requests_queued(), 1);
+    ASSERT_EQ((*load3.mutable_shape())["CPU"], 1);
+    ASSERT_EQ((*load3.mutable_shape()).size(), 1);
   }
 }
 

@@ -3,6 +3,8 @@
 Cluster Autoscaling
 ===================
 
+.. tip:: Before you continue, be sure to have read :ref:`cluster-cloud`.
+
 Basics
 ------
 
@@ -16,7 +18,7 @@ In more detail, the autoscaler implements the following control loop:
 
 The basic autoscaling config settings are as follows:
 
-.. code::
+.. code-block:: yaml
 
     # An unique identifier for the head node and workers of this cluster.
     cluster_name: default
@@ -62,7 +64,7 @@ Multi-node type autoscaling operates in conjunction with the basic autoscaler. Y
 
 An example of configuring multiple node types is as follows `(full example) <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-multi-node-type.yaml>`__:
 
-.. code::
+.. code-block:: yaml
 
     # Specify the allowed node types and the resources they provide.
     # The key is the name of the node type, which is just for debugging purposes.
@@ -112,37 +114,49 @@ The above config defines two CPU node types (``cpu_4_ondemand`` and ``cpu_16_spo
 
 The node config tells the underlying Cloud provider how to launch a node of this type. This node config is merged with the top level node config of the YAML and can override fields (i.e., to specify the p2.xlarge instance type here):
 
-.. code::
+.. code-block:: yaml
 
     node_config:
         InstanceType: p2.xlarge
 
 The resources field tells the autoscaler what kinds of resources this node provides. This can include custom resources as well (e.g., "Custom2"). This field enables the autoscaler to automatically select the right kind of nodes to launch given the resource demands of the application. The resources specified here will be automatically passed to the ``ray start`` command for the node via an environment variable. For more information, see also the `resource demand scheduler <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/resource_demand_scheduler.py>`__:
 
-.. code::
+.. code-block:: yaml
 
     resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
 
 The ``min_workers`` and ``max_workers`` fields constrain the minimum and maximum number of nodes of this type to launch, respectively:
 
-.. code::
+.. code-block:: yaml
 
     min_workers: 1
     max_workers: 4
 
 The ``worker_setup_commands`` field (and also the ``initialization_commands`` field, not shown) can be used to override the setup and initialization commands for a node type. Note that you can only override the setup for worker nodes. The head node's setup commands are always configured via the top level field in the cluster YAML:
 
-.. code::
+.. code-block:: yaml
 
     worker_setup_commands:
         - pip install tensorflow-gpu  # Example command.
 
-Docker Support
-~~~~~~~~~~~~~~
-The ``worker_image`` and ``pull_before_run`` fields override the correpsonding field in the top level ``docker`` section for the node type. The ``worker_run_options`` field is combined with top level ``docker: run_options`` field to produce the docker run command for the given node_type. The following configuration is for a GPU enabled node type. Ray will automatically select the Nvidia docker runtime if it is available.
+Docker Support for Multi-type clusters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code::
+For each node type, you can specify ``worker_image`` and ``pull_before_run`` fields. These will override any top level ``docker`` section values (see :ref:`autoscaler-docker`). The ``worker_run_options`` field is combined with top level ``docker: run_options`` field to produce the docker run command for the given node_type.  Ray will automatically select the Nvidia docker runtime if it is available.
 
-    pull_before_run: True
-    worker_image:
-        - rayproject/ray-ml:latest-gpu
+The following configuration is for a GPU enabled node type:
+
+.. code-block:: yaml
+
+    available_node_types:
+        gpu_1_ondemand:
+            max_workers: 2
+            worker_setup_commands:
+                - pip install tensorflow-gpu  # Example command.
+
+            # Docker specific commands for gpu_1_ondemand
+            pull_before_run: True
+            worker_image:
+                - rayproject/ray-ml:latest-gpu
+            worker_run_options:  # Appended to top-level docker field.
+                - "-v /home:/home"

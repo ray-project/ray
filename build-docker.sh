@@ -59,10 +59,10 @@ for IMAGE in "base-deps" "ray-deps" "ray"
 do
     cp "$WHEEL" "docker/$IMAGE/$(basename "$WHEEL")"
     if [ $OUTPUT_SHA ]; then
-        IMAGE_SHA=$(docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" -q -t rayproject/$IMAGE:latest$GPU docker/$IMAGE)
-        echo "rayproject/$IMAGE:latest$GPU SHA:$IMAGE_SHA"
+        IMAGE_SHA=$(docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" -q -t rayproject/$IMAGE:nightly$GPU docker/$IMAGE)
+        echo "rayproject/$IMAGE:nightly$GPU SHA:$IMAGE_SHA"
     else
-        docker build $NO_CACHE  --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -t rayproject/$IMAGE:latest$GPU docker/$IMAGE
+        docker build $NO_CACHE  --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -t rayproject/$IMAGE:nightly$GPU docker/$IMAGE
     fi
     rm "docker/$IMAGE/$(basename "$WHEEL")"
 done 

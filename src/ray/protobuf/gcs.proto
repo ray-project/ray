@@ -308,10 +308,8 @@ message HeartbeatTableData {
   bool resource_load_changed = 6;
   // The resource load on this node, sorted by resource shape.
   ResourceLoad resource_load_by_shape = 7;
-  // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 8;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 9;
+  bool should_global_gc = 8;
 }
 
 message HeartbeatBatchTableData {
