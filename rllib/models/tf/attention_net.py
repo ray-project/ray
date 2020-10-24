@@ -14,6 +14,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
+from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -302,7 +303,15 @@ class GTrXLNet(RecurrentNetwork):
         is_training = input_dict["is_training"]
         observations = input_dict[SampleBatch.OBS]
 
-        all_out = self.trxl_model([observations] + state + [is_training])
+        assert seq_lens is not None
+        #padded_inputs = input_dict["obs_flat"]
+        max_seq_len = tf.shape(observations)[0] // tf.shape(seq_lens)[0]
+        all_out = self.trxl_model(
+            [add_time_dimension(
+                observations, max_seq_len=max_seq_len, framework="tf")] + state + [is_training])
+        #return tf.reshape(output, [-1, self.num_outputs]), new_state
+
+        #all_out = self.trxl_model([observations] + state + [is_training])
         logits = all_out[0]
         self._value_out = all_out[1]
         memory_outs = all_out[2:]
@@ -318,7 +327,7 @@ class GTrXLNet(RecurrentNetwork):
         #logits = logits[:, -T:]
         #self._value_out = self._value_out[:, -T:]
 
-        return logits, memory_outs
+        return tf.reshape(logits, [-1, self.num_outputs]), memory_outs
 
     #@override(RecurrentNetwork)
     #def forward_rnn(self, observations, states, seq_lens):

@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     assert not args.torch, "PyTorch not supported for AttentionNets yet!"
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
 
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     registry.register_env("RepeatInitialObsEnv",
@@ -57,7 +57,8 @@ if __name__ == "__main__":
                 "num_transformer_units": 1,
                 "attn_dim": 64,
                 "num_heads": 2,
-                "memory_tau": 50,
+                "memory_inference": 50,
+                "memory_training": 50,
                 "head_dim": 32,
                 "ff_hidden_dim": 32,
             },

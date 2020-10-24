@@ -395,6 +395,7 @@ class _SimpleListCollector(_SampleCollector):
         for view_col, view_req in view_reqs.items():
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
+            #TODO: range shifts, e.g. "-100:0" -> translate to correct ranges: [-101:]
             time_indices = \
                 view_req.shift - (
                     1 if data_col in [SampleBatch.OBS, "t", "env_id",
