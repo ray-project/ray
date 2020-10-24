@@ -193,7 +193,7 @@ def explore(data, bounds, current, base, old, config):
         new_Reward = df[df["Trial"] == str(base)].iloc[-1, :].Reward
 
         lst = [[old] + [new_T] + values + [new_Reward]]
-        cols = ["Trial", "Time"] + bounds.keys() + ["Reward"]
+        cols = ["Trial", "Time"] + list(bounds) + ["Reward"]
         new_entry = pd.DataFrame(lst, columns=cols)
 
         # Create an entry for the new config, with the reward from the
