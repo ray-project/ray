@@ -4,6 +4,7 @@ from scipy.optimize import minimize
 from ray.tune.schedulers.pb2 import is_gpy_available, is_sklearn_available
 
 if is_gpy_available():
+    import GPy
     from GPy.kern import Kern
     from GPy.core import Param
 
@@ -11,21 +12,23 @@ if is_sklearn_available():
     from sklearn.metrics import pairwise_distances
     from sklearn.metrics.pairwise import euclidean_distances
 
+
 class TV_SquaredExp(Kern):
     """ Time varying squared exponential kernel.
         For more info see the TV-GP-UCB paper:
         http://proceedings.mlr.press/v51/bogunovic16.pdf
     """
+
     def __init__(self,
                  input_dim,
                  variance=1.,
                  lengthscale=1.,
                  epsilon=0.,
                  active_dims=None):
-        super().__init__(input_dim, active_dims, 'time_se')
-        self.variance = Param('variance', variance)
-        self.lengthscale = Param('lengthscale', lengthscale)
-        self.epsilon = Param('epsilon', epsilon)
+        super().__init__(input_dim, active_dims, "time_se")
+        self.variance = Param("variance", variance)
+        self.lengthscale = Param("lengthscale", lengthscale)
+        self.epsilon = Param("epsilon", epsilon)
         self.link_parameters(self.variance, self.lengthscale, self.epsilon)
 
     def K(self, X, X2):
@@ -36,7 +39,7 @@ class TV_SquaredExp(Kern):
             X2 = np.copy(X)
         T1 = X[:, 0].reshape(-1, 1)
         T2 = X2[:, 0].reshape(-1, 1)
-        dists = pairwise_distances(T1, T2, 'cityblock')
+        dists = pairwise_distances(T1, T2, "cityblock")
         timekernel = (1 - self.epsilon)**(0.5 * dists)
 
         X = X[:, 1:]
@@ -64,7 +67,7 @@ class TV_SquaredExp(Kern):
             (euclidean_distances(X, X2)) / self.lengthscale))
         dl = -(2 * euclidean_distances(X, X2)**2 * self.variance *
                np.exp(-dist2)) * self.lengthscale**(-2)
-        n = pairwise_distances(T1, T2, 'cityblock') / 2
+        n = pairwise_distances(T1, T2, "cityblock") / 2
         deps = -n * (1 - self.epsilon)**(n - 1)
 
         self.variance.gradient = np.sum(dvar * dL_dK)
@@ -73,7 +76,7 @@ class TV_SquaredExp(Kern):
 
 
 def normalize(data, wrt):
-    """ Normalize data to be in range (0,1), with respect to (wrt) boundaries, 
+    """ Normalize data to be in range (0,1), with respect to (wrt) boundaries,
         which can be specified.
     """
     return (data - np.min(wrt, axis=0)) / (
@@ -86,6 +89,7 @@ def standardize(data):
     data = (data - np.mean(data, axis=0)) / (np.std(data, axis=0) + 1e-8)
     return np.clip(data, -2, 2)
 
+
 def UCB(m, m1, x, fixed, kappa=0.5):
     """ UCB acquisition function. Interesting points to note:
         1) We concat with the fixed points, because we are not optimizing wrt
@@ -93,8 +97,8 @@ def UCB(m, m1, x, fixed, kappa=0.5):
            to find the best hyperparameters *given* the reward and time.
         2) We use m to get the mean and m1 to get the variance. If we already
            have trials running, then m1 contains this information. This reduces
-           the variance at points currently running, even if we don't have their
-           label. 
+           the variance at points currently running, even if we don't have
+           their label.
            Ref: https://jmlr.org/papers/volume15/desautels14a/desautels14a.pdf
 
     """
@@ -116,10 +120,9 @@ def UCB(m, m1, x, fixed, kappa=0.5):
 
 
 def optimize_acq(func, m, m1, fixed, num_f):
-    """ Optimize acquisition function.
-    """
-    
-    opts = {'maxiter': 200, 'maxfun': 200, 'disp': False}
+    """ Optimize acquisition function."""
+
+    opts = {"maxiter": 200, "maxfun": 200, "disp": False}
 
     T = 10
     best_value = -999
@@ -147,7 +150,7 @@ def optimize_acq(func, m, m1, fixed, num_f):
 
 def select_length(Xraw, yraw, bounds, num_f):
     """Select the number of datapoints to keep, using cross validation
-    """ 
+    """
     min_len = 200
 
     if Xraw.shape[0] < min_len:
