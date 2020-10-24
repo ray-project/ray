@@ -182,7 +182,7 @@ def explore(data, bounds, current, base, old, config):
         new_config = config.copy()
         values = []
         for i, col in enumerate(h.columns):
-            if type(config[col]) is int:
+            if isinstance(config[col], int):
                 new_config[col] = int(new[i])
                 values.append(int(new[i]))
             else:
