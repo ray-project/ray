@@ -260,7 +260,7 @@ class TBXLogger(Logger):
                 scrubbed_result = {
                     k: value
                     for k, value in flat_result.items()
-                    if isinstance(value, VALID_SUMMARY_TYPES)
+                    if isinstance(value, tuple(VALID_SUMMARY_TYPES))
                 }
                 self._try_log_hparams(scrubbed_result)
             self._file_writer.close()
