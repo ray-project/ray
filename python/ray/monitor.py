@@ -49,7 +49,11 @@ def parse_resource_demands(resource_load_by_shape):
                 backlog_queue = infeasible_bundles
             else:
                 backlog_queue = waiting_bundles
-            for _ in range(resource_demand_pb.backlog_size):
+            for _ in range(
+                    # Limit the backlog queue size to reduce the overhead of
+                    # the resource demand scheduler.
+                    min(ray_constants.MAX_BACKLOG_SIZE,
+                        resource_demand_pb.backlog_size)):
                 backlog_queue.append(request_shape)
     except Exception:
         logger.exception("Failed to parse resource demands.")

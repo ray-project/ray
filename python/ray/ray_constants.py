@@ -73,6 +73,9 @@ MIN_RESOURCE_GRANULARITY = 0.0001
 # is set to 69% to leave some headroom.
 PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
 
+# The back log size upper threshold to report for the demand based autoscaling
+MAX_BACKLOG_SIZE = 1000
+
 
 def round_to_memory_units(memory_bytes, round_up):
     """Round bytes to the nearest memory unit."""
