@@ -21,8 +21,7 @@ def get_placeholder(*, space=None, value=None):
         assert value is not None
         return tf1.placeholder(
             shape=(None, ) + value.shape[1:],
-            dtype=tf.float32
-            if value.dtype in [np.float64, tf.float64] else value.dtype,
+            dtype=tf.float32 if value.dtype == np.float64 else value.dtype,
         )
 
 

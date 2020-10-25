@@ -71,7 +71,7 @@ def get_default_view_requirements(policy: "Policy"):
     Returns:
         ViewReqDict: The default view requirements dict.
     """
-    from ray.rllib.evaluation.postprocessing import Postprocessing
+    #from ray.rllib.evaluation.postprocessing import Postprocessing
     from ray.rllib.policy.sample_batch import SampleBatch
 
     # Default view requirements (equal to those that we would use before
@@ -85,10 +85,10 @@ def get_default_view_requirements(policy: "Policy"):
         SampleBatch.DONES: ViewRequirement(),
         SampleBatch.EPS_ID: ViewRequirement(),
         SampleBatch.AGENT_INDEX: ViewRequirement(),
-        #TODO: Add infos!
+        SampleBatch.INFOS: ViewRequirement(used_for_training=False),
         #Postprocessing.ADVANTAGES: ViewRequirement(),
         #Postprocessing.VALUE_TARGETS: ViewRequirement(),
-        #SampleBatch.VF_PREDS: ViewRequirement(),
+        SampleBatch.VF_PREDS: ViewRequirement(),
         SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(),
         SampleBatch.ACTION_LOGP: ViewRequirement(),
     }

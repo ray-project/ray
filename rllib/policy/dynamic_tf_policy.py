@@ -423,7 +423,9 @@ class DynamicTFPolicy(TFPolicy):
                     dtype=np.float32)
             # All others.
             else:
-                input_dict[view_col] = get_placeholder(space=view_req.space)
+                if view_req.used_for_training:
+                    input_dict[view_col] = get_placeholder(
+                        space=view_req.space)
                 dummy_batch[view_col] = np.zeros_like(
                     [view_req.space.sample()])
         return input_dict, dummy_batch
