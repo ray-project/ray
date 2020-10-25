@@ -12,6 +12,7 @@ from ray.tune.logger import pretty_print
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", type=str, default="slateq")
+    parser.add_argument("--learning-method", type=str, default="QL")
     parser.add_argument("--num-gpus", type=int, default=1)
     parser.add_argument("--use-tune", action="store_true")
     parser.add_argument("--slate-size", type=int, default=2)
@@ -23,16 +24,22 @@ def main():
     if slateq_policy not in ALL_POLICIES:
         raise ValueError(slateq_policy)
 
+    ALL_LEARNING_METHOD = ["QL", "SARSA", "MYOP"]
+    if args.learning_method not in ALL_LEARNING_METHOD:
+        raise ValueError(args.learning_method)
+
     ray.init()
     if args.use_tune:
         tune.run(
             "SlateQ",
             stop={"timesteps_total": 2000000},
+            name=f"SlateQ/{args.policy}-{args.learning_method}",
             config={
                 "env": recsim_env_name,
                 "num_gpus": args.num_gpus,
                 "num_workers": args.num_workers,
                 "slateq_policy": slateq_policy,
+                "slateq_policy_learning_method": args.learning_method,
                 "env_config": {
                     "slate_size": args.slate_size,
                     "convert_to_discrete_action_space": slateq_policy == "dqn"

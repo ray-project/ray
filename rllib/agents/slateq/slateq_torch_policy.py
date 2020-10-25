@@ -72,7 +72,7 @@ class UserChoiceModel(nn.Module):
         """Evaluate the user choice model
 
         Args:
-            user (torch.Tensor): User embedding of shape (batch_size,
+            user (torch.Tensor): User embeddings of shape (batch_size,
                 embedding_size).
             doc (torch.Tensor): Doc embeddings of shape (batch_size,
                 num_docs, embedding_size).
@@ -104,7 +104,22 @@ class SlateQModel(TorchModelV2, nn.Module):
         self.q_model = QValueModel()
         self.slate_size = len(action_space.nvec)
 
-    def choose_slate(self, user: TensorType, doc: TensorType) -> TensorType:
+    def choose_slate(self, user: TensorType,
+                     doc: TensorType) -> Tuple[TensorType, TensorType]:
+        """Build a slate from candidate documents
+
+        Args:
+            user (TensorType): User embeddings of shape (batch_size,
+                embedding_size).
+            doc (TensorType): Doc embeddings of shape (batch_size,
+                num_docs, embedding_size).
+
+        Returns:
+            slate_selected (TensorType): Indices of documents selected for
+                the slate, with shape (batch_size, slate_size).
+            best_slate_q_value (TensorType): The Q-value of the selected slate,
+                with shape (batch_size)
+        """
         # Step 1: compute item scores (proportional to click probabilities)
         # raw_scores.shape=[batch_size, num_docs+1]
         raw_scores = self.choice_model(user, doc)
@@ -150,10 +165,10 @@ class SlateQModel(TorchModelV2, nn.Module):
                               slate_scores.sum(dim=2) + scores_no_click)
 
         # Step 5: find the slate that maximizes q value
-        max_idx = torch.argmax(slate_q_values, dim=1)
+        best_slate_q_value, max_idx = torch.max(slate_q_values, dim=1)
         # slates_selected.shape: [batch_size, slate_size]
         slates_selected = slates[max_idx]
-        return slates_selected
+        return slates_selected, best_slate_q_value
 
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
@@ -166,7 +181,7 @@ class SlateQModel(TorchModelV2, nn.Module):
             for val in input_dict[SampleBatch.OBS]["doc"].values()
         ], 1)
 
-        slates_selected = self.choose_slate(user, doc)
+        slates_selected, _ = self.choose_slate(user, doc)
 
         state_out = []
         return slates_selected, state_out
@@ -251,32 +266,48 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
     # 'obs', 'actions', 'rewards', 'prev_actions', 'prev_rewards',
     # 'dones', 'infos', 'new_obs', 'unroll_id', 'weights', 'batch_indexes'])
 
-    # next_doc.shape: [batch_size, num_docs, embedding_size]
-    next_doc = torch.cat(
-        [val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
-    next_actions = train_batch["next_actions"]
-    _, _, embedding_size = next_doc.shape
-    # selected_doc.shape: [batch_size, slate_size, embedding_size]
-    next_selected_doc = torch.gather(
-        # input.shape: [batch_size, num_docs, embedding_size]
-        input=next_doc,
-        dim=1,
-        # index.shape: [batch_size, slate_size, embedding_size]
-        index=next_actions.unsqueeze(2).expand(-1, -1, embedding_size))
-    next_user = next_obs["user"]
-    dones = train_batch["dones"]
-    with torch.no_grad():
-        # q_values.shape: [batch_size, slate_size+1]
-        q_values = model.q_model(next_user, next_selected_doc)
-        # raw_scores.shape: [batch_size, slate_size+1]
-        raw_scores = model.choice_model(next_user, next_selected_doc)
-        max_raw_scores, _ = torch.max(raw_scores, dim=1, keepdim=True)
-        scores = torch.exp(raw_scores - max_raw_scores)
-        # next_q_values.shape: [batch_size]
-        next_q_values = torch.sum(
-            q_values * scores, dim=1) / torch.sum(
-                scores, dim=1)
+    learning_method = policy.config.get("slateq_policy_learning_method")
+
+    if learning_method == "SARSA":
+        # next_doc.shape: [batch_size, num_docs, embedding_size]
+        next_doc = torch.cat(
+            [val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
+        next_actions = train_batch["next_actions"]
+        _, _, embedding_size = next_doc.shape
+        # selected_doc.shape: [batch_size, slate_size, embedding_size]
+        next_selected_doc = torch.gather(
+            # input.shape: [batch_size, num_docs, embedding_size]
+            input=next_doc,
+            dim=1,
+            # index.shape: [batch_size, slate_size, embedding_size]
+            index=next_actions.unsqueeze(2).expand(-1, -1, embedding_size))
+        next_user = next_obs["user"]
+        dones = train_batch["dones"]
+        with torch.no_grad():
+            # q_values.shape: [batch_size, slate_size+1]
+            q_values = model.q_model(next_user, next_selected_doc)
+            # raw_scores.shape: [batch_size, slate_size+1]
+            raw_scores = model.choice_model(next_user, next_selected_doc)
+            max_raw_scores, _ = torch.max(raw_scores, dim=1, keepdim=True)
+            scores = torch.exp(raw_scores - max_raw_scores)
+            # next_q_values.shape: [batch_size]
+            next_q_values = torch.sum(
+                q_values * scores, dim=1) / torch.sum(
+                    scores, dim=1)
+            next_q_values[dones] = 0.0
+    elif learning_method == "MYOP":
+        next_q_values = 0.
+    elif learning_method == "QL":
+        # next_doc.shape: [batch_size, num_docs, embedding_size]
+        next_doc = torch.cat(
+            [val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
+        next_user = next_obs["user"]
+        dones = train_batch["dones"]
+        with torch.no_grad():
+            _, next_q_values = model.choose_slate(next_user, next_doc)
         next_q_values[dones] = 0.0
+    else:
+        raise ValueError(learning_method)
     # target_q_values.shape: [batch_size]
     target_q_values = next_q_values + train_batch["rewards"]
 
@@ -317,7 +348,7 @@ def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
     # doc.shape: [batch_size(=1), num_docs, embedding_size]
     doc = torch.cat([val.unsqueeze(1) for val in obs["doc"].values()], 1)
 
-    selected_slates = model.choose_slate(user, doc)
+    selected_slates, _ = model.choose_slate(user, doc)
 
     action = selected_slates
     # logp = torch.zeros(selected_slates.shape)
