@@ -599,7 +599,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         options = options or {}
         host_destination = os.path.join(
             DOCKER_MOUNT_PREFIX.format(
-                cluster_name=self.provider.cluster_name),
+                cluster_name=self.ssh_command_runner.provider.cluster_name),
             target.lstrip("/"))
 
         self.ssh_command_runner.run(
@@ -621,7 +621,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         options = options or {}
         host_source = os.path.join(
             DOCKER_MOUNT_PREFIX.format(
-                cluster_name=self.provider.cluster_name),
+                cluster_name=self.ssh_command_runner.provider.cluster_name),
             source.lstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
@@ -713,8 +713,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.container_name,
                 self.docker_config.get(
                     "run_options", []) + self.docker_config.get(
-                        f"{'head' if as_head else 'worker'}_run_options", []) +
-                self._configure_runtime(), self.provider.cluster_name)
+                        f"{'head' if as_head else 'worker'}_run_options",
+                        []) + self._configure_runtime(),
+                self.ssh_command_runner.provider.cluster_name)
             self.run(start_command, run_env="host")
         else:
             running_image = self.run(
@@ -753,7 +754,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "docker cp {src} {container}:{dst}".format(
                         src=os.path.join(
                             DOCKER_MOUNT_PREFIX.format(
-                                cluster_name=self.provider.cluster_name),
+                                cluster_name=self.ssh_command_runner.provider.
+                                cluster_name),
                             mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
