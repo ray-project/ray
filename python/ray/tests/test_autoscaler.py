@@ -487,14 +487,19 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "start_ray_head")
         self.assertEqual(self.provider.mock_nodes[0].node_type, None)
         runner.assert_has_call("1.2.3.4", pattern="docker run")
+
+        docker_mount_prefix = DOCKER_MOUNT_PREFIX.format(
+            cluster_name=SMALL_CLUSTER["cluster_name"])
         runner.assert_not_has_call(
-            "1.2.3.4", pattern="-v /tmp/ray_tmp_mount/~/ray_bootstrap_config")
+            "1.2.3.4",
+            pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_key.pem")
+            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_config.yaml")
+            pattern=
+            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml")
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testRsyncCommandWithDocker(self):
