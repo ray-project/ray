@@ -242,11 +242,12 @@ def test_docker_rsync():
 
     local_mount = "/home/ubuntu/base/mount/"
     remote_mount = "/root/protected_mount/"
-    remote_host_mount = f"{DOCKER_MOUNT_PREFIX}{remote_mount}"
+    docker_mount_prefix = DOCKER_MOUNT_PREFIX.format(cluster_name=cluster_name)
+    remote_host_mount = f"{docker_mount_prefix}{remote_mount}"
 
     local_file = "/home/ubuntu/base-file"
     remote_file = "/root/protected-file"
-    remote_host_file = f"{DOCKER_MOUNT_PREFIX}{remote_file}"
+    remote_host_file = f"{docker_mount_prefix}{remote_file}"
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(

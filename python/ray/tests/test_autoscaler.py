@@ -1458,12 +1458,13 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         autoscaler.update()
-
+        docker_mount_prefix = DOCKER_MOUNT_PREFIX.format(
+            cluster_name=config["cluster_name"])
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
                 f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
         runner.clear_history()
 
@@ -1483,7 +1484,7 @@ class AutoscalingTest(unittest.TestCase):
             runner.assert_has_call(
                 f"172.0.0.{i}", f"172.0.0.{i}",
                 f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
     def testFileMountsNonContinuous(self):
         file_mount_dir = tempfile.mkdtemp()
@@ -1510,13 +1511,15 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         autoscaler.update()
+        docker_mount_prefix = DOCKER_MOUNT_PREFIX.format(
+            cluster_name=config["cluster_name"])
 
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
                 f"172.0.0.{i}", f"172.0.0.{i}",
                 f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
         runner.clear_history()
 
@@ -1533,7 +1536,7 @@ class AutoscalingTest(unittest.TestCase):
             runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_not_has_call(
                 f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
         # Simulate a second `ray up` call
         from ray.autoscaler._private import util
@@ -1559,7 +1562,7 @@ class AutoscalingTest(unittest.TestCase):
             runner.assert_has_call(
                 f"172.0.0.{i}", f"172.0.0.{i}",
                 f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
 
 if __name__ == "__main__":
