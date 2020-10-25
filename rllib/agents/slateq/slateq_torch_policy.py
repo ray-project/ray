@@ -70,11 +70,13 @@ class UserChoiceModel(nn.Module):
 
     def forward(self, user: torch.Tensor, doc: torch.Tensor) -> torch.Tensor:
         """Evaluate the user choice model
+
         Args:
             user (torch.Tensor): User embedding of shape (batch_size,
                 embedding_size).
             doc (torch.Tensor): Doc embeddings of shape (batch_size,
                 num_docs, embedding_size).
+
         Returns:
             score (torch.Tensor): logits of shape (batch_size,
                 num_docs + 1), where the last dimension represents no_click.

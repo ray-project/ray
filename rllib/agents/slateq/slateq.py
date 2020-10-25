@@ -12,7 +12,7 @@ import logging
 from typing import List, Optional, Type
 
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.agents.slateq.greedy_policy import GreedyPolicy
+from ray.rllib.agents.slateq.greedy_policy import SlateQGreedyPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -174,7 +174,7 @@ def validate_config(config: TrainerConfigDict) -> None:
 
 def execution_plan(workers: WorkerSet,
                    config: TrainerConfigDict) -> LocalIterator[dict]:
-    """Execution plan of the DQN algorithm. Defines the distributed dataflow.
+    """Execution plan of the SlateQ algorithm. Defines the distributed dataflow.
 
     Args:
         workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
@@ -245,27 +245,29 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     return weights
 
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
+def get_policy_class(config: TrainerConfigDict) -> Type[Policy]:
+    """Policy class picker function.
 
     Args:
         config (TrainerConfigDict): The trainer's configuration dict.
 
     Returns:
-        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
-            If None, use `default_policy` provided in build_trainer().
+        Type[Policy]: The Policy class to use with SlateQTrainer.
     """
     if config["slateq_policy"] == "greedy":
-        return GreedyPolicy
+        return SlateQGreedyPolicy
     elif config["slateq_policy"] == "random":
         return RandomPolicy
     elif config["slateq_policy"] == "dqn":
         return DQNTorchPolicy
+    elif config["slateq_policy"] == "slateq":
+        return SlateQTorchPolicy
+    else:
+        raise ValueError(config["slateq_policy"])
 
 
 SlateQTrainer = build_trainer(
     name="SlateQ",
-    default_policy=SlateQTorchPolicy,
     get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,

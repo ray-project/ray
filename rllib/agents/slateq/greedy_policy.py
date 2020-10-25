@@ -7,7 +7,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict, ModelWeights
 
 
-class GreedyPolicy(Policy):
+class SlateQGreedyPolicy(Policy):
     """Hand-coded policy that maximizes user clicks"""
 
     def __init__(self, observation_space: gym.spaces.Space,
