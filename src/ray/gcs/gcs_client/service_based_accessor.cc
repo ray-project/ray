@@ -753,12 +753,21 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
     // was alive and is now dead or resources have been updated.
     bool was_alive = (entry->second.state() == GcsNodeInfo::ALIVE);
     is_notif_new = was_alive && !is_alive;
+
     // Once a node with a given ID has been removed, it should never be added
-    // again. If the entry was in the cache and the node was deleted, check
+    // again. If the entry was in the cache and the node was deleted, we should check
     // that this new notification is not an insertion.
-    if (!was_alive) {
-      RAY_CHECK(!is_alive)
-          << "Notification for addition of a node that was already removed:" << node_id;
+    // However, when a new node(node-B) registers with GCS, it subscribes to all node
+    // information. It will subscribe to redis and then get all node information from GCS
+    // through RPC. If node-A fails after GCS replies to node-B, GCS will send another
+    // message(node-A is dead) to node-B through redis publish. Because RPC and redis
+    // subscribe are two different sessions, node-B may process node-A dead message first
+    // and then node-A alive message. So we use `RAY_LOG` instead of `RAY_CHECK ` as a
+    // workaround.
+    if (!was_alive && is_alive) {
+      RAY_LOG(INFO) << "Notification for addition of a node that was already removed:"
+                    << node_id;
+      return;
     }
   }
 
@@ -1532,6 +1541,20 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
                        << placement_group_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all placement group info.";
+  rpc::GetAllPlacementGroupRequest request;
+  client_impl_->GetGcsRpcClient().GetAllPlacementGroup(
+      request,
+      [callback](const Status &status, const rpc::GetAllPlacementGroupReply &reply) {
+        callback(status, VectorFromProtobuf(reply.placement_group_table_data()));
+        RAY_LOG(DEBUG) << "Finished getting all placement group info, status = "
+                       << status;
       });
   return Status::OK();
 }

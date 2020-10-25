@@ -129,10 +129,6 @@ class NodeProvider:
                         "{}: Terminating node".format(node_id))
             self.terminate_node(node_id)
 
-    def cleanup(self) -> None:
-        """Clean-up when a Provider is no longer required."""
-        pass
-
     @staticmethod
     def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
         """Bootstraps the cluster config by adding env defaults if needed."""

@@ -11,9 +11,12 @@ import copy
 import numpy as np
 import logging
 import collections
+from numbers import Number
 from typing import List, Dict
 
 from ray.autoscaler.node_provider import NodeProvider
+from ray.gcs_utils import PlacementGroupTableData
+from ray.core.generated.common_pb2 import PlacementStrategy
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED, \
     STATUS_UPDATE_FAILED, STATUS_UP_TO_DATE, TAG_RAY_NODE_STATUS
 
@@ -26,7 +29,7 @@ NodeType = str
 NodeTypeConfigDict = str
 
 # e.g., {"GPU": 1}.
-ResourceDict = str
+ResourceDict = Dict[str, Number]
 
 # e.g., IP address of the node.
 NodeID = str
@@ -43,15 +46,19 @@ class ResourceDemandScheduler:
     def get_nodes_to_launch(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeType, int],
             resource_demands: List[ResourceDict],
-            usage_by_ip: Dict[str, ResourceDict]) -> Dict[NodeType, int]:
+            usage_by_ip: Dict[str, ResourceDict],
+            pending_placement_groups: List[PlacementGroupTableData]
+    ) -> Dict[NodeType, int]:
         """Given resource demands, return node types to add to the cluster.
 
         This method:
             (1) calculates the resources present in the cluster.
             (2) calculates the remaining nodes to add to respect min_workers
-                    constraint per node type.
-            (3) calculates the unfulfilled resource bundles.
-            (4) calculates which nodes need to be launched to fulfill all
+                constraint per node type.
+            (3) for each strict spread placement group, reserve space on
+                available nodes and launch new nodes if necessary.
+            (4) calculates the unfulfilled resource bundles.
+            (5) calculates which nodes need to be launched to fulfill all
                 the bundle requests, subject to max_worker constraints.
 
         Args:
@@ -61,31 +68,44 @@ class ResourceDemandScheduler:
             usage_by_ip: Mapping from ip to available resources.
         """
 
+        node_resources: List[ResourceDict]
+        node_type_counts: Dict[NodeType, int]
         node_resources, node_type_counts = \
             self.calculate_node_resources(nodes, pending_nodes, usage_by_ip)
 
+        logger.info("Cluster resources: {}".format(node_resources))
+        logger.info("Node counts: {}".format(node_type_counts))
+        # Step 2: add nodes to add to satisfy min_workers for each type
         node_resources, node_type_counts, min_workers_nodes_to_add = \
             _add_min_workers_nodes(
                 node_resources, node_type_counts, self.node_types)
 
-        nodes_to_add_based_on_demand = {}
-        if resource_demands is not None:
-            logger.info("Cluster resources: {}".format(node_resources))
-            logger.info("Node counts: {}".format(node_type_counts))
-            unfulfilled = get_bin_pack_residual(node_resources,
-                                                resource_demands)
-            logger.info("Resource demands: {}".format(resource_demands))
-            logger.info("Unfulfilled demands: {}".format(unfulfilled))
-            max_to_add = self.max_workers - sum(node_type_counts.values())
-            nodes_to_add_based_on_demand = get_nodes_for(
-                self.node_types, node_type_counts, max_to_add, unfulfilled)
+        # Step 3: add nodes for strict spread groups
+        logger.info(f"Placement group demands: {pending_placement_groups}")
+        placement_group_demand_vector, strict_spreads = \
+            placement_groups_to_resource_demands(pending_placement_groups)
+        resource_demands.extend(placement_group_demand_vector)
+        placement_group_nodes_to_add, node_resources, node_type_counts = \
+            self.reserve_and_allocate_spread(
+                strict_spreads, node_resources, node_type_counts)
+
+        # Step 4/5: add nodes for pending tasks, actors, and non-strict spread
+        # groups
+        unfulfilled, _ = get_bin_pack_residual(node_resources,
+                                               resource_demands)
+        logger.info("Resource demands: {}".format(resource_demands))
+        logger.info("Unfulfilled demands: {}".format(unfulfilled))
+        max_to_add = self.max_workers - sum(node_type_counts.values())
+        nodes_to_add_based_on_demand = get_nodes_for(
+            self.node_types, node_type_counts, max_to_add, unfulfilled)
         # Merge nodes to add based on demand and nodes to add based on
         # min_workers constraint. We add them because nodes to add based on
         # demand was calculated after the min_workers constraint was respected.
         total_nodes_to_add = {}
         for node_type in self.node_types:
-            nodes_to_add = nodes_to_add_based_on_demand.get(node_type, 0) + \
-                min_workers_nodes_to_add.get(node_type, 0)
+            nodes_to_add = (min_workers_nodes_to_add.get(
+                node_type, 0) + placement_group_nodes_to_add.get(node_type, 0)
+                            + nodes_to_add_based_on_demand.get(node_type, 0))
             if nodes_to_add > 0:
                 total_nodes_to_add[node_type] = nodes_to_add
 
@@ -220,6 +240,53 @@ class ResourceDemandScheduler:
 
         return node_resources, node_type_counts
 
+    def reserve_and_allocate_spread(self,
+                                    strict_spreads: List[List[ResourceDict]],
+                                    node_resources: List[ResourceDict],
+                                    node_type_counts: Dict[NodeType, int]):
+        """For each strict spread, attempt to reserve as much space as possible
+        on the node, then allocate new nodes for the unfulfilled portion.
+
+        Args:
+            strict_spreads (List[List[ResourceDict]]): A list of placement
+                groups which must be spread out.
+            node_resources (List[ResourceDict]): Available node resources in
+                the cluster.
+            node_type_counts (Dict[NodeType, int]): The amount of each type of
+                node pending or in the cluster.
+
+        Returns:
+            Dict[NodeType, int]: Nodes to add.
+            List[ResourceDict]: The updated node_resources after the method.
+            Dict[NodeType, int]: The updated node_type_counts.
+
+        """
+        to_add = collections.defaultdict(int)
+        for bundles in strict_spreads:
+            # Try to pack as many bundles of this group as possible on existing
+            # nodes. The remaining will be allocated on new nodes.
+            unfulfilled, node_resources = get_bin_pack_residual(
+                node_resources, bundles, strict_spread=True)
+            max_to_add = self.max_workers - sum(node_type_counts.values())
+            # Allocate new nodes for the remaining bundles that don't fit.
+            to_launch = get_nodes_for(
+                self.node_types,
+                node_type_counts,
+                max_to_add,
+                unfulfilled,
+                strict_spread=True)
+            _inplace_add(node_type_counts, to_launch)
+            _inplace_add(to_add, to_launch)
+            new_node_resources = _node_type_counts_to_node_resources(
+                self.node_types, to_launch)
+            # Update node resources to include newly launched nodes and their
+            # bundles.
+            unfulfilled, including_reserved = get_bin_pack_residual(
+                new_node_resources, unfulfilled, strict_spread=True)
+            assert not unfulfilled
+            node_resources += including_reserved
+        return to_add, node_resources, node_type_counts
+
     def debug_string(self, nodes: List[NodeID],
                      pending_nodes: Dict[NodeID, int],
                      usage_by_ip: Dict[str, ResourceDict]) -> str:
@@ -233,6 +300,19 @@ class ResourceDemandScheduler:
                 out += " ({} pending)".format(pending_nodes[node_type])
 
         return out
+
+
+def _node_type_counts_to_node_resources(
+        node_types: Dict[NodeType, NodeTypeConfigDict],
+        node_type_counts: Dict[NodeType, int]) -> List[ResourceDict]:
+    """Converts a node_type_counts dict into a list of node_resources."""
+    resources = []
+    for node_type, count in node_type_counts.items():
+        # Be careful, each entry in the list must be deep copied!
+        resources += [
+            node_types[node_type]["resources"].copy() for _ in range(count)
+        ]
+    return resources
 
 
 def _add_min_workers_nodes(
@@ -269,8 +349,10 @@ def _add_min_workers_nodes(
 
 
 def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
-                  existing_nodes: Dict[NodeType, int], max_to_add: int,
-                  resources: List[ResourceDict]) -> Dict[NodeType, int]:
+                  existing_nodes: Dict[NodeType, int],
+                  max_to_add: int,
+                  resources: List[ResourceDict],
+                  strict_spread: bool = False) -> Dict[NodeType, int]:
     """Determine nodes to add given resource demands and constraints.
 
     Args:
@@ -279,12 +361,14 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
             This sets constraints on the number of new nodes to add.
         max_to_add: global constraint on nodes to add.
         resources: resource demands to fulfill.
+        strict_spread: If true, each element in `resources` must be placed on a
+            different node.
 
     Returns:
         Dict of count to add for each node type.
+
     """
     nodes_to_add = collections.defaultdict(int)
-    allocated_resources = []
 
     while resources and sum(nodes_to_add.values()) < max_to_add:
         utilization_scores = []
@@ -293,12 +377,21 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
                     node_type, 0) >= node_types[node_type]["max_workers"]):
                 continue
             node_resources = node_types[node_type]["resources"]
-            score = _utilization_score(node_resources, resources)
+            if strict_spread:
+                # If handling strict spread, only one bundle can be placed on
+                # the node.
+                score = _utilization_score(node_resources, [resources[0]])
+            else:
+                score = _utilization_score(node_resources, resources)
             if score is not None:
                 utilization_scores.append((score, node_type))
 
         # Give up, no feasible node.
         if not utilization_scores:
+            # TODO (Alex): We will hit this case every time a placement group
+            # starts up because placement groups are scheduled via custom
+            # resources. This will behave properly with the current utilization
+            # score heuristic, but it's a little dangerous and misleading.
             logger.info(
                 "No feasible node type to add for {}".format(resources))
             break
@@ -306,10 +399,14 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
         utilization_scores = sorted(utilization_scores, reverse=True)
         best_node_type = utilization_scores[0][1]
         nodes_to_add[best_node_type] += 1
-        allocated_resources.append(node_types[best_node_type]["resources"])
-        residual = get_bin_pack_residual(allocated_resources[-1:], resources)
-        assert len(residual) < len(resources), (resources, residual)
-        resources = residual
+        if strict_spread:
+            resources = resources[1:]
+        else:
+            allocated_resource = node_types[best_node_type]["resources"]
+            residual, _ = get_bin_pack_residual([allocated_resource],
+                                                resources)
+            assert len(residual) < len(resources), (resources, residual)
+            resources = residual
 
     return nodes_to_add
 
@@ -336,9 +433,9 @@ def _utilization_score(node_resources: ResourceDict,
     return (min(util_by_resources), np.mean(util_by_resources))
 
 
-def get_bin_pack_residual(
-        node_resources: List[ResourceDict],
-        resource_demands: List[ResourceDict]) -> List[ResourceDict]:
+def get_bin_pack_residual(node_resources: List[ResourceDict],
+                          resource_demands: List[ResourceDict],
+                          strict_spread: bool = False) -> List[ResourceDict]:
     """Return a subset of resource_demands that cannot fit in the cluster.
 
     TODO(ekl): this currently does not guarantee the resources will be packed
@@ -349,26 +446,37 @@ def get_bin_pack_residual(
         node_resources (List[ResourceDict]): List of resources per node.
         resource_demands (List[ResourceDict]): List of resource bundles that
             need to be bin packed onto the nodes.
+        strict_spread (bool): If true, each element in resource_demands must be
+            placed on a different entry in `node_resources`.
 
     Returns:
         List[ResourceDict] the residual list resources that do not fit.
+
     """
 
     unfulfilled = []
 
     # A most naive bin packing algorithm.
     nodes = copy.deepcopy(node_resources)
+    used = []
     for demand in resource_demands:
         found = False
-        for node in nodes:
+        node = None
+        for i in range(len(nodes)):
+            node = nodes[i]
             if _fits(node, demand):
-                _inplace_subtract(node, demand)
                 found = True
+                # In the strict_spread case, we can't reuse nodes.
+                if strict_spread:
+                    used.append(node)
+                    del nodes[i]
                 break
-        if not found:
+        if found and node:
+            _inplace_subtract(node, demand)
+        else:
             unfulfilled.append(demand)
 
-    return unfulfilled
+    return unfulfilled, nodes + used
 
 
 def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
@@ -383,3 +491,54 @@ def _inplace_subtract(node: ResourceDict, resources: ResourceDict) -> None:
         assert k in node, (k, node)
         node[k] -= v
         assert node[k] >= 0.0, (node, k, v)
+
+
+def _inplace_add(a: collections.defaultdict, b: Dict) -> None:
+    """Generically adds values in `b` to `a`.
+    a[k] should be defined for all k in b.keys()"""
+    for k, v in b.items():
+        a[k] += v
+
+
+def placement_groups_to_resource_demands(
+        pending_placement_groups: List[PlacementGroupTableData]):
+    """Preprocess placement group requests into regular resource demand vectors
+    when possible. The policy is:
+        * STRICT_PACK - Convert to a single bundle.
+        * PACK - Flatten into a resource demand vector.
+        * STRICT_SPREAD - Cannot be converted.
+        * SPREAD - Flatten into a resource demand vector.
+
+    Args:
+        pending_placement_groups (List[PlacementGroupData]): List of
+        PlacementGroupLoad's.
+
+    Returns:
+        List[ResourceDict]: The placement groups which were converted to a
+            resource demand vector.
+        List[List[ResourceDict]]: The placement groups which should be strictly
+            spread.
+    """
+    resource_demand_vector = []
+    unconverted = []
+    for placement_group in pending_placement_groups:
+        shapes = [
+            dict(bundle.unit_resources) for bundle in placement_group.bundles
+        ]
+        if (placement_group.strategy == PlacementStrategy.PACK
+                or placement_group.strategy == PlacementStrategy.SPREAD):
+            resource_demand_vector.extend(shapes)
+        elif placement_group.strategy == PlacementStrategy.STRICT_PACK:
+            combined = collections.defaultdict(float)
+            for shape in shapes:
+                for label, quantity in shape.items():
+                    combined[label] += quantity
+            resource_demand_vector.append(combined)
+        elif (placement_group.strategy == PlacementStrategy.STRICT_SPREAD):
+            unconverted.append(shapes)
+        else:
+            logger.error(
+                f"Unknown placement group request type: {placement_group}. "
+                f"Please file a bug report "
+                f"https://github.com/ray-project/ray/issues/new.")
+    return resource_demand_vector, unconverted

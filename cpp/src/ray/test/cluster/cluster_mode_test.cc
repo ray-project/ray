@@ -7,6 +7,7 @@
 using namespace ray::api;
 
 /// general function of user code
+int Return1() { return 1; }
 int Plus1(int x) { return x + 1; }
 
 /// a class of user code
@@ -15,9 +16,13 @@ class Counter {
   int count;
 
   Counter(int init) { count = init; }
-
+  static Counter *FactoryCreate() { return new Counter(0); }
   static Counter *FactoryCreate(int init) { return new Counter(init); }
   /// non static function
+  int Plus1() {
+    count += 1;
+    return count;
+  }
   int Add(int x) {
     count += x;
     return count;
@@ -36,14 +41,27 @@ TEST(RayClusterModeTest, FullTest) {
   auto get_result = *(Ray::Get(obj));
   EXPECT_EQ(12345, get_result);
 
-  auto task_obj = Ray::Task(Plus1, 5).Remote();
+  /// common task without args
+  auto task_obj = Ray::Task(Return1).Remote();
   int task_result = *(Ray::Get(task_obj));
+  EXPECT_EQ(1, task_result);
+
+  /// common task with args
+  task_obj = Ray::Task(Plus1, 5).Remote();
+  task_result = *(Ray::Get(task_obj));
   EXPECT_EQ(6, task_result);
 
-  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate, 1).Remote();
-  auto actor_object = actor.Task(&Counter::Add, 5).Remote();
-  int actor_task_result = *(Ray::Get(actor_object));
-  EXPECT_EQ(6, actor_task_result);
+  /// actor task without args
+  ActorHandle<Counter> actor1 = Ray::Actor(Counter::FactoryCreate).Remote();
+  auto actor_object1 = actor1.Task(&Counter::Plus1).Remote();
+  int actor_task_result1 = *(Ray::Get(actor_object1));
+  EXPECT_EQ(1, actor_task_result1);
+
+  /// actor task with args
+  ActorHandle<Counter> actor2 = Ray::Actor(Counter::FactoryCreate, 1).Remote();
+  auto actor_object2 = actor2.Task(&Counter::Add, 5).Remote();
+  int actor_task_result2 = *(Ray::Get(actor_object2));
+  EXPECT_EQ(6, actor_task_result2);
 
   Ray::Shutdown();
 }

@@ -9,6 +9,8 @@ in the documentation.
 
 import torch
 import torch.nn as nn
+from ray.tune.utils import merge_dicts
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
 import ray
@@ -36,6 +38,12 @@ def data_creator(config):
     return train_loader, validation_loader
 
 
+def scheduler_creator(optimizer, config):
+    """Returns scheduler. We are using a ReduceLROnPleateau scheduler."""
+    scheduler = ReduceLROnPlateau(optimizer, mode="min")
+    return scheduler
+
+
 # __torch_tune_example__
 def tune_example(operator_cls, num_workers=1, use_gpu=False):
     TorchTrainable = TorchTrainer.as_trainable(
@@ -54,6 +62,39 @@ def tune_example(operator_cls, num_workers=1, use_gpu=False):
 
     return analysis.get_best_config(metric="val_loss", mode="min")
 # __end_torch_tune_example__
+
+
+# __torch_tune_manual_lr_example__
+def tune_example_manual(operator_cls, num_workers=1, use_gpu=False):
+    def step(trainer, info: dict):
+        """Define a custom training loop for tune.
+         This is needed because we want to manually update our scheduler.
+         """
+        train_stats = trainer.train(profile=True)
+        validation_stats = trainer.validate(profile=True)
+        # Manually update our scheduler with the given metric.
+        trainer.update_scheduler(metric=validation_stats["val_loss"])
+        all_stats = merge_dicts(train_stats, validation_stats)
+        return all_stats
+
+    TorchTrainable = TorchTrainer.as_trainable(
+        override_tune_step=step,
+        training_operator_cls=operator_cls,
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+        scheduler_step_freq="manual",
+        config={BATCH_SIZE: 128}
+    )
+
+    analysis = tune.run(
+        TorchTrainable,
+        num_samples=3,
+        config={"lr": tune.grid_search([1e-4, 1e-3])},
+        stop={"training_iteration": 2},
+        verbose=1)
+
+    return analysis.get_best_config(metric="val_loss", mode="min")
+# __end_torch_tune_manual_lr_example__
 
 
 if __name__ == "__main__":
@@ -76,6 +117,13 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Enables GPU training")
+    parser.add_argument(
+        "--lr-reduce-on-plateau",
+        action="store_true",
+        default=False,
+        help="If enabled, use a ReduceLROnPlateau scheduler. If not set, "
+             "no scheduler is used."
+    )
 
     args, _ = parser.parse_known_args()
 
@@ -85,6 +133,12 @@ if __name__ == "__main__":
         ray.init(address=args.address)
     CustomTrainingOperator = TrainingOperator.from_creators(
         model_creator=model_creator, optimizer_creator=optimizer_creator,
-        data_creator=data_creator, loss_creator=nn.MSELoss)
-    tune_example(CustomTrainingOperator, num_workers=args.num_workers,
-                 use_gpu=args.use_gpu)
+        data_creator=data_creator, loss_creator=nn.MSELoss,
+        scheduler_creator=scheduler_creator if args.lr_reduce_on_plateau
+        else None)
+    if not args.lr_reduce_on_plateau:
+        tune_example(CustomTrainingOperator, num_workers=args.num_workers,
+                     use_gpu=args.use_gpu)
+    else:
+        tune_example_manual(CustomTrainingOperator,
+                            num_workers=args.num_workers, use_gpu=args.use_gpu)
