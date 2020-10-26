@@ -121,6 +121,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_aws_batch_tag_update",
+    size = "small",
+    srcs = SRCS + ["aws/test_aws_batch_tag_update.py"],
+    deps = ["//:ray_lib"],
+)
+
 # Note(simon): typing tests are not included in module list
 #    because they requires globs and it might be refactored in the future.
 py_test(

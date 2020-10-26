@@ -142,8 +142,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           io_service, config.num_initial_workers, config.num_workers_soft_limit,
           config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
-          config.max_worker_port, gcs_client_, config.worker_commands,
-          config.raylet_config,
+          config.max_worker_port, config.worker_ports, gcs_client_,
+          config.worker_commands, config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
@@ -2784,7 +2784,9 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
       // Filter out direct call actors. These are not tracked by the raylet and
       // their assigned task ID is the actor ID.
       for (const auto &id : ready_task_id_set_copy) {
-        RAY_CHECK(actor_registry_.count(id.ActorId()) > 0);
+        if (actor_registry_.count(id.ActorId()) == 0) {
+          RAY_LOG(WARNING) << "Actor not found in registry " << id.Hex();
+        }
         ready_task_id_set.erase(id);
       }
 

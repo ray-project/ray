@@ -694,9 +694,22 @@ existing_actor = ray.get_actor("{}")
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
 @ray.remote
+def foo():
+    return "bar"
+
+@ray.remote
+class NonDetachedActor:
+    def foo(self):
+        return "bar"
+
+@ray.remote
 class DetachedActor:
     def ping(self):
         return "pong"
+
+    def foobar(self):
+        actor = NonDetachedActor.remote()
+        return ray.get([foo.remote(), actor.foo.remote()])
 
 actor = DetachedActor._remote(lifetime="detached", name="{}")
 ray.get(actor.ping.remote())
@@ -705,6 +718,9 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+    # Verify that a detached actor is able to create tasks/actors
+    # even if the driver of the detached actor has exited.
+    assert ray.get(detached_actor.foobar.remote()) == ["bar", "bar"]
 
 
 def test_detached_actor_cleanup(ray_start_regular):

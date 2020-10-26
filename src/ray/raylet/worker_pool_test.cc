@@ -34,7 +34,7 @@ class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, 0, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr,
+      : WorkerPool(io_service, 0, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr,
                    worker_commands, {}, []() {}),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
@@ -368,13 +368,29 @@ TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   TaskSpecification task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::JAVA, JOB_ID,
       ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1), {"test_op_0", "test_op_1"});
+
+  rpc::JobConfig job_config = rpc::JobConfig();
+  job_config.add_code_search_path("/test/code_serch_path");
+  job_config.set_num_java_workers_per_process(1);
+  worker_pool_->HandleJobStarted(JOB_ID, job_config);
+
   worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID,
                                    task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
-  ASSERT_EQ(real_command, std::vector<std::string>(
-                              {"test_op_0", "test_op_1", "dummy_java_worker_command",
-                               GetNumJavaWorkersPerProcessSystemProperty(1)}));
+
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    ASSERT_EQ(
+        real_command,
+        std::vector<std::string>(
+            {"test_op_0", "test_op_1", "-Dray.job.code-search-path=/test/code_serch_path",
+             "dummy_java_worker_command", GetNumJavaWorkersPerProcessSystemProperty(1)}));
+  } else {
+    ASSERT_EQ(real_command, std::vector<std::string>(
+                                {"test_op_0", "test_op_1", "dummy_java_worker_command",
+                                 GetNumJavaWorkersPerProcessSystemProperty(1)}));
+  }
+  worker_pool_->HandleJobFinished(JOB_ID);
 }
 
 TEST_P(WorkerPoolTest, PopWorkerMultiTenancy) {

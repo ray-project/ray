@@ -1027,10 +1027,11 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
+    port_test_socket = socket.socket()
+    port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if port == ray_constants.DEFAULT_DASHBOARD_PORT:
         while True:
             try:
-                port_test_socket = socket.socket()
                 port_test_socket.bind(("127.0.0.1", port))
                 port_test_socket.close()
                 break
@@ -1038,7 +1039,6 @@ def start_dashboard(require_dashboard,
                 port += 1
     else:
         try:
-            port_test_socket = socket.socket()
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
         except socket.error:
@@ -1055,9 +1055,9 @@ def start_dashboard(require_dashboard,
         f"--port={port}",
         f"--redis-address={redis_address}",
         f"--temp-dir={temp_dir}",
+        f"--log-dir={logdir}",
     ]
-    if logdir:
-        command += [f"--log-dir={logdir}"]
+
     if redis_password:
         command += ["--redis-password", redis_password]
 
@@ -1153,11 +1153,13 @@ def start_raylet(redis_address,
                  worker_path,
                  temp_dir,
                  session_dir,
+                 log_dir,
                  resource_spec,
                  plasma_directory,
                  object_store_memory,
                  min_worker_port=None,
                  max_worker_port=None,
+                 worker_port_list=None,
                  object_manager_port=None,
                  redis_password=None,
                  metrics_agent_port=None,
@@ -1190,6 +1192,7 @@ def start_raylet(redis_address,
             processes will execute.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
+        log_dir (str): The path of the dir where log files are created.
         resource_spec (ResourceSpec): Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
@@ -1328,6 +1331,7 @@ def start_raylet(redis_address,
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
+        f"--log-dir={log_dir}",
     ]
 
     if redis_password is not None and len(redis_password) != 0:
@@ -1357,6 +1361,8 @@ def start_raylet(redis_address,
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
     ]
+    if worker_port_list is not None:
+        command.append(f"--worker_port_list={worker_port_list}")
     if start_initial_python_workers_for_first_job:
         command.append("--num_initial_python_workers_for_first_job={}".format(
             resource_spec.num_cpus))

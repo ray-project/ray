@@ -1545,5 +1545,19 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
   return Status::OK();
 }
 
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all placement group info.";
+  rpc::GetAllPlacementGroupRequest request;
+  client_impl_->GetGcsRpcClient().GetAllPlacementGroup(
+      request,
+      [callback](const Status &status, const rpc::GetAllPlacementGroupReply &reply) {
+        callback(status, VectorFromProtobuf(reply.placement_group_table_data()));
+        RAY_LOG(DEBUG) << "Finished getting all placement group info, status = "
+                       << status;
+      });
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray
