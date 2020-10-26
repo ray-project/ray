@@ -4,8 +4,6 @@ set -xeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-arg1="${1-}"
-
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in
@@ -54,14 +52,14 @@ if [ "${OSTYPE}" = "msys" ]; then
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
 else
   gcc -v
-  echo $version
-  curl -f -s -L -R -O https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-dist.zip
-  unzip bazel-${version}-dist.zip -d bazel-${version}
-  cd bazel-${version}
+  echo "Building Bazel $version"
+  curl -f -s -L -R -O "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-dist.zip"
+  unzip "bazel-${version}-dist.zip" -d "bazel-${version}"
+  cd "bazel-${version}"
   export BAZEL_LINKLIBS="-l%:libstdc++.a"
   ./compile.sh
   cd ..
-  mv bazel-${version} /root/
+  mv "bazel-${version}" /root/
 fi
 
 for bazel_cfg in ${BAZEL_CONFIG-}; do

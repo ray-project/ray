@@ -56,14 +56,9 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory and the
   # dashboard directory.
-<<<<<<< HEAD
   git clean -f -f -x -d -e .whl -e python/ray/new_dashboard/client -e dashboard/client
-||||||| parent of c0a6a3c83 (necessary changes)
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
-=======
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
+
   export BAZEL_LINKLIBS="-l%:libstdc++.a"
->>>>>>> c0a6a3c83 (necessary changes)
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
