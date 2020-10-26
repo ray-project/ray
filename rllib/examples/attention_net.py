@@ -46,7 +46,7 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", 0)),
         "num_workers": 0,
-        "num_envs_per_worker": 20,
+        "num_envs_per_worker": 1,#TODO:20
         "entropy_coeff": 0.001,
         "num_sgd_iter": 5,
         "vf_loss_coeff": 1e-5,
