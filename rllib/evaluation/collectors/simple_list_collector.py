@@ -34,6 +34,9 @@ def to_float_np_array(v: List[Any]) -> np.ndarray:
     return arr
 
 
+_INIT_COLS = [SampleBatch.OBS]
+
+
 class _AgentCollector:
     """Collects samples for one agent in one trajectory (episode).
 
@@ -45,8 +48,12 @@ class _AgentCollector:
 
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
-    def __init__(self, shift_before: int = 0):
-        self.shift_before = max(shift_before, 1)
+    def __init__(self, view_reqs):
+        self.shift_before = -min([(int(vr.shift.split(":")[0]) if isinstance(
+            vr.shift, str) else vr.shift) + (-1 if vr.data_col in _INIT_COLS or k in _INIT_COLS else 0) for k, vr in view_reqs.items()])
+        #self.shift_before = -min([(int(vr.shift.split(":")[0]) if isinstance(
+        #    vr.shift, str) else vr.shift) for k, vr in view_reqs.items()])
+        #self.shift_before = max(shift_before, 1)
         self.buffers: Dict[str, List] = {}
         # The simple timestep count for this agent. Gets increased by one
         # each time a (non-initial!) observation is added.
@@ -346,7 +353,7 @@ class _SimpleListCollector(_SampleCollector):
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
         # TODO: determine exact shift-before based on the view-req shifts.
-        self.agent_collectors[agent_key] = _AgentCollector()
+        self.agent_collectors[agent_key] = _AgentCollector(view_reqs)
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
             agent_id=agent_id,
@@ -396,19 +403,30 @@ class _SimpleListCollector(_SampleCollector):
         for view_col, view_req in view_reqs.items():
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
-            #TODO: range shifts, e.g. "-100:0" -> translate to correct ranges: [-101:]
-            time_indices = \
-                view_req.shift - (
-                    1 if data_col in [SampleBatch.OBS, "t", "env_id",
-                                      SampleBatch.EPS_ID,
-                                      SampleBatch.AGENT_INDEX] else 0)
+            delta = -1 if data_col in [SampleBatch.OBS, "t", "env_id",
+                                       SampleBatch.EPS_ID,
+                                       SampleBatch.AGENT_INDEX] else 0
+            # Range of shifts, e.g. "-100:0". Note: This includes index 0!
+            if view_req.shift_from is not None:
+                time_indices = (view_req.shift_from + delta, view_req.shift_to + delta)
+            # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
+            else:
+                time_indices = view_req.shift + delta
             data_list = []
+            # Loop through agents and add-up their data (batch).
             for k in keys:
                 if data_col not in buffers[k]:
                     self.agent_collectors[k]._build_buffers({
                         data_col: view_req.space.sample()
                     })
-                data_list.append(buffers[k][data_col][time_indices])
+                if isinstance(time_indices, tuple):
+                    if time_indices[1] == -1:
+                        data_list.append(buffers[k][data_col][time_indices[0]:])
+                    else:
+                        data_list.append(buffers[k][data_col][
+                                         time_indices[0]:time_indices[1] + 1])
+                else:
+                    data_list.append(buffers[k][data_col][time_indices])
             input_dict[view_col] = np.array(data_list)
 
         self._reset_inference_calls(policy_id)
