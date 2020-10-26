@@ -11,7 +11,6 @@ Currently, only Torch is supported
 import logging
 from typing import List, Type
 
-from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -29,8 +28,7 @@ from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-ALL_SLATEQ_POLICIES = ["random", "dqn", "slateq"]
-ALL_SLATEQ_LEARNING_METHODS = ["QL", "SARSA", "MYOP"]
+ALL_SLATEQ_STRATEGIES = ["RANDOM", "MYOP", "SARSA", "QL"]
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -82,18 +80,6 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
-    # If True prioritized replay buffer will be used.
-    "prioritized_replay": True,
-    # Alpha parameter for prioritized replay buffer.
-    "prioritized_replay_alpha": 0.6,
-    # Beta parameter for sampling from prioritized replay buffer.
-    "prioritized_replay_beta": 0.4,
-    # Final value of beta (by default, we use constant beta=0.4).
-    "final_prioritized_replay_beta": 0.4,
-    # Time steps over which the beta parameter is annealed.
-    "prioritized_replay_beta_annealing_timesteps": 20000,
-    # Epsilon to add to the TD errors when updating priorities.
-    "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
     # Callback to run before learning on a multi-agent batch of experiences.
@@ -117,7 +103,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "rollout_fragment_length": 3000,
+    "rollout_fragment_length": 1000,
     # Size of a batch sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
@@ -134,12 +120,9 @@ DEFAULT_CONFIG = with_common_config({
     "min_iter_time_s": 1,
 
 
-    # SlateQ agent policy. Choose from: random (random policy), dqn (standard
-    # Q-learning on flattened action space), slateq (SlateQ algorithm)
-    "slateq_policy": "slateq",
-    # Learning method used by the slateq policy. Choose from: QL (Q-Learning),
-    # SARSA, and MYOP (myopic).
-    "slateq_learning_method": "QL",
+    # Learning method used by the slateq policy. Choose from: RANDOM,
+    # MYOP (myopic), SARSA, QL (Q-Learning),
+    "slateq_strategy": "QL",
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -174,12 +157,9 @@ def validate_config(config: TrainerConfigDict) -> None:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
 
-    if config["slateq_policy"] not in ALL_SLATEQ_POLICIES:
-        raise ValueError(f"Unknown slateq_policy: {config['slateq_policy']}.")
-
-    if config["slateq_learning_method"] not in ALL_SLATEQ_LEARNING_METHODS:
-        raise ValueError("Unknown slateq_learning_method: "
-                         f"{config['slateq_learning_method']}.")
+    if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
+        raise ValueError("Unknown slateq_strategy: "
+                         f"{config['slateq_strategy']}.")
 
 
 def execution_plan(workers: WorkerSet,
@@ -230,7 +210,7 @@ def execution_plan(workers: WorkerSet,
 
     # Alternate deterministically between (1) and (2). Only return the output
     # of (2) since training metrics are not available until (2) runs.
-    if config.get("slateq_policy") in ["dqn", "slateq"]:
+    if config["slateq_strategy"] != "RANDOM":
         train_op = Concurrently(
             [store_op, replay_op],
             mode="round_robin",
@@ -264,14 +244,10 @@ def get_policy_class(config: TrainerConfigDict) -> Type[Policy]:
     Returns:
         Type[Policy]: The Policy class to use with SlateQTrainer.
     """
-    if config["slateq_policy"] == "random":
+    if config["slateq_strategy"] == "RANDOM":
         return RandomPolicy
-    elif config["slateq_policy"] == "dqn":
-        return DQNTorchPolicy
-    elif config["slateq_policy"] == "slateq":
-        return SlateQTorchPolicy
     else:
-        raise ValueError(config["slateq_policy"])
+        return SlateQTorchPolicy
 
 
 SlateQTrainer = build_trainer(

@@ -266,9 +266,9 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
     # 'obs', 'actions', 'rewards', 'prev_actions', 'prev_rewards',
     # 'dones', 'infos', 'new_obs', 'unroll_id', 'weights', 'batch_indexes'])
 
-    learning_method = policy.config.get("slateq_learning_method")
+    learning_strategy = policy.config["slateq_strategy"]
 
-    if learning_method == "SARSA":
+    if learning_strategy == "SARSA":
         # next_doc.shape: [batch_size, num_docs, embedding_size]
         next_doc = torch.cat(
             [val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
@@ -295,9 +295,9 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
                 q_values * scores, dim=1) / torch.sum(
                     scores, dim=1)
             next_q_values[dones] = 0.0
-    elif learning_method == "MYOP":
+    elif learning_strategy == "MYOP":
         next_q_values = 0.
-    elif learning_method == "QL":
+    elif learning_strategy == "QL":
         # next_doc.shape: [batch_size, num_docs, embedding_size]
         next_doc = torch.cat(
             [val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
@@ -307,7 +307,7 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
             _, next_q_values = model.choose_slate(next_user, next_doc)
         next_q_values[dones] = 0.0
     else:
-        raise ValueError(learning_method)
+        raise ValueError(learning_strategy)
     # target_q_values.shape: [batch_size]
     target_q_values = next_q_values + train_batch["rewards"]
 
