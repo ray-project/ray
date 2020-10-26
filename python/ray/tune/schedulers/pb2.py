@@ -171,12 +171,7 @@ def explore(data, bounds, current, base, old, config):
             "Time", "R_before"
         ]].values
         new = select_config(
-            X,
-            y,
-            current,
-            newpoint,
-            bounds,
-            num_f=len(t_r.columns))
+            X, y, current, newpoint, bounds, num_f=len(t_r.columns))
 
         new_config = config.copy()
         values = []
@@ -377,5 +372,5 @@ class PB2(PopulationBasedTraining):
         else:
             self.current = np.concatenate((self.current, new), axis=0)
             logger.debug(self.current)
-            
-        return(new_config)
+
+        return (new_config)
