@@ -16,7 +16,6 @@ install_java() {
   sudo add-apt-repository -y ppa:openjdk-r/ppa
   sudo apt-get update
   sudo apt-get install -y openjdk-8-jdk
-  update-java-alternatives -l
   java -version
   java_bin=$(readlink -f "$(command -v java)")
   echo "java_bin path $java_bin"
