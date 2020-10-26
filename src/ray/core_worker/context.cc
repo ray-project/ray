@@ -173,6 +173,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
     current_task_is_direct_call_ = true;
+    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());

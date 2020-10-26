@@ -1016,48 +1016,6 @@ def test_kill(ray_start_regular_shared):
         ray.kill("not_an_actor_handle")
 
 
-def test_override_environment_variables(ray_start_regular_shared):
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
-
-    @ray.remote
-    class NestedEnvGetter:
-        def get(self, key):
-            return os.environ.get(key)
-
-        def get_task(self, key):
-            return ray.get(get_env.remote(key))
-
-    @ray.remote
-    class EnvGetter:
-        def get(self, key):
-            return os.environ.get(key)
-
-        def get_task(self, key):
-            return ray.get(get_env.remote(key))
-
-        def nested_get(self, key):
-            aa = NestedEnvGetter.options(override_environment_variables={
-                "c": "e",
-                "d": "dd"
-            }).remote()
-            return ray.get(aa.get.remote(key))
-
-    a = EnvGetter.options(override_environment_variables={
-        "a": "b",
-        "c": "d"
-    }).remote()
-    assert (ray.get(a.get.remote("a")) == "b")
-    assert (ray.get(a.get_task.remote("a")) == "b")
-    assert (ray.get(a.nested_get.remote("a")) == "b")
-    assert (ray.get(a.nested_get.remote("c")) == "e")
-    assert (ray.get(a.nested_get.remote("d")) == "dd")
-    assert (ray.get(
-        get_env.options(override_environment_variables={
-            "a": "b"
-        }).remote("a")) == "b")
-
 
 if __name__ == "__main__":
     import pytest
