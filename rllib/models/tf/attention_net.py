@@ -194,9 +194,6 @@ class GTrXLNet(RecurrentNetwork):
                 position-wise MLP).
         """
 
-        super().__init__(observation_space, action_space, num_outputs,
-                         model_config, name)
-
         self.num_transformer_units = num_transformer_units
         self.attn_dim = attn_dim
         self.num_heads = num_heads
@@ -204,6 +201,9 @@ class GTrXLNet(RecurrentNetwork):
         self.head_dim = head_dim
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
+
+        super().__init__(observation_space, action_space, num_outputs,
+                         model_config, name)
 
         # Constant (non-trainable) sinusoid rel pos encoding matrix.
         Phi = relative_position_embedding(self.max_seq_len + self.memory_tau,
