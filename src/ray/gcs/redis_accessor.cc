@@ -495,7 +495,6 @@ Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &obje
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl),
       resource_sub_executor_(client_impl_->resource_table()),
-      heartbeat_sub_executor_(client_impl->heartbeat_table()),
       heartbeat_batch_sub_executor_(client_impl->heartbeat_batch_table()) {}
 
 Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
@@ -599,30 +598,6 @@ Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
 }
 
 void RedisNodeInfoAccessor::AsyncReReportHeartbeat() {}
-
-Status RedisNodeInfoAccessor::AsyncSubscribeHeartbeat(
-    const SubscribeCallback<NodeID, HeartbeatTableData> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const NodeID &node_id, const HeartbeatTableData &data) {
-    subscribe(node_id, data);
-  };
-
-  return heartbeat_sub_executor_.AsyncSubscribeAll(NodeID::Nil(), on_subscribe, done);
-}
-
-Status RedisNodeInfoAccessor::AsyncReportBatchHeartbeat(
-    const std::shared_ptr<HeartbeatBatchTableData> &data_ptr,
-    const StatusCallback &callback) {
-  HeartbeatBatchTable::WriteCallback on_done = nullptr;
-  if (callback != nullptr) {
-    on_done = [callback](RedisGcsClient *client, const NodeID &node_id,
-                         const HeartbeatBatchTableData &data) { callback(Status::OK()); };
-  }
-
-  HeartbeatBatchTable &hb_batch_table = client_impl_->heartbeat_batch_table();
-  return hb_batch_table.Add(JobID::Nil(), NodeID::Nil(), data_ptr, on_done);
-}
 
 Status RedisNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     const ItemCallback<HeartbeatBatchTableData> &subscribe, const StatusCallback &done) {

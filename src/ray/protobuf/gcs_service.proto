@@ -198,14 +198,6 @@ message ReportHeartbeatReply {
   GcsStatus status = 1;
 }
 
-message ReportBatchHeartbeatRequest {
-  HeartbeatBatchTableData heartbeat_batch = 1;
-}
-
-message ReportBatchHeartbeatReply {
-  GcsStatus status = 1;
-}
-
 message GetResourcesRequest {
   bytes node_id = 1;
 }
