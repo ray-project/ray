@@ -87,12 +87,12 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
         m = GPy.models.GPRegression(X, y, kernel)
 
     try:
-        m.optimize(messages=True)
+        m.optimize()
     except np.linalg.LinAlgError:
         # add diagonal ** we would ideally make this something more robust...
         X += np.eye(X.shape[0]) * 1e-3
         m = GPy.models.GPRegression(X, y, kernel)
-        m.optimize(messages=True)
+        m.optimize()
 
     m.kern.lengthscale.fix(m.kern.lengthscale.clip(1e-5, 1))
 
@@ -140,8 +140,8 @@ def explore(data, bounds, current, base, old, config):
 
     # Group by trial ID and hyperparams.
     # Compute change in timesteps and reward.
-    df["y"] = df.groupby(["Trial"] + bounds.keys())["Reward"].diff()
-    df["t_change"] = df.groupby(["Trial"] + bounds.keys())["Time"].diff()
+    df["y"] = df.groupby(["Trial"] + list(bounds.keys()))["Reward"].diff()
+    df["t_change"] = df.groupby(["Trial"] + list(bounds.keys()))["Time"].diff()
 
     # Delete entries without positive change in t.
     df = df[df["t_change"] > 0].reset_index(drop=True)
@@ -165,8 +165,8 @@ def explore(data, bounds, current, base, old, config):
         # Meta data we keep -> episodes and reward.
         # (TODO: convert to curve)
         t_r = df[["Time", "R_before"]]
-        h = df[bounds.keys()]
-        X = pd.concat([t_r, h], axis=1).values
+        hparams = df[bounds.keys()]
+        X = pd.concat([t_r, hparams], axis=1).values
         newpoint = df[df["Trial"] == str(base)].iloc[-1, :][[
             "Time", "R_before"
         ]].values
@@ -176,12 +176,11 @@ def explore(data, bounds, current, base, old, config):
             current,
             newpoint,
             bounds,
-            num_f=len(t_r.columns),
-            num=len(h.columns))
+            num_f=len(t_r.columns))
 
         new_config = config.copy()
         values = []
-        for i, col in enumerate(h.columns):
+        for i, col in enumerate(hparams.columns):
             if isinstance(config[col], int):
                 new_config[col] = int(new[i])
                 values.append(int(new[i]))
@@ -312,7 +311,7 @@ class PB2(PopulationBasedTraining):
             metric=metric,
             mode=mode,
             perturbation_interval=perturbation_interval,
-            hyperparam_mutations=None,
+            hyperparam_mutations=hyperparam_bounds,
             quantile_fraction=quantile_fraction,
             resample_probability=0,
             custom_explore_fn=explore,
@@ -378,3 +377,5 @@ class PB2(PopulationBasedTraining):
         else:
             self.current = np.concatenate((self.current, new), axis=0)
             logger.debug(self.current)
+            
+        return(new_config)
