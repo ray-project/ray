@@ -1016,7 +1016,6 @@ def test_kill(ray_start_regular_shared):
         ray.kill("not_an_actor_handle")
 
 
-
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

@@ -789,6 +789,7 @@ def test_detect_docker_cpus():
             cpu_share_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 0.42
 
+
 def test_override_environment_variables_task(ray_start_regular):
     @ray.remote
     def get_env(key):
@@ -799,17 +800,20 @@ def test_override_environment_variables_task(ray_start_regular):
             "a": "b"
         }).remote("a")) == "b")
 
+
 def test_override_environment_variables_actor(ray_start_regular):
     @ray.remote
     class EnvGetter:
         def get(self, key):
             return os.environ.get(key)
+
     a = EnvGetter.options(override_environment_variables={
         "a": "b",
         "c": "d"
     }).remote()
     assert (ray.get(a.get.remote("a")) == "b")
     assert (ray.get(a.get.remote("c")) == "d")
+
 
 def test_override_environment_variables_nested_task(ray_start_regular):
     @ray.remote
@@ -826,7 +830,8 @@ def test_override_environment_variables_nested_task(ray_start_regular):
         }).remote("a")) == "b")
 
 
-def test_override_environment_variables_nested_complex(ray_start_regular_shared):
+def test_override_environment_variables_nested_complex(
+        ray_start_regular_shared):
     @ray.remote
     def get_env(key):
         return os.environ.get(key)
@@ -867,6 +872,7 @@ def test_override_environment_variables_nested_complex(ray_start_regular_shared)
         get_env.options(override_environment_variables={
             "a": "b"
         }).remote("a")) == "b")
+
 
 if __name__ == "__main__":
     import pytest
