@@ -193,7 +193,7 @@ class BayesOptSearch(Searcher):
                 logger.warning(
                     UNRESOLVED_SEARCH_SPACE.format(
                         par="space", cls=type(self)))
-                space = self.convert_search_space(space)
+                space = self.convert_search_space(space, join=True)
 
         self._space = space
         self._verbose = verbose
@@ -363,7 +363,7 @@ class BayesOptSearch(Searcher):
              self._config_counter) = pickle.load(f)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict:
+    def convert_search_space(spec: Dict, join: bool = False) -> Dict:
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -395,5 +395,9 @@ class BayesOptSearch(Searcher):
             "/".join(path): resolve_value(domain)
             for path, domain in domain_vars
         }
+
+        if join:
+            spec.update(bounds)
+            bounds = spec
 
         return bounds

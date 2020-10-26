@@ -110,15 +110,15 @@ class NevergradSearch(Searcher):
         self._opt_factory = None
         self._nevergrad_opt = None
 
-        if isinstance(optimizer, Optimizer):
-            if isinstance(space, dict) and space:
-                resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
-                if domain_vars or grid_vars:
-                    logger.warning(
-                        UNRESOLVED_SEARCH_SPACE.format(
-                            par="space", cls=type(self)))
-                    space = self.convert_search_space(space)
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
 
+        if isinstance(optimizer, Optimizer):
             if space is not None or isinstance(space, list):
                 raise ValueError(
                     "If you pass a configured optimizer to Nevergrad, either "

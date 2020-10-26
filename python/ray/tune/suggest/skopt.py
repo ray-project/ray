@@ -159,7 +159,7 @@ class SkOptSearch(Searcher):
                 logger.warning(
                     UNRESOLVED_SEARCH_SPACE.format(
                         par="space", cls=type(self)))
-                space = self.convert_search_space(space)
+                space = self.convert_search_space(space, join=True)
 
         self._space = space
 
@@ -278,7 +278,7 @@ class SkOptSearch(Searcher):
         self._skopt_opt = trials_object[1]
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict:
+    def convert_search_space(spec: Dict, join: bool = False) -> Dict:
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -319,5 +319,9 @@ class SkOptSearch(Searcher):
             "/".join(path): resolve_value(domain)
             for path, domain in domain_vars
         }
+
+        if join:
+            spec.update(space)
+            space = spec
 
         return space
