@@ -211,7 +211,7 @@ class Worker : public WorkerInterface {
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
-  rpc::CoreWorkerClient *rpc_client() {
+  rpc::CoreWorkerClientInterface *rpc_client() {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }

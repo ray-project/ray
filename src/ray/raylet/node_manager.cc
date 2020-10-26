@@ -3018,7 +3018,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
             std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
       }
     }
-    local_object_manager_.PinObjects(request.owner_address(), object_ids, objects);
+    local_object_manager_.PinObjects(request.owner_address(), object_ids, std::move(objects));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

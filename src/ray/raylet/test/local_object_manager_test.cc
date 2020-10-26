@@ -52,15 +52,51 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   std::list<rpc::ClientCallback<rpc::WaitForObjectEvictionReply>> callbacks;
 };
 
+class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
+ public:
+  void SpillObjects(const rpc::SpillObjectsRequest &request,
+                            const rpc::ClientCallback<rpc::SpillObjectsReply> &callback) override {
+    callbacks.push_back(callback);
+  }
+
+  bool ReplySpillObjects(Status status = Status::OK()) {
+    if (callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = callbacks.front();
+    auto reply = rpc::SpillObjectsReply();
+    callback(status, reply);
+    callbacks.pop_front();
+    return true;
+  }
+
+  std::list<rpc::ClientCallback<rpc::SpillObjectsReply>> callbacks;
+};
+
+class MockIOWorker : public MockWorker {
+  MockIOWorker(
+    WorkerID worker_id, int port,
+    std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker)
+  : MockWorker(worker_id, port),
+    io_worker(io_worker) {}
+
+  rpc::CoreWorkerClient *rpc_client() {
+    return io_worker.get();
+  }
+
+  std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker;
+};
+
 class MockIOWorkerPool : public IOWorkerPoolInterface {
   MOCK_METHOD1(PushIOWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
   void PopIOWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
-    callback(worker);
+    callback(io_worker);
   }
 
-  std::shared_ptr<WorkerInterface> worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker_client = std::make_shared<MockIOWorkerClient>();
+  std::shared_ptr<WorkerInterface> io_worker = std::make_shared<MockIOWorker>(WorkerID::FromRandom(), 1234, io_worker_client);
 };
 
 class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
@@ -97,9 +133,9 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
 class LocalObjectManagerTest : public ::testing::Test {
  public:
   LocalObjectManagerTest()
-    : worker_client(std::make_shared<MockWorkerClient>()),
-      client_pool([&](const rpc::Address &addr) { return worker_client; }),
-      manager(/*free_objects_batch_size=*/3,
+    : owner_client(std::make_shared<MockWorkerClient>()),
+      client_pool([&](const rpc::Address &addr) { return owner_client; }),
+      manager(free_objects_batch_size,
         /*free_objects_period_ms=*/1000,
         worker_pool,
         object_table,
@@ -110,7 +146,8 @@ class LocalObjectManagerTest : public ::testing::Test {
           }
         }) {}
 
-  std::shared_ptr<MockWorkerClient> worker_client;
+  size_t free_objects_batch_size = 3;
+  std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   MockIOWorkerPool worker_pool;
   MockObjectInfoAccessor object_table;
@@ -118,6 +155,55 @@ class LocalObjectManagerTest : public ::testing::Test {
 
   std::unordered_set<ObjectID> freed;
 };
+
+TEST_F(LocalObjectManagerTest, TestPin) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+    std::unique_ptr<RayObject> object(new RayObject(nullptr, meta_buffer, std::vector<ObjectID>()));
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjects(owner_address, object_ids, std::move(objects));
+
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ASSERT_TRUE(freed.empty());
+    ASSERT_TRUE(owner_client->ReplyObjectEviction());
+  }
+  std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
+  ASSERT_EQ(freed, expected);
+}
+
+TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+    std::unique_ptr<RayObject> object(new RayObject(nullptr, meta_buffer, std::vector<ObjectID>()));
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjects(owner_address, object_ids, std::move(objects));
+
+  manager.SpillObjects(object_ids, [&](const Status &status) {
+      ASSERT_TRUE(status.ok());
+      });
+}
 
 }  // namespace raylet
 

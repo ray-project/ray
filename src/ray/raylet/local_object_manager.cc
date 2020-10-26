@@ -20,7 +20,7 @@ namespace raylet {
 
 void LocalObjectManager::PinObjects(const rpc::Address &owner_address,
                                     const std::vector<ObjectID> &object_ids,
-                                    std::vector<std::unique_ptr<RayObject>> &objects) {
+                                    std::vector<std::unique_ptr<RayObject>> &&objects) {
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];

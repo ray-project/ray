@@ -56,7 +56,7 @@ class LocalObjectManager {
   /// be kept in scope until the object can be released.
   void PinObjects(const rpc::Address &owner_address,
                   const std::vector<ObjectID> &object_ids,
-                  std::vector<std::unique_ptr<RayObject>> &objects);
+                  std::vector<std::unique_ptr<RayObject>> &&objects);
 
   /// Spill objects to external storage.
   ///

@@ -193,7 +193,7 @@ class MockWorker : public WorkerInterface {
     return false;
   }
 
-  rpc::CoreWorkerClient *rpc_client() {
+  rpc::CoreWorkerClientInterface *rpc_client() {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
