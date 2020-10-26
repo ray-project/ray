@@ -86,9 +86,6 @@ def get_default_view_requirements(policy: "Policy"):
         SampleBatch.EPS_ID: ViewRequirement(),
         SampleBatch.AGENT_INDEX: ViewRequirement(),
         SampleBatch.INFOS: ViewRequirement(used_for_training=False),
-        #Postprocessing.ADVANTAGES: ViewRequirement(),
-        #Postprocessing.VALUE_TARGETS: ViewRequirement(),
-        SampleBatch.VF_PREDS: ViewRequirement(),
         SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(),
         SampleBatch.ACTION_LOGP: ViewRequirement(),
     }

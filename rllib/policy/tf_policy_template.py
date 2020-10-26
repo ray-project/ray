@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -11,6 +12,7 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.tf_ops import get_placeholder
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
 
@@ -207,9 +209,22 @@ def build_tf_policy(
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
                 if extra_action_fetches_fn is None:
-                    self._extra_action_fetches = {}
+                    policy._extra_action_fetches = {}
                 else:
-                    self._extra_action_fetches = extra_action_fetches_fn(self)
+                    policy._extra_action_fetches = extra_action_fetches_fn(policy)
+                    # Update default view requirements by extra action fetches.
+                    if view_requirements_fn is None and config[
+                        "_use_trajectory_view_api"]:
+                        extra_fetches = policy.extra_compute_action_fetches()
+                        for key, value in extra_fetches.items():
+                            if key not in policy.view_requirements:
+                                policy._input_dict[key] = get_placeholder(
+                                    value=value)
+                                policy._dummy_batch[key] = np.zeros(
+                                    shape=[1 if s is None else s for s in
+                                           value.shape.as_list()],
+                                    dtype=np.float32)
+                                policy.view_requirements[key] = ViewRequirement()
 
             DynamicTFPolicy.__init__(
                 self,

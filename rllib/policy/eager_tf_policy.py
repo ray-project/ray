@@ -11,7 +11,8 @@ from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import get_default_view_requirements
+from ray.rllib.policy.view_requirement import get_default_view_requirements, \
+    ViewRequirement
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -269,11 +270,19 @@ def build_eager_tf_policy(name,
             }
 
             if action_distribution_fn:
-                dist_inputs, self.dist_class, _ = action_distribution_fn(
+                _, self.dist_class, _ = action_distribution_fn(
                     self, self.model, input_dict[SampleBatch.CUR_OBS])
             else:
                 self.model(input_dict, self._state_in,
                            tf.convert_to_tensor([1]))
+
+            # Update default view requirements by extra action fetches.
+            if view_requirements_fn is None:
+                _, _, extra_fetches = \
+                    self.compute_actions_from_input_dict(input_dict)
+                for key, value in extra_fetches.items():
+                    if key not in self.view_requirements:
+                        self.view_requirements[key] = ViewRequirement()
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
