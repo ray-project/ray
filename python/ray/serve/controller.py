@@ -179,6 +179,9 @@ class ServeController:
 
     def _start_routers_if_needed(self) -> None:
         """Start a router on every node if it doesn't already exist."""
+        if self.http_host is None:
+            return
+
         for node_id, node_resource in get_all_node_ids():
             if node_id in self.routers:
                 continue

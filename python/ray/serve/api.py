@@ -372,7 +372,7 @@ def start(detached: bool = False,
         http_host (str): Host for HTTP servers to listen on. Defaults to
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0". One HTTP server will be started on each node in
-            the Ray cluster.
+            the Ray cluster. To not start HTTP servers, set this to None.
         http_port (int): Port for HTTP server. Defaults to 8000.
         http_middlewares (list): A list of Starlette middlewares that will be
             applied to the HTTP servers in the cluster.
@@ -408,16 +408,17 @@ def start(detached: bool = False,
         http_middlewares,
         detached=detached)
 
-    futures = []
-    for node_id in ray.state.node_ids():
-        future = block_until_http_ready.options(
-            num_cpus=0, resources={
-                node_id: 0.01
-            }).remote(
-                "http://{}:{}/-/routes".format(http_host, http_port),
-                timeout=HTTP_PROXY_TIMEOUT)
-        futures.append(future)
-    ray.get(futures)
+    if http_host is not None:
+        futures = []
+        for node_id in ray.state.node_ids():
+            future = block_until_http_ready.options(
+                num_cpus=0, resources={
+                    node_id: 0.01
+                }).remote(
+                    "http://{}:{}/-/routes".format(http_host, http_port),
+                    timeout=HTTP_PROXY_TIMEOUT)
+            futures.append(future)
+        ray.get(futures)
 
     return Client(controller, controller_name, detached=detached)
 
