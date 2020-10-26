@@ -71,20 +71,20 @@ generated_python_directories = [
 optional_ray_files = ["ray/nightly-wheels.yaml"]
 
 ray_autoscaler_files = [
-    "ray/autoscaler/aws/defaults.yaml", 
+    "ray/autoscaler/aws/defaults.yaml",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/_private/azure/azure-vm-template.json",
     "ray/autoscaler/_private/azure/azure-config-template.json",
-    "ray/autoscaler/gcp/defaults.yaml", 
+    "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
     "ray/autoscaler/kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/staroid/defaults.yaml", 
+    "ray/autoscaler/staroid/defaults.yaml",
     "ray/autoscaler/ray-schema.json",
 ]
 
 ray_project_files = [
-    "ray/projects/schema.json", 
+    "ray/projects/schema.json",
     "ray/projects/templates/cluster_template.yaml",
     "ray/projects/templates/project_template.yaml",
     "ray/projects/templates/requirements.txt",
@@ -106,15 +106,15 @@ extras = {
     "debug": [],
     "serve": [
         "dataclasses; python_version < '3.7'",
-        "flask", 
+        "flask",
         "pydantic",
-        "requests", 
-        "uvicorn", 
+        "requests",
+        "uvicorn",
     ],
     "tune": [
         "dataclasses; python_version < '3.7'",
         "pandas",
-        "tabulate", 
+        "tabulate",
         "tensorboardX",
     ]
 }
