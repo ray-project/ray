@@ -49,6 +49,17 @@ class RecurrentNetwork(TFModelV2):
             self.register_variables(self.rnn_model.variables)
             self.rnn_model.summary()
     """
+    
+    @override(ModelV2)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Add state-ins to this model's view.
+        for i, s in enumerate(self.get_initial_state()):
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=s.shape))
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -162,14 +173,6 @@ class LSTMWrapper(RecurrentNetwork):
             self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
                 ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
                                 shift=-1)
-
-        # Add state-ins to this model's view.
-        for i in range(2):
-            self.inference_view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=-1,
-                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
 
     @override(RecurrentNetwork)
     def forward(self, input_dict, state, seq_lens):
