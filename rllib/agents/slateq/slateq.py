@@ -12,7 +12,6 @@ import logging
 from typing import List, Type
 
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.agents.slateq.greedy_policy import SlateQGreedyPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -29,6 +28,9 @@ from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
+
+ALL_SLATEQ_POLICIES = ["random", "dqn", "slateq"]
+ALL_SLATEQ_LEARNING_METHODS = ["QL", "SARSA", "MYOP"]
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -132,10 +134,12 @@ DEFAULT_CONFIG = with_common_config({
     "min_iter_time_s": 1,
 
 
+    # SlateQ agent policy. Choose from: random (random policy), dqn (standard
+    # Q-learning on flattened action space), slateq (SlateQ algorithm)
     "slateq_policy": "slateq",
     # Learning method used by the slateq policy. Choose from: QL (Q-Learning),
     # SARSA, and MYOP (myopic).
-    "slateq_policy_learning_method": "QL"
+    "slateq_learning_method": "QL",
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -170,9 +174,12 @@ def validate_config(config: TrainerConfigDict) -> None:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
 
-    assert config.get("slateq_policy") in [
-        "dqn", "random", "greedy", "slateq"
-    ], config.get("slateq_policy")
+    if config["slateq_policy"] not in ALL_SLATEQ_POLICIES:
+        raise ValueError(f"Unknown slateq_policy: {config['slateq_policy']}.")
+
+    if config["slateq_learning_method"] not in ALL_SLATEQ_LEARNING_METHODS:
+        raise ValueError("Unknown slateq_learning_method: "
+                         f"{config['slateq_learning_method']}.")
 
 
 def execution_plan(workers: WorkerSet,
@@ -257,9 +264,7 @@ def get_policy_class(config: TrainerConfigDict) -> Type[Policy]:
     Returns:
         Type[Policy]: The Policy class to use with SlateQTrainer.
     """
-    if config["slateq_policy"] == "greedy":
-        return SlateQGreedyPolicy
-    elif config["slateq_policy"] == "random":
+    if config["slateq_policy"] == "random":
         return RandomPolicy
     elif config["slateq_policy"] == "dqn":
         return DQNTorchPolicy

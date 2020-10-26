@@ -266,7 +266,7 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
     # 'obs', 'actions', 'rewards', 'prev_actions', 'prev_rewards',
     # 'dones', 'infos', 'new_obs', 'unroll_id', 'weights', 'batch_indexes'])
 
-    learning_method = policy.config.get("slateq_policy_learning_method")
+    learning_method = policy.config.get("slateq_learning_method")
 
     if learning_method == "SARSA":
         # next_doc.shape: [batch_size, num_docs, embedding_size]
