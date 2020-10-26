@@ -556,10 +556,11 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
         data->mutable_resource_load_by_shape()->mutable_resource_demands();
     ASSERT_EQ(load_by_shape->size(), 3);
 
-    std::vector<std::vector<int>> expected = {// infeasible, ready, CPU, GPU, size
-                                              {1, 0, 10, 1, 2},
-                                              {1, 0, 9, 5, 2},
-                                              {0, 1, 1, 0, 1}};
+    std::vector<std::vector<unsigned int>> expected = {
+        // infeasible, ready, CPU, GPU, size
+        {1, 0, 10, 1, 2},
+        {1, 0, 9, 5, 2},
+        {0, 1, 1, 0, 1}};
 
     for (auto &load : *load_by_shape) {
       bool found = false;
