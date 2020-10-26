@@ -106,6 +106,9 @@ def make_recsim_env(config):
     env_config = DEFAULT_ENV_CONFIG.copy()
     env_config.update(config)
     env = interest_evolution.create_environment(env_config)
+    # RecSim's environment raises NotImplementedError on "close".
+    # Here we change it to do nothing.
+    env.close = lambda self: None
     env = RecSimResetWrapper(env)
     env = RecSimObservationSpaceWrapper(env)
     if env_config and env_config["convert_to_discrete_action_space"]:
