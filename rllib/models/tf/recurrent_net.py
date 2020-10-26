@@ -120,10 +120,10 @@ class LSTMWrapper(RecurrentNetwork):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
 
+        self.cell_size = model_config["lstm_cell_size"]
         super(LSTMWrapper, self).__init__(obs_space, action_space, None,
                                           model_config, name)
 
-        self.cell_size = model_config["lstm_cell_size"]
         self.use_prev_action_reward = model_config[
             "lstm_use_prev_action_reward"]
         self.action_dim = int(np.product(action_space.shape))
