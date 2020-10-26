@@ -43,12 +43,18 @@ class ZOOptSearch(Searcher):
             "height": tune.uniform(-10, 10)
         }
 
+        zoopt_search_config = {
+            "parallel_num": 8,  # how many workers to parallel
+        }
+
         zoopt_search = ZOOptSearch(
             algo="Asracos",  # only support Asracos currently
             budget=20,  # must match `num_samples` in `tune.run()`.
             dim_dict=dim_dict,
             metric="mean_loss",
-            mode="min")
+            mode="min",
+            **zoopt_search_config
+        )
 
         tune.run(my_objective,
             config=config,

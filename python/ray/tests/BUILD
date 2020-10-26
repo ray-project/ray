@@ -93,7 +93,6 @@ py_test_module_list(
     "test_queue.py",
     "test_ray_init.py",
     "test_tempfile.py",
-    "test_webui.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -119,6 +118,13 @@ py_test(
     name = "test_autoscaler_aws",
     size = "small",
     srcs = SRCS + ["aws/test_autoscaler_aws.py"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_aws_batch_tag_update",
+    size = "small",
+    srcs = SRCS + ["aws/test_aws_batch_tag_update.py"],
     deps = ["//:ray_lib"],
 )
 

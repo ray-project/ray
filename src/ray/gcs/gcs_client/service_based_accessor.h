@@ -196,14 +196,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncGetAllHeartbeat(
       const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override;
 
-  Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-      const StatusCallback &done) override;
-
-  Status AsyncReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-      const StatusCallback &callback) override;
-
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
@@ -462,6 +454,9 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
   Status AsyncGet(
       const PlacementGroupID &placement_group_id,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncGetAll(
+      const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;
