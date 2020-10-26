@@ -21,8 +21,11 @@ class TorchDistributionWrapper(ActionDistribution):
 
     @override(ActionDistribution)
     def __init__(self, inputs: List[TensorType], model: ModelV2):
+        # If inputs are not a torch Tensor, make them one and make sure they
+        # are on the correct device.
         if not isinstance(inputs, torch.Tensor):
-            inputs = torch.Tensor(inputs)
+            inputs = torch.from_numpy(inputs).to(
+                next(model.parameters()).device)
         super().__init__(inputs, model)
         # Store the last sample here.
         self.last_sample = None
