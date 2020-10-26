@@ -51,6 +51,11 @@ class TestSimpleQ(unittest.TestCase):
                 SampleBatch.NEXT_OBS: np.random.random(size=(2, 4)),
                 SampleBatch.EPS_ID: np.array([1234, 1234]),
                 SampleBatch.AGENT_INDEX: np.array([0, 0]),
+                SampleBatch.ACTION_LOGP: np.array([-0.1, -0.1]),
+                SampleBatch.ACTION_DIST_INPUTS: np.array(
+                    [[0.1, 0.2], [-0.1, -0.2]]),
+                SampleBatch.ACTION_PROB: np.array([0.1, 0.2]),
+                "q_values": np.array([[0.1, 0.2], [0.2, 0.1]]),
             }
             # Get model vars for computing expected model outs (q-vals).
             # 0=layer-kernel; 1=layer-bias; 2=q-val-kernel; 3=q-val-bias
