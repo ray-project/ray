@@ -52,7 +52,7 @@ When using schedulers, you may face compatibility issues, as shown in the below 
    * - :ref:`Population Based Bandits <tune-scheduler-pb2>`
      - Yes
      - Not Compatible
-    - :doc:`Link </tune/examples/pb2_example>`
+     - :doc:`Link </tune/examples/pb2_example>`. :doc:`Link </tune/examples/pb2_ppo_example>`
 
 .. _tune-scheduler-hyperband:
 
