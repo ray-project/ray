@@ -444,7 +444,7 @@
             ],
             "properties": {
                 "name": "cpuautoscale",
-                "targetResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/',  resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
+                "targetResourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
                 "enabled": true,
                 "profiles": [
                     {
@@ -458,7 +458,7 @@
                             {
                                 "metricTrigger": {
                                     "metricName": "Percentage CPU",
-                                    "metricResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/',  resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
+                                    "metricResourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
                                     "timeGrain": "PT1M",
                                     "statistic": "Average",
                                     "timeWindow": "PT10M",
@@ -476,7 +476,7 @@
                             {
                                 "metricTrigger": {
                                     "metricName": "Percentage CPU",
-                                    "metricResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/',  resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
+                                    "metricResourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
                                     "timeGrain": "PT1M",
                                     "statistic": "Average",
                                     "timeWindow": "PT30M",
