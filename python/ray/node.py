@@ -643,7 +643,7 @@ class Node:
                 process_info,
             ]
             redis_client = self.create_redis_client()
-            redis_client.hmset("webui", {"url": self._webui_url})
+            redis_client.hset("webui", {"url": self._webui_url})
 
     def start_plasma_store(self, plasma_directory, object_store_memory):
         """Start the plasma store."""
