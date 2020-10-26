@@ -419,7 +419,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_worker_env=None):
+                override_environment_variables=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -460,7 +460,8 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    override_worker_env=override_worker_env)
+                    override_environment_variables=(
+                        override_environment_variables))
 
         return ActorOptionWrapper()
 
@@ -481,7 +482,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_worker_env=None):
+                override_environment_variables=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -518,8 +519,8 @@ class ActorClass:
             placement_group_capture_child_tasks: Whether or not children tasks
                 of this actor should implicitly use the same placement group
                 as its parent. It is True by default.
-            override_worker_env: Environment variables to override and/or
-                introduce for this actor.  This is a dictionary mapping
+            override_environment_variables: Environment variables to override
+                and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
 
         Returns:
@@ -668,7 +669,8 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            override_worker_env=override_worker_env or dict())
+            override_environment_variables=override_environment_variables
+            or dict())
 
         actor_handle = ActorHandle(
             meta.language,

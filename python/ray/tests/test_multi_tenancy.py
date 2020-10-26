@@ -125,19 +125,6 @@ def test_worker_env(shutdown_only):
     assert ray.get(get_env.remote("foo2")) == "bar2"
 
 
-def test_override_worker_env(shutdown_only):
-    ray.init(_system_config={"enable_multi_tenancy": True})
-
-    @ray.remote
-    class EnvGetter:
-        def get(self, key):
-            return os.environ.get(key)
-
-    a = EnvGetter.options(override_worker_env={"a": "b", "c": "d"}).remote()
-    assert ray.get(a.get.remote("a")) == "b"
-    assert ray.get(a.get.remote("c")) == "d"
-
-
 def test_worker_capping_kill_idle_workers(shutdown_only):
     # Avoid starting initial workers by setting num_cpus to 0.
     ray.init(num_cpus=0)

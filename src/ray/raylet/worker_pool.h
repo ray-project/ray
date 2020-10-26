@@ -261,7 +261,7 @@ class WorkerPool : public WorkerPoolInterface {
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       std::vector<std::string> dynamic_options = {},
-      std::unordered_map<std::string, std::string> override_worker_env = {});
+      std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,

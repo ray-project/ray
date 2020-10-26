@@ -190,6 +190,8 @@ message TaskSpec {
   bytes placement_group_id = 18;
   // Whether or not this task should capture parent's placement group automatically.
   bool placement_group_capture_child_tasks = 19;
+  // Environment variables to override for this task
+  map<string, string> override_environment_variables = 20;
 }
 
 message Bundle {
@@ -255,8 +257,6 @@ message ActorCreationTaskSpec {
   bool is_asyncio = 8;
   // Field used for storing application-level extensions to the actor definition.
   string extension_data = 9;
-  // Environment variables to override and/or introduce for this actor
-  map<string, string> override_worker_env = 10;
 }
 
 // Task spec of an actor task.

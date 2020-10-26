@@ -192,6 +192,11 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 
+std::unordered_map<std::string, std::string>
+TaskSpecification::OverrideEnvironmentVariables() const {
+  return MapFromProtobuf(message_->override_environment_variables());
+}
+
 bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
 }
@@ -228,12 +233,6 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
   RAY_CHECK(IsActorCreationTask());
   return VectorFromProtobuf(
       message_->actor_creation_task_spec().dynamic_worker_options());
-}
-
-std::unordered_map<std::string, std::string> TaskSpecification::OverrideWorkerEnv()
-    const {
-  RAY_CHECK(IsActorCreationTask()) << "Per worker env var is allowed only for actors.";
-  return MapFromProtobuf(message_->actor_creation_task_spec().override_worker_env());
 }
 
 TaskID TaskSpecification::CallerId() const {
