@@ -541,6 +541,9 @@ void CoreWorker::Shutdown() {
   if (options_.worker_type == WorkerType::WORKER) {
     task_execution_service_.stop();
   }
+  if (options_.on_worker_shutdown) {
+    options_.on_worker_shutdown(GetWorkerID());
+  }
 }
 
 void CoreWorker::Disconnect() {
@@ -1586,9 +1589,10 @@ std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
 
   if (actor_id.IsNil()) {
     std::ostringstream stream;
-    stream << "Failed to look up actor with name '" << name
-           << "'. It is either you look up the named actor you didn't create or the named"
-              "actor hasn't been created because named actor creation is asynchronous.";
+    stream << "Failed to look up actor with name '" << name << "'. You are "
+           << "either trying to look up a named actor you didn't create, "
+           << "the named actor died, or the actor hasn't been created "
+           << "because named actor creation is asynchronous.";
     return std::make_pair(nullptr, Status::NotFound(stream.str()));
   }
 

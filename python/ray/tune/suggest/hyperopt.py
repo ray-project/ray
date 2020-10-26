@@ -10,6 +10,7 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Normal, \
     Quantized, \
     Uniform
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
 
 try:
@@ -168,7 +169,13 @@ class HyperOptSearch(Searcher):
             self.rstate = np.random.RandomState(random_state_seed)
 
         self.domain = None
-        if space:
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
             self.domain = hpo.Domain(lambda spc: spc, space)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
@@ -304,7 +311,7 @@ class HyperOptSearch(Searcher):
             self.set_state(trials_object)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict:
+    def convert_search_space(spec: Dict, prefix: str = "") -> Dict:
         spec = copy.deepcopy(spec)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -361,7 +368,17 @@ class HyperOptSearch(Searcher):
                     return hpo.hp.randint(par, domain.upper)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
-                    return hpo.hp.choice(par, domain.categories)
+                    return hpo.hp.choice(par, [
+                        HyperOptSearch.convert_search_space(
+                            category, prefix=par)
+                        if isinstance(category, dict) else
+                        HyperOptSearch.convert_search_space(
+                            dict(enumerate(category)), prefix=f"{par}/{i}")
+                        if isinstance(category, list) else resolve_value(
+                            f"{par}/{i}", category)
+                        if isinstance(category, Domain) else category
+                        for i, category in enumerate(domain.categories)
+                    ])
 
             raise ValueError("HyperOpt does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(
@@ -369,7 +386,8 @@ class HyperOptSearch(Searcher):
                                  type(domain.sampler).__name__))
 
         for path, domain in domain_vars:
-            par = "/".join(path)
+            par = "/".join(
+                [str(p) for p in ((prefix, ) + path if prefix else path)])
             value = resolve_value(par, domain)
             assign_value(spec, path, value)
 

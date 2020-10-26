@@ -67,3 +67,7 @@ span.rst-current-version > span.fa.fa-book {
 .rst-versions {
   z-index: 1200 !important;
 }
+
+dt:target, span.highlighted {
+  background-color: #fbe54e;
+}

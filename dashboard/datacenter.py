@@ -1,6 +1,7 @@
 import logging
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.memory_utils as memory_utils
+from collections import defaultdict
 from ray.new_dashboard.actor_utils import actor_classname_from_task_spec
 from ray.new_dashboard.utils import Dict, Signal
 
@@ -61,18 +62,35 @@ class DataOrganizer:
     @classmethod
     async def get_node_actors(cls, node_id):
         node_stats = DataSource.node_stats.get(node_id, {})
-        worker_id_to_info = {}
+        node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
+        worker_id_to_raylet_info = {}
+        pid_to_worker_id = {}
+
         for worker_stats in node_stats.get("workersStats", []):
-            worker_id_to_info[worker_stats["workerId"]] = worker_stats
+            worker_id_to_raylet_info[worker_stats["workerId"]] = worker_stats
+            pid_to_worker_id[worker_stats["pid"]] = worker_stats["workerId"]
+        worker_id_to_process_info = {}
+
+        for process_stats in node_physical_stats.get("workers"):
+            if process_stats["pid"] in pid_to_worker_id:
+                worker_id = pid_to_worker_id[process_stats["pid"]]
+                worker_id_to_process_info[worker_id] = process_stats
+
+        worker_id_to_gpu_stats = defaultdict(list)
+        for gpu_stats in node_physical_stats.get("gpus"):
+            for process in gpu_stats.get("processes", []):
+                if process["pid"] in pid_to_worker_id:
+                    worker_id = pid_to_worker_id[process["pid"]]
+                    worker_id_to_gpu_stats[worker_id].append(gpu_stats)
 
         node_actors = {}
         for actor_id, actor_table_data in DataSource.actors.items():
-            if actor_table_data["address"]["workerId"] in worker_id_to_info:
-                worker_stats = worker_id_to_info[actor_table_data["address"][
-                    "workerId"]]
-
-                actor_constructor = worker_stats.get("coreWorkerStats", {})\
-                    .get("actorTitle", "Unknown actor constructor")
+            worker_id = actor_table_data["address"]["workerId"]
+            if worker_id in worker_id_to_raylet_info:
+                worker_raylet_stats = worker_id_to_raylet_info[worker_id]
+                core_worker = worker_raylet_stats.get("coreWorkerStats", {})
+                actor_constructor = core_worker.get(
+                    "actorTitle", "Unknown actor constructor")
 
                 actor_table_data["actorConstructor"] = actor_constructor
 
@@ -80,8 +98,12 @@ class DataOrganizer:
                     actor_table_data.get("taskSpec", {}))
 
                 actor_table_data["actorClass"] = actor_class
-                actor_table_data.update(worker_stats["coreWorkerStats"])
+                actor_table_data.update(core_worker)
                 node_actors[actor_id] = actor_table_data
+            actor_table_data["gpus"] = worker_id_to_gpu_stats.get(
+                worker_id, [])
+            actor_table_data["processStats"] = worker_id_to_process_info.get(
+                worker_id, {})
         return node_actors
 
     @classmethod
@@ -89,15 +111,13 @@ class DataOrganizer:
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         node_stats = DataSource.node_stats.get(node_id, {})
         node = DataSource.nodes.get(node_id, {})
-
+        node_ip = DataSource.node_id_to_ip.get(node_id)
         # Merge node log count information into the payload
-        log_info = DataSource.ip_and_pid_to_logs.get(node_physical_stats["ip"],
-                                                     {})
+        log_info = DataSource.ip_and_pid_to_logs.get(node_ip, {})
         node_log_count = 0
         for entries in log_info.values():
             node_log_count += len(entries)
-        error_info = DataSource.ip_and_pid_to_errors.get(
-            node_physical_stats["ip"], {})
+        error_info = DataSource.ip_and_pid_to_errors.get(node_ip, {})
         node_err_count = 0
         for entries in error_info.values():
             node_err_count += len(entries)

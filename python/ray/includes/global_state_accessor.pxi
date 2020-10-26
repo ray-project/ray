@@ -122,6 +122,12 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().AddWorkerInfo(cserialized_string)
         return result
 
+    def get_placement_group_table(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllPlacementGroupInfo()
+        return result
+
     def get_placement_group_info(self, placement_group_id):
         cdef unique_ptr[c_string] result
         cdef CPlacementGroupID cplacement_group_id = (

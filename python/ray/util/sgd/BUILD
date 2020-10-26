@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------
 py_test(
     name = "test_ptl",
-    size = "small",
+    size = "large",
     srcs = ["tests/test_ptl.py"],
     tags = ["exclusive", "pytorch-lightning", "pytorch"],
     deps = [":sgd_lib"],
@@ -195,6 +195,16 @@ py_test(
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
     args = ["--num-workers=2", "--smoke-test"]
+)
+
+py_test(
+    name = "tune_example_3",
+    size = "small",
+    main = "torch/examples/tune_example.py",
+    srcs = ["torch/examples/tune_example.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"],
+    args = ["--num-workers=2", "--smoke-test", "--lr-reduce-on-plateau"]
 )
 
 

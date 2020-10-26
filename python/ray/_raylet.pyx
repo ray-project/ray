@@ -397,11 +397,6 @@ cdef execute_task(
         next_title = f"ray::{class_name}"
         pid = os.getpid()
         worker_name = f"ray_{class_name}_{pid}"
-        if c_resources.find(b"memory") != c_resources.end():
-            worker.memory_monitor.set_heap_limit(
-                worker_name,
-                ray_constants.from_memory_units(
-                    dereference(c_resources.find(b"memory")).second))
         if c_resources.find(b"object_store_memory") != c_resources.end():
             worker.core_worker.set_object_store_client_options(
                 worker_name,
@@ -595,7 +590,7 @@ cdef void gc_collect() nogil:
         num_freed = gc.collect()
         end = time.perf_counter()
         if num_freed > 0:
-            logger.info(
+            logger.debug(
                 "gc.collect() freed {} refs in {} seconds".format(
                     num_freed, end - start))
 

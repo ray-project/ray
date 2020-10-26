@@ -167,7 +167,7 @@ class DynamicTFPolicy(TFPolicy):
                     tf.float32, [None], name="prev_reward")
             explore = tf1.placeholder_with_default(
                 True, (), name="is_exploring")
-            timestep = tf1.placeholder(tf.int32, (), name="timestep")
+            timestep = tf1.placeholder(tf.int64, (), name="timestep")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,

@@ -138,7 +138,7 @@ message ActorTableData {
   bool is_detached = 11;
   // Name of the actor. Only populated if is_detached is true.
   string name = 12;
-  // Timestamp that the actor is created or reconstructed.
+  // Last timestamp that the actor state was updated.
   double timestamp = 13;
   // The task specification of this actor's creation task.
   TaskSpec task_spec = 14;
@@ -308,10 +308,8 @@ message HeartbeatTableData {
   bool resource_load_changed = 6;
   // The resource load on this node, sorted by resource shape.
   ResourceLoad resource_load_by_shape = 7;
-  // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 8;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 9;
+  bool should_global_gc = 8;
 }
 
 message HeartbeatBatchTableData {
