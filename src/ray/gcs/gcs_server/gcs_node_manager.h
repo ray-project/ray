@@ -174,7 +174,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param placement_group_load placement group load protobuf.
   void UpdatePlacementGroupLoad(
-      std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) const;
+      std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
  protected:
   class NodeFailureDetector {
@@ -210,12 +210,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// \param heartbeat_data The heartbeat sent by the client.
     void HandleHeartbeat(const NodeID &node_id,
                          const rpc::HeartbeatTableData &heartbeat_data);
-
-    /// Public interface to update placement group load information.
-    ///
-    /// \param placement_group_load placement group load protobuf.
-    void UpdatePlacementGroupLoad(
-        std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
    protected:
     /// A periodic timer that fires on every heartbeat period. Raylets that have
@@ -253,8 +247,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
     /// Is the detect started.
     bool is_started_ = false;
-    /// Placement group load information that is used for autoscaler.
-    absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   };
 
  private:
@@ -293,6 +285,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Cluster realtime resources.
   absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>> cluster_realtime_resources_;
+  /// Placement group load information that is used for autoscaler.
+  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 };
 
 }  // namespace gcs

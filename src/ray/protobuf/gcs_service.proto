@@ -217,7 +217,7 @@ message GetAllHeartbeatRequest {
 
 message GetAllHeartbeatReply {
   GcsStatus status = 1;
-  repeated HeartbeatTableData heartbeat_list = 2;
+  HeartbeatBatchTableData heartbeat_data = 2;
 }
 
 message ReportBatchHeartbeatRequest {

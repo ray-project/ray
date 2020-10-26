@@ -232,7 +232,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
 
   /// Reference of GcsNodeManager.
-  const GcsNodeManager &gcs_node_manager_;
+  GcsNodeManager &gcs_node_manager_;
 };
 
 }  // namespace gcs

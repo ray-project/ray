@@ -192,8 +192,11 @@ TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
 }
 
 TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
-  std::vector<std::string> heartbeats = global_state_->GetAllHeartbeat();
-  ASSERT_EQ(heartbeats.size(), 0);
+  std::unique_ptr<std::string> heartbeats = global_state_->GetAllHeartbeat();
+  rpc::HeartbeatBatchTableData heartbeat_batch_data;
+  heartbeat_batch_data.ParseFromString(*heartbeats.get());
+
+  ASSERT_EQ(heartbeat_batch_data.batch_size(), 0);
 
   auto node_table_data = Mocker::GenNodeInfo();
   std::promise<bool> promise;
@@ -212,7 +215,8 @@ TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
   WaitReady(promise1.get_future(), timeout_ms_);
 
   heartbeats = global_state_->GetAllHeartbeat();
-  ASSERT_EQ(heartbeats.size(), 1);
+  heartbeat_batch_data.ParseFromString(*heartbeats.get());
+  ASSERT_EQ(heartbeat_batch_data.batch_size(), 1);
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {

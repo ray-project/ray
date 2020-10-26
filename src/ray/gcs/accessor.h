@@ -580,7 +580,7 @@ class NodeInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetAllHeartbeat(
-      const MultiItemCallback<rpc::HeartbeatTableData> &callback) = 0;
+      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) = 0;
 
   /// Subscribe to the heartbeat of each node from GCS.
   ///

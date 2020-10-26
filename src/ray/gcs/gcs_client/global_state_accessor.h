@@ -105,7 +105,7 @@ class GlobalStateAccessor {
   /// \return node heartbeat info. To support multi-language, we serialize each
   /// HeartbeatTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::vector<std::string> GetAllHeartbeat();
+  std::unique_ptr<std::string> GetAllHeartbeat();
 
   /// Get information of all actors from GCS Service.
   ///
@@ -187,6 +187,18 @@ class GlobalStateAccessor {
       if (result) {
         data.reset(new std::string(result->SerializeAsString()));
       }
+      promise.set_value(true);
+    };
+  }
+
+  /// Item transformation helper in template style.
+  ///
+  /// \return ItemCallback within in rpc type DATA.
+  template <class DATA>
+  ItemCallback<DATA> TransformForItemCallback(std::unique_ptr<std::string> &data,
+                                              std::promise<bool> &promise) {
+    return [&data, &promise](const DATA &result) {
+      data.reset(new std::string(result.SerializeAsString()));
       promise.set_value(true);
     };
   }

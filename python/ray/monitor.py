@@ -138,23 +138,29 @@ class Monitor:
 
     def get_all_heartbeat(self):
         all_heartbeat = self.global_state_accessor.get_all_heartbeat()
-        for message in all_heartbeat:
+        heartbeat_batch_data = \
+            ray.gcs_utils.HeartbeatBatchTableData.FromString(all_heartbeat)
+        for message in heartbeat_batch_data.batch:
             heartbeat_message = ray.gcs_utils.HeartbeatTableData.FromString(
                 message)
             resource_load = dict(heartbeat_message.resource_load)
             total_resources = dict(heartbeat_message.resources_total)
             available_resources = dict(heartbeat_message.resources_available)
 
-            # TODO(wangtaothetonic): aggregate raylet load here
-            # TODO(wangtaothetonic): handle placement group load here
+            waiting_bundles, infeasible_bundles = parse_resource_demands(
+                heartbeat_batch_data.resource_load_by_shape)
+
+            pending_placement_groups = list(
+                heartbeat_batch_data.placement_group_load.placement_group_data)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
             if ip:
-                self.load_metrics.update(ip, total_resources, True,
-                                         available_resources, True,
-                                         resource_load)
+                self.load_metrics.update(
+                    ip, total_resources, True, available_resources, True,
+                    resource_load, waiting_bundles, infeasible_bundles,
+                    pending_placement_groups)
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")
