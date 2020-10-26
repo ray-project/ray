@@ -144,20 +144,26 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({ actor }) => {
               <Grid item xs={12}>
                 <Typography>GPU Usage</Typography>
               </Grid>
-              {actor.gpus.map((gpu) => (
-                <React.Fragment key={gpu.uuid}>
+              {actor.gpus.map((gpu) => {
+                const gpuUtilization = gpu.utilizationGpu ?
+                  <UsageBar
+                    percent={gpu.utilizationGpu * 100}
+                    text={`${gpu.utilizationGpu * 100}%`}
+                  /> :
+                  <Typography color="textSecondary" component="span" variant="inherit">
+                    N/A
+                  </Typography>;
+                return <React.Fragment key={gpu.uuid}>
                   <Grid item xs={4}>
                     {`[${gpu.name}]`}
                   </Grid>
                   <Grid item xs={4}>
-                    <UsageBar
-                      percent={gpu.utilizationGpu * 100}
-                      text={`${gpu.utilizationGpu * 100}%`}
-                    />
+                    {gpuUtilization}
                   </Grid>
                   <Grid item xs={4} />
                 </React.Fragment>
-              ))}
+              }
+              )}
             </Grid>
           )}
         </Grid>
