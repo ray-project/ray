@@ -184,7 +184,8 @@ class DynamicTFPolicy(TFPolicy):
             if self._state_inputs:
                 self._seq_lens = existing_inputs["seq_lens"]
         else:
-            if self.config["_use_trajectory_view_api"]:
+            if self.config["_use_trajectory_view_api"] and \
+                    view_requirements_fn:
                 self._state_inputs = [
                     tf1.placeholder(
                         shape=(None, ) + vr.space.shape, dtype=vr.space.dtype)
