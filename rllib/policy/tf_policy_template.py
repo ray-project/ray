@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -8,8 +9,10 @@ from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.tf_ops import get_placeholder
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
 
@@ -62,8 +65,12 @@ def build_tf_policy(
             Policy, ModelV2, TensorType, TensorType, TensorType
         ], Tuple[TensorType, type, List[TensorType]]]] = None,
         mixins: Optional[List[type]] = None,
+        view_requirements_fn: Optional[Callable[[Policy], Dict[
+            str, ViewRequirement]]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
-        obs_include_prev_action_reward: bool = True) -> Type[TFPolicy]:
+        # TODO: (sven) deprecate once _use_trajectory_view_api is always True.
+        obs_include_prev_action_reward: bool = True,
+) -> Type[DynamicTFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
     Functions will be run in this order to initialize the policy:
@@ -165,6 +172,9 @@ def build_tf_policy(
         mixins (Optional[List[type]]): Optional list of any class mixins for
             the returned policy class. These mixins will be applied in order
             and will have higher precedence than the DynamicTFPolicy class.
+        view_requirements_fn (Callable[[Policy],
+            Dict[str, ViewRequirement]]): An optional callable to retrieve
+            additional train view requirements for this policy.
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
             Optional callable that returns the divisibility requirement for
             sample batches. If None, will assume a value of 1.
@@ -199,9 +209,22 @@ def build_tf_policy(
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
                 if extra_action_fetches_fn is None:
-                    self._extra_action_fetches = {}
+                    policy._extra_action_fetches = {}
                 else:
-                    self._extra_action_fetches = extra_action_fetches_fn(self)
+                    policy._extra_action_fetches = extra_action_fetches_fn(policy)
+                    # Update default view requirements by extra action fetches.
+                    if view_requirements_fn is None and config[
+                        "_use_trajectory_view_api"]:
+                        extra_fetches = policy.extra_compute_action_fetches()
+                        for key, value in extra_fetches.items():
+                            if key not in policy.view_requirements:
+                                policy._input_dict[key] = get_placeholder(
+                                    value=value)
+                                policy._dummy_batch[key] = np.zeros(
+                                    shape=[1 if s is None else s for s in
+                                           value.shape.as_list()],
+                                    dtype=np.float32)
+                                policy.view_requirements[key] = ViewRequirement()
 
             DynamicTFPolicy.__init__(
                 self,
@@ -215,8 +238,9 @@ def build_tf_policy(
                 make_model=make_model,
                 action_sampler_fn=action_sampler_fn,
                 action_distribution_fn=action_distribution_fn,
-                existing_model=existing_model,
                 existing_inputs=existing_inputs,
+                existing_model=existing_model,
+                view_requirements_fn=view_requirements_fn,
                 get_batch_divisibility_req=get_batch_divisibility_req,
                 obs_include_prev_action_reward=obs_include_prev_action_reward)
 

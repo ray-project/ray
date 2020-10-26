@@ -14,7 +14,6 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.typing import AgentID, EpisodeID, EnvID, PolicyID, \
     TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.util.debug import log_once
 
 _, tf, _ = try_import_tf()
@@ -27,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def to_float_np_array(v: List[Any]) -> np.ndarray:
-    if torch.is_tensor(v[0]):
+    if torch and torch.is_tensor(v[0]):
         raise ValueError
     arr = np.array(v)
     if arr.dtype == np.float64:
@@ -171,8 +170,8 @@ class _AgentCollector:
             if col in self.buffers:
                 continue
             shift = self.shift_before - (1 if col == SampleBatch.OBS else 0)
-            # Python primitive.
-            if isinstance(data, (int, float, bool, str)):
+            # Python primitive or dict (e.g. INFOs).
+            if isinstance(data, (int, float, bool, str, dict)):
                 self.buffers[col] = [0 for _ in range(shift)]
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:
@@ -341,7 +340,8 @@ class _SimpleListCollector(_SampleCollector):
             assert self.agent_key_to_policy[agent_key] == policy_id
         policy = self.policy_map[policy_id]
         view_reqs = policy.model.inference_view_requirements if \
-            hasattr(policy, "model") else policy.view_requirements
+            hasattr(policy, "model") and policy.model is not None else \
+            policy.view_requirements
 
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
@@ -389,7 +389,8 @@ class _SimpleListCollector(_SampleCollector):
         keys = self.forward_pass_agent_keys[policy_id]
         buffers = {k: self.agent_collectors[k].buffers for k in keys}
         view_reqs = policy.model.inference_view_requirements if \
-            hasattr(policy, "model") else policy.view_requirements
+            hasattr(policy, "model") and policy.model is not None else \
+            policy.view_requirements
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():

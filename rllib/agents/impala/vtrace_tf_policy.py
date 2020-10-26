@@ -80,7 +80,8 @@ class VTraceLoss:
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
-                discounts=tf.cast(~dones, tf.float32) * discount,
+                discounts=tf.cast(~tf.cast(dones, tf.bool), tf.float32) *
+                discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
@@ -242,15 +243,6 @@ def grad_stats(policy, train_batch, grads):
     }
 
 
-def postprocess_trajectory(policy,
-                           sample_batch,
-                           other_agent_batches=None,
-                           episode=None):
-    # not used, so save some bandwidth
-    del sample_batch.data[SampleBatch.NEXT_OBS]
-    return sample_batch
-
-
 def choose_optimizer(policy, config):
     if policy.config["opt_type"] == "adam":
         if policy.config["framework"] in ["tf2", "tfe"]:
@@ -289,7 +281,6 @@ VTraceTFPolicy = build_tf_policy(
     loss_fn=build_vtrace_loss,
     stats_fn=stats,
     grad_stats_fn=grad_stats,
-    postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
     before_loss_init=setup_mixins,

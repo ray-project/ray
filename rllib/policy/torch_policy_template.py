@@ -8,7 +8,8 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.policy.view_requirement import get_default_view_requirements, \
+    ViewRequirement
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -64,7 +65,7 @@ def build_torch_policy(
         apply_gradients_fn: Optional[Callable[
             [Policy, "torch.optim.Optimizer"], None]] = None,
         mixins: Optional[List[type]] = None,
-        view_requirements_fn: Optional[Callable[[], Dict[
+        view_requirements_fn: Optional[Callable[[Policy], Dict[
             str, ViewRequirement]]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
 ) -> Type[TorchPolicy]:
@@ -161,8 +162,8 @@ def build_torch_policy(
         mixins (Optional[List[type]]): Optional list of any class mixins for
             the returned policy class. These mixins will be applied in order
             and will have higher precedence than the TorchPolicy class.
-        view_requirements_fn (Callable[[],
-            Dict[str, ViewRequirement]]): An optional callable to retrieve
+        view_requirements_fn (Optional[Callable[[Policy],
+            Dict[str, ViewRequirement]]]): An optional callable to retrieve
             additional train view requirements for this policy.
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
             Optional callable that returns the divisibility requirement for
@@ -229,8 +230,14 @@ def build_torch_policy(
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
 
+            # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
                 self.view_requirements.update(view_requirements_fn(self))
+            # If no view-requirements given, use default settings.
+            # Add NEXT_OBS, STATE_IN_0.., and others.
+            else:
+                self.view_requirements.update(
+                    get_default_view_requirements(self))
 
             if after_init:
                 after_init(self, obs_space, action_space, config)

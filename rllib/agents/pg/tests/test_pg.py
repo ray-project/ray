@@ -48,7 +48,9 @@ class TestPG(unittest.TestCase):
             SampleBatch.PREV_ACTIONS: np.array([1, 0, 1]),
             SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
             SampleBatch.PREV_REWARDS: np.array([-1.0, -1.0, -1.0]),
-            SampleBatch.DONES: np.array([False, False, True])
+            SampleBatch.DONES: np.array([False, False, True]),
+            SampleBatch.EPS_ID: np.array([1234, 1234, 1234]),
+            SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
         }
 
         for fw, sess in framework_iterator(config, session=True):

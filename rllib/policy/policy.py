@@ -75,14 +75,18 @@ class Policy(metaclass=ABCMeta):
         # Child classes need to add their specific requirements here (usually
         # a combination of a Model's inference_view_- and the
         # Policy's loss function-requirements.
-        self.view_requirements = {
-            SampleBatch.OBS: ViewRequirement(),
+        view_reqs = {
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
             SampleBatch.REWARDS: ViewRequirement(),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
         }
+        if not hasattr(self, "view_requirements"):
+            self.view_requirements = view_reqs
+        else:
+            self.view_requirements.update(view_reqs)
 
     @abstractmethod
     @DeveloperAPI
@@ -266,7 +270,8 @@ class Policy(metaclass=ABCMeta):
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
         state_batches = [
-            s.unsqueeze(0)
+            # TODO: (sven) remove unsqueezing code here for non-traj.view API.
+            s if self.config["_use_trajectory_view_api"] else s.unsqueeze(0)
             if torch and isinstance(s, torch.Tensor) else np.expand_dims(s, 0)
             for k, s in input_dict.items() if k[:9] == "state_in_"
         ]

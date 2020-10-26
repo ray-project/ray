@@ -8,6 +8,7 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
+from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -202,9 +203,6 @@ class GTrXLNet(RecurrentNetwork):
                 position-wise MLP).
         """
 
-        super().__init__(observation_space, action_space, num_outputs,
-                         model_config, name)
-
         self.num_transformer_units = num_transformer_units
         self.attn_dim = attn_dim
         self.num_heads = num_heads
@@ -213,6 +211,9 @@ class GTrXLNet(RecurrentNetwork):
         self.head_dim = head_dim
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
+
+        super().__init__(observation_space, action_space, num_outputs,
+                         model_config, name)
 
         # Constant (non-trainable) sinusoid rel pos encoding matrices
         # (use different ones for inference and training due to the different
@@ -297,6 +298,20 @@ class GTrXLNet(RecurrentNetwork):
             SampleBatch.OBS: ViewRequirement(
                 shift="-{}:0".format(self.memory_inference))
         })
+        # Setup additional view requirements for attention net inference calls.
+        # 0: The last `max_seq_len` observations.
+        #self.inference_view_requirements["state_in_0"] = ViewRequirement(
+        #    "state_out_0",
+        #    shift=-1,
+        #    space=Box(-1.0, 1.0, shape=(self.max_seq_len, self.obs_dim)))
+        ## 1 to `num_transformer_units`: Memory data (one per transformer unit).
+        #for i in range(1, self.num_transformer_units + 1):
+        #    self.inference_view_requirements["state_in_{}".format(i)] = \
+        #        ViewRequirement(
+        #            "state_out_{}".format(i),
+        #            shift=-1,
+        #            space=Box(-1.0, 1.0,
+        #                      shape=(self.memory_tau, self.attn_dim)))
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -357,6 +372,7 @@ class GTrXLNet(RecurrentNetwork):
 
     #    return logits, memory_outs
 
+    # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
     def get_initial_state(self):
         # State is the tau last observations concat'd together into one Tensor.
