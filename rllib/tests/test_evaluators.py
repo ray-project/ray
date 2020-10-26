@@ -10,6 +10,14 @@ from ray.tune.registry import register_env
 
 
 class EvalTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(object_store_memory=1000 * 1024 * 1024, num_cpus=4)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_dqn_n_step(self):
         obs = [1, 2, 3, 4, 5, 6, 7]
         actions = ["a", "b", "a", "a", "a", "b", "a"]
@@ -32,7 +40,6 @@ class EvalTest(unittest.TestCase):
 
         for agent_cls in agent_classes:
             for fw in framework_iterator(frameworks=("torch", "tf")):
-                ray.init(object_store_memory=1000 * 1024 * 1024)
                 register_env("CartPoleWrapped-v0", env_creator)
                 agent = agent_cls(
                     env="CartPoleWrapped-v0",
@@ -53,6 +60,7 @@ class EvalTest(unittest.TestCase):
                 r1 = agent.train()
                 r2 = agent.train()
                 r3 = agent.train()
+                agent.stop()
 
                 self.assertTrue("evaluation" in r1)
                 self.assertTrue("evaluation" in r3)
@@ -60,7 +68,6 @@ class EvalTest(unittest.TestCase):
                 self.assertFalse("evaluation" in r2)
                 self.assertTrue("episode_reward_mean" in r1["evaluation"])
                 self.assertNotEqual(r1["evaluation"], r3["evaluation"])
-                ray.shutdown()
 
 
 if __name__ == "__main__":

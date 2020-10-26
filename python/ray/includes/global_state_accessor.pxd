@@ -31,3 +31,4 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_bool AddWorkerInfo(const c_string &serialized_string)
         unique_ptr[c_string] GetPlacementGroupInfo(
             const CPlacementGroupID &placement_group_id)
+        c_vector[c_string] GetAllPlacementGroupInfo()

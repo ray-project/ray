@@ -1,6 +1,6 @@
 # An unique identifier for the head node and workers of this cluster.
 # A namespace will be automatically created for each cluster_name in SKE.
-cluster_name: default
+cluster_name: default # name with 'a-z' and '-'
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
@@ -8,7 +8,7 @@ min_workers: 0
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 2
+max_workers: 5
 
 # The initial number of worker nodes to launch in addition to the head
 # node. When the cluster is first brought up (or when it is refreshed with a
@@ -71,17 +71,17 @@ provider:
     #   - Kubernetes resources to create (like Persistent volume claim)
     #     on namespace creation
     # You can fork when you need to customize.
-    #   1. Fork github.com/open-datastudio/ray
-    #   2. Change .staroid/ directory to cutomize
+    #   1. Fork github.com/open-datastudio/ray-cluster
+    #   2. Change contents
     #   3. Connect forked repository (https://staroid.com/projects/settings)
     #   4. Release your customized branch
     #      4-1. Select project from 'My projects' menu
     #      4-2. Select your branch in 'Release' tab
     #      4-3. After build success, switch to 'Production'
     #      4-4. Switch Launch permission to 'Public' if required
-    #   5. Change 'project' field to point your 
+    #   5. Change 'project' field to point your
     #      repository and branch in this file
-    project: "GITHUB/open-datastudio/ray:master-staroid"
+    project: "GITHUB/open-datastudio/ray-cluster:master"
 
     # 'spec.containers.image' field for ray-node and ray-worker will be
     # overrided by the image built from the 'project' field above.
@@ -109,13 +109,17 @@ head_node:
         labels:
             component: ray-head
 
-            # https://docs.staroid.com/ske/pod.html#pod
+            # https://docs.staroid.com/ske/pod.html
             pod.staroid.com/spot: "false" # use on-demand instance for head.
 
-            # Uncomment to locate ray head to dedicated Kubernetes node
-            # (GPU instance is only available for 'dedicated' isolation)
-            #pod.staroid.com/isolation: dedicated
-            #pod.staroid.com/instance-type: gpu-1
+            # Locate ray head to dedicated Kubernetes node
+            # In dedicated mode, resource requests and limits in the pod spec will be
+            # automatically overrided based on 'pod.staroid.com/instance-type' below.
+            pod.staroid.com/isolation: dedicated # 'sandboxed' or 'dedicated'
+
+            # Instance type to use in 'dedicated' mode, such as 'standard-4', 'gpu-1'.
+            # See available instance type from https://docs.staroid.com/ske/pod.html.
+            pod.staroid.com/instance-type: standard-4
     spec:
         automountServiceAccountToken: true
 
@@ -130,10 +134,12 @@ head_node:
         - name: dshm
           emptyDir:
               medium: Memory
+        - name: tmp-volume
+          emptyDir: {}
         # nfs volume provides a shared volume across all ray-nodes.
         - name: nfs-volume
           persistentVolumeClaim:
-            claimName: nfs
+              claimName: nfs
 
         containers:
         - name: ray-node
@@ -144,7 +150,7 @@ head_node:
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
           # Image will be overridden when 'image_from_project' is true.
-          image: rayproject/autoscaler
+          image: rayproject/ray
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -162,13 +168,16 @@ head_node:
           volumeMounts:
               - mountPath: /dev/shm
                 name: dshm
+              - mountPath: /tmp
+                name: tmp-volume
               - mountPath: /nfs
                 name: nfs-volume
           resources:
               requests:
-                  cpu: 1000m
-                  memory: 2Gi
+                  cpu: 4000m
+                  memory: 8Gi
               limits:
+                  cpu: 4000m
                   # The maximum memory that this pod is allowed to use. The
                   # limit will be detected by ray and split to use 10% for
                   # redis, 30% for the shared memory object store, and the
@@ -176,7 +185,7 @@ head_node:
                   # the object store size is not set manually, ray will
                   # allocate a very large object store in each pod that may
                   # cause problems for other pods.
-                  memory: 2Gi
+                  memory: 8Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
@@ -184,7 +193,7 @@ head_node:
               - name: MY_CPU_REQUEST
                 valueFrom:
                     resourceFieldRef:
-                        resource: requests.cpu
+                        resource: limits.cpu
               - name: RAY_ADDRESS
                 value: "auto"
 
@@ -201,13 +210,17 @@ worker_nodes:
         labels:
             component: ray-worker
 
-            # https://docs.staroid.com/ske/pod.html#pod
-            pod.staroid.com/spot: "true" # use spot instance for workers.
+            # https://docs.staroid.com/ske/pod.html
+            pod.staroid.com/spot: "true"
 
-            # Uncomment to locate ray head to dedicated Kubernetes node
-            # (GPU instance is only available for 'dedicated' isolation)
-            #pod.staroid.com/isolation: dedicated
-            #pod.staroid.com/instance-type: gpu-1
+            # Locate ray head to dedicated Kubernetes node
+            # In dedicated mode, resource requests and limits in the pod spec will be
+            # automatically overrided based on 'pod.staroid.com/instance-type' below.
+            pod.staroid.com/isolation: dedicated # 'sandboxed' or 'dedicated'
+
+            # Instance type to use in 'dedicated' mode, such as 'standard-4', 'gpu-1'.
+            # See available instance type from https://docs.staroid.com/ske/pod.html.
+            pod.staroid.com/instance-type: standard-4
     spec:
         serviceAccountName: default
 
@@ -222,9 +235,11 @@ worker_nodes:
         - name: dshm
           emptyDir:
               medium: Memory
+        - name: tmp-volume
+          emptyDir: {}
         - name: nfs-volume
           persistentVolumeClaim:
-            claimName: nfs
+              claimName: nfs
         containers:
         - name: ray-node
           imagePullPolicy: Always
@@ -246,16 +261,19 @@ worker_nodes:
           volumeMounts:
               - mountPath: /dev/shm
                 name: dshm
+              - mountPath: /tmp
+                name: tmp-volume
               - mountPath: /nfs
                 name: nfs-volume
           resources:
               requests:
-                  cpu: 1000m
-                  memory: 2Gi
+                  cpu: 4000m
+                  memory: 8Gi
               limits:
+                  cpu: 4000m
                   # This memory limit will be detected by ray and split into
                   # 30% for plasma, and 70% for workers.
-                  memory: 2Gi
+                  memory: 8Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
@@ -263,7 +281,7 @@ worker_nodes:
               - name: MY_CPU_REQUEST
                 valueFrom:
                     resourceFieldRef:
-                        resource: requests.cpu
+                        resource: limits.cpu
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -285,6 +303,17 @@ initialization_commands: []
 
 # List of shell commands to run to set up nodes.
 setup_commands: []
+
+# Patterns for files to exclude when running rsync up or rsync down
+rsync_exclude:
+    - "**/.git"
+    - "**/.git/**"
+
+# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
+# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
+# as a value, the behavior will match git's behavior for finding and using .gitignore files.
+rsync_filter:
+    - ".gitignore"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

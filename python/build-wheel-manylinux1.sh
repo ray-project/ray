@@ -11,6 +11,7 @@ echo 10
 EOF
 chmod +x /usr/bin/nproc
 
+NODE_VERSION="14"
 PYTHONS=("cp36-cp36m"
          "cp37-cp37m"
          "cp38-cp38")
@@ -31,11 +32,12 @@ export PATH=$PATH:/root/bin
 set +x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
 source "$HOME"/.nvm/nvm.sh
-nvm install node
+nvm install $NODE_VERSION
 nvm use node
 
 # Build the dashboard so its static assets can be included in the wheel.
-pushd python/ray/dashboard/client
+# TODO(mfitton): switch this back when deleting old dashboard code.
+pushd python/ray/new_dashboard/client
   npm ci
   npm run build
 popd
@@ -50,7 +52,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory and the
   # dashboard directory.
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
+  git clean -f -f -x -d -e .whl -e python/ray/new_dashboard/client -e dashboard/client
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can

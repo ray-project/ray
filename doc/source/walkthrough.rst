@@ -1,3 +1,5 @@
+.. _core-walkthrough:
+
 Ray Core Walkthrough
 ====================
 

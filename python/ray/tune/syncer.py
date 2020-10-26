@@ -83,13 +83,13 @@ class SyncConfig:
 
     Args:
         upload_dir (str): Optional URI to sync training results and checkpoints
-            to (e.g. ``s3://bucket`` or ``gs://bucket``).
+            to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
         sync_to_cloud (func|str): Function for syncing the local_dir to and
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
-            provided, the sync command defaults to standard S3 or gsutil sync
-            commands. By default local_dir is synced to remote_dir every 300
-            seconds. To change this, set the TUNE_CLOUD_SYNC_S
+            provided, the sync command defaults to standard S3, gsutil or HDFS
+            sync commands. By default local_dir is synced to remote_dir every
+            300 seconds. To change this, set the TUNE_CLOUD_SYNC_S
             environment variable in the driver machine.
         sync_to_driver (func|str|bool): Function for syncing trial logdir from
             remote node to local. If string, then it must be a string template
@@ -299,7 +299,7 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
         sync_function (func | str): Function for syncing the local_dir to
             remote_dir. If string, then it must be a string template for
             syncer to run. If not provided, it defaults
-            to standard S3 or gsutil sync commands.
+            to standard S3, gsutil or HDFS sync commands.
 
     Raises:
         ValueError if malformed remote_dir.
