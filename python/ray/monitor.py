@@ -140,9 +140,7 @@ class Monitor:
         all_heartbeat = self.global_state_accessor.get_all_heartbeat()
         heartbeat_batch_data = \
             ray.gcs_utils.HeartbeatBatchTableData.FromString(all_heartbeat)
-        for message in heartbeat_batch_data.batch:
-            heartbeat_message = ray.gcs_utils.HeartbeatTableData.FromString(
-                message)
+        for heartbeat_message in heartbeat_batch_data.batch:
             resource_load = dict(heartbeat_message.resource_load)
             total_resources = dict(heartbeat_message.resources_total)
             available_resources = dict(heartbeat_message.resources_available)
