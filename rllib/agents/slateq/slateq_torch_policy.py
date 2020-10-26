@@ -39,15 +39,15 @@ class QValueModel(nn.Module):
         self.no_click_embedding = nn.Parameter(
             torch.randn(embedding_size) / 10.0)
 
-    def forward(self, user: torch.Tensor, doc: torch.Tensor) -> torch.Tensor:
+    def forward(self, user: TensorType, doc: TensorType) -> TensorType:
         """Evaluate the user-doc Q model
         Args:
-            user (torch.Tensor): User embedding of shape (batch_size,
+            user (TensorType): User embedding of shape (batch_size,
                 embedding_size).
-            doc (torch.Tensor): Doc embeddings of shape (batch_size,
-                num_docs, embedding_size).
+            doc (TensorType): Doc embeddings of shape (batch_size, num_docs,
+                embedding_size).
         Returns:
-            score (torch.Tensor): q_values of shape (batch_size, num_docs+1).
+            score (TensorType): q_values of shape (batch_size, num_docs + 1).
         """
         batch_size, num_docs, embedding_size = doc.shape
         doc_flat = doc.view((batch_size * num_docs, embedding_size))
@@ -68,17 +68,17 @@ class UserChoiceModel(nn.Module):
         self.a = nn.Parameter(torch.tensor(0, dtype=torch.float))
         self.b = nn.Parameter(torch.tensor(0, dtype=torch.float))
 
-    def forward(self, user: torch.Tensor, doc: torch.Tensor) -> torch.Tensor:
+    def forward(self, user: TensorType, doc: TensorType) -> TensorType:
         """Evaluate the user choice model
 
         Args:
-            user (torch.Tensor): User embeddings of shape (batch_size,
+            user (TensorType): User embeddings of shape (batch_size,
                 embedding_size).
-            doc (torch.Tensor): Doc embeddings of shape (batch_size,
-                num_docs, embedding_size).
+            doc (TensorType): Doc embeddings of shape (batch_size, num_docs,
+                embedding_size).
 
         Returns:
-            score (torch.Tensor): logits of shape (batch_size,
+            score (TensorType): logits of shape (batch_size,
                 num_docs + 1), where the last dimension represents no_click.
         """
         batch_size = user.shape[0]
