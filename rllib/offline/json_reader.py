@@ -150,6 +150,7 @@ def _from_json(batch: str) -> SampleBatchType:
 
     if data_type == "SampleBatch":
         for k, v in data.items():
+            print("Trying to unpack {}: {}".format(k, v))#TODO
             data[k] = unpack_if_needed(v)
         return SampleBatch(data)
     elif data_type == "MultiAgentBatch":
