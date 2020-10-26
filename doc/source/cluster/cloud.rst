@@ -65,10 +65,7 @@ AWS/GCP/Azure
             # Get a remote screen on the head node.
             $ ray attach ray/python/ray/autoscaler/azure/example-full.yaml
             # test ray setup
-            # enable conda environment
-            $ exec bash -l
-            $ conda activate py37_tensorflow
-            $ python -c 'import ray; ray.init()'
+            $ python -c 'import ray; ray.init(address="auto")'
             $ exit
             # Tear down the cluster.
             $ ray down ray/python/ray/autoscaler/azure/example-full.yaml

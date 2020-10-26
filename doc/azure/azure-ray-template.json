@@ -131,7 +131,7 @@
         "imagePublisher": "microsoft-dsvm",
         "imageOffer": "ubuntu-1804",
         "imageSku": "1804",
-        "imageVersion": "latest"
+        "imageVersion": "20.07.06"
     },
     "resources": [
         {
