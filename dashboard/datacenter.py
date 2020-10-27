@@ -111,15 +111,13 @@ class DataOrganizer:
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         node_stats = DataSource.node_stats.get(node_id, {})
         node = DataSource.nodes.get(node_id, {})
-
+        node_ip = DataSource.node_id_to_ip.get(node_id)
         # Merge node log count information into the payload
-        log_info = DataSource.ip_and_pid_to_logs.get(node_physical_stats["ip"],
-                                                     {})
+        log_info = DataSource.ip_and_pid_to_logs.get(node_ip, {})
         node_log_count = 0
         for entries in log_info.values():
             node_log_count += len(entries)
-        error_info = DataSource.ip_and_pid_to_errors.get(
-            node_physical_stats["ip"], {})
+        error_info = DataSource.ip_and_pid_to_errors.get(node_ip, {})
         node_err_count = 0
         for entries in error_info.values():
             node_err_count += len(entries)
