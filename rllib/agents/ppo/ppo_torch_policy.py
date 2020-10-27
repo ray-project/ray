@@ -19,6 +19,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
     explained_variance, sequence_mask
@@ -227,6 +228,8 @@ class ValueNetworkMixin:
                 ], convert_to_torch_tensor(np.asarray([1]), self.device))
                 # [0] = remove the batch dim.
                 return self.model.value_function()[0]
+
+            self.view_requirements[SampleBatch.VF_PREDS] = ViewRequirement()
 
         # When not doing GAE, we do not require the value function's output.
         else:
