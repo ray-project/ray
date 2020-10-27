@@ -952,14 +952,6 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
           PollOwnerForActorOutOfScope(actor);
         }
 
-        auto &workers = owners_[actor->GetNodeID()];
-        auto it = workers.find(actor->GetWorkerID());
-        if (it == workers.end()) {
-          std::shared_ptr<rpc::CoreWorkerClientInterface> client =
-              worker_client_factory_(actor->GetOwnerAddress());
-          workers.emplace(actor->GetOwnerID(), Owner(std::move(client)));
-        }
-
         if (!actor->GetWorkerID().IsNil()) {
           RAY_CHECK(!actor->GetNodeID().IsNil());
           node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
