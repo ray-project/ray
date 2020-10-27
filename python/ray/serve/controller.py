@@ -3,7 +3,7 @@ from collections import defaultdict
 import os
 import random
 import time
-from typing import Union, Dict, Any, List, Tuple
+from typing import Optional, Union, Dict, Any, List, Tuple
 from pydantic import BaseModel
 
 import ray
@@ -176,6 +176,10 @@ class ServeController:
                 self._recover_from_checkpoint(checkpoint))
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+        self.epoch_id = random.randint(0, 99999)
+        # Map observer-key to list of asyncio events
+        self.notifier_events = defaultdict(list)
 
     def _start_routers_if_needed(self) -> None:
         """Start a router on every node if it doesn't already exist."""
@@ -871,6 +875,10 @@ class ServeController:
 
             await self.broadcast_backend_config(backend_tag)
 
+        # workers updated
+        self.epoch_id += 1
+        [event.set() for event in self.notifier_events["workers"]]
+
     async def broadcast_backend_config(self, backend_tag: str) -> None:
         backend_config = self.backends[backend_tag].backend_config
         broadcast_futures = []
@@ -906,3 +914,16 @@ class ServeController:
         # TODO: remove old router stats when removing them.
         for backend, queue_length in queue_lengths.items():
             self.backend_stats[backend][router_name] = queue_length
+
+    async def long_pull_state(self, state_key, epoch_id: int = None):
+        assert state_key == "workers"
+
+        if epoch_id == self.epoch_id:
+            event = asyncio.Event()
+            self.notifier_events[state_key].append(event)
+
+            await event.wait()
+
+            assert epoch_id != self.epoch_id
+
+        return self.workers, self.epoch_id

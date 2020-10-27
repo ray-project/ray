@@ -5,6 +5,7 @@ import time
 from typing import DefaultDict, List, Dict, Any, Optional
 import pickle
 from dataclasses import dataclass, field
+from ray.actor import ActorHandle
 
 from ray.exceptions import RayTaskError
 
@@ -64,6 +65,11 @@ class Query:
     def ray_deserialize(value):
         kwargs = pickle.loads(value)
         return Query(**kwargs)
+
+
+class ReplicaSet:
+    def __init__(self) -> None:
+        self.worker_replicas: List[ActorHandle]
 
 
 class Router:

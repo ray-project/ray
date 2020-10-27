@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional, Dict, Any, Union
 
 from ray.serve.context import TaskContext
@@ -42,6 +43,17 @@ class RayServeHandle:
         self.shard_key = shard_key
         self.http_method = http_method
         self.http_headers = http_headers
+
+        from ray import serve
+        self.controller = serve.connect()._controller
+        asyncio.get_event_loop().create_task(self.pull_state())
+
+    async def pull_state(self):
+        epoch_id = None
+        while True:
+            workers, epoch_id = await self.controller.long_pull_state.remote(
+                "workers", epoch_id)
+            print(workers, epoch_id)
 
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
