@@ -6,7 +6,8 @@ from typing import Dict, Optional, Tuple
 
 from ray.tune import ExperimentAnalysis
 from ray.tune.sample import Domain, Float, Quantized
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNSET_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 
@@ -242,10 +243,8 @@ class BayesOptSearch(Searcher):
         """
         if not self.optimizer:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNSET_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
 
         # If we have more active trials than the allowed maximum
         total_live_trials = len(self._live_trial_mapping)

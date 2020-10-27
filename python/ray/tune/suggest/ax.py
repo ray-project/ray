@@ -3,7 +3,8 @@ from typing import Dict, List, Optional, Union
 from ax.service.ax_client import AxClient
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNSET_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
@@ -203,10 +204,8 @@ class AxSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._ax:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNSET_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
 
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:

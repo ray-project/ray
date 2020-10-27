@@ -5,7 +5,8 @@ from typing import Dict, List, Optional, Tuple, Union
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized, Uniform
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNSET_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
@@ -165,10 +166,8 @@ class OptunaSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._space:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNSET_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
 
         if trial_id not in self._ot_trials:
             ot_trial_id = self._storage.create_new_trial(
