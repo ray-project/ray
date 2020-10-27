@@ -312,9 +312,6 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 "Ignoring the exception and "
                 "attempting to shut down the cluster nodes anyway.")
 
-            cli_logger.old_exception(
-                logger, "Ignoring error attempting a clean shutdown.")
-
     provider = _get_node_provider(config["provider"], config["cluster_name"])
 
     def remaining_nodes():
@@ -372,10 +369,6 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
     with LogTimer("teardown_cluster: done."):
         while A:
-            cli_logger.old_info(
-                logger, "teardown_cluster: "
-                "Shutting down {} nodes...", len(A))
-
             provider.terminate_nodes(A)
 
             cli_logger.print(
@@ -498,9 +491,6 @@ def get_or_create_head_node(config: Dict[str, Any],
             "No head node found. "
             "Launching a new cluster.",
             _abort=True)
-        cli_logger.old_confirm("This will create a new cluster", yes)
-    elif not no_restart:
-        cli_logger.old_confirm("This will restart cluster services", yes)
 
     if head_node:
         if restart_only:

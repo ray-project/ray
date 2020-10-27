@@ -721,13 +721,6 @@ class _CliLogger():
 
         return res
 
-    def old_confirm(self, msg: str, yes: bool):
-        """Old confirm dialog proxy.
-
-        Let `click` display a confirm dialog iff new logging is disabled.
-        """
-        return None if yes else click.confirm(msg, abort=True)
-
 
 class SilentClickException(click.ClickException):
     """`ClickException` that does not print a message.
