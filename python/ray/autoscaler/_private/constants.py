@@ -1,6 +1,6 @@
 import os
 
-from ray.ray_constants import (  # noqa F401     
+from ray.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL, LOGGER_FORMAT,
     MEMORY_RESOURCE_UNIT_BYTES, RESOURCES_ENVIRONMENT_VARIABLE)
 
@@ -36,6 +36,3 @@ AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 # Max number of retries to create an EC2 node (retry different subnet)
 BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
-
-# Host path that Docker mounts attach to
-DOCKER_MOUNT_PREFIX = "/tmp/ray_tmp_mount"

@@ -4,8 +4,6 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler._private.constants import DOCKER_MOUNT_PREFIX
-
 logger = logging.getLogger(__name__)
 
 
@@ -66,8 +64,12 @@ def check_docker_image(cname):
     return _check_helper(cname, ".Config.Image")
 
 
-def docker_start_cmds(user, image, mount_dict, cname, user_options):
-    mount = {f"{DOCKER_MOUNT_PREFIX}/{dst}": dst for dst in mount_dict}
+def docker_start_cmds(user, image, mount_dict, container_name, user_options,
+                      cluster_name):
+    # Imported here due to circular dependency.
+    from ray.autoscaler.sdk import get_docker_host_mount_location
+    docker_mount_prefix = get_docker_host_mount_location(cluster_name)
+    mount = {f"{docker_mount_prefix}/{dst}": dst for dst in mount_dict}
 
     # TODO(ilr) Move away from defaulting to /root/
     mount_flags = " ".join([
@@ -82,7 +84,8 @@ def docker_start_cmds(user, image, mount_dict, cname, user_options):
 
     user_options_str = " ".join(user_options)
     docker_run = [
-        "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
-        mount_flags, env_flags, user_options_str, "--net=host", image, "bash"
+        "docker", "run", "--rm", "--name {}".format(container_name), "-d",
+        "-it", mount_flags, env_flags, user_options_str, "--net=host", image,
+        "bash"
     ]
     return " ".join(docker_run)
