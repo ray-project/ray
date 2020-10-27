@@ -1435,8 +1435,6 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Return the resources that were being used by this worker.
     if (new_scheduler_enabled_) {
-      new_resource_scheduler_->SubtractCPUResourceInstances(
-          worker->GetBorrowedCPUInstances());
       new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
       worker->ClearAllocatedInstances();
       new_resource_scheduler_->FreeLocalTaskResources(
@@ -2324,6 +2322,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
     if (cpu_instances.size() > 0) {
       new_resource_scheduler_->SubtractCPUResourceInstances(cpu_instances);
       new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());
+      worker->ClearBorrowedCPUInstances();
       worker->MarkUnblocked();
     }
     ScheduleAndDispatch();
