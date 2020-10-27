@@ -71,6 +71,7 @@ struct TaskOptions {
   std::unordered_map<std::string, double> resources;
   /// Environment variables to update for this task.  Maps a variable name to its
   /// value.  Can override existing environment variables and introduce new ones.
+  /// Propagated to child actors and/or tasks.
   const std::unordered_map<std::string, std::string> override_environment_variables;
 };
 
@@ -135,6 +136,7 @@ struct ActorCreationOptions {
   bool placement_group_capture_child_tasks = true;
   /// Environment variables to update for this actor.  Maps a variable name to its
   /// value.  Can override existing environment variables and introduce new ones.
+  /// Propagated to child actors and/or tasks.
   const std::unordered_map<std::string, std::string> override_environment_variables;
 };
 

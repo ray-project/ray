@@ -830,8 +830,7 @@ def test_override_environment_variables_nested_task(ray_start_regular):
         }).remote("a")) == "b")
 
 
-def test_override_environment_variables_nested_complex(
-        ray_start_regular_shared):
+def test_override_environment_variables_nested_complex(ray_start_regular):
     @ray.remote
     def get_env(key):
         return os.environ.get(key)
