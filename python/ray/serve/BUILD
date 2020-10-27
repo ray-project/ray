@@ -108,7 +108,7 @@ py_test(
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
     name = "test_controller_crashes",
-    size = "medium",
+    size = "large",
     srcs = glob(["tests/test_controller_crashes.py",
                 "tests/test_api.py",
                 "tests/test_failure.py"],
