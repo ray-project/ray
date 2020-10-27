@@ -110,8 +110,8 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
                     ) - current_iter >= datetime.timedelta(minutes=5):
                         current_iter = datetime.datetime.now()
                         elapsed = datetime.datetime.now() - start
-                        print(f"Still building {tagged_name} after "
-                              f"{elapsed.seconds} seconds")
+#                         print(f"Still building {tagged_name} after "
+#                               f"{elapsed.seconds} seconds")
                     full_output += line.decode("utf-8")
             except Exception as e:
                 print(f"FAILURE with error {e}")
