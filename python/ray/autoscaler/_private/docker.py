@@ -4,8 +4,6 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler.sdk import get_docker_host_mount_location
-
 logger = logging.getLogger(__name__)
 
 
@@ -68,6 +66,8 @@ def check_docker_image(cname):
 
 def docker_start_cmds(user, image, mount_dict, container_name, user_options,
                       cluster_name):
+    # Imported here due to circular dependency.
+    from ray.autoscaler.sdk import get_docker_host_mount_location
     docker_mount_prefix = get_docker_host_mount_location(cluster_name)
     mount = {f"{docker_mount_prefix}/{dst}": dst for dst in mount_dict}
 

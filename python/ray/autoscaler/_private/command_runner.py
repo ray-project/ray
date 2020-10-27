@@ -11,7 +11,6 @@ import sys
 import time
 import warnings
 
-from ray.autoscaler.sdk import get_docker_host_mount_location
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
@@ -599,7 +598,7 @@ class DockerCommandRunner(CommandRunnerInterface):
     def run_rsync_up(self, source, target, options=None):
         options = options or {}
         host_destination = os.path.join(
-            get_docker_host_mount_location(
+            self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name), target.lstrip("/"))
 
         self.ssh_command_runner.run(
@@ -620,7 +619,7 @@ class DockerCommandRunner(CommandRunnerInterface):
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
         host_source = os.path.join(
-            get_docker_host_mount_location(
+            self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name), source.lstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
@@ -752,7 +751,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.ssh_command_runner.run(
                     "docker cp {src} {container}:{dst}".format(
                         src=os.path.join(
-                            get_docker_host_mount_location(
+                            self._get_docker_host_mount_location(
                                 self.ssh_command_runner.cluster_name), mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
@@ -776,3 +775,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 return []
 
         return []
+
+    def _get_docker_host_mount_location(self, cluster_name: str) -> str:
+        """Return the docker host mount location."""
+        # Imported here due to circular dependency in imports
+        from ray.autoscaler.sdk import get_docker_host_mount_location
+        return get_docker_host_mount_location(cluster_name)
