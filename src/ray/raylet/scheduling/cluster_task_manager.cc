@@ -171,11 +171,10 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
       waiting_tasks_.erase(it);
     }
   }
+  RAY_LOG(ERROR) << "unblock " << DebugString();
 }
 
 void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker) {
-  cluster_resource_scheduler_->SubtractCPUResourceInstances(
-      worker->GetBorrowedCPUInstances());
   cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
   worker->ClearAllocatedInstances();
 }

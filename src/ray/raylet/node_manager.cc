@@ -2572,8 +2572,6 @@ bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
     task = worker.GetAssignedTask();
     // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ?
     if (worker.GetAllocatedInstances() != nullptr) {
-      new_resource_scheduler_->SubtractCPUResourceInstances(
-          worker.GetBorrowedCPUInstances());
       new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
       worker.ClearAllocatedInstances();
     }
