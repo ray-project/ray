@@ -83,6 +83,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// If this is set to 0, workers will bind on random ports.
   /// \param max_worker_port The highest port number that workers started will bind on.
   /// If this is not set to 0, min_worker_port must also not be set to 0.
+  /// \param worker_ports An explicit list of open ports that workers started will bind
+  /// on. This takes precedence over min_worker_port and max_worker_port.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   /// \param raylet_config The raylet config list of this node.
@@ -91,6 +93,7 @@ class WorkerPool : public WorkerPoolInterface {
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
              int num_workers_soft_limit, int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
+             const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              const std::unordered_map<std::string, std::string> &raylet_config,
@@ -411,7 +414,7 @@ class WorkerPool : public WorkerPoolInterface {
   int num_initial_python_workers_for_first_job_;
 
   /// This map tracks the latest infos of unfinished jobs.
-  absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
+  absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
 
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
   /// workers in FIFO order. The second element of std::pair is the time a worker becomes

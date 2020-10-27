@@ -115,7 +115,7 @@ Many Tune features rely on checkpointing, including the usage of certain Trial S
             for iter in range(start, 100):
                 time.sleep(1)
 
-                with tune.checkpoint_dir(step=step):
+                with tune.checkpoint_dir(step=step) as checkpoint_dir:
                     path = os.path.join(checkpoint_dir, "checkpoint")
                     with open(path, "w") as f:
                         f.write(json.dumps({"step": start}))

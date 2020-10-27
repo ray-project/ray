@@ -17,71 +17,80 @@ ClusterTaskManager::ClusterTaskManager(
       get_node_info_(get_node_info) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
-  size_t queue_size = tasks_to_schedule_.size();
   bool did_schedule = false;
 
-  // Check every task in task_to_schedule queue to see
-  // whether it can be scheduled. This avoids head-of-line
-  // blocking where a task which cannot be scheduled because
-  // there are not enough available resources blocks other
-  // tasks from being scheduled.
-  while (queue_size-- > 0) {
-    Work work = tasks_to_schedule_.front();
-    tasks_to_schedule_.pop_front();
-    Task task = std::get<0>(work);
-    auto request_resources =
-        task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
-    int64_t _unused;
-    // TODO (Alex): We should distinguish between infeasible tasks and a fully
-    // utilized cluster.
-    std::string node_id_string =
-        cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
-    if (node_id_string.empty()) {
-      /// There is no node that has available resources to run the request.
-      tasks_to_schedule_.push_back(work);
-      continue;
-    } else {
-      if (node_id_string == self_node_id_.Binary()) {
-        // Warning: WaitForTaskArgsRequests must execute (do not let it short
-        // circuit if did_schedule is true).
-        bool task_scheduled = WaitForTaskArgsRequests(work);
-        did_schedule = task_scheduled || did_schedule;
+  for (auto shapes_it = tasks_to_schedule_.begin();
+       shapes_it != tasks_to_schedule_.end();) {
+    auto &work_queue = shapes_it->second;
+    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
+      // Check every task in task_to_schedule queue to see
+      // whether it can be scheduled. This avoids head-of-line
+      // blocking where a task which cannot be scheduled because
+      // there are not enough available resources blocks other
+      // tasks from being scheduled.
+      Work work = *work_it;
+      Task task = std::get<0>(work);
+      auto request_resources =
+          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+      int64_t _unused;
+      // TODO (Alex): We should distinguish between infeasible tasks and a fully
+      // utilized cluster.
+      std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+          request_resources, &_unused);
+      if (node_id_string.empty()) {
+        // There is no node that has available resources to run the request.
+        // Move on to the next shape.
+        break;
       } else {
-        // Should spill over to a different node.
-        cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
-                                                                 request_resources);
+        if (node_id_string == self_node_id_.Binary()) {
+          // Warning: WaitForTaskArgsRequests must execute (do not let it short
+          // circuit if did_schedule is true).
+          bool task_scheduled = WaitForTaskArgsRequests(work);
+          did_schedule = task_scheduled || did_schedule;
+        } else {
+          // Should spill over to a different node.
+          cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
+                                                                   request_resources);
 
-        NodeID node_id = NodeID::FromBinary(node_id_string);
-        auto node_info_opt = get_node_info_(node_id);
-        // gcs_client_->Nodes().Get(node_id);
-        RAY_CHECK(node_info_opt)
-            << "Spilling back to a node manager, but no GCS info found for node "
-            << node_id;
-        auto reply = std::get<1>(work);
-        auto callback = std::get<2>(work);
-        Spillback(node_id, node_info_opt->node_manager_address(),
-                  node_info_opt->node_manager_port(), reply, callback);
+          NodeID node_id = NodeID::FromBinary(node_id_string);
+          auto node_info_opt = get_node_info_(node_id);
+          // gcs_client_->Nodes().Get(node_id);
+          RAY_CHECK(node_info_opt)
+              << "Spilling back to a node manager, but no GCS info found for node "
+              << node_id;
+          auto reply = std::get<1>(work);
+          auto callback = std::get<2>(work);
+          Spillback(node_id, node_info_opt->node_manager_address(),
+                    node_info_opt->node_manager_port(), reply, callback);
+        }
+        work_it = work_queue.erase(work_it);
       }
+    }
+    if (work_queue.empty()) {
+      shapes_it = tasks_to_schedule_.erase(shapes_it);
+    } else {
+      shapes_it++;
     }
   }
   return did_schedule;
 }
 
 bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
-  Task task = std::get<0>(work);
+  const auto &task = std::get<0>(work);
+  const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
     bool args_ready = fulfills_dependencies_func_(task);
     if (args_ready) {
-      tasks_to_dispatch_.push_back(work);
+      tasks_to_dispatch_[scheduling_key].push_back(work);
     } else {
       can_dispatch = false;
       TaskID task_id = task.GetTaskSpecification().TaskId();
       waiting_tasks_[task_id] = work;
     }
   } else {
-    tasks_to_dispatch_.push_back(work);
+    tasks_to_dispatch_[scheduling_key].push_back(work);
   }
   return can_dispatch;
 }
@@ -94,62 +103,71 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   // blocking where a task which cannot be dispatched because
   // there are not enough available resources blocks other
   // tasks from being dispatched.
-  for (size_t queue_size = tasks_to_dispatch_.size(); queue_size > 0; queue_size--) {
-    auto work = tasks_to_dispatch_.front();
-    auto task = std::get<0>(work);
-    auto spec = task.GetTaskSpecification();
-    tasks_to_dispatch_.pop_front();
+  for (auto shapes_it = tasks_to_dispatch_.begin();
+       shapes_it != tasks_to_dispatch_.end();) {
+    auto &dispatch_queue = shapes_it->second;
+    for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
+      auto work = *work_it;
+      auto task = std::get<0>(work);
+      auto spec = task.GetTaskSpecification();
 
-    std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
-    if (!worker) {
-      // No worker available to schedule this task.
-      // Put the task back in the dispatch queue.
-      tasks_to_dispatch_.push_front(work);
-      return;
+      std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
+      if (!worker) {
+        // No worker available, we won't be able to schedule any kind of task.
+        return;
+      }
+
+      std::shared_ptr<TaskResourceInstances> allocated_instances(
+          new TaskResourceInstances());
+      bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
+          spec.GetRequiredResources().GetResourceMap(), allocated_instances);
+      if (!schedulable) {
+        // Not enough resources to schedule this task.
+        worker_pool.PushWorker(worker);
+        // All the tasks in this queue are the same, so move on to the next queue.
+        break;
+      }
+
+      auto reply = std::get<1>(work);
+      auto callback = std::get<2>(work);
+      worker->SetOwnerAddress(spec.CallerAddress());
+      if (spec.IsActorCreationTask()) {
+        // The actor belongs to this worker now.
+        worker->SetLifetimeAllocatedInstances(allocated_instances);
+      } else {
+        worker->SetAllocatedInstances(allocated_instances);
+      }
+      worker->AssignTaskId(spec.TaskId());
+      if (!RayConfig::instance().enable_multi_tenancy()) {
+        worker->AssignJobId(spec.JobId());
+      }
+      worker->SetAssignedTask(task);
+      Dispatch(worker, leased_workers, spec, reply, callback);
+      work_it = dispatch_queue.erase(work_it);
     }
-
-    std::shared_ptr<TaskResourceInstances> allocated_instances(
-        new TaskResourceInstances());
-    bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
-        spec.GetRequiredResources().GetResourceMap(), allocated_instances);
-    if (!schedulable) {
-      // Not enough resources to schedule this task.
-      // Put it back at the end of the dispatch queue.
-      tasks_to_dispatch_.push_back(work);
-      worker_pool.PushWorker(worker);
-      // Try next task in the dispatch queue.
-      continue;
-    }
-
-    auto reply = std::get<1>(work);
-    auto callback = std::get<2>(work);
-    worker->SetOwnerAddress(spec.CallerAddress());
-    if (spec.IsActorCreationTask()) {
-      // The actor belongs to this worker now.
-      worker->SetLifetimeAllocatedInstances(allocated_instances);
+    if (dispatch_queue.empty()) {
+      shapes_it = tasks_to_dispatch_.erase(shapes_it);
     } else {
-      worker->SetAllocatedInstances(allocated_instances);
+      shapes_it++;
     }
-    worker->AssignTaskId(spec.TaskId());
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      worker->AssignJobId(spec.JobId());
-    }
-    worker->SetAssignedTask(task);
-    Dispatch(worker, leased_workers, spec, reply, callback);
   }
 }
 
 void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> callback) {
   Work work = std::make_tuple(task, reply, callback);
-  tasks_to_schedule_.push_back(work);
+  const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
+  tasks_to_schedule_[scheduling_class].push_back(work);
 }
 
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
   for (const auto &task_id : ready_ids) {
     auto it = waiting_tasks_.find(task_id);
     if (it != waiting_tasks_.end()) {
-      tasks_to_dispatch_.push_back(it->second);
+      auto work = it->second;
+      const auto &scheduling_key =
+          std::get<0>(work).GetTaskSpecification().GetSchedulingClass();
+      tasks_to_dispatch_[scheduling_key].push_back(work);
       waiting_tasks_.erase(it);
     }
   }
@@ -163,16 +181,30 @@ void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> wor
 }
 
 bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
-  for (auto iter = tasks_to_schedule_.begin(); iter != tasks_to_schedule_.end(); iter++) {
-    if (std::get<0>(*iter).GetTaskSpecification().TaskId() == task_id) {
-      tasks_to_schedule_.erase(iter);
-      return true;
+  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
+       shapes_it++) {
+    auto &work_queue = shapes_it->second;
+    for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
+      if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
+        work_queue.erase(work_it);
+        if (work_queue.empty()) {
+          tasks_to_schedule_.erase(shapes_it);
+        }
+        return true;
+      }
     }
   }
-  for (auto iter = tasks_to_dispatch_.begin(); iter != tasks_to_dispatch_.end(); iter++) {
-    if (std::get<0>(*iter).GetTaskSpecification().TaskId() == task_id) {
-      tasks_to_dispatch_.erase(iter);
-      return true;
+  for (auto shapes_it = tasks_to_dispatch_.begin(); shapes_it != tasks_to_dispatch_.end();
+       shapes_it++) {
+    auto &work_queue = shapes_it->second;
+    for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
+      if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
+        work_queue.erase(work_it);
+        if (work_queue.empty()) {
+          tasks_to_dispatch_.erase(shapes_it);
+        }
+        return true;
+      }
     }
   }
 
@@ -195,10 +227,13 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
     RAY_CHECK(false) << "TODO";
   } else {
     // TODO (Alex): Implement the 1-CPU task optimization.
-    for (const auto &work : tasks_to_schedule_) {
-      const auto &task = std::get<0>(work);
+    for (const auto &pair : tasks_to_schedule_) {
+      const auto &scheduling_class = pair.first;
       const auto &resources =
-          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+              .GetResourceMap();
+      const auto &queue = pair.second;
+      const auto &count = queue.size();
 
       auto by_shape_entry = resource_load_by_shape->Add();
 
@@ -206,47 +241,37 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
         // Add to `resource_loads`.
         const auto &label = resource.first;
         const auto &quantity = resource.second;
-        const auto &entry = resource_loads->find(label);
-        if (entry == resource_loads->end()) {
-          (*resource_loads)[label] = quantity;
-        } else {
-          (*resource_loads)[label] = entry->second + quantity;
-        }
+        (*resource_loads)[label] += quantity * count;
 
-        // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
         // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
         // that the entire cluster is utilized.
-        by_shape_entry->set_num_infeasible_requests_queued(1);
+        by_shape_entry->set_num_infeasible_requests_queued(count);
       }
     }
 
-    for (const auto &work : tasks_to_dispatch_) {
-      const auto &task = std::get<0>(work);
+    for (const auto &pair : tasks_to_dispatch_) {
+      const auto &scheduling_class = pair.first;
       const auto &resources =
-          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+              .GetResourceMap();
+      const auto &queue = pair.second;
+      const auto &count = queue.size();
 
       auto by_shape_entry = resource_load_by_shape->Add();
 
-      for (auto to_add_it = resources.begin(); to_add_it != resources.end();
-           to_add_it++) {
+      for (const auto &resource : resources) {
         // Add to `resource_loads`.
-        const auto &label = to_add_it->first;
-        const auto &quantity = to_add_it->second;
-        const auto &entry = resource_loads->find(label);
-        if (entry == resource_loads->end()) {
-          (*resource_loads)[label] = quantity;
-        } else {
-          (*resource_loads)[label] = entry->second + quantity;
-        }
+        const auto &label = resource.first;
+        const auto &quantity = resource.second;
+        (*resource_loads)[label] += quantity * count;
 
-        // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
         // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
         // that the entire cluster is utilized.
-        by_shape_entry->set_num_ready_requests_queued(1);
+        by_shape_entry->set_num_ready_requests_queued(count);
       }
     }
   }

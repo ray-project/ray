@@ -216,6 +216,12 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
+        mixed_config = {"a": tune.uniform(5, 6), "b": tune.uniform(8, 9)}
+        searcher = AxSearch(space=mixed_config, metric="a", mode="max")
+        config = searcher.suggest("0")
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
+
     def testConvertBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
 
@@ -257,6 +263,12 @@ class SearchSpaceTest(unittest.TestCase):
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         self.assertLess(trial.config["b"]["z"], 1e-2)
+
+        mixed_config = {"a": tune.uniform(5, 6), "b": (8., 9.)}
+        searcher = BayesOptSearch(space=mixed_config, metric="a", mode="max")
+        config = searcher.suggest("0")
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
 
     def testConvertBOHB(self):
         from ray.tune.suggest.bohb import TuneBOHB
@@ -301,6 +313,15 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         self.assertIn(trial.config["a"], [2, 3, 4])
         self.assertEqual(trial.config["b"]["y"], 4)
+
+        mixed_config = {
+            "a": tune.uniform(5, 6),
+            "b": tune.uniform(8, 9)  # Cannot mix ConfigSpace and Dict
+        }
+        searcher = TuneBOHB(space=mixed_config, metric="a", mode="max")
+        config = searcher.suggest("0")
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
 
     def testConvertDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
@@ -365,6 +386,21 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         self.assertLess(trial.config["point"], 1e-2)
 
+        mixed_config = {
+            "a": tune.uniform(5, 6),
+            "b": tune.uniform(8, 9)  # Cannot mix List and Dict
+        }
+        searcher = DragonflySearch(
+            space=mixed_config,
+            optimizer="bandit",
+            domain="euclidean",
+            metric="a",
+            mode="max")
+        config = searcher.suggest("0")
+
+        self.assertTrue(5 <= config["point"][0] <= 6)
+        self.assertTrue(8 <= config["point"][1] <= 9)
+
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
@@ -407,6 +443,12 @@ class SearchSpaceTest(unittest.TestCase):
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
+
+        mixed_config = {"a": tune.uniform(5, 6), "b": hp.uniform("b", 8, 9)}
+        searcher = HyperOptSearch(space=mixed_config, metric="a", mode="max")
+        config = searcher.suggest("0")
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
 
     def testConvertHyperOptNested(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
@@ -496,6 +538,19 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
+        mixed_config = {
+            "a": tune.uniform(5, 6),
+            "b": tune.uniform(8, 9)  # Cannot mix Nevergrad cfg and tune
+        }
+        searcher = NevergradSearch(
+            space=mixed_config,
+            optimizer=ng.optimizers.OnePlusOne,
+            metric="a",
+            mode="max")
+        config = searcher.suggest("0")
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
+
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
         from optuna.samplers import RandomSampler
@@ -536,6 +591,15 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
+        mixed_config = {
+            "a": tune.uniform(5, 6),
+            "b": tune.uniform(8, 9)  # Cannot mix List and Dict
+        }
+        searcher = OptunaSearch(space=mixed_config, metric="a", mode="max")
+        config = searcher.suggest("0")
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
+
     def testConvertSkOpt(self):
         from ray.tune.suggest.skopt import SkOptSearch
 
@@ -570,6 +634,12 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         self.assertIn(trial.config["a"], [2, 3, 4])
         self.assertEqual(trial.config["b"]["y"], 4)
+
+        mixed_config = {"a": tune.uniform(5, 6), "b": (8, 9)}
+        searcher = SkOptSearch(space=mixed_config, metric="a", mode="max")
+        config = searcher.suggest("0")
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
 
     def testConvertZOOpt(self):
         from ray.tune.suggest.zoopt import ZOOptSearch
@@ -626,6 +696,20 @@ class SearchSpaceTest(unittest.TestCase):
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         self.assertIn(trial.config["b"]["y"], [2, 4, 6, 8])
+
+        mixed_config = {
+            "a": tune.uniform(5, 6),
+            "b": (ValueType.CONTINUOUS, [8, 9], 1e-4)
+        }
+        searcher = ZOOptSearch(
+            dim_dict=mixed_config,
+            budget=5,
+            metric="a",
+            mode="max",
+            **zoopt_search_config)
+        config = searcher.suggest("0")
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
 
 
 if __name__ == "__main__":

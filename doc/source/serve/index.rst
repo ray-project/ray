@@ -37,7 +37,7 @@ Since Serve is built on Ray, it also allows you to scale to many machines, in yo
 Installation
 ============
 
-Ray Serve supports Python versions 3.5 and higher. To install Ray Serve:
+Ray Serve supports Python versions 3.6 and higher. To install Ray Serve:
 
 .. code-block:: bash
 

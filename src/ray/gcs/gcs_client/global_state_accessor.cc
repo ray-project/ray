@@ -237,6 +237,16 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
   return true;
 }
 
+std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {
+  std::vector<std::string> placement_group_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGetAll(
+      TransformForMultiItemCallback<rpc::PlacementGroupTableData>(
+          placement_group_table_data, promise)));
+  promise.get_future().get();
+  return placement_group_table_data;
+}
+
 std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(
     const PlacementGroupID &placement_group_id) {
   std::unique_ptr<std::string> placement_group_table_data;
