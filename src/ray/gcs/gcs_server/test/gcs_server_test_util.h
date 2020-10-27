@@ -380,21 +380,6 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncSubscribeHeartbeat(
-        const gcs::SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-        const gcs::StatusCallback &done) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncReportBatchHeartbeat(
-        const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-        const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
-    }
-
     Status AsyncSubscribeBatchHeartbeat(
         const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
         const gcs::StatusCallback &done) override {
