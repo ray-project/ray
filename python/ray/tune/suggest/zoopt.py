@@ -7,7 +7,7 @@ import ray.cloudpickle as pickle
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     Uniform
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNSET_SEARCH_SPACE
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 from zoopt import ValueType
@@ -209,8 +209,14 @@ class ZOOptSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._dim_dict or not self.optimizer:
             raise RuntimeError(
-                UNSET_SEARCH_SPACE.format(
+                UNDEFINED_SEARCH_SPACE.format(
                     cls=self.__class__.__name__, space="dim_dict"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         _solution = self.optimizer.suggest()
 

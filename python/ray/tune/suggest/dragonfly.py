@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Union
 
 from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNSET_SEARCH_SPACE
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict
 
@@ -273,8 +273,15 @@ class DragonflySearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._opt:
             raise RuntimeError(
-                UNSET_SEARCH_SPACE.format(
+                UNDEFINED_SEARCH_SPACE.format(
                     cls=self.__class__.__name__, space="space"))
+
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         if self._initial_points:
             suggested_config = self._initial_points[0]

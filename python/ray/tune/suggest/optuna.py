@@ -6,7 +6,7 @@ from ray.tune.result import TRAINING_ITERATION
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized, Uniform
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNSET_SEARCH_SPACE
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
@@ -166,8 +166,14 @@ class OptunaSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._space:
             raise RuntimeError(
-                UNSET_SEARCH_SPACE.format(
+                UNDEFINED_SEARCH_SPACE.format(
                     cls=self.__class__.__name__, space="space"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         if trial_id not in self._ot_trials:
             ot_trial_id = self._storage.create_new_trial(

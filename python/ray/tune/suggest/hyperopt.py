@@ -11,7 +11,7 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized, \
     Uniform
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNSET_SEARCH_SPACE
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
 
 try:
@@ -201,8 +201,15 @@ class HyperOptSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self.domain:
             raise RuntimeError(
-                UNSET_SEARCH_SPACE.format(
+                UNDEFINED_SEARCH_SPACE.format(
                     cls=self.__class__.__name__, space="space"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
+
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None

@@ -12,7 +12,7 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Uniform
 from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNSET_SEARCH_SPACE
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
@@ -157,8 +157,15 @@ class TuneBOHB(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._space:
             raise RuntimeError(
-                UNSET_SEARCH_SPACE.format(
+                UNDEFINED_SEARCH_SPACE.format(
                     cls=self.__class__.__name__, space="space"))
+
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         if len(self.running) < self._max_concurrent:
             # This parameter is not used in hpbandster implementation.
