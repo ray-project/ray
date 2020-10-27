@@ -94,13 +94,11 @@ class ConfigurationStore:
         self.traffic_policies = dict()
         self.routes = dict()
 
-    def get_backend_configs(
-            self, as_dict: bool = False
-    ) -> Dict[BackendTag, Union[BackendConfig, Dict[str, Any]]]:
+    def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
         result = {}
         for tag, info in self.backends.items():
             config = info.backend_config
-            result[tag] = config.__dict__ if as_dict else config
+            result[tag] = config
         return result
 
 
@@ -339,7 +337,7 @@ class ActorNursery:
         Returns whether or not any actors were removed (a checkpoint should
         be taken).
         """
-        checkpoint_required = False
+        actor_stopped = False
         all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
         to_stop = []
         for node_id in self.routers_cache:
@@ -351,9 +349,9 @@ class ActorNursery:
         for node_id in to_stop:
             router_handle = self.routers_cache.pop(node_id)
             ray.kill(router_handle, no_restart=True)
-            checkpoint_required = True
+            actor_stopped = True
 
-        return checkpoint_required
+        return actor_stopped
 
 
 @dataclass
@@ -613,9 +611,9 @@ class ServeController:
         """Fetched by the router on startup."""
         return self.actor_nursery.workers
 
-    def get_all_backends(self) -> Dict[str, Dict[str, Any]]:
-        """Returns a dictionary of backend tag to backend config dict."""
-        return self.configuration_store.get_backend_configs(as_dict=True)
+    def get_all_backends(self) -> Dict[str, BackendConfig]:
+        """Returns a dictionary of backend tag to backend config."""
+        return self.configuration_store.get_backend_configs()
 
     def get_all_endpoints(self) -> Dict[str, Dict[str, Any]]:
         """Returns a dictionary of endpoint to endpoint config."""
