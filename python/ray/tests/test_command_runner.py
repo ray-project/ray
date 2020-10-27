@@ -7,7 +7,7 @@ from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.command_runner import SSHCommandRunner, \
     DockerCommandRunner, KubernetesCommandRunner, _with_environment_variables
-from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler.sdk import get_docker_host_mount_location
 from getpass import getuser
 import hashlib
 
@@ -242,7 +242,7 @@ def test_docker_rsync():
 
     local_mount = "/home/ubuntu/base/mount/"
     remote_mount = "/root/protected_mount/"
-    docker_mount_prefix = DOCKER_MOUNT_PREFIX.format(cluster_name=cluster_name)
+    docker_mount_prefix = get_docker_host_mount_location(cluster_name)
     remote_host_mount = f"{docker_mount_prefix}{remote_mount}"
 
     local_file = "/home/ubuntu/base-file"

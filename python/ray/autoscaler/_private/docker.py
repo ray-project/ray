@@ -4,7 +4,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler._private.constants import DOCKER_MOUNT_PREFIX
+from ray.autoscaler.sdk import get_docker_host_mount_location
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def check_docker_image(cname):
 
 def docker_start_cmds(user, image, mount_dict, container_name, user_options,
                       cluster_name):
-    docker_mount_prefix = DOCKER_MOUNT_PREFIX.format(cluster_name=cluster_name)
+    docker_mount_prefix = get_docker_host_mount_location(cluster_name)
     mount = {f"{docker_mount_prefix}/{dst}": dst for dst in mount_dict}
 
     # TODO(ilr) Move away from defaulting to /root/

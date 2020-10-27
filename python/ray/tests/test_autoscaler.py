@@ -15,7 +15,7 @@ import ray
 import ray._private.services as services
 from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.autoscaler._private import commands
-from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler.sdk import get_docker_host_mount_location
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
@@ -488,8 +488,8 @@ class AutoscalingTest(unittest.TestCase):
         self.assertEqual(self.provider.mock_nodes[0].node_type, None)
         runner.assert_has_call("1.2.3.4", pattern="docker run")
 
-        docker_mount_prefix = DOCKER_MOUNT_PREFIX.format(
-            cluster_name=SMALL_CLUSTER["cluster_name"])
+        docker_mount_prefix = get_docker_host_mount_location(
+            SMALL_CLUSTER["cluster_name"])
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
@@ -1463,8 +1463,8 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         autoscaler.update()
-        docker_mount_prefix = DOCKER_MOUNT_PREFIX.format(
-            cluster_name=config["cluster_name"])
+        docker_mount_prefix = get_docker_host_mount_location(
+            config["cluster_name"])
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
@@ -1516,8 +1516,8 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         autoscaler.update()
-        docker_mount_prefix = DOCKER_MOUNT_PREFIX.format(
-            cluster_name=config["cluster_name"])
+        docker_mount_prefix = get_docker_host_mount_location(
+            config["cluster_name"])
 
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
