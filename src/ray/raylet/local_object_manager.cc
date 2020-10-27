@@ -79,67 +79,62 @@ void LocalObjectManager::FlushIfNeeded(int64_t now_ms) {
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
                                       std::function<void(const ray::Status &)> callback) {
-  auto num_remaining = std::make_shared<size_t>(object_ids.size());
-  // TODO: compute objects to spill
   for (const auto &id : object_ids) {
     // We should not spill an object that we are not the primary copy for.
-    // TODO(swang): We should really return an error here but right now there
-    // is a race condition where the raylet receives the owner's request to
-    // spill an object before it receives the message to pin the objects from
-    // the local worker.
     if (pinned_objects_.count(id) == 0) {
-      RAY_LOG(WARNING) << "Requested spill for object that has not yet been marked as "
-                          "the primary copy.";
-      (*num_remaining)--;
+      callback(Status::Invalid("Requested spill for object that is not marked as "
+                          "the primary copy."));
     }
   }
 
-  if (*num_remaining == 0) {
-    callback(Status());
-  } else {
-    io_worker_pool_.PopIOWorker([this, object_ids,
-                                 callback, num_remaining](std::shared_ptr<WorkerInterface> io_worker) {
-      rpc::SpillObjectsRequest request;
-      for (const auto &object_id : object_ids) {
-        RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
-        request.add_object_ids_to_spill(object_id.Binary());
-      }
-      io_worker->rpc_client()->SpillObjects(
-          request, [this, object_ids, callback, io_worker, num_remaining](
-                       const ray::Status &status, const rpc::SpillObjectsReply &r) {
-            io_worker_pool_.PushIOWorker(io_worker);
-            if (!status.ok()) {
-              RAY_LOG(ERROR) << "Failed to send object spilling request: "
-                             << status.ToString();
-              if (callback) {
-                callback(status);
-              }
-            } else {
-              for (size_t i = 0; i < object_ids.size(); ++i) {
-                const ObjectID &object_id = object_ids[i];
-                const std::string &object_url = r.spilled_objects_url(i);
-                RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
-                // Write to object directory. Wait for the write to finish before
-                // releasing the object to make sure that the spilled object can
-                // be retrieved by other raylets.
-                RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-                    object_id, object_url, [this, object_id, callback, num_remaining](Status status) {
-                      RAY_CHECK_OK(status);
-                      // Unpin the object.
-                      // NOTE(swang): Due to a race condition, the object may not be in
-                      // the map yet. In that case, the owner will respond to the
-                      // WaitForObjectEvictionRequest and we will unpin the object
-                      // then.
-                      pinned_objects_.erase(object_id);
-                      (*num_remaining)--;
-                      if (*num_remaining == 0 && callback) {
-                        callback(status);
-                      }
-                    }));
-              }
+  io_worker_pool_.PopIOWorker([this, object_ids,
+                               callback](std::shared_ptr<WorkerInterface> io_worker) {
+    rpc::SpillObjectsRequest request;
+    for (const auto &object_id : object_ids) {
+      RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
+      request.add_object_ids_to_spill(object_id.Binary());
+    }
+    io_worker->rpc_client()->SpillObjects(
+        request, [this, object_ids, callback, io_worker](
+                     const ray::Status &status, const rpc::SpillObjectsReply &r) {
+          io_worker_pool_.PushIOWorker(io_worker);
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send object spilling request: "
+                           << status.ToString();
+            if (callback) {
+              callback(status);
             }
-          });
-    });
+          } else {
+            AddSpilledUrls(object_ids, r, callback);
+          }
+        });
+  });
+}
+
+void LocalObjectManager::AddSpilledUrls(const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
+                                      std::function<void(const ray::Status &)> callback) {
+  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  for (size_t i = 0; i < object_ids.size(); ++i) {
+    const ObjectID &object_id = object_ids[i];
+    const std::string &object_url = worker_reply.spilled_objects_url(i);
+    RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
+    // Write to object directory. Wait for the write to finish before
+    // releasing the object to make sure that the spilled object can
+    // be retrieved by other raylets.
+    RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
+        object_id, object_url, [this, object_id, callback, num_remaining](Status status) {
+          RAY_CHECK_OK(status);
+          // Unpin the object.
+          // NOTE(swang): Due to a race condition, the object may not be in
+          // the map yet. In that case, the owner will respond to the
+          // WaitForObjectEvictionRequest and we will unpin the object
+          // then.
+          pinned_objects_.erase(object_id);
+          (*num_remaining)--;
+          if (*num_remaining == 0 && callback) {
+            callback(status);
+          }
+        }));
   }
 }
 
