@@ -195,10 +195,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   }
 
   // Method that is invoked every second.
-  void Tick() const;
+  void Tick();
 
   // Update placement group load information so that the autoscaler can use it.
-  void UpdatePlacementGroupLoad() const;
+  void UpdatePlacementGroupLoad();
 
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
@@ -232,7 +232,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
 
   /// Reference of GcsNodeManager.
-  const GcsNodeManager &gcs_node_manager_;
+  GcsNodeManager &gcs_node_manager_;
 };
 
 }  // namespace gcs
