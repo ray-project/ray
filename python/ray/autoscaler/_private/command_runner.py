@@ -16,7 +16,6 @@ from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
                                   docker_start_cmds, \
-                                  DOCKER_MOUNT_PREFIX, \
                                   with_docker_exec
 from ray.autoscaler._private.log_timer import LogTimer
 
@@ -292,6 +291,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             ssh_user_hash[:HASH_MAX_LENGTH],
             ssh_control_hash[:HASH_MAX_LENGTH])
 
+        self.cluster_name = cluster_name
         self.log_prefix = log_prefix
         self.process_runner = process_runner
         self.node_id = node_id
@@ -597,8 +597,9 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run_rsync_up(self, source, target, options=None):
         options = options or {}
-        host_destination = os.path.join(DOCKER_MOUNT_PREFIX,
-                                        target.lstrip("/"))
+        host_destination = os.path.join(
+            self._get_docker_host_mount_location(
+                self.ssh_command_runner.cluster_name), target.lstrip("/"))
 
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
@@ -617,7 +618,9 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
-        host_source = os.path.join(DOCKER_MOUNT_PREFIX, source.lstrip("/"))
+        host_source = os.path.join(
+            self._get_docker_host_mount_location(
+                self.ssh_command_runner.cluster_name), source.lstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
         if source[-1] == "/":
@@ -709,7 +712,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.docker_config.get(
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options",
-                        []) + self._configure_runtime())
+                        []) + self._configure_runtime(),
+                self.ssh_command_runner.cluster_name)
             self.run(start_command, run_env="host")
         else:
             running_image = self.run(
@@ -746,7 +750,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             if mount in file_mounts:
                 self.ssh_command_runner.run(
                     "docker cp {src} {container}:{dst}".format(
-                        src=os.path.join(DOCKER_MOUNT_PREFIX, mount),
+                        src=os.path.join(
+                            self._get_docker_host_mount_location(
+                                self.ssh_command_runner.cluster_name), mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True
@@ -769,3 +775,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 return []
 
         return []
+
+    def _get_docker_host_mount_location(self, cluster_name: str) -> str:
+        """Return the docker host mount directory location."""
+        # Imported here due to circular dependency in imports.
+        from ray.autoscaler.sdk import get_docker_host_mount_location
+        return get_docker_host_mount_location(cluster_name)

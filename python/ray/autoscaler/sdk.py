@@ -214,3 +214,9 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     """Fillout default values for a cluster_config based on the provider."""
     from ray.autoscaler._private.util import fillout_defaults
     return fillout_defaults(config)
+
+
+def get_docker_host_mount_location(cluster_name: str) -> str:
+    """Return host path that Docker mounts attach to."""
+    docker_mount_prefix = "/tmp/ray_tmp_mount/{cluster_name}"
+    return docker_mount_prefix.format(cluster_name=cluster_name)
