@@ -75,7 +75,7 @@ PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
 
 # The backlog queue size upper threshold to report for the demand based
 # autoscaling.
-MAX_BACKLOG_SIZE = 10000
+MAX_BACKLOG_SIZE = 1000
 
 
 def round_to_memory_units(memory_bytes, round_up):

@@ -23,6 +23,7 @@ from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
                                 STATUS_UP_TO_DATE, STATUS_UNINITIALIZED
 from ray.test_utils import same_elements
+from ray.ray_constants import MAX_BACKLOG_SIZE
 
 from time import sleep
 
@@ -363,6 +364,48 @@ def test_calculate_node_resources():
                                               utilizations, [])
 
     assert to_launch == {"p2.8xlarge": 1}
+
+
+def test_backlog_queue_impact_on_binpacking_time():
+    new_types = copy.deepcopy(TYPES_A)
+    new_types["p2.8xlarge"]["max_workers"] = 1000
+    new_types["m4.16xlarge"]["max_workers"] = 1000
+
+    def test_backlog_queue_impact_on_binpacking_time_aux(
+            num_nodes, time_to_assert):
+        provider = MockProvider()
+        scheduler = ResourceDemandScheduler(
+            provider, TYPES_A, max_workers=10000)
+
+        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "m4.16xlarge"},
+                             num_nodes)
+        # <num_nodes> m4.16xlarge instances.
+        cpu_ips = provider.non_terminated_node_ips({})
+        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"},
+                             num_nodes)
+        # <num_nodes>  m4.16xlarge and <num_nodes> p2.8xlarge instances.
+        all_nodes = provider.non_terminated_nodes({})
+        all_ips = provider.non_terminated_node_ips({})
+        gpu_ips = [ip for ip in all_ips if ip not in cpu_ips]
+        demands = [{"GPU": 1}, {"CPU": 1}] * MAX_BACKLOG_SIZE
+        utilizations = {}
+
+        # 2x<num_nodes> free nodes (<num_nodes> m4.16xlarge and
+        # <num_nodes> p2.8xlarge instances).
+        for i in range(num_nodes):
+            utilizations[cpu_ips[i]] = {"CPU": 64}
+            utilizations[gpu_ips[i]] = {"GPU": 8, "CPU": 32}
+        assert len(utilizations) == 2 * num_nodes
+        t1 = time.time()
+        to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, demands,
+                                                  utilizations, [])
+        t2 = time.time()
+        assert t2 - t1 < time_to_assert
+
+    test_backlog_queue_impact_on_binpacking_time_aux(
+        num_nodes=100, time_to_assert=0.2)
+    test_backlog_queue_impact_on_binpacking_time_aux(
+        num_nodes=1000, time_to_assert=0.8)
 
 
 class TestPlacementGroupScaling:
