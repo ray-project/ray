@@ -46,22 +46,26 @@ void LocalObjectManager::PinObjects(const rpc::Address &owner_address,
           if (!status.ok()) {
             RAY_LOG(WARNING) << "Worker failed. Unpinning object " << object_id;
           }
-          RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-          pinned_objects_.erase(object_id);
-
-          // Try to evict all copies of the object from the cluster.
-          if (free_objects_period_ms_ >= 0) {
-            objects_to_free_.push_back(object_id);
-          }
-          if (objects_to_free_.size() == free_objects_batch_size_ ||
-              free_objects_period_ms_ == 0) {
-            Flush();
-          }
+          ReleaseFreedObject(object_id);
         });
   }
 }
 
-void LocalObjectManager::Flush() {
+void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+  pinned_objects_.erase(object_id);
+
+  // Try to evict all copies of the object from the cluster.
+  if (free_objects_period_ms_ >= 0) {
+    objects_to_free_.push_back(object_id);
+  }
+  if (objects_to_free_.size() == free_objects_batch_size_ ||
+      free_objects_period_ms_ == 0) {
+    FlushFreeObjects();
+  }
+}
+
+void LocalObjectManager::FlushFreeObjects() {
   if (!objects_to_free_.empty()) {
     RAY_LOG(DEBUG) << "Freeing " << objects_to_free_.size() << " out-of-scope objects";
     on_objects_freed_(objects_to_free_);
@@ -70,10 +74,10 @@ void LocalObjectManager::Flush() {
   last_free_objects_at_ms_ = current_time_ms();
 }
 
-void LocalObjectManager::FlushIfNeeded(int64_t now_ms) {
+void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
   if (free_objects_period_ms_ > 0 &&
       static_cast<int64_t>(now_ms - last_free_objects_at_ms_) > free_objects_period_ms_) {
-    Flush();
+    FlushFreeObjects();
   }
 }
 

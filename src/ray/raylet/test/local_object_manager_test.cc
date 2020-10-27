@@ -76,6 +76,13 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
+  void RestoreSpilledObjects(
+      const rpc::RestoreSpilledObjectsRequest &request,
+      const rpc::ClientCallback<rpc::RestoreSpilledObjectsReply> &callback) override {
+    rpc::RestoreSpilledObjectsReply reply;
+    callback(Status(), reply);
+  }
+
   std::list<rpc::ClientCallback<rpc::SpillObjectsReply>> callbacks;
 };
 
@@ -192,6 +199,18 @@ TEST_F(LocalObjectManagerTest, TestPin) {
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
+}
+
+TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
+  ObjectID object_id = ObjectID::FromRandom();
+  std::string object_url("url");
+  int num_times_fired = 0;
+  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  manager.AsyncRestoreSpilledObject(object_id, object_url, [&](const Status &status) {
+    ASSERT_TRUE(status.ok());
+    num_times_fired++;
+  });
+  ASSERT_EQ(num_times_fired, 1);
 }
 
 TEST_F(LocalObjectManagerTest, TestExplicitSpill) {

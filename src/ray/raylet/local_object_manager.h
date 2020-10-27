@@ -75,12 +75,16 @@ class LocalObjectManager {
   void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
                                  std::function<void(const ray::Status &)> callback);
 
-  /// Try to delete any objects that have been freed.
-  void FlushIfNeeded(int64_t now_ms);
+  /// Try to clear any objects that have been freed.
+  void FlushFreeObjectsIfNeeded(int64_t now_ms);
 
  private:
-  /// Delete freed objects.
-  void Flush();
+  /// Release an object that has been freed by its owner.
+  void ReleaseFreedObject(const ObjectID &object_id);
+
+  /// Clear any freed objects. This will trigger the callback for freed
+  /// objects.
+  void FlushFreeObjects();
 
   /// Add objects' spilled URLs to the global object directory. Call the
   /// callback once all URLs have been added.

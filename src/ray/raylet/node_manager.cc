@@ -501,7 +501,7 @@ void NodeManager::Heartbeat() {
   }
 
   // Evict all copies of freed objects from the cluster.
-  local_object_manager_.FlushIfNeeded(now_ms);
+  local_object_manager_.FlushFreeObjectsIfNeeded(now_ms);
 
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
