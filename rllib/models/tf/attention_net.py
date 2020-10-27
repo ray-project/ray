@@ -296,7 +296,8 @@ class GTrXLNet(RecurrentNetwork):
         # current one (0))
         self.inference_view_requirements.update({
             SampleBatch.OBS: ViewRequirement(
-                shift="-{}:0".format(self.memory_inference))
+                shift="-{}:0".format(self.memory_inference),
+                space=self.obs_space)
         })
         # Setup additional view requirements for attention net inference calls.
         # 0: The last `max_seq_len` observations.
@@ -320,10 +321,8 @@ class GTrXLNet(RecurrentNetwork):
 
         assert seq_lens is not None
         #padded_inputs = input_dict["obs_flat"]
-        max_seq_len = tf.shape(observations)[0] // tf.shape(seq_lens)[0]
-        all_out = self.trxl_model(
-            [add_time_dimension(
-                observations, max_seq_len=max_seq_len, framework="tf")] + state + [is_training])
+        #max_seq_len = tf.shape(observations)[0] // tf.shape(seq_lens)[0]
+        all_out = self.trxl_model([observations] + state + [is_training])
         #return tf.reshape(output, [-1, self.num_outputs]), new_state
 
         #all_out = self.trxl_model([observations] + state + [is_training])

@@ -22,7 +22,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         """Initializes a RelativeMultiHeadAttention keras Layer object.
 
         Args:
-            out_dim (int): 
+            out_dim (int):
             num_heads (int): The number of attention heads to use.
                 Denoted `H` in [2].
             head_dim (int): The dimension of a single(!) attention head
@@ -68,7 +68,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         # Tau (number of (prev) time slices in each memory chunk).
         Tau = tf.shape(memory)[1]  #if memory is not None else 0
         #if memory is not None:
-        inputs = tf.concat((tf.stop_gradient(memory), inputs), axis=1)
+        inputs = tf.concat([tf.stop_gradient(memory), inputs], axis=1)
 
         # Apply the Layer-Norm.
         if self._input_layernorm is not None:

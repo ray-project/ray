@@ -238,6 +238,9 @@ def build_torch_policy(
             else:
                 self.view_requirements.update(
                     get_default_view_requirements(self))
+            # Allow the model to override existing ViewRequirements.
+            self.view_requirements.update(
+                self.model.inference_view_requirements)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)

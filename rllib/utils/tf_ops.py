@@ -11,16 +11,16 @@ def explained_variance(y, pred):
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
-def get_placeholder(*, space=None, value=None):
+def get_placeholder(*, space=None, value=None, time_axis=False):
     if space is not None:
         return tf1.placeholder(
-            shape=(None, ) + space.shape,
+            shape=(None, ) + ((None, ) if time_axis else ()) + space.shape,
             dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
         )
     else:
         assert value is not None
         return tf1.placeholder(
-            shape=(None, ) + value.shape[1:],
+            shape=(None, ) + ((None, ) if time_axis else ()) + value.shape[1:],
             dtype=tf.float32 if value.dtype == np.float64 else value.dtype,
         )
 

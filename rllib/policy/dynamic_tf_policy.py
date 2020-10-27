@@ -206,7 +206,6 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
         }
-        self.view_requirements.update(self.model.inference_view_requirements)
 
         # Update this Policy's ViewRequirements (if function given).
         if callable(view_requirements_fn):
@@ -215,6 +214,9 @@ class DynamicTFPolicy(TFPolicy):
         # Add NEXT_OBS, STATE_IN_0.., and others.
         else:
             self.view_requirements.update(get_default_view_requirements(self))
+        # Allow the model to override existing ViewRequirements.
+        self.view_requirements.update(
+            self.model.inference_view_requirements)
 
         # Setup standard placeholders
         if existing_inputs is not None:
@@ -423,11 +425,16 @@ class DynamicTFPolicy(TFPolicy):
                     dtype=np.float32)
             # All others.
             else:
+                time_axis = not isinstance(view_req.shift, int)
                 if view_req.used_for_training:
+                    # Create a +time-axis placeholder if the shift is not an
+                    # int (range or list of ints).
                     input_dict[view_col] = get_placeholder(
-                        space=view_req.space)
+                        space=view_req.space,
+                        time_axis=time_axis)
+                sample = view_req.space.sample()
                 dummy_batch[view_col] = np.zeros_like(
-                    [view_req.space.sample()])
+                    [sample] if not time_axis else [[sample]])
         return input_dict, dummy_batch
 
     def _initialize_loss_dynamically(self):
