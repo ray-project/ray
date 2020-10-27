@@ -4,7 +4,7 @@ import numpy as np
 import tree
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
@@ -20,9 +20,13 @@ class TorchDistributionWrapper(ActionDistribution):
     """Wrapper class for torch.distributions."""
 
     @override(ActionDistribution)
-    def __init__(self, inputs: List[TensorType], model: ModelV2):
+    def __init__(self, inputs: List[TensorType], model: TorchModelV2):
+        # If inputs are not a torch Tensor, make them one and make sure they
+        # are on the correct device.
         if not isinstance(inputs, torch.Tensor):
-            inputs = torch.Tensor(inputs)
+            inputs = torch.from_numpy(inputs)
+            if isinstance(model, TorchModelV2):
+                inputs = inputs.to(next(model.parameters()).device)
         super().__init__(inputs, model)
         # Store the last sample here.
         self.last_sample = None
@@ -332,8 +336,8 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
         Args:
             inputs (torch.Tensor): A single tensor of shape [BATCH, size].
-            model (ModelV2): The ModelV2 object used to produce inputs for this
-                distribution.
+            model (TorchModelV2): The TorchModelV2 object used to produce
+                inputs for this distribution.
             child_distributions (any[torch.Tensor]): Any struct
                 that contains the child distribution classes to use to
                 instantiate the child distributions from `inputs`. This could
@@ -345,7 +349,9 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
                 and possibly nested action space.
         """
         if not isinstance(inputs, torch.Tensor):
-            inputs = torch.Tensor(inputs)
+            inputs = torch.from_numpy(inputs)
+            if isinstance(model, TorchModelV2):
+                inputs = inputs.to(next(model.parameters()).device)
         super().__init__(inputs, model)
 
         self.action_space_struct = get_base_struct_from_space(action_space)

@@ -1,7 +1,6 @@
 import numpy as np
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
-from ray.rllib.utils.framework import get_variable
 
 torch, nn = try_import_torch()
 
@@ -36,47 +35,39 @@ class NoisyLayer(nn.Module):
         if self.activation is not None:
             self.activation = self.activation()
 
-        self.sigma_w = get_variable(
-            np.random.uniform(
-                low=-1.0 / np.sqrt(float(self.in_size)),
-                high=1.0 / np.sqrt(float(self.in_size)),
-                size=[self.in_size, out_size]),
-            framework="torch",
-            dtype=torch.float32,
-            torch_tensor=True,
-            trainable=True)
-        self.sigma_b = get_variable(
-            np.full(
-                shape=[out_size],
-                fill_value=sigma0 / np.sqrt(float(self.in_size))),
-            framework="torch",
-            dtype=torch.float32,
-            torch_tensor=True,
-            trainable=True)
-        self.w = get_variable(
-            np.full(
-                shape=[self.in_size, self.out_size],
-                fill_value=6 / np.sqrt(float(in_size) + float(out_size))),
-            framework="torch",
-            dtype=torch.float32,
-            torch_tensor=True,
-            trainable=True)
-        self.b = get_variable(
-            np.zeros([out_size]),
-            framework="torch",
-            dtype=torch.float32,
-            torch_tensor=True,
-            trainable=True)
+        sigma_w = nn.Parameter(
+            torch.from_numpy(
+                np.random.uniform(
+                    low=-1.0 / np.sqrt(float(self.in_size)),
+                    high=1.0 / np.sqrt(float(self.in_size)),
+                    size=[self.in_size, out_size])).float())
+        self.register_parameter("sigma_w", sigma_w)
+        sigma_b = nn.Parameter(
+            torch.from_numpy(
+                np.full(
+                    shape=[out_size],
+                    fill_value=sigma0 / np.sqrt(float(self.in_size)))).float())
+        self.register_parameter("sigma_b", sigma_b)
+
+        w = nn.Parameter(
+            torch.from_numpy(
+                np.full(
+                    shape=[self.in_size, self.out_size],
+                    fill_value=6 /
+                    np.sqrt(float(in_size) + float(out_size)))).float())
+        self.register_parameter("w", w)
+        b = nn.Parameter(torch.from_numpy(np.zeros([out_size])).float())
+        self.register_parameter("b", b)
 
     def forward(self, inputs):
         epsilon_in = self._f_epsilon(
             torch.normal(
                 mean=torch.zeros([self.in_size]),
-                std=torch.ones([self.in_size])))
+                std=torch.ones([self.in_size])).to(inputs.device))
         epsilon_out = self._f_epsilon(
             torch.normal(
                 mean=torch.zeros([self.out_size]),
-                std=torch.ones([self.out_size])))
+                std=torch.ones([self.out_size])).to(inputs.device))
         epsilon_w = torch.matmul(
             torch.unsqueeze(epsilon_in, -1),
             other=torch.unsqueeze(epsilon_out, 0))
