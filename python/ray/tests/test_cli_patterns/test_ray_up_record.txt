@@ -18,17 +18,18 @@
 .+\.py.*Fetching the new head node
 .+\.py.*<1/1> Setting up head node
 .+\.py.*Prepared bootstrap config
+.+\.py.*AWSNodeProvider: Set tag ray-node-status=waiting-for-ssh on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: waiting-for-ssh
 .+\.py.*\[1/6\] Waiting for SSH to become available
 .+\.py.*Running `uptime` as a test\.
 .+\.py.*Fetched IP: .+
 .+\.py.*NodeUpdater: .+: Got IP  \[LogTimer=.+\]
-.+\.py.*AWSNodeProvider: Set tag ray-node-status=waiting-for-ssh on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*Running `uptime`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*Success\.
 .+\.py.*NodeUpdater: .+: Got remote shell  \[LogTimer=.+\]
 .+\.py.*Updating cluster configuration\. \[hash=.+\]
+.+\.py.*AWSNodeProvider: Set tag ray-node-status=syncing-files on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: syncing-files
 .+\.py.*\[3/6\] Processing file mounts
 .+\.py.*Running `mkdir -p ~/tests`
@@ -50,6 +51,7 @@
 .+\.py.*~/ray_bootstrap_key\.pem from .+__test-cli_key-1\.pem
 .+\.py.*NodeUpdater: i-.+: Synced .+.pem to ~/ray_bootstrap_key\.pem  \[LogTimer=.+\]
 .+\.py.*\[4/6\] No worker file mounts to sync
+.+\.py.*AWSNodeProvider: Set tag ray-node-status=setting-up on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: setting-up
 .+\.py.*\[3/5\] Running initialization commands
 .+\.py.*Running `echo init`
@@ -76,6 +78,9 @@
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Ray start commands succeeded \[LogTimer=.+\]
 .+\.py.*NodeUpdater: i-.+: Applied config .+  \[LogTimer=.+\]
+.+\.py.*AWSNodeProvider: Set tag ray-node-status=up-to-date on \['.+'\]  \[LogTimer=.+\]
+.+\.py.*AWSNodeProvider: Set tag ray-runtime-config=.+ on \['.+'\]  \[LogTimer=.+\]
+.+\.py.*AWSNodeProvider: Set tag ray-file-mounts-contents=.+ on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: up-to-date
 .+\.py.*Useful commands
 .+\.py.*Monitor autoscaling with
