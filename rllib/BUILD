@@ -1184,7 +1184,7 @@ py_test(
 py_test(
     name = "tests/test_catalog",
     tags = ["tests_dir", "tests_dir_C"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_catalog.py"]
 )
 
@@ -1429,6 +1429,13 @@ py_test(
     size = "large",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]
+)
+
+py_test(
+    name = "tests/test_timesteps",
+    tags = ["tests_dir", "tests_dir_T"],
+    size = "small",
+    srcs = ["tests/test_timesteps.py"]
 )
 
 # --------------------------------------------------------------------

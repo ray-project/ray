@@ -459,9 +459,18 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular,
 
     @ray.remote
     class Actor:
-        pass
+        def __init__(self):
+            # This log is added to debug a flaky test issue.
+            print(os.getpid())
+
+        def ping(self):
+            pass
 
     a = Actor.remote()
+    # Without this waiting, there seems to be race condition happening
+    # in the CI. This is not a fundamental fix for that, but it at least
+    # makes the test less flaky.
+    ray.get(a.ping.remote())
     a = Actor.remote()
     a.__ray_terminate__.remote()
     time.sleep(1)

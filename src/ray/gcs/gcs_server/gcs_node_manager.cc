@@ -522,6 +522,8 @@ void GcsNodeManager::UpdatePlacementGroupLoad(
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
+    const auto &node_id = sorted_dead_node_list_.begin()->first;
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(node_id, nullptr));
     dead_nodes_.erase(sorted_dead_node_list_.begin()->first);
     sorted_dead_node_list_.erase(sorted_dead_node_list_.begin());
   }

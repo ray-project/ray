@@ -369,14 +369,6 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncReReportHeartbeat() override;
 
-  Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<NodeID, HeartbeatTableData> &subscribe,
-      const StatusCallback &done) override;
-
-  Status AsyncReportBatchHeartbeat(
-      const std::shared_ptr<HeartbeatBatchTableData> &data_ptr,
-      const StatusCallback &callback) override;
-
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
@@ -400,10 +392,6 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   typedef SubscriptionExecutor<NodeID, ResourceChangeNotification, DynamicResourceTable>
       DynamicResourceSubscriptionExecutor;
   DynamicResourceSubscriptionExecutor resource_sub_executor_;
-
-  typedef SubscriptionExecutor<NodeID, HeartbeatTableData, HeartbeatTable>
-      HeartbeatSubscriptionExecutor;
-  HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
 
   typedef SubscriptionExecutor<NodeID, HeartbeatBatchTableData, HeartbeatBatchTable>
       HeartbeatBatchSubscriptionExecutor;
@@ -490,6 +478,9 @@ class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
   Status AsyncGet(
       const PlacementGroupID &placement_group_id,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncGetAll(
+      const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
 };
 
 }  // namespace gcs

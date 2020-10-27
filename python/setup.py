@@ -71,16 +71,13 @@ generated_python_directories = [
 optional_ray_files = ["ray/nightly-wheels.yaml"]
 
 ray_autoscaler_files = [
-    "ray/autoscaler/aws/example-full.yaml",
-    "ray/autoscaler/azure/example-full.yaml",
+    "ray/autoscaler/aws/defaults.yaml", "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/azure/azure-vm-template.json",
     "ray/autoscaler/azure/azure-config-template.json",
-    "ray/autoscaler/gcp/example-full.yaml",
-    "ray/autoscaler/local/example-full.yaml",
-    "ray/autoscaler/kubernetes/example-full.yaml",
+    "ray/autoscaler/gcp/defaults.yaml", "ray/autoscaler/local/defaults.yaml",
+    "ray/autoscaler/kubernetes/defaults.yaml",
     "ray/autoscaler/kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/staroid/example-full.yaml",
-    "ray/autoscaler/ray-schema.json"
+    "ray/autoscaler/staroid/defaults.yaml", "ray/autoscaler/ray-schema.json"
 ]
 
 ray_project_files = [
@@ -90,9 +87,8 @@ ray_project_files = [
 ]
 
 ray_dashboard_files = [
-    os.path.join(dirpath, filename)
-    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
-    for filename in filenames
+    os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
+    os.walk("ray/new_dashboard/client/build") for filename in filenames
 ]
 
 optional_ray_files += ray_autoscaler_files
@@ -105,7 +101,7 @@ optional_ray_files += ray_dashboard_files
 extras = {
     "debug": [],
     "serve": [
-        "uvicorn", "flask", "requests", "pydantic",
+        "uvicorn", "flask", "requests", "pydantic<1.7",
         "dataclasses; python_version < '3.7'"
     ],
     "tune": [

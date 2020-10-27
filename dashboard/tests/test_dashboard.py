@@ -20,6 +20,8 @@ from ray.test_utils import (
     wait_until_server_available,
     run_string_as_driver,
 )
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+                                          DEBUG_AUTOSCALING_ERROR)
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules
@@ -440,6 +442,55 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert len(collections.Counter(volatile_value_timestamps)) == 8
     assert len(data[3]) == 2
     assert len(data[0]) == 2
+
+
+def test_get_cluster_status(ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    # Check that the cluster_status endpoint works without the underlying data
+    # from the GCS, but returns nothing.
+    last_exception = None
+    for _ in range(5):
+        try:
+            response = requests.get(f"{webui_url}/api/cluster_status")
+            response.raise_for_status()
+            assert response.json()["result"]
+            assert "autoscalingStatus" in response.json()["data"]
+            assert response.json()["data"]["autoscalingStatus"] is None
+            assert "autoscalingError" in response.json()["data"]
+            assert response.json()["data"]["autoscalingError"] is None
+            break
+        except requests.RequestException as e:
+            last_exception = e
+            time.sleep(1)
+    else:
+        raise last_exception
+
+    # Populate the GCS field, check that the data is returned from the
+    # endpoint.
+    address = address_info["redis_address"]
+    address = address.split(":")
+    assert len(address) == 2
+
+    client = redis.StrictRedis(
+        host=address[0],
+        port=int(address[1]),
+        password=ray_constants.REDIS_DEFAULT_PASSWORD)
+
+    client.hset(DEBUG_AUTOSCALING_STATUS, "value", "hello")
+    client.hset(DEBUG_AUTOSCALING_ERROR, "value", "world")
+
+    response = requests.get(f"{webui_url}/api/cluster_status")
+    response.raise_for_status()
+    assert response.json()["result"]
+    assert "autoscalingStatus" in response.json()["data"]
+    assert response.json()["data"]["autoscalingStatus"] == "hello"
+    assert "autoscalingError" in response.json()["data"]
+    assert response.json()["data"]["autoscalingError"] == "world"
 
 
 if __name__ == "__main__":
