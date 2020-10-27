@@ -2284,7 +2284,7 @@ void NodeManager::SubmitTask(const Task &task) {
 void NodeManager::HandleDirectCallTaskBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
-    if (!worker) {
+    if (!worker || worker->IsBlocked()) {
       return;
     }
     std::vector<double> cpu_instances;
@@ -2314,7 +2314,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
 void NodeManager::HandleDirectCallTaskUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
-    if (!worker) {
+    if (!worker || !worker->IsBlocked()) {
       return;
     }
     std::vector<double> cpu_instances;
