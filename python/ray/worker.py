@@ -611,7 +611,7 @@ def init(
             development, and the API is subject to change.
         _object_spilling_config (str): The configuration json string for object
             spilling I/O worker.
-        _system_config (str): JSON configuration for overriding
+        _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
     Returns:
