@@ -3,7 +3,7 @@ import gym
 import logging
 import numpy as np
 import tree
-from typing import List
+from typing import List, Optional, Type, Union
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
@@ -110,18 +110,20 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(action_space: gym.Space,
-                        config: ModelConfigDict,
-                        dist_type: str = None,
-                        framework: str = "tf",
-                        **kwargs) -> (type, int):
+    def get_action_dist(
+            action_space: gym.Space,
+            config: ModelConfigDict,
+            dist_type: Optional[Union[str, Type[ActionDistribution]]] = None,
+            framework: str = "tf",
+            **kwargs) -> (type, int):
         """Returns a distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
             config (Optional[dict]): Optional model config.
-            dist_type (Optional[str]): Identifier of the action distribution
-                interpreted as a hint.
+            dist_type (Optional[Union[str, Type[ActionDistribution]]]):
+                Identifier of the action distribution (str) interpreted as a
+                hint or the actual ActionDistribution class to use.
             framework (str): One of "tf", "tfe", or "torch".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
@@ -134,20 +136,24 @@ class ModelCatalog:
                     distribution.
         """
 
-        dist = None
+        dist_cls = None
         config = config or MODEL_DEFAULTS
         # Custom distribution given.
         if config.get("custom_action_dist"):
             action_dist_name = config["custom_action_dist"]
             logger.debug(
                 "Using custom action distribution {}".format(action_dist_name))
-            dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
+            dist_cls = _global_registry.get(RLLIB_ACTION_DIST,
+                                            action_dist_name)
+            dist_cls = ModelCatalog._get_multi_action_distribution(
+                dist_cls, action_space, {}, framework)
+
         # Dist_type is given directly as a class.
         elif type(dist_type) is type and \
                 issubclass(dist_type, ActionDistribution) and \
                 dist_type not in (
                 MultiActionDistribution, TorchMultiActionDistribution):
-            dist = dist_type
+            dist_cls = dist_type
         # Box space -> DiagGaussian OR Deterministic.
         elif isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
@@ -159,49 +165,43 @@ class ModelCatalog:
                     "using a Tuple action space, or the multi-agent API.")
             # TODO(sven): Check for bounds and return SquashedNormal, etc..
             if dist_type is None:
-                dist = TorchDiagGaussian if framework == "torch" \
+                dist_cls = TorchDiagGaussian if framework == "torch" \
                     else DiagGaussian
             elif dist_type == "deterministic":
-                dist = TorchDeterministic if framework == "torch" \
+                dist_cls = TorchDeterministic if framework == "torch" \
                     else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
-            dist = TorchCategorical if framework == "torch" else Categorical
+            dist_cls = (TorchCategorical
+                        if framework == "torch" else Categorical)
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
                 isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
-            flat_action_space = flatten_space(action_space)
-            child_dists_and_in_lens = tree.map_structure(
-                lambda s: ModelCatalog.get_action_dist(
-                    s, config, framework=framework), flat_action_space)
-            child_dists = [e[0] for e in child_dists_and_in_lens]
-            input_lens = [int(e[1]) for e in child_dists_and_in_lens]
-            return partial(
-                (TorchMultiActionDistribution
-                 if framework == "torch" else MultiActionDistribution),
-                action_space=action_space,
-                child_distributions=child_dists,
-                input_lens=input_lens), int(sum(input_lens))
+            return ModelCatalog._get_multi_action_distribution(
+                (MultiActionDistribution
+                 if framework == "tf" else TorchMultiActionDistribution),
+                action_space, config, framework)
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
                     "Simplex action spaces not supported for torch.")
-            dist = Dirichlet
+            dist_cls = Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            dist = TorchMultiCategorical if framework == "torch" else \
+            dist_cls = TorchMultiCategorical if framework == "torch" else \
                 MultiCategorical
-            return partial(dist, input_lens=action_space.nvec), \
+            return partial(dist_cls, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
         # Unknown type -> Error.
         else:
             raise NotImplementedError("Unsupported args: {} {}".format(
                 action_space, dist_type))
 
-        return dist, dist.required_model_output_shape(action_space, config)
+        return dist_cls, dist_cls.required_model_output_shape(
+            action_space, config)
 
     @staticmethod
     @DeveloperAPI
@@ -247,6 +247,7 @@ class ModelCatalog:
             action_space (Space): Action space of the target gym env.
             name (str): An optional string to name the placeholder by.
                 Default: "action".
+
         Returns:
             action_placeholder (Tensor): A placeholder for the actions
         """
@@ -287,7 +288,7 @@ class ModelCatalog:
 
         if model_config.get("custom_model"):
 
-            # Allow model kwargs to be overriden / augmented by
+            # Allow model kwargs to be overridden / augmented by
             # custom_model_config.
             customized_model_kwargs = dict(
                 model_kwargs, **model_config.get("custom_model_config", {}))
@@ -419,7 +420,8 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor(env: gym.Env, options: dict = None) -> Preprocessor:
+    def get_preprocessor(env: gym.Env,
+                         options: Optional[dict] = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given env.
 
         This is a wrapper for get_preprocessor_for_space().
@@ -549,3 +551,25 @@ class ModelCatalog:
         # Default Conv2D net.
         else:
             return VisionNet
+
+    @staticmethod
+    def _get_multi_action_distribution(dist_class, action_space, config,
+                                       framework):
+        # In case the custom distribution is a child of MultiActionDistr.
+        # If users want to completely ignore the suggested child
+        # distributions, they should simply do so in their custom class'
+        # constructor.
+        if issubclass(dist_class,
+                      (MultiActionDistribution, TorchMultiActionDistribution)):
+            flat_action_space = flatten_space(action_space)
+            child_dists_and_in_lens = tree.map_structure(
+                lambda s: ModelCatalog.get_action_dist(
+                    s, config, framework=framework), flat_action_space)
+            child_dists = [e[0] for e in child_dists_and_in_lens]
+            input_lens = [int(e[1]) for e in child_dists_and_in_lens]
+            return partial(
+                dist_class,
+                action_space=action_space,
+                child_distributions=child_dists,
+                input_lens=input_lens), int(sum(input_lens))
+        return dist_class

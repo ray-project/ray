@@ -172,7 +172,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -192,7 +192,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -211,7 +211,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -227,7 +227,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -242,7 +242,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: EarlyDoneMultiAgent(),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -258,7 +258,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(10)
         ev = RolloutWorker(
             env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
             },
             policy_mapping_fn=lambda agent_id: "p0",
@@ -309,7 +309,7 @@ class TestMultiAgentEnv(unittest.TestCase):
 
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=StatefulPolicy,
+            policy_spec=StatefulPolicy,
             rollout_fragment_length=5)
         batch = ev.sample()
         self.assertEqual(batch.count, 5)
@@ -354,7 +354,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         act_space = single_env.action_space
         ev = RolloutWorker(
             env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
-            policy={
+            policy_spec={
                 "p0": (ModelBasedPolicy, obs_space, act_space, {}),
                 "p1": (ModelBasedPolicy, obs_space, act_space, {}),
             },

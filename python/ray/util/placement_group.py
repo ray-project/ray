@@ -5,6 +5,25 @@ from typing import (List, Dict, Optional)
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
 
+bundle_reservation_check = None
+
+
+# We need to import this method to use for ready API.
+# But ray.remote is only available in runtime, and
+# if we define this method inside ready method, this function is
+# exported whenever ready is called, which can impact performance,
+# https://github.com/ray-project/ray/issues/6240.
+def _export_bundle_reservation_check_method_if_needed():
+    global bundle_reservation_check
+    if bundle_reservation_check:
+        return
+
+    @ray.remote(num_cpus=0, max_calls=0)
+    def bundle_reservation_check_func(placement_group):
+        return placement_group
+
+    bundle_reservation_check = bundle_reservation_check_func
+
 
 class PlacementGroup:
     """A handle to a placement group."""
@@ -33,9 +52,7 @@ class PlacementGroup:
         """
         self._fill_bundle_cache_if_needed()
 
-        @ray.remote(num_cpus=0, max_calls=0)
-        def bundle_reservation_check(placement_group):
-            return placement_group
+        _export_bundle_reservation_check_method_if_needed()
 
         assert len(self.bundle_cache) != 0, (
             "ready() cannot be called on placement group object with a "
@@ -168,17 +185,18 @@ def remove_placement_group(placement_group: PlacementGroup):
     worker.core_worker.remove_placement_group(placement_group.id)
 
 
-def placement_group_table(placement_group: PlacementGroup) -> dict:
+def placement_group_table(placement_group: PlacementGroup = None) -> list:
     """Get the state of the placement group from GCS.
 
     Args:
         placement_group (PlacementGroup): placement group to see
             states.
     """
-    assert placement_group is not None
     worker = ray.worker.global_worker
     worker.check_connected()
-    return ray.state.state.placement_group_table(placement_group.id)
+    placement_group_id = placement_group.id if (placement_group is
+                                                not None) else None
+    return ray.state.state.placement_group_table(placement_group_id)
 
 
 def get_current_placement_group() -> Optional[PlacementGroup]:

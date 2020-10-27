@@ -8,6 +8,7 @@ set -euo pipefail
 FLAKE8_VERSION_REQUIRED="3.7.7"
 YAPF_VERSION_REQUIRED="0.23.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
+MYPY_VERSION_REQUIRED="0.782"
 
 check_command_exist() {
     VERSION=""
@@ -21,6 +22,9 @@ check_command_exist() {
         shellcheck)
             VERSION=$SHELLCHECK_VERSION_REQUIRED
             ;;
+        mypy)
+            VERSION=$MYPY_VERSION_REQUIRED
+            ;;
         *)
             echo "$1 is not a required dependency"
             exit 1
@@ -33,12 +37,7 @@ check_command_exist() {
 
 check_command_exist yapf
 check_command_exist flake8
-
-ver=$(yapf --version)
-if ! echo "$ver" | grep -q 0.23.0; then
-    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver. $YAPF_DOWNLOAD_COMMAND_MSG"
-    exit 1
-fi
+check_command_exist mypy
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
@@ -46,9 +45,10 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
-FLAKE8_VERSION=$(flake8 --version | awk '{print $1}')
+FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 YAPF_VERSION=$(yapf --version | awk '{print $2}')
 SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
+MYPY_VERSION=$(mypy --version | awk '{print $2}')
 
 # params: tool name, tool version, required version
 tool_version_check() {
@@ -60,6 +60,7 @@ tool_version_check() {
 tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
 tool_version_check "yapf" "$YAPF_VERSION" "$YAPF_VERSION_REQUIRED"
 tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUIRED"
+tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
@@ -84,6 +85,20 @@ YAPF_FLAGS=(
     '--parallel'
 )
 
+# TODO(dmitri): When more of the codebase is typed properly, the mypy flags
+# should be set to do a more stringent check. 
+MYPY_FLAGS=(
+    '--follow-imports=skip'
+    '--ignore-missing-imports'
+)
+
+MYPY_FILES=(
+    # Relative to python/ray
+    'autoscaler/node_provider.py'
+    'autoscaler/sdk.py'
+    'autoscaler/_private/commands.py'
+)
+
 YAPF_EXCLUDES=(
     '--exclude' 'python/ray/cloudpickle/*'
     '--exclude' 'python/build/*'
@@ -105,6 +120,18 @@ FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E9
 shellcheck_scripts() {
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
 }
+
+# Runs mypy on each argument in sequence. This is different than running mypy 
+# once on the list of arguments.
+mypy_on_each() {
+    pushd python/ray
+    for file in "$@"; do
+       echo "Running mypy on $file"
+       mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} "$file"
+    done
+    popd
+}
+
 
 # Format specified files
 format_files() {
@@ -154,6 +181,7 @@ format_files() {
 }
 
 # Format all files, and print the diff to stdout for travis.
+# Mypy is run only on files specified in the array MYPY_FILES.
 format_all() {
     command -v flake8 &> /dev/null;
     HAS_FLAKE8=$?
@@ -161,6 +189,8 @@ format_all() {
     echo "$(date)" "YAPF...."
     git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
+    echo "$(date)" "MYPY...."
+    mypy_on_each "${MYPY_FILES[@]}"
     if [ $HAS_FLAKE8 ]; then
       echo "$(date)" "Flake8...."
       git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \

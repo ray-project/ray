@@ -626,19 +626,14 @@ class Node:
                 if we fail to start the dashboard. Otherwise it will print
                 a warning if we fail to start the dashboard.
         """
-        if "RAY_USE_NEW_DASHBOARD" in os.environ:
-            stdout_file, stderr_file = None, None
-        else:
-            stdout_file, stderr_file = self.get_log_file_handles(
-                "dashboard", unique=True)
         self._webui_url, process_info = ray._private.services.start_dashboard(
             require_dashboard,
             self._ray_params.dashboard_host,
             self.redis_address,
             self._temp_dir,
             self._logs_dir,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            stdout_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
+            stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             port=self._ray_params.dashboard_port)
@@ -715,11 +710,13 @@ class Node:
             self._ray_params.worker_path,
             self._temp_dir,
             self._session_dir,
+            self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
             min_worker_port=self._ray_params.min_worker_port,
             max_worker_port=self._ray_params.max_worker_port,
+            worker_port_list=self._ray_params.worker_port_list,
             object_manager_port=self._ray_params.object_manager_port,
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
@@ -828,9 +825,6 @@ class Node:
             )
         self.start_plasma_store(plasma_directory, object_store_memory)
         self.start_raylet(plasma_directory, object_store_memory)
-        if "RAY_USE_NEW_DASHBOARD" not in os.environ:
-            self.start_reporter()
-
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 

@@ -1,9 +1,11 @@
 import logging
 import time
+from typing import Dict, List
 
 import numpy as np
 import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.gcs_utils import PlacementGroupTableData
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +28,18 @@ class LoadMetrics:
         ) if local_ip is None else local_ip
         self.waiting_bundles = []
         self.infeasible_bundles = []
+        self.pending_placement_groups = []
 
     def update(self,
-               ip,
-               static_resources,
-               update_dynamic_resources,
-               dynamic_resources,
-               update_resource_load,
-               resource_load,
-               waiting_bundles=None,
-               infeasible_bundles=None):
+               ip: str,
+               static_resources: Dict[str, Dict],
+               update_dynamic_resources: bool,
+               dynamic_resources: Dict[str, Dict],
+               update_resource_load: bool,
+               resource_load: Dict[str, Dict],
+               waiting_bundles: List[Dict[str, float]] = None,
+               infeasible_bundles: List[Dict[str, float]] = None,
+               pending_placement_groups: List[PlacementGroupTableData] = None):
         # If light heartbeat enabled, only resources changed will be received.
         # We should update the changed part and compare static_resources with
         # dynamic_resources using those updated.
@@ -50,6 +54,8 @@ class LoadMetrics:
             waiting_bundles = []
         if not infeasible_bundles:
             infeasible_bundles = []
+        if not pending_placement_groups:
+            pending_placement_groups = []
 
         # We are not guaranteed to have a corresponding dynamic resource
         # for every static resource because dynamic resources are based on
@@ -69,6 +75,7 @@ class LoadMetrics:
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
         self.infeasible_bundles = infeasible_bundles
+        self.pending_placement_groups = pending_placement_groups
 
     def mark_active(self, ip):
         assert ip is not None, "IP should be known at this time"
@@ -118,13 +125,17 @@ class LoadMetrics:
         return self.dynamic_resources_by_ip
 
     def _get_resource_usage(self):
-        num_nodes = len(self.static_resources_by_ip)
+        num_nodes = 0
         nodes_used = 0.0
         num_nonidle = 0
         has_saturated_node = False
         resources_used = {}
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
+            # Nodes without resources don't count as nodes (e.g. unmanaged
+            # nodes)
+            if any(max_resources.values()):
+                num_nodes += 1
             avail_resources = self.dynamic_resources_by_ip[ip]
             resource_load = self.resource_load_by_ip[ip]
             max_frac = 0.0
@@ -158,6 +169,9 @@ class LoadMetrics:
 
     def get_resource_demand_vector(self):
         return self.waiting_bundles + self.infeasible_bundles
+
+    def get_pending_placement_groups(self):
+        return self.pending_placement_groups
 
     def info_string(self):
         return " - " + "\n - ".join(

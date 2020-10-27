@@ -5,6 +5,7 @@ import torch
 from pytorch_lightning.core.step_result import Result
 from pytorch_lightning.overrides.data_parallel import \
     LightningDistributedDataParallel
+from pytorch_lightning.utilities.model_utils import is_overridden
 from pytorch_lightning.trainer.model_hooks import TrainerModelHooksMixin
 from pytorch_lightning.trainer.optimizers import TrainerOptimizersMixin
 import pytorch_lightning as ptl
@@ -39,8 +40,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         assert len(models) == 1
         model = models[0]
         assert isinstance(model, ptl.LightningModule)
-        # This will default to LightningDistributedDataParallel.
-        model = model.configure_ddp(model=model, device_ids=device_ids)
+        model = LightningDistributedDataParallel(
+            model, device_ids=device_ids, find_unused_parameters=True)
         return [model]
 
     @property
@@ -56,9 +57,12 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         """Returns list of scheduler dictionaries.
 
         List is empty if no schedulers are returned in the
-        configure_optimizers method of your LightningModule. Default
-        configuration is used if configure_optimizers returns scheduler
-        objects instead of scheduler dicts. See
+        configure_optimizers method of your LightningModule.
+
+        Default configuration is used if configure_optimizers
+        returns scheduler objects.
+
+        See
         https://pytorch-lightning.readthedocs.io/en/latest/lightning_module.html#configure-optimizers
         """
         return self._scheduler_dicts
@@ -110,7 +114,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         # Call model.setup.
         ptl_module.setup("fit")
 
-        if not self.is_overridden("configure_optimizers", ptl_module):
+        if not is_overridden("configure_optimizers", ptl_module):
             raise MisconfigurationException(
                 "No `configure_optimizers()` method defined.")
 
@@ -232,7 +236,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 break
 
         processed_outputs = None
-        if self.is_overridden("training_epoch_end", model):
+        if is_overridden("training_epoch_end", model):
             raw_outputs = [eo["raw_output"] for eo in epoch_outputs]
             processed_outputs = model.training_epoch_end(raw_outputs)
 
@@ -265,7 +269,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 return_output = meter_collection.summary()
 
         if self.is_function_implemented("on_train_epoch_end", model):
-            model.on_train_epoch_end()
+            model.on_train_epoch_end(
+                [eo.get("raw_output") for eo in epoch_outputs])
 
         for s_dict, scheduler in zip(self.scheduler_dicts, self.schedulers):
             if s_dict["interval"] == SCHEDULER_STEP_EPOCH:
@@ -316,7 +321,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
 
         # allow any mode to define training_step_end
         # do something will all the dp outputs (like softmax)
-        if self.is_overridden("training_step_end", model):
+        if is_overridden("training_step_end", model):
             output = model.training_step_end(output)
 
         # Extract loss from output if dictionary.
@@ -344,10 +349,9 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         with self.timers.record("grad"):
             if self.use_fp16:
                 with self._amp.scale_loss(loss, optimizer) as scaled_loss:
-                    model.backward(
-                        self, scaled_loss, optimizer, optimizer_idx=0)
+                    model.backward(scaled_loss, optimizer, optimizer_idx=0)
             else:
-                model.backward(self, loss, optimizer, optimizer_idx=0)
+                model.backward(loss, optimizer, optimizer_idx=0)
 
         if self.is_function_implemented("on_after_backward", model):
             model.on_after_backward()
@@ -369,7 +373,10 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
 
         if self.is_function_implemented("on_train_batch_end", model):
             model.on_train_batch_end(
-                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
+                outputs=output,
+                batch=batch,
+                batch_idx=batch_idx,
+                dataloader_idx=0)
 
         return {
             "signal": 0,
@@ -397,7 +404,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 val_outputs.append(batch_output)
 
         processed_outputs = None
-        if self.is_overridden("validation_epoch_end", model):
+        if is_overridden("validation_epoch_end", model):
             raw_outputs = [vo["raw_output"] for vo in val_outputs]
             processed_outputs = model.training_epoch_end(raw_outputs)
 
@@ -440,7 +447,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
     def validate_batch(self, batch, batch_info):
         model = self.get_model()
         batch_idx = batch_info["batch_idx"]
-        if self.is_overridden("on_validation_batch_start", model):
+        if is_overridden("on_validation_batch_start", model):
             model.on_validation_batch_start(
                 batch=batch, batch_idx=batch_idx, dataloader_idx=0)
         args = [batch, batch_idx]
@@ -462,12 +469,15 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
             raise ValueError("EvalResult objects are not supported. Please "
                              "return a dictionary instead.")
 
-        if self.is_overridden("on_validation_step_end", model):
+        if is_overridden("on_validation_step_end", model):
             output = model.validation_step_end(output)
 
         if self.is_function_implemented("on_validation_batch_end", model):
             model.on_validation_batch_end(
-                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
+                outputs=output,
+                batch=batch,
+                batch_idx=batch_idx,
+                dataloader_idx=0)
         return {
             "raw_output": output,
             # NUM_SAMPLES: len(batch)

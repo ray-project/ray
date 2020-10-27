@@ -23,7 +23,7 @@ import typing
 from .cloudpickle import (
     _is_dynamic, _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
     _find_imported_submodules, _get_cell_contents, _is_importable_by_name, _builtin_type,
-    Enum, _get_or_create_tracker_id,  _make_skeleton_class, _make_skeleton_enum,
+    Enum, _get_or_create_tracker_id, _make_skeleton_class, _make_skeleton_enum,
     _extract_class_dict, dynamic_subimport, subimport, _typevar_reduce, _get_bases,
     cell_set, _make_empty_cell,
 )
@@ -439,51 +439,6 @@ def _class_setstate(obj, state):
     return obj
 
 
-def _numpy_frombuffer(buffer, dtype, shape, order):
-    # Get the _frombuffer() function for reconstruction
-    from numpy.core.numeric import _frombuffer
-    array = _frombuffer(buffer, dtype, shape, order)
-    # Unfortunately, numpy does not follow the standard, so we still
-    # have to set the readonly flag for it here.
-    array.setflags(write=isinstance(buffer, bytearray) or not buffer.readonly)
-    return array
-
-
-def _numpy_ndarray_reduce(array):
-    # This function is implemented according to 'array_reduce_ex_picklebuffer'
-    # in numpy C backend. This is a workaround for python3.5 pickling support.
-    if sys.version_info >= (3, 8):
-        import pickle
-        picklebuf_class = pickle.PickleBuffer
-    elif sys.version_info >= (3, 5):
-        try:
-            import pickle5
-            picklebuf_class = pickle5.PickleBuffer
-        except Exception:
-            raise ImportError("Using pickle protocol 5 requires the pickle5 "
-                              "module for Python >=3.5 and <3.8")
-    else:
-        raise ValueError("pickle protocol 5 is not available for Python < 3.5")
-    # if the array if Fortran-contiguous and not C-contiguous,
-    # the PickleBuffer instance will hold a view on the transpose
-    # of the initial array, that is C-contiguous.
-    if not array.flags.c_contiguous and array.flags.f_contiguous:
-        order = "F"
-        picklebuf_args = array.transpose()
-    else:
-        order = "C"
-        picklebuf_args = array
-    try:
-        buffer = picklebuf_class(picklebuf_args)
-    except Exception:
-        # Some arrays may refuse to export a buffer, in which case
-        # just fall back on regular __reduce_ex__ implementation
-        # (gh-12745).
-        return array.__reduce__()
-
-    return _numpy_frombuffer, (buffer, array.dtype, array.shape, order)
-
-
 class CloudPickler(Pickler):
     """Fast C Pickler extension with additional reducing routines.
 
@@ -564,16 +519,6 @@ class CloudPickler(Pickler):
           for other types that suffered from type-specific reducers, such as
           Exceptions. See https://github.com/cloudpipe/cloudpickle/issues/248
         """
-
-        # This is a patch for python3.5
-        if isinstance(obj, numpy.ndarray):
-            if (self.proto < 5 or
-                    (not obj.flags.c_contiguous and not obj.flags.f_contiguous) or
-                    (issubclass(type(obj), numpy.ndarray) and type(obj) is not numpy.ndarray) or
-                    obj.dtype == "O" or obj.itemsize == 0):
-                return NotImplemented
-            return _numpy_ndarray_reduce(obj)
-
         t = type(obj)
         try:
             is_anyclass = issubclass(t, type)

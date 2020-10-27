@@ -131,10 +131,9 @@ class SACTorchModel(TorchModelV2, nn.Module):
         else:
             self.twin_q_net = None
 
-        self.log_alpha = torch.tensor(
-            data=[np.log(initial_alpha)],
-            dtype=torch.float32,
-            requires_grad=True)
+        log_alpha = nn.Parameter(
+            torch.from_numpy(np.array([np.log(initial_alpha)])).float())
+        self.register_parameter("log_alpha", log_alpha)
 
         # Auto-calculate the target entropy.
         if target_entropy is None or target_entropy == "auto":

@@ -24,6 +24,10 @@ class TestMARWIL(unittest.TestCase):
         """Test whether a MARWILTrainer can be built with all frameworks.
 
         And learns from a historic-data file.
+        To generate this data, first run:
+        $ ./train.py --run=PPO --env=CartPole-v0 \
+          --stop='{"timesteps_total": 50000}' \
+          --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))

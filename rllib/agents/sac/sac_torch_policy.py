@@ -192,7 +192,8 @@ def actor_critic_loss(
 
         # Actually selected Q-values (from the actions batch).
         one_hot = F.one_hot(
-            train_batch[SampleBatch.ACTIONS], num_classes=q_t.size()[-1])
+            train_batch[SampleBatch.ACTIONS].long(),
+            num_classes=q_t.size()[-1])
         q_t_selected = torch.sum(q_t * one_hot, dim=-1)
         if policy.config["twin_q"]:
             twin_q_t_selected = torch.sum(twin_q_t * one_hot, dim=-1)
@@ -472,7 +473,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy)
 
 
-# Build a child class of `DynamicTFPolicy`, given the custom functions defined
+# Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
 SACTorchPolicy = build_torch_policy(
     name="SACTorchPolicy",

@@ -274,6 +274,9 @@ class TorchPolicy(Policy):
         if dist_inputs is not None:
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
 
+        # Update our global timestep by the batch size.
+        self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
+
         return actions, state_out, extra_fetches, logp
 
     @override(Policy)
@@ -480,7 +483,8 @@ class TorchPolicy(Policy):
         state = super().get_state()
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
-            state["_optimizer_variables"].append(o.state_dict())
+            optim_state_dict = convert_to_non_torch_type(o.state_dict())
+            state["_optimizer_variables"].append(optim_state_dict)
         return state
 
     @override(Policy)
@@ -492,7 +496,9 @@ class TorchPolicy(Policy):
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
-                o.load_state_dict(s)
+                optim_state_dict = convert_to_torch_tensor(
+                    s, device=self.device)
+                o.load_state_dict(optim_state_dict)
         # Then the Policy's (NN) weights.
         super().set_state(state)
 

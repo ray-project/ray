@@ -397,11 +397,6 @@ cdef execute_task(
         next_title = f"ray::{class_name}"
         pid = os.getpid()
         worker_name = f"ray_{class_name}_{pid}"
-        if c_resources.find(b"memory") != c_resources.end():
-            worker.memory_monitor.set_heap_limit(
-                worker_name,
-                ray_constants.from_memory_units(
-                    dereference(c_resources.find(b"memory")).second))
         if c_resources.find(b"object_store_memory") != c_resources.end():
             worker.core_worker.set_object_store_client_options(
                 worker_name,
@@ -595,7 +590,7 @@ cdef void gc_collect() nogil:
         num_freed = gc.collect()
         end = time.perf_counter()
         if num_freed > 0:
-            logger.info(
+            logger.debug(
                 "gc.collect() freed {} refs in {} seconds".format(
                     num_freed, end - start))
 
@@ -1515,11 +1510,19 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
         data_metadata_pairs, ids_to_deserialize)[0]
 
     def set_future():
+        # Issue #11030, #8841
+        # If this future has result set already, we just need to
+        # skip the set result/exception procedure.
+        if py_future.done():
+            cpython.Py_DECREF(py_future)
+            return
+
         if isinstance(result, RayTaskError):
             ray.worker.last_task_error_raise_time = time.time()
             py_future.set_exception(result.as_instanceof_cause())
         else:
             py_future.set_result(result)
+
         cpython.Py_DECREF(py_future)
 
     loop.call_soon_threadsafe(set_future)
