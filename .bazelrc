@@ -105,7 +105,7 @@ build:ci --ui_actions_shown=1024
 build:ci-travis --show_timestamps  # Travis doesn't have an option to show timestamps, but GitHub Actions does
 # GitHub Actions has low disk space, so prefer hardlinks there.
 build:ci-github --experimental_repository_cache_hardlinks
-test:ci --flaky_test_attempts=1
+test:ci --flaky_test_attempts=3
 test:ci --nocache_test_results
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
