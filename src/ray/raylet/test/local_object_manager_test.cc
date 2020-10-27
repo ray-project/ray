@@ -30,6 +30,8 @@ namespace ray {
 
 namespace raylet {
 
+using ::testing::_;
+
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   void WaitForObjectEviction(
@@ -59,12 +61,15 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
     callbacks.push_back(callback);
   }
 
-  bool ReplySpillObjects(Status status = Status::OK()) {
+  bool ReplySpillObjects(std::vector<std::string> urls, Status status = Status::OK()) {
     if (callbacks.size() == 0) {
       return false;
     }
     auto callback = callbacks.front();
     auto reply = rpc::SpillObjectsReply();
+    for (const auto &url : urls) {
+      reply.add_spilled_objects_url(url);
+    }
     callback(status, reply);
     callbacks.pop_front();
     return true;
@@ -74,13 +79,14 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
 };
 
 class MockIOWorker : public MockWorker {
+ public:
   MockIOWorker(
     WorkerID worker_id, int port,
     std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker)
   : MockWorker(worker_id, port),
     io_worker(io_worker) {}
 
-  rpc::CoreWorkerClient *rpc_client() {
+  rpc::CoreWorkerClientInterface *rpc_client() {
     return io_worker.get();
   }
 
@@ -88,6 +94,7 @@ class MockIOWorker : public MockWorker {
 };
 
 class MockIOWorkerPool : public IOWorkerPoolInterface {
+ public:
   MOCK_METHOD1(PushIOWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
   void PopIOWorker(
@@ -95,11 +102,12 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
     callback(io_worker);
   }
 
-  std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker_client = std::make_shared<MockIOWorkerClient>();
+  std::shared_ptr<MockIOWorkerClient> io_worker_client = std::make_shared<MockIOWorkerClient>();
   std::shared_ptr<WorkerInterface> io_worker = std::make_shared<MockIOWorker>(WorkerID::FromRandom(), 1234, io_worker_client);
 };
 
 class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
+ public:
   MOCK_METHOD2(AsyncGetLocations, Status(
       const ObjectID &object_id,
       const gcs::OptionalItemCallback<rpc::ObjectLocationInfo> &callback));
@@ -110,9 +118,13 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
   MOCK_METHOD3(AsyncAddLocation, Status(const ObjectID &object_id, const NodeID &node_id,
                                   const gcs::StatusCallback &callback));
 
-  MOCK_METHOD3(AsyncAddSpilledUrl, Status(const ObjectID &object_id,
+  Status AsyncAddSpilledUrl(const ObjectID &object_id,
                                     const std::string &spilled_url,
-                                    const gcs::StatusCallback &callback));
+                                    const gcs::StatusCallback &callback) {
+    object_urls[object_id] = spilled_url;
+    callback(Status());
+    return Status();
+  }
 
   MOCK_METHOD3(AsyncRemoveLocation, Status(const ObjectID &object_id, const NodeID &node_id,
                                      const gcs::StatusCallback &callback));
@@ -128,6 +140,8 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
   MOCK_METHOD1(AsyncResubscribe, void(bool is_pubsub_server_restarted));
 
   MOCK_METHOD1(IsObjectUnsubscribed, bool(const ObjectID &object_id));
+
+  std::unordered_map<ObjectID, std::string> object_urls;
 };
 
 class LocalObjectManagerTest : public ::testing::Test {
@@ -200,9 +214,23 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
   }
   manager.PinObjects(owner_address, object_ids, std::move(objects));
 
-  manager.SpillObjects(object_ids, [&](const Status &status) {
+  int num_times_fired = 0;
+  manager.SpillObjects(object_ids, [&](const Status &status) mutable {
       ASSERT_TRUE(status.ok());
+      num_times_fired++;
       });
+  ASSERT_EQ(num_times_fired, 0);
+
+  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  std::vector<std::string> urls;
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    urls.push_back("url" + std::to_string(i));
+  }
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  ASSERT_EQ(num_times_fired, 1);
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    ASSERT_EQ(object_table.object_urls[object_ids[i]], urls[i]);
+  }
 }
 
 }  // namespace raylet

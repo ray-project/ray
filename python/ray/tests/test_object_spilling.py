@@ -184,6 +184,7 @@ def test_spill_remote_object(ray_start_cluster_head):
     # Test passing the spilled object as an arg to another task.
     ray.get(depends.remote(ref))
 
+
 @pytest.mark.skip(reason="Not implemented yet.")
 def test_spill_objects_automatically(shutdown_only):
     # Limit our object store to 75 MiB of memory.

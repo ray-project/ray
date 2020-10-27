@@ -111,7 +111,7 @@ class WorkerInterface {
 
   virtual bool IsRegistered() = 0;
 
-  virtual rpc::CoreWorkerClient *rpc_client() = 0;
+  virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker
