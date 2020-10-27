@@ -59,6 +59,14 @@ class RNNModel(RecurrentNetwork):
         self.register_variables(self.rnn_model.variables)
         self.rnn_model.summary()
 
+        # Add state-ins to this model's view.
+        for i in range(2):
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=(self.lstm_state_size,)))
+
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
         model_out, self._value_out, h, c = self.rnn_model([inputs, seq_lens] +
