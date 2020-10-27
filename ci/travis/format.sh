@@ -39,12 +39,6 @@ check_command_exist yapf
 check_command_exist flake8
 check_command_exist mypy
 
-ver=$(yapf --version)
-if ! echo "$ver" | grep -q 0.23.0; then
-    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver. $YAPF_DOWNLOAD_COMMAND_MSG"
-    exit 1
-fi
-
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 

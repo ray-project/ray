@@ -80,7 +80,7 @@ py_test(
 
 py_test(
     name = "test_experiment_analysis_mem",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_experiment_analysis_mem.py"],
     deps = [":tune_lib"],
 )
@@ -476,6 +476,15 @@ py_test(
 )
 
 py_test(
+    name = "mnist_ptl_mini",
+    size = "medium",
+    srcs = ["examples/mnist_ptl_mini.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "mnist_pytorch_trainable",
     size = "small",
     srcs = ["examples/mnist_pytorch_trainable.py"],
@@ -506,6 +515,15 @@ py_test(
     name = "optuna_example",
     size = "medium",
     srcs = ["examples/optuna_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pb2_example",
+    size = "medium",
+    srcs = ["examples/pb2_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]
