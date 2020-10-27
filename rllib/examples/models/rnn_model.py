@@ -65,7 +65,7 @@ class RNNModel(RecurrentNetwork):
                 ViewRequirement(
                     "state_out_{}".format(i),
                     shift=-1,
-                    space=Box(-1.0, 1.0, shape=(self.lstm_state_size,)))
+                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):

@@ -1,8 +1,9 @@
 import ray
 from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip, _adjust_nstep
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
@@ -250,6 +251,11 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             loss=actor_loss + critic_loss,
             loss_inputs=loss_inputs,
             dist_inputs=actor_feature)
+
+        # Additional view requirements for postprocessing.
+        self.view_requirements["infos"] = \
+            ViewRequirement(used_for_training=False)
+        self.view_requirements["t"] = ViewRequirement()
 
         self.sess.run(tf1.global_variables_initializer())
 
