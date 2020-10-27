@@ -145,8 +145,7 @@ def test_load_report(shutdown_only, max_shapes):
             "max_resource_shapes_per_load_report": max_shapes,
         })
     global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()
 
     @ray.remote
@@ -212,7 +211,7 @@ def test_placement_group_load_report(ray_start_cluster):
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
     global_state_accessor = GlobalStateAccessor(
-        cluster.address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        cluster.address, ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()
 
     class PgLoadChecker:
@@ -280,8 +279,7 @@ def test_backlog_report(shutdown_only):
             "report_worker_backlog": True,
         })
     global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()
 
     @ray.remote(num_cpus=1)
