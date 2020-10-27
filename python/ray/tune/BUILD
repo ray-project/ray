@@ -80,7 +80,7 @@ py_test(
 
 py_test(
     name = "test_experiment_analysis_mem",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_experiment_analysis_mem.py"],
     deps = [":tune_lib"],
 )
