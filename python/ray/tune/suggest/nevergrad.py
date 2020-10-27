@@ -4,6 +4,7 @@ from typing import Dict, Optional, Union
 
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
@@ -93,7 +94,7 @@ class NevergradSearch(Searcher):
 
     def __init__(self,
                  optimizer: Union[None, Optimizer, ConfiguredOptimizer] = None,
-                 space: Optional[Parameter] = None,
+                 space: Optional[Union[Dict, Parameter]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  max_concurrent: Optional[int] = None,
@@ -108,6 +109,14 @@ class NevergradSearch(Searcher):
         self._space = None
         self._opt_factory = None
         self._nevergrad_opt = None
+
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
 
         if isinstance(optimizer, Optimizer):
             if space is not None or isinstance(space, list):

@@ -219,17 +219,17 @@ class TBXLogger(Logger):
 
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
-            if type(value) in VALID_SUMMARY_TYPES and not np.isnan(value):
+            if (isinstance(value, tuple(VALID_SUMMARY_TYPES))
+                    and not np.isnan(value)):
                 valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)
-            elif (type(value) == list
-                  and len(value) > 0) or (type(value) == np.ndarray
-                                          and value.size > 0):
+            elif ((isinstance(value, list) and len(value) > 0)
+                  or (isinstance(value, np.ndarray) and value.size > 0)):
                 valid_result[full_attr] = value
 
                 # Must be video
-                if type(value) == np.ndarray and value.ndim == 5:
+                if isinstance(value, np.ndarray) and value.ndim == 5:
                     self._file_writer.add_video(
                         full_attr, value, global_step=step, fps=20)
                     continue
@@ -260,7 +260,7 @@ class TBXLogger(Logger):
                 scrubbed_result = {
                     k: value
                     for k, value in flat_result.items()
-                    if type(value) in VALID_SUMMARY_TYPES
+                    if isinstance(value, tuple(VALID_SUMMARY_TYPES))
                 }
                 self._try_log_hparams(scrubbed_result)
             self._file_writer.close()
