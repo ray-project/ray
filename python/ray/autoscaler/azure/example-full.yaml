@@ -62,6 +62,7 @@ auth:
     # you must specify paths to matching private and public key pair files
     # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
     ssh_private_key: ~/.ssh/id_rsa
+    # changes to this should match what is specified in file_mounts
     ssh_public_key: ~/.ssh/id_rsa.pub
 
 # More specific customization to node configurations can be made using the ARM template azure-vm-template.json file
@@ -77,7 +78,7 @@ head_node:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
-        imageVersion: 20.02.01
+        imageVersion: 20.07.06
 
 # Provider-specific config for worker nodes, e.g. instance type.
 worker_nodes:
@@ -87,7 +88,7 @@ worker_nodes:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
-        imageVersion: 20.02.01
+        imageVersion: 20.07.06
         # optionally set priority to use Spot instances
         priority: Spot
         # set a maximum price for spot instances if desired
@@ -99,6 +100,7 @@ worker_nodes:
 file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
+     "/home/ubuntu/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
 }
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
@@ -130,12 +132,14 @@ initialization_commands:
     - touch ~/.sudo_as_admin_successful
 
 # List of shell commands to run to set up nodes.
-setup_commands: []
+setup_commands:
     # Note: if you're developing Ray, you probably want to create a Docker image that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     # Uncomment the following line if you want to run the nightly version of ray (as opposed to the latest)
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    - echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc
+    - echo 'conda activate py37_tensorflow' >> ~/.bashrc
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
