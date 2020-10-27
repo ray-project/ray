@@ -19,8 +19,10 @@ def get_placeholder(*, space=None, value=None):
         )
     else:
         assert value is not None
+        shape = value.shape[1:]
         return tf1.placeholder(
-            shape=(None, ) + value.shape[1:],
+            shape=(None,) + shape if isinstance(shape, tuple) else tuple(
+                shape.as_list()),
             dtype=tf.float32 if value.dtype == np.float64 else value.dtype,
         )
 
