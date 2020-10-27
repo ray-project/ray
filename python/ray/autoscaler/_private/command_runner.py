@@ -777,7 +777,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         return []
 
     def _get_docker_host_mount_location(self, cluster_name: str) -> str:
-        """Return the docker host mount location."""
-        # Imported here due to circular dependency in imports
+        """Return the docker host mount directory location."""
+        # Imported here due to circular dependency in imports.
         from ray.autoscaler.sdk import get_docker_host_mount_location
         return get_docker_host_mount_location(cluster_name)
