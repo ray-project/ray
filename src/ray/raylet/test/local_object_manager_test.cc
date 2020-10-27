@@ -56,8 +56,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
 class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  void SpillObjects(const rpc::SpillObjectsRequest &request,
-                            const rpc::ClientCallback<rpc::SpillObjectsReply> &callback) override {
+  void SpillObjects(
+      const rpc::SpillObjectsRequest &request,
+      const rpc::ClientCallback<rpc::SpillObjectsReply> &callback) override {
     callbacks.push_back(callback);
   }
 
@@ -80,15 +81,11 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
 
 class MockIOWorker : public MockWorker {
  public:
-  MockIOWorker(
-    WorkerID worker_id, int port,
-    std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker)
-  : MockWorker(worker_id, port),
-    io_worker(io_worker) {}
+  MockIOWorker(WorkerID worker_id, int port,
+               std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker)
+      : MockWorker(worker_id, port), io_worker(io_worker) {}
 
-  rpc::CoreWorkerClientInterface *rpc_client() {
-    return io_worker.get();
-  }
+  rpc::CoreWorkerClientInterface *rpc_client() { return io_worker.get(); }
 
   std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker;
 };
@@ -102,38 +99,41 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
     callback(io_worker);
   }
 
-  std::shared_ptr<MockIOWorkerClient> io_worker_client = std::make_shared<MockIOWorkerClient>();
-  std::shared_ptr<WorkerInterface> io_worker = std::make_shared<MockIOWorker>(WorkerID::FromRandom(), 1234, io_worker_client);
+  std::shared_ptr<MockIOWorkerClient> io_worker_client =
+      std::make_shared<MockIOWorkerClient>();
+  std::shared_ptr<WorkerInterface> io_worker =
+      std::make_shared<MockIOWorker>(WorkerID::FromRandom(), 1234, io_worker_client);
 };
 
 class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
  public:
-  MOCK_METHOD2(AsyncGetLocations, Status(
-      const ObjectID &object_id,
-      const gcs::OptionalItemCallback<rpc::ObjectLocationInfo> &callback));
+  MOCK_METHOD2(
+      AsyncGetLocations,
+      Status(const ObjectID &object_id,
+             const gcs::OptionalItemCallback<rpc::ObjectLocationInfo> &callback));
 
-  MOCK_METHOD1(AsyncGetAll, Status(
-      const gcs::MultiItemCallback<rpc::ObjectLocationInfo> &callback));
+  MOCK_METHOD1(AsyncGetAll,
+               Status(const gcs::MultiItemCallback<rpc::ObjectLocationInfo> &callback));
 
   MOCK_METHOD3(AsyncAddLocation, Status(const ObjectID &object_id, const NodeID &node_id,
-                                  const gcs::StatusCallback &callback));
+                                        const gcs::StatusCallback &callback));
 
-  Status AsyncAddSpilledUrl(const ObjectID &object_id,
-                                    const std::string &spilled_url,
-                                    const gcs::StatusCallback &callback) {
+  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const gcs::StatusCallback &callback) {
     object_urls[object_id] = spilled_url;
     callback(Status());
     return Status();
   }
 
-  MOCK_METHOD3(AsyncRemoveLocation, Status(const ObjectID &object_id, const NodeID &node_id,
-                                     const gcs::StatusCallback &callback));
+  MOCK_METHOD3(AsyncRemoveLocation,
+               Status(const ObjectID &object_id, const NodeID &node_id,
+                      const gcs::StatusCallback &callback));
 
-  MOCK_METHOD3(AsyncSubscribeToLocations, Status(
-      const ObjectID &object_id,
-      const gcs::SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
-          &subscribe,
-      const gcs::StatusCallback &done));
+  MOCK_METHOD3(AsyncSubscribeToLocations,
+               Status(const ObjectID &object_id,
+                      const gcs::SubscribeCallback<
+                          ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
+                      const gcs::StatusCallback &done));
 
   MOCK_METHOD1(AsyncUnsubscribeToLocations, Status(const ObjectID &object_id));
 
@@ -147,18 +147,15 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
 class LocalObjectManagerTest : public ::testing::Test {
  public:
   LocalObjectManagerTest()
-    : owner_client(std::make_shared<MockWorkerClient>()),
-      client_pool([&](const rpc::Address &addr) { return owner_client; }),
-      manager(free_objects_batch_size,
-        /*free_objects_period_ms=*/1000,
-        worker_pool,
-        object_table,
-        client_pool,
-        [&](const std::vector<ObjectID> &object_ids) {
-          for (const auto &object_id : object_ids) {
-            freed.insert(object_id);
-          }
-        }) {}
+      : owner_client(std::make_shared<MockWorkerClient>()),
+        client_pool([&](const rpc::Address &addr) { return owner_client; }),
+        manager(free_objects_batch_size,
+                /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
+                [&](const std::vector<ObjectID> &object_ids) {
+                  for (const auto &object_id : object_ids) {
+                    freed.insert(object_id);
+                  }
+                }) {}
 
   size_t free_objects_batch_size = 3;
   std::shared_ptr<MockWorkerClient> owner_client;
@@ -183,7 +180,8 @@ TEST_F(LocalObjectManagerTest, TestPin) {
     std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    std::unique_ptr<RayObject> object(new RayObject(nullptr, meta_buffer, std::vector<ObjectID>()));
+    std::unique_ptr<RayObject> object(
+        new RayObject(nullptr, meta_buffer, std::vector<ObjectID>()));
     objects.push_back(std::move(object));
   }
   manager.PinObjects(owner_address, object_ids, std::move(objects));
@@ -209,16 +207,17 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    std::unique_ptr<RayObject> object(new RayObject(nullptr, meta_buffer, std::vector<ObjectID>()));
+    std::unique_ptr<RayObject> object(
+        new RayObject(nullptr, meta_buffer, std::vector<ObjectID>()));
     objects.push_back(std::move(object));
   }
   manager.PinObjects(owner_address, object_ids, std::move(objects));
 
   int num_times_fired = 0;
   manager.SpillObjects(object_ids, [&](const Status &status) mutable {
-      ASSERT_TRUE(status.ok());
-      num_times_fired++;
-      });
+    ASSERT_TRUE(status.ok());
+    num_times_fired++;
+  });
   ASSERT_EQ(num_times_fired, 0);
 
   EXPECT_CALL(worker_pool, PushIOWorker(_));

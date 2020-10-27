@@ -84,8 +84,9 @@ class LocalObjectManager {
 
   /// Add objects' spilled URLs to the global object directory. Call the
   /// callback once all URLs have been added.
-  void AddSpilledUrls(const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
-                                        std::function<void(const ray::Status &)> callback);
+  void AddSpilledUrls(const std::vector<ObjectID> &object_ids,
+                      const rpc::SpillObjectsReply &worker_reply,
+                      std::function<void(const ray::Status &)> callback);
 
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;

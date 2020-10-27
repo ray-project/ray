@@ -82,37 +82,39 @@ void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
   for (const auto &id : object_ids) {
     // We should not spill an object that we are not the primary copy for.
     if (pinned_objects_.count(id) == 0) {
-      callback(Status::Invalid("Requested spill for object that is not marked as "
+      callback(
+          Status::Invalid("Requested spill for object that is not marked as "
                           "the primary copy."));
     }
   }
 
-  io_worker_pool_.PopIOWorker([this, object_ids,
-                               callback](std::shared_ptr<WorkerInterface> io_worker) {
-    rpc::SpillObjectsRequest request;
-    for (const auto &object_id : object_ids) {
-      RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
-      request.add_object_ids_to_spill(object_id.Binary());
-    }
-    io_worker->rpc_client()->SpillObjects(
-        request, [this, object_ids, callback, io_worker](
-                     const ray::Status &status, const rpc::SpillObjectsReply &r) {
-          io_worker_pool_.PushIOWorker(io_worker);
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send object spilling request: "
-                           << status.ToString();
-            if (callback) {
-              callback(status);
-            }
-          } else {
-            AddSpilledUrls(object_ids, r, callback);
-          }
-        });
-  });
+  io_worker_pool_.PopIOWorker(
+      [this, object_ids, callback](std::shared_ptr<WorkerInterface> io_worker) {
+        rpc::SpillObjectsRequest request;
+        for (const auto &object_id : object_ids) {
+          RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
+          request.add_object_ids_to_spill(object_id.Binary());
+        }
+        io_worker->rpc_client()->SpillObjects(
+            request, [this, object_ids, callback, io_worker](
+                         const ray::Status &status, const rpc::SpillObjectsReply &r) {
+              io_worker_pool_.PushIOWorker(io_worker);
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to send object spilling request: "
+                               << status.ToString();
+                if (callback) {
+                  callback(status);
+                }
+              } else {
+                AddSpilledUrls(object_ids, r, callback);
+              }
+            });
+      });
 }
 
-void LocalObjectManager::AddSpilledUrls(const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
-                                      std::function<void(const ray::Status &)> callback) {
+void LocalObjectManager::AddSpilledUrls(
+    const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
+    std::function<void(const ray::Status &)> callback) {
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
   for (size_t i = 0; i < object_ids.size(); ++i) {
     const ObjectID &object_id = object_ids[i];
