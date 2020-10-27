@@ -394,7 +394,12 @@ class TestSAC(unittest.TestCase):
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
             SampleBatch.DONES: np.random.choice(
                 [True, False], size=(batch_size, )),
-            SampleBatch.NEXT_OBS: np.random.random(size=obs_size)
+            SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
+            SampleBatch.EPS_ID: np.zeros((batch_size,), dtype=np.int32),
+            SampleBatch.AGENT_INDEX: np.zeros((batch_size,), dtype=np.int32),
+            SampleBatch.ACTION_LOGP: -np.ones((batch_size,)),
+            # 2=squashed gaussian has 2 inputs per action dim.
+            SampleBatch.ACTION_DIST_INPUTS: -np.ones((batch_size, 2)),
         }
 
     def _sac_loss_helper(self, train_batch, weights, ks, log_alpha, fw, gamma,

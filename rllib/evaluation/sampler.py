@@ -613,6 +613,7 @@ def _env_runner(
                 to_eval=to_eval,
                 policies=policies,
                 _sample_collector=_sample_collector,
+                active_episodes=active_episodes,
                 tf_sess=tf_sess,
             )
         else:
@@ -1256,7 +1257,8 @@ def _do_policy_eval_w_trajectory_view_api(
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
         policies: Dict[PolicyID, Policy],
         _sample_collector,
-        tf_sess=None,
+        active_episodes: Dict[str, MultiAgentEpisode],
+        tf_sess: Optional["tf.Session"] = None,
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.
 
@@ -1286,12 +1288,14 @@ def _do_policy_eval_w_trajectory_view_api(
         logger.info("Inputs to compute_actions():\n\n{}\n".format(
             summarize(to_eval)))
 
-    for policy_id in to_eval.keys():
+    for policy_id, eval_data in to_eval.items():
         policy: Policy = _get_or_raise(policies, policy_id)
         input_dict = _sample_collector.get_inference_input_dict(policy_id)
         eval_results[policy_id] = \
             policy.compute_actions_from_input_dict(
-                input_dict, timestep=policy.global_timestep)
+                input_dict,
+                timestep=policy.global_timestep,
+                episodes=[active_episodes[t.env_id] for t in eval_data])
 
     if builder:
         # type: PolicyID, Tuple[TensorStructType, StateBatch, dict]

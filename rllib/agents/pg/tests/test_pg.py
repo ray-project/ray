@@ -44,6 +44,9 @@ class TestPG(unittest.TestCase):
             SampleBatch.CUR_OBS: np.array([[0.1, 0.2, 0.3,
                                             0.4], [0.5, 0.6, 0.7, 0.8],
                                            [0.9, 1.0, 1.1, 1.2]]),
+            SampleBatch.NEXT_OBS: np.array([[0.2, 0.3, 0.4,
+                                             0.5], [0.6, 0.7, 0.8, 0.9],
+                                            [1.0, 1.1, 1.2, 1.3]]),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
             SampleBatch.PREV_ACTIONS: np.array([1, 0, 1]),
             SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
@@ -51,6 +54,9 @@ class TestPG(unittest.TestCase):
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.EPS_ID: np.array([1234, 1234, 1234]),
             SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
+            SampleBatch.ACTION_LOGP: np.array([-0.1, -0.2, -0.3]),
+            SampleBatch.ACTION_DIST_INPUTS: np.array(
+                [[-0.1, 0.1], [-0.2, 0.2], [-0.3, 0.3]]),
         }
 
         for fw, sess in framework_iterator(config, session=True):

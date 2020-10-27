@@ -404,6 +404,11 @@ class TestDDPG(unittest.TestCase):
                 [True, False], size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.ones(shape=(batch_size, )),
+            SampleBatch.EPS_ID: np.zeros((batch_size, ), dtype=np.int32),
+            SampleBatch.AGENT_INDEX: np.zeros((batch_size,), dtype=np.int32),
+            SampleBatch.ACTION_LOGP: -np.ones((batch_size,)),
+            # 1=deterministic distr only has one input per action dim.
+            SampleBatch.ACTION_DIST_INPUTS: -np.ones((batch_size, 1)),
         }
 
     def _ddpg_loss_helper(self, train_batch, weights, ks, fw, gamma,

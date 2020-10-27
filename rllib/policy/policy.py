@@ -236,6 +236,7 @@ class Policy(metaclass=ABCMeta):
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -283,6 +284,7 @@ class Policy(metaclass=ABCMeta):
             info_batch=None,
             explore=explore,
             timestep=timestep,
+            episodes=episodes,
             **kwargs,
         )
 
