@@ -14,7 +14,6 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.typing import AgentID, EpisodeID, EnvID, PolicyID, \
     TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.util.debug import log_once
 
 _, tf, _ = try_import_tf()
@@ -27,9 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 def to_float_np_array(v: List[Any]) -> np.ndarray:
-    if torch.is_tensor(v[0]):
+    if torch and torch.is_tensor(v[0]):
         raise ValueError
-        v = convert_to_non_torch_type(v)
     arr = np.array(v)
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
@@ -172,8 +170,8 @@ class _AgentCollector:
             if col in self.buffers:
                 continue
             shift = self.shift_before - (1 if col == SampleBatch.OBS else 0)
-            # Python primitive.
-            if isinstance(data, (int, float, bool, str)):
+            # Python primitive or dict (e.g. INFOs).
+            if isinstance(data, (int, float, bool, str, dict)):
                 self.buffers[col] = [0 for _ in range(shift)]
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:
