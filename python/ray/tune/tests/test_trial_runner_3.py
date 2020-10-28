@@ -762,8 +762,6 @@ class SearchAlgorithmTest(unittest.TestCase):
         assert limiter2.suggest("test_3")["score"] == 3
 
     def testBatchLimiter(self):
-        ray.init(num_cpus=4)
-
         class TestSuggestion(Searcher):
             def __init__(self, index):
                 self.index = index
