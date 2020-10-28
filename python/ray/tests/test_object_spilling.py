@@ -19,16 +19,10 @@ file_system_object_spilling_config = {
         "directory_path": "/tmp"
     }
 }
-s3_object_spilling_config = {
-    "type": "s3",
+smart_open_object_spilling_config = {
+    "type": "smart_open",
     "params": {
-        "bucket_name": bucket_name
-    }
-}
-s3_object_spilling_botocore_config = {
-    "type": "s3_botocore",
-    "params": {
-        "bucket_name": bucket_name
+        "uri": f"s3://{bucket_name}/"
     }
 }
 
@@ -38,8 +32,7 @@ s3_object_spilling_botocore_config = {
     params=[
         file_system_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
-        # s3_object_spilling_config,
-        # s3_object_spilling_botocore_config,
+        # smart_open_object_spilling_config,
     ])
 def object_spilling_config(request):
     yield request.param
