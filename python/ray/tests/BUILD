@@ -18,6 +18,7 @@ py_test_module_list(
     "test_gcs_fault_tolerance.py",
     "test_iter.py",
     "test_resource_demand_scheduler.py",
+    "test_actor.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -29,7 +30,6 @@ py_test_module_list(
   files = [
     "test_actor_advanced.py",
     "test_actor_failures.py",
-    "test_actor.py",
     "test_actor_resources.py",
     "test_advanced_2.py",
     "test_advanced_3.py",
