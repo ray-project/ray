@@ -76,7 +76,7 @@ class KubernetesNodeProvider(NodeProvider):
         return super().get_node_id(ip_address, use_internal_ip=use_internal_ip)
 
     def set_node_tags(self, node_ids, tags):
-        for _ in range(MAX_TAG_RETRIES):
+        for _ in range(MAX_TAG_RETRIES - 1):
             try:
                 self._set_node_tags(node_ids, tags)
                 return
@@ -88,7 +88,8 @@ class KubernetesNodeProvider(NodeProvider):
                     continue
                 else:
                     raise
-        raise Exception("Reached max retries for setting node tags.")
+        # One more try
+        self._set_node_tags(node_ids, tags)
 
     def _set_node_tags(self, node_id, tags):
         pod = core_api().read_namespaced_pod(node_id, self.namespace)
