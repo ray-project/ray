@@ -1,18 +1,26 @@
 import logging
+import os
 import sys
 import time
+from typing import List, Optional
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.logger import CSVLogger, DEFAULT_LOGGERS, ExperimentLogger, \
+    JsonLogger, \
+    LegacyExperimentLogger, \
+    Logger
 from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
 from ray.tune.suggest.suggestion import Searcher
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.callback import Callback
 from ray.tune.registry import get_trainable_cls
-from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
+from ray.tune.syncer import SyncerCallback, wait_for_sync, set_sync_periods, \
+    SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import FIFOScheduler
@@ -49,6 +57,64 @@ def _report_progress(runner, reporter, done=False):
         sched_debug_str = runner.scheduler_alg.debug_string()
         executor_debug_str = runner.trial_executor.debug_string()
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
+
+
+def _create_callbacks(callbacks: Optional[List[Callback]],
+                      sync_config: SyncConfig,
+                      loggers: Optional[List[Logger]]):
+
+    callbacks = callbacks or []
+    has_syncer_callback = False
+    has_csv_logger = False
+    has_json_logger = False
+
+    # Create LegacyExperimentLogger for passed Logger classes
+    if loggers:
+        # Todo(krfricke): Deprecate `loggers` argument, print warning here.
+        add_loggers = []
+        for trial_logger in loggers:
+            if isinstance(trial_logger, ExperimentLogger):
+                callbacks.append(trial_logger)
+            elif isinstance(trial_logger, type) and issubclass(
+                    trial_logger, Logger):
+                add_loggers.append(trial_logger)
+            else:
+                raise ValueError(
+                    f"Invalid value passed to `loggers` argument of "
+                    f"`tune.run()`: {trial_logger}")
+        if add_loggers:
+            callbacks.append(LegacyExperimentLogger(add_loggers))
+
+    # Check if we have a CSV and JSON logger
+    for callback in callbacks:
+        if isinstance(callback, LegacyExperimentLogger):
+            if CSVLogger in callback.logger_classes:
+                has_csv_logger = True
+            if JsonLogger in callback.logger_classes:
+                has_json_logger = True
+        # Todo(krfricke): add checks for new ExperimentLogger classes
+        elif isinstance(callback, SyncerCallback):
+            has_syncer_callback = True
+
+    # If CSV or JSON logger is missing, add
+    if os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_LOGGERS", "0") != "1":
+        # Todo(krfricke): Switch to new ExperimentLogger classes
+        add_loggers = []
+        if not has_csv_logger:
+            add_loggers.append(CSVLogger)
+        if not has_json_logger:
+            add_loggers.append(JsonLogger)
+        if add_loggers:
+            callbacks.append(LegacyExperimentLogger(add_loggers))
+
+    # If no SyncerCallback was found, add
+    if not has_syncer_callback and os.environ.get(
+            "TUNE_DISABLE_AUTO_CALLBACK_SYNCER", "0") != "1":
+        syncer_callback = SyncerCallback(
+            sync_function=sync_config.sync_to_driver)
+        callbacks.append(syncer_callback)
+
+    return callbacks
 
 
 def run(
@@ -353,6 +419,10 @@ def run(
             "own `metric` and `mode` parameters. Either remove the arguments "
             "from your scheduler or from your call to `tune.run()`")
 
+    # Create logger and syncer callbacks
+    loggers = loggers or DEFAULT_LOGGERS
+    callbacks = _create_callbacks(callbacks, sync_config, loggers=loggers)
+
     runner = TrialRunner(
         search_alg=search_alg,
         scheduler=scheduler,
@@ -457,7 +527,8 @@ def run_experiments(experiments,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
-                    concurrent=True):
+                    concurrent=True,
+                    callbacks=None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -487,7 +558,8 @@ def run_experiments(experiments,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
-            scheduler=scheduler).trials
+            scheduler=scheduler,
+            callbacks=callbacks).trials
     else:
         trials = []
         for exp in experiments:
@@ -501,5 +573,6 @@ def run_experiments(experiments,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,
-                scheduler=scheduler).trials
+                scheduler=scheduler,
+                callbacks=callbacks).trials
         return trials

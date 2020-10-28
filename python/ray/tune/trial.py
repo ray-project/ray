@@ -350,6 +350,14 @@ class Trial:
             max_failures=self.max_failures,
         )
 
+    def init_logdir(self):
+        """Init logdir."""
+        if not self.logdir:
+            self.logdir = create_logdir(self._generate_dirname(),
+                                        self.local_dir)
+        else:
+            os.makedirs(self.logdir, exist_ok=True)
+
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
 
@@ -575,3 +583,4 @@ class Trial:
 
         self.__dict__.update(state)
         validate_trainable(self.trainable_name)
+        self.init_logdir()  # Create logdir if it does not exist

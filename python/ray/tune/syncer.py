@@ -391,8 +391,8 @@ class SyncerCallback(Callback):
         # in UnifiedLogger, where it hasn't been used, either. Remove?
         trial_syncer = self._get_trial_syncer(trial)
         if worker_ip != trial_syncer.worker_ip:
-            logger.info("Trial %s: Syncing (blocking) results to %s",
-                        trial, worker_ip)
+            logger.info("Trial %s: Syncing (blocking) results to %s", trial,
+                        worker_ip)
             trial_syncer.reset()
             trial_syncer.set_worker_ip(worker_ip)
             if not trial_syncer.sync_up():
@@ -450,6 +450,6 @@ class SyncerCallback(Callback):
         trial_syncer.set_worker_ip(result.get(NODE_IP))
         trial_syncer.sync_down_if_needed()
 
-    def on_checkpoint(self, iteration: int, trials: List["Trial"], trial: "Trial",
-                      checkpoint: Checkpoint, **info):
+    def on_checkpoint(self, iteration: int, trials: List["Trial"],
+                      trial: "Trial", checkpoint: Checkpoint, **info):
         self._sync_trial_checkpoint(trial, checkpoint)

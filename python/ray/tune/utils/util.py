@@ -560,7 +560,7 @@ class SafeFallbackEncoder(json.JSONEncoder):
             if issubclass(type(value), numbers.Number):
                 return float(value)
 
-            return super(_SafeFallbackEncoder, self).default(value)
+            return super(SafeFallbackEncoder, self).default(value)
 
         except Exception:
             return str(value)  # give up, just stringify it (ok for logs)
@@ -575,7 +575,7 @@ def pretty_print(result):
         if v is not None:
             out[k] = v
 
-    cleaned = json.dumps(out, cls=_SafeFallbackEncoder)
+    cleaned = json.dumps(out, cls=SafeFallbackEncoder)
     return yaml.safe_dump(json.loads(cleaned), default_flow_style=False)
 
 

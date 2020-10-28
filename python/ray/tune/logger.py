@@ -4,19 +4,16 @@ import logging
 import os
 from typing import Dict, Iterable, List, Optional, Type
 
-import yaml
-import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.tune import Callback
+from ray.tune.callback import Callback
 from ray.tune.trial import Trial, create_logdir
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
-from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S,
-                             TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
-                             EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
-                             EXPR_RESULT_FILE)
+from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
+                             EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE,
+                             EXPR_PROGRESS_FILE, EXPR_RESULT_FILE)
 from ray.tune.utils import flatten_dict
 
 logger = logging.getLogger(__name__)
@@ -38,7 +35,9 @@ class Logger:
         trial (Trial): Trial object for the logger to access.
     """
 
-    def __init__(self, config: Dict, logdir: str,
+    def __init__(self,
+                 config: Dict,
+                 logdir: str,
                  trial: Optional[Trial] = None):
         self.config = config
         self.logdir = logdir
@@ -388,7 +387,7 @@ class ExperimentLogger(Callback):
 
 class LegacyExperimentLogger(ExperimentLogger):
     def __init__(self, logger_classes: Iterable[Type[Logger]]):
-        self._logger_classes = list(logger_classes)
+        self.logger_classes = list(logger_classes)
         self._class_trial_loggers: Dict[Type[Logger], Dict[Trial, Logger]] = {}
 
     def log_trial_start(self, trial: Trial):
@@ -398,9 +397,9 @@ class LegacyExperimentLogger(ExperimentLogger):
         else:
             os.makedirs(trial.logdir, exist_ok=True)
 
-        for logger_class in self._logger_classes:
+        for logger_class in self.logger_classes:
             trial_loggers = self._class_trial_loggers.get(logger_class, {})
-            if not trial in trial_loggers:
+            if trial not in trial_loggers:
                 logger = logger_class(trial.config, trial.logdir, trial)
                 trial_loggers[trial] = logger
             self._class_trial_loggers[logger_class] = trial_loggers

@@ -123,6 +123,14 @@ class Experiment:
                  max_failures=0,
                  restore=None):
 
+        if loggers is not None:
+            # Most users won't run into this as `tune.run()` does not pass
+            # the argument anymore. However, we will want to inform users
+            # if they instantiate their `Experiment` objects themselves.
+            raise ValueError(
+                "Passing `loggers` to an `Experiment` is deprecated. Use "
+                "an `ExperimentLogger` callback instead.")
+
         config = config or {}
         if callable(run) and detect_checkpoint_function(run):
             if checkpoint_at_end:
@@ -194,7 +202,6 @@ class Experiment:
             "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
-            "loggers": loggers,
             "log_to_file": (stdout_file, stderr_file),
             "sync_to_driver": sync_to_driver,
             "checkpoint_freq": checkpoint_freq,

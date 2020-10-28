@@ -9,7 +9,6 @@ import os
 
 from six import string_types
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -15,6 +15,7 @@ from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.function_runner import FunctionRunner
+from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
 from ray.tune.utils.trainable import TrainableUtil
@@ -124,8 +125,6 @@ class _TrialCleanup:
 
 
 def noop_logger_creator(config, logdir):
-    from ray.tune.logger import NoopLogger
-
     # Set the working dir in the remote process, for user file writes
     os.makedirs(logdir, exist_ok=True)
     if not ray.worker._mode() == ray.worker.LOCAL_MODE:
@@ -178,6 +177,7 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
 
     def _setup_remote_runner(self, trial, reuse_allowed):
+        trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
@@ -364,8 +364,7 @@ class RayTrialExecutor(TrialExecutor):
     def stop_trial(self, trial, error=False, error_msg=None):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(
-            trial, error=error, error_msg=error_msg)
+        self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             self._return_resources(trial.resources)

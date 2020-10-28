@@ -22,7 +22,7 @@ from ray.tune.suggest import create_searcher
 from ray.tune.schedulers import create_scheduler
 
 __all__ = [
-    "Trainable", "DurableTrainable", "TuneError", "grid_search",
+    "Trainable", "DurableTrainable", "Callback", "TuneError", "grid_search",
     "register_env", "register_trainable", "run", "run_experiments",
     "with_parameters", "Stopper", "EarlyStopping", "Experiment", "function",
     "sample_from", "track", "uniform", "quniform", "choice", "randint",
