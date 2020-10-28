@@ -129,7 +129,7 @@ class Monitor:
     def update_load_metrics(self):
         """Fetches heartbeat data from GCS and updates load metrics."""
 
-        all_heartbeat = self.global_state_accessor.update_load_metrics()
+        all_heartbeat = self.global_state_accessor.get_all_heartbeat()
         heartbeat_batch_data = \
             ray.gcs_utils.HeartbeatBatchTableData.FromString(all_heartbeat)
         for heartbeat_message in heartbeat_batch_data.batch:
