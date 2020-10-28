@@ -155,10 +155,10 @@ class Monitor:
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
             if ip:
-                self.load_metrics.update(
-                    ip, total_resources, True, available_resources, True,
-                    resource_load, waiting_bundles, infeasible_bundles,
-                    pending_placement_groups)
+                self.load_metrics.update(ip, total_resources,
+                                         available_resources, resource_load,
+                                         waiting_bundles, infeasible_bundles,
+                                         pending_placement_groups)
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")
