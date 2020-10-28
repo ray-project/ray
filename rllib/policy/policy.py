@@ -76,14 +76,14 @@ class Policy(metaclass=ABCMeta):
         # Child classes need to add their specific requirements here (usually
         # a combination of a Model's inference_view_- and the
         # Policy's loss function-requirements.
-        view_reqs = {
-            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
-            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
-            SampleBatch.REWARDS: ViewRequirement(),
-            SampleBatch.DONES: ViewRequirement(),
-            SampleBatch.EPS_ID: ViewRequirement(),
-            SampleBatch.AGENT_INDEX: ViewRequirement(),
-        }
+        view_reqs = self._get_default_view_requirements()
+        #    SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+        #    SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+        #    SampleBatch.REWARDS: ViewRequirement(),
+        #    SampleBatch.DONES: ViewRequirement(),
+        #    SampleBatch.EPS_ID: ViewRequirement(),
+        #    SampleBatch.AGENT_INDEX: ViewRequirement(),
+        #}
         if not hasattr(self, "view_requirements"):
             self.view_requirements = view_reqs
         else:
@@ -541,6 +541,51 @@ class Policy(metaclass=ABCMeta):
             worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))
         return exploration
+
+    def _get_default_view_requirements(self):
+        """Returns a default ViewRequirements dict.
+
+        Note: This is the base/maximum requirement dict, from which later
+        some requirements will be subtracted again automatically to streamline
+        data collection, batch creation, and data transfer.
+
+        Returns:
+            ViewReqDict: The default view requirements dict.
+        """
+
+        from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
+
+        # Default view requirements (equal to those that we would use before
+        # the trajectory view API was introduced).
+        return {
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+            SampleBatch.NEXT_OBS: ViewRequirement(
+                data_col=SampleBatch.OBS, shift=1, space=self.observation_space),
+            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(data_col=SampleBatch.ACTIONS, shift=-1, space=self.action_space),
+            SampleBatch.REWARDS: ViewRequirement(),
+            SampleBatch.PREV_REWARDS: ViewRequirement(data_col=SampleBatch.REWARDS, shift=-1),
+            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.EPS_ID: ViewRequirement(),
+            SampleBatch.AGENT_INDEX: ViewRequirement(),
+            SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(),
+            SampleBatch.ACTION_LOGP: ViewRequirement(),
+            SampleBatch.VF_PREDS: ViewRequirement(),
+            PRIO_WEIGHTS: ViewRequirement(),
+        }
+        ## Add the state-in/out views in case the policy has an RNN.
+        #if policy.is_recurrent():
+        #    init_state = policy.get_initial_state()
+        #    for i, s in enumerate(init_state):
+        #        view_reqs["state_in_{}".format(i)] = ViewRequirement(
+        #            data_col="state_out_{}".format(i),
+        #            shift=-1,
+        #            space=gym.spaces.Box(-1.0, 1.0, shape=s.shape))
+        #        view_reqs["state_out_{}".format(i)] = ViewRequirement(
+        #            space=gym.spaces.Box(-1.0, 1.0, shape=s.shape))
+    
+        #return view_reqs
 
 
 def clip_action(action, action_space):

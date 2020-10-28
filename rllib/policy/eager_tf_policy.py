@@ -11,12 +11,13 @@ from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import get_default_view_requirements, \
-    ViewRequirement
+from ray.rllib.policy.view_requirement import initialize_loss_with_dummy_batch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
+from ray.rllib.utils.tf_ops import convert_to_non_tf_type
+from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -211,6 +212,11 @@ def build_eager_tf_policy(name,
             self._loss_initialized = False
             self._sess = None
 
+            self._loss = loss_fn
+            self.batch_divisibility_req = get_batch_divisibility_req(self) if \
+                callable(get_batch_divisibility_req) else \
+                (get_batch_divisibility_req or 1)
+
             if get_default_config:
                 config = dict(get_default_config(), **config)
 
@@ -242,9 +248,6 @@ def build_eager_tf_policy(name,
                     config["model"],
                     framework=self.framework,
                 )
-            # Combine view_requirements for Model and Policy.
-            self.view_requirements.update(
-                self.model.inference_view_requirements)
 
             self.exploration = self._create_exploration()
             self._state_in = [
@@ -254,40 +257,25 @@ def build_eager_tf_policy(name,
 
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
-                self.view_requirements.update(view_requirements_fn(self))
-            # If no view-requirements given, use default settings.
-            # Add NEXT_OBS, STATE_IN_0.., and others.
-            else:
-                self.view_requirements.update(
-                    get_default_view_requirements(self))
+                self.view_requirements = view_requirements_fn(self)
+            # Combine view_requirements for Model and Policy.
+            self.view_requirements.update(
+                self.model.inference_view_requirements)
 
-            input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(
-                    np.array([observation_space.sample()])),
-                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                    [flatten_to_single_ndarray(action_space.sample())]),
-                SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
-            }
-
-            if action_distribution_fn:
-                _, self.dist_class, _ = action_distribution_fn(
-                    self, self.model, input_dict[SampleBatch.CUR_OBS])
-            else:
-                self.model(input_dict, self._state_in,
-                           tf.convert_to_tensor([1]))
-
-            # Update default view requirements by extra action fetches.
-            if view_requirements_fn is None:
-                _, _, extra_fetches = \
-                    self.compute_actions_from_input_dict(input_dict)
-                for key, value in extra_fetches.items():
-                    if key not in self.view_requirements:
-                        self.view_requirements[key] = ViewRequirement()
+            ##TODO: do exactly like in torch.
+            #input_dict = {
+            #    SampleBatch.CUR_OBS: tf.convert_to_tensor(
+            #        np.array([observation_space.sample()])),
+            #    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+            #        [flatten_to_single_ndarray(action_space.sample())]),
+            #    SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
+            #}
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_with_dummy_batch()
+            initialize_loss_with_dummy_batch(
+                self, auto=view_requirements_fn is None)
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -297,6 +285,9 @@ def build_eager_tf_policy(name,
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
+
+            # Got to reset global_timestep again after fake run-throughs.
+            self.global_timestep = 0
 
         @override(Policy)
         def postprocess_trajectory(self,
@@ -638,79 +629,96 @@ def build_eager_tf_policy(name,
             return fetches
 
         def _initialize_loss_with_dummy_batch(self):
+            self._dummy_batch = self._get_dummy_batch(self.view_requirements, batch_size=4)
+            input_dict = self._lazy_tensor_dict(self._dummy_batch)
+
+            # TODO: (sven) try to get rid of this call.
+            if action_distribution_fn:
+                _, self.dist_class, _ = action_distribution_fn(
+                    self, self.model, input_dict[SampleBatch.CUR_OBS])
+            self.compute_actions_from_input_dict(input_dict)
+
             # Dummy forward pass to initialize any policy attributes, etc.
-            dummy_batch = {
-                SampleBatch.CUR_OBS: np.array(
-                    [self.observation_space.sample()]),
-                SampleBatch.NEXT_OBS: np.array(
-                    [self.observation_space.sample()]),
-                SampleBatch.DONES: np.array([False], dtype=np.bool),
-                SampleBatch.REWARDS: np.array([0], dtype=np.float32),
-            }
-            if isinstance(self.action_space, (Dict, Tuple)):
-                dummy_batch[SampleBatch.ACTIONS] = [
-                    flatten_to_single_ndarray(self.action_space.sample())
-                ]
-            else:
-                dummy_batch[SampleBatch.ACTIONS] = tf.nest.map_structure(
-                    lambda c: np.array([c]), self.action_space.sample())
+            #dummy_batch = {
+            #    SampleBatch.CUR_OBS: np.array(
+            #        [self.observation_space.sample()]),
+            #    SampleBatch.NEXT_OBS: np.array(
+            #        [self.observation_space.sample()]),
+            #    SampleBatch.DONES: np.array([False], dtype=np.bool),
+            #    SampleBatch.REWARDS: np.array([0], dtype=np.float32),
+            #}
+            #if isinstance(self.action_space, (Dict, Tuple)):
+            #    dummy_batch[SampleBatch.ACTIONS] = [
+            #        flatten_to_single_ndarray(self.action_space.sample())
+            #    ]
+            #else:
+            #    dummy_batch[SampleBatch.ACTIONS] = tf.nest.map_structure(
+            #        lambda c: np.array([c]), self.action_space.sample())
 
-            if obs_include_prev_action_reward:
-                dummy_batch.update({
-                    SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
-                    SampleBatch.PREV_REWARDS: dummy_batch[SampleBatch.REWARDS],
-                })
-            for i, h in enumerate(self._state_in):
-                dummy_batch["state_in_{}".format(i)] = h
-                dummy_batch["state_out_{}".format(i)] = h
+            #if obs_include_prev_action_reward:
+            #    dummy_batch.update({
+            #        SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
+            #        SampleBatch.PREV_REWARDS: dummy_batch[SampleBatch.REWARDS],
+            #    })
+            #for i, h in enumerate(self._state_in):
+            #    dummy_batch["state_in_{}".format(i)] = h
+            #    dummy_batch["state_out_{}".format(i)] = h
 
-            if self._state_in:
-                dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
+            #if self._state_in:
+            #    dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
 
             # Convert everything to tensors.
-            dummy_batch = tf.nest.map_structure(tf1.convert_to_tensor,
-                                                dummy_batch)
+            #dummy_batch = tf.nest.map_structure(tf1.convert_to_tensor,
+            #                                    dummy_batch)
 
-            # for IMPALA which expects a certain sample batch size.
-            def tile_to(tensor, n):
-                return tf.tile(tensor,
-                               [n] + [1 for _ in tensor.shape.as_list()[1:]])
+            ## for IMPALA which expects a certain sample batch size.
+            #def tile_to(tensor, n):
+            #    return tf.tile(tensor,
+            #                   [n] + [1 for _ in tensor.shape.as_list()[1:]])
 
-            if get_batch_divisibility_req:
-                dummy_batch = tf.nest.map_structure(
-                    lambda c: tile_to(c, get_batch_divisibility_req(self)),
-                    dummy_batch)
+            #if get_batch_divisibility_req:
+            #    dummy_batch = tf.nest.map_structure(
+            #        lambda c: tile_to(c, get_batch_divisibility_req(self)),
+            #        dummy_batch)
             i = 0
             self._state_in = []
-            while "state_in_{}".format(i) in dummy_batch:
-                self._state_in.append(dummy_batch["state_in_{}".format(i)])
+            while "state_in_{}".format(i) in self._dummy_batch:
+                self._state_in.append(self._dummy_batch["state_in_{}".format(i)])
                 i += 1
 
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
-            _, _, fetches = self.compute_actions(
-                dummy_batch[SampleBatch.CUR_OBS],
-                self._state_in,
-                dummy_batch.get(SampleBatch.PREV_ACTIONS),
-                dummy_batch.get(SampleBatch.PREV_REWARDS),
-                explore=False)
-            # Got to reset global_timestep again after this fake run-through.
-            self.global_timestep = 0
-            dummy_batch.update(fetches)
+            #_, _, fetches = self.compute_actions(
+            #    dummy_batch[SampleBatch.CUR_OBS],
+            #    self._state_in,
+            #    dummy_batch.get(SampleBatch.PREV_ACTIONS),
+            #    dummy_batch.get(SampleBatch.PREV_REWARDS),
+            #    explore=False)
+            #dummy_batch.update(fetches)
 
-            postprocessed_batch = self.postprocess_trajectory(
-                SampleBatch(dummy_batch))
+            #postprocessed_batch = self.postprocess_trajectory(
+            #    SampleBatch(dummy_batch))
 
             # model forward pass for the loss (needed after postprocess to
             # overwrite any tensor state from that call)
-            self.model.from_batch(dummy_batch)
+            #self.model.from_batch(dummy_batch)
 
-            postprocessed_batch = tf.nest.map_structure(
-                lambda c: tf.convert_to_tensor(c), postprocessed_batch.data)
+            #postprocessed_batch = tf.nest.map_structure(
+            #    lambda c: tf.convert_to_tensor(c), postprocessed_batch.data)
 
             loss_fn(self, self.model, self.dist_class, postprocessed_batch)
             if stats_fn:
                 stats_fn(self, postprocessed_batch)
+
+        def _lazy_tensor_dict(self, postprocessed_batch):
+            train_batch = UsageTrackingDict(postprocessed_batch)
+            train_batch.set_get_interceptor(tf.convert_to_tensor)
+            return train_batch
+
+        def _lazy_numpy_dict(self, postprocessed_batch):
+            train_batch = UsageTrackingDict(postprocessed_batch)
+            train_batch.set_get_interceptor(convert_to_non_tf_type)
+            return train_batch
 
         @classmethod
         def with_tracing(cls):

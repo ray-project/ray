@@ -447,19 +447,19 @@ class _SimpleListCollector(_SampleCollector):
 
         for agent_id, (_, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
-            if is_done:
-                # Error if no DONE at end of this agent's trajectory.
-                if check_dones and not pre_batch[SampleBatch.DONES][-1]:
-                    raise ValueError(
-                        "Episode {} terminated for all agents, but we still "
-                        "don't have a last observation for agent {} (policy "
-                        "{}). ".format(
-                            episode_id, agent_id, self.agent_key_to_policy[(
-                                episode_id, agent_id)]) +
-                        "Please ensure that you include the last observations "
-                        "of all live agents when setting done[__all__] to "
-                        "True. Alternatively, set no_done_at_end=True to "
-                        "allow this.")
+            # Error if no DONE at end of this agent's trajectory.
+            if is_done and check_dones and \
+                    not pre_batch[SampleBatch.DONES][-1]:
+                raise ValueError(
+                    "Episode {} terminated for all agents, but we still don't "
+                    "don't have a last observation for agent {} (policy "
+                    "{}). ".format(
+                        episode_id, agent_id, self.agent_key_to_policy[(
+                            episode_id, agent_id)]) +
+                    "Please ensure that you include the last observations "
+                    "of all live agents when setting done[__all__] to "
+                    "True. Alternatively, set no_done_at_end=True to "
+                    "allow this.")
             # If (only this?) agent is done, erase its buffer entirely.
             if pre_batch[SampleBatch.DONES][-1]:
                 del self.agent_collectors[(episode_id, agent_id)]

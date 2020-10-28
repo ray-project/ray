@@ -601,15 +601,6 @@ class TorchPolicy(Policy):
             functools.partial(convert_to_non_torch_type))
         return train_batch
 
-    def _get_dummy_batch(self, view_requirements):
-        # Generate a 2 batch (safer since some loss functions require at least
-        # a batch size of 2).
-        return {
-            view_col: np.zeros_like([view_req.space.sample(),
-                                     view_req.space.sample()])
-            for view_col, view_req in view_requirements.items()
-        }
-
 
 # TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
 #   and for all possible hyperparams, not just lr.

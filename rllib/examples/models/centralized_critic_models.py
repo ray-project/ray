@@ -124,7 +124,7 @@ class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
     def central_value_function(self, obs, opponent_obs, opponent_actions):
         input_ = torch.cat([
             obs, opponent_obs,
-            torch.nn.functional.one_hot(opponent_actions, 2).float()
+            torch.nn.functional.one_hot(opponent_actions.long(), 2).float()
         ], 1)
         return torch.reshape(self.central_vf(input_), [-1])
 

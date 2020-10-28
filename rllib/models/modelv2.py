@@ -237,20 +237,22 @@ class ModelV2:
         right input dict, state, and seq len arguments.
         """
 
-        input_dict = {
-            "obs": train_batch[SampleBatch.CUR_OBS],
-            "is_training": is_training,
-        }
-        if SampleBatch.PREV_ACTIONS in train_batch:
-            input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
-        if SampleBatch.PREV_REWARDS in train_batch:
-            input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
+        input_dict = train_batch.copy()
+        #input_dict = {
+        #    "obs": train_batch[SampleBatch.CUR_OBS],
+        #    "is_training": is_training,
+        #}
+        input_dict["is_training"] = is_training
+        #if SampleBatch.PREV_ACTIONS in train_batch:
+        #    input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
+        #if SampleBatch.PREV_REWARDS in train_batch:
+        #    input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
         states = []
         i = 0
-        while "state_in_{}".format(i) in train_batch:
-            states.append(train_batch["state_in_{}".format(i)])
+        while "state_in_{}".format(i) in input_dict:
+            states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        return self.__call__(input_dict, states, train_batch.get("seq_lens"))
+        return self.__call__(input_dict, states, input_dict.get("seq_lens"))
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.

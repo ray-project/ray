@@ -81,7 +81,7 @@ if __name__ == "__main__":
         passed = False
         for i in range(3):
             try:
-                ray.init(num_cpus=5, local_mode=True)#TODO
+                ray.init(num_cpus=5)
                 trials = run_experiments(experiments, resume=False, verbose=1)
             finally:
                 ray.shutdown()

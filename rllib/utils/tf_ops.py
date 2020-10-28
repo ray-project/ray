@@ -1,9 +1,32 @@
 import numpy as np
+import tree
 
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
 
+
+def convert_to_non_tf_type(stats):
+    """Converts values in `stats` to non-Tensor numpy or python types.
+
+    Args:
+        stats (any): Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all tf (eager) tensors
+            being converted to numpy types.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to non-tf Tensor types.
+    """
+
+    # The mapping function used to numpyize torch Tensors.
+    def mapping(item):
+        if isinstance(item, (tf.Tensor, tf.Variable)):
+            return item.numpy()
+        else:
+            return item
+
+    return tree.map_structure(mapping, stats)
 
 def explained_variance(y, pred):
     _, y_var = tf.nn.moments(y, axes=[0])
