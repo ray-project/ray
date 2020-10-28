@@ -2283,10 +2283,17 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
                                 std::shared_ptr<RayObject> ray_object, ObjectID object_id,
                                 void *py_future) {
   std::vector<std::shared_ptr<RayObject>> vec;
+  bool object_is_local = false;
+
   // Check if object is available before subscribing to plasma.
-  if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
+  if (Contains(object_id, &object_is_local).ok() && object_is_local) {
+    RAY_LOG(DEBUG) << "PlasmaCallback, object " << object_id
+                   << " is already local, returning it.";
+    RAY_CHECK_OK(Get(std::vector<ObjectID>{object_id}, 0, &vec));
+    RAY_CHECK(vec.size() == 1);
     return success(vec.front(), object_id, py_future);
   }
+
   {
     absl::MutexLock lock(&plasma_mutex_);
     auto it = async_plasma_callbacks_.find(object_id);
@@ -2304,7 +2311,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   SubscribeToPlasmaAdd(object_id);
 
   // Check in-memory store in case object became ready *before* SubscribeToPlasmaAdd.
-  if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
+  if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::function<void(void)>> callbacks;
     {
       absl::MutexLock lock(&plasma_mutex_);
@@ -2338,7 +2345,8 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
 }
 
 void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
-  RAY_CHECK_OK(local_raylet_client_->SubscribeToPlasma(object_id));
+  RAY_CHECK_OK(
+      local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id)));
 }
 
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,

@@ -25,6 +25,12 @@
 using MessageType = ray::protocol::MessageType;
 
 namespace {
+inline flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
+    flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
+  return ray::protocol::CreateAddress(
+      fbb, fbb.CreateString(address.raylet_id()), fbb.CreateString(address.ip_address()),
+      address.port(), fbb.CreateString(address.worker_id()));
+}
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>>
 AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
@@ -32,10 +38,7 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
   std::vector<flatbuffers::Offset<ray::protocol::Address>> address_vec;
   address_vec.reserve(addresses.size());
   for (const auto &addr : addresses) {
-    auto fbb_addr = ray::protocol::CreateAddress(
-        fbb, fbb.CreateString(addr.raylet_id()), fbb.CreateString(addr.ip_address()),
-        addr.port(), fbb.CreateString(addr.worker_id()));
-    address_vec.push_back(fbb_addr);
+    address_vec.push_back(to_flatbuf(fbb, addr));
   }
   return fbb.CreateVector(address_vec);
 }
@@ -416,9 +419,11 @@ void raylet::RayletClient::GlobalGC(
   grpc_client_->GlobalGC(request, callback);
 }
 
-Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
+Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
+                                               const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
+  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id),
+                                                      to_flatbuf(fbb, owner_address));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
 }

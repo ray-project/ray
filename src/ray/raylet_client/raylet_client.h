@@ -387,7 +387,8 @@ class RayletClient : public PinObjectsInterface,
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
   // Subscribe to receive notification on plasma object
-  ray::Status SubscribeToPlasma(const ObjectID &object_id);
+  ray::Status SubscribeToPlasma(const ObjectID &object_id,
+                                const rpc::Address &owner_address);
 
   WorkerID GetWorkerID() const { return worker_id_; }
 

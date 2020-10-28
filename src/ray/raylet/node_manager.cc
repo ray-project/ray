@@ -56,6 +56,17 @@ ActorStats GetActorStatisticalData(
   return item;
 }
 
+inline ray::rpc::ObjectReference FlatbufferToSingleObjectReference(
+    const flatbuffers::String &object_id, const ray::protocol::Address &address) {
+  ray::rpc::ObjectReference ref;
+  ref.set_object_id(object_id.str());
+  ref.mutable_owner_address()->set_raylet_id(address.raylet_id()->str());
+  ref.mutable_owner_address()->set_ip_address(address.ip_address()->str());
+  ref.mutable_owner_address()->set_port(address.port());
+  ref.mutable_owner_address()->set_worker_id(address.worker_id()->str());
+  return ref;
+}
+
 std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
     const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
@@ -2957,6 +2968,13 @@ void NodeManager::ProcessSubscribePlasmaReady(
 
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
+
+  // Tell task dependency manager to pull the objects.
+  // NOTE(simon): This doesn't handle cancellation and edge case invovling eviciton.
+  std::vector<rpc::ObjectReference> refs = {FlatbufferToSingleObjectReference(
+      *message->object_id(), *message->owner_address())};
+  task_dependency_manager_.SubscribeWaitDependencies(associated_worker->WorkerId(), refs);
+
   {
     absl::MutexLock guard(&plasma_object_notification_lock_);
     if (!async_plasma_objects_notification_.contains(id)) {
