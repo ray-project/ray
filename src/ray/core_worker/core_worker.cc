@@ -2282,11 +2282,26 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
 void CoreWorker::PlasmaCallback(SetResultCallback success,
                                 std::shared_ptr<RayObject> ray_object, ObjectID object_id,
                                 void *py_future) {
-  // Add the success callback to listener queue.
+  // This is the base case. A typical call stack for async plasma get looks like:
+  // GetAsync -> PlasmaCallback (ask Raylet) -> HandlePlasmaObjectReady ->
+  // plasma_arrived_callback -> GetAsync -> PlasmaCallback (this base case).
+  bool object_is_local = false;
+  if (Contains(object_id, &object_is_local).ok() && object_is_local) {
+    std::vector<std::shared_ptr<RayObject>> vec;
+    RAY_CHECK_OK(Get(std::vector<ObjectID>{object_id}, 0, &vec));
+    RAY_CHECK(vec.size() > 0)
+        << "Failed to get local object but Raylet notified object is local.";
+    return success(vec.front(), object_id, py_future);
+  }
+
+  // Add the callback to listener queue.
   {
     absl::MutexLock lock(&plasma_mutex_);
     auto it = async_plasma_callbacks_.find(object_id);
     auto plasma_arrived_callback = [this, success, object_id, py_future]() {
+      // This callback is invoked on the io_service_ event loop, so it cannot call
+      // blocking call like Get(). We used GetAsync here, which should immediate call
+      // PlasmaCallback again.
       GetAsync(object_id, success, py_future);
     };
 
@@ -2298,27 +2313,9 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
     }
   }
 
-  // Ask raylet to subscribe to object notification. This is a blocking call. Raylet
-  // returns success=false if the object is already local.
-  bool subscription_success =
-      local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id));
-
-  if (!subscription_success) {
-    // Raylet told us object is already local, drain the callback queue.
-    std::vector<std::function<void(void)>> callbacks;
-    {
-      absl::MutexLock lock(&plasma_mutex_);
-      auto after_iter = async_plasma_callbacks_.extract(object_id);
-      callbacks = after_iter.mapped();
-    }
-    for (auto callback : callbacks) {
-      // This callback needs to be asynchronous because it runs on the io_service_, so no
-      // RPCs can be processed while it's running. This can easily lead to deadlock (for
-      // example if the callback calls ray.get() on an object that is dependent on an RPC
-      // to be ready).
-      callback();
-    }
-  }
+  // Ask raylet to subscribe to object notification. Raylet will call this core worker
+  // when the object is local. HandlePlasmaObjectReady handles such request.
+  local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id));
 }
 
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,

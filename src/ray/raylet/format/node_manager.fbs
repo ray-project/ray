@@ -82,8 +82,6 @@ enum MessageType:int {
   SetResourceRequest,
   // Subscribe to Plasma updates.
   SubscribePlasmaReady,
-  // Rely to plasma update subscription.
-  SubscribePlasmaReadyReply,
 }
 
 table TaskExecutionSpecification {
@@ -300,13 +298,6 @@ table SubscribePlasmaReady {
   object_id: string;
   // The owner address for the ObjectID
   owner_address: Address;
-}
-
-table SubscribePlasmaReadyReply {
-  // Whether or not the object subscription is successful.
-  // A false value means the object is already local so the
-  // subscription request is ignored.
-  success: bool;
 }
 
 table ForceSpillObjectsRequest {

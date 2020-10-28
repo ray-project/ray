@@ -2969,10 +2969,20 @@ void NodeManager::ProcessSubscribePlasmaReady(
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
 
-  bool subscription_success = true;
-
   if (task_dependency_manager_.CheckObjectLocal(id)) {
-    subscription_success = false;
+    // Object is already local, so we directly fires the callback to tell core worker
+    // plasma object is ready.
+    rpc::PlasmaObjectReadyRequest request;
+    request.set_object_id(id.Binary());
+
+    RAY_LOG(DEBUG) << "Object " << id << " is already local, firing callback directly.";
+    associated_worker->rpc_client()->PlasmaObjectReady(
+        request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Problem with telling worker that plasma object is ready"
+                          << status.ToString();
+          }
+        });
   } else {
     // The object is not local, so we are subscribing to pull and wait for the objects.
     std::vector<rpc::ObjectReference> refs = {FlatbufferToSingleObjectReference(
@@ -3001,15 +3011,6 @@ void NodeManager::ProcessSubscribePlasmaReady(
       }
     }
   }
-
-  flatbuffers::FlatBufferBuilder fbb;
-  flatbuffers::Offset<protocol::SubscribePlasmaReadyReply> reply =
-      protocol::CreateSubscribePlasmaReadyReply(fbb, subscription_success);
-  fbb.Finish(reply);
-
-  RAY_CHECK_OK(client->WriteMessage(
-      static_cast<int64_t>(protocol::MessageType::SubscribePlasmaReadyReply),
-      fbb.GetSize(), fbb.GetBufferPointer()));
 }
 
 ray::Status NodeManager::SetupPlasmaSubscription() {
@@ -3026,8 +3027,6 @@ ray::Status NodeManager::SetupPlasmaSubscription() {
         }
         rpc::PlasmaObjectReadyRequest request;
         request.set_object_id(object_id.Binary());
-        request.set_metadata_size(object_info.metadata_size);
-        request.set_data_size(object_info.data_size);
 
         for (auto worker : waiting_workers) {
           worker->rpc_client()->PlasmaObjectReady(
