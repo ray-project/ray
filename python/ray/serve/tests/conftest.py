@@ -16,7 +16,10 @@ def _shared_serve_instance():
     ray.init(
         num_cpus=36,
         _metrics_export_port=9999,
-        _system_config={"metrics_report_interval_ms": 1000})
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "task_retry_delay_ms": 50
+        })
     yield serve.start(detached=True)
 
 
