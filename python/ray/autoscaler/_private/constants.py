@@ -1,6 +1,6 @@
 import os
 
-from ray.ray_constants import (  # noqa F401     
+from ray.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL, LOGGER_FORMAT,
     MEMORY_RESOURCE_UNIT_BYTES, RESOURCES_ENVIRONMENT_VARIABLE)
 
@@ -39,3 +39,8 @@ BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 
 # Host path that Docker mounts attach to
 DOCKER_MOUNT_PREFIX = "/tmp/ray_tmp_mount"
+
+# The maximum allowed resource demand vector size to guarantee the resource
+# demand scheduler bin packing algorithm takes a reasonable amount of time
+# to run.
+MAX_RESOURCE_DEMAND_VECTOR_SIZE = 100

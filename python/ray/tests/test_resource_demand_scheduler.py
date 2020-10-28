@@ -23,7 +23,7 @@ from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
                                 STATUS_UP_TO_DATE, STATUS_UNINITIALIZED
 from ray.test_utils import same_elements
-from ray.ray_constants import MAX_BACKLOG_SIZE
+from ray.autoscaler._private.constants import MAX_RESOURCE_DEMAND_VECTOR_SIZE
 
 from time import sleep
 
@@ -372,40 +372,102 @@ def test_backlog_queue_impact_on_binpacking_time():
     new_types["m4.16xlarge"]["max_workers"] = 1000
 
     def test_backlog_queue_impact_on_binpacking_time_aux(
-            num_nodes, time_to_assert):
+            num_available_nodes, time_to_assert, demand_request_shape):
         provider = MockProvider()
         scheduler = ResourceDemandScheduler(
-            provider, TYPES_A, max_workers=10000)
+            provider, new_types, max_workers=10000)
 
-        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "m4.16xlarge"},
-                             num_nodes)
-        # <num_nodes> m4.16xlarge instances.
+        provider.create_node({}, {
+            TAG_RAY_USER_NODE_TYPE: "m4.16xlarge",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }, num_available_nodes)
+        # <num_available_nodes> m4.16xlarge instances.
         cpu_ips = provider.non_terminated_node_ips({})
-        provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"},
-                             num_nodes)
-        # <num_nodes>  m4.16xlarge and <num_nodes> p2.8xlarge instances.
+        provider.create_node({}, {
+            TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }, num_available_nodes)
+        # <num_available_nodes>  m4.16xlarge and <num_available_nodes>
+        # p2.8xlarge instances.
         all_nodes = provider.non_terminated_nodes({})
         all_ips = provider.non_terminated_node_ips({})
         gpu_ips = [ip for ip in all_ips if ip not in cpu_ips]
-        demands = [{"GPU": 1}, {"CPU": 1}] * MAX_BACKLOG_SIZE
-        utilizations = {}
-
-        # 2x<num_nodes> free nodes (<num_nodes> m4.16xlarge and
-        # <num_nodes> p2.8xlarge instances).
-        for i in range(num_nodes):
-            utilizations[cpu_ips[i]] = {"CPU": 64}
-            utilizations[gpu_ips[i]] = {"GPU": 8, "CPU": 32}
-        assert len(utilizations) == 2 * num_nodes
+        usage_by_ip = {}
+        # 2x<num_available_nodes> free nodes (<num_available_nodes> m4.16xlarge
+        # and <num_available_nodes> p2.8xlarge instances).
+        for i in range(num_available_nodes):
+            usage_by_ip[cpu_ips[i]] = {"CPU": 64}
+            usage_by_ip[gpu_ips[i]] = {"GPU": 8, "CPU": 32}
+        demands = demand_request_shape * MAX_RESOURCE_DEMAND_VECTOR_SIZE
         t1 = time.time()
         to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, demands,
-                                                  utilizations, [])
+                                                  usage_by_ip, [])
         t2 = time.time()
-        assert t2 - t1 < time_to_assert
+        import pdb
+        pdb.set_trace()
 
-    test_backlog_queue_impact_on_binpacking_time_aux(
-        num_nodes=100, time_to_assert=0.2)
-    test_backlog_queue_impact_on_binpacking_time_aux(
-        num_nodes=1000, time_to_assert=0.8)
+        assert t2 - t1 < time_to_assert
+        return to_launch
+
+    ### The times asserted below are 2x the actual time took when this test
+    ### was measured on 2.3 GHz 8-Core Intel (I9-9880H) Core i9.
+
+    # Check the time it takes when there are 0 nodes available and the demand
+    # is requires adding another ~100 nodes.
+    to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
+        num_available_nodes=0,
+        time_to_assert=0.36,
+        demand_request_shape=[{
+            "GPU": 1
+        }, {
+            "CPU": 1
+        }])
+    # If not for the max launch concurrency the next assert should be:
+    # {'m4.large': 4, 'm4.4xlarge': 2, 'm4.16xlarge': 15, 'p2.8xlarge': 125}.
+    assert to_launch == {
+        'm4.large': 4,
+        'm4.4xlarge': 2,
+        'm4.16xlarge': 5,
+        'p2.8xlarge': 5
+    }
+
+    # Check the time it takes when there are 100 nodes available and the demand
+    # requires another 75 nodes.
+    to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
+        num_available_nodes=50,
+        time_to_assert=1,
+        demand_request_shape=[{
+            "GPU": 1
+        }, {
+            "CPU": 2
+        }])
+    # If not for the max launch concurrency the next assert should be:
+    # {'p2.8xlarge': 75}.
+    assert to_launch == {'p2.8xlarge': 50}
+
+    # Check the time it takes when there are 250 nodes available and can
+    # cover the demand.
+    to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
+        num_available_nodes=125,
+        time_to_assert=0.8,
+        demand_request_shape=[{
+            "GPU": 1
+        }, {
+            "CPU": 1
+        }])
+    assert to_launch == {}
+
+    # Check the time it takes when there are 1000 nodes available and the
+    # demand requires another 1000 nodes.
+    to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
+        num_available_nodes=500,
+        time_to_assert=17,
+        demand_request_shape=[{
+            "GPU": 8
+        }, {
+            "CPU": 64
+        }])
+    assert to_launch == {'m4.16xlarge': 500, 'p2.8xlarge': 500}
 
 
 class TestPlacementGroupScaling:
