@@ -564,7 +564,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
     for (auto &load : *load_by_shape) {
       bool found = false;
-      for (int i = 0; i < expected.size(); i++) {
+      for (unsigned int i = 0; i < expected.size(); i++) {
         auto expected_load = expected[i];
         auto shape = *load.mutable_shape();
         bool match =
