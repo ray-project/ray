@@ -208,6 +208,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     help="the highest port number that workers will bind on. If set, "
     "'--min-worker-port' must also be set.")
 @click.option(
+    "--worker-port-list",
+    required=False,
+    help="a comma-separated list of open ports for workers to bind on. "
+    "Overrides '--min-worker-port' and '--max-worker-port'.")
+@click.option(
     "--memory",
     required=False,
     hidden=True,
@@ -357,9 +362,9 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
-          min_worker_port, max_worker_port, memory, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head,
-          include_dashboard, dashboard_host, dashboard_port, block,
+          min_worker_port, max_worker_port, worker_port_list, memory,
+          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
+          head, include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, java_worker_options, load_code_from_local,
@@ -401,6 +406,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         node_ip_address=node_ip_address,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
+        worker_port_list=worker_port_list,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         gcs_server_port=gcs_server_port,
@@ -1027,6 +1033,14 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
              log_style, log_color, verbose):
     """Upload specific files to a Ray cluster."""
     cli_logger.configure(log_style, log_color, verbose)
+
+    if all_nodes:
+        cli_logger.warning(
+            "WARNING: the `all_nodes` option is deprecated and will be "
+            "removed in the future. "
+            "Rsync to worker nodes is not reliable since workers may be "
+            "added during autoscaling. Please use the `file_mounts` "
+            "feature instead for consistent file sync in autoscaling clusters")
 
     rsync(
         cluster_config_file,

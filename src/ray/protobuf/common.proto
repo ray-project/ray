@@ -392,6 +392,14 @@ message CoreWorkerStats {
   repeated ObjectRefInfo object_refs = 18;
   // Job ID.
   bytes job_id = 19;
+  // Worker id of core worker.
+  bytes worker_id = 20;
+  // Language
+  Language language = 21;
+  // PID of the worker process.
+  uint32 pid = 22;
+  // The worker type.
+  WorkerType worker_type = 23;
 }
 
 message MetricPoint {

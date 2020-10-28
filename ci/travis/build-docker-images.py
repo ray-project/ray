@@ -8,7 +8,7 @@ import shutil
 import sys
 from contextlib import redirect_stdout
 from io import StringIO
-from typing import List
+from typing import List, Tuple
 
 import docker
 
@@ -17,9 +17,21 @@ DOCKER_USERNAME = "raytravisbot"
 DOCKER_CLIENT = None
 PYTHON_WHL_VERSION = "cp37m"
 
+DOCKER_HUB_DESCRIPTION = {
+    "base-deps": ("Internal Image, refer to "
+                  "https://hub.docker.com/r/rayproject/ray"),
+    "ray-deps": ("Internal Image, refer to "
+                 "https://hub.docker.com/r/rayproject/ray"),
+    "ray": "Official Docker Images for Ray, the distributed computing API.",
+    "ray-ml": "Developer ready Docker Image for Ray.",
+    "autoscaler": (
+        "Deprecated image, please use: "
+        "https://hub.docker.com/repository/docker/rayproject/ray-ml")
+}
+
 
 def _merge_build():
-    return os.environ.get("TRAVIS_PULL_REQUEST") == "false"
+    return os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
 
 
 def _release_build():
@@ -45,7 +57,7 @@ def _get_wheel_name():
         f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}-manylinux*")
     assert len(matches) == 1, (
         f"Found ({len(matches)}) matches "
-        "'*{PYTHON_WHL_VERSION}-manylinux*' instead of 1")
+        f"'*{PYTHON_WHL_VERSION}-manylinux*' instead of 1")
     return os.path.basename(matches[0])
 
 
@@ -176,15 +188,18 @@ def build_ray_ml():
             image=img, repository="rayproject/autoscaler", tag=tag)
 
 
+def _get_docker_creds() -> Tuple[str, str]:
+    docker_password = os.environ.get("DOCKER_PASSWORD")
+    assert docker_password, "DOCKER_PASSWORD not set."
+    return DOCKER_USERNAME, docker_password
+
+
 # For non-release builds, push "nightly" & "sha"
 # For release builds, push "nightly" & "latest" & "x.x.x"
 def push_and_tag_images(push_base_images: bool):
     if _merge_build():
-        docker_password = os.environ.get("DOCKER_PASSWORD")
-        assert docker_password is not None, "DOCKER_PASSWORD not set."
-        DOCKER_CLIENT.api.login(
-            username=DOCKER_USERNAME,
-            password=os.environ.get("DOCKER_PASSWORD"))
+        username, password = _get_docker_creds()
+        DOCKER_CLIENT.api.login(username=username, password=password)
 
     def docker_push(image, tag):
         if _merge_build():
@@ -244,6 +259,41 @@ def push_and_tag_images(push_base_images: bool):
                 docker_push(full_image, latest_tag)
 
 
+# Push infra here:
+# https://github.com/christian-korneck/docker-pushrm/blob/master/README-containers.md#push-a-readme-file-to-dockerhub # noqa
+def push_readmes():
+    if not _merge_build():
+        print("Not pushing README because this is a PR build.")
+        return
+    username, password = _get_docker_creds()
+    for image, tag_line in DOCKER_HUB_DESCRIPTION.items():
+        environment = {
+            "DOCKER_USER": username,
+            "DOCKER_PASS": password,
+            "PUSHRM_FILE": f"/myvol/docker/{image}/README.md",
+            "PUSHRM_DEBUG": 1,
+            "PUSHRM_SHORT": tag_line
+        }
+        cmd_string = (f"rayproject/{image}")
+
+        print(
+            DOCKER_CLIENT.containers.run(
+                "chko/docker-pushrm:1",
+                command=cmd_string,
+                volumes={
+                    os.path.abspath(_get_root_dir()): {
+                        "bind": "/myvol",
+                        "mode": "rw",
+                    }
+                },
+                environment=environment,
+                remove=True,
+                detach=False,
+                stderr=True,
+                stdout=True,
+                tty=False))
+
+
 # Build base-deps/ray-deps only on file change, 2 weeks, per release
 # Build ray, ray-ml, autoscaler every time
 
@@ -258,3 +308,4 @@ if __name__ == "__main__":
             build_ray()
             build_ray_ml()
             push_and_tag_images(freshly_built)
+            push_readmes()

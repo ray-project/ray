@@ -2,6 +2,7 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+from random import randint
 import sys
 import socket
 
@@ -13,9 +14,40 @@ from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
-                             format_actor_name)
+                             format_actor_name, get_node_id_for_actor)
 from ray.test_utils import wait_for_condition
 from ray._private.services import new_port
+
+
+def test_detached_deployment():
+    # https://github.com/ray-project/ray/issues/11437
+
+    cluster = Cluster()
+    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
+
+    # Create first job, check we can run a simple serve endpoint
+    ray.init(head_node.address)
+    first_job_id = ray.get_runtime_context().job_id
+    client = serve.start(detached=True)
+    client.create_backend("f", lambda _: "hello")
+    client.create_endpoint("f", backend="f")
+    assert ray.get(client.get_handle("f").remote()) == "hello"
+
+    ray.shutdown()
+
+    # Create the second job, make sure we can still create new backends.
+    ray.init(head_node.address)
+    assert ray.get_runtime_context().job_id != first_job_id
+
+    client = serve.connect()
+    client.create_backend("g", lambda _: "world")
+    client.create_endpoint("g", backend="g")
+    assert ray.get(client.get_handle("g").remote()) == "world"
+
+    # Test passed, clean up.
+    client.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.mark.skipif(
@@ -126,6 +158,49 @@ def test_middleware():
     assert resp.headers["access-control-allow-origin"] == "*"
 
     ray.shutdown()
+
+
+@pytest.mark.skipif(
+    not hasattr(socket, "SO_REUSEPORT"),
+    reason=("Port sharing only works on newer verion of Linux. "
+            "This test can only be ran when port sharing is supported."))
+def test_cluster_handle_affinity():
+    cluster = Cluster()
+    # HACK: using two different ip address so the placement constraint for
+    # resource check later will work.
+    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=4)
+    cluster.add_node(node_ip_address="0.0.0.0", num_cpus=4)
+
+    ray.init(head_node.address)
+
+    # Make sure we have two nodes.
+    node_ids = [n["NodeID"] for n in ray.nodes()]
+    assert len(node_ids) == 2
+
+    # Start the backend.
+    client = serve.start(http_port=randint(10000, 30000), detached=True)
+    client.create_backend("hi:v0", lambda _: "hi")
+    client.create_endpoint("hi", backend="hi:v0")
+
+    # Try to retrieve the handle from both head and worker node, check the
+    # router's node id.
+    @ray.remote
+    def check_handle_router_id():
+        client = serve.connect()
+        handle = client.get_handle("hi")
+        return get_node_id_for_actor(handle.router_handle)
+
+    router_node_ids = ray.get([
+        check_handle_router_id.options(resources={
+            node_id: 0.01
+        }).remote() for node_id in ray.state.node_ids()
+    ])
+
+    assert set(router_node_ids) == set(node_ids)
+
+    # Clean up the nodes (otherwise Ray will segfault).
+    ray.shutdown()
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

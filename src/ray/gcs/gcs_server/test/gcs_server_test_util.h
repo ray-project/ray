@@ -341,7 +341,8 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id) const override {
+    boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+                                          bool filter_dead_nodes = true) const override {
       return boost::none;
     }
 
@@ -378,21 +379,6 @@ struct GcsServerMocker {
     Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                                 const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
-    }
-
-    Status AsyncSubscribeHeartbeat(
-        const gcs::SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-        const gcs::StatusCallback &done) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncReportBatchHeartbeat(
-        const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-        const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
     }
 
     Status AsyncSubscribeBatchHeartbeat(

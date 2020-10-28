@@ -23,17 +23,19 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "" # e.g., rayproject/ray:0.8.7
-    container_name: "" # e.g. ray_docker
+    image: "rayproject/ray:latest-gpu" # You can change this to latest-cpu if you don't need GPU support and want a faster startup
+    container_name: "ray_container"
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
     pull_before_run: True
     run_options: []  # Extra options to pass into "docker run"
 
     # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray:0.8.7-gpu"
+    # head_image: "rayproject/ray:latest-gpu"
+    # Allow Ray to automatically detect GPUs
 
-    # worker_image: "rayproject/ray:0.8.7"
+    # worker_image: "rayproject/ray:latest-cpu"
+    # worker_run_options: []
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
@@ -60,6 +62,7 @@ auth:
     # you must specify paths to matching private and public key pair files
     # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
     ssh_private_key: ~/.ssh/id_rsa
+    # changes to this should match what is specified in file_mounts
     ssh_public_key: ~/.ssh/id_rsa.pub
 
 # More specific customization to node configurations can be made using the ARM template azure-vm-template.json file
@@ -75,7 +78,7 @@ head_node:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
-        imageVersion: 20.02.01
+        imageVersion: 20.07.06
 
 # Provider-specific config for worker nodes, e.g. instance type.
 worker_nodes:
@@ -85,7 +88,7 @@ worker_nodes:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
-        imageVersion: 20.02.01
+        imageVersion: 20.07.06
         # optionally set priority to use Spot instances
         priority: Spot
         # set a maximum price for spot instances if desired
@@ -97,6 +100,7 @@ worker_nodes:
 file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
+     "/home/ubuntu/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
 }
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
@@ -109,6 +113,17 @@ cluster_synced_files: []
 # should sync to the worker node continuously
 file_mounts_sync_continuously: False
 
+# Patterns for files to exclude when running rsync up or rsync down
+rsync_exclude:
+    - "**/.git"
+    - "**/.git/**"
+
+# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
+# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
+# as a value, the behavior will match git's behavior for finding and using .gitignore files.
+rsync_filter:
+    - ".gitignore"
+
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
@@ -118,16 +133,13 @@ initialization_commands:
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # Note: if you're developing Ray, you probably want to create an AMI that
+    # Note: if you're developing Ray, you probably want to create a Docker image that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    # - echo 'conda activate py37_pytorch' >> ~/.bashrc
+    # Uncomment the following line if you want to run the nightly version of ray (as opposed to the latest)
+    - echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc
     - echo 'conda activate py37_tensorflow' >> ~/.bashrc
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
-    # Consider uncommenting these if you also want to run apt-get commands during setup
-    # - sudo pkill -9 apt-get || true
-    # - sudo pkill -9 dpkg || true
-    # - sudo dpkg --configure -a
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

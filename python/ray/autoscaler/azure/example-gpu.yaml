@@ -23,17 +23,17 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "" # e.g., rayproject/ray:0.8.7-gpu
-    container_name: "" # e.g. ray_docker
+    image: "rayproject/ray:latest-gpu"
+    container_name: "ray_docker"
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
-    pull_before_run: True
+    pull_before_run: False
     run_options: []  # Extra options to pass into "docker run"
 
     # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray:0.8.7-gpu"
+    # head_image: "rayproject/ray:latest-gpu"
 
-    # worker_image: "rayproject/ray:0.8.7"
+    # worker_image: "rayproject/ray:latest"
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
@@ -60,10 +60,11 @@ auth:
     # you must specify paths to matching private and public key pair files
     # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
     ssh_private_key: ~/.ssh/id_rsa
+    # changes to this should match what is specified in file_mounts
     ssh_public_key: ~/.ssh/id_rsa.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields using example-full.yaml
+# Ray will auto-configure unspecified fields using defaults.yaml
 head_node:
     azure_arm_parameters:
         vmSize: Standard_NC6
@@ -71,10 +72,10 @@ head_node:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: "1804"
-        imageVersion: 20.02.01
+        imageVersion: 20.07.06
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields using example-full.yaml
+# Ray will auto-configure unspecified fields using defaults.yaml
 worker_nodes:
     azure_arm_parameters:
         vmSize: Standard_NC6
@@ -82,13 +83,14 @@ worker_nodes:
         imagePublisher: microsoft-dsvm
         imageOffer: ubuntu-1804
         imageSku: "1804"
-        imageVersion: 20.02.01
+        imageVersion: 20.07.06
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
 file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
+     "/home/ubuntu/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
 }
 
 # List of commands that will be run before `setup_commands`. If docker is
@@ -103,6 +105,7 @@ setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
+    - echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc
     # - echo 'conda activate py37_pytorch' >> ~/.bashrc
     - echo 'conda activate py37_tensorflow' >> ~/.bashrc
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl

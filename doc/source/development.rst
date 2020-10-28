@@ -3,7 +3,7 @@
 Building Ray from Source
 =========================
 
-For majority of Ray users, installing Ray via the latest wheels or pip package is usually enough. However, you may want to build the latest master branch.
+For a majority of Ray users, installing Ray via the latest wheels or pip package is usually enough. However, you may want to build the latest master branch.
 
 .. tip:: If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
 
@@ -83,10 +83,10 @@ Ray can be built from the repository as follows.
   # (Windows users: please manually place Bazel in your PATH, and point BAZEL_SH to MSYS2's Bash.)
   ray/ci/travis/install-bazel.sh
 
-  # Optionally build the dashboard
+  # Build the dashboard
   # (requires Node.js, see https://nodejs.org/ for more information).
-  pushd ray/python/ray/dashboard/client
-  npm ci
+  pushd ray/dashboard/client
+  npm install
   npm run build
   popd
 
