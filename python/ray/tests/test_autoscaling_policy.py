@@ -29,14 +29,11 @@ class Task:
         duration : float,
         resources : Dict[str, float],
         done_callback : Callable[[None], None] = None,
-        task_id : int=None,
         submission_time : float=None
     ):
         self.duration = duration
         self.resources = resources
         self.done_callback = done_callback
-        self.task_id = task_id
-        self.submission_time = submission_time
         self.start_time = None
         self.end_time = None
         self.node = None
@@ -69,6 +66,7 @@ class Node:
             self.available_resources[resource] += quantity
         assert self.feasible(self.available_resources)
 
+
 class Event:
     def __init__(self, time, event_type, data=None):
         self.time = time
@@ -79,6 +77,7 @@ class Event:
         return self.time < other.time
 
     def __eq__(self, other):
+
         return self.time == other.time
 
 SIMULATOR_EVENT_AUTOSCALER_UPDATE = 0
@@ -154,6 +153,7 @@ class Simulator:
             if node.bundle_fits(task.resources):
                 node.allocate(task.resources)
                 task.node = node
+                task.start_time = self.virtual_time
                 end_time = self.virtual_time + task.duration
                 self.event_queue.put(Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
                 return True
@@ -184,11 +184,11 @@ class Simulator:
         """
         while not self.node_launcher.queue.empty():
             config, count, node_type = self.node_launcher.queue.get()
-            self.node_launcher.log("Got {} nodes to launch.".format(count))
+            print("Got {} nodes to launch.".format(count))
             try:
                 self.node_launcher._launch_node(config, count, node_type)
             except Exception:
-                logger.exception("Launch failed")
+                print("Launch failed")
             finally:
                 self.node_launcher.pending.dec(node_type, count)
 
@@ -218,27 +218,29 @@ class Simulator:
 
         self.autoscaler.update()
         self.launch_nodes()
+        self._update_cluster_state()
+
+    def process_event(self, event):
+        if event.event_type == SIMULATOR_EVENT_AUTOSCALER_UPDATE:
+            self.run_autoscaler()
+            next_update = self.virtual_time + self.autoscaler_update_interval_s
+            self.event_queue.put(Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE))
+        elif event.event_type == SIMULATOR_EVENT_TASK_DONE:
+            task = event.data
+            task.node.free(task.resources)
+            if task.done_callback:
+                task.done_callback()
 
     def step(self):
-        stopping_time = self.event_queue.queue[0].time
-        while self.event_queue.queue[0].time == stopping_time:
+        self.virtual_time = self.event_queue.queue[0].time
+        while self.event_queue.queue[0].time == self.virtual_time:
             event = self.event_queue.get()
-            print(f"stopping time: {stopping_time}, current time: {event.time}")
-            if event.event_type == SIMULATOR_EVENT_AUTOSCALER_UPDATE:
-                self.run_autoscaler()
-                next_update = self.virtual_time + self.autoscaler_update_interval_s
-                print("next update", next_update)
-                self.event_queue.put(Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE))
-            elif event.event_type == SIMULATOR_EVENT_TASK_DONE:
-                task = event.data
-                task.node.free(task.resources)
-                if task.done_callback:
-                    task.done_callback()
+            self.process_event(event)
         self.schedule()
-        self.run_autoscaler()
+        return self.virtual_time
 
 
-class AutoscalingTest(unittest.TestCase):
+class AutoscalingPolicyTest(unittest.TestCase):
     def setUp(self):
         _NODE_PROVIDERS["mock"] = lambda config: self.create_provider
         self.provider = None
@@ -279,11 +281,25 @@ class AutoscalingTest(unittest.TestCase):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config_path = self.write_config(config)
         self.provider = MockProvider()
-
         simulator = Simulator(config_path, self.provider)
-        simulator.submit([Task(duration=10.0, resources={"CPU": 1}) for _ in range(10000)])
-        simulator.schedule()
-        simulator.step()
+
+        done_count = 0
+        def done_callback():
+            print("Done callback")
+            nonlocal done_count
+            done_count += 1
+
+        tasks = [Task(duration=10.0, resources={"CPU": 1}, done_callback=done_callback) for _ in range(100)]
+        simulator.submit(tasks)
+        # simulator.schedule()
+        # import pdb; pdb.set_trace()
+
+        time = 0
+        while done_count < len(tasks):
+            time = simulator.step()
+            print("Stepped")
+
+        print(time)
 
         assert False
 
