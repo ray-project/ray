@@ -5,6 +5,7 @@ import numpy as np
 import time
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -139,7 +140,7 @@ class TorchPolicy(Policy):
             prev_action_batch: Union[List[TensorType], TensorType] = None,
             prev_reward_batch: Union[List[TensorType], TensorType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List[MultiAgentEpisode]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs) -> \

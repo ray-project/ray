@@ -4,6 +4,7 @@ from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
@@ -99,7 +100,7 @@ class WorkerSet:
         """Return the local rollout worker."""
         return self._local_worker
 
-    def remote_workers(self) -> List["ActorHandle"]:
+    def remote_workers(self) -> List[ActorHandle]:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
@@ -138,7 +139,7 @@ class WorkerSet:
                 config=self._remote_config) for i in range(num_workers)
         ])
 
-    def reset(self, new_remote_workers: List["ActorHandle"]) -> None:
+    def reset(self, new_remote_workers: List[ActorHandle]) -> None:
         """Called to change the set of remote workers."""
         self._remote_workers = new_remote_workers
 
@@ -226,7 +227,7 @@ class WorkerSet:
 
     @staticmethod
     def _from_existing(local_worker: RolloutWorker,
-                       remote_workers: List["ActorHandle"] = None):
+                       remote_workers: List[ActorHandle] = None):
         workers = WorkerSet(
             env_creator=None,
             policy_class=None,
@@ -248,7 +249,7 @@ class WorkerSet:
             config: TrainerConfigDict,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
-    ) -> Union[RolloutWorker, "ActorHandle"]:
+    ) -> Union[RolloutWorker, ActorHandle]:
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))

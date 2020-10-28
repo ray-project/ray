@@ -1,6 +1,7 @@
 import gym
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -30,7 +31,7 @@ def build_torch_policy(
             str, TensorType]]] = None,
         postprocess_fn: Optional[Callable[[
             Policy, SampleBatch, Optional[Dict[Any, SampleBatch]], Optional[
-                "MultiAgentEpisode"]
+                MultiAgentEpisode]
         ], SampleBatch]] = None,
         extra_action_out_fn: Optional[Callable[[
             Policy, Dict[str, TensorType], List[TensorType], ModelV2,
@@ -80,7 +81,7 @@ def build_torch_policy(
             overrides. If None, uses only(!) the user-provided
             PartialTrainerConfigDict as dict for this Policy.
         postprocess_fn (Optional[Callable[[Policy, SampleBatch,
-            Optional[Dict[Any, SampleBatch]], Optional["MultiAgentEpisode"]],
+            Optional[Dict[Any, SampleBatch]], Optional[MultiAgentEpisode]],
             SampleBatch]]): Optional callable for post-processing experience
             batches (called after the super's `postprocess_trajectory` method).
         stats_fn (Optional[Callable[[Policy, SampleBatch],

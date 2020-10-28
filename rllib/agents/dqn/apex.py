@@ -17,6 +17,7 @@ import copy
 from typing import Tuple
 
 import ray
+from ray.actor import ActorHandle
 from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.agents.dqn.dqn import DQNTrainer, calculate_rr_weights
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
@@ -77,7 +78,7 @@ class UpdateWorkerWeights:
         self.max_weight_sync_delay = max_weight_sync_delay
         self.weights = None
 
-    def __call__(self, item: Tuple["ActorHandle", SampleBatchType]):
+    def __call__(self, item: Tuple[ActorHandle, SampleBatchType]):
         actor, batch = item
         self.steps_since_update[actor] += batch.count
         if self.steps_since_update[actor] >= self.max_weight_sync_delay:
@@ -115,7 +116,7 @@ def apex_execution_plan(workers: WorkerSet,
     learner_thread.start()
 
     # Update experience priorities post learning.
-    def update_prio_and_stats(item: Tuple["ActorHandle", dict, int]) -> None:
+    def update_prio_and_stats(item: Tuple[ActorHandle, dict, int]) -> None:
         actor, prio_dict, count = item
         actor.update_priorities.remote(prio_dict)
         metrics = _get_shared_metrics()

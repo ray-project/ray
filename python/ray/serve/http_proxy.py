@@ -2,6 +2,7 @@ import asyncio
 import socket
 from typing import List
 
+import starlette.middleware
 import uvicorn
 
 import ray
@@ -133,7 +134,7 @@ class HTTPProxyActor:
             host,
             port,
             controller_name,
-            http_middlewares: List["starlette.middleware.Middleware"] = []):
+            http_middlewares: List[starlette.middleware.Middleware] = []):
         self.app = HTTPProxy()
         self.host = host
         self.port = port

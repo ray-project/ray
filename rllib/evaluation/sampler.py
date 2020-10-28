@@ -423,7 +423,7 @@ def _env_runner(
         clip_actions: bool,
         multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
-        tf_sess: Optional["tf.Session"],
+        tf_sess: Optional["tf.Session"],  # noqa: F821
         perf_stats: _PerfStats,
         soft_horizon: bool,
         no_done_at_end: bool,

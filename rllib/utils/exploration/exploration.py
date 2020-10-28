@@ -56,7 +56,7 @@ class Exploration:
             *,
             timestep: Optional[Union[TensorType, int]] = None,
             explore: Optional[Union[TensorType, bool]] = None,
-            tf_sess: Optional["tf.Session"] = None,
+            tf_sess: Optional["tf.Session"] = None,  # noqa: F821
             **kwargs):
         """Hook for preparations before policy.compute_actions() is called.
 
@@ -111,7 +111,7 @@ class Exploration:
                          *,
                          environment: BaseEnv = None,
                          episode: int = None,
-                         tf_sess: Optional["tf.Session"] = None):
+                         tf_sess: Optional["tf.Session"] = None):  # noqa: F821
         """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
@@ -128,7 +128,7 @@ class Exploration:
                        *,
                        environment: BaseEnv = None,
                        episode: int = None,
-                       tf_sess: Optional["tf.Session"] = None):
+                       tf_sess: Optional["tf.Session"] = None):  # noqa: F821
         """Handles necessary exploration logic at the end of an episode.
 
         Args:
@@ -140,10 +140,11 @@ class Exploration:
         pass
 
     @DeveloperAPI
-    def postprocess_trajectory(self,
-                               policy: "Policy",
-                               sample_batch: SampleBatch,
-                               tf_sess: Optional["tf.Session"] = None):
+    def postprocess_trajectory(
+            self,
+            policy: "Policy",
+            sample_batch: SampleBatch,
+            tf_sess: Optional["tf.Session"] = None):  # noqa: F821
         """Handles post-processing of done episode trajectories.
 
         Changes the given batch in place. This callback is invoked by the
@@ -194,7 +195,7 @@ class Exploration:
         return policy_loss
 
     @DeveloperAPI
-    def get_info(self, sess: Optional["tf.Session"] = None):
+    def get_info(self, sess: Optional["tf.Session"] = None):  # noqa: F821
         """Returns a description of the current exploration state.
 
         This is not necessarily the state itself (and cannot be used in

@@ -1,6 +1,7 @@
 from typing import List
 import random
 
+from ray.actor import ActorHandle
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
@@ -31,7 +32,7 @@ class StoreToReplayBuffer:
     def __init__(self,
                  *,
                  local_buffer: LocalReplayBuffer = None,
-                 actors: List["ActorHandle"] = None):
+                 actors: List[ActorHandle] = None):
         if bool(local_buffer) == bool(actors):
             raise ValueError(
                 "Exactly one of local_buffer and replay_actors must be given.")
@@ -54,7 +55,7 @@ class StoreToReplayBuffer:
 
 def Replay(*,
            local_buffer: LocalReplayBuffer = None,
-           actors: List["ActorHandle"] = None,
+           actors: List[ActorHandle] = None,
            num_async=4):
     """Replay experiences from the given buffer or actors.
 

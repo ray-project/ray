@@ -69,8 +69,8 @@ FileType = Any
 ResultDict = dict
 
 # A tf or torch local optimizer object.
-LocalOptimizer = Union["tf.keras.optimizers.Optimizer",
-                       "torch.optim.Optimizer"]
+LocalOptimizer = Union["tf.keras.optimizers.Optimizer",  # noqa: F821
+                       "torch.optim.Optimizer"]  # noqa: F821
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,
@@ -95,7 +95,7 @@ ModelGradients = Union[List[Tuple[TensorType, TensorType]], List[TensorType]]
 ModelWeights = dict
 
 # Some kind of sample batch.
-SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
+SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]  # noqa: F821
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
