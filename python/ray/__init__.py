@@ -62,39 +62,29 @@ if os.path.exists(so_path):
 
 import ray._raylet  # noqa: E402
 
-from ray._raylet import (
-    ActorCheckpointID,
-    ActorClassID,
-    ActorID,
-    NodeID,
-    Config as _Config,
-    JobID,
-    WorkerID,
-    FunctionID,
-    ObjectID,
-    ObjectRef,
-    TaskID,
-    UniqueID,
-    Language,
+from ray._raylet import (  # noqa: E402
+    ActorCheckpointID, ActorClassID, ActorID, NodeID, Config as _Config, JobID,
+    WorkerID, FunctionID, ObjectID, ObjectRef, TaskID, UniqueID, Language,
     PlacementGroupID,
-)  # noqa: E402
+)
 
 _config = _Config()
 
 from ray.profiling import profile  # noqa: E402
-from ray.state import (jobs, nodes, actors, objects, timeline,
-                       object_transfer_timeline, cluster_resources,
-                       available_resources)  # noqa: E402
-from ray.worker import (  # noqa: F401
+from ray.state import (  # noqa: E402
+    jobs, nodes, actors, objects, timeline, object_transfer_timeline,
+    cluster_resources, available_resources,
+)
+from ray.worker import (  # noqa: F401,E402
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, IO_WORKER_MODE, cancel, connect,
     disconnect, get, get_actor, get_gpu_ids, get_resource_ids,
     get_dashboard_url, init, is_initialized, put, kill, remote, shutdown,
     show_in_dashboard, wait,
-)  # noqa: E402
+)
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
-import ray.actor  # noqa: F401
+import ray.actor  # noqa: F401,E402
 from ray.actor import method  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
