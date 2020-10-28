@@ -29,7 +29,9 @@ yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 # Put bazel into the PATH if building Bazel from source
 # export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
 
-echo "build --config=manylinux2014" >> /root/.bazelrc
+# If converting down to manylinux2010, the following configuration should
+# be set for bazel
+#echo "build --config=manylinux2010" >> /root/.bazelrc
 
 
 # Install and use the latest version of Node.js in order to build the dashboard.
