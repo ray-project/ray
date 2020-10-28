@@ -75,14 +75,16 @@ def initialize_loss_with_dummy_batch(policy, auto=True):
         policy._dummy_batch[key] = np.zeros_like(value)
     sb = SampleBatch(policy._dummy_batch)
     if state_outs:
-        sb["seq_lens"] = np.array([policy.get_batch_divisibility_req / 2 for _ in range(2)])
+        seq_len = policy.batch_divisibility_req / 2
+        sb["seq_lens"] = np.array([seq_len for _ in range(2)])
         # TODO: (sven) This hack will not work for attention net traj.
         #  view setup.
         i = 0
         while "state_in_{}".format(i) in sb:
-            sb["state_in_{}".format(i)] = sb["state_in_{}".format(i)][:policy.get_batch_divisibility_req / 2]#.reshape([1, 2, -1])
+            sb["state_in_{}".format(i)] = sb["state_in_{}".format(i)][:seq_len]
             if "state_out_{}".format(i) in sb:
-                sb["state_out_{}".format(i)] = sb["state_out_{}".format(i)][:policy.get_batch_divisibility_req / 2]#.reshape([1, 2, -1])
+                sb["state_out_{}".format(i)] = \
+                    sb["state_out_{}".format(i)][:seq_len]
             i += 1
     batch_for_postproc = policy._lazy_numpy_dict(sb)
     batch_for_postproc.count = sb.count
