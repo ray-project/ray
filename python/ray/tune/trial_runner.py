@@ -1,3 +1,5 @@
+from typing import Dict, List
+
 import click
 from datetime import datetime
 import json
@@ -69,6 +71,186 @@ class _TuneFunctionDecoder(json.JSONDecoder):
         return cloudpickle.loads(hex_to_binary(obj["value"]))
 
 
+class Callback:
+    """Tune base callback that can be extended and passed to a ``TrialRunner``
+
+    Tune callbacks are called from within the ``TrialRunner`` class. There are
+    several hooks that can be used, all of which are found in the submethod
+    definitions of this base class.
+
+    The parameters passed to the ``**info`` dict vary between hooks. The
+    parameters passed are described in the docstrings of the methods.
+
+    This example will print a metric each time a result is received:
+
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune import Callback
+
+
+        class MyCallback(Callback):
+            def on_trial_result(self, iteration, trials, trial, result,
+                                **info):
+                print(f"Got result: {result['metric']}")
+
+
+        def train(config):
+            for i in range(10):
+                tune.report(metric=i)
+
+
+        tune.run(
+            train,
+            callbacks=[MyCallback()])
+
+    """
+
+    def on_step_begin(self, iteration: int, trials: List[Trial], **info):
+        """Called at the start of each tuning loop step.
+
+        Arguments:
+            iteration (int): Number of iterations of the tuning loop.
+            trials (List[Trial]): List of trials.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
+    def on_step_end(self, iteration: int, trials: List[Trial], **info):
+        """Called at the end of each tuning loop step.
+
+        The iteration counter is increased before this hook is called.
+
+        Arguments:
+            iteration (int): Number of iterations of the tuning loop.
+            trials (List[Trial]): List of trials.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
+    def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial,
+                       **info):
+        """Called after starting a trial instance.
+
+        Arguments:
+            iteration (int): Number of iterations of the tuning loop.
+            trials (List[Trial]): List of trials.
+            trial (Trial): Trial that just has been started.
+            **info: Kwargs dict for forward compatibility.
+
+        """
+        pass
+
+    def on_trial_restore(self, iteration: int, trials: List[Trial],
+                         trial: Trial, **info):
+        """Called after restoring a trial instance.
+
+        Arguments:
+            iteration (int): Number of iterations of the tuning loop.
+            trials (List[Trial]): List of trials.
+            trial (Trial): Trial that just has been restored.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
+    def on_trial_save(self, iteration: int, trials: List[Trial], trial: Trial,
+                      **info):
+        """Called after receiving a checkpoint from a trial.
+
+        Arguments:
+            iteration (int): Number of iterations of the tuning loop.
+            trials (List[Trial]): List of trials.
+            trial (Trial): Trial that just saved a checkpoint.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
+    def on_trial_result(self, iteration: int, trials: List[Trial],
+                        trial: Trial, result: Dict, **info):
+        """Called after receiving a result from a trial.
+
+        The search algorithm and scheduler are notified before this
+        hook is called.
+
+        Arguments:
+            iteration (int): Number of iterations of the tuning loop.
+            trials (List[Trial]): List of trials.
+            trial (Trial): Trial that just sent a result.
+            result (Dict): Result that the trial sent.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
+    def on_trial_complete(self, iteration: int, trials: List[Trial],
+                          trial: Trial, **info):
+        """Called after a trial instance completed.
+
+        The search algorithm and scheduler are notified before this
+        hook is called.
+
+        Arguments:
+            iteration (int): Number of iterations of the tuning loop.
+            trials (List[Trial]): List of trials.
+            trial (Trial): Trial that just has been completed.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
+    def on_trial_fail(self, iteration: int, trials: List[Trial], trial: Trial,
+                      **info):
+        """Called after a trial instance failed (errored).
+
+        The search algorithm and scheduler are notified before this
+        hook is called.
+
+        Arguments:
+            iteration (int): Number of iterations of the tuning loop.
+            trials (List[Trial]): List of trials.
+            trial (Trial): Trial that just has errored.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
+
+class _CallbackList:
+    """Call multiple callbacks at once."""
+
+    def __init__(self, callbacks: List[Callback]):
+        self._callbacks = callbacks
+
+    def on_step_begin(self, **info):
+        for callback in self._callbacks:
+            callback.on_step_begin(**info)
+
+    def on_step_end(self, **info):
+        for callback in self._callbacks:
+            callback.on_step_end(**info)
+
+    def on_trial_start(self, **info):
+        for callback in self._callbacks:
+            callback.on_trial_start(**info)
+
+    def on_trial_restore(self, **info):
+        for callback in self._callbacks:
+            callback.on_trial_restore(**info)
+
+    def on_trial_save(self, **info):
+        for callback in self._callbacks:
+            callback.on_trial_save(**info)
+
+    def on_trial_result(self, **info):
+        for callback in self._callbacks:
+            callback.on_trial_result(**info)
+
+    def on_trial_complete(self, **info):
+        for callback in self._callbacks:
+            callback.on_trial_complete(**info)
+
+    def on_trial_fail(self, **info):
+        for callback in self._callbacks:
+            callback.on_trial_fail(**info)
+
+
 class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
@@ -114,6 +296,9 @@ class TrialRunner:
         checkpoint_period (int): Trial runner checkpoint periodicity in
             seconds. Defaults to 10.
         trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
+        callbacks (list): List of callbacks that will be called at different
+            times in the training loop. Must be instances of the
+            ``ray.tune.trial_runner.Callback`` class.
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
@@ -132,15 +317,21 @@ class TrialRunner:
                  fail_fast=False,
                  verbose=True,
                  checkpoint_period=None,
-                 trial_executor=None):
+                 trial_executor=None,
+                 callbacks=None,
+                 metric=None):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
 
-        # For debugging, it may be useful to halt trials after some time has
-        # elapsed. TODO(ekl) consider exposing this in the API.
-        self._global_time_limit = float(
-            os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
+        self._metric = metric
+
+        if "TRIALRUNNER_WALLTIME_LIMIT" in os.environ:
+            raise ValueError(
+                "The TRIALRUNNER_WALLTIME_LIMIT environment variable is "
+                "deprecated. "
+                "Use `tune.run(time_budget_s=limit)` instead.")
+
         self._total_time = 0
         self._iteration = 0
         self._has_errored = False
@@ -208,6 +399,8 @@ class TrialRunner:
             self.checkpoint_file = os.path.join(
                 self._local_checkpoint_dir,
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+
+        self._callbacks = _CallbackList(callbacks or [])
 
     @property
     def resumed(self):
@@ -349,11 +542,6 @@ class TrialRunner:
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
-        if self._total_time > self._global_time_limit:
-            logger.warning("Exceeded global time limit {} / {}".format(
-                self._total_time, self._global_time_limit))
-            return True
-
         trials_done = all(trial.is_finished() for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
@@ -367,10 +555,17 @@ class TrialRunner:
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
             self.trial_executor.on_step_begin(self)
+        with warn_if_slow("callbacks.on_step_begin"):
+            self._callbacks.on_step_begin(
+                iteration=self._iteration, trials=self._trials)
         next_trial = self._get_next_trial()  # blocking
         if next_trial is not None:
             with warn_if_slow("start_trial"):
                 self.trial_executor.start_trial(next_trial)
+                self._callbacks.on_trial_start(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()  # blocking
         else:
@@ -393,6 +588,9 @@ class TrialRunner:
                 self._server.shutdown()
         with warn_if_slow("on_step_end"):
             self.trial_executor.on_step_end(self)
+        with warn_if_slow("callbacks.on_step_end"):
+            self._callbacks.on_step_end(
+                iteration=self._iteration, trials=self._trials)
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -454,7 +652,10 @@ class TrialRunner:
         """
         trials_done = all(trial.is_finished() for trial in self._trials)
         wait_for_trial = trials_done and not self._search_alg.is_finished()
-        self._update_trial_queue(blocking=wait_for_trial)
+        # Only fetch a new trial if we have no pending trial
+        if not any(trial.status == Trial.PENDING for trial in self._trials) \
+           or wait_for_trial:
+            self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
             trial = self._scheduler_alg.choose_trial_to_run(self)
             logger.debug("Running trial {}".format(trial))
@@ -476,9 +677,19 @@ class TrialRunner:
             if trial.is_restoring:
                 with warn_if_slow("process_trial_restore"):
                     self._process_trial_restore(trial)
+                with warn_if_slow("callbacks.on_trial_restore"):
+                    self._callbacks.on_trial_restore(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial)
             elif trial.is_saving:
                 with warn_if_slow("process_trial_save") as profile:
                     self._process_trial_save(trial)
+                with warn_if_slow("callbacks.on_trial_save"):
+                    self._callbacks.on_trial_save(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial)
                 if profile.too_slow and trial.sync_on_checkpoint:
                     # TODO(ujvl): Suggest using DurableTrainable once
                     #  API has converged.
@@ -513,7 +724,6 @@ class TrialRunner:
         """
         try:
             result = self.trial_executor.fetch_result(trial)
-
             is_duplicate = RESULT_DUPLICATE in result
             force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
             # TrialScheduler and SearchAlgorithm still receive a
@@ -524,6 +734,7 @@ class TrialRunner:
                 result = trial.last_result
                 result.update(done=True)
 
+            self._validate_result_metrics(result)
             self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
             flat_result = flatten_dict(result)
@@ -533,6 +744,10 @@ class TrialRunner:
                 self._scheduler_alg.on_trial_complete(self, trial, flat_result)
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=flat_result)
+                self._callbacks.on_trial_complete(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
                 decision = TrialScheduler.STOP
             else:
                 with warn_if_slow("scheduler.on_trial_result"):
@@ -541,10 +756,21 @@ class TrialRunner:
                 with warn_if_slow("search_alg.on_trial_result"):
                     self._search_alg.on_trial_result(trial.trial_id,
                                                      flat_result)
+                with warn_if_slow("callbacks.on_trial_result"):
+                    self._callbacks.on_trial_result(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial,
+                        result=result.copy())
                 if decision == TrialScheduler.STOP:
                     with warn_if_slow("search_alg.on_trial_complete"):
                         self._search_alg.on_trial_complete(
                             trial.trial_id, result=flat_result)
+                    with warn_if_slow("callbacks.on_trial_complete"):
+                        self._callbacks.on_trial_complete(
+                            iteration=self._iteration,
+                            trials=self._trials,
+                            trial=trial)
 
             if not is_duplicate:
                 trial.update_last_result(
@@ -568,6 +794,50 @@ class TrialRunner:
             if self._fail_fast == TrialRunner.RAISE:
                 raise
             self._process_trial_failure(trial, traceback.format_exc())
+
+    def _validate_result_metrics(self, result):
+        """
+        Check if any of the required metrics was not reported
+        in the last result. If the only item is `done=True`, this
+        means that no result was ever received and the trial just
+        returned. This is also okay and will not raise an error.
+        """
+        if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
+                              0)) != 1 and (len(result) > 1
+                                            or "done" not in result):
+            base_metric = self._metric
+            scheduler_metric = self._scheduler_alg.metric
+            search_metrics = self._search_alg.metric
+            if isinstance(search_metrics, str):
+                search_metrics = [search_metrics]
+
+            if base_metric and base_metric not in result:
+                report_metric = base_metric
+                location = "tune.run()"
+            elif scheduler_metric and scheduler_metric not in result:
+                report_metric = scheduler_metric
+                location = type(self._scheduler_alg).__name__
+            elif search_metrics and any(search_metric not in result
+                                        for search_metric in search_metrics):
+                report_metric = list(
+                    filter(lambda search_metric: search_metric not in result,
+                           search_metrics))
+                if len(report_metric) == 1:
+                    report_metric = report_metric[0]
+                location = type(self._search_alg).__name__
+            else:
+                report_metric = None
+                location = None
+
+            if report_metric:
+                raise ValueError(
+                    "Trial returned a result which did not include the "
+                    "specified metric(s) `{}` that `{}` expects. "
+                    "Make sure your calls to `tune.report()` include the "
+                    "metric, or set the "
+                    "TUNE_DISABLE_STRICT_METRIC_CHECKING "
+                    "environment variable to 1. Result: {}".format(
+                        report_metric, location, result))
 
     def _process_trial_save(self, trial):
         """Processes a trial save.
@@ -639,6 +909,10 @@ class TrialRunner:
             else:
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                self._callbacks.on_trial_fail(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
                 self.trial_executor.stop_trial(
                     trial, error=True, error_msg=error_msg)
 
@@ -734,19 +1008,19 @@ class TrialRunner:
                 or is_finished (timeout or search algorithm finishes).
             timeout (int): Seconds before blocking times out.
         """
-        trials = self._search_alg.next_trials()
-        if blocking and not trials:
+        trial = self._search_alg.next_trial()
+        if blocking and not trial:
             start = time.time()
             # Checking `is_finished` instead of _search_alg.is_finished
             # is fine because blocking only occurs if all trials are
             # finished and search_algorithm is not yet finished
-            while (not trials and not self.is_finished()
+            while (not trial and not self.is_finished()
                    and time.time() - start < timeout):
                 logger.info("Blocking for next trial...")
-                trials = self._search_alg.next_trials()
+                trial = self._search_alg.next_trial()
                 time.sleep(1)
 
-        for trial in trials:
+        if trial:
             self.add_trial(trial)
 
     def request_stop_trial(self, trial):
@@ -804,13 +1078,8 @@ class TrialRunner:
         """
         state = self.__dict__.copy()
         for k in [
-                "_trials",
-                "_stop_queue",
-                "_server",
-                "_search_alg",
-                "_scheduler_alg",
-                "trial_executor",
-                "_syncer",
+                "_trials", "_stop_queue", "_server", "_search_alg",
+                "_scheduler_alg", "trial_executor", "_syncer", "_callbacks"
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)

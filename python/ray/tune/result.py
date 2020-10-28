@@ -29,6 +29,9 @@ EPISODE_REWARD_MEAN = "episode_reward_mean"
 # (Optional) Mean loss for training iteration
 MEAN_LOSS = "mean_loss"
 
+# (Optional) Mean loss for training iteration
+NEG_MEAN_LOSS = "neg_mean_loss"
+
 # (Optional) Mean accuracy for training iteration
 MEAN_ACCURACY = "mean_accuracy"
 
@@ -45,7 +48,7 @@ TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 TIMESTEPS_TOTAL = "timesteps_total"
 
 # (Auto-filled) Time in seconds this iteration took to run.
-# This may be overriden to override the system-computed time difference.
+# This may be overridden to override the system-computed time difference.
 TIME_THIS_ITER_S = "time_this_iter_s"
 
 # (Auto-filled) Accumulated time in seconds for this entire trial.
@@ -60,6 +63,26 @@ DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", EXPERIMENT_TAG, TRIAL_ID)
 
 DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
                        MEAN_ACCURACY, MEAN_LOSS)
+
+# Make sure this doesn't regress
+AUTO_RESULT_KEYS = (
+    TRAINING_ITERATION,
+    TIME_TOTAL_S,
+    EPISODES_TOTAL,
+    TIMESTEPS_TOTAL,
+    NODE_IP,
+    HOSTNAME,
+    PID,
+    TIME_TOTAL_S,
+    TIME_THIS_ITER_S,
+    "timestamp",
+    "experiment_id",
+    "date",
+    "time_since_restore",
+    "iterations_since_restore",
+    "timesteps_since_restore",
+    "config",
+)
 
 # __duplicate__ is a magic keyword used internally to
 # avoid double-logging results when using the Function API.

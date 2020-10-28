@@ -1,6 +1,6 @@
 from ray.includes.unique_ids cimport (
     CActorID,
-    CClientID,
+    CNodeID,
     CObjectID,
     CWorkerID,
     CPlacementGroupID
@@ -51,6 +51,12 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllNodeInfo()
         return result
 
+    def get_all_available_resources(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllAvailableResources()
+        return result
+
     def get_profile_table(self):
         cdef c_vector[c_string] result
         with nogil:
@@ -89,7 +95,7 @@ cdef class GlobalStateAccessor:
 
     def get_node_resource_info(self, node_id):
         cdef c_string result
-        cdef CClientID cnode_id = CClientID.FromBinary(node_id.binary())
+        cdef CNodeID cnode_id = CNodeID.FromBinary(node_id.binary())
         with nogil:
             result = self.inner.get().GetNodeResourceInfo(cnode_id)
         return result
@@ -114,6 +120,12 @@ cdef class GlobalStateAccessor:
         cdef c_string cserialized_string = serialized_string
         with nogil:
             result = self.inner.get().AddWorkerInfo(cserialized_string)
+        return result
+
+    def get_placement_group_table(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllPlacementGroupInfo()
         return result
 
     def get_placement_group_info(self, placement_group_id):

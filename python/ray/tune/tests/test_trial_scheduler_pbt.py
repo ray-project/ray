@@ -8,6 +8,8 @@ import time
 
 import ray
 from ray import tune
+from ray.tune import Trainable
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 
 
@@ -20,6 +22,67 @@ class MockParam(object):
         val = self._params[self._index % len(self._params)]
         self._index += 1
         return val
+
+
+class PopulationBasedTrainingMemoryTest(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=1)
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def testMemoryCheckpointFree(self):
+        class MyTrainable(Trainable):
+            def setup(self, config):
+                # Make sure this is large enough so ray uses object store
+                # instead of in-process store.
+                self.large_object = random.getrandbits(int(10e7))
+                self.iter = 0
+                self.a = config["a"]
+
+            def step(self):
+                self.iter += 1
+                return {"metric": self.iter + self.a}
+
+            def save_checkpoint(self, checkpoint_dir):
+                file_path = os.path.join(checkpoint_dir, "model.mock")
+
+                with open(file_path, "wb") as fp:
+                    pickle.dump((self.large_object, self.iter, self.a), fp)
+                return file_path
+
+            def load_checkpoint(self, path):
+                with open(path, "rb") as fp:
+                    self.large_object, self.iter, self.a = pickle.load(fp)
+
+        class CustomExecutor(RayTrialExecutor):
+            def save(self, *args, **kwargs):
+                checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
+                assert len(ray.objects()) <= 10
+                return checkpoint
+
+        param_a = MockParam([1, -1])
+
+        pbt = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="metric",
+            mode="max",
+            perturbation_interval=1,
+            hyperparam_mutations={"b": [-1]},
+        )
+
+        tune.run(
+            MyTrainable,
+            name="ray_demo",
+            scheduler=pbt,
+            stop={"training_iteration": 10},
+            num_samples=3,
+            checkpoint_freq=1,
+            fail_fast=True,
+            config={"a": tune.sample_from(lambda _: param_a())},
+            trial_executor=CustomExecutor(
+                queue_trials=False, reuse_actors=False),
+        )
 
 
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
@@ -104,7 +167,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()
@@ -145,7 +208,7 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()

@@ -51,14 +51,21 @@ if __name__ == "__main__":
     #     "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
     #     # for discrete dimensions: (discrete, search_range, has_order)
     #     "width": (ValueType.DISCRETE, [0, 10], True)
+    #     # for grid dimensions: (grid, grid_list)
+    #     "layers": (ValueType.GRID, [4, 8, 16])
     # }
+
+    zoopt_search_config = {
+        "parallel_num": 8,
+    }
 
     zoopt_search = ZOOptSearch(
         algo="Asracos",  # only support ASRacos currently
         budget=tune_kwargs["num_samples"],
         # dim_dict=space,  # If you want to set the space yourself
         metric="mean_loss",
-        mode="min")
+        mode="min",
+        **zoopt_search_config)
 
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
 

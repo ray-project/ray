@@ -118,8 +118,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     if isinstance(policy.action_space, gym.spaces.Discrete):
         is_multidiscrete = False
         output_hidden_shape = [policy.action_space.n]
-    elif isinstance(policy.action_space,
-                    gym.spaces.multi_discrete.MultiDiscrete):
+    elif isinstance(policy.action_space, gym.spaces.MultiDiscrete):
         is_multidiscrete = True
         output_hidden_shape = policy.action_space.nvec.astype(np.int32)
     else:
@@ -189,7 +188,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
 def make_time_major(policy, seq_lens, tensor, drop_last=False):
     """Swaps batch and trajectory axis.
 
-    Arguments:
+    Args:
         policy: Policy reference
         seq_lens: Sequence lengths if recurrent or None
         tensor: A tensor or list of tensors to reshape.

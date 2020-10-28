@@ -69,19 +69,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
     LOGGER.debug("Native libraries loaded.");
-    // Reset library path at runtime.
-    resetLibraryPath(rayConfig);
     try {
       FileUtils.forceMkdir(new File(rayConfig.logDir));
     } catch (IOException e) {
       throw new RuntimeException("Failed to create the log directory.", e);
     }
-  }
-
-  private static void resetLibraryPath(RayConfig rayConfig) {
-    String separator = System.getProperty("path.separator");
-    String libraryPath = String.join(separator, rayConfig.libraryPath);
-    JniUtils.resetLibraryPath(libraryPath);
   }
 
   public RayNativeRuntime(RayConfig rayConfig) {
@@ -182,7 +174,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    Lock writeLock = shutdownLock.readLock();
+    // `shutdown` won't be called concurrently, but the lock is also used in `NativeObjectStore`.
+    // When an object is garbage collected, the object will be unregistered from core worker.
+    // Since GC runs in a separate thread, we need to make sure that core worker is available
+    // when `NativeObjectStore` is accessing core worker in the GC thread.
+    Lock writeLock = shutdownLock.writeLock();
     writeLock.lock();
     try {
       if (rayConfig.workerMode == WorkerType.DRIVER) {

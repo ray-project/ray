@@ -189,9 +189,6 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
                 ray.get(x_id)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
@@ -347,9 +344,6 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
@@ -700,9 +694,22 @@ existing_actor = ray.get_actor("{}")
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
 @ray.remote
+def foo():
+    return "bar"
+
+@ray.remote
+class NonDetachedActor:
+    def foo(self):
+        return "bar"
+
+@ray.remote
 class DetachedActor:
     def ping(self):
         return "pong"
+
+    def foobar(self):
+        actor = NonDetachedActor.remote()
+        return ray.get([foo.remote(), actor.foo.remote()])
 
 actor = DetachedActor._remote(lifetime="detached", name="{}")
 ray.get(actor.ping.remote())
@@ -711,6 +718,9 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+    # Verify that a detached actor is able to create tasks/actors
+    # even if the driver of the detached actor has exited.
+    assert ray.get(detached_actor.foobar.remote()) == ["bar", "bar"]
 
 
 def test_detached_actor_cleanup(ray_start_regular):

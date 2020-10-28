@@ -82,7 +82,7 @@ raylet::RayletClient::RayletClient(
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
-    const std::string &ip_address, ClientID *raylet_id, int *port,
+    const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
     std::unordered_map<std::string, std::string> *system_config,
     const std::string &job_config)
     : grpc_client_(std::move(grpc_client)),
@@ -103,11 +103,24 @@ raylet::RayletClient::RayletClient(
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   std::vector<uint8_t> reply;
-  auto status = conn_->AtomicRequestReply(MessageType::RegisterClientRequest,
-                                          MessageType::RegisterClientReply, &reply, &fbb);
-  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
+  auto request_status = conn_->AtomicRequestReply(
+      MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
+  if (!request_status.ok()) {
+    *status =
+        Status(request_status.code(),
+               std::string("[RayletClient] Unable to register worker with raylet. ") +
+                   request_status.message());
+    return;
+  }
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
-  *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
+  bool success = reply_message->success();
+  if (success) {
+    *status = Status::OK();
+  } else {
+    *status = Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+    return;
+  }
+  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
   RAY_CHECK(system_config);
@@ -293,8 +306,7 @@ Status raylet::RayletClient::NotifyActorResumedFromCheckpoint(
 }
 
 Status raylet::RayletClient::SetResource(const std::string &resource_name,
-                                         const double capacity,
-                                         const ClientID &client_Id) {
+                                         const double capacity, const NodeID &client_Id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
                                                     capacity, to_flatbuf(fbb, client_Id));
@@ -304,9 +316,11 @@ Status raylet::RayletClient::SetResource(const std::string &resource_name,
 
 void raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
-    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
+    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+    const int64_t backlog_size) {
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  request.set_backlog_size(backlog_size);
   grpc_client_->RequestWorkerLease(request, callback);
 }
 
@@ -317,23 +331,6 @@ void raylet::RayletClient::RequestObjectSpillage(
   rpc::RequestObjectSpillageRequest request;
   request.set_object_id(object_id.Binary());
   grpc_client_->RequestObjectSpillage(request, callback);
-}
-
-/// Restore spilled objects from external storage.
-/// \param object_ids The IDs of objects to be restored.
-Status raylet::RayletClient::ForceRestoreSpilledObjects(
-    const std::vector<ObjectID> &object_ids) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateForceRestoreSpilledObjectsRequest(fbb, to_flatbuf(fbb, object_ids));
-  fbb.Finish(message);
-  std::vector<uint8_t> reply;
-  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(
-      MessageType::ForceRestoreSpilledObjectsRequest,
-      MessageType::ForceRestoreSpilledObjectsReply, &reply, &fbb));
-  RAY_UNUSED(
-      flatbuffers::GetRoot<protocol::ForceRestoreSpilledObjectsReply>(reply.data()));
-  return Status::OK();
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,

@@ -4,14 +4,14 @@ from datetime import datetime
 
 # Override global constants used in AWS autoscaler config artifact names.
 # This helps ensure that any unmocked test doesn't alter non-test artifacts.
-ray.autoscaler.aws.config.RAY = \
+ray.autoscaler._private.aws.config.RAY = \
     "ray-autoscaler-aws-test"
-ray.autoscaler.aws.config.DEFAULT_RAY_INSTANCE_PROFILE = \
-    ray.autoscaler.aws.config.RAY + "-v1"
-ray.autoscaler.aws.config.DEFAULT_RAY_IAM_ROLE = \
-    ray.autoscaler.aws.config.RAY + "-v1"
-ray.autoscaler.aws.config.SECURITY_GROUP_TEMPLATE = \
-    ray.autoscaler.aws.config.RAY + "-{}"
+ray.autoscaler._private.aws.config.DEFAULT_RAY_INSTANCE_PROFILE = \
+    ray.autoscaler._private.aws.config.RAY + "-v1"
+ray.autoscaler._private.aws.config.DEFAULT_RAY_IAM_ROLE = \
+    ray.autoscaler._private.aws.config.RAY + "-v1"
+ray.autoscaler._private.aws.config.SECURITY_GROUP_TEMPLATE = \
+    ray.autoscaler._private.aws.config.RAY + "-{}"
 
 # Default IAM instance profile to expose to tests.
 DEFAULT_INSTANCE_PROFILE = {
@@ -35,7 +35,7 @@ DEFAULT_INSTANCE_PROFILE = {
 # Default EC2 key pair to expose to tests.
 DEFAULT_KEY_PAIR = {
     "KeyFingerprint": "00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00",
-    "KeyName": ray.autoscaler.aws.config.RAY + "_us-west-2",
+    "KeyName": ray.autoscaler._private.aws.config.RAY + "_us-west-2",
 }
 
 # Primary EC2 subnet to expose to tests.
@@ -69,7 +69,8 @@ DEFAULT_CLUSTER_NAME = "test-cluster-name"
 # (prior to inbound rule configuration).
 DEFAULT_SG = {
     "Description": "Auto-created security group for Ray workers",
-    "GroupName": ray.autoscaler.aws.config.RAY + "-" + DEFAULT_CLUSTER_NAME,
+    "GroupName": ray.autoscaler._private.aws.config.RAY + "-" +
+    DEFAULT_CLUSTER_NAME,
     "OwnerId": "test-owner",
     "GroupId": "sg-1234abcd",
     "VpcId": DEFAULT_SUBNET["VpcId"],
@@ -97,10 +98,7 @@ DEFAULT_SG_AUX_SUBNET = copy.deepcopy(DEFAULT_SG)
 DEFAULT_SG_AUX_SUBNET["VpcId"] = AUX_SUBNET["VpcId"]
 DEFAULT_SG_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
 
-# Default security group settings once default inbound rules are applied
-# (if used by both head and worker nodes)
-DEFAULT_SG_WITH_RULES = copy.deepcopy(DEFAULT_SG)
-DEFAULT_SG_WITH_RULES["IpPermissions"] = [{
+DEFAULT_IN_BOUND_RULES = [{
     "FromPort": -1,
     "ToPort": -1,
     "IpProtocol": "-1",
@@ -115,6 +113,10 @@ DEFAULT_SG_WITH_RULES["IpPermissions"] = [{
         "CidrIp": "0.0.0.0/0"
     }]
 }]
+# Default security group settings once default inbound rules are applied
+# (if used by both head and worker nodes)
+DEFAULT_SG_WITH_RULES = copy.deepcopy(DEFAULT_SG)
+DEFAULT_SG_WITH_RULES["IpPermissions"] = DEFAULT_IN_BOUND_RULES
 
 # Default security group once default inbound rules are applied
 # (if using separate security groups for head and worker nodes).
@@ -127,3 +129,29 @@ DEFAULT_SG_DUAL_GROUP_RULES["IpPermissions"][0]["UserIdGroupPairs"].append({
 DEFAULT_SG_WITH_RULES_AUX_SUBNET = copy.deepcopy(DEFAULT_SG_DUAL_GROUP_RULES)
 DEFAULT_SG_WITH_RULES_AUX_SUBNET["VpcId"] = AUX_SUBNET["VpcId"]
 DEFAULT_SG_WITH_RULES_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
+
+# Default security group with custom name
+DEFAULT_SG_WITH_NAME = copy.deepcopy(DEFAULT_SG)
+DEFAULT_SG_WITH_NAME["GroupName"] = "test_security_group_name"
+
+CUSTOM_IN_BOUND_RULES = [{
+    "FromPort": 443,
+    "ToPort": 443,
+    "IpProtocol": "TCP",
+    "IpRanges": [{
+        "CidrIp": "0.0.0.0/0"
+    }]
+}, {
+    "FromPort": 8265,
+    "ToPort": 8265,
+    "IpProtocol": "TCP",
+    "IpRanges": [{
+        "CidrIp": "0.0.0.0/0"
+    }]
+}]
+
+# Default security group with custom name once...
+# default and custom in bound rules are applied
+DEFAULT_SG_WITH_NAME_AND_RULES = copy.deepcopy(DEFAULT_SG_WITH_NAME)
+DEFAULT_SG_WITH_NAME_AND_RULES[
+    "IpPermissions"] = DEFAULT_IN_BOUND_RULES + CUSTOM_IN_BOUND_RULES

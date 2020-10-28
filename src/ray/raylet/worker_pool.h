@@ -83,6 +83,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// If this is set to 0, workers will bind on random ports.
   /// \param max_worker_port The highest port number that workers started will bind on.
   /// If this is not set to 0, min_worker_port must also not be set to 0.
+  /// \param worker_ports An explicit list of open ports that workers started will bind
+  /// on. This takes precedence over min_worker_port and max_worker_port.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   /// \param raylet_config The raylet config list of this node.
@@ -91,6 +93,7 @@ class WorkerPool : public WorkerPoolInterface {
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
              int num_workers_soft_limit, int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
+             const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              const std::unordered_map<std::string, std::string> &raylet_config,
@@ -122,7 +125,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        std::function<void(int)> send_reply_callback);
+                        std::function<void(Status, int)> send_reply_callback);
+
+  /// To be invoked when a worker is started. This method should be called when the worker
+  /// announces its port.
+  ///
+  /// \param[in] worker The worker which is started.
+  void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Register a new driver.
   ///
@@ -134,7 +143,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// \return If the registration is successful.
   Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
                         const JobID &job_id, const rpc::JobConfig &job_config,
-                        std::function<void(int)> send_reply_callback);
+                        std::function<void(Status, int)> send_reply_callback);
 
   /// Get the client connection's registered worker.
   ///
@@ -181,11 +190,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param The idle worker to add.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Try to kill the worker if it's idle.
-  ///
-  /// \param worker The worker to be killed.
-  void TryKillingIdleWorker(std::shared_ptr<WorkerInterface> worker);
-
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
   ///
@@ -210,13 +214,17 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Get all the registered workers.
   ///
-  /// \return A list containing all the workers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers() const;
+  /// \param filter_dead_workers whether or not if this method will filter dead workers
+  /// that are still registered. \return A list containing all the workers.
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers = false) const;
 
   /// Get all the registered drivers.
   ///
-  /// \return A list containing all the drivers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers() const;
+  /// \param filter_dead_drivers whether or not if this method will filter dead drivers
+  /// that are still registered. \return A list containing all the drivers.
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+      bool filter_dead_drivers = false) const;
 
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
@@ -298,10 +306,6 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_drivers;
-    /// All workers that have been killed but been unregistered yet.
-    /// This field is used to calculate the size of running workers when trying to kill an
-    /// idle worker.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> pending_unregistration_workers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
@@ -362,6 +366,20 @@ class WorkerPool : public WorkerPoolInterface {
   /// started.
   void TryStartIOWorkers(const Language &language, State &state);
 
+  /// Try killing idle workers to ensure the running workers are in a
+  /// reasonable size.
+  void TryKillingIdleWorkers();
+
+  /// Schedule the periodic killing of idle workers.
+  void ScheduleIdleWorkerKilling();
+
+  /// Get all workers of the given process.
+  ///
+  /// \param process The process of workers.
+  /// \return The workers of the given process.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> GetWorkersByProcess(
+      const Process &process);
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
   /// The soft limit of the number of registered workers.
@@ -396,7 +414,20 @@ class WorkerPool : public WorkerPoolInterface {
   int num_initial_python_workers_for_first_job_;
 
   /// This map tracks the latest infos of unfinished jobs.
-  absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
+  absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
+
+  /// The pool of idle non-actor workers of all languages. This is used to kill idle
+  /// workers in FIFO order. The second element of std::pair is the time a worker becomes
+  /// idle.
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> idle_of_all_languages_;
+
+  /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
+  /// for lookup performance.
+  std::unordered_map<std::shared_ptr<WorkerInterface>, int64_t>
+      idle_of_all_languages_map_;
+
+  /// The timer to trigger idle worker killing.
+  boost::asio::deadline_timer kill_idle_workers_timer_;
 };
 
 }  // namespace raylet

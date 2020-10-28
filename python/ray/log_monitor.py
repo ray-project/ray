@@ -11,7 +11,7 @@ import time
 import traceback
 
 import ray.ray_constants as ray_constants
-import ray.services as services
+import ray._private.services as services
 import ray.utils
 
 # Logger for this module. It should be configured at the entry point
@@ -78,7 +78,7 @@ class LogMonitor:
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
-        self.redis_client = ray.services.create_redis_client(
+        self.redis_client = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
         self.log_filenames = set()
         self.open_file_infos = []
@@ -94,7 +94,8 @@ class LogMonitor:
             try:
                 # Test if the worker process that generated the log file
                 # is still alive. Only applies to worker processes.
-                if file_info.worker_pid != "raylet":
+                if (file_info.worker_pid != "raylet"
+                        and file_info.worker_pid != "gcs_server"):
                     os.kill(file_info.worker_pid, 0)
             except OSError:
                 # The process is not alive any more, so move the log file
@@ -121,7 +122,9 @@ class LogMonitor:
         log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
-        for file_path in log_file_paths + raylet_err_paths:
+        # If gcs server restarts, there can be multiple log files.
+        gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
+        for file_path in log_file_paths + raylet_err_paths + gcs_err_path:
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
@@ -240,6 +243,8 @@ class LogMonitor:
                     lines_to_publish = lines_to_publish[1:]
                 elif "/raylet" in file_info.filename:
                     file_info.worker_pid = "raylet"
+                elif "/gcs_server" in file_info.filename:
+                    file_info.worker_pid = "gcs_server"
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
@@ -319,7 +324,7 @@ if __name__ == "__main__":
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
+        redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = (f"The log monitor on node {platform.node()} "

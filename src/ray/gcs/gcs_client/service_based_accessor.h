@@ -88,13 +88,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 
-  Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                       const StatusCallback &callback) override;
-
-  Status AsyncUpdate(const ActorID &actor_id,
-                     const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                     const StatusCallback &callback) override;
-
   Status AsyncSubscribeAll(
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) override;
@@ -117,6 +110,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
+
+  bool IsActorUnsubscribed(const ActorID &actor_id) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
@@ -156,35 +151,38 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   Status UnregisterSelf() override;
 
-  const ClientID &GetSelfId() const override;
+  const NodeID &GetSelfId() const override;
 
   const GcsNodeInfo &GetSelfInfo() const override;
 
   Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                        const StatusCallback &callback) override;
 
-  Status AsyncUnregister(const ClientID &node_id,
-                         const StatusCallback &callback) override;
+  Status AsyncUnregister(const NodeID &node_id, const StatusCallback &callback) override;
 
   Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) override;
 
   Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+      const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const override;
+  boost::optional<GcsNodeInfo> Get(const NodeID &node_id,
+                                   bool filter_dead_nodes = false) const override;
 
-  const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const override;
+  const std::unordered_map<NodeID, GcsNodeInfo> &GetAll() const override;
 
-  bool IsRemoved(const ClientID &node_id) const override;
+  bool IsRemoved(const NodeID &node_id) const override;
 
-  Status AsyncGetResources(const ClientID &node_id,
+  Status AsyncGetResources(const NodeID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
 
-  Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override;
+
+  Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
 
-  Status AsyncDeleteResources(const ClientID &node_id,
+  Status AsyncDeleteResources(const NodeID &node_id,
                               const std::vector<std::string> &resource_names,
                               const StatusCallback &callback) override;
 
@@ -195,14 +193,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
                               const StatusCallback &callback) override;
 
   void AsyncReReportHeartbeat() override;
-
-  Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
-      const StatusCallback &done) override;
-
-  Status AsyncReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-      const StatusCallback &callback) override;
 
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
@@ -240,20 +230,20 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   ServiceBasedGcsClient *client_impl_;
 
   using NodeChangeCallback =
-      std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
+      std::function<void(const NodeID &id, const GcsNodeInfo &node_info)>;
 
   GcsNodeInfo local_node_info_;
-  ClientID local_node_id_;
+  NodeID local_node_id_;
 
-  Sequencer<ClientID> sequencer_;
+  Sequencer<NodeID> sequencer_;
 
   /// The callback to call when a new node is added or a node is removed.
   NodeChangeCallback node_change_callback_{nullptr};
 
   /// A cache for information about all nodes.
-  std::unordered_map<ClientID, GcsNodeInfo> node_cache_;
+  std::unordered_map<NodeID, GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
-  std::unordered_set<ClientID> removed_nodes_;
+  std::unordered_set<NodeID> removed_nodes_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor
@@ -300,6 +290,10 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
+  bool IsTaskUnsubscribed(const TaskID &task_id) override;
+
+  bool IsTaskLeaseUnsubscribed(const TaskID &task_id) override;
+
  private:
   /// Save the subscribe operations, so we can call them again when PubSub
   /// server restarts from a failure.
@@ -325,24 +319,30 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncGetLocations(
       const ObjectID &object_id,
-      const MultiItemCallback<rpc::ObjectTableData> &callback) override;
+      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
-  Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
+  Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                           const StatusCallback &callback) override;
 
-  Status AsyncRemoveLocation(const ObjectID &object_id, const ClientID &node_id,
+  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const StatusCallback &callback) override;
+
+  Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
                              const StatusCallback &callback) override;
 
   Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
+
+  bool IsObjectUnsubscribed(const ObjectID &object_id) override;
 
  private:
   // Mutex to protect the subscribe_object_operations_ field and
@@ -452,6 +452,9 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
   Status AsyncGet(
       const PlacementGroupID &placement_group_id,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncGetAll(
+      const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

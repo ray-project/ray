@@ -50,7 +50,7 @@ Parallelizing Python/Java Functions with Ray Tasks
 
       public class RayDemo {
 
-        public static int f(int x) {
+        public static int square(int x) {
           return x * x;
         }
 
@@ -58,10 +58,10 @@ Parallelizing Python/Java Functions with Ray Tasks
           // Intialize Ray runtime.
           Ray.init();
           List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
-          // Invoke the `f` method 4 times remotely as Ray tasks.
+          // Invoke the `square` method 4 times remotely as Ray tasks.
           // The tasks will run in parallel in the background.
           for (int i = 0; i < 4; i++) {
-            objectRefList.add(Ray.task(RayDemo::f, i).remote());
+            objectRefList.add(Ray.task(RayDemo::square, i).remote());
           }
           // Get the actual results of the tasks.
           System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
@@ -114,14 +114,14 @@ maintain its own internal state.
 
       public static class Counter {
 
-        private int n = 0;
+        private int value = 0;
 
         public void increment() {
-          this.n += 1;
+          this.value += 1;
         }
 
         public int read() {
-          return this.n;
+          return this.value;
         }
       }
 
@@ -236,10 +236,10 @@ Where to go next?
 =================
 
 
-Visit the `Walkthrough <walkthrough.html>`_ page a more comprehensive overview of Ray features.
+Visit the :ref:`Walkthrough <core-walkthrough>` page a more comprehensive overview of Ray features.
 
 Ray programs can run on a single machine, and can also seamlessly scale to large clusters. To execute the above Ray script in the cloud, just download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__, and run:
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `:ref:launching clusters <cluster-index>`.
+Read more about :ref:`launching clusters <cluster-index>`.

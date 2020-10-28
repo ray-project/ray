@@ -21,6 +21,7 @@ $ python unity3d_env_local.py --env 3DBall --stop-reward [..] [--torch]?
 """
 
 import argparse
+import os
 
 import ray
 from ray import tune
@@ -74,6 +75,8 @@ if __name__ == "__main__":
         "unity3d",
         lambda c: Unity3DEnv(
             file_name=c["file_name"],
+            no_graphics=(args.env != "VisualHallway" and
+                         c["file_name"] is not None),
             episode_horizon=c["episode_horizon"],
         ))
 
@@ -97,6 +100,8 @@ if __name__ == "__main__":
         "gamma": 0.99,
         "sgd_minibatch_size": 256,
         "train_batch_size": 4000,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_sgd_iter": 20,
         "rollout_fragment_length": 200,
         "clip_param": 0.2,
@@ -117,18 +122,18 @@ if __name__ == "__main__":
         config["exploration_config"] = {
             "type": "Curiosity",
             "eta": 0.1,
-            "lr": tune.grid_search([0.0003, 0.001]),
+            "lr": 0.001,
             # No actual feature net: map directly from observations to feature
             # vector (linearly).
             "feature_net_config": {
-                "fcnet_hiddens": tune.grid_search([[], [256]]),
+                "fcnet_hiddens": [],
                 "fcnet_activation": "relu",
             },
             "sub_exploration": {
                 "type": "StochasticSampling",
             },
-            "forward_net_activation": tune.grid_search(["relu", "swish"]),
-            "inverse_net_activation": tune.grid_search(["relu", "swish"]),
+            "forward_net_activation": "relu",
+            "inverse_net_activation": "relu",
         }
 
     stop = {

@@ -3,6 +3,9 @@
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://docs.ray.io/en/latest/?badge=latest
 
+.. image:: https://img.shields.io/badge/Ray-Join%20Slack-blue
+    :target: https://forms.gle/9TSdDYUgxYs8SA9e8
+
 |
 
 
@@ -15,10 +18,19 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
 - `Ray Serve`_: Scalable and Programmable Serving
 
-Install Ray with: ``pip install ray``. For nightly wheels, see the
-`Installation page <https://docs.ray.io/en/latest/installation.html>`__.
+There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
 
-**NOTE:** As of Ray 0.8.1, Python 2 is no longer supported.
+Install Ray with: ``pip install ray``. For nightly wheels, see the
+`Installation page <https://docs.ray.io/en/master/installation.html>`__.
+
+.. _`Modin`: https://github.com/modin-project/modin
+.. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
+.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
+.. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
+.. _`Scikit-learn`: joblib.html
+
+
 
 Quick Start
 -----------
@@ -85,7 +97,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray[tune]
+    $ pip install "ray[tune]"
 
 
 This example runs a parallel grid search to optimize an example objective function.
@@ -143,7 +155,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]  # also recommended: ray[debug]
+  pip install "ray[rllib]"  # also recommended: ray[debug]
 
 .. code-block:: python
 
@@ -188,10 +200,10 @@ Ray Serve Quick Start
 
 `Ray Serve`_ is a scalable model-serving library built on Ray. It is:
 
-- Framework Agnostic: Use the same toolkit to serve everything from deep 
-  learning models built with frameworks like PyTorch or Tensorflow & Keras 
+- Framework Agnostic: Use the same toolkit to serve everything from deep
+  learning models built with frameworks like PyTorch or Tensorflow & Keras
   to Scikit-Learn models or arbitrary business logic.
-- Python First: Configure your model serving with pure Python code - no more 
+- Python First: Configure your model serving with pure Python code - no more
   YAMLs or JSON configs.
 - Performance Oriented: Turn on batching, pipelining, and GPU acceleration to
   increase the throughput of your model.
@@ -254,7 +266,6 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 .. _`Ray Serve`: https://docs.ray.io/en/latest/serve/index.html
 
-
 More Information
 ----------------
 
@@ -284,19 +295,16 @@ More Information
 Getting Involved
 ----------------
 
-- `ray-dev@googlegroups.com`_: For discussions about development or any general
-  questions.
-- `StackOverflow`_: For questions about how to use Ray.
-- `GitHub Issues`_: For reporting bugs and feature requests.
-- `Pull Requests`_: For submitting code contributions.
-- `Meetup Group`_: Join our meetup group.
 - `Community Slack`_: Join our Slack workspace.
+- `GitHub Discussions`_: For discussions about development, questions about usage, and feature requests.
+- `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
+- `Meetup Group`_: Join our meetup group.
+- `StackOverflow`_: For questions about how to use Ray.
 
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`GitHub Discussions`: https://github.com/ray-project/ray/discussions
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`Pull Requests`: https://github.com/ray-project/ray/pulls
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Community Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
 .. _`Twitter`: https://twitter.com/raydistributed

@@ -11,7 +11,7 @@ opencv-python-headless==4.3.0.36
 pandas
 pickle5
 pillow
-pydantic
+pydantic<1.7
 pygments
 pyyaml
 recommonmark
@@ -24,8 +24,7 @@ sphinx-gallery
 sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
-# TODO(simon): Use sphinx book theme released version
-git+https://github.com/executablebooks/sphinx-book-theme.git@0a87d26e214c419d2e6efcadddab4be8ae7b2c21
+sphinx-book-theme
 tabulate
 uvicorn
 werkzeug

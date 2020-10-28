@@ -4,6 +4,8 @@ from collections import namedtuple
 from multiprocessing import Queue
 import unittest
 
+import numpy as np
+
 from ray.tune import Trainable
 from ray.tune.function_runner import wrap_function
 from ray.tune.integration.wandb import _WandbLoggingProcess, \
@@ -156,6 +158,8 @@ class WandbIntegrationTest(unittest.TestCase):
         r1 = {
             "metric1": 0.8,
             "metric2": 1.4,
+            "metric3": np.asarray(32.0),
+            "metric4": np.float32(32.0),
             "const": "text",
             "config": trial_config
         }
@@ -165,6 +169,8 @@ class WandbIntegrationTest(unittest.TestCase):
         logged = logger._wandb.logs.get(timeout=10)
         self.assertIn("metric1", logged)
         self.assertNotIn("metric2", logged)
+        self.assertIn("metric3", logged)
+        self.assertIn("metric4", logged)
         self.assertNotIn("const", logged)
         self.assertNotIn("config", logged)
 

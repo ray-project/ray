@@ -1,6 +1,6 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-# The GPU option is nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04
+# The GPU option is nvidia/cuda:10.1-cudnn8-runtime-ubuntu18.04
 ARG BASE_IMAGE="ubuntu:focal"
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
@@ -9,6 +9,7 @@ ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/root"
 ENV PATH "/root/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
+ARG PYTHON_VERSION=3.7.7
 RUN apt-get update -y && apt-get upgrade -y \
     && apt-get install -y \
         git \
@@ -28,7 +29,7 @@ RUN apt-get update -y && apt-get upgrade -y \
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' > /etc/profile.d/conda.sh \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y \
-        libgcc python=3.7.7 \ 
+        libgcc python=$PYTHON_VERSION \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \

@@ -38,7 +38,7 @@ class TFMultiGPULearner(LearnerThread):
                  _fake_gpus=False):
         """Initialize a multi-gpu learner thread.
 
-        Arguments:
+        Args:
             local_worker (RolloutWorker): process local rollout worker holding
                 policies this thread will call learn_on_batch() on
             num_gpus (int): number of GPUs to use for data-parallel SGD

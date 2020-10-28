@@ -51,4 +51,23 @@ img.inline-figure {
 #version-warning-banner {
   /* Make version warning clickable */
   z-index: 1;
+  margin-left: 0;
+  /* 20% is for ToC rightbar */
+  /* 2 * 1.5625em is for horizontal margins */
+  width: calc(100% - 20% - 2 * 1.5625em);
+}
+
+span.rst-current-version > span.fa.fa-book {
+  /* Move the book icon away from the top right
+   * corner of the version flyout menu */
+  margin: 10px 0px 0px 5px;
+}
+
+/* Adjustment to Version block */
+.rst-versions {
+  z-index: 1200 !important;
+}
+
+dt:target, span.highlighted {
+  background-color: #fbe54e;
 }

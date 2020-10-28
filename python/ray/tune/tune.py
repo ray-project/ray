@@ -1,4 +1,6 @@
 import logging
+import sys
+import time
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -13,17 +15,9 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
-from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
-                                 FIFOScheduler, MedianStoppingRule)
+from ray.tune.schedulers import FIFOScheduler
 
 logger = logging.getLogger(__name__)
-
-_SCHEDULERS = {
-    "FIFO": FIFOScheduler,
-    "MedianStopping": MedianStoppingRule,
-    "HyperBand": HyperBandScheduler,
-    "AsyncHyperBand": AsyncHyperBandScheduler,
-}
 
 try:
     class_name = get_ipython().__class__.__name__
@@ -32,17 +26,9 @@ except NameError:
     IS_NOTEBOOK = False
 
 
-def _make_scheduler(args):
-    if args.scheduler in _SCHEDULERS:
-        return _SCHEDULERS[args.scheduler](**args.scheduler_config)
-    else:
-        raise TuneError("Unknown scheduler: {}, should be one of {}".format(
-            args.scheduler, _SCHEDULERS.keys()))
-
-
 def _check_default_resources_override(run_identifier):
     if not isinstance(run_identifier, str):
-        # If obscure dtype, assume it is overriden.
+        # If obscure dtype, assume it is overridden.
         return True
     trainable_cls = get_trainable_cls(run_identifier)
     return hasattr(trainable_cls, "default_resource_request") and (
@@ -95,13 +81,14 @@ def run(
         restore=None,
         server_port=None,
         resume=False,
+        queue_trials=False,
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
+        callbacks=None,
         # Deprecated args
         ray_auto_init=None,
         run_errored_only=None,
-        queue_trials=None,
         global_checkpoint_period=None,
         with_server=None,
         upload_dir=None,
@@ -177,7 +164,8 @@ def run(
         num_samples (int): Number of times to sample from the
             hyperparameter space. Defaults to 1. If `grid_search` is
             provided as an argument, the grid will be repeated
-            `num_samples` of times.
+            `num_samples` of times. If this is -1, (virtually) infinite
+            samples are generated until a stopping condition is met.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
         search_alg (Searcher): Search algorithm for optimization.
@@ -228,7 +216,7 @@ def run(
         max_failures (int): Try to recover a trial at least this many times.
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
-            Setting to 0 will disable retries. Defaults to 3.
+            Setting to 0 will disable retries. Defaults to 0.
         fail_fast (bool | str): Whether to fail upon the first error.
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
@@ -246,6 +234,10 @@ def run(
             ERRORED trials upon resume - previous trial artifacts will
             be left untouched.  If resume is set but checkpoint does not exist,
             ValueError will be thrown.
+        queue_trials (bool): Whether to queue trials when the cluster does
+            not currently have enough resources to launch one. This should
+            be set to True when running on an autoscaling cluster to enable
+            automatic scale-up.
         reuse_actors (bool): Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
@@ -253,6 +245,9 @@ def run(
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
+        callbacks (list): List of callbacks that will be called at different
+            times in the training loop. Must be instances of the
+            ``ray.tune.trial_runner.Callback`` class.
 
 
     Returns:
@@ -261,14 +256,10 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+    all_start = time.time()
     if global_checkpoint_period:
         raise ValueError("global_checkpoint_period is deprecated. Set env var "
                          "'TUNE_GLOBAL_CHECKPOINT_S' instead.")
-    if queue_trials:
-        raise ValueError(
-            "queue_trials is deprecated. "
-            "Set env var 'TUNE_DISABLE_QUEUE_TRIALS=1' instead to "
-            "disable queuing behavior.")
     if ray_auto_init:
         raise ValueError("ray_auto_init is deprecated. "
                          "Set env var 'TUNE_DISABLE_AUTO_INIT=1' instead or "
@@ -293,8 +284,11 @@ def run(
     sync_config = sync_config or SyncConfig()
     set_sync_periods(sync_config)
 
+    if num_samples == -1:
+        num_samples = sys.maxsize
+
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors)
+        reuse_actors=reuse_actors, queue_trials=queue_trials)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -370,7 +364,9 @@ def run(
         server_port=server_port,
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
-        trial_executor=trial_executor)
+        trial_executor=trial_executor,
+        callbacks=callbacks,
+        metric=metric)
 
     if not runner.resumed:
         for exp in experiments:
@@ -384,6 +380,14 @@ def run(
         else:
             progress_reporter = CLIReporter()
 
+    if not progress_reporter.set_search_properties(metric, mode):
+        raise ValueError(
+            "You passed a `metric` or `mode` argument to `tune.run()`, but "
+            "the reporter you are using was already instantiated with their "
+            "own `metric` and `mode` parameters. Either remove the arguments "
+            "from your reporter or from your call to `tune.run()`")
+    progress_reporter.set_total_samples(search_alg.total_samples)
+
     # User Warning for GPUs
     if trial_executor.has_gpus():
         if isinstance(resources_per_trial,
@@ -391,7 +395,7 @@ def run(
             # "gpu" is manually set.
             pass
         elif _check_default_resources_override(experiments[0].run_identifier):
-            # "default_resources" is manually overriden.
+            # "default_resources" is manually overridden.
             pass
         else:
             logger.warning("Tune detects GPUs, but no trials are using GPUs. "
@@ -402,10 +406,12 @@ def run(
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
+    tune_start = time.time()
     while not runner.is_finished():
         runner.step()
         if verbose:
             _report_progress(runner, progress_reporter)
+    tune_taken = time.time() - tune_start
 
     try:
         runner.checkpoint(force=True)
@@ -429,6 +435,10 @@ def run(
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
 
+    all_taken = time.time() - all_start
+    logger.info(f"Total run time: {all_taken:.2f} seconds "
+                f"({tune_taken:.2f} seconds for the tuning loop).")
+
     trials = runner.get_trials()
     return ExperimentAnalysis(
         runner.checkpoint_file,
@@ -443,6 +453,7 @@ def run_experiments(experiments,
                     verbose=2,
                     progress_reporter=None,
                     resume=False,
+                    queue_trials=False,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
@@ -472,6 +483,7 @@ def run_experiments(experiments,
             verbose=verbose,
             progress_reporter=progress_reporter,
             resume=resume,
+            queue_trials=queue_trials,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
@@ -485,6 +497,7 @@ def run_experiments(experiments,
                 verbose=verbose,
                 progress_reporter=progress_reporter,
                 resume=resume,
+                queue_trials=queue_trials,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,

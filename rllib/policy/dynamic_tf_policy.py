@@ -80,7 +80,7 @@ class DynamicTFPolicy(TFPolicy):
             obs_include_prev_action_reward: bool = True):
         """Initialize a dynamic TF policy.
 
-        Arguments:
+        Args:
             observation_space (gym.spaces.Space): Observation space of the
                 policy.
             action_space (gym.spaces.Space): Action space of the policy.
@@ -167,7 +167,7 @@ class DynamicTFPolicy(TFPolicy):
                     tf.float32, [None], name="prev_reward")
             explore = tf1.placeholder_with_default(
                 True, (), name="is_exploring")
-            timestep = tf1.placeholder(tf.int32, (), name="timestep")
+            timestep = tf1.placeholder(tf.int64, (), name="timestep")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,

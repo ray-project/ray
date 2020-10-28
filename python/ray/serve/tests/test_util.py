@@ -69,20 +69,15 @@ async def test_future_chaining():
 
 
 def test_mock_scheduler():
-    ray_nodes = [{
-        "NodeID": "AAA",
-        "Alive": True,
-        "Resources": {
+    ray_nodes = {
+        "AAA": {
             "CPU": 2.0,
             "GPU": 2.0
-        }
-    }, {
-        "NodeID": "BBB",
-        "Alive": True,
-        "Resources": {
+        },
+        "BBB": {
             "CPU": 4.0,
         }
-    }]
+    }
 
     assert try_schedule_resources_on_nodes(
         [

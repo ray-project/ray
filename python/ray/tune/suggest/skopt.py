@@ -1,8 +1,9 @@
 import logging
 import pickle
-from typing import Dict
+from typing import Dict, List, Optional, Tuple, Union
 
-from ray.tune.sample import Categorical, Float, Integer, Quantized
+from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
@@ -17,8 +18,9 @@ from ray.tune.suggest import Searcher
 logger = logging.getLogger(__name__)
 
 
-def _validate_warmstart(parameter_names, points_to_evaluate,
-                        evaluated_rewards):
+def _validate_warmstart(parameter_names: List[str],
+                        points_to_evaluate: List[List],
+                        evaluated_rewards: List):
     if points_to_evaluate:
         if not isinstance(points_to_evaluate, list):
             raise TypeError(
@@ -125,14 +127,14 @@ class SkOptSearch(Searcher):
     """
 
     def __init__(self,
-                 optimizer=None,
-                 space=None,
-                 metric=None,
-                 mode=None,
-                 points_to_evaluate=None,
-                 evaluated_rewards=None,
-                 max_concurrent=None,
-                 use_early_stopped_trials=None):
+                 optimizer: Optional[sko.optimizer.Optimizer] = None,
+                 space: Union[List[str], Dict[str, Union[Tuple, List]]] = None,
+                 metric: Optional[str] = None,
+                 mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[List]] = None,
+                 evaluated_rewards: Optional[List] = None,
+                 max_concurrent: Optional[int] = None,
+                 use_early_stopped_trials: Optional[bool] = None):
         assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
             `pip install scikit-optimize`."""
@@ -151,6 +153,14 @@ class SkOptSearch(Searcher):
         self._parameter_names = None
         self._parameter_ranges = None
 
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space, join=True)
+
         self._space = space
 
         if self._space:
@@ -162,7 +172,7 @@ class SkOptSearch(Searcher):
                         "names.")
                 self._parameter_names = space
             else:
-                self._parameter_names = space.keys()
+                self._parameter_names = list(space.keys())
                 self._parameter_ranges = space.values()
 
         self._points_to_evaluate = points_to_evaluate
@@ -199,7 +209,8 @@ class SkOptSearch(Searcher):
         elif self._mode == "min":
             self._metric_op = 1.
 
-    def set_search_properties(self, metric, mode, config):
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict) -> bool:
         if self._skopt_opt:
             return False
         space = self.convert_search_space(config)
@@ -216,7 +227,7 @@ class SkOptSearch(Searcher):
         self.setup_skopt()
         return True
 
-    def suggest(self, trial_id):
+    def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._skopt_opt:
             raise RuntimeError(
                 "Trying to sample a configuration from {}, but no search "
@@ -235,7 +246,10 @@ class SkOptSearch(Searcher):
         self._live_trial_mapping[trial_id] = suggested_config
         return unflatten_dict(dict(zip(self._parameters, suggested_config)))
 
-    def on_trial_complete(self, trial_id, result=None, error=False):
+    def on_trial_complete(self,
+                          trial_id: str,
+                          result: Optional[Dict] = None,
+                          error: bool = False):
         """Notification for the completion of trial.
 
         The result is internally negated when interacting with Skopt
@@ -247,24 +261,24 @@ class SkOptSearch(Searcher):
             self._process_result(trial_id, result)
         self._live_trial_mapping.pop(trial_id)
 
-    def _process_result(self, trial_id, result):
+    def _process_result(self, trial_id: str, result: Dict):
         skopt_trial_info = self._live_trial_mapping[trial_id]
         self._skopt_opt.tell(skopt_trial_info,
                              self._metric_op * result[self._metric])
 
-    def save(self, checkpoint_path):
+    def save(self, checkpoint_path: str):
         trials_object = (self._initial_points, self._skopt_opt)
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
-    def restore(self, checkpoint_path):
+    def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
         self._initial_points = trials_object[0]
         self._skopt_opt = trials_object[1]
 
     @staticmethod
-    def convert_search_space(spec: Dict):
+    def convert_search_space(spec: Dict, join: bool = False) -> Dict:
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -273,7 +287,7 @@ class SkOptSearch(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to a SkOpt search space.")
 
-        def resolve_value(domain):
+        def resolve_value(domain: Domain) -> Union[Tuple, List]:
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
                 logger.warning("SkOpt search does not support quantization. "
@@ -305,5 +319,9 @@ class SkOptSearch(Searcher):
             "/".join(path): resolve_value(domain)
             for path, domain in domain_vars
         }
+
+        if join:
+            spec.update(space)
+            space = spec
 
         return space

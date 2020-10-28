@@ -1,11 +1,4 @@
 Local node IP: .+
-Available RAM
-  Workers: .+ GiB
-  Objects: .+ GiB
-
-  To adjust these values, use
-    ray\.init\(memory=<bytes>, object_store_memory=<bytes>\)
-Dashboard URL: .+
 
 --------------------
 Ray runtime started.
@@ -17,9 +10,9 @@ Next steps
 
   Alternatively, use the following Python code:
     import ray
-    ray\.init\(address='auto', redis_password='.+'\)
+    ray\.init\(address='auto', _redis_password='.+'\)
 
-  If connection fails, check your firewall settings other network configuration.
+  If connection fails, check your firewall settings and network configuration.
 
   To terminate the Ray runtime, run
     ray stop

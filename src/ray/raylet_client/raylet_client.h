@@ -28,8 +28,8 @@
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
-using ray::ClientID;
 using ray::JobID;
+using ray::NodeID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::WorkerID;
@@ -60,10 +60,12 @@ class WorkerLeaseInterface {
  public:
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
+  /// \param backlog_size The queue length for the given shape on the CoreWorker.
   /// \return ray::Status
   virtual void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback) = 0;
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size = -1) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -181,7 +183,8 @@ class RayletClient : public PinObjectsInterface,
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
-  /// \param raylet_id This will be populated with the local raylet's ClientID.
+  /// \param status This will be populated with the result of connection attempt.
+  /// \param raylet_id This will be populated with the local raylet's NodeID.
   /// \param system_config This will be populated with internal config parameters
   /// provided by the raylet.
   /// \param port The port that the worker should listen on for gRPC requests. If
@@ -190,8 +193,8 @@ class RayletClient : public PinObjectsInterface,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
-               const std::string &ip_address, ClientID *raylet_id, int *port,
-               std::unordered_map<std::string, std::string> *system_config,
+               const std::string &ip_address, Status *status, NodeID *raylet_id,
+               int *port, std::unordered_map<std::string, std::string> *system_config,
                const std::string &job_config);
 
   /// Connect to the raylet via grpc only.
@@ -327,10 +330,10 @@ class RayletClient : public PinObjectsInterface,
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set
   /// \param capacity Capacity of the resource
-  /// \param client_Id ClientID where the resource is to be set
+  /// \param client_Id NodeID where the resource is to be set
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::ClientID &client_Id);
+                          const ray::NodeID &client_Id);
 
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.
@@ -340,16 +343,11 @@ class RayletClient : public PinObjectsInterface,
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
-  /// Restore spilled objects from external storage.
-  /// \param object_ids The IDs of objects to be restored.
-  /// \return ray::Status
-  ray::Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
-
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
-      override;
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,

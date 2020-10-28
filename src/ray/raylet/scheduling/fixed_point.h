@@ -12,6 +12,7 @@ class FixedPoint {
 
  public:
   FixedPoint(double d = 0);
+  FixedPoint(int i);
 
   FixedPoint operator+(FixedPoint const &ru);
 
@@ -29,14 +30,14 @@ class FixedPoint {
 
   FixedPoint operator=(double const d);
 
-  friend bool operator<(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator<=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator==(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator!=(FixedPoint const &ru1, FixedPoint const &ru2);
+  bool operator<(FixedPoint const &ru1) const;
+  bool operator>(FixedPoint const &ru1) const;
+  bool operator<=(FixedPoint const &ru1) const;
+  bool operator>=(FixedPoint const &ru1) const;
+  bool operator==(FixedPoint const &ru1) const;
+  bool operator!=(FixedPoint const &ru1) const;
 
-  double Double();
+  double Double() const;
 
-  friend std::ostream &operator<<(std::ostream &out, const FixedPoint &ru);
+  friend std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1);
 };

@@ -17,7 +17,7 @@ from ray.tune.syncer import CommandBasedClient
 
 class TestSyncFunctionality(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()
@@ -113,7 +113,8 @@ class TestSyncFunctionality(unittest.TestCase):
                 }).trials
 
         with patch.object(CommandBasedClient, "_execute") as mock_fn:
-            with patch("ray.services.get_node_ip_address") as mock_sync:
+            with patch(
+                    "ray._private.services.get_node_ip_address") as mock_sync:
                 sync_config = tune.SyncConfig(
                     sync_to_driver="echo {source} {target}")
                 mock_sync.return_value = "0.0.0.0"
@@ -209,7 +210,7 @@ class TestSyncFunctionality(unittest.TestCase):
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
-        with patch("ray.services.get_node_ip_address") as mock_sync:
+        with patch("ray._private.services.get_node_ip_address") as mock_sync:
             mock_sync.return_value = "0.0.0.0"
             sync_config = tune.SyncConfig(sync_to_driver=sync_func_driver)
             [trial] = tune.run(

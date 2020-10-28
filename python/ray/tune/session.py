@@ -7,6 +7,12 @@ logger = logging.getLogger(__name__)
 _session = None
 
 
+def is_session_enabled() -> bool:
+    """Returns True if running within an Tune process."""
+    global _session
+    return _session is not None
+
+
 def get_session():
     global _session
     if not _session:
@@ -49,7 +55,7 @@ def shutdown():
     _session = None
 
 
-def report(**kwargs):
+def report(_metric=None, **kwargs):
     """Logs all keyword arguments.
 
     .. code-block:: python
@@ -65,12 +71,13 @@ def report(**kwargs):
         analysis = tune.run(run_me)
 
     Args:
+        _metric: Optional default anonymous metric for ``tune.report(value)``
         **kwargs: Any key value pair to be logged by Tune. Any of these
             metrics can be used for early stopping or optimization.
     """
     _session = get_session()
     if _session:
-        return _session(**kwargs)
+        return _session(_metric, **kwargs)
 
 
 def make_checkpoint_dir(step=None):
@@ -103,6 +110,14 @@ def checkpoint_dir(step):
 
     Store any files related to restoring state within the
     provided checkpoint dir.
+
+    You should call this *before* calling ``tune.report``. The reason is
+    because we want checkpoints to be correlated with the result
+    (i.e., be able to retrieve the best checkpoint, etc). Many algorithms
+    depend on this behavior too.
+
+    Calling ``checkpoint_dir`` after report could introduce
+    inconsistencies.
 
     Args:
         step (int): Index for the checkpoint. Expected to be a

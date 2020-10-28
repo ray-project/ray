@@ -6,6 +6,7 @@ import time
 
 import ray
 from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.nevergrad import NevergradSearch
 
@@ -57,13 +58,15 @@ if __name__ == "__main__":
     algo = NevergradSearch(
         optimizer=ng.optimizers.OnePlusOne,
         # space=space,  # If you want to set the space manually
-        metric="mean_loss",
-        mode="min")
+    )
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
 
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
+    scheduler = AsyncHyperBandScheduler()
 
     tune.run(
         easy_objective,
+        metric="mean_loss",
+        mode="min",
         name="nevergrad",
         search_alg=algo,
         scheduler=scheduler,

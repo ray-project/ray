@@ -1,4 +1,5 @@
-from typing import Union
+import numpy as np
+from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
@@ -25,10 +26,10 @@ class EpsilonGreedy(Exploration):
                  action_space,
                  *,
                  framework: str,
-                 initial_epsilon=1.0,
-                 final_epsilon=0.05,
-                 epsilon_timesteps=int(1e5),
-                 epsilon_schedule=None,
+                 initial_epsilon: float = 1.0,
+                 final_epsilon: float = 0.05,
+                 epsilon_timesteps: int = int(1e5),
+                 epsilon_schedule: Optional[Schedule] = None,
                  **kwargs):
         """Create an EpsilonGreedy exploration class.
 
@@ -54,10 +55,13 @@ class EpsilonGreedy(Exploration):
 
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(
-            0, framework=framework, tf_name="timestep")
+            np.array(0, np.int64),
+            framework=framework,
+            tf_name="timestep",
+            dtype=np.int64)
 
         # Build the tf-info-op.
-        if self.framework in ["tf", "tfe"]:
+        if self.framework in ["tf2", "tf", "tfe"]:
             self._tf_info_op = self.get_info()
 
     @override(Exploration)
@@ -68,14 +72,16 @@ class EpsilonGreedy(Exploration):
                                explore: bool = True):
 
         q_values = action_distribution.inputs
-        if self.framework in ["tf", "tfe"]:
+        if self.framework in ["tf2", "tf", "tfe"]:
             return self._get_tf_exploration_action_op(q_values, explore,
                                                       timestep)
         else:
             return self._get_torch_exploration_action(q_values, explore,
                                                       timestep)
 
-    def _get_tf_exploration_action_op(self, q_values, explore, timestep):
+    def _get_tf_exploration_action_op(self, q_values: TensorType,
+                                      explore: Union[bool, TensorType],
+                                      timestep: Union[int, TensorType]):
         """TF method to produce the tf op for an epsilon exploration action.
 
         Args:
@@ -119,7 +125,9 @@ class EpsilonGreedy(Exploration):
             with tf1.control_dependencies([assign_op]):
                 return action, tf.zeros_like(action, dtype=tf.float32)
 
-    def _get_torch_exploration_action(self, q_values, explore, timestep):
+    def _get_torch_exploration_action(self, q_values: TensorType,
+                                      explore: bool,
+                                      timestep: Union[int, TensorType]):
         """Torch method to produce an epsilon exploration action.
 
         Args:
@@ -157,7 +165,7 @@ class EpsilonGreedy(Exploration):
             return exploit_action, action_logp
 
     @override(Exploration)
-    def get_info(self, sess=None):
+    def get_info(self, sess: Optional["tf.Session"] = None):
         if sess:
             return sess.run(self._tf_info_op)
         eps = self.epsilon_schedule(self.last_timestep)

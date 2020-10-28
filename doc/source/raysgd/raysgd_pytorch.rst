@@ -21,7 +21,7 @@ Basic Usage
 Setting up training
 ~~~~~~~~~~~~~~~~~~~
 
-.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using RayTune *without* restructuring your code, check out the :ref:`Tune PyTorch user guide <tune-pytorch-cifar>` and Tune's  :ref:`distributed pytorch integrations <tune-ddp-doc>`.
+.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using RayTune *without* using RaySGD, check out the :ref:`Tune PyTorch user guide <tune-pytorch-cifar>` and Tune's  :ref:`distributed pytorch integrations <tune-ddp-doc>`.
 
 The :ref:`ref-torch-trainer`  can be constructed from a custom :ref:`ref-torch-operator` subclass that defines training components like the model, data, optimizer, loss, and ``lr_scheduler``. These components are all automatically replicated across different machines and devices so that training can be executed in parallel.
 
@@ -32,7 +32,7 @@ The :ref:`ref-torch-trainer`  can be constructed from a custom :ref:`ref-torch-o
     :start-after: __torch_operator_start__
     :end-before: __torch_operator_end__
 
-Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_workers``), each of which is managed by a Ray actor. One of the replicas will be on the main process, which can simplify the debugging and logging experience.
+Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_workers``), each of which is managed by a Ray actor.
 
 Before instantiating the trainer, first start or connect to a Ray cluster:
 
@@ -288,8 +288,8 @@ However, if you have these creator functions already and do not want to change y
 
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
-   :start-after: __backwards_compat__start
-   :end-before: __backwards_compat_end
+   :start-after: __backwards_compat_start__
+   :end-before: __backwards_compat_end__
 
 Initialization Functions
 ------------------------
@@ -466,18 +466,6 @@ During each ``train`` method, each parallel worker iterates through the iterable
   6. If there are available resources and the Trainer has fewer workers than initially specified, then it will scale up its worker pool until it reaches the initially specified ``num_workers``.
 
 Note that we assume the Trainer itself is not on a pre-emptible node. To allow the entire Trainer to recover from failure, you must use Tune to execute the training.
-
-Advanced: Hyperparameter Tuning
--------------------------------
-``TorchTrainer`` naturally integrates with Tune via the ``BaseTorchTrainable`` interface. Without changing any arguments, you can call ``TorchTrainer.as_trainable(model_creator...)`` to create a Tune-compatible class. See the documentation (:ref:`BaseTorchTrainable-doc`).
-
-.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/tune_example.py
-   :language: python
-   :start-after: __torch_tune_example__
-   :end-before: __end_torch_tune_example__
-
-You can see the `Tune example script <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`_ for an end-to-end example.
-
 
 Simultaneous Multi-model Training
 ---------------------------------

@@ -68,7 +68,7 @@ class VectorEnv:
     ) -> Tuple[List[EnvObsType], List[float], List[bool], List[EnvInfoDict]]:
         """Performs a vectorized step on all sub environments using `actions`.
 
-        Arguments:
+        Args:
             actions (List[any]): List of actions (one for each sub-env).
 
         Returns:
@@ -145,7 +145,7 @@ class _VectorizedGymEnv(VectorEnv):
                 raise ValueError(
                     "Reward should be finite scalar, got {} ({}). "
                     "Actions={}.".format(r, type(r), actions[i]))
-            if type(info) is not dict:
+            if not isinstance(info, dict):
                 raise ValueError("Info should be a dict, got {} ({})".format(
                     info, type(info)))
             obs_batch.append(obs)

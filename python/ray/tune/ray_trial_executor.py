@@ -12,9 +12,9 @@ import ray
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
 from ray.resource_spec import ResourceSpec
-from ray.tune.cluster_info import is_ray_cluster
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
+from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
@@ -136,17 +136,10 @@ class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(self,
-                 queue_trials=None,
+                 queue_trials=False,
                  reuse_actors=False,
                  ray_auto_init=None,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
-        if queue_trials is None:
-            if os.environ.get("TUNE_DISABLE_QUEUE_TRIALS") == "1":
-                logger.info("'TUNE_DISABLE_QUEUE_TRIALS=1' detected.")
-                queue_trials = False
-            elif is_ray_cluster():
-                queue_trials = True
-
         if ray_auto_init is None:
             if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
                 logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
@@ -284,13 +277,13 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         if runner is None:
-            # TODO: Right now, we only support reuse if there has been
-            # previously instantiated state on the worker. However,
-            # we should consider the case where function evaluations
-            # can be very fast - thereby extending the need to support
-            # reuse to cases where there has not been previously
-            # instantiated state before.
-            reuse_allowed = checkpoint is not None or trial.has_checkpoint()
+            # We reuse actors when there is previously instantiated state on
+            # the actor. Function API calls are also supported when there is
+            # no checkpoint to continue from.
+            # TODO: Check preconditions - why is previous state needed?
+            reuse_allowed = checkpoint is not None or trial.has_checkpoint() \
+                            or issubclass(trial.get_trainable_cls(),
+                                          FunctionRunner)
             runner = self._setup_remote_runner(trial, reuse_allowed)
         trial.set_runner(runner)
         self.restore(trial, checkpoint)
@@ -729,7 +722,8 @@ class RayTrialExecutor(TrialExecutor):
                 trial.runner.restore_from_object.remote(value)
         else:
             logger.debug("Trial %s: Attempting restore from %s", trial, value)
-            if issubclass(trial.get_trainable_cls(), DurableTrainable):
+            if issubclass(trial.get_trainable_cls(),
+                          DurableTrainable) or not trial.sync_on_checkpoint:
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore.remote(value)
             elif trial.sync_on_checkpoint:

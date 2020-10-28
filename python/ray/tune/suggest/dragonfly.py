@@ -5,16 +5,19 @@ from __future__ import print_function
 import inspect
 import logging
 import pickle
-from typing import Dict
+from typing import Dict, List, Optional, Union
 
-from ray.tune.sample import Float, Quantized
+from ray.tune.sample import Domain, Float, Quantized
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict
 
 try:  # Python 3 only -- needed for lint test.
     import dragonfly
+    from dragonfly.opt.blackbox_optimiser import BlackboxOptimiser
 except ImportError:
     dragonfly = None
+    BlackboxOptimiser = None
 
 from ray.tune.suggest.suggestion import Searcher
 
@@ -51,7 +54,7 @@ class DragonflySearch(Searcher):
         domain (str): Optional domain. Should only be set if you don't pass
             an optimizer as the `optimizer` argument.
             Has to be one of [cartesian, euclidean].
-        space (list): Search space. Should only be set if you don't pass
+        space (list|dict): Search space. Should only be set if you don't pass
             an optimizer as the `optimizer` argument. Defines the search space
             and requires a `domain` to be set. Can be automatically converted
             from the `config` dict passed to `tune.run()`.
@@ -127,13 +130,13 @@ class DragonflySearch(Searcher):
     """
 
     def __init__(self,
-                 optimizer=None,
-                 domain=None,
-                 space=None,
-                 metric=None,
-                 mode=None,
-                 points_to_evaluate=None,
-                 evaluated_rewards=None,
+                 optimizer: Optional[BlackboxOptimiser] = None,
+                 domain: Optional[str] = None,
+                 space: Optional[Union[Dict, List[Dict]]] = None,
+                 metric: Optional[str] = None,
+                 mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[List]] = None,
+                 evaluated_rewards: Optional[List] = None,
                  **kwargs):
         assert dragonfly is not None, """dragonfly must be installed!
             You can install Dragonfly with the command:
@@ -144,10 +147,17 @@ class DragonflySearch(Searcher):
         super(DragonflySearch, self).__init__(
             metric=metric, mode=mode, **kwargs)
 
-        from dragonfly.opt.blackbox_optimiser import BlackboxOptimiser
-
         self._opt_arg = optimizer
         self._domain = domain
+
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
+
         self._space = space
         self._points_to_evaluate = points_to_evaluate
         self._evaluated_rewards = evaluated_rewards
@@ -245,7 +255,8 @@ class DragonflySearch(Searcher):
         elif self._mode == "max":
             self._metric_op = 1.
 
-    def set_search_properties(self, metric, mode, config):
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)
@@ -258,7 +269,7 @@ class DragonflySearch(Searcher):
         self.setup_dragonfly()
         return True
 
-    def suggest(self, trial_id):
+    def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._opt:
             raise RuntimeError(
                 "Trying to sample a configuration from {}, but no search "
@@ -281,26 +292,29 @@ class DragonflySearch(Searcher):
         self._live_trial_mapping[trial_id] = suggested_config
         return {"point": suggested_config}
 
-    def on_trial_complete(self, trial_id, result=None, error=False):
+    def on_trial_complete(self,
+                          trial_id: str,
+                          result: Optional[Dict] = None,
+                          error: bool = False):
         """Passes result to Dragonfly unless early terminated or errored."""
         trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
             self._opt.tell([(trial_info,
                              self._metric_op * result[self._metric])])
 
-    def save(self, checkpoint_dir):
+    def save(self, checkpoint_path: str):
         trials_object = (self._initial_points, self._opt)
-        with open(checkpoint_dir, "wb") as outputFile:
+        with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
-    def restore(self, checkpoint_dir):
+    def restore(self, checkpoint_dir: str):
         with open(checkpoint_dir, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
         self._initial_points = trials_object[0]
         self._opt = trials_object[1]
 
     @staticmethod
-    def convert_search_space(spec: Dict):
+    def convert_search_space(spec: Dict) -> List[Dict]:
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -309,7 +323,7 @@ class DragonflySearch(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to a Dragonfly search space.")
 
-        def resolve_value(par, domain):
+        def resolve_value(par: str, domain: Domain) -> Dict:
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
                 logger.warning(

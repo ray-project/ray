@@ -2,6 +2,8 @@ Serve Architecture
 ==================
 This document provides an overview of how each component in Serve works.
 
+.. Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
+
 .. image:: architecture.svg
     :align: center
     :width: 600px
@@ -50,7 +52,7 @@ FAQ
 How does Serve handle fault tolerance?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Application errors like exceptions in your model evaluation code is catched and
+Application errors like exceptions in your model evaluation code are caught and
 wrapped. A 500 status code will be returned with the traceback information. The
 worker replica will be able to continue to handle requests.
 

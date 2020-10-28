@@ -22,11 +22,12 @@
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
-DEFINE_int32(gcs_server_port, -1, "The port of gcs server.");
+DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
+DEFINE_string(node_ip_address, "", "The ip address of the node.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -42,6 +43,7 @@ int main(int argc, char *argv[]) {
   const std::string config_list = FLAGS_config_list;
   const std::string redis_password = FLAGS_redis_password;
   const bool retry_redis = FLAGS_retry_redis;
+  const std::string node_ip_address = FLAGS_node_ip_address;
   gflags::ShutDownCommandLineFlags();
 
   std::unordered_map<std::string, std::string> config_map;
@@ -57,8 +59,10 @@ int main(int argc, char *argv[]) {
   }
 
   RayConfig::instance().initialize(config_map);
-  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "gcs_server"},
-                                            {ray::stats::VersionKey, "0.9.0.dev0"}};
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "gcs_server"},
+      {ray::stats::VersionKey, "1.1.0.dev0"},
+      {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(global_tags, metrics_agent_port);
 
   // IO Service for main loop.
@@ -75,6 +79,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
+  gcs_server_config.node_ip_address = node_ip_address;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is

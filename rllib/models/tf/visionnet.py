@@ -20,6 +20,8 @@ class VisionNetwork(TFModelV2):
         activation = get_activation_fn(
             self.model_config.get("conv_activation"), framework="tf")
         filters = self.model_config["conv_filters"]
+        assert len(filters) > 0,\
+            "Must provide at least 1 entry in `conv_filters`!"
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
 
@@ -64,7 +66,7 @@ class VisionNetwork(TFModelV2):
                 activation=activation,
                 padding="valid",
                 data_format="channels_last",
-                name="conv{}".format(i + 1))(last_layer)
+                name="conv{}".format(len(filters)))(last_layer)
 
             # num_outputs defined. Use that to create an exact
             # `num_output`-sized (1,1)-Conv2D.
@@ -122,7 +124,7 @@ class VisionNetwork(TFModelV2):
                 activation=activation,
                 padding="valid",
                 data_format="channels_last",
-                name="conv_value_{}".format(i + 1))(last_layer)
+                name="conv_value_{}".format(len(filters)))(last_layer)
             last_layer = tf.keras.layers.Conv2D(
                 1, [1, 1],
                 activation=None,

@@ -17,8 +17,7 @@ For the sake of example, let's maximize this objective function:
 Function API
 ------------
 
-
-Here is a simple example of using the function API. You can report intermediate metrics by simply calling ``tune.report`` within the provided function.
+With the Function API, you can report intermediate metrics by simply calling ``tune.report`` within the provided function.
 
 .. code-block:: python
 
@@ -28,7 +27,7 @@ Here is a simple example of using the function API. You can report intermediate 
         for x in range(20):
             intermediate_score = objective(x, config["a"], config["b"])
 
-            tune.report(value=intermediate_score)  # This sends the score to Tune.
+            tune.report(score=intermediate_score)  # This sends the score to Tune.
 
     analysis = tune.run(
         trainable,
@@ -41,7 +40,58 @@ Here is a simple example of using the function API. You can report intermediate 
 
 Tune will run this function on a separate thread in a Ray actor process.
 
-.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using parallel hyperparameter tuning, check out our :ref:PyTorch user guide and Tune's :ref:distributed pytorch integrations.
+You'll notice that Ray Tune will output extra values in addition to the user reported metrics, such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
+
+.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using parallel hyperparameter tuning, check out our :ref:`PyTorch <tune-pytorch-cifar>` user guide and Tune's :ref:`distributed pytorch integrations <tune-integration-torch>`.
+
+Function API return and yield values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Instead of using ``tune.report()``, you can also use Python's ``yield``
+statement to report metrics to Ray Tune:
+
+
+.. code-block:: python
+
+    def trainable(config):
+        # config (dict): A dict of hyperparameters.
+
+        for x in range(20):
+            intermediate_score = objective(x, config["a"], config["b"])
+
+            yield {"score": intermediate_score}  # This sends the score to Tune.
+
+    analysis = tune.run(
+        trainable,
+        config={"a": 2, "b": 4}
+    )
+
+    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
+
+If you yield a dictionary object, this will work just as ``tune.report()``.
+If you yield a number, if will be reported to Ray Tune with the key ``_metric``, i.e.
+as if you had called ``tune.report(_metric=value)``.
+
+Ray Tune supports the same functionality for return values if you only
+report metrics at the end of each run:
+
+.. code-block:: python
+
+    def trainable(config):
+        # config (dict): A dict of hyperparameters.
+
+        final_score = 0
+        for x in range(20):
+            final_score = objective(x, config["a"], config["b"])
+
+        return {"score": final_score}  # This sends the score to Tune.
+
+    analysis = tune.run(
+        trainable,
+        config={"a": 2, "b": 4}
+    )
+
+    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
+
 
 .. _tune-function-checkpointing:
 
@@ -65,7 +115,7 @@ Many Tune features rely on checkpointing, including the usage of certain Trial S
             for iter in range(start, 100):
                 time.sleep(1)
 
-                with tune.checkpoint_dir(step=step):
+                with tune.checkpoint_dir(step=step) as checkpoint_dir:
                     path = os.path.join(checkpoint_dir, "checkpoint")
                     with open(path, "w") as f:
                         f.write(json.dumps({"step": start}))
@@ -134,6 +184,7 @@ As a subclass of ``tune.Trainable``, Tune will create a ``Trainable`` object on 
 
 .. tip:: As a rule of thumb, the execution time of ``step`` should be large enough to avoid overheads (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
 
+You'll notice that Ray Tune will output extra values in addition to the user reported metrics, such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
 .. _tune-trainable-save-restore:
 
@@ -283,6 +334,17 @@ tune.Trainable (Class API)
     :member-order: groupwise
     :private-members:
     :members:
+
+.. _tune-util-ref:
+
+Utilities
+---------
+
+.. autofunction:: ray.tune.utils.wait_for_gpu
+
+.. autofunction:: ray.tune.utils.diagnose_serialization
+
+.. autofunction:: ray.tune.utils.validate_save_restore
 
 
 .. _tune-ddp-doc:

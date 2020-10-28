@@ -3,7 +3,6 @@ import json
 import os
 
 import ray
-import ray.services
 from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)

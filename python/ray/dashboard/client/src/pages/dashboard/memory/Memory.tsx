@@ -44,6 +44,7 @@ const PyStackTrace: React.FC<{ stackTrace: string }> = ({ stackTrace }) => {
     <Typography
       variant={i === 0 ? "h6" : "subtitle2"}
       style={{ marginLeft: `${i}em` }}
+      key={i}
     >
       {i !== 0 && <SubdirectoryArrowRightIcon />}
       {frame}

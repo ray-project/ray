@@ -8,10 +8,12 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-from ray.test_utils import get_other_nodes, wait_for_condition
+from ray.test_utils import (get_other_nodes, wait_for_condition,
+                            get_error_message)
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
-from ray.util.placement_group import PlacementGroup
+from ray.util.placement_group import (PlacementGroup,
+                                      get_current_placement_group)
 
 
 def test_placement_group_pack(ray_start_cluster):
@@ -30,11 +32,17 @@ def test_placement_group_pack(ray_start_cluster):
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
-        name="name", strategy="PACK", bundles=[{
-            "CPU": 2
-        }, {
-            "CPU": 2
-        }])
+        name="name",
+        strategy="PACK",
+        bundles=[
+            {
+                "CPU": 2,
+                "GPU": 0  # Test 0 resource spec doesn't break tests.
+            },
+            {
+                "CPU": 2
+            }
+        ])
     ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
@@ -288,7 +296,7 @@ def test_remove_placement_group(ray_start_cluster):
     # First try to remove a placement group that doesn't
     # exist. This should not do anything.
     random_group_id = PlacementGroupID.from_random()
-    random_placement_group = PlacementGroup(random_group_id, [{"CPU": 1}])
+    random_placement_group = PlacementGroup(random_group_id)
     for _ in range(3):
         ray.util.remove_placement_group(random_placement_group)
 
@@ -398,6 +406,7 @@ def test_placement_group_table(ray_start_cluster):
 
     # Now the placement group should be scheduled.
     cluster.add_node(num_cpus=5, num_gpus=1)
+
     cluster.wait_for_nodes()
     actor_1 = Actor.options(
         placement_group=placement_group,
@@ -406,6 +415,28 @@ def test_placement_group_table(ray_start_cluster):
 
     result = ray.util.placement_group_table(placement_group)
     assert result["state"] == "CREATED"
+
+    # Add tow more placement group for placement group table test.
+    second_strategy = "SPREAD"
+    ray.util.placement_group(
+        name="second_placement_group",
+        strategy=second_strategy,
+        bundles=bundles)
+    ray.util.placement_group(
+        name="third_placement_group",
+        strategy=second_strategy,
+        bundles=bundles)
+
+    placement_group_table = ray.util.placement_group_table()
+    assert len(placement_group_table) == 3
+
+    true_name_set = {"name", "second_placement_group", "third_placement_group"}
+    get_name_set = set()
+
+    for _, placement_group_data in placement_group_table.items():
+        get_name_set.add(placement_group_data["name"])
+
+    assert true_name_set == get_name_set
 
 
 def test_cuda_visible_devices(ray_start_cluster):
@@ -591,7 +622,7 @@ def test_placement_group_wait(ray_start_cluster):
     assert table["state"] == "CREATED"
 
     pg = ray.get(placement_group.ready())
-    assert pg.bundles == placement_group.bundles
+    assert pg.bundle_specs == placement_group.bundle_specs
     assert pg.id.binary() == placement_group.id.binary()
 
 
@@ -789,6 +820,179 @@ def test_mini_integration(ray_start_cluster):
     # actors that take up all existing resources.
     actors = [A.remote() for _ in range(num_nodes)]
     assert all(ray.get([a.ping.remote() for a in actors]))
+
+
+def test_capture_child_actors(ray_start_cluster):
+    cluster = ray_start_cluster
+    total_num_actors = 4
+    for _ in range(2):
+        cluster.add_node(num_cpus=total_num_actors)
+    ray.init(address=cluster.address)
+
+    pg = ray.util.placement_group(
+        [{
+            "CPU": 2
+        }, {
+            "CPU": 2
+        }], strategy="STRICT_PACK")
+    ray.get(pg.ready())
+
+    # If get_current_placement_group is used when the current worker/driver
+    # doesn't belong to any of placement group, it should return None.
+    assert get_current_placement_group() is None
+
+    # Test actors first.
+    @ray.remote(num_cpus=1)
+    class NestedActor:
+        def ready(self):
+            return True
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            self.actors = []
+
+        def ready(self):
+            return True
+
+        def schedule_nested_actor(self):
+            # Make sure we can capture the current placement group.
+            assert get_current_placement_group() is not None
+            # Actors should be implicitly captured.
+            actor = NestedActor.remote()
+            ray.get(actor.ready.remote())
+            self.actors.append(actor)
+
+        def schedule_nested_actor_outside_pg(self):
+            # Don't use placement group.
+            actor = NestedActor.options(placement_group=None).remote()
+            ray.get(actor.ready.remote())
+            self.actors.append(actor)
+
+    a = Actor.options(placement_group=pg).remote()
+    ray.get(a.ready.remote())
+    # 1 top level actor + 3 children.
+    for _ in range(total_num_actors - 1):
+        ray.get(a.schedule_nested_actor.remote())
+    # Make sure all the actors are scheduled on the same node.
+    # (why? The placement group has STRICT_PACK strategy).
+    node_id_set = set()
+    for actor_info in ray.actors().values():
+        node_id = actor_info["Address"]["NodeID"]
+        node_id_set.add(node_id)
+
+    # Since all node id should be identical, set should be equal to 1.
+    assert len(node_id_set) == 1
+
+    # Kill an actor and wait until it is killed.
+    ray.kill(a)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
+
+    # Now create an actor, but do not capture the current tasks
+    a = Actor.options(
+        placement_group=pg,
+        placement_group_capture_child_tasks=False).remote()
+    ray.get(a.ready.remote())
+    # 1 top level actor + 3 children.
+    for _ in range(total_num_actors - 1):
+        ray.get(a.schedule_nested_actor.remote())
+    # Make sure all the actors are not scheduled on the same node.
+    # It is because the child tasks are not scheduled on the same
+    # placement group.
+    node_id_set = set()
+    for actor_info in ray.actors().values():
+        node_id = actor_info["Address"]["NodeID"]
+        node_id_set.add(node_id)
+
+    assert len(node_id_set) == 2
+
+    # Kill an actor and wait until it is killed.
+    ray.kill(a)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
+
+    # Lastly, make sure when None is specified, actors are not scheduled
+    # on the same placement group.
+    a = Actor.options(placement_group=pg).remote()
+    ray.get(a.ready.remote())
+    # 1 top level actor + 3 children.
+    for _ in range(total_num_actors - 1):
+        ray.get(a.schedule_nested_actor_outside_pg.remote())
+    # Make sure all the actors are not scheduled on the same node.
+    # It is because the child tasks are not scheduled on the same
+    # placement group.
+    node_id_set = set()
+    for actor_info in ray.actors().values():
+        node_id = actor_info["Address"]["NodeID"]
+        node_id_set.add(node_id)
+
+    assert len(node_id_set) == 2
+
+
+def test_capture_child_tasks(ray_start_cluster):
+    cluster = ray_start_cluster
+    total_num_tasks = 4
+    for _ in range(2):
+        cluster.add_node(num_cpus=total_num_tasks, num_gpus=total_num_tasks)
+    ray.init(address=cluster.address)
+
+    pg = ray.util.placement_group(
+        [{
+            "CPU": 2,
+            "GPU": 2,
+        }, {
+            "CPU": 2,
+            "GPU": 2,
+        }],
+        strategy="STRICT_PACK")
+    ray.get(pg.ready())
+
+    # If get_current_placement_group is used when the current worker/driver
+    # doesn't belong to any of placement group, it should return None.
+    assert get_current_placement_group() is None
+
+    # Test if tasks capture child tasks.
+    @ray.remote
+    def task():
+        return get_current_placement_group()
+
+    @ray.remote
+    def create_nested_task(child_cpu, child_gpu):
+        assert get_current_placement_group() is not None
+        return ray.get([
+            task.options(num_cpus=child_cpu, num_gpus=child_gpu).remote()
+            for _ in range(3)
+        ])
+
+    t = create_nested_task.options(
+        num_cpus=1, num_gpus=0, placement_group=pg).remote(1, 0)
+    pgs = ray.get(t)
+    # Every task should have current placement group because they
+    # should be implicitly captured by default.
+    assert None not in pgs
+
+    # Test if tasks don't capture child tasks when the option is off.
+    t2 = create_nested_task.options(
+        num_cpus=0,
+        num_gpus=1,
+        placement_group=pg,
+        placement_group_capture_child_tasks=False).remote(0, 1)
+    pgs = ray.get(t2)
+    # All placement group should be None because we don't capture child tasks.
+    assert not all(pgs)
+
+
+def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
+    p = error_pubsub
+    # Create an infeasible pg.
+    pg = ray.util.placement_group([{"CPU": 2}] * 2, strategy="STRICT_PACK")
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=0.5)
+
+    errors = get_error_message(
+        p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1)
+    assert len(errors) == 0
 
 
 if __name__ == "__main__":

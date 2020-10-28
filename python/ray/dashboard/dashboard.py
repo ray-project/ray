@@ -81,7 +81,7 @@ class DashboardController(BaseDashboardController):
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
         workers_info_by_node = {
-            data["nodeId"]: data.get("workersStats")
+            data["nodeId"]: data.get("coreWorkersStats")
             for data in D.values()
         }
 
@@ -92,8 +92,8 @@ class DashboardController(BaseDashboardController):
         # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
         ready_tasks = sum((data.get("readyTasks", []) for data in D.values()),
                           [])
-        actors = self.node_stats.get_actors(workers_info_by_node,
-                                            infeasible_tasks, ready_tasks)
+        actor_groups = self.node_stats.get_actors(
+            workers_info_by_node, infeasible_tasks, ready_tasks)
         plasma_stats = {}
         # HTTP call to metrics port for each node in nodes/
         used_views = ("object_store_num_local_objects",
@@ -116,7 +116,11 @@ class DashboardController(BaseDashboardController):
                 node_plasma_stats[view_name] = view_data
             plasma_stats[address] = node_plasma_stats
 
-        return {"nodes": D, "actors": actors, "plasmaStats": plasma_stats}
+        return {
+            "nodes": D,
+            "actorGroups": actor_groups,
+            "plasmaStats": plasma_stats
+        }
 
     def get_ray_config(self):
         try:
@@ -480,7 +484,7 @@ class Dashboard:
                  metrics_export_address=None):
         self.host = host
         self.port = port
-        self.redis_client = ray.services.create_redis_client(
+        self.redis_client = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
         self.temp_dir = temp_dir
         self.dashboard_id = str(uuid.uuid4())
@@ -549,14 +553,15 @@ class Dashboard:
     def _start_exporting_metrics(self):
         result, error = self.metrics_export_client.start_exporting_metrics()
         if not result and error:
-            url = ray.services.get_webui_url_from_redis(self.redis_client)
+            url = ray._private.services.get_webui_url_from_redis(
+                self.redis_client)
             error += (" Please reenable the metrics export by going to "
                       "the url: {}/api/metrics/enable".format(url))
             ray.utils.push_error_to_driver_through_redis(
                 self.redis_client, "metrics export failed", error)
 
     def log_dashboard_url(self):
-        url = ray.services.get_webui_url_from_redis(self.redis_client)
+        url = ray._private.services.get_webui_url_from_redis(self.redis_client)
         if url is None:
             raise ValueError("WebUI URL is not present in GCS.")
         with open(os.path.join(self.temp_dir, "dashboard_url"), "w") as f:
@@ -578,7 +583,7 @@ class RayletStats(threading.Thread):
         self.nodes = []
         self.stubs = {}
         self.reporter_stubs = {}
-        self.redis_client = ray.services.create_redis_client(
+        self.redis_client = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
 
         self._raylet_stats_lock = threading.Lock()
@@ -806,7 +811,7 @@ class TuneCollector(threading.Thread):
 
         # search through all the sub_directories in log directory
         analysis = Analysis(str(self._logdir))
-        df = analysis.dataframe(metric="episode_reward_mean", mode="max")
+        df = analysis.dataframe(metric=None, mode=None)
 
         if len(df) == 0 or "trial_id" not in df.columns:
             return
@@ -957,7 +962,7 @@ if __name__ == "__main__":
         dashboard.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
+        redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The dashboard on node {} failed with the following "
