@@ -6,7 +6,7 @@ class Record:
         self.stream = None
 
     def __repr__(self):
-        return "Record(%s)".format(self.value)
+        return "Record({})".format(self.value)
 
     def __eq__(self, other):
         if type(self) is type(other):

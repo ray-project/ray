@@ -34,7 +34,7 @@ class _GroupAgentsWrapper(MultiAgentEnv):
             for agent_id in agent_ids:
                 if agent_id in self.agent_id_to_group:
                     raise ValueError(
-                        "Agent id {} is in multiple groups".format(
+                        "Agent id {} is in multiple groups: {}".format(
                             agent_id, groups))
                 self.agent_id_to_group[agent_id] = group_id
         if obs_space is not None:

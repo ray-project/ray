@@ -52,7 +52,7 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                      rllib_dir, algo, checkpoint_path, tmp_dir)).read()
         if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
             sys.exit(1)
-        print("rollout output (10 steps) exists!".format(checkpoint_path))
+        print("rollout output (10 steps) exists!")
 
         # Test rolling out 1 episode.
         if test_episode_rollout:
@@ -61,7 +61,7 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                          rllib_dir, algo, checkpoint_path, tmp_dir)).read()
             if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
                 sys.exit(1)
-            print("rollout output (1 ep) exists!".format(checkpoint_path))
+            print("rollout output (1 ep) exists!")
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
@@ -115,8 +115,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                 rllib_dir, algo, tmp_dir, last_checkpoint)).read()[:-1]
         if not os.path.exists(tmp_dir + "/rollouts_n_steps.pkl"):
             sys.exit(1)
-        print("Rollout output exists -> Checking reward ...".format(
-            checkpoint_path))
+        print("Rollout output exists -> Checking reward ...")
         episodes = result.split("\n")
         mean_reward = 0.0
         num_episodes = 0
@@ -208,8 +207,7 @@ def learn_test_multi_agent_plus_rollout(algo):
                 rllib_dir, algo, tmp_dir, last_checkpoint)).read()[:-1]
         if not os.path.exists(tmp_dir + "/rollouts_n_steps.pkl"):
             sys.exit(1)
-        print("Rollout output exists -> Checking reward ...".format(
-            checkpoint_path))
+        print("Rollout output exists -> Checking reward ...")
         episodes = result.split("\n")
         mean_reward = 0.0
         num_episodes = 0

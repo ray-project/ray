@@ -1122,8 +1122,8 @@ class ParallelIteratorWorker(object):
                     it = iter(make_iterator())
                     if it is item_generator:
                         raise ValueError(
-                            "Cannot iterate over {} multiple times." +
-                            "Please pass in the base iterable or" +
+                            "Cannot iterate over {} multiple times."
+                            "Please pass in the base iterable or"
                             "lambda: {} instead.".format(
                                 item_generator, item_generator))
                     for item in it:
