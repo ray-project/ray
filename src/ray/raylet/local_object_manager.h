@@ -66,7 +66,7 @@ class LocalObjectManager {
   ///
   /// \param objects_ids_to_spill The objects to be spilled.
   /// \param callback A callback to call once the objects have been spilled, or
-  /// there is anerror.
+  /// there is an error.
   void SpillObjects(const std::vector<ObjectID> &objects_ids,
                     std::function<void(const ray::Status &)> callback);
 
