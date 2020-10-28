@@ -1121,7 +1121,10 @@ def start_gcs_server(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    config_str = ";".join(["{},{}".format(*kv) for kv in config.items()])
+    assert " " not in config_str, (
+        "Config parameters currently do not support "
+        "spaces.")
     if gcs_server_port is None:
         gcs_server_port = 0
 
@@ -1176,7 +1179,6 @@ def start_raylet(redis_address,
                  socket_to_use=None,
                  head_node=False,
                  start_initial_python_workers_for_first_job=False,
-                 object_spilling_config=None,
                  code_search_path=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1223,7 +1225,10 @@ def start_raylet(redis_address,
     # The caller must provide a node manager port so that we can correctly
     # populate the command to start a worker.
     assert node_manager_port is not None and node_manager_port != 0
-    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    config_str = ";".join(["{},{}".format(*kv) for kv in config.items()])
+    assert " " not in config_str, (
+        "Config parameters currently do not support "
+        "spaces.")
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
@@ -1314,10 +1319,6 @@ def start_raylet(redis_address,
 
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
-
-    if object_spilling_config:
-        start_worker_command.append(
-            f"--object-spilling-config={json.dumps(object_spilling_config)}")
 
     # Create agent command
     agent_command = [

@@ -185,8 +185,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                   }
                 }),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
-    RayConfig::instance().initialize(
-        {{"object_spilling_enabled", "true"}});
+    RayConfig::instance().initialize({{"object_spilling_enabled", "true"}});
   }
 
   size_t free_objects_batch_size = 3;

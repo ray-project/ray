@@ -86,7 +86,8 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
 }
 
 int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
-  if (!RayConfig::instance().object_spilling_enabled()) {
+  if (RayConfig::instance().object_spilling_config().empty() ||
+      !RayConfig::instance().automatic_object_spilling_enabled()) {
     return num_bytes_required;
   }
 

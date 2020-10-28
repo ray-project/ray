@@ -1,3 +1,4 @@
+import json
 import random
 import platform
 import sys
@@ -15,15 +16,18 @@ def test_spill_objects_manually(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
-        _object_spilling_config={
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        },
         _system_config={
             "object_store_full_max_retries": 0,
+            "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
+            "object_spilling_config": json.dumps(
+                {
+                    "type": "filesystem",
+                    "params": {
+                        "directory_path": "/tmp"
+                    }
+                },
+                separators=(",", ":")),
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -69,15 +73,18 @@ def test_spill_objects_manually_from_workers(shutdown_only):
     # Limit our object store to 100 MiB of memory.
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        _object_spilling_config={
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        },
         _system_config={
             "object_store_full_max_retries": 0,
+            "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
+            "object_spilling_config": json.dumps(
+                {
+                    "type": "filesystem",
+                    "params": {
+                        "directory_path": "/tmp"
+                    }
+                },
+                separators=(",", ":")),
         })
 
     @ray.remote
@@ -102,15 +109,18 @@ def test_spill_objects_manually_with_workers(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        _object_spilling_config={
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        },
         _system_config={
             "object_store_full_max_retries": 0,
+            "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
+            "object_spilling_config": json.dumps(
+                {
+                    "type": "filesystem",
+                    "params": {
+                        "directory_path": "/tmp"
+                    }
+                },
+                separators=(",", ":")),
         })
     arrays = [np.random.rand(100 * 1024) for _ in range(50)]
     objects = [ray.put(arr) for arr in arrays]
@@ -131,28 +141,25 @@ def test_spill_objects_manually_with_workers(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 0,
         "object_store_memory": 75 * 1024 * 1024,
-        "object_spilling_config": {
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        },
         "_system_config": {
-            "object_store_full_max_retries": 0,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
             "max_io_workers": 4,
+            "object_spilling_config": json.dumps(
+                {
+                    "type": "filesystem",
+                    "params": {
+                        "directory_path": "/tmp"
+                    }
+                },
+                separators=(",", ":")),
         },
     }],
     indirect=True)
 def test_spill_remote_object(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    cluster.add_node(
-        object_store_memory=75 * 1024 * 1024,
-        object_spilling_config={
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        })
+    cluster.add_node(object_store_memory=75 * 1024 * 1024)
 
     @ray.remote
     def put():
@@ -166,11 +173,7 @@ def test_spill_remote_object(ray_start_cluster_head):
     copy = np.copy(ray.get(ref))
     # Evict local copy.
     ray.put(np.random.rand(5 * 1024 * 1024))  # 40 MB data
-    # Remote copy should not fit.
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(put.remote())
-    # Spill 1 object. The second should now fit.
-    ray.experimental.force_spill_objects([ref])
+    # Remote copy should cause first remote object to get spilled.
     ray.get(put.remote())
 
     sample = ray.get(ref)
@@ -188,15 +191,19 @@ def test_spill_objects_automatically(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
-        _object_spilling_config={
-            "type": "filesystem",
-            "params": {
-                "directory_path": "/tmp"
-            }
-        },
         _system_config={
             "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": json.dumps(
+                {
+                    "type": "filesystem",
+                    "params": {
+                        "directory_path": "/tmp"
+                    }
+                },
+                separators=(",", ":")),
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []

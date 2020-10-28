@@ -320,6 +320,14 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     }
   }
 
+  if (worker_type == rpc::WorkerType::IO_WORKER) {
+    RAY_CHECK(!RayConfig::instance().object_spilling_config().empty());
+    RAY_LOG(INFO) << "Adding object spill config "
+                  << RayConfig::instance().object_spilling_config();
+    worker_command_args.push_back("--object-spilling-config=" +
+                                  RayConfig::instance().object_spilling_config());
+  }
+
   ProcessEnvironment env;
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());

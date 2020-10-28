@@ -312,9 +312,6 @@ RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
-/// The maximum number of I/O worker that raylet starts.
-RAY_CONFIG(int, max_io_workers, 1)
-
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
 RAY_CONFIG(bool, enable_timeline, true)
@@ -323,6 +320,14 @@ RAY_CONFIG(bool, enable_timeline, true)
 /// autoscale the cluster.
 RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
 
-/// Whether object spilling is enabled. If true, then a language-specific
-/// config for the external storage must be provided.
-RAY_CONFIG(bool, object_spilling_enabled, false)
+/* Configuration parameters for object spilling. */
+/// JSON configuration that describes the external storage. This is passed to
+/// Python IO workers to determine how to store/restore an object to/from
+/// external storage.
+RAY_CONFIG(std::string, object_spilling_config, "")
+/// Whether to enable automatic object spilling. If enabled, then
+/// Ray will choose objects to spill when the object store is out of
+/// memory.
+RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
+/// The maximum number of I/O worker that raylet starts.
+RAY_CONFIG(int, max_io_workers, 1)
