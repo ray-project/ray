@@ -125,7 +125,7 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({ actor }) => {
         <div>{actor.actorClass}</div>
         <ActorStateRepr state={actor.state} />
       </div>
-      {isFullActorInfo(actor) &&
+      {isFullActorInfo(actor) && (
         <Grid container spacing={3} className={classes.detailsPane}>
           <Grid container item xs={6}>
             <Grid item xs={4}>
@@ -161,7 +161,7 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({ actor }) => {
             </Grid>
           )}
         </Grid>
-      }
+      )}
       <Divider className={classes.divider} />
       <Grid container className={classes.detailsPane}>
         {actorData.map(

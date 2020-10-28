@@ -65,19 +65,25 @@ const ActorClassGroup: React.FC<ActorClassGroupProps> = ({
       </Box>
       <Grid container xs={12} spacing={2}>
         <Grid container item xs={5} className={classes.title}>
-          {Infeasible in summary.stateToCount && (<LabeledDatum
+          {Infeasible in summary.stateToCount && (
+            <LabeledDatum
+              label={
+                <ActorStateRepr
+                  state={Infeasible}
+                  variant="body1"
+                  showTooltip={true}
+                />
+              }
+              datum={summary.stateToCount[Infeasible]}
+            />
+          )}
+          <LabeledDatum
             label={
               <ActorStateRepr
-                state={Infeasible}
+                state={Alive}
                 variant="body1"
                 showTooltip={true}
               />
-            }
-            datum={summary.stateToCount[Infeasible]}
-          />)}
-          <LabeledDatum
-            label={
-              <ActorStateRepr state={Alive} variant="body1" showTooltip={true} />
             }
             datum={
               Alive in summary.stateToCount ? summary.stateToCount[Alive] : 0
@@ -115,7 +121,6 @@ const ActorClassGroup: React.FC<ActorClassGroupProps> = ({
         </Grid>
       </Grid>
 
-
       {expanded ? (
         <React.Fragment>
           <Box>{entries}</Box>
@@ -124,10 +129,10 @@ const ActorClassGroup: React.FC<ActorClassGroupProps> = ({
           </CenteredBox>
         </React.Fragment>
       ) : (
-          <CenteredBox>
-            <Expander onClick={toggleExpanded} />
-          </CenteredBox>
-        )}
+        <CenteredBox>
+          <Expander onClick={toggleExpanded} />
+        </CenteredBox>
+      )}
     </Paper>
   );
 };
