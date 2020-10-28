@@ -4,6 +4,7 @@ import numpy as np
 import re
 import unittest
 
+import ray
 import ray.rllib.agents.sac as sac
 from ray.rllib.agents.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
 from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as \
@@ -45,6 +46,14 @@ class SimpleEnv(Env):
 
 
 class TestSAC(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_sac_compilation(self):
         """Tests whether an SACTrainer can be built with all frameworks."""
         config = sac.DEFAULT_CONFIG.copy()

@@ -1,11 +1,13 @@
 import os
 import sys
+import copy
 import json
 import time
 import logging
 import asyncio
 import collections
 
+import numpy as np
 import aiohttp.web
 import ray
 import psutil
@@ -491,6 +493,82 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert response.json()["data"]["autoscalingStatus"] == "hello"
     assert "autoscalingError" in response.json()["data"]
     assert response.json()["data"]["autoscalingError"] == "world"
+
+
+def test_immutable_types():
+    d = {str(i): i for i in range(1000)}
+    d["list"] = list(range(1000))
+    d["list"][0] = {str(i): i for i in range(1000)}
+    d["dict"] = {str(i): i for i in range(1000)}
+    immutable_dict = dashboard_utils.make_immutable(d)
+    assert type(immutable_dict) == dashboard_utils.ImmutableDict
+    assert immutable_dict == dashboard_utils.ImmutableDict(d)
+    assert immutable_dict == d
+    assert dashboard_utils.ImmutableDict(immutable_dict) == immutable_dict
+    assert dashboard_utils.ImmutableList(
+        immutable_dict["list"]) == immutable_dict["list"]
+    assert "512" in d
+    assert "512" in d["list"][0]
+    assert "512" in d["dict"]
+
+    # Test type conversion
+    assert type(dict(immutable_dict)["list"]) == dashboard_utils.ImmutableList
+    assert type(list(
+        immutable_dict["list"])[0]) == dashboard_utils.ImmutableDict
+
+    # Test json dumps / loads
+    json_str = json.dumps(immutable_dict, cls=dashboard_utils.CustomEncoder)
+    deserialized_immutable_dict = json.loads(json_str)
+    assert type(deserialized_immutable_dict) == dict
+    assert type(deserialized_immutable_dict["list"]) == list
+    assert immutable_dict.mutable() == deserialized_immutable_dict
+    dashboard_utils.rest_response(True, "OK", data=immutable_dict)
+    dashboard_utils.rest_response(True, "OK", **immutable_dict)
+
+    # Test copy
+    copy_of_immutable = copy.copy(immutable_dict)
+    assert copy_of_immutable == immutable_dict
+    deepcopy_of_immutable = copy.deepcopy(immutable_dict)
+    assert deepcopy_of_immutable == immutable_dict
+
+    # Test get default immutable
+    immutable_default_value = immutable_dict.get("not exist list", [1, 2])
+    assert type(immutable_default_value) == dashboard_utils.ImmutableList
+
+    # Test recursive immutable
+    assert type(immutable_dict["list"]) == dashboard_utils.ImmutableList
+    assert type(immutable_dict["dict"]) == dashboard_utils.ImmutableDict
+    assert type(immutable_dict["list"][0]) == dashboard_utils.ImmutableDict
+
+    # Test exception
+    with pytest.raises(TypeError):
+        dashboard_utils.ImmutableList((1, 2))
+
+    with pytest.raises(TypeError):
+        dashboard_utils.ImmutableDict([1, 2])
+
+    with pytest.raises(TypeError):
+        immutable_dict["list"] = []
+
+    with pytest.raises(AttributeError):
+        immutable_dict.update({1: 3})
+
+    with pytest.raises(TypeError):
+        immutable_dict["list"][0] = 0
+
+    with pytest.raises(AttributeError):
+        immutable_dict["list"].extend([1, 2])
+
+    with pytest.raises(AttributeError):
+        immutable_dict["list"].insert(1, 2)
+
+    d2 = dashboard_utils.ImmutableDict({1: np.zeros([3, 5])})
+    with pytest.raises(TypeError):
+        print(d2[1])
+
+    d3 = dashboard_utils.ImmutableList([1, np.zeros([3, 5])])
+    with pytest.raises(TypeError):
+        print(d3[1])
 
 
 if __name__ == "__main__":

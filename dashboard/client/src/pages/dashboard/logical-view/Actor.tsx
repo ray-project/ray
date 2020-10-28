@@ -195,9 +195,7 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
           </span>
         )}
       </Typography>
-      <ActorDetailsPane
-        actor={actor}
-      />
+      <ActorDetailsPane actor={actor} />
       {isFullActorInfo(actor) && (
         <React.Fragment>
           {actorCustomDisplay.length > 0 && (

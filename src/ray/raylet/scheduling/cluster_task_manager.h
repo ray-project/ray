@@ -114,11 +114,12 @@ class ClusterTaskManager {
   std::function<bool(const Task &)> fulfills_dependencies_func_;
   NodeInfoGetter get_node_info_;
 
+  // TODO (Alex): Implement fair queuing for these queues
   /// Queue of lease requests that are waiting for resources to become available.
-  /// TODO this should be a queue for each SchedulingClass
-  std::deque<Work> tasks_to_schedule_;
+  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
+
   /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<Work> tasks_to_dispatch_;
+  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
   /// Tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 

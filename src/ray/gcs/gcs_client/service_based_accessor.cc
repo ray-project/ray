@@ -558,10 +558,13 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
-    const NodeID &node_id) const {
+    const NodeID &node_id, bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
+    if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
+      return boost::none;
+    }
     return entry->second;
   }
   return boost::none;
@@ -704,24 +707,6 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
         cached_heartbeat_,
         [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
   }
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
-    const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-    const StatusCallback &done) {
-  const std::string error_msg =
-      "Unsupported method of AsyncSubscribeHeartbeat in ServiceBasedNodeInfoAccessor.";
-  RAY_LOG(FATAL) << error_msg;
-  return Status::Invalid(error_msg);
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
-    const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-    const StatusCallback &callback) {
-  const std::string error_msg =
-      "Unsupported method of AsyncReportBatchHeartbeat in ServiceBasedNodeInfoAccessor.";
-  RAY_LOG(FATAL) << error_msg;
-  return Status::Invalid(error_msg);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
@@ -1541,6 +1526,20 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
                        << placement_group_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all placement group info.";
+  rpc::GetAllPlacementGroupRequest request;
+  client_impl_->GetGcsRpcClient().GetAllPlacementGroup(
+      request,
+      [callback](const Status &status, const rpc::GetAllPlacementGroupReply &reply) {
+        callback(status, VectorFromProtobuf(reply.placement_group_table_data()));
+        RAY_LOG(DEBUG) << "Finished getting all placement group info, status = "
+                       << status;
       });
   return Status::OK();
 }

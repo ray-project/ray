@@ -22,7 +22,8 @@ if [ -z "${BUILD_DIR}" ]; then
 fi
 TEST_DIR="${BUILD_DIR}/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
-UI_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_webui.py"
+DASHBOARD_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_dashboard.py"
+
 
 function retry {
   local n=1
@@ -77,9 +78,7 @@ if [[ "$platform" == "linux" ]]; then
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
         retry "$PYTHON_EXE" "$SCRIPT"
     done
-
-    # Run the UI test to make sure that the packaged UI works.
-    retry "$PYTHON_EXE" "$UI_TEST_SCRIPT"
+    retry "$PYTHON_EXE" "$DASHBOARD_TEST_SCRIPT"
   done
 
   # Check that the other wheels are present.
@@ -118,12 +117,6 @@ elif [[ "$platform" == "macosx" ]]; then
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
       retry "$PYTHON_EXE" "$SCRIPT"
     done
-
-    if (( $(echo "$PY_MM >= 3.0" | bc) )); then
-      # Run the UI test to make sure that the packaged UI works.
-      retry "$PYTHON_EXE" "$UI_TEST_SCRIPT"
-    fi
-
   done
 elif [ "${platform}" = windows ]; then
   echo "WARNING: Wheel testing not yet implemented for Windows."

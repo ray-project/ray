@@ -52,6 +52,7 @@ auth:
     # you must specify paths to matching private and public key pair files
     # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
     ssh_private_key: ~/.ssh/id_rsa
+    # changes to this should match what is specified in file_mounts
     ssh_public_key: ~/.ssh/id_rsa.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
@@ -71,6 +72,7 @@ worker_nodes:
 file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
+     "/home/ubuntu/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
 }
 
 # List of shell commands to run to set up nodes.

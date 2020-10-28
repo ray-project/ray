@@ -8,6 +8,13 @@ from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
+UNRESOLVED_SEARCH_SPACE = str(
+    "You passed a `{par}` parameter to {cls} that contained unresolved search "
+    "space definitions. {cls} should however be instantiated with fully "
+    "configured search spaces only. To use Ray Tune's automatic search space "
+    "conversion, pass the space definition as part of the `config` argument "
+    "to `tune.run()` instead.")
+
 
 class Searcher:
     """Abstract class for wrapping suggesting algorithms.

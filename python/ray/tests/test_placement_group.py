@@ -407,6 +407,7 @@ def test_placement_group_table(ray_start_cluster):
 
     # Now the placement group should be scheduled.
     cluster.add_node(num_cpus=5, num_gpus=1)
+
     cluster.wait_for_nodes()
     actor_1 = Actor.options(
         placement_group=placement_group,
@@ -415,6 +416,28 @@ def test_placement_group_table(ray_start_cluster):
 
     result = ray.util.placement_group_table(placement_group)
     assert result["state"] == "CREATED"
+
+    # Add tow more placement group for placement group table test.
+    second_strategy = "SPREAD"
+    ray.util.placement_group(
+        name="second_placement_group",
+        strategy=second_strategy,
+        bundles=bundles)
+    ray.util.placement_group(
+        name="third_placement_group",
+        strategy=second_strategy,
+        bundles=bundles)
+
+    placement_group_table = ray.util.placement_group_table()
+    assert len(placement_group_table) == 3
+
+    true_name_set = {"name", "second_placement_group", "third_placement_group"}
+    get_name_set = set()
+
+    for _, placement_group_data in placement_group_table.items():
+        get_name_set.add(placement_group_data["name"])
+
+    assert true_name_set == get_name_set
 
 
 def test_cuda_visible_devices(ray_start_cluster):
