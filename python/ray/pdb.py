@@ -122,8 +122,16 @@ class RemotePdb(Pdb):
             if exc.errno != errno.ECONNRESET:
                 raise
 
+    def post_mortem(self, traceback=None):
+        try:
+            t = sys.exc_info()[2]
+            Pdb.interaction(self, None, t)
+        except IOError as exc:
+            if exc.errno != errno.ECONNRESET:
+                raise
 
-def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None):
+
+def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
     """
     Opens a remote PDB on first available port.
     """
@@ -147,4 +155,15 @@ def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None):
     _internal_kv_put("RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)
     rdb.listen()
     _internal_kv_del("RAY_PDB_{}".format(breakpoint_uuid))
+
+    return rdb
+
+
+def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None):
+    rdb = connect_ray_pdb(host, port, patch_stdstreams, quiet)
     rdb.set_trace(frame=sys._getframe().f_back)
+
+
+def post_mortem(host=None, port=None, patch_stdstreams=False, quiet=None):
+    rdb = connect_ray_pdb(host, port, patch_stdstreams, quiet)
+    rdb.post_mortem()
