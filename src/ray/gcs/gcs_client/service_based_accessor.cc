@@ -558,10 +558,13 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
-    const NodeID &node_id) const {
+    const NodeID &node_id, bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
+    if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
+      return boost::none;
+    }
     return entry->second;
   }
   return boost::none;
@@ -704,24 +707,6 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
         cached_heartbeat_,
         [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
   }
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
-    const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-    const StatusCallback &done) {
-  const std::string error_msg =
-      "Unsupported method of AsyncSubscribeHeartbeat in ServiceBasedNodeInfoAccessor.";
-  RAY_LOG(FATAL) << error_msg;
-  return Status::Invalid(error_msg);
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
-    const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-    const StatusCallback &callback) {
-  const std::string error_msg =
-      "Unsupported method of AsyncReportBatchHeartbeat in ServiceBasedNodeInfoAccessor.";
-  RAY_LOG(FATAL) << error_msg;
-  return Status::Invalid(error_msg);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(

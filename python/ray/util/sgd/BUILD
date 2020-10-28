@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------
 py_test(
     name = "test_ptl",
-    size = "small",
+    size = "large",
     srcs = ["tests/test_ptl.py"],
     tags = ["exclusive", "pytorch-lightning", "pytorch"],
     deps = [":sgd_lib"],

@@ -137,7 +137,12 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+
+        assert model is None or isinstance(model, ModelV2), \
+            "Model classes for TFPolicy other than `ModelV2` not allowed! " \
+            "You passed in {}.".format(model)
         self.model = model
+
         self.exploration = self._create_exploration()
         self._sess = sess
         self._obs_input = obs_input
@@ -270,13 +275,9 @@ class TFPolicy(Policy):
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
-        # TODO(sven/ekl): Deprecate support for v1 models.
-        if hasattr(self, "model") and isinstance(self.model, ModelV2):
+        if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self._sess, self.variables())
-        else:
-            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-                self._loss, self._sess)
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
@@ -331,7 +332,8 @@ class TFPolicy(Policy):
         fetched = builder.get(to_fetch)
 
         # Update our global timestep by the batch size.
-        self.global_timestep += fetched[0].shape[0]
+        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
+            else obs_batch.shape[0]
 
         return fetched
 
