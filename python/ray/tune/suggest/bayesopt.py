@@ -6,6 +6,7 @@ from typing import Dict, Optional, Tuple
 
 from ray.tune import ExperimentAnalysis
 from ray.tune.sample import Domain, Float, Quantized
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 
@@ -186,6 +187,14 @@ class BayesOptSearch(Searcher):
         if analysis is not None:
             self.register_analysis(analysis)
 
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space, join=True)
+
         self._space = space
         self._verbose = verbose
         self._random_state = random_state
@@ -354,7 +363,7 @@ class BayesOptSearch(Searcher):
              self._config_counter) = pickle.load(f)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict:
+    def convert_search_space(spec: Dict, join: bool = False) -> Dict:
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -386,5 +395,9 @@ class BayesOptSearch(Searcher):
             "/".join(path): resolve_value(domain)
             for path, domain in domain_vars
         }
+
+        if join:
+            spec.update(bounds)
+            bounds = spec
 
         return bounds

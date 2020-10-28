@@ -80,7 +80,8 @@ class VTraceLoss:
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
-                discounts=tf.cast(~dones, tf.float32) * discount,
+                discounts=tf.cast(~tf.cast(dones, tf.bool), tf.float32) *
+                discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
@@ -154,8 +155,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     if isinstance(policy.action_space, gym.spaces.Discrete):
         is_multidiscrete = False
         output_hidden_shape = [policy.action_space.n]
-    elif isinstance(policy.action_space,
-                    gym.spaces.multi_discrete.MultiDiscrete):
+    elif isinstance(policy.action_space, gym.spaces.MultiDiscrete):
         is_multidiscrete = True
         output_hidden_shape = policy.action_space.nvec.astype(np.int32)
     else:

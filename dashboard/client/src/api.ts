@@ -60,7 +60,7 @@ type ProcessStats = {
     iowait: number;
   };
   cpuPercent: number;
-}
+};
 
 export type Worker = {
   pid: number;

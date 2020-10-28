@@ -58,9 +58,9 @@ DEFAULT_CONFIG = with_common_config({
     "critic_hidden_activation": "relu",
     # N-step Q learning
     "n_step": 1,
-    # Algorithm for good policies
+    # Algorithm for good policies.
     "good_policy": "maddpg",
-    # Algorithm for adversary policies
+    # Algorithm for adversary policies.
     "adv_policy": "maddpg",
 
     # === Replay buffer ===

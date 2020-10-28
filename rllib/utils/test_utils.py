@@ -179,7 +179,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     else:
         if tf1 is not None:
             # y should never be a Tensor (y=expected value).
-            if isinstance(y, tf1.Tensor):
+            if isinstance(y, (tf1.Tensor, tf1.Variable)):
                 # In eager mode, numpyize tensors.
                 if tf.executing_eagerly():
                     y = y.numpy()
@@ -187,11 +187,11 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                     raise ValueError(
                         "`y` (expected value) must not be a Tensor. "
                         "Use numpy.ndarray instead")
-            if isinstance(x, tf1.Tensor):
+            if isinstance(x, (tf1.Tensor, tf1.Variable)):
                 # In eager mode, numpyize tensors.
                 if tf1.executing_eagerly():
                     x = x.numpy()
-                # Otherwise, use a quick tf-session.
+                # Otherwise, use a new tf-session.
                 else:
                     with tf1.Session() as sess:
                         x = sess.run(x)
