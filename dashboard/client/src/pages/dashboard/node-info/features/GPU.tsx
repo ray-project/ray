@@ -32,11 +32,17 @@ const clusterGPUUtilization = (nodes: Array<Node>): number => {
 };
 
 const nodeGPUUtilization = (node: Node): number => {
-  if (node.gpus === null) return NaN;
-  const gpusWithUtilInfo = node.gpus.filter(gpu => gpu.utilizationGpu);
-  if (gpusWithUtilInfo.length === 0) return NaN;
+  if (node.gpus === null) {
+    return NaN;
+  }
+  const gpusWithUtilInfo = node.gpus.filter((gpu) => gpu.utilizationGpu);
+  if (gpusWithUtilInfo.length === 0) {
+    return NaN;
+  }
 
-  const utilizationSum = sum(gpusWithUtilInfo.map((gpu) => gpu.utilizationGpu ?? 0));
+  const utilizationSum = sum(
+    gpusWithUtilInfo.map((gpu) => gpu.utilizationGpu ?? 0),
+  );
   const avgUtilization = utilizationSum / gpusWithUtilInfo.length;
   return avgUtilization;
 };
@@ -88,15 +94,16 @@ const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
       <Tooltip title={gpu.name}>
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
       </Tooltip>
-      {gpu.utilizationGpu ?
+      {gpu.utilizationGpu ? (
         <UsageBar
           percent={gpu.utilizationGpu}
           text={`${gpu.utilizationGpu.toFixed(1)}%`}
-        /> :
+        />
+      ) : (
         <Typography color="textSecondary" component="span" variant="inherit">
           N/A
         </Typography>
-      }
+      )}
     </Box>
   );
 };

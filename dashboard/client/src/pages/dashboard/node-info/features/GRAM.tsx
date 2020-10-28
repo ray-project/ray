@@ -6,7 +6,6 @@ import { MiBRatioNoPercent } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
-import { util } from '../../../../../../../bazel-ray/external/arrow/js/src/Arrow';
 import {
   ClusterFeatureRenderFn,
   Node,
@@ -21,10 +20,12 @@ const GRAM_COL_WIDTH = 120;
 
 const nodeGRAMUtilization = (node: Node) => {
   const utilization = (gpu: GPUStats) => {
-    if (!gpu.memoryUsed || !gpu.memoryTotal) return NaN;
+    if (!gpu.memoryUsed || !gpu.memoryTotal) {
+      return NaN;
+    }
     return gpu.memoryUsed / gpu.memoryTotal;
-  }
-  const gramUtils = node.gpus.map(utilization).filter(util => !!util);
+  };
+  const gramUtils = node.gpus.map(utilization).filter((util) => !!util);
   if (gramUtils.length === 0) {
     return NaN;
   }
