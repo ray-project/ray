@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from inspect import isclass
 from shlex import quote
 
+import ray
 from ray import services
 from ray.tune import TuneError
 from ray.tune.callback import Callback
@@ -372,7 +373,7 @@ class SyncerCallback(Callback):
 
     def _get_trial_syncer(self, trial: "Trial"):
         if trial not in self._syncers:
-            pass
+            self._syncers[trial] = self._create_trial_syncer(trial)
         return self._syncers[trial]
 
     def _create_trial_syncer(self, trial: "Trial"):
@@ -444,10 +445,28 @@ class SyncerCallback(Callback):
                                     "found after successful sync down.".format(
                                         trial, checkpoint.value))
 
+    def on_trial_start(self, iteration: int, trials: List["Trial"],
+                       trial: "Trial", **info):
+        self._create_trial_syncer(trial)
+
     def on_trial_result(self, iteration: int, trials: List["Trial"],
                         trial: "Trial", result: Dict, **info):
         trial_syncer = self._get_trial_syncer(trial)
         trial_syncer.set_worker_ip(result.get(NODE_IP))
+        trial_syncer.sync_down_if_needed()
+
+    def on_trial_complete(self, iteration: int, trials: List["Trial"],
+                          trial: "Trial", **info):
+        trial_syncer = self._get_trial_syncer(trial)
+        trainable_ip = ray.get(trial.runner.get_current_ip.remote())
+        trial_syncer.set_worker_ip(trainable_ip)
+        trial_syncer.sync_down_if_needed()
+
+    def on_trial_fail(self, iteration: int, trials: List["Trial"],
+                      trial: "Trial", **info):
+        trial_syncer = self._get_trial_syncer(trial)
+        trainable_ip = ray.get(trial.runner.get_current_ip.remote())
+        trial_syncer.set_worker_ip(trainable_ip)
         trial_syncer.sync_down_if_needed()
 
     def on_checkpoint(self, iteration: int, trials: List["Trial"],
