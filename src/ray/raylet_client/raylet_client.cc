@@ -419,13 +419,21 @@ void raylet::RayletClient::GlobalGC(
   grpc_client_->GlobalGC(request, callback);
 }
 
-Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
-                                               const rpc::Address &owner_address) {
+bool raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
+                                             const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id),
                                                       to_flatbuf(fbb, owner_address));
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
+
+  std::vector<uint8_t> reply;
+  auto request_status =
+      conn_->AtomicRequestReply(MessageType::SubscribePlasmaReady,
+                                MessageType::SubscribePlasmaReadyReply, &reply, &fbb);
+  RAY_CHECK_OK(request_status);
+  auto reply_message =
+      flatbuffers::GetRoot<protocol::SubscribePlasmaReadyReply>(reply.data());
+  return reply_message->success();
 }
 
 }  // namespace ray

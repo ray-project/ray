@@ -2969,24 +2969,47 @@ void NodeManager::ProcessSubscribePlasmaReady(
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
 
-  // Tell task dependency manager to pull the objects.
-  // NOTE(simon): This doesn't handle cancellation and edge case invovling eviciton.
-  std::vector<rpc::ObjectReference> refs = {FlatbufferToSingleObjectReference(
-      *message->object_id(), *message->owner_address())};
-  task_dependency_manager_.SubscribeWaitDependencies(associated_worker->WorkerId(), refs);
+  bool subscription_success = true;
 
-  {
-    absl::MutexLock guard(&plasma_object_notification_lock_);
-    if (!async_plasma_objects_notification_.contains(id)) {
-      async_plasma_objects_notification_.emplace(
-          id, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>());
-    }
+  if (task_dependency_manager_.CheckObjectLocal(id)) {
+    subscription_success = false;
+  } else {
+    // The object is not local, so we are subscribing to pull and wait for the objects.
+    std::vector<rpc::ObjectReference> refs = {FlatbufferToSingleObjectReference(
+        *message->object_id(), *message->owner_address())};
 
-    // Only insert a worker once
-    if (!async_plasma_objects_notification_[id].contains(associated_worker)) {
-      async_plasma_objects_notification_[id].insert(associated_worker);
+    // NOTE(simon): This call will issue a pull request to remote workers and make sure
+    // the object will be local.
+    // 1. We currently do not allow user to cancel this call. The object will be pulled
+    //    even if the `await object_ref` is cancelled.
+    // 2. We currently do not handle edge cases with object eviction where the object
+    //    is evicted locally or on remote machine.
+    task_dependency_manager_.SubscribeWaitDependencies(associated_worker->WorkerId(),
+                                                       refs);
+
+    // Add this worker to listener for the object id.
+    {
+      absl::MutexLock guard(&plasma_object_notification_lock_);
+      if (!async_plasma_objects_notification_.contains(id)) {
+        async_plasma_objects_notification_.emplace(
+            id, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>());
+      }
+
+      // Only insert a worker once
+      if (!async_plasma_objects_notification_[id].contains(associated_worker)) {
+        async_plasma_objects_notification_[id].insert(associated_worker);
+      }
     }
   }
+
+  flatbuffers::FlatBufferBuilder fbb;
+  flatbuffers::Offset<protocol::SubscribePlasmaReadyReply> reply =
+      protocol::CreateSubscribePlasmaReadyReply(fbb, subscription_success);
+  fbb.Finish(reply);
+
+  RAY_CHECK_OK(client->WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::SubscribePlasmaReadyReply),
+      fbb.GetSize(), fbb.GetBufferPointer()));
 }
 
 ray::Status NodeManager::SetupPlasmaSubscription() {

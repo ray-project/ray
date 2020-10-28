@@ -912,12 +912,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
 
-  /// Subscribe to receive notification of an object entering the plasma store.
-  ///
-  /// \param[in] object_id The object to wait for.
-  /// \return void
-  void SubscribeToPlasmaAdd(const ObjectID &object_id);
-
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 

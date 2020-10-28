@@ -2282,18 +2282,7 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
 void CoreWorker::PlasmaCallback(SetResultCallback success,
                                 std::shared_ptr<RayObject> ray_object, ObjectID object_id,
                                 void *py_future) {
-  std::vector<std::shared_ptr<RayObject>> vec;
-  bool object_is_local = false;
-
-  // Check if object is available before subscribing to plasma.
-  if (Contains(object_id, &object_is_local).ok() && object_is_local) {
-    RAY_LOG(DEBUG) << "PlasmaCallback, object " << object_id
-                   << " is already local, returning it.";
-    RAY_CHECK_OK(Get(std::vector<ObjectID>{object_id}, 0, &vec));
-    RAY_CHECK(vec.size() == 1);
-    return success(vec.front(), object_id, py_future);
-  }
-
+  // Add the success callback to listener queue.
   {
     absl::MutexLock lock(&plasma_mutex_);
     auto it = async_plasma_callbacks_.find(object_id);
@@ -2308,10 +2297,14 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
       it->second.push_back({plasma_arrived_callback});
     }
   }
-  SubscribeToPlasmaAdd(object_id);
 
-  // Check in-memory store in case object became ready *before* SubscribeToPlasmaAdd.
-  if (Contains(object_id, &object_is_local).ok() && object_is_local) {
+  // Ask raylet to subscribe to object notification. This is a blocking call. Raylet
+  // returns success=false if the object is already local.
+  bool subscription_success =
+      local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id));
+
+  if (!subscription_success) {
+    // Raylet told us object is already local, drain the callback queue.
     std::vector<std::function<void(void)>> callbacks;
     {
       absl::MutexLock lock(&plasma_mutex_);
@@ -2342,11 +2335,6 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
       success_callback(ray_object, object_id, python_future);
     }
   });
-}
-
-void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
-  RAY_CHECK_OK(
-      local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id)));
 }
 
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
