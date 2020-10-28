@@ -33,22 +33,13 @@ class LoadMetrics:
     def update(self,
                ip: str,
                static_resources: Dict[str, Dict],
-               update_dynamic_resources: bool,
                dynamic_resources: Dict[str, Dict],
-               update_resource_load: bool,
                resource_load: Dict[str, Dict],
                waiting_bundles: List[Dict[str, float]] = None,
                infeasible_bundles: List[Dict[str, float]] = None,
                pending_placement_groups: List[PlacementGroupTableData] = None):
-        # If light heartbeat enabled, only resources changed will be received.
-        # We should update the changed part and compare static_resources with
-        # dynamic_resources using those updated.
-        if ip not in self.static_resources_by_ip or len(static_resources) > 0:
-            self.static_resources_by_ip[ip] = static_resources
-        if ip not in self.dynamic_resources_by_ip or update_dynamic_resources:
-            self.dynamic_resources_by_ip[ip] = dynamic_resources
-        if ip not in self.resource_load_by_ip or update_resource_load:
-            self.resource_load_by_ip[ip] = resource_load
+        self.resource_load_by_ip[ip] = resource_load
+        self.static_resources_by_ip[ip] = static_resources
 
         if not waiting_bundles:
             waiting_bundles = []
