@@ -40,24 +40,29 @@ class Task:
 
 
 class Node:
-    def __init__(self, resources):
+    def __init__(self, resources, in_cluster):
         self.total_resources = copy.deepcopy(resources)
         self.available_resources = copy.deepcopy(resources)
+        self.in_cluster = in_cluster
 
     def bundle_fits(self, bundle):
+        if not self.in_cluster:
+            return False
         for resource, quantity in bundle.items():
             if self.available_resources.get(resource, -1) < quantity:
                 return False
         return True
 
     def feasible(self, bundle):
+        if not self.in_cluster:
+            return False
         for resource, quantity in bundle.items():
             if self.total_resources.get(resource, -1) < quantity:
                 return False
         return True
 
     def allocate(self, bundle):
-        assert self.bundle_fits(bundle)
+        assert self.bundle_fits(bundle) and self.in_cluster
         for resource, quantity in bundle.items():
             self.available_resources[resource] -= quantity
 
@@ -82,11 +87,13 @@ class Event:
 
 SIMULATOR_EVENT_AUTOSCALER_UPDATE = 0
 SIMULATOR_EVENT_TASK_DONE = 1
+SIMULATOR_EVEN_NODE_JOINED = 2
 class Simulator:
-    def __init__(self, config_path, provider, autoscaler_update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
+    def __init__(self, config_path, provider, autoscaler_update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S, node_startup_delay_s=120):
         self.config_path = config_path
         self.provider = provider
         self.autoscaler_update_interval_s = autoscaler_update_interval_s
+        self.node_startup_delay_s = node_startup_delay_s
 
         self._setup_autoscaler()
         self._setup_simulator()
@@ -124,13 +131,13 @@ class Simulator:
     def _setup_simulator(self):
         self.virtual_time = 0
         self.ip_to_nodes = {}
-        self._update_cluster_state()
+        self._update_cluster_state(join_immediately=True)
 
         self.work_queue = []
         self.event_queue = PriorityQueue()
         self.event_queue.put(Event(0, SIMULATOR_EVENT_AUTOSCALER_UPDATE))
 
-    def _update_cluster_state(self):
+    def _update_cluster_state(self, join_immediately=False):
         nodes = self.provider.non_terminated_nodes(tag_filters={})
         for node_id in nodes:
             ip = self.provider.internal_ip(node_id)
@@ -140,7 +147,12 @@ class Simulator:
             if TAG_RAY_USER_NODE_TYPE in node_tags:
                 node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
                 resources = self.config["available_node_types"][node_type].get("resources", {})
-                self.ip_to_nodes[ip] = Node(resources)
+                node = Node(resources, join_immediately)
+                self.ip_to_nodes[ip] = node
+                if not join_immediately:
+                    join_time = self.virtual_time + self.node_startup_delay_s
+                    self.event_queue.put(Event(join_time, SIMULATOR_EVEN_NODE_JOINED, node))
+
 
     def submit(self, work):
         if isinstance(work, list):
@@ -177,7 +189,7 @@ class Simulator:
                 return False
         return True
 
-    def launch_nodes(self):
+    def _launch_nodes(self):
         """Launch all queued nodes. Since this will be run serially after
         `autoscaler.update` there are no race conditions in checking if the
         queue is empty.
@@ -217,7 +229,7 @@ class Simulator:
             )
 
         self.autoscaler.update()
-        self.launch_nodes()
+        self._launch_nodes()
         self._update_cluster_state()
 
     def process_event(self, event):
@@ -230,6 +242,10 @@ class Simulator:
             task.node.free(task.resources)
             if task.done_callback:
                 task.done_callback()
+        elif event.event_type == SIMULATOR_EVEN_NODE_JOINED:
+            node = event.data
+            node.in_cluster = True
+
 
     def step(self):
         self.virtual_time = self.event_queue.queue[0].time
@@ -285,21 +301,16 @@ class AutoscalingPolicyTest(unittest.TestCase):
 
         done_count = 0
         def done_callback():
-            print("Done callback")
             nonlocal done_count
             done_count += 1
 
-        tasks = [Task(duration=10.0, resources={"CPU": 1}, done_callback=done_callback) for _ in range(100)]
+        tasks = [Task(duration=10.0, resources={"CPU": 1}, done_callback=done_callback) for _ in range(10000)]
         simulator.submit(tasks)
-        # simulator.schedule()
-        # import pdb; pdb.set_trace()
 
         time = 0
         while done_count < len(tasks):
             time = simulator.step()
-            print("Stepped")
 
-        print(time)
+        assert time < 1700
 
-        assert False
 
