@@ -126,18 +126,9 @@ class Monitor:
         """
         self.primary_subscribe_client.subscribe(channel)
 
-    def psubscribe(self, pattern):
-        """Subscribe to the given pattern on the primary Redis shard.
-
-        Args:
-            pattern (str): The pattern to subscribe to.
-
-        Raises:
-            Exception: An exception is raised if the subscription fails.
-        """
-        self.primary_subscribe_client.psubscribe(pattern)
-
     def update_load_metrics(self):
+        """Fetches heartbeat data from GCS and updates load metrics."""
+
         all_heartbeat = self.global_state_accessor.update_load_metrics()
         heartbeat_batch_data = \
             ray.gcs_utils.HeartbeatBatchTableData.FromString(all_heartbeat)
