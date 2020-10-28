@@ -2315,7 +2315,8 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
 
   // Ask raylet to subscribe to object notification. Raylet will call this core worker
   // when the object is local. HandlePlasmaObjectReady handles such request.
-  local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id));
+  RAY_CHECK_OK(
+      local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id)));
 }
 
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
