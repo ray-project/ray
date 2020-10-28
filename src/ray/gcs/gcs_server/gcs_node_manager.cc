@@ -342,7 +342,7 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
                                            rpc::SendReplyCallback send_reply_callback) {
   if (!node_heartbeats_.empty()) {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
-    std::unordered_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
+    absl::flat_hash_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
     for (auto &heartbeat : node_heartbeats_) {
       // Aggregate the load reported by each raylet.
       auto load = heartbeat.second.resource_load_by_shape();
@@ -378,8 +378,7 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
     if (placement_group_load_.has_value()) {
       auto placement_group_load = placement_group_load_.value();
       auto placement_group_load_proto = batch->mutable_placement_group_load();
-      placement_group_load_proto->Swap(placement_group_load.get());
-      placement_group_load_.reset();
+      placement_group_load_proto->CopyFrom(*placement_group_load.get());
     }
     reply->mutable_heartbeat_data()->CopyFrom(*batch);
   }
