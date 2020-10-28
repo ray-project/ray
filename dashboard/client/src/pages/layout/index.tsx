@@ -132,7 +132,7 @@ const BasicLayout = (
             className={classnames(classes.menuItem)}
             onClick={() => history.push("/")}
           >
-            <ListItemText>BACK TO LECACY</ListItemText>
+            <ListItemText>BACK TO LEGACY</ListItemText>
           </ListItem>
           <ListItem>
             <IconButton
