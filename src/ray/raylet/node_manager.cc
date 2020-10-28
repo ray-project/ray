@@ -2987,16 +2987,16 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::PinObjectIDsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.object_ids_size());
+  for (const auto &object_id_binary : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(object_id_binary));
+  }
   if (object_pinning_enabled_) {
     // Pin the objects in plasma by getting them and holding a reference to
     // the returned buffer.
     // NOTE: the caller must ensure that the objects already exist in plasma before
     // sending a PinObjectIDs request.
-    std::vector<ObjectID> object_ids;
-    object_ids.reserve(request.object_ids_size());
-    for (const auto &object_id_binary : request.object_ids()) {
-      object_ids.push_back(ObjectID::FromBinary(object_id_binary));
-    }
     std::vector<plasma::ObjectBuffer> plasma_results;
     // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
     // block when serving the request. However, if the plasma store is under
@@ -3020,9 +3020,10 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
             std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
       }
     }
-    local_object_manager_.PinObjects(request.owner_address(), object_ids,
-                                     std::move(objects));
+    local_object_manager_.PinObjects(object_ids, std::move(objects));
   }
+  // Wait for the object to be freed by the owner, which keeps the ref count.
+  local_object_manager_.WaitForObjectFree(request.owner_address(), object_ids);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

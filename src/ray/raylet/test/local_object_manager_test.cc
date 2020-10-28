@@ -191,7 +191,8 @@ TEST_F(LocalObjectManagerTest, TestPin) {
         new RayObject(nullptr, meta_buffer, std::vector<ObjectID>()));
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(owner_address, object_ids, std::move(objects));
+  manager.PinObjects(object_ids, std::move(objects));
+  manager.WaitForObjectFree(owner_address, object_ids);
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
@@ -214,9 +215,6 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
 }
 
 TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
-  rpc::Address owner_address;
-  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
-
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
 
@@ -230,7 +228,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
         new RayObject(nullptr, meta_buffer, std::vector<ObjectID>()));
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(owner_address, object_ids, std::move(objects));
+  manager.PinObjects(object_ids, std::move(objects));
 
   int num_times_fired = 0;
   manager.SpillObjects(object_ids, [&](const Status &status) mutable {

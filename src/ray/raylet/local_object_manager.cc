@@ -18,8 +18,7 @@ namespace ray {
 
 namespace raylet {
 
-void LocalObjectManager::PinObjects(const rpc::Address &owner_address,
-                                    const std::vector<ObjectID> &object_ids,
+void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
                                     std::vector<std::unique_ptr<RayObject>> &&objects) {
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
@@ -31,7 +30,12 @@ void LocalObjectManager::PinObjects(const rpc::Address &owner_address,
     }
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
     pinned_objects_.emplace(object_id, std::move(object));
+  }
+}
 
+void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
+                                           const std::vector<ObjectID> &object_ids) {
+  for (const auto &object_id : object_ids) {
     // Send a long-running RPC request to the owner for each object. When we get a
     // response or the RPC fails (due to the owner crashing), unpin the object.
     // TODO(edoakes): we should be batching these requests instead of sending one per
