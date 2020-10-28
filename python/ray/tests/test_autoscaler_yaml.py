@@ -138,6 +138,48 @@ class AutoscalingConfigTest(unittest.TestCase):
         self._test_invalid_config(
             os.path.join("tests", "additional_property.yaml"))
 
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testValidateCustomSecurityGroupConfig(self):
+        aws_config_path = os.path.join(RAY_PATH,
+                                       "autoscaler/aws/example-minimal.yaml")
+        with open(aws_config_path) as f:
+            config = yaml.safe_load(f)
+
+        # Test validate security group with custom permissions
+        ip_permissions = [{
+            "FromPort": port,
+            "ToPort": port,
+            "IpProtocol": "TCP",
+            "IpRanges": [{
+                "CidrIp": "0.0.0.0/0"
+            }],
+        } for port in [80, 443, 8265]]
+        config["provider"].update({
+            "security_group": {
+                "IpPermissions": ip_permissions
+            }
+        })
+        config = prepare_config(copy.deepcopy(config))
+        try:
+            validate_config(config)
+            assert config["provider"]["security_group"][
+                "IpPermissions"] == ip_permissions
+        except Exception:
+            self.fail(
+                "Failed to validate config with security group in bound rules!"
+            )
+
+        # Test validate security group with custom name
+        group_name = "test_security_group_name"
+        config["provider"]["security_group"].update({"GroupName": group_name})
+
+        try:
+            validate_config(config)
+            assert config["provider"]["security_group"][
+                "GroupName"] == group_name
+        except Exception:
+            self.fail("Failed to validate config with security group name!")
+
 
 if __name__ == "__main__":
     import pytest

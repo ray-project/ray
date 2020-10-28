@@ -328,6 +328,25 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
   }
 }
 
+void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
+    const rpc::GetAllPlacementGroupRequest &request,
+    rpc::GetAllPlacementGroupReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all placement group info.";
+  auto on_done =
+      [reply, send_reply_callback](
+          const std::unordered_map<PlacementGroupID, PlacementGroupTableData> &result) {
+        for (auto &data : result) {
+          reply->add_placement_group_table_data()->CopyFrom(data.second);
+        }
+        RAY_LOG(DEBUG) << "Finished getting all placement group info.";
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      };
+  Status status = gcs_table_storage_->PlacementGroupTable().GetAll(on_done);
+  if (!status.ok()) {
+    on_done(std::unordered_map<PlacementGroupID, PlacementGroupTableData>());
+  }
+}
+
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
   execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
                 RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
@@ -356,12 +375,12 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   SchedulePendingPlacementGroups();
 }
 
-void GcsPlacementGroupManager::Tick() const {
+void GcsPlacementGroupManager::Tick() {
   UpdatePlacementGroupLoad();
   execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
-void GcsPlacementGroupManager::UpdatePlacementGroupLoad() const {
+void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
   int total_cnt = 0;

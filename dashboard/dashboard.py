@@ -3,7 +3,6 @@ try:
 except ImportError:
     print("The dashboard requires aiohttp to run.")
     import sys
-
     sys.exit(1)
 
 import argparse
@@ -12,6 +11,7 @@ import errno
 import logging
 import logging.handlers
 import os
+import platform
 import traceback
 
 import ray.new_dashboard.consts as dashboard_consts
@@ -30,7 +30,7 @@ routes = dashboard_utils.ClassMethodRouteTable
 
 def setup_static_dir():
     build_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "client/build")
+        os.path.dirname(os.path.abspath(__file__)), "client", "build")
     module_name = os.path.basename(os.path.dirname(__file__))
     if not os.path.isdir(build_dir):
         raise OSError(
@@ -161,35 +161,23 @@ if __name__ == "__main__":
         format(dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT))
     parser.add_argument(
         "--log-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of log directory.")
     parser.add_argument(
         "--temp-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
 
     args = parser.parse_args()
     try:
-        if args.temp_dir:
-            temp_dir = "/" + args.temp_dir.strip("/")
-        else:
-            temp_dir = "/tmp/ray"
-        os.makedirs(temp_dir, exist_ok=True)
-
-        if args.log_dir:
-            log_dir = args.log_dir
-        else:
-            log_dir = os.path.join(temp_dir, "session_latest/logs")
-        os.makedirs(log_dir, exist_ok=True)
-
         if args.logging_filename:
             logging_handlers = [
                 logging.handlers.RotatingFileHandler(
-                    os.path.join(log_dir, args.logging_filename),
+                    os.path.join(args.log_dir, args.logging_filename),
                     maxBytes=args.logging_rotate_bytes,
                     backupCount=args.logging_rotate_backup_count)
             ]
@@ -205,7 +193,7 @@ if __name__ == "__main__":
             args.port,
             args.redis_address,
             redis_password=args.redis_password,
-            log_dir=log_dir)
+            log_dir=args.log_dir)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:
@@ -214,7 +202,7 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The dashboard on node {} failed with the following "
-                   "error:\n{}".format(os.uname()[1], traceback_str))
+                   "error:\n{}".format(platform.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, OSError) and e.errno == errno.ENOENT:

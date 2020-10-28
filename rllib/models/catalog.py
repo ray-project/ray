@@ -247,6 +247,7 @@ class ModelCatalog:
             action_space (Space): Action space of the target gym env.
             name (str): An optional string to name the placeholder by.
                 Default: "action".
+
         Returns:
             action_placeholder (Tensor): A placeholder for the actions
         """

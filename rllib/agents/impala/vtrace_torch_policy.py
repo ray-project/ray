@@ -118,8 +118,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     if isinstance(policy.action_space, gym.spaces.Discrete):
         is_multidiscrete = False
         output_hidden_shape = [policy.action_space.n]
-    elif isinstance(policy.action_space,
-                    gym.spaces.multi_discrete.MultiDiscrete):
+    elif isinstance(policy.action_space, gym.spaces.MultiDiscrete):
         is_multidiscrete = True
         output_hidden_shape = policy.action_space.nvec.astype(np.int32)
     else:
