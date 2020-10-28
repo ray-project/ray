@@ -174,7 +174,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param placement_group_load placement group load protobuf.
   void UpdatePlacementGroupLoad(
-      std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
+      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
  protected:
   class NodeFailureDetector {
@@ -221,9 +221,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// If found any, mark it as dead.
     void DetectDeadNodes();
 
-    /// Send any buffered heartbeats as a single publish.
-    void SendBatchedHeartbeat();
-
     /// Schedule another tick after a short time.
     void ScheduleTick();
 
@@ -241,8 +238,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// For each Raylet that we receive a heartbeat from, the number of ticks
     /// that may pass before the Raylet will be declared dead.
     absl::flat_hash_map<NodeID, int64_t> heartbeats_;
-    /// A buffer containing heartbeats received from node managers in the last tick.
-    absl::flat_hash_map<NodeID, rpc::HeartbeatTableData> heartbeat_buffer_;
     /// A publisher for publishing gcs messages.
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
     /// Is the detect started.
@@ -256,12 +251,17 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node The node which is dead.
   void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
 
+  /// Send any buffered heartbeats as a single publish.
+  void SendBatchedHeartbeat();
+
   /// The main event loop for node failure detector.
   boost::asio::io_service &main_io_service_;
   /// Detector to detect the failure of node.
   std::unique_ptr<NodeFailureDetector> node_failure_detector_;
   /// The event loop for node failure detector.
   boost::asio::io_service &node_failure_detector_service_;
+  /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
+  boost::asio::deadline_timer heartbeat_timer_;
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.
@@ -273,6 +273,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
   /// Newest heartbeat of all nodes.
   absl::flat_hash_map<NodeID, rpc::HeartbeatTableData> node_heartbeats_;
+  /// A buffer containing heartbeats received from node managers in the last tick.
+  absl::flat_hash_map<NodeID, rpc::HeartbeatTableData> heartbeat_buffer_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;
