@@ -120,7 +120,7 @@ logger.info("Finished stage 3 in %s seconds.", stage_3_time)
 # requests, we will run into head of line blocking and we should be able to
 # measure this timing.
 num_tasks = int(ray.cluster_resources()["GPU"])
-logger.info(f"Scheduling many tasks for spillback.")
+logger.info("Scheduling many tasks for spillback.")
 
 
 @ray.remote(num_gpus=1)

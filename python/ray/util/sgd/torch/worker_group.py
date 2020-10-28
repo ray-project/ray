@@ -206,7 +206,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         return futures
 
     def start_workers(self, num_workers):
-        logger.debug(f"start_workers: Setting %d workers." % num_workers)
+        logger.debug("start_workers: Setting %d workers.", num_workers)
         if num_workers == 1:
             RemoteRunner = ray.remote(
                 num_cpus=self._num_cpus_per_worker,
@@ -436,7 +436,7 @@ class LocalWorkerGroup(WorkerGroupInterface):
             use_gpu=use_gpu)
 
     def start_workers(self, num_workers):
-        logger.debug(f"start_workers: Setting %d workers." % num_workers)
+        logger.debug("start_workers: Setting %d workers.", num_workers)
 
         if num_workers == 1:
             self.local_worker = TorchRunner(**self._params)
