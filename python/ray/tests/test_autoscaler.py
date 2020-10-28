@@ -292,8 +292,7 @@ class LoadMetricsTest(unittest.TestCase):
         lm.update("8.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
         self.assertEqual(lm.approx_workers_used(), 8.0)
 
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, True,
-                  {})  # no queue anymore
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})  # no queue anymore
         self.assertEqual(lm.approx_workers_used(), 4.5)
 
     def testPruneByNodeIp(self):
@@ -1109,7 +1108,7 @@ class AutoscalingTest(unittest.TestCase):
         # Scales up as nodes are reported as used
         local_ip = services.get_node_ip_address()
         lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
-        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0}, True, {})  # worker 1
+        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0}, {})  # worker 1
         autoscaler.update()
         self.waitForNodes(3)
         lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 0}, {})
