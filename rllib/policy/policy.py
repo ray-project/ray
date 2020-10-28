@@ -71,7 +71,8 @@ class Policy(metaclass=ABCMeta):
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
         self.dist_class = None
-        # View requirements dict for a `learn_on_batch()` call.
+        # Minimal view requirements dict for `learn_on_batch()` and
+        # `compute_actions` calls.
         # Child classes need to add their specific requirements here (usually
         # a combination of a Model's inference_view_- and the
         # Policy's loss function-requirements.

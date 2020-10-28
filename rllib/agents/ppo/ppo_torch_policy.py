@@ -229,8 +229,6 @@ class ValueNetworkMixin:
                 # [0] = remove the batch dim.
                 return self.model.value_function()[0]
 
-            self.view_requirements[SampleBatch.VF_PREDS] = ViewRequirement()
-
         # When not doing GAE, we do not require the value function's output.
         else:
 

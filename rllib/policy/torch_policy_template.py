@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -227,8 +228,12 @@ def build_torch_policy(
                 action_sampler_fn=action_sampler_fn,
                 action_distribution_fn=action_distribution_fn,
                 max_seq_len=config["model"]["max_seq_len"],
+                #view_requirements_fn=view_requirements_fn,
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
+
+            if after_init:
+                after_init(self, obs_space, action_space, config)
 
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
@@ -239,8 +244,35 @@ def build_torch_policy(
                 self.view_requirements.update(
                     get_default_view_requirements(self))
 
-            if after_init:
-                after_init(self, obs_space, action_space, config)
+            self._dummy_batch = self._get_dummy_batch(self.view_requirements)
+            input_dict = self._lazy_tensor_dict(self._dummy_batch)
+            actions, state_outs, extra_outs = \
+                self.compute_actions_from_input_dict(input_dict)
+            # Add extra outs to view reqs.
+            for key, value in extra_outs.items():
+                self._dummy_batch[key] = np.zeros_like(value)
+            sb = SampleBatch(self._dummy_batch)
+            sb = self._lazy_numpy_dict(sb)
+            postprocessed_batch = self.postprocess_trajectory(sb)
+            train_batch = self._lazy_tensor_dict(postprocessed_batch)
+            self._loss(self, self.model, self.dist_class, train_batch)
+
+            # Add new columns automatically to view-reqs.
+            if self.config[
+                "_use_trajectory_view_api"] and not view_requirements_fn:
+                # Add those needed for postprocessing and training.
+                all_accessed_keys = train_batch.accessed_keys | postprocessed_batch.accessed_keys
+                for key in all_accessed_keys:
+                    if key not in self.view_requirements:
+                        self.view_requirements[key] = ViewRequirement()
+                # Tag those only needed for post-processing.
+                for key in postprocessed_batch.accessed_keys:
+                    if key not in train_batch.accessed_keys:
+                        self.view_requirements[key].used_for_training = False
+                # Remove those not needed at all.
+                for key in list(self.view_requirements.keys()):
+                    if key not in all_accessed_keys and key not in [SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX, SampleBatch.UNROLL_ID]:
+                        del self.view_requirements[key]
 
         @override(Policy)
         def postprocess_trajectory(self,
@@ -252,8 +284,7 @@ def build_torch_policy(
             with torch.no_grad():
                 # Call super's postprocess_trajectory first.
                 sample_batch = super().postprocess_trajectory(
-                    convert_to_non_torch_type(sample_batch),
-                    convert_to_non_torch_type(other_agent_batches), episode)
+                    sample_batch, other_agent_batches, episode)
                 if postprocess_fn:
                     return postprocess_fn(self, sample_batch,
                                           other_agent_batches, episode)
