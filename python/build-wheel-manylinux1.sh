@@ -96,3 +96,6 @@ for path in .whl/*.whl; do
     mv "${path}" "${path//linux/manylinux1}"
   fi
 done
+
+# Clean the build output so later operations is on a clean directory.
+git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
