@@ -38,6 +38,7 @@ NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5")
 
+sudo apt-get install -y zip
 sudo apt-get install unzip
 /ray/ci/travis/install-bazel.sh
 
