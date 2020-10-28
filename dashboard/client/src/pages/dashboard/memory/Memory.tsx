@@ -1,6 +1,7 @@
 import {
   Box,
   Button,
+  CircularProgress,
   createStyles,
   FormControl,
   InputLabel,
@@ -9,7 +10,6 @@ import {
   Select,
   Theme,
   Typography,
-  CircularProgress,
 } from "@material-ui/core";
 import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
@@ -18,8 +18,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getMemoryTable,
-  MemoryTable,
   MemoryGroupByKey,
+  MemoryTable,
   MemoryTableResponse,
   setMemoryTableCollection,
 } from "../../../api";
@@ -71,11 +71,14 @@ const useMemoryInfoStyles = makeStyles((theme: Theme) =>
 );
 
 const memoryTableSelector = (state: StoreState) => state.dashboard.memoryTable;
-const isEmpty = (memoryTable: MemoryTable) => Object.keys(memoryTable.group).length === 0;
+const isEmpty = (memoryTable: MemoryTable) =>
+  Object.keys(memoryTable.group).length === 0;
 const loadTimerComplete = (mountedAt: Date) => {
-  const secondsBetween = Math.abs((new Date().getTime() - mountedAt.getTime()) / 1000);
-  return secondsBetween > 10; 
-}
+  const secondsBetween = Math.abs(
+    (new Date().getTime() - mountedAt.getTime()) / 1000,
+  );
+  return secondsBetween > 10;
+};
 
 const fetchMemoryTable = (
   groupByKey: MemoryGroupByKey,
@@ -129,7 +132,9 @@ const MemoryInfo: React.FC<{}> = () => {
 
   if (!memoryTable || (isEmpty(memoryTable) && !loadTimerComplete(mountedAt))) {
     return (
-      <Typography align="center" color="textSecondary" variant="h3"><CircularProgress /> Loading</Typography>
+      <Typography align="center" color="textSecondary" variant="h3">
+        <CircularProgress /> Loading
+      </Typography>
     );
   }
   if (isEmpty(memoryTable) && loadTimerComplete(mountedAt)) {
