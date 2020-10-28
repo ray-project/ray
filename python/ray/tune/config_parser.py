@@ -8,7 +8,7 @@ from six import string_types
 from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.resources import json_to_resources
-from ray.tune.logger import _SafeFallbackEncoder
+from ray.tune.utils.util import SafeFallbackEncoder
 
 
 def make_parser(parser_creator=None, **kwargs):
@@ -143,7 +143,7 @@ def to_argv(config):
         elif isinstance(v, bool):
             pass
         else:
-            argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
+            argv.append(json.dumps(v, cls=SafeFallbackEncoder))
     return argv
 
 

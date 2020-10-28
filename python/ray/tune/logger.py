@@ -2,23 +2,21 @@ import csv
 import json
 import logging
 import os
-from collections import defaultdict
-from typing import Dict, Iterable, List, Type
+from typing import Dict, Iterable, List, Optional, Type
 
 import yaml
 import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.tune import Callback, DurableTrainable, TuneError
-from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune import Callback
 from ray.tune.trial import Trial, create_logdir
+from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
-from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
+from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
                              EXPR_RESULT_FILE)
-from ray.tune.syncer import get_node_syncer
 from ray.tune.utils import flatten_dict
 
 logger = logging.getLogger(__name__)
@@ -40,7 +38,8 @@ class Logger:
         trial (Trial): Trial object for the logger to access.
     """
 
-    def __init__(self, config, logdir, trial=None):
+    def __init__(self, config: Dict, logdir: str,
+                 trial: Optional[Trial] = None):
         self.config = config
         self.logdir = logdir
         self.trial = trial
@@ -95,7 +94,7 @@ class MLFLowLogger(Logger):
             client.log_param(self._run_id, key, value)
         self.client = client
 
-    def on_result(self, result):
+    def on_result(self, result: Dict):
         for key, value in result.items():
             if not isinstance(value, float):
                 continue
@@ -119,8 +118,8 @@ class JsonLogger(Logger):
         local_file = os.path.join(self.logdir, EXPR_RESULT_FILE)
         self.local_out = open(local_file, "a")
 
-    def on_result(self, result):
-        json.dump(result, self, cls=_SafeFallbackEncoder)
+    def on_result(self, result: Dict):
+        json.dump(result, self, cls=SafeFallbackEncoder)
         self.write("\n")
         self.local_out.flush()
 
@@ -133,7 +132,7 @@ class JsonLogger(Logger):
     def close(self):
         self.local_out.close()
 
-    def update_config(self, config):
+    def update_config(self, config: Dict):
         self.config = config
         config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
@@ -142,7 +141,7 @@ class JsonLogger(Logger):
                 f,
                 indent=2,
                 sort_keys=True,
-                cls=_SafeFallbackEncoder)
+                cls=SafeFallbackEncoder)
         config_pkl = os.path.join(self.logdir, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
             cloudpickle.dump(self.config, f)
@@ -165,7 +164,7 @@ class CSVLogger(Logger):
         self._file = open(progress_file, "a")
         self._csv_out = None
 
-    def on_result(self, result):
+    def on_result(self, result: Dict):
         tmp = result.copy()
         if "config" in tmp:
             del tmp["config"]
@@ -209,7 +208,7 @@ class TBXLogger(Logger):
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None
 
-    def on_result(self, result):
+    def on_result(self, result: Dict):
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
         tmp = result.copy()
@@ -314,16 +313,13 @@ class UnifiedLogger(Logger):
         logdir: Directory for all logger creators to log to.
         loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
             and JSON loggers.
-        sync_function (func|str): Optional function for syncer to run.
-            See ray/python/ray/tune/syncer.py
     """
 
     def __init__(self,
-                 config,
-                 logdir,
-                 trial=None,
-                 loggers=None,
-                 sync_function=None):
+                 config: Dict,
+                 logdir: str,
+                 trial: Optional[Trial] = None,
+                 loggers: Optional[List[Type[Logger]]] = None):
         if loggers is None:
             self._logger_cls_list = DEFAULT_LOGGERS
         else:
@@ -333,8 +329,6 @@ class UnifiedLogger(Logger):
                 logger.warning(
                     "JsonLogger not provided. The ExperimentAnalysis tool is "
                     "disabled.")
-        self._sync_function = sync_function
-        self._log_syncer = None
 
         super(UnifiedLogger, self).__init__(config, logdir, trial)
 
@@ -347,16 +341,10 @@ class UnifiedLogger(Logger):
                 if log_once(f"instantiate:{cls.__name__}"):
                     logger.warning("Could not instantiate %s: %s.",
                                    cls.__name__, str(exc))
-        self._log_syncer = get_node_syncer(
-            self.logdir,
-            remote_dir=self.logdir,
-            sync_function=self._sync_function)
 
     def on_result(self, result):
         for _logger in self._loggers:
             _logger.on_result(result)
-        self._log_syncer.set_worker_ip(result.get(NODE_IP))
-        self._log_syncer.sync_down_if_needed()
 
     def update_config(self, config):
         for _logger in self._loggers:
@@ -366,91 +354,36 @@ class UnifiedLogger(Logger):
         for _logger in self._loggers:
             _logger.close()
 
-    def flush(self, sync_down=True):
+    def flush(self):
         for _logger in self._loggers:
             _logger.flush()
-        if sync_down:
-            if not self._log_syncer.sync_down():
-                logger.warning("Trial %s: Post-flush sync skipped.",
-                               self.trial)
-
-    def sync_up(self):
-        return self._log_syncer.sync_up()
-
-    def sync_down(self):
-        return self._log_syncer.sync_down()
-
-    def wait(self):
-        self._log_syncer.wait()
-
-    def sync_results_to_new_location(self, worker_ip):
-        """Sends the current log directory to the remote node.
-
-        Syncing will not occur if the cluster is not started
-        with the Ray autoscaler.
-        """
-        if worker_ip != self._log_syncer.worker_ip:
-            logger.info("Trial %s: Syncing (blocking) results to %s",
-                        self.trial, worker_ip)
-            self._log_syncer.reset()
-            self._log_syncer.set_worker_ip(worker_ip)
-            if not self._log_syncer.sync_up():
-                logger.error(
-                    "Trial %s: Sync up to new location skipped. "
-                    "This should not occur.", self.trial)
-            self._log_syncer.wait()
-        else:
-            logger.error(
-                "Trial %s: Sync attempted to same IP %s. This "
-                "should not occur.", self.trial, worker_ip)
 
 
 class ExperimentLogger(Callback):
-    def on_trial_result(self, iteration: int, trials: List[Trial],
-                        trial: Trial, result: Dict, **info):
+    def log_trial_start(self, trial: Trial):
         raise NotImplementedError
 
-    def on_checkpoint(self, iteration: int, trials: List[Trial], trial: Trial,
-                      checkpoint: Checkpoint, **info):
-        self._sync_trial_checkpoint(trial, checkpoint)
+    def log_trial_result(self, iteration: int, trial: Trial, result: Dict):
+        raise NotImplementedError
 
-    def _sync_trial_checkpoint(self, trial: Trial, checkpoint: Checkpoint):
-        if checkpoint.storage == Checkpoint.MEMORY:
-            return
-        if trial.sync_on_checkpoint:
-            try:
-                # Wait for any other syncs to finish. We need to sync again
-                # after this to handle checkpoints taken mid-sync.
-                trial.result_logger.wait()
-            except TuneError as e:
-                # Errors occurring during this wait are not fatal for this
-                # checkpoint, so it should just be logged.
-                logger.error(
-                    "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait - %s", trial, str(e))
-            # Force sync down and wait before tracking the new checkpoint.
-            try:
-                if trial.result_logger.sync_down():
-                    trial.result_logger.wait()
-                else:
-                    logger.error(
-                        "Trial %s: Checkpoint sync skipped. "
-                        "This should not happen.", trial)
-            except TuneError as e:
-                if issubclass(trial.get_trainable_cls(), DurableTrainable):
-                    # Even though rsync failed the trainable can restore
-                    # from remote durable storage.
-                    logger.error("Trial %s: Sync error - %s", trial, str(e))
-                else:
-                    # If the trainable didn't have remote storage to upload
-                    # to then this checkpoint may have been lost, so we
-                    # shouldn't track it with the checkpoint_manager.
-                    raise e
-            if not issubclass(trial.get_trainable_cls(), DurableTrainable):
-                if not os.path.exists(checkpoint.value):
-                    raise TuneError("Trial {}: Checkpoint path {} not "
-                                    "found after successful sync down.".format(
-                                        trial, checkpoint.value))
+    def log_trial_end(self, trial: Trial, failed: bool = False):
+        raise NotImplementedError
+
+    def on_trial_result(self, iteration: int, trials: List[Trial],
+                        trial: Trial, result: Dict, **info):
+        self.log_trial_result(iteration, trial, result)
+
+    def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial,
+                       **info):
+        self.log_trial_start(trial)
+
+    def on_trial_complete(self, iteration: int, trials: List[Trial],
+                          trial: Trial, **info):
+        self.log_trial_end(trial, False)
+
+    def on_trial_fail(self, iteration: int, trials: List[Trial], trial: Trial,
+                      **info):
+        self.log_trial_end(trial, True)
 
 
 class LegacyExperimentLogger(ExperimentLogger):
@@ -458,11 +391,10 @@ class LegacyExperimentLogger(ExperimentLogger):
         self._logger_classes = list(logger_classes)
         self._class_trial_loggers: Dict[Type[Logger], Dict[Trial, Logger]] = {}
 
-    def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial,
-                       **info):
+    def log_trial_start(self, trial: Trial):
         if not trial.logdir:
             trial.logdir = create_logdir(trial._generate_dirname(),
-                                        trial.local_dir)
+                                         trial.local_dir)
         else:
             os.makedirs(trial.logdir, exist_ok=True)
 
@@ -473,46 +405,12 @@ class LegacyExperimentLogger(ExperimentLogger):
                 trial_loggers[trial] = logger
             self._class_trial_loggers[logger_class] = trial_loggers
 
-    def on_trial_result(self, iteration: int, trials: List[Trial],
-                        trial: Trial, result: Dict, **info):
+    def log_trial_result(self, iteration: int, trial: Trial, result: Dict):
         for logger_class, trial_loggers in self._class_trial_loggers.items():
             if trial in trial_loggers:
                 trial_loggers[trial].on_result(result)
 
-
-class _SafeFallbackEncoder(json.JSONEncoder):
-    def __init__(self, nan_str="null", **kwargs):
-        super(_SafeFallbackEncoder, self).__init__(**kwargs)
-        self.nan_str = nan_str
-
-    def default(self, value):
-        try:
-            if np.isnan(value):
-                return self.nan_str
-
-            if (type(value).__module__ == np.__name__
-                    and isinstance(value, np.ndarray)):
-                return value.tolist()
-
-            if issubclass(type(value), numbers.Integral):
-                return int(value)
-            if issubclass(type(value), numbers.Number):
-                return float(value)
-
-            return super(_SafeFallbackEncoder, self).default(value)
-
-        except Exception:
-            return str(value)  # give up, just stringify it (ok for logs)
-
-
-def pretty_print(result):
-    result = result.copy()
-    result.update(config=None)  # drop config from pretty print
-    result.update(hist_stats=None)  # drop hist_stats from pretty print
-    out = {}
-    for k, v in result.items():
-        if v is not None:
-            out[k] = v
-
-    cleaned = json.dumps(out, cls=_SafeFallbackEncoder)
-    return yaml.safe_dump(json.loads(cleaned), default_flow_style=False)
+    def log_trial_end(self, trial: Trial, failed: bool = False):
+        for logger_class, trial_loggers in self._class_trial_loggers.items():
+            if trial in trial_loggers:
+                trial_loggers[trial].close()

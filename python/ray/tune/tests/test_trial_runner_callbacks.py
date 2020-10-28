@@ -13,7 +13,8 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 
 from ray.tune.trial import Trial
-from ray.tune.trial_runner import Callback, TrialRunner
+from ray.tune.trial_runner import TrialRunner
+from ray.tune import Callback
 
 
 class TestCallback(Callback):

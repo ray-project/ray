@@ -15,10 +15,9 @@ from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.function_runner import FunctionRunner
-from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
@@ -125,6 +124,8 @@ class _TrialCleanup:
 
 
 def noop_logger_creator(config, logdir):
+    from ray.tune.logger import NoopLogger
+
     # Set the working dir in the remote process, for user file writes
     os.makedirs(logdir, exist_ok=True)
     if not ray.worker._mode() == ray.worker.LOCAL_MODE:
@@ -177,7 +178,6 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
 
     def _setup_remote_runner(self, trial, reuse_allowed):
-        trial.init_logger()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)

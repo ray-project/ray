@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable, Dict, List, TYPE_CHECKING
 
 import distutils
 import logging
@@ -10,11 +10,19 @@ from inspect import isclass
 from shlex import quote
 
 from ray import services
+from ray.tune import TuneError
+from ray.tune.callback import Callback
+from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.durable_trainable import DurableTrainable
+from ray.tune.result import NODE_IP
 from ray.util.debug import log_once
 from ray.tune.utils.util import env_integer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.sync_client import (CommandBasedClient, get_sync_client,
                                   get_cloud_sync_client, NOOP)
+
+if TYPE_CHECKING:
+    from ray.tune.trial import Trial
 
 logger = logging.getLogger(__name__)
 
@@ -355,3 +363,93 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
 
     _syncers[key] = NodeSyncer(local_dir, remote_dir, sync_client)
     return _syncers[key]
+
+
+class SyncerCallback(Callback):
+    def __init__(self, sync_function: Callable):
+        self._sync_function = sync_function
+        self._syncers: Dict["Trial", NodeSyncer] = {}
+
+    def _get_trial_syncer(self, trial: "Trial"):
+        if trial not in self._syncers:
+            pass
+        return self._syncers[trial]
+
+    def _create_trial_syncer(self, trial: "Trial"):
+        return get_node_syncer(
+            trial.logdir,
+            remote_dir=trial.logdir,
+            sync_function=self._sync_function)
+
+    def _sync_results_to_new_location(self, trial: "Trial", worker_ip: str):
+        """Sends the current log directory to the remote node.
+
+        Syncing will not occur if the cluster is not started
+        with the Ray autoscaler.
+        """
+        # Todo(rliaw,krfricke): This function is never used. It was previously
+        # in UnifiedLogger, where it hasn't been used, either. Remove?
+        trial_syncer = self._get_trial_syncer(trial)
+        if worker_ip != trial_syncer.worker_ip:
+            logger.info("Trial %s: Syncing (blocking) results to %s",
+                        trial, worker_ip)
+            trial_syncer.reset()
+            trial_syncer.set_worker_ip(worker_ip)
+            if not trial_syncer.sync_up():
+                logger.error(
+                    "Trial %s: Sync up to new location skipped. "
+                    "This should not occur.", trial)
+            trial_syncer.wait()
+        else:
+            logger.error(
+                "Trial %s: Sync attempted to same IP %s. This "
+                "should not occur.", trial, worker_ip)
+
+    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: Checkpoint):
+        if checkpoint.storage == Checkpoint.MEMORY:
+            return
+        trial_syncer = self._get_trial_syncer(trial)
+        if trial.sync_on_checkpoint:
+            try:
+                # Wait for any other syncs to finish. We need to sync again
+                # after this to handle checkpoints taken mid-sync.
+                trial_syncer.wait()
+            except TuneError as e:
+                # Errors occurring during this wait are not fatal for this
+                # checkpoint, so it should just be logged.
+                logger.error(
+                    "Trial %s: An error occurred during the "
+                    "checkpoint pre-sync wait - %s", trial, str(e))
+            # Force sync down and wait before tracking the new checkpoint.
+            try:
+                if trial_syncer.sync_down():
+                    trial_syncer.wait()
+                else:
+                    logger.error(
+                        "Trial %s: Checkpoint sync skipped. "
+                        "This should not happen.", trial)
+            except TuneError as e:
+                if issubclass(trial.get_trainable_cls(), DurableTrainable):
+                    # Even though rsync failed the trainable can restore
+                    # from remote durable storage.
+                    logger.error("Trial %s: Sync error - %s", trial, str(e))
+                else:
+                    # If the trainable didn't have remote storage to upload
+                    # to then this checkpoint may have been lost, so we
+                    # shouldn't track it with the checkpoint_manager.
+                    raise e
+            if not issubclass(trial.get_trainable_cls(), DurableTrainable):
+                if not os.path.exists(checkpoint.value):
+                    raise TuneError("Trial {}: Checkpoint path {} not "
+                                    "found after successful sync down.".format(
+                                        trial, checkpoint.value))
+
+    def on_trial_result(self, iteration: int, trials: List["Trial"],
+                        trial: "Trial", result: Dict, **info):
+        trial_syncer = self._get_trial_syncer(trial)
+        trial_syncer.set_worker_ip(result.get(NODE_IP))
+        trial_syncer.sync_down_if_needed()
+
+    def on_checkpoint(self, iteration: int, trials: List["Trial"], trial: "Trial",
+                      checkpoint: Checkpoint, **info):
+        self._sync_trial_checkpoint(trial, checkpoint)
