@@ -130,7 +130,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
-      free_objects_period_(config.free_objects_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
       object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
@@ -162,6 +161,14 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           new DefaultAgentManagerServiceHandler(agent_manager_)),
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
+      worker_rpc_pool_(client_call_manager_),
+      local_object_manager_(RayConfig::instance().free_objects_batch_size(),
+                            RayConfig::instance().free_objects_period_milliseconds(),
+                            worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
+                            [this](const std::vector<ObjectID> &object_ids) {
+                              object_manager_.FreeObjects(object_ids,
+                                                          /*local_only=*/false);
+                            }),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -302,7 +309,6 @@ ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
   last_debug_dump_at_ms_ = current_time_ms();
-  last_free_objects_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -495,10 +501,7 @@ void NodeManager::Heartbeat() {
   }
 
   // Evict all copies of freed objects from the cluster.
-  if (free_objects_period_ > 0 &&
-      static_cast<int64_t>(now_ms - last_free_objects_at_ms_) > free_objects_period_) {
-    FlushObjectsToFree();
-  }
+  local_object_manager_.FlushFreeObjectsIfNeeded(now_ms);
 
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
@@ -529,95 +532,14 @@ void NodeManager::DoLocalGC() {
 void NodeManager::HandleRequestObjectSpillage(
     const rpc::RequestObjectSpillageRequest &request,
     rpc::RequestObjectSpillageReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  SpillObjects({ObjectID::FromBinary(request.object_id())},
-               [reply, send_reply_callback](const ray::Status &status) {
-                 if (status.ok()) {
-                   reply->set_success(true);
-                 }
-                 send_reply_callback(Status::OK(), nullptr, nullptr);
-               });
-}
-
-void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids,
-                               std::function<void(const ray::Status &)> callback) {
-  for (const auto &id : objects_ids) {
-    // We should not spill an object that we are not the primary copy for.
-    // TODO(swang): We should really return an error here but right now there
-    // is a race condition where the raylet receives the owner's request to
-    // spill an object before it receives the message to pin the objects from
-    // the local worker.
-    if (pinned_objects_.count(id) == 0) {
-      RAY_LOG(WARNING) << "Requested spill for object that has not yet been marked as "
-                          "the primary copy.";
-    }
-  }
-  worker_pool_.PopIOWorker([this, objects_ids,
-                            callback](std::shared_ptr<WorkerInterface> io_worker) {
-    rpc::SpillObjectsRequest request;
-    for (const auto &object_id : objects_ids) {
-      RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
-      request.add_object_ids_to_spill(object_id.Binary());
-    }
-    io_worker->rpc_client()->SpillObjects(
-        request, [this, objects_ids, callback, io_worker](
-                     const ray::Status &status, const rpc::SpillObjectsReply &r) {
-          worker_pool_.PushIOWorker(io_worker);
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send object spilling request: "
-                           << status.ToString();
-            if (callback) {
-              callback(status);
-            }
-          } else {
-            for (size_t i = 0; i < objects_ids.size(); ++i) {
-              const ObjectID &object_id = objects_ids[i];
-              const std::string &object_url = r.spilled_objects_url(i);
-              RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
-              // Write to object directory. Wait for the write to finish before
-              // releasing the object to make sure that the spilled object can
-              // be retrieved by other raylets.
-              RAY_CHECK_OK(gcs_client_->Objects().AsyncAddSpilledUrl(
-                  object_id, object_url, [this, object_id, callback](Status status) {
-                    RAY_CHECK_OK(status);
-                    // Unpin the object.
-                    // NOTE(swang): Due to a race condition, the object may not be in
-                    // the map yet. In that case, the owner will respond to the
-                    // WaitForObjectEvictionRequest and we will unpin the object
-                    // then.
-                    pinned_objects_.erase(object_id);
-                    if (callback) {
-                      callback(status);
-                    }
-                  }));
-            }
-          }
-        });
-  });
-}
-
-void NodeManager::AsyncRestoreSpilledObject(
-    const ObjectID &object_id, const std::string &object_url,
-    std::function<void(const ray::Status &)> callback) {
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
-                 << object_url;
-  worker_pool_.PopIOWorker([this, object_url,
-                            callback](std::shared_ptr<WorkerInterface> io_worker) {
-    RAY_LOG(DEBUG) << "Sending restore spilled object request";
-    rpc::RestoreSpilledObjectsRequest request;
-    request.add_spilled_objects_url(std::move(object_url));
-    io_worker->rpc_client()->RestoreSpilledObjects(
-        request, [this, callback, io_worker](const ray::Status &status,
-                                             const rpc::RestoreSpilledObjectsReply &r) {
-          worker_pool_.PushIOWorker(io_worker);
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
-                           << status.ToString();
-          }
-          if (callback) {
-            callback(status);
-          }
-        });
-  });
+  local_object_manager_.SpillObjects(
+      {ObjectID::FromBinary(request.object_id())},
+      [reply, send_reply_callback](const ray::Status &status) {
+        if (status.ok()) {
+          reply->set_success(true);
+        }
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
 }
 
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
@@ -3065,28 +2987,16 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::PinObjectIDsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  WorkerID worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
-  auto it = worker_rpc_clients_.find(worker_id);
-  if (it == worker_rpc_clients_.end()) {
-    auto client = std::unique_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(request.owner_address(), client_call_manager_));
-    it = worker_rpc_clients_
-             .emplace(worker_id,
-                      std::make_pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>(
-                          std::move(client), 0))
-             .first;
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.object_ids_size());
+  for (const auto &object_id_binary : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
-
   if (object_pinning_enabled_) {
     // Pin the objects in plasma by getting them and holding a reference to
     // the returned buffer.
     // NOTE: the caller must ensure that the objects already exist in plasma before
     // sending a PinObjectIDs request.
-    std::vector<ObjectID> object_ids;
-    object_ids.reserve(request.object_ids_size());
-    for (const auto &object_id_binary : request.object_ids()) {
-      object_ids.push_back(ObjectID::FromBinary(object_id_binary));
-    }
     std::vector<plasma::ObjectBuffer> plasma_results;
     // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
     // block when serving the request. However, if the plasma store is under
@@ -3100,75 +3010,21 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
       return;
     }
 
-    // Pin the requested objects until the owner notifies us that the objects can be
-    // unpinned by responding to the WaitForObjectEviction message.
-    // TODO(edoakes): we should be batching these requests instead of sending one per
-    // pinned object.
+    std::vector<std::unique_ptr<RayObject>> objects;
     for (int64_t i = 0; i < request.object_ids().size(); i++) {
-      ObjectID object_id = ObjectID::FromBinary(request.object_ids(i));
-
       if (plasma_results[i].data == nullptr) {
-        RAY_LOG(ERROR) << "Plasma object " << object_id
-                       << " was evicted before the raylet could pin it.";
-        continue;
+        objects.push_back(nullptr);
+      } else {
+        objects.emplace_back(std::unique_ptr<RayObject>(new RayObject(
+            std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+            std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
       }
-
-      RAY_LOG(DEBUG) << "Pinning object " << object_id;
-      RAY_CHECK(
-          pinned_objects_
-              .emplace(
-                  object_id,
-                  std::unique_ptr<RayObject>(new RayObject(
-                      std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                      std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})))
-              .second);
     }
+    local_object_manager_.PinObjects(object_ids, std::move(objects));
   }
-
-  for (const auto &object_id_binary : request.object_ids()) {
-    ObjectID object_id = ObjectID::FromBinary(object_id_binary);
-    // Send a long-running RPC request to the owner for each object. When we get a
-    // response or the RPC fails (due to the owner crashing), unpin the object.
-    rpc::WaitForObjectEvictionRequest wait_request;
-    wait_request.set_object_id(object_id_binary);
-    wait_request.set_intended_worker_id(request.owner_address().worker_id());
-    worker_rpc_clients_[worker_id].second++;
-    it->second.first->WaitForObjectEviction(
-        wait_request, [this, worker_id, object_id](
-                          Status status, const rpc::WaitForObjectEvictionReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(WARNING) << "Worker " << worker_id << " failed. Unpinning object "
-                             << object_id;
-          }
-          RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-          pinned_objects_.erase(object_id);
-
-          // Try to evict all copies of the object from the cluster.
-          if (free_objects_period_ >= 0) {
-            objects_to_free_.push_back(object_id);
-          }
-          if (objects_to_free_.size() ==
-                  RayConfig::instance().free_objects_batch_size() ||
-              free_objects_period_ == 0) {
-            FlushObjectsToFree();
-          }
-
-          // Remove the cached worker client if there are no more pending requests.
-          if (--worker_rpc_clients_[worker_id].second == 0) {
-            worker_rpc_clients_.erase(worker_id);
-          }
-        });
-  }
+  // Wait for the object to be freed by the owner, which keeps the ref count.
+  local_object_manager_.WaitForObjectFree(request.owner_address(), object_ids);
   send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void NodeManager::FlushObjectsToFree() {
-  if (!objects_to_free_.empty()) {
-    RAY_LOG(DEBUG) << "Freeing " << objects_to_free_.size() << " out-of-scope objects";
-    object_manager_.FreeObjects(objects_to_free_, /*local_only=*/false);
-    objects_to_free_.clear();
-  }
-  last_free_objects_at_ms_ = current_time_ms();
 }
 
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
