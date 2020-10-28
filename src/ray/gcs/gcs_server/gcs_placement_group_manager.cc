@@ -375,12 +375,12 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   SchedulePendingPlacementGroups();
 }
 
-void GcsPlacementGroupManager::Tick() const {
+void GcsPlacementGroupManager::Tick() {
   UpdatePlacementGroupLoad();
   execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
-void GcsPlacementGroupManager::UpdatePlacementGroupLoad() const {
+void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
   int total_cnt = 0;
