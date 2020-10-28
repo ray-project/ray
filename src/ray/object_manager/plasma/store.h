@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/common.h"
@@ -52,7 +53,8 @@ class PlasmaStore {
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
               const std::string& socket_name,
-              std::shared_ptr<ExternalStore> external_store);
+              std::shared_ptr<ExternalStore> external_store,
+              ray::SpillObjectsCallback spill_objects_callback);
 
   ~PlasmaStore();
 
@@ -262,6 +264,11 @@ class PlasmaStore {
   arrow::cuda::CudaDeviceManager* manager_;
 #endif
   std::shared_ptr<ray::ObjectStoreNotificationManager> notification_listener_;
+  /// A callback to asynchronously spill objects when space is needed. The
+  /// callback returns the amount of space still needed after the spilling is
+  /// complete.
+  ray::SpillObjectsCallback spill_objects_callback_;
+
 };
 
 }  // namespace plasma

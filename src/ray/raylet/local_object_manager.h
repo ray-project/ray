@@ -62,6 +62,14 @@ class LocalObjectManager {
   void WaitForObjectFree(const rpc::Address &owner_address,
                          const std::vector<ObjectID> &object_ids);
 
+  /// Asynchronously spill objects whose total size adds up to at least the
+  /// specified number of bytes.
+  ///
+  /// \param num_bytes_to_spill The total number of bytes to spill.
+  /// \return The number of bytes of space still required after the spill is
+  /// complete.
+  int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill);
+
   /// Spill objects to external storage.
   ///
   /// \param objects_ids_to_spill The objects to be spilled.
@@ -117,6 +125,11 @@ class LocalObjectManager {
 
   // Objects that are pinned on this node.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
+
+  // Objects that were pinned on this node but that are being spilled.
+  // These objects will be released once spilling is complete and the URL is
+  // written to the object directory.
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_;
 
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.

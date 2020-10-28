@@ -105,13 +105,15 @@ GetRequest::GetRequest(boost::asio::io_service& io_context, const std::shared_pt
 
 PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
                          const std::string& socket_name,
-                         std::shared_ptr<ExternalStore> external_store)
+                         std::shared_ptr<ExternalStore> external_store,
+                         ray::SpillObjectsCallback spill_objects_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service),
       eviction_policy_(&store_info_, PlasmaAllocator::GetFootprintLimit()),
-      external_store_(external_store) {
+      external_store_(external_store),
+      spill_objects_callback_(spill_objects_callback) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
 #ifdef PLASMA_CUDA
@@ -190,11 +192,22 @@ uint8_t* PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     }
     // Tell the eviction policy how much space we need to create this object.
     std::vector<ObjectID> objects_to_evict;
-    bool success = eviction_policy_.RequireSpace(size, &objects_to_evict);
+    int64_t space_needed = eviction_policy_.RequireSpace(size, &objects_to_evict);
     EvictObjects(objects_to_evict);
-    // Return an error to the client if not enough space could be freed to
-    // create the object.
-    if (!success) {
+    // More space is still needed. Try to spill objects to external storage to
+    // make room.
+    if (space_needed > 0) {
+      if (spill_objects_callback_) {
+        // Object spilling is asynchronous so that we do not block the plasma
+        // store thread. Therefore the client must try again, even if enough
+        // space will be made after the spill is complete.
+        // TODO: Only respond to the client with OutOfMemory if we could not
+        // make enough space through spilling. If we could make enough space,
+        // respond to the plasma client once spilling is complete.
+        static_cast<void>(spill_objects_callback_(space_needed));
+      }
+      // Return an error to the client if not enough space could be freed to
+      // create the object.
       break;
     }
   }

@@ -1,4 +1,3 @@
-import json
 import random
 import platform
 import sys
@@ -185,17 +184,20 @@ def test_spill_remote_object(ray_start_cluster_head):
     ray.get(depends.remote(ref))
 
 
-@pytest.mark.skip(reason="Not implemented yet.")
 def test_spill_objects_automatically(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
-        _system_config=json.dumps({
+        _object_spilling_config={
+            "type": "filesystem",
+            "params": {
+                "directory_path": "/tmp"
+            }
+        },
+        _system_config={
             "max_io_workers": 4,
-            "object_store_full_max_retries": 2,
-            "object_store_full_initial_delay_ms": 10,
-            "auto_object_spilling": True,
-        }))
+            "object_store_full_initial_delay_ms": 100,
+        })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
 
