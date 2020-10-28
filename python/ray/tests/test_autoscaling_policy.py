@@ -28,15 +28,21 @@ class Task:
     def __init__(self,
         duration : float,
         resources : Dict[str, float],
+        start_callback : Callable[[None], None] = None,
         done_callback : Callable[[None], None] = None,
         submission_time : float=None
     ):
         self.duration = duration
         self.resources = resources
+        self.start_callback = start_callback
         self.done_callback = done_callback
         self.start_time = None
         self.end_time = None
         self.node = None
+
+
+class Actor(Task):
+    pass
 
 
 class Node:
@@ -168,6 +174,8 @@ class Simulator:
                 task.start_time = self.virtual_time
                 end_time = self.virtual_time + task.duration
                 self.event_queue.put(Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
+                if task.start_callback:
+                    task.start_callback()
                 return True
 
         return False
@@ -305,6 +313,26 @@ class AutoscalingPolicyTest(unittest.TestCase):
             done_count += 1
 
         tasks = [Task(duration=10.0, resources={"CPU": 1}, done_callback=done_callback) for _ in range(10000)]
+        simulator.submit(tasks)
+
+        time = 0
+        while done_count < len(tasks):
+            time = simulator.step()
+
+        assert time < 1700
+
+    def testManyActors(self):
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        simulator = Simulator(config_path, self.provider)
+
+        done_count = 0
+        def done_callback():
+            nonlocal done_count
+            done_count += 1
+
+        tasks = [Actor(duration=10.0, resources={"CPU": 1}, done_callback=done_callback) for _ in range(10000)]
         simulator.submit(tasks)
 
         time = 0
