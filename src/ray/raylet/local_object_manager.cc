@@ -86,6 +86,10 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
 }
 
 int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
+  if (!RayConfig::instance().object_spilling_enabled()) {
+    return num_bytes_required;
+  }
+
   RAY_LOG(INFO) << "Choosing objects to spill of total size " << num_bytes_required;
   int64_t num_bytes_to_spill = 0;
   auto it = pinned_objects_.begin();

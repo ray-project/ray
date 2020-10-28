@@ -184,7 +184,10 @@ class LocalObjectManagerTest : public ::testing::Test {
                     freed.insert(object_id);
                   }
                 }),
-        unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {}
+        unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
+    RayConfig::instance().initialize(
+        {{"object_spilling_enabled", "true"}});
+  }
 
   size_t free_objects_batch_size = 3;
   std::shared_ptr<MockWorkerClient> owner_client;

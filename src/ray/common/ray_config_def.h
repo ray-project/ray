@@ -322,3 +322,7 @@ RAY_CONFIG(bool, enable_timeline, true)
 /// The maximum number of pending placement group entries that are reported to monitor to
 /// autoscale the cluster.
 RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+
+/// Whether object spilling is enabled. If true, then a language-specific
+/// config for the external storage must be provided.
+RAY_CONFIG(bool, object_spilling_enabled, false)
