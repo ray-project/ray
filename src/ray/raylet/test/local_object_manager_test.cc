@@ -185,7 +185,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                   }
                 }),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
-    RayConfig::instance().initialize({{"object_spilling_enabled", "true"}});
+    RayConfig::instance().initialize({{"object_spilling_config", "mock_config"}});
   }
 
   size_t free_objects_batch_size = 3;
@@ -295,7 +295,8 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
         new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(owner_address, object_ids, std::move(objects));
+  manager.PinObjects(object_ids, std::move(objects));
+  manager.WaitForObjectFree(owner_address, object_ids);
 
   int num_times_fired = 0;
   manager.SpillObjects(object_ids, [&](const Status &status) mutable {
@@ -345,7 +346,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
         new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(owner_address, object_ids, std::move(objects));
+  manager.PinObjects(object_ids, std::move(objects));
 
   int64_t num_bytes_required = manager.SpillObjectsOfSize(total_size / 2);
   ASSERT_EQ(num_bytes_required, -object_size / 2);
@@ -360,6 +361,8 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
     urls.push_back("url" + std::to_string(i));
   }
   EXPECT_CALL(worker_pool, PushIOWorker(_));
+  // Objects should get freed even though we didn't wait for the owner's notice
+  // to evict.
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   ASSERT_EQ(object_table.object_urls.size(), object_ids.size() / 2 + 1);
   for (auto &object_url : object_table.object_urls) {
