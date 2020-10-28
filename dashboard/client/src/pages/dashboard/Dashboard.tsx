@@ -9,7 +9,7 @@ import {
 } from "@material-ui/core";
 import React, { useCallback, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useHistory } from 'react-router-dom';
+import { useHistory } from "react-router-dom";
 import { getActorGroups, getNodeInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
@@ -106,7 +106,9 @@ const Dashboard: React.FC = () => {
   return (
     <div className={classes.root}>
       <Typography variant="h5">Ray Dashboard</Typography>
-      <Button onClick={() => history.push('/summary')}>Try New Dashboard</Button>
+      <Button onClick={() => history.push("/summary")}>
+        Try New Dashboard
+      </Button>
       <Tabs
         className={classes.tabs}
         indicatorColor="primary"

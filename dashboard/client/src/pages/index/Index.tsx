@@ -9,6 +9,7 @@ import {
 } from "@material-ui/core";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { version } from "../../../package.json";
 import TitleCard from "../../components/TitleCard";
 import { getRayConfig } from "../../service/cluster";
 import { getNodeList } from "../../service/node";
@@ -16,7 +17,6 @@ import { getNamespaces } from "../../service/util";
 import { RayConfig } from "../../type/config";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
-import { version } from "../../../package.json";
 
 const useStyle = makeStyles((theme) => ({
   root: {

@@ -129,8 +129,7 @@ const BasicLayout = (
           </ListItem>
           <ListItem
             button
-            className={classnames(
-              classes.menuItem            )}
+            className={classnames(classes.menuItem)}
             onClick={() => history.push("/")}
           >
             <ListItemText>BACK TO LECACY</ListItemText>

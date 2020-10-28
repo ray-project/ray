@@ -12,15 +12,15 @@ import { darkTheme, lightTheme } from "./theme";
 import { getLocalStorage, setLocalStorage } from "./util/localData";
 
 // lazy loading fro prevent loading too much code at once
-const Actors = React.lazy(() => import("./pages/actor")) ;
-const CMDResult = React.lazy(() => import( "./pages/cmd/CMDResult"));
-const Index = React.lazy(() => import( "./pages/index/Index"));
-const Job = React.lazy(() => import( "./pages/job"));
-const JobDetail = React.lazy(() => import( "./pages/job/JobDetail"));
-const BasicLayout = React.lazy(() => import( "./pages/layout"));
-const Logs = React.lazy(() => import( "./pages/log/Logs"));
-const Node = React.lazy(() => import( "./pages/node"));
-const NodeDetail = React.lazy(() => import( "./pages/node/NodeDetail"));
+const Actors = React.lazy(() => import("./pages/actor"));
+const CMDResult = React.lazy(() => import("./pages/cmd/CMDResult"));
+const Index = React.lazy(() => import("./pages/index/Index"));
+const Job = React.lazy(() => import("./pages/job"));
+const JobDetail = React.lazy(() => import("./pages/job/JobDetail"));
+const BasicLayout = React.lazy(() => import("./pages/layout"));
+const Logs = React.lazy(() => import("./pages/log/Logs"));
+const Node = React.lazy(() => import("./pages/node"));
+const NodeDetail = React.lazy(() => import("./pages/node/NodeDetail"));
 
 // key to store theme in local storage
 const RAY_DASHBOARD_THEME_KEY = "ray-dashboard-theme";
@@ -92,37 +92,37 @@ const App = () => {
   return (
     <ThemeProvider theme={getTheme(theme)}>
       <Suspense fallback={Loading}>
-      <GlobalContext.Provider value={context}>
-        <Provider store={store}>
-          <CssBaseline />
-          <HashRouter>
-            <Switch>
-              <Route component={Dashboard} exact path="/" />
-              <Route
-                render={(props) => (
-                  <BasicLayout {...props} setTheme={setTheme} theme={theme}>
-                    <Route component={Index} exact path="/summary" />
-                    <Route component={Job} exact path="/job" />
-                    <Route component={Node} exact path="/node" />
-                    <Route component={Actors} exact path="/actors" />
-                    <Route
-                      render={(props) => (
-                        <Logs {...props} theme={theme as "light" | "dark"} />
-                      )}
-                      exact
-                      path="/log/:host?/:path?"
-                    />
-                    <Route component={NodeDetail} path="/node/:id" />
-                    <Route component={JobDetail} path="/job/:id" />
-                    <Route component={CMDResult} path="/cmd/:cmd/:ip/:pid" />
-                    <Route component={Loading} exact path="/loading" />
-                  </BasicLayout>
-                )}
-              />
-            </Switch>
-          </HashRouter>
-        </Provider>
-      </GlobalContext.Provider>
+        <GlobalContext.Provider value={context}>
+          <Provider store={store}>
+            <CssBaseline />
+            <HashRouter>
+              <Switch>
+                <Route component={Dashboard} exact path="/" />
+                <Route
+                  render={(props) => (
+                    <BasicLayout {...props} setTheme={setTheme} theme={theme}>
+                      <Route component={Index} exact path="/summary" />
+                      <Route component={Job} exact path="/job" />
+                      <Route component={Node} exact path="/node" />
+                      <Route component={Actors} exact path="/actors" />
+                      <Route
+                        render={(props) => (
+                          <Logs {...props} theme={theme as "light" | "dark"} />
+                        )}
+                        exact
+                        path="/log/:host?/:path?"
+                      />
+                      <Route component={NodeDetail} path="/node/:id" />
+                      <Route component={JobDetail} path="/job/:id" />
+                      <Route component={CMDResult} path="/cmd/:cmd/:ip/:pid" />
+                      <Route component={Loading} exact path="/loading" />
+                    </BasicLayout>
+                  )}
+                />
+              </Switch>
+            </HashRouter>
+          </Provider>
+        </GlobalContext.Provider>
       </Suspense>
     </ThemeProvider>
   );

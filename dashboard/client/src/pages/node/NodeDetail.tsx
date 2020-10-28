@@ -202,7 +202,9 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
             <Grid container spacing={2}>
               <Grid item xs>
                 <div className={classes.label}>Logs</div>{" "}
-                <Link to={`/log/${encodeURIComponent(nodeDetail.logUrl)}`}>log</Link>
+                <Link to={`/log/${encodeURIComponent(nodeDetail.logUrl)}`}>
+                  log
+                </Link>
               </Grid>
               <Grid item xs>
                 <div className={classes.label}>Namespaces</div>{" "}
