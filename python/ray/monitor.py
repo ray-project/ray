@@ -91,7 +91,6 @@ class Monitor:
         # Keep a mapping from raylet client ID to IP address to use
         # for updating the load metrics.
         self.raylet_id_to_ip_map = {}
-        self.light_heartbeat_enabled = ray._config.light_heartbeat_enabled()
         self.load_metrics = LoadMetrics()
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
