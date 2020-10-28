@@ -399,10 +399,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
-    if (!node) {
-      return false;
-    }
-    return node->state() == rpc::GcsNodeInfo::ALIVE;
+    return node.has_value();
   };
   auto reconstruct_object_callback = [this](const ObjectID &object_id) {
     io_service_.post([this, object_id]() {
@@ -505,13 +502,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             const auto &node_id = NodeID::FromBinary(loc.manager());
             auto node = gcs_client_->Nodes().Get(node_id);
             RAY_CHECK(node.has_value());
-            if (node->state() == rpc::GcsNodeInfo::ALIVE) {
-              rpc::Address address;
-              address.set_raylet_id(node->node_id());
-              address.set_ip_address(node->node_manager_address());
-              address.set_port(node->node_manager_port());
-              locations.push_back(address);
-            }
+            rpc::Address address;
+            address.set_raylet_id(node->node_id());
+            address.set_ip_address(node->node_manager_address());
+            address.set_port(node->node_manager_port());
+            locations.push_back(address);
           }
           callback(object_id, locations);
         });
