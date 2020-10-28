@@ -2312,6 +2312,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
 void NodeManager::HandleDirectCallTaskUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
+    // Important: avoid double unblocking if the unblock RPC finishes after task end.
     if (!worker || !worker->IsBlocked()) {
       return;
     }
