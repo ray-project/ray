@@ -555,42 +555,7 @@ void GcsNodeManager::SendBatchedHeartbeat() {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
     std::unordered_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
     for (auto &heartbeat : heartbeat_buffer_) {
-      // Aggregate the load reported by each raylet.
-      auto load = heartbeat.second.resource_load_by_shape();
-      for (const auto &demand : load.resource_demands()) {
-        auto scheduling_key = ResourceSet(MapFromProtobuf(demand.shape()));
-        auto &aggregate_demand = aggregate_load[scheduling_key];
-        aggregate_demand.set_num_ready_requests_queued(
-            aggregate_demand.num_ready_requests_queued() +
-            demand.num_ready_requests_queued());
-        aggregate_demand.set_num_infeasible_requests_queued(
-            aggregate_demand.num_infeasible_requests_queued() +
-            demand.num_infeasible_requests_queued());
-        if (RayConfig::instance().report_worker_backlog()) {
-          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                            demand.backlog_size());
-        }
-      }
-      heartbeat.second.clear_resource_load_by_shape();
-
       batch->add_batch()->Swap(&heartbeat.second);
-    }
-
-    for (auto &demand : aggregate_load) {
-      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
-      demand_proto->Swap(&demand.second);
-      for (const auto &resource_pair : demand.first.GetResourceMap()) {
-        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
-      }
-    }
-
-    // Update placement group load to heartbeat batch.
-    // This is updated only one per second.
-    if (placement_group_load_.has_value()) {
-      auto placement_group_load = placement_group_load_.value();
-      auto placement_group_load_proto = batch->mutable_placement_group_load();
-      placement_group_load_proto->Swap(placement_group_load.get());
-      placement_group_load_.reset();
     }
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
