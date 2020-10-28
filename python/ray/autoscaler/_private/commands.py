@@ -8,7 +8,7 @@ import sys
 import subprocess
 import tempfile
 import time
-from typing import Any, Dict, Optional, List
+from typing import Any, Callable, Dict, Optional, List
 
 import click
 import yaml
@@ -1128,3 +1128,8 @@ def _get_head_node(config: Dict[str, Any],
 
 def confirm(msg, yes):
     return None if yes else click.confirm(msg, abort=True)
+
+
+def _register_callback_handler(event_name: str, callback: Callable[[Dict], None]) -> None:
+    """Registers a callback handler for autoscaler events."""
+    cli_logger.add_callback_handler(event_name, callback)
