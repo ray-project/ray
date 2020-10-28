@@ -647,7 +647,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertTrue(
             all(t.last_result.get("hello") == 123 for t in new_trials))
 
-
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
             def step(self):
@@ -889,7 +888,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
-
 
     def testBackwardsCompat(self):
         class TestTrain(Trainable):
@@ -1154,7 +1152,6 @@ class ApiTestFast(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
-
 
     def testNestedResults(self):
         def create_result(i):

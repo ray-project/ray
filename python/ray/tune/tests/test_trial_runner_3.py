@@ -681,7 +681,6 @@ class SearchAlgorithmTest(unittest.TestCase):
         self.assertEqual(len(parameter_set), 3)
 
     def testSetGetRepeater(self):
-
         class TestSuggestion(Searcher):
             def __init__(self, index):
                 self.index = index
