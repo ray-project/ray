@@ -1,7 +1,4 @@
-const base =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:8265"
-    : window.location.origin;
+const base = window.location.origin;
 
 type APIResponse<T> = {
   result: boolean;
