@@ -23,7 +23,8 @@ from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
                                 STATUS_UP_TO_DATE, STATUS_UNINITIALIZED
 from ray.test_utils import same_elements
-from ray.autoscaler._private.constants import MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 
 from time import sleep
 
@@ -398,25 +399,23 @@ def test_backlog_queue_impact_on_binpacking_time():
         for i in range(num_available_nodes):
             usage_by_ip[cpu_ips[i]] = {"CPU": 64}
             usage_by_ip[gpu_ips[i]] = {"GPU": 8, "CPU": 32}
-        demands = demand_request_shape * MAX_RESOURCE_DEMAND_VECTOR_SIZE
+        demands = demand_request_shape * \
+            AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
         t1 = time.time()
         to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, demands,
                                                   usage_by_ip, [])
         t2 = time.time()
-        import pdb
-        pdb.set_trace()
-
         assert t2 - t1 < time_to_assert
         return to_launch
 
-    ### The times asserted below are 2x the actual time took when this test
-    ### was measured on 2.3 GHz 8-Core Intel (I9-9880H) Core i9.
+    # The times asserted below are 2x the actual time took when this test
+    # was measured on 2.3 GHz 8-Core Intel (I9-9880H) Core i9.
 
     # Check the time it takes when there are 0 nodes available and the demand
     # is requires adding another ~100 nodes.
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=0,
-        time_to_assert=0.36,
+        time_to_assert=0.4,
         demand_request_shape=[{
             "GPU": 1
         }, {
@@ -425,17 +424,17 @@ def test_backlog_queue_impact_on_binpacking_time():
     # If not for the max launch concurrency the next assert should be:
     # {'m4.large': 4, 'm4.4xlarge': 2, 'm4.16xlarge': 15, 'p2.8xlarge': 125}.
     assert to_launch == {
-        'm4.large': 4,
-        'm4.4xlarge': 2,
-        'm4.16xlarge': 5,
-        'p2.8xlarge': 5
+        "m4.large": 4,
+        "m4.4xlarge": 2,
+        "m4.16xlarge": 5,
+        "p2.8xlarge": 5
     }
 
     # Check the time it takes when there are 100 nodes available and the demand
     # requires another 75 nodes.
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=50,
-        time_to_assert=1,
+        time_to_assert=0.16,
         demand_request_shape=[{
             "GPU": 1
         }, {
@@ -443,13 +442,13 @@ def test_backlog_queue_impact_on_binpacking_time():
         }])
     # If not for the max launch concurrency the next assert should be:
     # {'p2.8xlarge': 75}.
-    assert to_launch == {'p2.8xlarge': 50}
+    assert to_launch == {"p2.8xlarge": 50}
 
     # Check the time it takes when there are 250 nodes available and can
     # cover the demand.
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=125,
-        time_to_assert=0.8,
+        time_to_assert=0.14,
         demand_request_shape=[{
             "GPU": 1
         }, {
@@ -461,13 +460,13 @@ def test_backlog_queue_impact_on_binpacking_time():
     # demand requires another 1000 nodes.
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=500,
-        time_to_assert=17,
+        time_to_assert=2.68,
         demand_request_shape=[{
             "GPU": 8
         }, {
             "CPU": 64
         }])
-    assert to_launch == {'m4.16xlarge': 500, 'p2.8xlarge': 500}
+    assert to_launch == {"m4.16xlarge": 500, "p2.8xlarge": 500}
 
 
 class TestPlacementGroupScaling:

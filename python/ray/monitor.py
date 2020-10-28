@@ -9,7 +9,8 @@ import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.constants import MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
@@ -53,7 +54,7 @@ def parse_resource_demands(resource_load_by_shape):
             for _ in range(resource_demand_pb.backlog_size):
                 backlog_queue.append(request_shape)
             if len(waiting_bundles+infeasible_bundles) > \
-                    MAX_RESOURCE_DEMAND_VECTOR_SIZE:
+                    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE:
                 break
     except Exception:
         logger.exception("Failed to parse resource demands.")
@@ -61,8 +62,8 @@ def parse_resource_demands(resource_load_by_shape):
     # Bound the total number of bundles to 2xMAX_RESOURCE_DEMAND_VECTOR_SIZE.
     # This guarantees the resource demand scheduler bin packing algorithm takes
     # a reasonable amount of time to run.
-    return waiting_bundles[:MAX_RESOURCE_DEMAND_VECTOR_SIZE], \
-        infeasible_bundles[:MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+    return waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE], \
+        infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
 
 
 class Monitor:
