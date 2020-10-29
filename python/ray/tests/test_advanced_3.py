@@ -830,7 +830,37 @@ def test_override_environment_variables_nested_task(ray_start_regular):
         }).remote("a")) == "b")
 
 
-def test_override_environment_variables_nested_complex(ray_start_regular):
+def test_override_environment_variables_multitenancy(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "foo1": "bar1",
+            "foo2": "bar2"
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert ray.get(get_env.remote("foo1")) == "bar1"
+    assert ray.get(get_env.remote("foo2")) == "bar2"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1"
+        }).remote("foo1")) == "baz1"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1"
+        }).remote("foo2")) == "bar2"
+
+
+def test_override_environment_variables_complex(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "a": "job_a",
+            "b": "job_b",
+            "z": "job_z"
+        }))
+
     @ray.remote
     def get_env(key):
         return os.environ.get(key)
@@ -871,6 +901,14 @@ def test_override_environment_variables_nested_complex(ray_start_regular):
         get_env.options(override_environment_variables={
             "a": "b"
         }).remote("a")) == "b")
+
+    assert (ray.get(a.get.remote("z")) == "job_z")
+    assert (ray.get(a.get_task.remote("z")) == "job_z")
+    assert (ray.get(a.nested_get.remote("z")) == "job_z")
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("z")) == "job_z")
 
 
 if __name__ == "__main__":
