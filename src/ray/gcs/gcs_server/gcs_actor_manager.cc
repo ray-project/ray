@@ -87,16 +87,15 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
+    std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory),
-      destroy_ownded_placement_group_if_needed_(
-          destroy_ownded_placement_group_if_needed) {
+      destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed) {
   RAY_CHECK(worker_client_factory_);
-  RAY_CHECK(destroy_ownded_placement_group_if_needed_);
+  RAY_CHECK(destroy_owned_placement_group_if_needed_);
 }
 
 void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &request,
@@ -661,7 +660,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
                                            actor_table_data->SerializeAsString(),
                                            nullptr));
         // Destroy placement group owned by this actor.
-        destroy_ownded_placement_group_if_needed_(actor_id);
+        destroy_owned_placement_group_if_needed_(actor_id);
       }));
 }
 
@@ -808,7 +807,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   uint64_t num_restarts = mutable_actor_table_data->num_restarts();
   int64_t remaining_restarts;
   // Destroy placement group owned by this actor.
-  destroy_ownded_placement_group_if_needed_(actor_id);
+  destroy_owned_placement_group_if_needed_(actor_id);
   if (!need_reschedule) {
     remaining_restarts = 0;
   } else if (max_restarts == -1) {

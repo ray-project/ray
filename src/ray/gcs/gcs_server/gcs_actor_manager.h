@@ -409,7 +409,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
-  std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed_;
+  std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
 };
 
 }  // namespace gcs
