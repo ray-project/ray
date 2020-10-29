@@ -7,7 +7,7 @@ from ray.rllib import _register_all
 from ray.tune.result import TIMESTEPS_TOTAL
 from ray.tune import Trainable, TuneError
 from ray.tune import register_trainable, run_experiments
-from ray.tune.logger import Logger
+from ray.tune.logger import LegacyExperimentLogger, Logger
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, ExportFormat
 
@@ -173,7 +173,10 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
 
-    def testCustomLogger(self):
+    def testCustomLoggerNoAutoLogging(self):
+        """Does not create CSV/JSON logger callbacks automatically"""
+        os.environ["TUNE_DISABLE_AUTO_CALLBACK_LOGGERS"] = "1"
+
         class CustomLogger(Logger):
             def on_result(self, result):
                 with open(os.path.join(self.logdir, "test.log"), "w") as f:
@@ -184,10 +187,9 @@ class RunExperimentTest(unittest.TestCase):
                 "run": "__fake",
                 "stop": {
                     "training_iteration": 1
-                },
-                "loggers": [CustomLogger]
+                }
             }
-        })
+        }, callbacks=[LegacyExperimentLogger(logger_classes=[CustomLogger])])
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
         self.assertFalse(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
@@ -208,12 +210,56 @@ class RunExperimentTest(unittest.TestCase):
                 "run": "__fake",
                 "stop": {
                     "training_iteration": 1
-                },
-                "loggers": []
+                }
             }
-        })
+        }, callbacks=[LegacyExperimentLogger(logger_classes=[])])
         self.assertFalse(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
+
+    def testCustomLoggerWithAutoLogging(self):
+        """Creates CSV/JSON logger callbacks automatically"""
+        if "TUNE_DISABLE_AUTO_CALLBACK_LOGGERS" in os.environ:
+            del os.environ["TUNE_DISABLE_AUTO_CALLBACK_LOGGERS"]
+
+        class CustomLogger(Logger):
+            def on_result(self, result):
+                with open(os.path.join(self.logdir, "test.log"), "w") as f:
+                    f.write("hi")
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                }
+            }
+        }, callbacks=[LegacyExperimentLogger(logger_classes=[CustomLogger])])
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
+        self.assertTrue(
+            os.path.exists(os.path.join(trial.logdir, "params.json")))
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                }
+            }
+        })
+        self.assertTrue(
+            os.path.exists(os.path.join(trial.logdir, "params.json")))
+
+        [trial] = run_experiments({
+            "foo": {
+                "run": "__fake",
+                "stop": {
+                    "training_iteration": 1
+                }
+            }
+        }, callbacks=[LegacyExperimentLogger(logger_classes=[])])
+        self.assertTrue(
+            os.path.exists(os.path.join(trial.logdir, "params.json")))
+
 
     def testCustomTrialString(self):
         [trial] = run_experiments({

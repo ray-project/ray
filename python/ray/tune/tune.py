@@ -68,6 +68,13 @@ def _create_callbacks(callbacks: Optional[List[Callback]],
     has_csv_logger = False
     has_json_logger = False
 
+    if not loggers:
+        # If no logger callback and no `loggers` have been provided,
+        # add DEFAULT_LOGGERS.
+        if not any(isinstance(callback, ExperimentLogger)
+                   for callback in callbacks):
+            loggers = DEFAULT_LOGGERS
+
     # Create LegacyExperimentLogger for passed Logger classes
     if loggers:
         # Todo(krfricke): Deprecate `loggers` argument, print warning here.
@@ -113,6 +120,8 @@ def _create_callbacks(callbacks: Optional[List[Callback]],
         syncer_callback = SyncerCallback(
             sync_function=sync_config.sync_to_driver)
         callbacks.append(syncer_callback)
+
+    # Todo(krfricke): Maybe check if syncer comes after all loggers
 
     return callbacks
 
@@ -419,7 +428,6 @@ def run(
             "from your scheduler or from your call to `tune.run()`")
 
     # Create logger and syncer callbacks
-    loggers = loggers or DEFAULT_LOGGERS
     callbacks = _create_callbacks(callbacks, sync_config, loggers=loggers)
 
     runner = TrialRunner(
