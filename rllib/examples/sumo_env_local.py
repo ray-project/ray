@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """ Example Trainer for RLLIB + SUMO Utlis
 
     Author: Lara CODECA lara.codeca@gmail.com
@@ -16,8 +15,6 @@ import logging
 import os
 import pathlib
 from pprint import pformat
-import sys
-import traceback
 
 import ray
 from ray import tune
@@ -30,22 +27,31 @@ logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger("ppotrain")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--sumo-connect-lib", type=str, default="libsumo",
+parser.add_argument("--sumo-connect-lib",
+                    type=str,
+                    default="libsumo",
                     choices=["libsumo", "traci"],
-                    help="The SUMO connector to import. Requires the env variable SUMO_HOME set.")
-parser.add_argument("--sumo-gui", action="store_true",
-                    help="Enables the SUMO GUI. Possible only with TraCI connector.")
-parser.add_argument("--sumo-config-file", type=str, default=None,
+                    help="The SUMO connector to import. "
+                    "Requires the env variable SUMO_HOME set.")
+parser.add_argument(
+    "--sumo-gui",
+    action="store_true",
+    help="Enables the SUMO GUI. Possible only with TraCI connector.")
+parser.add_argument("--sumo-config-file",
+                    type=str,
+                    default=None,
                     help="The SUMO configuration file for the scenario.")
-parser.add_argument("--from-checkpoint", type=str, default=None,
-                    help="Full path to a checkpoint file for restoring a previously saved "
-                    "Trainer state.")
+parser.add_argument(
+    "--from-checkpoint",
+    type=str,
+    default=None,
+    help="Full path to a checkpoint file for restoring a previously saved "
+    "Trainer state.")
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=10)
 parser.add_argument("--stop-reward", type=float, default=30000.0)
 parser.add_argument("--stop-timesteps", type=int, default=10000000)
-# parser.add_argument("--torch", action="store_true")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -54,8 +60,6 @@ if __name__ == "__main__":
 
     # Algorithm.
     policy_class = ppo.PPOTFPolicy
-    # https://github.com/ray-project/ray/blob/releases/1.1.0/rllib/agents/trainer.py#L41
-    # https://github.com/ray-project/ray/blob/releases/1.1.0/rllib/agents/ppo/ppo.py#L15
     config = ppo.DEFAULT_CONFIG
     config["framework"] = "tf"
     config["gamma"] = 0.99
@@ -78,17 +82,22 @@ if __name__ == "__main__":
     scenario_config["seed"] = 42
     scenario_config["log_level"] = "INFO"
     scenario_config["sumo_config"]["sumo_connector"] = args.sumo_connect_lib
-    scenario_config['sumo_config']['sumo_gui'] = args.sumo_gui
-    scenario_config["sumo_config"]["sumo_cfg"] = \
-        args.sumo_config_file if args.sumo_config_file is not None else \
-            "{}/simulators/sumo/scenario/sumo.cfg.xml".format(
-                pathlib.Path(__file__).parent.absolute())
+    scenario_config["sumo_config"]["sumo_gui"] = args.sumo_gui
+    if args.sumo_config_file is not None:
+        scenario_config["sumo_config"]["sumo_cfg"] = args.sumo_config_file
+    else:
+        filename = "{}/simulators/sumo/scenario/sumo.cfg.xml".format(
+            pathlib.Path(__file__).parent.absolute())
+        scenario_config["sumo_config"]["sumo_cfg"] = filename
 
-    scenario_config["sumo_config"]["sumo_params"] = ["--collision.action", "warn"]
+    scenario_config["sumo_config"]["sumo_params"] = [
+        "--collision.action", "warn"
+    ]
     scenario_config["sumo_config"]["trace_file"] = True
-    scenario_config["sumo_config"]["end_of_sim"] = 3600 # [s]
-    scenario_config["sumo_config"]["update_freq"] = 10 # number of traci.simulationStep()
-                                                       # for each learning step.
+    scenario_config["sumo_config"]["end_of_sim"] = 3600  # [s]
+    scenario_config["sumo_config"][
+        "update_freq"] = 10  # number of traci.simulationStep()
+    # for each learning step.
     scenario_config["sumo_config"]["log_level"] = "INFO"
     logger.info("Scenario Configuration: \n %s", pformat(scenario_config))
 
@@ -99,7 +108,7 @@ if __name__ == "__main__":
     }
     logger.info("Agents Configuration: \n %s", pformat(agent_init))
 
-    ## MARL Environment Init
+    # MARL Environment Init
     env_config = {
         "agent_init": agent_init,
         "scenario_config": scenario_config,
@@ -110,8 +119,7 @@ if __name__ == "__main__":
     policies = {}
     for agent in marl_env.get_agents():
         agent_policy_params = {}
-        policies[agent] = (policy_class,
-                           marl_env.get_obs_space(agent),
+        policies[agent] = (policy_class, marl_env.get_obs_space(agent),
                            marl_env.get_action_space(agent),
                            agent_policy_params)
     config["multiagent"]["policies"] = policies
@@ -130,13 +138,12 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    results = tune.run(
-        "PPO",
-        config=config,
-        stop=stop,
-        verbose=1,
-        checkpoint_freq=10,
-        restore=args.from_checkpoint)
+    results = tune.run("PPO",
+                       config=config,
+                       stop=stop,
+                       verbose=1,
+                       checkpoint_freq=10,
+                       restore=args.from_checkpoint)
 
     # And check the results.
     if args.as_test:
