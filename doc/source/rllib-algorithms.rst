@@ -700,7 +700,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 
 Multi-Agent Methods
-~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 .. _qmix:
 
