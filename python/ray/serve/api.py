@@ -255,7 +255,6 @@ class Client:
                 update={"internal_metadata": metadata})
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
-        print("api: user config is " + backend_config.user_config)
         if backend_config.user_config and not inspect.isclass(func_or_class):
             raise ValueError(
                 "argument func_or_class must be a class to use user_config")

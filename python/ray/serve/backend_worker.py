@@ -15,7 +15,8 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.router import Query
-from ray.serve.constants import DEFAULT_LATENCY_BUCKET_MS, BACKEND_RECONFIGURE_METHOD
+from ray.serve.constants import (DEFAULT_LATENCY_BUCKET_MS,
+                                 BACKEND_RECONFIGURE_METHOD)
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -354,7 +355,6 @@ class RayServeWorker:
                                         BACKEND_RECONFIGURE_METHOD + " method")
             reconfigure_method = getattr(self.callable,
                                          BACKEND_RECONFIGURE_METHOD)
-            print("this is the config " + user_config)
             print(reconfigure_method)
             reconfigure_method(**user_config)
 

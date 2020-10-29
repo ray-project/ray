@@ -57,15 +57,16 @@ def test_backend_user_config(serve_instance):
 
         def __call__(self, flask_request):
             return self.count
-        
-        def reconfigure(**kwargs):
+
+        def reconfigure(self, **kwargs):
             self.count = kwargs["a"]
-    
+
     backend_config = BackendConfig(user_config={"a": 123, "b": 2})
-    client.create_backend("counter", Counter)
+    client.create_backend("counter", Counter, config=backend_config)
     client.create_endpoint("counter", backend="counter", route="/counter")
 
-    assert(requests.get("http://127.0.0.1:8000/counter").text == "123")
+    assert (requests.get("http://127.0.0.1:8000/counter").text == "123")
+
 
 def test_call_method(serve_instance):
     client = serve_instance
