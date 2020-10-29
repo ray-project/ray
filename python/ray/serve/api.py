@@ -226,10 +226,13 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries that
                 will be sent to a replica of this backend without receiving a
                 response.
-            env (serve.CondaEnv, optional): conda environment to run
+            env (serve.CondaEnv, optional): conda environment to run this
                 backend in.  Requires the client to be running in an activated
-                conda environment (not necessarily "env"), and requires "env"
-                to be an existing conda environment on all nodes.
+                conda environment (not necessarily ``env``), and requires
+                ``env`` to be an existing conda environment on all nodes.  If
+                conda is activated and ``env`` is not provided, the backend
+                will run in the conda environment of the driver that called
+                this function.
         """
         if backend_tag in self.list_backends():
             raise ValueError(

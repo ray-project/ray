@@ -269,13 +269,16 @@ conda configuration must be identical across all nodes.
 Here's an example script.  For it to work, first create a conda
 environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
 and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  To specify
-an environment for a backend to use, simply pass the name in to
+an environment for a backend to use, simply pass the environment name in to
 :mod:`client.create_backend <ray.serve.api.Client.create_backend>`
 as shown below.  Be sure to run the script in an activated conda environment
 (not required to be ``ray-tf1`` or ``ray-tf2``).
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
+Alternatively, you may omit the argument ``env`` and call
+:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
+from a script running in the conda environment you want the backend to run in.
 
 .. _serve-faq:
 
