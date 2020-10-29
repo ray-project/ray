@@ -252,11 +252,6 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             loss_inputs=loss_inputs,
             dist_inputs=actor_feature)
 
-        # Additional view requirements for postprocessing.
-        self.view_requirements["infos"] = \
-            ViewRequirement(used_for_training=False)
-        self.view_requirements["t"] = ViewRequirement()
-
         self.sess.run(tf1.global_variables_initializer())
 
         # Hard initial update

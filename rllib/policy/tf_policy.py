@@ -145,6 +145,9 @@ class TFPolicy(Policy):
             "Model classes for TFPolicy other than `ModelV2` not allowed! " \
             "You passed in {}.".format(model)
         self.model = model
+        # Auto-update model's inference view requirements, if recurrent.
+        if self.model is not None:
+            self.model.update_view_requirements_from_init_state()
 
         self.exploration = self._create_exploration()
         self._sess = sess
@@ -803,7 +806,8 @@ class TFPolicy(Policy):
             shuffle=shuffle,
             max_seq_len=self._max_seq_len,
             batch_divisibility_req=self._batch_divisibility_req,
-            feature_keys=list(self._loss_input_dict.keys()), #[k for k, v in self._loss_inputs])
+            feature_keys=[
+                k for k in self._loss_input_dict.keys() if k != "seq_lens"],
         )
         batch["is_training"] = True
 

@@ -136,10 +136,11 @@ class _AgentCollector:
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
             if shift == 0:
-                batch_data[view_col] = np_data[data_col][self.shift_before:]
+                data = np_data[data_col][self.shift_before:]
             else:
-                batch_data[view_col] = np_data[data_col][self.shift_before +
-                                                         shift:shift]
+                data = np_data[data_col][self.shift_before + shift:shift]
+            if len(data) > 0:
+                batch_data[view_col] = data
         batch = SampleBatch(batch_data)
 
         if SampleBatch.UNROLL_ID not in batch.data:

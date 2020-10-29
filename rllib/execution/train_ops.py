@@ -180,7 +180,8 @@ class TrainTFMultiGPU:
                 policy._debug_vars()
                 tuples = policy._get_loss_inputs_dict(
                     batch, shuffle=self.shuffle_sequences)
-                data_keys = [ph for _, ph in policy._loss_inputs]
+                data_keys = \
+                    [ph for ph in policy._loss_input_dict_no_rnn.values()]
                 if policy._state_inputs:
                     state_keys = policy._state_inputs + [policy._seq_lens]
                 else:

@@ -102,18 +102,19 @@ def initialize_loss_with_dummy_batch(policy, auto=True):
         for key in all_accessed_keys:
             if key not in policy.view_requirements:
                 policy.view_requirements[key] = ViewRequirement()
-        # Tag those only needed for post-processing.
-        for key in batch_for_postproc.accessed_keys:
-            if key not in train_batch.accessed_keys:
-                policy.view_requirements[key].used_for_training = False
-        # Remove those not needed at all (leave those that are needed
-        # by Sampler to properly execute sample collection).
-        for key in list(policy.view_requirements.keys()):
-            if key not in all_accessed_keys and key not in [
-                SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                SampleBatch.UNROLL_ID, SampleBatch.DONES] and \
-                    key not in policy.model.inference_view_requirements:
-                del policy.view_requirements[key]
+        if policy._loss:
+            # Tag those only needed for post-processing.
+            for key in batch_for_postproc.accessed_keys:
+                if key not in train_batch.accessed_keys:
+                    policy.view_requirements[key].used_for_training = False
+            # Remove those not needed at all (leave those that are needed
+            # by Sampler to properly execute sample collection).
+            for key in list(policy.view_requirements.keys()):
+                if key not in all_accessed_keys and key not in [
+                    SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                    SampleBatch.UNROLL_ID, SampleBatch.DONES] and \
+                        key not in policy.model.inference_view_requirements:
+                    del policy.view_requirements[key]
         # Add those data_cols (again) that are missing and have
         # dependencies by view_cols.
         for key in list(policy.view_requirements.keys()):

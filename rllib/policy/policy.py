@@ -568,6 +568,7 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.ACTION_LOGP: ViewRequirement(),
             SampleBatch.VF_PREDS: ViewRequirement(),
             PRIO_WEIGHTS: ViewRequirement(),
+            "t": ViewRequirement(),
         }
         ## Add the state-in/out views in case the policy has an RNN.
         #if policy.is_recurrent():

@@ -2,6 +2,7 @@ from collections import OrderedDict
 import gym
 import logging
 import numpy as np
+import re
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from ray.util.debug import log_once
@@ -398,8 +399,18 @@ class DynamicTFPolicy(TFPolicy):
         input_dict = {}
         dummy_batch = {}
         for view_col, view_req in view_requirements.items():
+            # Point state_in to the already existing self._state_inputs.
+            mo = re.match("state_in_(\d+)", view_col)
+            if mo is not None:
+                input_dict[view_col] = self._state_inputs[int(mo.group(1))]
+                dummy_batch[view_col] = np.zeros_like(
+                    [view_req.space.sample()])
+            # State-outs (no placeholders needed).
+            elif view_col.startswith("state_out_"):
+                dummy_batch[view_col] = np.zeros_like(
+                    [view_req.space.sample()])
             # Skip action dist inputs placeholder (do later).
-            if view_col == SampleBatch.ACTION_DIST_INPUTS:
+            elif view_col == SampleBatch.ACTION_DIST_INPUTS:
                 continue
             elif view_col in existing_inputs:
                 input_dict[view_col] = existing_inputs[view_col]
@@ -523,13 +534,11 @@ class DynamicTFPolicy(TFPolicy):
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(train_batch)))
 
-        self._loss_input_dict = train_batch
+        self._loss_input_dict = {k: v for k, v in train_batch.items()}
         loss = self._do_loss_init(train_batch)
-        #for k in sorted(train_batch.accessed_keys):
-        #    if k != "seq_lens" and not k.startswith("state_in_"):
-        #        loss_inputs.append((k, train_batch[k]))
 
         TFPolicy._initialize_loss(self, loss, [(k, v) for k, v in train_batch.items()]) #loss_inputs
+        del self._loss_input_dict["is_training"]
         if self._grad_stats_fn:
             self._stats_fetches.update(
                 self._grad_stats_fn(self, train_batch, self._grads))
@@ -546,7 +555,8 @@ class DynamicTFPolicy(TFPolicy):
             for key in batch_for_postproc.accessed_keys:
                 if key not in train_batch.accessed_keys:
                     self.view_requirements[key].used_for_training = False
-                    del self._loss_input_dict[key]
+                    if key in self._loss_input_dict:
+                        del self._loss_input_dict[key]
             # Remove those not needed at all (leave those that are needed
             # by Sampler to properly execute sample collection).
             for key in list(self.view_requirements.keys()):
@@ -564,10 +574,10 @@ class DynamicTFPolicy(TFPolicy):
                     used_for_training = vr.data_col in train_batch.accessed_keys
                     self.view_requirements[vr.data_col] = ViewRequirement(space=vr.space, used_for_training=used_for_training)
 
-        self._loss_input_dict_no_rnn = {k: v for k, v in
-                                        self._loss_input_dict.items() if
-                                        not k.startswith(
-                                            "state_in_") and v != self._seq_lens}
+        self._loss_input_dict_no_rnn = {
+            k: v for k, v in self._loss_input_dict.items() if
+            not v in self._state_inputs and v != self._seq_lens
+        }
 
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)
