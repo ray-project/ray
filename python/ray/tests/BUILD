@@ -14,6 +14,8 @@ py_test_module_list(
     "test_actor.py",
     "test_actor_failures.py",
     "test_actor_advanced.py",
+    "test_advanced.py",
+    "test_advanced_2.py",
     "test_basic.py",
     "test_basic_2.py",
     "test_cli.py",
@@ -32,9 +34,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_resources.py",
-    "test_advanced_2.py",
     "test_advanced_3.py",
-    "test_advanced.py",
     "test_array.py",
     "test_cancel.py",
     "test_component_failures_2.py",
