@@ -247,6 +247,8 @@ def push_and_tag_images(push_base_images: bool):
 
         for arch_tag in ["-cpu", "-gpu", ""]:
             full_arch_tag = f"nightly{arch_tag}"
+            # Do not tag release builds because they are no longer up to date
+            # after the branch cut.
             if not _release_build():
                 # Tag and push rayproject/<image>:nightly<arch_tag>
                 docker_push(full_image, full_arch_tag)
