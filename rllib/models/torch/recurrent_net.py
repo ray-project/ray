@@ -143,14 +143,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                 ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
                                 shift=-1)
 
-        # Add state-ins to this model's view.
-        for i in range(2):
-            self.inference_view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=-1,
-                    space=Box(-1.0, 1.0, shape=(self.cell_size, )))
-
     @override(RecurrentNetwork)
     def forward(self, input_dict, state, seq_lens):
         assert seq_lens is not None

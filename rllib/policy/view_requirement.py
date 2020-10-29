@@ -65,8 +65,9 @@ class ViewRequirement:
 def initialize_loss_with_dummy_batch(policy, auto=True):
     from ray.rllib.policy.sample_batch import SampleBatch
 
+    batch_size = max(policy.batch_divisibility_req, 2)
     policy._dummy_batch = _get_dummy_batch(
-        policy, batch_size=policy.batch_divisibility_req)
+        policy, batch_size=batch_size)
     input_dict = policy._lazy_tensor_dict(policy._dummy_batch)
     actions, state_outs, extra_outs = \
         policy.compute_actions_from_input_dict(input_dict)
@@ -75,27 +76,27 @@ def initialize_loss_with_dummy_batch(policy, auto=True):
         policy._dummy_batch[key] = np.zeros_like(value)
     sb = SampleBatch(policy._dummy_batch)
     if state_outs:
-        seq_len = policy.batch_divisibility_req / 2
-        sb["seq_lens"] = np.array([seq_len for _ in range(2)])
         # TODO: (sven) This hack will not work for attention net traj.
         #  view setup.
         i = 0
         while "state_in_{}".format(i) in sb:
-            sb["state_in_{}".format(i)] = sb["state_in_{}".format(i)][:seq_len]
+            sb["state_in_{}".format(i)] = sb["state_in_{}".format(i)][:batch_size]
             if "state_out_{}".format(i) in sb:
                 sb["state_out_{}".format(i)] = \
-                    sb["state_out_{}".format(i)][:seq_len]
+                    sb["state_out_{}".format(i)][:batch_size]
             i += 1
     batch_for_postproc = policy._lazy_numpy_dict(sb)
     batch_for_postproc.count = sb.count
     postprocessed_batch = policy.postprocess_trajectory(batch_for_postproc)
+    if state_outs:
+        seq_len = (policy.batch_divisibility_req // 2) or 1
+        postprocessed_batch["seq_lens"] = np.array([seq_len for _ in range(2)], dtype=np.int32)
     train_batch = policy._lazy_tensor_dict(postprocessed_batch)
     if policy._loss is not None:
         policy._loss(policy, policy.model, policy.dist_class, train_batch)
 
     # Add new columns automatically to view-reqs.
-    if policy.config[
-        "_use_trajectory_view_api"] and auto:
+    if policy.config["_use_trajectory_view_api"] and auto:
         # Add those needed for postprocessing and training.
         all_accessed_keys = train_batch.accessed_keys | batch_for_postproc.accessed_keys | batch_for_postproc.added_keys
         for key in all_accessed_keys:

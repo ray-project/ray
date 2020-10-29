@@ -71,19 +71,14 @@ class Policy(metaclass=ABCMeta):
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
         self.dist_class = None
-        # Minimal view requirements dict for `learn_on_batch()` and
+        # Maximal view requirements dict for `learn_on_batch()` and
         # `compute_actions` calls.
-        # Child classes need to add their specific requirements here (usually
-        # a combination of a Model's inference_view_- and the
-        # Policy's loss function-requirements.
+        # View requirements will be automatically filtered out later based
+        # on the postprocessing and loss functions to ensure optimal data
+        # collection and transfer performance.
+        # If child classes must override this behavior, they need to specify
+        # the `view_requirements_fn` arg.
         view_reqs = self._get_default_view_requirements()
-        #    SampleBatch.OBS: ViewRequirement(space=self.observation_space),
-        #    SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
-        #    SampleBatch.REWARDS: ViewRequirement(),
-        #    SampleBatch.DONES: ViewRequirement(),
-        #    SampleBatch.EPS_ID: ViewRequirement(),
-        #    SampleBatch.AGENT_INDEX: ViewRequirement(),
-        #}
         if not hasattr(self, "view_requirements"):
             self.view_requirements = view_reqs
         else:

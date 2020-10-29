@@ -6,7 +6,6 @@ import ray
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
@@ -110,14 +109,6 @@ class RNNSpyModel(RecurrentNetwork):
             [logits, value_out, state_out_h, state_out_c])
         self.base_model.summary()
         self.register_variables(self.base_model.variables)
-
-        # Add state-ins to this model's view.
-        for i in range(2):
-            self.inference_view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=-1,
-                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):

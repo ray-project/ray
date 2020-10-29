@@ -174,6 +174,8 @@ class DynamicTFPolicy(TFPolicy):
                 num_outputs=logit_dim,
                 model_config=self.config["model"],
                 framework="tf")
+        # Auto-update model's inference view requirements, if recurrent.
+        self.model.update_view_requirements_from_init_state()
 
         if existing_inputs:
             self._state_inputs = [
@@ -197,15 +199,6 @@ class DynamicTFPolicy(TFPolicy):
                     for s in self.model.get_initial_state()
                 ]
 
-        #self.view_requirements = Policy._get_default_view_requirements()
-        #    SampleBatch.OBS: ViewRequirement(space=self.observation_space),
-        #    SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
-        #    SampleBatch.REWARDS: ViewRequirement(),
-        #    SampleBatch.DONES: ViewRequirement(),
-        #    SampleBatch.EPS_ID: ViewRequirement(),
-        #    SampleBatch.AGENT_INDEX: ViewRequirement(),
-        #}
-
         # Update this Policy's ViewRequirements (if function given).
         if callable(view_requirements_fn):
             self.view_requirements = view_requirements_fn(self)
@@ -213,6 +206,7 @@ class DynamicTFPolicy(TFPolicy):
         # Add NEXT_OBS, STATE_IN_0.., and others.
         else:
             self.view_requirements = self._get_default_view_requirements()
+        # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.inference_view_requirements)
 
         # Setup standard placeholders.
@@ -355,14 +349,10 @@ class DynamicTFPolicy(TFPolicy):
         """Creates a copy of self using existing input placeholders."""
 
         # Note that there might be RNN state inputs at the end of the list
-        if self._state_inputs:
-            num_state_inputs = len(self._state_inputs) + 1
-        else:
-            num_state_inputs = 0
-        if len(self._loss_inputs) + num_state_inputs != len(existing_inputs):
-            raise ValueError("Tensor list mismatch", self._loss_inputs,
+        if len(self._loss_input_dict) != len(existing_inputs):
+            raise ValueError("Tensor list mismatch", self._loss_input_dict,
                              self._state_inputs, existing_inputs)
-        for i, (k, v) in enumerate(self._loss_inputs):
+        for i, (k, v) in enumerate(self._loss_input_dict_no_rnn.items()):
             if v.shape.as_list() != existing_inputs[i].shape.as_list():
                 raise ValueError("Tensor shape mismatch", i, k, v.shape,
                                  existing_inputs[i].shape)
@@ -371,12 +361,11 @@ class DynamicTFPolicy(TFPolicy):
         rnn_inputs = []
         for i in range(len(self._state_inputs)):
             rnn_inputs.append(("state_in_{}".format(i),
-                               existing_inputs[len(self._loss_inputs) + i]))
+                               existing_inputs[len(self._loss_input_dict_no_rnn) + i]))
         if rnn_inputs:
             rnn_inputs.append(("seq_lens", existing_inputs[-1]))
         input_dict = OrderedDict([("is_exploring", self._is_exploring), (
-            "timestep", self._timestep)] + [(k, existing_inputs[i]) for i, (
-                k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
+            "timestep", self._timestep)] + [(k, existing_inputs[i]) for i, k in enumerate(self._loss_input_dict_no_rnn.keys())] + rnn_inputs)
         instance = self.__class__(
             self.observation_space,
             self.action_space,
@@ -387,7 +376,7 @@ class DynamicTFPolicy(TFPolicy):
         instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)
         loss_inputs = [(k, existing_inputs[i])
-                       for i, (k, _) in enumerate(self._loss_inputs)]
+                       for i, k in enumerate(self._loss_input_dict_no_rnn.keys())]
 
         TFPolicy._initialize_loss(instance, loss, loss_inputs)
         if instance._grad_stats_fn:
@@ -574,7 +563,12 @@ class DynamicTFPolicy(TFPolicy):
                 if vr.data_col is not None and vr.data_col not in self.view_requirements:
                     used_for_training = vr.data_col in train_batch.accessed_keys
                     self.view_requirements[vr.data_col] = ViewRequirement(space=vr.space, used_for_training=used_for_training)
-    
+
+        self._loss_input_dict_no_rnn = {k: v for k, v in
+                                        self._loss_input_dict.items() if
+                                        not k.startswith(
+                                            "state_in_") and v != self._seq_lens}
+
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)
         if self._stats_fn:

@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import contextlib
 import gym
+from gym.spaces import Box
 import numpy as np
 from typing import Dict, List, Any, Union
 
@@ -59,6 +60,7 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
+        # Basic view requirement for all models: Use the observation as input.
         self.inference_view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
@@ -319,6 +321,18 @@ class ModelV2:
                 format.
         """
         return self.time_major is True
+
+    @PublicAPI
+    def update_view_requirements_from_init_state(self):
+        # Add state-ins to this model's view.
+        for i, state in enumerate(self.get_initial_state()):
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=state.shape))
+            self.inference_view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))
 
 
 class NullContextManager:

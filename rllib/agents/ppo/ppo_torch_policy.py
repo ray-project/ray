@@ -266,7 +266,7 @@ PPOTorchPolicy = build_torch_policy(
     postprocess_fn=postprocess_ppo_gae,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
-    after_init=setup_mixins,
+    before_loss_init=setup_mixins,
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin

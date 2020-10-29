@@ -248,6 +248,8 @@ def build_eager_tf_policy(name,
                     config["model"],
                     framework=self.framework,
                 )
+            # Auto-update model's inference view requirements, if recurrent.
+            self.model.update_view_requirements_from_init_state()
 
             self.exploration = self._create_exploration()
             self._state_in = [
@@ -261,15 +263,6 @@ def build_eager_tf_policy(name,
             # Combine view_requirements for Model and Policy.
             self.view_requirements.update(
                 self.model.inference_view_requirements)
-
-            ##TODO: do exactly like in torch.
-            #input_dict = {
-            #    SampleBatch.CUR_OBS: tf.convert_to_tensor(
-            #        np.array([observation_space.sample()])),
-            #    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-            #        [flatten_to_single_ndarray(action_space.sample())]),
-            #    SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
-            #}
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
