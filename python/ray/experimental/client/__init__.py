@@ -1,7 +1,8 @@
 import ray
 from ray.experimental.client.worker import Worker
+from typing import Optional
 
-_client_worker: Worker = None
+_client_worker: Optional[Worker] = None
 _in_cluster: bool = True
 
 
@@ -16,8 +17,8 @@ def _fallback_to_cluster(in_cluster, client_worker_method):
     return fallback_func
 
 
-get = _fallback_to_cluster(ray.get, "get")
+get = _fallback_to_cluster(ray.get, 'get')
 
-put = _fallback_to_cluster(ray.put, "put")
+put = _fallback_to_cluster(ray.put, 'put')
 
-remote = _fallback_to_cluster(ray.remote, "remote")
+remote = _fallback_to_cluster(ray.remote, 'remote')
