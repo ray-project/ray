@@ -15,7 +15,7 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.router import Query
-from ray.serve.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve.constants import DEFAULT_LATENCY_BUCKET_MS, BACKEND_RECONFIGURE_METHOD
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -149,9 +149,7 @@ class RayServeWorker:
         self.callable = _callable
         self.is_function = is_function
 
-        self.config = backend_config
-        self.batch_queue = BatchQueue(self.config.max_batch_size or 1,
-                                      self.config.batch_wait_timeout)
+        self.update_config()
 
         self.num_ongoing_requests = 0
 
@@ -344,10 +342,19 @@ class RayServeWorker:
                 # it will not be raised.
                 await asyncio.wait(all_evaluated_futures)
 
+    def user_reconfigure(self, user_config) -> None:
+        if not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
+            raise RayServeException("user_config specified but backend " +
+                                    backend_tag + " missing " +
+                                    BACKEND_RECONFIGURE_METHOD + "method")
+        reconfigure_method = getattr(self.callable, BACKEND_RECONFIGURE_METHOD)
+        reconfigure_method(**user_config)
+
     def update_config(self, new_config: BackendConfig) -> None:
         self.config = new_config
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)
+        self.user_reconfigure(self.config.user_config)
 
     async def handle_request(self,
                              request: Union[Query, bytes]) -> asyncio.Future:
