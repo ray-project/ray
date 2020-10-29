@@ -521,6 +521,7 @@ void GcsNodeManager::StartNodeFailureDetector() {
 void GcsNodeManager::UpdateNodeRealtimeResources(
     const NodeID &node_id, const rpc::HeartbeatTableData &heartbeat) {
   if (!RayConfig::instance().light_heartbeat_enabled() ||
+      cluster_realtime_resources_.count(node_id) == 0 ||
       heartbeat.resources_available_changed()) {
     auto resources_available = MapFromProtobuf(heartbeat.resources_available());
     cluster_realtime_resources_[node_id] =
