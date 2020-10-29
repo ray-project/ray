@@ -2,6 +2,7 @@ import logging
 import os
 
 from ray.tune.trainable import Trainable, TrainableUtil
+from ray.tune.syncer import get_cloud_sync_client
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,6 @@ class DurableTrainable(Trainable):
 
     def _create_storage_client(self):
         """Returns a storage client."""
-        from ray.tune.syncer import get_cloud_sync_client
-
         return get_cloud_sync_client(self.remote_checkpoint_dir)
 
     def _storage_path(self, local_path):

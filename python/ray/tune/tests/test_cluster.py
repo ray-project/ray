@@ -1,6 +1,8 @@
 import inspect
 import time
 import os
+from typing import Callable, Union
+
 import pytest
 import shutil
 import subprocess
@@ -18,7 +20,7 @@ from ray.tune.error import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.syncer import CloudSyncer
+from ray.tune.syncer import CloudSyncer, SyncerCallback, get_node_syncer
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -53,6 +55,20 @@ def _start_new_cluster():
     register_trainable("__fake_durable", MockDurableTrainer)
     _register_all()
     return cluster
+
+
+class _PerTrialSyncerCallback(SyncerCallback):
+    def __init__(self,
+                 get_sync_fn: Callable[["Trial"], Union[None, bool, Callable]]):
+        self._get_sync_fn = get_sync_fn
+        super(_PerTrialSyncerCallback, self).__init__(None)
+
+    def _create_trial_syncer(self, trial: "Trial"):
+        sync_fn = self._get_sync_fn(trial)
+        return get_node_syncer(
+            trial.logdir,
+            remote_dir=trial.logdir,
+            sync_function=sync_fn)
 
 
 @pytest.fixture
@@ -255,7 +271,9 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(BasicVariantGenerator())
+    syncer_callback = _PerTrialSyncerCallback(
+        lambda trial: trial.trainable_name == "__fake")
+    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 4
@@ -263,7 +281,6 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
         "checkpoint_freq": 2,
         "max_failures": 2,
         "remote_checkpoint_dir": MOCK_REMOTE_DIR,
-        "sync_to_driver_fn": trainable_id == "__fake",
     }
 
     # Test recovery of trial that hasn't been checkpointed
@@ -316,7 +333,6 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
             "training_iteration": 3
         },
         "remote_checkpoint_dir": MOCK_REMOTE_DIR,
-        "sync_to_driver_fn": trainable_id == "__fake",
     }
     t3 = Trial(trainable_id, **kwargs)
     runner.add_trial(t3)
@@ -341,7 +357,9 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(BasicVariantGenerator())
+    syncer_callback = _PerTrialSyncerCallback(
+        lambda trial: trial.trainable_name == "__fake")
+    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 5
@@ -349,7 +367,6 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
         "checkpoint_freq": 1,
         "max_failures": 1,
         "remote_checkpoint_dir": MOCK_REMOTE_DIR,
-        "sync_to_driver_fn": trainable_id == "__fake",
     }
 
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
@@ -382,7 +399,9 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(BasicVariantGenerator())
+    syncer_callback = _PerTrialSyncerCallback(
+        lambda trial: trial.trainable_name == "__fake_remote")
+    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 4
@@ -390,7 +409,6 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
         "checkpoint_freq": 2,
         "max_failures": 2,
         "remote_checkpoint_dir": MOCK_REMOTE_DIR,
-        "sync_to_driver_fn": trainable_id == "__fake_remote",
     }
 
     # The following patches only affect __fake_remote.
@@ -454,7 +472,10 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
     cluster.wait_for_nodes()
 
     dirpath = str(tmpdir)
-    runner = TrialRunner(local_checkpoint_dir=dirpath, checkpoint_period=0)
+    syncer_callback = _PerTrialSyncerCallback(
+        lambda trial: trial.trainable_name == "__fake")
+    runner = TrialRunner(local_checkpoint_dir=dirpath, checkpoint_period=0,
+                         callbacks=[syncer_callback])
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -462,7 +483,6 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
         "checkpoint_freq": 1,
         "max_failures": 1,
         "remote_checkpoint_dir": MOCK_REMOTE_DIR,
-        "sync_to_driver_fn": trainable_id == "__fake",
     }
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
     for t in trials:

@@ -564,6 +564,17 @@ class TrialRunner:
                 self._scheduler_alg.on_trial_complete(self, trial, flat_result)
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=flat_result)
+
+                # If this is not a duplicate result, the callbacks should
+                # be informed about the result.
+                if not is_duplicate:
+                    with warn_if_slow("callbacks.on_trial_result"):
+                        self._callbacks.on_trial_result(
+                            iteration=self._iteration,
+                            trials=self._trials,
+                            trial=trial,
+                            result=result.copy())
+
                 self._callbacks.on_trial_complete(
                     iteration=self._iteration,
                     trials=self._trials,

@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, TYPE_CHECKING, Union
 
 import distutils
 import logging
@@ -14,7 +14,6 @@ from ray import services
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.checkpoint_manager import Checkpoint
-from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.result import NODE_IP
 from ray.util.debug import log_once
 from ray.tune.utils.util import env_integer
@@ -367,7 +366,7 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
 
 
 class SyncerCallback(Callback):
-    def __init__(self, sync_function: Callable):
+    def __init__(self, sync_function: Union[None, bool, Callable]):
         self._sync_function = sync_function
         self._syncers: Dict["Trial", NodeSyncer] = {}
 
@@ -409,6 +408,11 @@ class SyncerCallback(Callback):
     def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: Checkpoint):
         if checkpoint.storage == Checkpoint.MEMORY:
             return
+
+        # Local import to avoid circular dependencies between syncer and
+        # trainable
+        from ray.tune.durable_trainable import DurableTrainable
+
         trial_syncer = self._get_trial_syncer(trial)
         if trial.sync_on_checkpoint:
             try:

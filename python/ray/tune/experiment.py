@@ -202,6 +202,7 @@ class Experiment:
             "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
+            "loggers": loggers,
             "log_to_file": (stdout_file, stderr_file),
             "sync_to_driver": sync_to_driver,
             "checkpoint_freq": checkpoint_freq,
