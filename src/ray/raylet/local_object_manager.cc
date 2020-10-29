@@ -101,7 +101,7 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
     it++;
   }
   RAY_LOG(INFO) << "Spilling objects of total size " << num_bytes_to_spill;
-  SpillObjects(objects_to_spill, nullptr);
+  SpillObjects(objects_to_spill, /* callback */ nullptr);
   num_bytes_required -= num_bytes_to_spill;
   return num_bytes_required;
 }
