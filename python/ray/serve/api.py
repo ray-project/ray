@@ -1,6 +1,7 @@
 import atexit
 from functools import wraps
 import random
+import inspect
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -244,6 +245,7 @@ class Client:
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
             is_blocking=replica_config.is_blocking)
+
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
                 **config, "internal_metadata": metadata
@@ -253,6 +255,11 @@ class Client:
                 update={"internal_metadata": metadata})
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
+        print("api: user config is " + backend_config.user_config)
+        if backend_config.user_config and not inspect.isclass(func_or_class):
+            raise ValueError(
+                "argument func_or_class must be a class to use user_config")
+
         backend_config._validate_complete()
         ray.get(
             self._controller.create_backend.remote(backend_tag, backend_config,

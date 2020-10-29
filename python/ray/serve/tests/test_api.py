@@ -48,6 +48,25 @@ def test_e2e(serve_instance):
     assert resp == "POST"
 
 
+def test_backend_user_config(serve_instance):
+    client = serve_instance
+
+    class Counter:
+        def __init__(self):
+            self.count = 12
+
+        def __call__(self, flask_request):
+            return self.count
+        
+        def reconfigure(**kwargs):
+            self.count = kwargs["a"]
+    
+    backend_config = BackendConfig(user_config={"a": 123, "b": 2})
+    client.create_backend("counter", Counter)
+    client.create_endpoint("counter", backend="counter", route="/counter")
+
+    assert(requests.get("http://127.0.0.1:8000/counter").text == "123")
+
 def test_call_method(serve_instance):
     client = serve_instance
 
