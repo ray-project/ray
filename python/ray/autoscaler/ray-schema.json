@@ -307,10 +307,6 @@
         "no_restart": {
             "description": "Whether to avoid restarting the cluster during updates. This field is controlled by the ray --no-restart flag and cannot be set by the user."
         },
-        "no_config_validation_warning": {
-            "type": "boolean",
-            "description": "Disables the warning when the config on the cluster fails validation."
-        },
         "available_node_types": {
             "type": "object",
             "description": "A list of node types for multi-node-type autoscaling.",

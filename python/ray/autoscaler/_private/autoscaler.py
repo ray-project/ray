@@ -325,13 +325,11 @@ class StandardAutoscaler:
         try:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
-            if not new_config.get(
-                    "no_config_validation_warning",
-                    False) and new_config != getattr(self, 'config', None):
+            if new_config != getattr(self, 'config', None):
                 try:
                     validate_config(new_config)
                 except Exception as e:
-                    logger.warning(
+                    logger.debug(
                         "Cluster config validation failed. The version of "
                         "the ray CLI you launched this cluster with may "
                         "be higher than the version of ray being run on "
