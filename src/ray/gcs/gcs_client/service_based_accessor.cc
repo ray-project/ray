@@ -709,6 +709,17 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
   }
 }
 
+Status ServiceBasedNodeInfoAccessor::AsyncGetAllHeartbeat(
+    const ItemCallback<rpc::HeartbeatBatchTableData> &callback) {
+  rpc::GetAllHeartbeatRequest request;
+  client_impl_->GetGcsRpcClient().GetAllHeartbeat(
+      request, [callback](const Status &status, const rpc::GetAllHeartbeatReply &reply) {
+        callback(reply.heartbeat_data());
+        RAY_LOG(DEBUG) << "Finished getting heartbeat of all nodes, status = " << status;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
     const StatusCallback &done) {

@@ -1357,8 +1357,6 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Return the resources that were being used by this worker.
     if (new_scheduler_enabled_) {
-      new_resource_scheduler_->SubtractCPUResourceInstances(
-          worker->GetBorrowedCPUInstances());
       new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
       worker->ClearAllocatedInstances();
       new_resource_scheduler_->FreeLocalTaskResources(
@@ -2206,7 +2204,7 @@ void NodeManager::SubmitTask(const Task &task) {
 void NodeManager::HandleDirectCallTaskBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
-    if (!worker) {
+    if (!worker || worker->IsBlocked()) {
       return;
     }
     std::vector<double> cpu_instances;
@@ -2236,7 +2234,8 @@ void NodeManager::HandleDirectCallTaskBlocked(
 void NodeManager::HandleDirectCallTaskUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
-    if (!worker) {
+    // Important: avoid double unblocking if the unblock RPC finishes after task end.
+    if (!worker || !worker->IsBlocked()) {
       return;
     }
     std::vector<double> cpu_instances;
@@ -2246,6 +2245,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
     if (cpu_instances.size() > 0) {
       new_resource_scheduler_->SubtractCPUResourceInstances(cpu_instances);
       new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());
+      worker->ClearBorrowedCPUInstances();
       worker->MarkUnblocked();
     }
     ScheduleAndDispatch();
@@ -2495,8 +2495,6 @@ bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
     task = worker.GetAssignedTask();
     // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ?
     if (worker.GetAllocatedInstances() != nullptr) {
-      new_resource_scheduler_->SubtractCPUResourceInstances(
-          worker.GetBorrowedCPUInstances());
       new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
       worker.ClearAllocatedInstances();
     }
