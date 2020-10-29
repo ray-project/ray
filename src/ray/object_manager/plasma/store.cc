@@ -201,7 +201,7 @@ uint8_t* PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
         // Object spilling is asynchronous so that we do not block the plasma
         // store thread. Therefore the client must try again, even if enough
         // space will be made after the spill is complete.
-        // TODO: Only respond to the client with OutOfMemory if we could not
+        // TODO(swang): Only respond to the client with OutOfMemory if we could not
         // make enough space through spilling. If we could make enough space,
         // respond to the plasma client once spilling is complete.
         static_cast<void>(spill_objects_callback_(space_needed));
