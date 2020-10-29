@@ -327,7 +327,7 @@ class StandardAutoscaler:
                 new_config = yaml.safe_load(f.read())
             if not new_config.get(
                     "no_config_validation_warning",
-                    False) and new_config != getattr(self, 'config'):
+                    False) and new_config != getattr(self, 'config', None):
                 try:
                     validate_config(new_config)
                 except Exception as e:
