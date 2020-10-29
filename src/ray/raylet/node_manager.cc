@@ -56,6 +56,17 @@ ActorStats GetActorStatisticalData(
   return item;
 }
 
+inline ray::rpc::ObjectReference FlatbufferToSingleObjectReference(
+    const flatbuffers::String &object_id, const ray::protocol::Address &address) {
+  ray::rpc::ObjectReference ref;
+  ref.set_object_id(object_id.str());
+  ref.mutable_owner_address()->set_raylet_id(address.raylet_id()->str());
+  ref.mutable_owner_address()->set_ip_address(address.ip_address()->str());
+  ref.mutable_owner_address()->set_port(address.port());
+  ref.mutable_owner_address()->set_worker_id(address.worker_id()->str());
+  return ref;
+}
+
 std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
     const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
@@ -2955,15 +2966,40 @@ void NodeManager::ProcessSubscribePlasmaReady(
 
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
-  {
-    absl::MutexLock guard(&plasma_object_notification_lock_);
-    if (!async_plasma_objects_notification_.contains(id)) {
-      async_plasma_objects_notification_.emplace(
-          id, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>());
-    }
 
-    // Only insert a worker once
-    if (!async_plasma_objects_notification_[id].contains(associated_worker)) {
+  if (task_dependency_manager_.CheckObjectLocal(id)) {
+    // Object is already local, so we directly fire the callback to tell the core worker
+    // that the plasma object is ready.
+    rpc::PlasmaObjectReadyRequest request;
+    request.set_object_id(id.Binary());
+
+    RAY_LOG(DEBUG) << "Object " << id << " is already local, firing callback directly.";
+    associated_worker->rpc_client()->PlasmaObjectReady(
+        request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Problem with telling worker that plasma object is ready"
+                          << status.ToString();
+          }
+        });
+  } else {
+    // The object is not local, so we are subscribing to pull and wait for the objects.
+    std::vector<rpc::ObjectReference> refs = {FlatbufferToSingleObjectReference(
+        *message->object_id(), *message->owner_address())};
+
+    // NOTE(simon): This call will issue a pull request to remote workers and make sure
+    // the object will be local.
+    // 1. We currently do not allow user to cancel this call. The object will be pulled
+    //    even if the `await object_ref` is cancelled.
+    // 2. We currently do not handle edge cases with object eviction where the object
+    //    is local at this time but when the core worker was notified, the object is
+    //    is evicted. The core worker should be able to handle evicted object in this
+    //    case.
+    task_dependency_manager_.SubscribeWaitDependencies(associated_worker->WorkerId(),
+                                                       refs);
+
+    // Add this worker to the listeners for the object ID.
+    {
+      absl::MutexLock guard(&plasma_object_notification_lock_);
       async_plasma_objects_notification_[id].insert(associated_worker);
     }
   }
@@ -2983,8 +3019,6 @@ ray::Status NodeManager::SetupPlasmaSubscription() {
         }
         rpc::PlasmaObjectReadyRequest request;
         request.set_object_id(object_id.Binary());
-        request.set_metadata_size(object_info.metadata_size);
-        request.set_data_size(object_info.data_size);
 
         for (auto worker : waiting_workers) {
           worker->rpc_client()->PlasmaObjectReady(
