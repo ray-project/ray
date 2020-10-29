@@ -13,6 +13,7 @@ MACPYTHON_URL=https://www.python.org/ftp/python
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
+NODE_VERSION="14"
 PY_VERSIONS=("3.6.1"
              "3.7.0"
              "3.8.2")
@@ -36,6 +37,7 @@ mkdir -p .whl
 
 # Use the latest version of Node.js in order to build the dashboard.
 source "$HOME"/.nvm/nvm.sh
+nvm install $NODE_VERSION
 nvm use node
 
 # Build the dashboard so its static assets can be included in the wheel.
@@ -54,7 +56,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.
-  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/dashboard/client
+  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/new_dashboard/client -e dashboard/client
 
   # Install Python.
   INST_PATH=python_downloads/$PY_INST

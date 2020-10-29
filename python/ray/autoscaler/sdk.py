@@ -41,20 +41,26 @@ def create_or_update_cluster(cluster_config: Union[dict, str],
             use_login_shells=True)
 
 
-def teardown_cluster(cluster_config: Union[dict, str]) -> None:
+def teardown_cluster(cluster_config: Union[dict, str],
+                     workers_only: bool = False,
+                     keep_min_workers: bool = False) -> None:
     """Destroys all nodes of a Ray cluster described by a config json.
 
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
+        workers_only (bool): Whether to keep the head node running and only
+            teardown worker nodes.
+        keep_min_workers (bool): Whether to keep min_workers (as specified
+            in the YAML) still running.
     """
     with _as_config_file(cluster_config) as config_file:
         return commands.teardown_cluster(
             config_file=config_file,
             yes=True,
-            workers_only=False,
+            workers_only=workers_only,
             override_cluster_name=None,
-            keep_min_workers=False)
+            keep_min_workers=keep_min_workers)
 
 
 def run_on_cluster(cluster_config: Union[dict, str],
@@ -208,3 +214,9 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     """Fillout default values for a cluster_config based on the provider."""
     from ray.autoscaler._private.util import fillout_defaults
     return fillout_defaults(config)
+
+
+def get_docker_host_mount_location(cluster_name: str) -> str:
+    """Return host path that Docker mounts attach to."""
+    docker_mount_prefix = "/tmp/ray_tmp_mount/{cluster_name}"
+    return docker_mount_prefix.format(cluster_name=cluster_name)

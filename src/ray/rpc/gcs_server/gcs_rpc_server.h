@@ -196,6 +196,10 @@ class NodeInfoGcsServiceHandler {
                                      ReportHeartbeatReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAllHeartbeat(const GetAllHeartbeatRequest &request,
+                                     GetAllHeartbeatReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleGetResources(const GetResourcesRequest &request,
                                   GetResourcesReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
@@ -242,6 +246,7 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllHeartbeat);
     NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
@@ -470,6 +475,10 @@ class PlacementGroupInfoGcsServiceHandler {
   virtual void HandleGetPlacementGroup(const GetPlacementGroupRequest &request,
                                        GetPlacementGroupReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllPlacementGroup(const GetAllPlacementGroupRequest &request,
+                                          GetAllPlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `PlacementGroupInfoGcsService`.
@@ -491,6 +500,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(CreatePlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(RemovePlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetPlacementGroup);
+    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetAllPlacementGroup);
   }
 
  private:

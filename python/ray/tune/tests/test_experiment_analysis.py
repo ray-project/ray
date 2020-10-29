@@ -12,8 +12,16 @@ from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(
+            num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def setUp(self):
-        ray.init(local_mode=False)
         self.test_dir = tempfile.mkdtemp()
         self.test_name = "analysis_exp"
         self.num_samples = 10
@@ -23,7 +31,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
     def run_test_exp(self):
         self.ea = tune.run(

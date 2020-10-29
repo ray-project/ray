@@ -3,7 +3,7 @@
 import copy
 import logging
 import math
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import ConfigSpace
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
@@ -11,6 +11,8 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized, \
     Uniform
 from ray.tune.suggest import Searcher
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
@@ -93,7 +95,8 @@ class TuneBOHB(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[ConfigSpace.ConfigurationSpace] = None,
+                 space: Optional[Union[Dict,
+                                       ConfigSpace.ConfigurationSpace]] = None,
                  bohb_config: Optional[Dict] = None,
                  max_concurrent: int = 10,
                  metric: Optional[str] = None,
@@ -109,6 +112,15 @@ class TuneBOHB(Searcher):
         self._metric = metric
 
         self._bohb_config = bohb_config
+
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
+
         self._space = space
 
         super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
@@ -145,10 +157,15 @@ class TuneBOHB(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._space:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         if len(self.running) < self._max_concurrent:
             # This parameter is not used in hpbandster implementation.
