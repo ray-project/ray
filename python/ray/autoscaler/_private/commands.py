@@ -8,7 +8,7 @@ import sys
 import subprocess
 import tempfile
 import time
-from typing import Any, Callable, Dict, Optional, List
+from typing import Any, Dict, Optional, List
 
 import click
 import yaml
