@@ -58,17 +58,16 @@ def _start_new_cluster():
 
 
 class _PerTrialSyncerCallback(SyncerCallback):
-    def __init__(self,
-                 get_sync_fn: Callable[["Trial"], Union[None, bool, Callable]]):
+    def __init__(
+            self,
+            get_sync_fn: Callable[["Trial"], Union[None, bool, Callable]]):
         self._get_sync_fn = get_sync_fn
         super(_PerTrialSyncerCallback, self).__init__(None)
 
     def _create_trial_syncer(self, trial: "Trial"):
         sync_fn = self._get_sync_fn(trial)
         return get_node_syncer(
-            trial.logdir,
-            remote_dir=trial.logdir,
-            sync_function=sync_fn)
+            trial.logdir, remote_dir=trial.logdir, sync_function=sync_fn)
 
 
 @pytest.fixture
@@ -399,8 +398,12 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    syncer_callback = _PerTrialSyncerCallback(
-        lambda trial: trial.trainable_name == "__fake_remote")
+    class _SyncerCallback(SyncerCallback):
+        def _create_trial_syncer(self, trial: "Trial"):
+            client = mock_storage_client()
+            return MockNodeSyncer(trial.logdir, trial.logdir, client)
+
+    syncer_callback = _SyncerCallback(None)
     runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
     kwargs = {
         "stopping_criterion": {
@@ -433,33 +436,26 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
         # TrainableUtil will not check this path unless we mock it.
         mock_find.side_effect = hide_remote_path(find_func)
         mock_pkl_ckpt.side_effect = hide_remote_path(pickle_func)
-        with patch("ray.tune.logger.get_node_syncer") as mock_get_node_syncer:
 
-            def mock_get_syncer_fn(local_dir, remote_dir, sync_function):
-                client = mock_storage_client()
-                return MockNodeSyncer(local_dir, remote_dir, client)
+        # Test recovery of trial that has been checkpointed
+        t1 = Trial(trainable_id, **kwargs)
+        runner.add_trial(t1)
 
-            mock_get_node_syncer.side_effect = mock_get_syncer_fn
+        # Start trial, process result (x2), process save
+        for _ in range(4):
+            runner.step()
+        assert t1.has_checkpoint()
 
-            # Test recovery of trial that has been checkpointed
-            t1 = Trial(trainable_id, **kwargs)
-            runner.add_trial(t1)
-
-            # Start trial, process result (x2), process save
-            for _ in range(4):
+        cluster.add_node(num_cpus=1)
+        cluster.remove_node(node)
+        cluster.wait_for_nodes()
+        shutil.rmtree(os.path.dirname(t1.checkpoint.value))
+        runner.step()  # Collect result 3, kick off + fail result 4
+        runner.step()  # Dispatch restore
+        runner.step()  # Process restore + step 4
+        for _ in range(3):
+            if t1.status != Trial.TERMINATED:
                 runner.step()
-            assert t1.has_checkpoint()
-
-            cluster.add_node(num_cpus=1)
-            cluster.remove_node(node)
-            cluster.wait_for_nodes()
-            shutil.rmtree(os.path.dirname(t1.checkpoint.value))
-            runner.step()  # Collect result 3, kick off + fail result 4
-            runner.step()  # Dispatch restore
-            runner.step()  # Process restore + step 4
-            for _ in range(3):
-                if t1.status != Trial.TERMINATED:
-                    runner.step()
     assert t1.status == Trial.TERMINATED, runner.debug_string()
 
 
@@ -474,8 +470,10 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
     dirpath = str(tmpdir)
     syncer_callback = _PerTrialSyncerCallback(
         lambda trial: trial.trainable_name == "__fake")
-    runner = TrialRunner(local_checkpoint_dir=dirpath, checkpoint_period=0,
-                         callbacks=[syncer_callback])
+    runner = TrialRunner(
+        local_checkpoint_dir=dirpath,
+        checkpoint_period=0,
+        callbacks=[syncer_callback])
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2

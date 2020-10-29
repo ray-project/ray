@@ -884,9 +884,7 @@ class TrialRunner:
             self._scheduler_alg.on_trial_remove(self, trial)
             self._search_alg.on_trial_complete(trial.trial_id)
             self._callbacks.on_trial_complete(
-                iteration=self._iteration,
-                trials=self._trials,
-                trial=trial)
+                iteration=self._iteration, trials=self._trials, trial=trial)
         elif trial.status is Trial.RUNNING:
             try:
                 result = self.trial_executor.fetch_result(trial)
