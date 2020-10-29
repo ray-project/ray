@@ -182,14 +182,16 @@ class RunExperimentTest(unittest.TestCase):
                 with open(os.path.join(self.logdir, "test.log"), "w") as f:
                     f.write("hi")
 
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
-                "stop": {
-                    "training_iteration": 1
+        [trial] = run_experiments(
+            {
+                "foo": {
+                    "run": "__fake",
+                    "stop": {
+                        "training_iteration": 1
+                    }
                 }
-            }
-        }, callbacks=[LegacyExperimentLogger(logger_classes=[CustomLogger])])
+            },
+            callbacks=[LegacyExperimentLogger(logger_classes=[CustomLogger])])
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
         self.assertFalse(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
@@ -205,14 +207,16 @@ class RunExperimentTest(unittest.TestCase):
         self.assertTrue(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
 
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
-                "stop": {
-                    "training_iteration": 1
+        [trial] = run_experiments(
+            {
+                "foo": {
+                    "run": "__fake",
+                    "stop": {
+                        "training_iteration": 1
+                    }
                 }
-            }
-        }, callbacks=[LegacyExperimentLogger(logger_classes=[])])
+            },
+            callbacks=[LegacyExperimentLogger(logger_classes=[])])
         self.assertFalse(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
 
@@ -226,14 +230,16 @@ class RunExperimentTest(unittest.TestCase):
                 with open(os.path.join(self.logdir, "test.log"), "w") as f:
                     f.write("hi")
 
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
-                "stop": {
-                    "training_iteration": 1
+        [trial] = run_experiments(
+            {
+                "foo": {
+                    "run": "__fake",
+                    "stop": {
+                        "training_iteration": 1
+                    }
                 }
-            }
-        }, callbacks=[LegacyExperimentLogger(logger_classes=[CustomLogger])])
+            },
+            callbacks=[LegacyExperimentLogger(logger_classes=[CustomLogger])])
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
         self.assertTrue(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
@@ -249,17 +255,18 @@ class RunExperimentTest(unittest.TestCase):
         self.assertTrue(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
 
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
-                "stop": {
-                    "training_iteration": 1
+        [trial] = run_experiments(
+            {
+                "foo": {
+                    "run": "__fake",
+                    "stop": {
+                        "training_iteration": 1
+                    }
                 }
-            }
-        }, callbacks=[LegacyExperimentLogger(logger_classes=[])])
+            },
+            callbacks=[LegacyExperimentLogger(logger_classes=[])])
         self.assertTrue(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
-
 
     def testCustomTrialString(self):
         [trial] = run_experiments({

@@ -71,8 +71,9 @@ def _create_callbacks(callbacks: Optional[List[Callback]],
     if not loggers:
         # If no logger callback and no `loggers` have been provided,
         # add DEFAULT_LOGGERS.
-        if not any(isinstance(callback, ExperimentLogger)
-                   for callback in callbacks):
+        if not any(
+                isinstance(callback, ExperimentLogger)
+                for callback in callbacks):
             loggers = DEFAULT_LOGGERS
 
     # Create LegacyExperimentLogger for passed Logger classes
