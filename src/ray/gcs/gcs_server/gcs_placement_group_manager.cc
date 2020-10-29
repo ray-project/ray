@@ -394,7 +394,8 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   SchedulePendingPlacementGroups();
 }
 
-void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(JobID &job_id) {
+void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
+    const JobID &job_id) {
   for (const auto &it : registered_placement_groups_) {
     auto &placement_group = it.second;
     if (placement_group->GetCreatorJobId() != job_id) {

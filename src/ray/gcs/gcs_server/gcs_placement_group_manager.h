@@ -201,7 +201,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   ///
   /// This interface is a part of automatic lifecycle management for placement groups.
   /// When a job is killed, this method should be invoked to clean up
-  /// placement groups that belong to the given job id.
+  /// placement groups that belong to the given job.
   ///
   /// Calling this method doesn't mean placement groups that belong to the given job
   /// will be cleaned. Placement groups are cleaned only when the creator job AND actor
@@ -210,13 +210,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// NOTE: This method is idempotent.
   ///
   /// \param job_id The job id where placement groups that need to be cleaned belong to.
-  void CleanPlacementGroupIfNeededWhenJobDead(JobID &job_id);
+  void CleanPlacementGroupIfNeededWhenJobDead(const JobID &job_id);
 
   /// Clean placement group that belongs to the actor id if necessary.
   ///
   /// This interface is a part of automatic lifecycle management for placement groups.
   /// When an actor is killed, this method should be invoked to clean up
-  /// placement groups that belong to the given actor id.
+  /// placement groups that belong to the given actor.
   ///
   /// Calling this method doesn't mean placement groups that belong to the given actor
   /// will be cleaned. Placement groups are cleaned only when the creator job AND actor

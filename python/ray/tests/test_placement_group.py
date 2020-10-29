@@ -1052,9 +1052,14 @@ ray.shutdown()
                 return True
         return False
 
+    def assert_num_cpus(expected_num_cpus):
+        if expected_num_cpus == 0:
+            return "CPU" not in ray.available_resources()
+        return ray.available_resources()["CPU"] == expected_num_cpus
+
     wait_for_condition(is_job_done)
     available_cpus = ray.available_resources()["CPU"]
-    assert available_cpus == num_nodes * num_cpu_per_node
+    wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
 def test_automatic_cleanup_detached_actors(ray_start_cluster):
