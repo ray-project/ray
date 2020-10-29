@@ -566,6 +566,8 @@ class TrialRunner:
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=flat_result)
 
+                result.update(done=True)
+
                 # If this is not a duplicate result, the callbacks should
                 # be informed about the result.
                 if not is_duplicate:
@@ -581,7 +583,6 @@ class TrialRunner:
                     trials=self._trials,
                     trial=trial)
                 decision = TrialScheduler.STOP
-                result.update(done=True)
             else:
                 with warn_if_slow("scheduler.on_trial_result"):
                     decision = self._scheduler_alg.on_trial_result(
