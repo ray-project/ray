@@ -317,7 +317,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         # if we have IP do not print waiting info
         ip = self._get_node_ip()
         if ip is not None:
-            cli_logger.labeled_value("Fetched IP", ip)
+            # cli_logger.labeled_value("Fetched IP", ip)
             return ip
 
         interval = 10
@@ -478,10 +478,10 @@ class SSHCommandRunner(CommandRunnerInterface):
             # still create an interactive shell in some ssh versions.
             final_cmd.append("while true; do sleep 86400; done")
 
-        cli_logger.verbose("Running `{}`", cf.bold(cmd))
-        with cli_logger.indented():
-            cli_logger.very_verbose("Full command is `{}`",
-                                    cf.bold(" ".join(final_cmd)))
+        # cli_logger.verbose("Running `{}`", cf.bold(cmd))
+        # with cli_logger.indented():
+        #     cli_logger.very_verbose("Full command is `{}`",
+        #                             cf.bold(" ".join(final_cmd)))
 
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
@@ -648,10 +648,10 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
                 "sudo systemctl restart docker -f"
             ]
-            logger.error(
-                "Docker not installed. You can install Docker by adding the "
-                "following commands to 'initialization_commands':\n" +
-                "\n".join(install_commands))
+            # logger.error(
+            #     "Docker not installed. You can install Docker by adding the "
+            #     "following commands to 'initialization_commands':\n" +
+            #     "\n".join(install_commands))
 
     def _check_container_status(self):
         if self.initialized:

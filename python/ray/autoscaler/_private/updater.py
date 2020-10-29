@@ -163,7 +163,7 @@ class NodeUpdater:
                 TAG_RAY_FILE_MOUNTS_CONTENTS] = self.file_mounts_contents_hash
 
         self.provider.set_node_tags(self.node_id, tags_to_set)
-        cli_logger.labeled_value("New status", STATUS_UP_TO_DATE)
+        # cli_logger.labeled_value("New status", STATUS_UP_TO_DATE)
 
         self.exitcode = 0
 
@@ -212,9 +212,9 @@ class NodeUpdater:
                                      cf.bold(local_path))
 
         # Rsync file mounts
-        with cli_logger.group(
-                "Processing file mounts",
-                _numbered=("[]", previous_steps + 1, total_steps)):
+        # with cli_logger.group(
+        #         "Processing file mounts",
+        #         _numbered=("[]", previous_steps + 1, total_steps)):
             for remote_path, local_path in self.file_mounts.items():
                 do_sync(remote_path, local_path)
             previous_steps += 1
@@ -228,19 +228,19 @@ class NodeUpdater:
                 for path in self.cluster_synced_files:
                     do_sync(path, path, allow_non_existing_paths=True)
                 previous_steps += 1
-        else:
-            cli_logger.print(
-                "No worker file mounts to sync",
-                _numbered=("[]", previous_steps + 1, total_steps))
+        # else:
+        #     cli_logger.print(
+        #         "No worker file mounts to sync",
+        #         _numbered=("[]", previous_steps + 1, total_steps))
 
     def wait_ready(self, deadline):
-        with cli_logger.group(
-                "Waiting for SSH to become available", _numbered=("[]", 1, 6)):
+        # with cli_logger.group(
+        #         "Waiting for SSH to become available", _numbered=("[]", 1, 6)):
             with LogTimer(self.log_prefix + "Got remote shell"):
                 cli_logger.old_info(logger, "{}Waiting for remote shell...",
                                     self.log_prefix)
 
-                cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
+                # cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
                 first_conn_refused_time = None
                 while time.time() < deadline and \
                         not self.provider.is_terminated(self.node_id):
@@ -253,7 +253,7 @@ class NodeUpdater:
                         self.cmd_runner.run(
                             "uptime", timeout=5, run_env="host")
                         cli_logger.old_debug(logger, "Uptime succeeded.")
-                        cli_logger.success("Success.")
+                        # cli_logger.success("Success.")
                         return True
                     except ProcessRunnerError as e:
                         first_conn_refused_time = \
@@ -284,12 +284,12 @@ class NodeUpdater:
 
                         time.sleep(READY_CHECK_INTERVAL)
 
-        assert False, "Unable to connect to node"
+            assert False, "Unable to connect to node"
 
     def do_update(self):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
-        cli_logger.labeled_value("New status", STATUS_WAITING_FOR_SSH)
+        # cli_logger.labeled_value("New status", STATUS_WAITING_FOR_SSH)
 
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
@@ -315,18 +315,18 @@ class NodeUpdater:
                 "Configuration already up to date, "
                 "skipping file mounts, initalization and setup commands.",
                 _numbered=("[]", "2-5", 6))
-            cli_logger.old_info(logger,
-                                "{}{} already up-to-date, skip to ray start",
-                                self.log_prefix, self.node_id)
+            # cli_logger.old_info(logger,
+            #                     "{}{} already up-to-date, skip to ray start",
+            #                     self.log_prefix, self.node_id)
 
         else:
-            cli_logger.print(
-                "Updating cluster configuration.",
-                _tags=dict(hash=self.runtime_hash))
+            # cli_logger.print(
+            #     "Updating cluster configuration.",
+            #     _tags=dict(hash=self.runtime_hash))
 
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
-            cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
+            # cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
             self.sync_file_mounts(self.rsync_up, step_numbers=(2, 6))
 
             # Only run setup commands if runtime_hash has changed because
@@ -336,12 +336,12 @@ class NodeUpdater:
                 # Run init commands
                 self.provider.set_node_tags(
                     self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-                cli_logger.labeled_value("New status", STATUS_SETTING_UP)
+                # cli_logger.labeled_value("New status", STATUS_SETTING_UP)
 
                 if self.initialization_commands:
-                    with cli_logger.group(
-                            "Running initialization commands",
-                            _numbered=("[]", 3, 5)):
+                    # with cli_logger.group(
+                    #         "Running initialization commands",
+                    #         _numbered=("[]", 3, 5)):
                         with LogTimer(
                                 self.log_prefix + "Initialization commands",
                                 show_status=True):
@@ -373,10 +373,10 @@ class NodeUpdater:
                 self.cmd_runner.run_init(
                     as_head=self.is_head_node, file_mounts=self.file_mounts)
                 if self.setup_commands:
-                    with cli_logger.group(
-                            "Running setup commands",
-                            # todo: fix command numbering
-                            _numbered=("[]", 4, 6)):
+                    # with cli_logger.group(
+                    #         "Running setup commands",
+                    #         # todo: fix command numbering
+                    #         _numbered=("[]", 4, 6)):
                         with LogTimer(
                                 self.log_prefix + "Setup commands",
                                 show_status=True):
@@ -388,10 +388,10 @@ class NodeUpdater:
                                 else:
                                     cmd_to_print = cf.bold(cmd)
 
-                                cli_logger.print(
-                                    "{}",
-                                    cmd_to_print,
-                                    _numbered=("()", i, total))
+                                # cli_logger.print(
+                                #     "{}",
+                                #     cmd_to_print,
+                                #     _numbered=("()", i, total))
 
                                 try:
                                     # Runs in the container if docker is in use
@@ -408,8 +408,8 @@ class NodeUpdater:
                     cli_logger.print(
                         "No setup commands to run.", _numbered=("[]", 4, 6))
 
-        with cli_logger.group(
-                "Starting the Ray runtime", _numbered=("[]", 6, 6)):
+        # with cli_logger.group(
+        #         "Starting the Ray runtime", _numbered=("[]", 6, 6)):
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:

@@ -191,12 +191,6 @@ class Simulator:
                 new_work_queue.append(work)
         self.work_queue = new_work_queue
 
-    def _infeasible(self, bundle):
-        for node in self.ip_to_nodes.values():
-            if node.feasible(bundle):
-                return False
-        return True
-
     def _launch_nodes(self):
         """Launch all queued nodes. Since this will be run serially after
         `autoscaler.update` there are no race conditions in checking if the
@@ -204,15 +198,21 @@ class Simulator:
         """
         while not self.node_launcher.queue.empty():
             config, count, node_type = self.node_launcher.queue.get()
-            print("Got {} nodes to launch.".format(count))
             try:
                 self.node_launcher._launch_node(config, count, node_type)
             except Exception:
-                print("Launch failed")
+                pass
             finally:
                 self.node_launcher.pending.dec(node_type, count)
 
+    def _infeasible(self, bundle):
+        for node in self.ip_to_nodes.values():
+            if node.feasible(bundle):
+                return False
+        return True
+
     def run_autoscaler(self):
+
         waiting_bundles = []
         infeasible_bundles = []
         for work in self.work_queue:
@@ -224,6 +224,8 @@ class Simulator:
                     waiting_bundles.append(shape)
 
         for ip, node in self.ip_to_nodes.items():
+            if not node.in_cluster:
+                continue
             self.load_metrics.update(
                 ip=ip,
                 static_resources=node.total_resources,
@@ -264,6 +266,14 @@ class Simulator:
         return self.virtual_time
 
 
+SAMPLE_CLUSTER_CONFIG = copy.deepcopy(MULTI_WORKER_CLUSTER)
+SAMPLE_CLUSTER_CONFIG["min_workers"] = 0
+SAMPLE_CLUSTER_CONFIG["max_workers"] = 9999
+SAMPLE_CLUSTER_CONFIG["target_utilization_fraction"] = 1.0
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"]["max_workers"] = 100
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"]["max_workers"] = 10000
+
+
 class AutoscalingPolicyTest(unittest.TestCase):
     def setUp(self):
         _NODE_PROVIDERS["mock"] = lambda config: self.create_provider
@@ -302,7 +312,7 @@ class AutoscalingPolicyTest(unittest.TestCase):
         return path
 
     def testManyTasks(self):
-        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
         config_path = self.write_config(config)
         self.provider = MockProvider()
         simulator = Simulator(config_path, self.provider)
@@ -312,33 +322,33 @@ class AutoscalingPolicyTest(unittest.TestCase):
             nonlocal done_count
             done_count += 1
 
-        tasks = [Task(duration=10.0, resources={"CPU": 1}, done_callback=done_callback) for _ in range(10000)]
+        tasks = [Task(duration=200, resources={"CPU": 1}, done_callback=done_callback) for _ in range(10000)]
         simulator.submit(tasks)
 
         time = 0
         while done_count < len(tasks):
             time = simulator.step()
 
-        assert time < 1700
+        assert time < 200
 
     def testManyActors(self):
-        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
         config_path = self.write_config(config)
         self.provider = MockProvider()
         simulator = Simulator(config_path, self.provider)
 
-        done_count = 0
-        def done_callback():
-            nonlocal done_count
-            done_count += 1
+        start_count = 0
+        def start_callback():
+            nonlocal start_count
+            start_count += 1
 
-        tasks = [Actor(duration=10.0, resources={"CPU": 1}, done_callback=done_callback) for _ in range(10000)]
+        tasks = [Actor(duration=float("inf"), resources={"CPU": 1}, start_callback=start_callback) for _ in range(10000)]
         simulator.submit(tasks)
 
         time = 0
-        while done_count < len(tasks):
+        while start_count < len(tasks):
             time = simulator.step()
 
-        assert time < 1700
+        assert time < 200
 
 
