@@ -25,7 +25,7 @@ install_java() {
   export JAVA_HOME="$java_home"
 }
 
-install_java
+install_java > /dev/null 2>&1
 
 NODE_VERSION="14"
 PYTHONS=("cp36-cp36m"
