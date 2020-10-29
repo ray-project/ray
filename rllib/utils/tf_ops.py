@@ -1,3 +1,4 @@
+import gym
 import numpy as np
 import tree
 
@@ -35,7 +36,11 @@ def explained_variance(y, pred):
 
 
 def get_placeholder(*, space=None, value=None):
+    from ray.rllib.models.catalog import ModelCatalog
+
     if space is not None:
+        if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+            return ModelCatalog.get_action_placeholder(space, None)
         return tf1.placeholder(
             shape=(None, ) + space.shape,
             dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
