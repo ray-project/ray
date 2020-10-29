@@ -30,6 +30,7 @@ from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
     AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from ray.util.debug import log_once
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -325,7 +326,16 @@ class StandardAutoscaler:
         try:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
-            validate_config(new_config)
+            try:
+                validate_config(new_config)
+            except Exception as e:
+                if log_once("cluster_validate_config_fail"):
+                    logger.warning(
+                        "Cluster config validation failed. The version of the ray CLI "
+                        "you launched this cluster with may be higher than the version "
+                        "of ray being run on the cluster. Some new features may not be "
+                        "available until you upgrade ray on your cluster.",
+                        exc_info=e)
             (new_runtime_hash,
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],
