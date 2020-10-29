@@ -325,7 +325,7 @@ class StandardAutoscaler:
         try:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
-            if new_config != getattr(self, 'config', None):
+            if new_config != getattr(self, "config", None):
                 try:
                     validate_config(new_config)
                 except Exception as e:
