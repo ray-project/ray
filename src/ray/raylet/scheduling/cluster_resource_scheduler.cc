@@ -791,9 +791,8 @@ void ClusterResourceScheduler::Heartbeat(
       << "Error: Populating heartbeat failed. Please file a bug report: "
          "https://github.com/ray-project/ray/issues/new.";
 
-  if (light_heartbeat_enabled) {
-    // TODO
-    RAY_CHECK(false) << "TODO";
+  if (light_heartbeat_enabled && resources == last_report_resources_) {
+    return;
   } else {
     for (int i = 0; i < PredefinedResources_MAX; i++) {
       const auto &label = ResourceEnumToString((PredefinedResources)i);
@@ -819,6 +818,7 @@ void ClusterResourceScheduler::Heartbeat(
         (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
       }
     }
+    heartbeat_data->set_resources_available_changed(true);
   }
 }
 

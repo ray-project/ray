@@ -49,6 +49,8 @@ class ClusterResourceScheduler {
   /// Keep the mapping between node and resource IDs in string representation
   /// to integer representation. Used for improving map performance.
   StringIdMap string_to_int_map_;
+  /// Cached resources, used to compare with newest one in light heartbeat mode.
+  NodeResources last_report_resources_;
 
   /// Set predefined resources.
   ///
