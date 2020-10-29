@@ -78,6 +78,15 @@ cdef class GlobalStateAccessor:
             return c_string(object_info.get().data(), object_info.get().size())
         return None
 
+    def get_all_heartbeat(self):
+        """Get newest heartbeat of all nodes from GCS service."""
+        cdef unique_ptr[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllHeartbeat()
+        if result:
+            return c_string(result.get().data(), result.get().size())
+        return None
+
     def get_actor_table(self):
         cdef c_vector[c_string] result
         with nogil:
