@@ -114,23 +114,10 @@ def test_global_state_actor_table(ray_start_regular):
 
 def test_global_state_worker_table(ray_start_regular):
 
-    # Worker table should be empty at first.
-    assert len(ray.state.workers()) == 0
-
-    # Add global_worker.
-    worker_id = ray.worker.global_worker.worker_id
-    worker_type = gcs_utils.WORKER
-    worker_info = {"key1": "value1"}
-    result = ray.state.state.add_worker(worker_id, worker_type, worker_info)
-
-    # Add worker success.
-    assert result is True
-
     # Get worker table from gcs.
     workers_data = ray.state.workers()
 
     assert len(workers_data) == 1
-    assert binary_to_hex(worker_id) in workers_data
 
 
 def test_global_state_actor_entry(ray_start_regular):
