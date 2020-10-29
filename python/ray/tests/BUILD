@@ -11,14 +11,17 @@ SRCS = [] + select({
 py_test_module_list(
   files = [
     "test_async.py",
+    "test_actor.py",
+    "test_actor_failures.py",
+    "test_actor_advanced.py",
     "test_basic.py",
+    "test_basic_2.py",
     "test_cli.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
     "test_gcs_fault_tolerance.py",
     "test_iter.py",
     "test_resource_demand_scheduler.py",
-    "test_actor.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -28,14 +31,11 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_actor_advanced.py",
-    "test_actor_failures.py",
     "test_actor_resources.py",
     "test_advanced_2.py",
     "test_advanced_3.py",
     "test_advanced.py",
     "test_array.py",
-    "test_basic_2.py",
     "test_cancel.py",
     "test_component_failures_2.py",
     "test_dynres.py",

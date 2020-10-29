@@ -36,7 +36,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // TODO (Alex): We should distinguish between infeasible tasks and a fully
       // utilized cluster.
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          request_resources, &_unused);
+          request_resources, task.GetTaskSpecification().IsActorCreationTask(),
+          &_unused);
       if (node_id_string.empty()) {
         // There is no node that has available resources to run the request.
         // Move on to the next shape.
