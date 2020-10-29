@@ -55,7 +55,7 @@ if __name__ == "__main__":
             "max_seq_len": 50,
             "custom_model_config": {
                 "num_transformer_units": 1,
-                "attn_dim": 64,
+                "attention_dim": 64,
                 "num_heads": 2,
                 "memory_tau": 50,
                 "head_dim": 32,

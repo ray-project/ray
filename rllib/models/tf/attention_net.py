@@ -49,15 +49,15 @@ class TrXLNet(RecurrentNetwork):
     """A TrXL net Model described in [1]."""
 
     def __init__(self, observation_space, action_space, num_outputs,
-                 model_config, name, num_transformer_units, attn_dim,
+                 model_config, name, num_transformer_units, attention_dim,
                  num_heads, head_dim, position_wise_mlp_dim):
         """Initializes a TfXLNet object.
 
         Args:
             num_transformer_units (int): The number of Transformer repeats to
                 use (denoted L in [2]).
-            attn_dim (int): The input and output dimensions of one Transformer
-                unit.
+            attention_dim (int): The input and output dimensions of one
+                Transformer unit.
             num_heads (int): The number of attention heads to use in parallel.
                 Denoted as `H` in [3].
             head_dim (int): The dimension of a single(!) attention head within
@@ -66,29 +66,30 @@ class TrXLNet(RecurrentNetwork):
                 within the position-wise MLP (after the multi-head attention
                 block within one Transformer unit). This is the size of the
                 first of the two layers within the PositionwiseFeedforward. The
-                second layer always has size=`attn_dim`.
+                second layer always has size=`attention_dim`.
         """
 
         super().__init__(observation_space, action_space, num_outputs,
                          model_config, name)
 
         self.num_transformer_units = num_transformer_units
-        self.attn_dim = attn_dim
+        self.attention_dim = attention_dim
         self.num_heads = num_heads
         self.head_dim = head_dim
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
 
-        pos_embedding = relative_position_embedding(self.max_seq_len, attn_dim)
+        pos_embedding = relative_position_embedding(
+            self.max_seq_len, attention_dim)
 
         inputs = tf.keras.layers.Input(
             shape=(self.max_seq_len, self.obs_dim), name="inputs")
-        E_out = tf.keras.layers.Dense(attn_dim)(inputs)
+        E_out = tf.keras.layers.Dense(attention_dim)(inputs)
 
         for _ in range(self.num_transformer_units):
             MHA_out = SkipConnection(
                 RelativeMultiHeadAttention(
-                    out_dim=attn_dim,
+                    out_dim=attention_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
                     rel_pos_encoder=pos_embedding,
@@ -96,7 +97,7 @@ class TrXLNet(RecurrentNetwork):
                     output_activation=None),
                 fan_in_layer=None)(E_out)
             E_out = SkipConnection(
-                PositionwiseFeedforward(attn_dim, position_wise_mlp_dim))(
+                PositionwiseFeedforward(attention_dim, position_wise_mlp_dim))(
                 MHA_out)
             E_out = tf.keras.layers.LayerNormalization(axis=-1)(E_out)
 
@@ -149,7 +150,7 @@ class GTrXLNet(RecurrentNetwork):
         >> config["model"]["max_seq_len"] = 10
         >> config["model"]["custom_model_config"] = {
         >>     num_transformer_units=1,
-        >>     attn_dim=32,
+        >>     attention_dim=32,
         >>     num_heads=2,
         >>     memory_tau=50,
         >>     etc..
@@ -164,7 +165,7 @@ class GTrXLNet(RecurrentNetwork):
                  name,
                  *,
                  num_transformer_units: int = 1,
-                 attn_dim: int = 64,
+                 attention_dim: int = 64,
                  num_heads: int = 2,
                  memory_tau: int = 50,
                  head_dim: int = 32,
@@ -175,8 +176,8 @@ class GTrXLNet(RecurrentNetwork):
         Args:
             num_transformer_units (int): The number of Transformer repeats to
                 use (denoted L in [2]).
-            attn_dim (int): The input and output dimensions of one Transformer
-                unit.
+            attention_dim (int): The input and output dimensions of one
+                Transformer unit.
             num_heads (int): The number of attention heads to use in parallel.
                 Denoted as `H` in [3].
             memory_tau (int): The number of timesteps to store in each
@@ -188,7 +189,7 @@ class GTrXLNet(RecurrentNetwork):
                 within the position-wise MLP (after the multi-head attention
                 block within one Transformer unit). This is the size of the
                 first of the two layers within the PositionwiseFeedforward. The
-                second layer always has size=`attn_dim`.
+                second layer always has size=`attention_dim`.
             init_gate_bias (float): Initial bias values for the GRU gates (two
                 GRUs per Transformer unit, one after the MHA, one after the
                 position-wise MLP).
@@ -198,7 +199,7 @@ class GTrXLNet(RecurrentNetwork):
                          model_config, name)
 
         self.num_transformer_units = num_transformer_units
-        self.attn_dim = attn_dim
+        self.attention_dim = attention_dim
         self.num_heads = num_heads
         self.memory_tau = memory_tau
         self.head_dim = head_dim
@@ -207,21 +208,21 @@ class GTrXLNet(RecurrentNetwork):
 
         # Constant (non-trainable) sinusoid rel pos encoding matrix.
         Phi = relative_position_embedding(self.max_seq_len + self.memory_tau,
-                                          self.attn_dim)
+                                          self.attention_dim)
 
         # Raw observation input.
         input_layer = tf.keras.layers.Input(
             shape=(self.max_seq_len, self.obs_dim), name="inputs")
         memory_ins = [
             tf.keras.layers.Input(
-                shape=(self.memory_tau, self.attn_dim),
+                shape=(self.memory_tau, self.attention_dim),
                 dtype=tf.float32,
                 name="memory_in_{}".format(i))
             for i in range(self.num_transformer_units)
         ]
 
         # Map observation dim to input/output transformer (attention) dim.
-        E_out = tf.keras.layers.Dense(self.attn_dim)(input_layer)
+        E_out = tf.keras.layers.Dense(self.attention_dim)(input_layer)
         # Output, collected and concat'd to build the internal, tau-len
         # Memory units used for additional contextual information.
         memory_outs = [E_out]
@@ -231,7 +232,7 @@ class GTrXLNet(RecurrentNetwork):
             # RelativeMultiHeadAttention part.
             MHA_out = SkipConnection(
                 RelativeMultiHeadAttention(
-                    out_dim=self.attn_dim,
+                    out_dim=self.attention_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
                     rel_pos_encoder=Phi,
@@ -245,7 +246,7 @@ class GTrXLNet(RecurrentNetwork):
                 tf.keras.Sequential(
                     (tf.keras.layers.LayerNormalization(axis=-1),
                      PositionwiseFeedforward(
-                         out_dim=self.attn_dim,
+                         out_dim=self.attention_dim,
                          hidden_dim=position_wise_mlp_dim,
                          output_activation=tf.nn.relu))),
                 fan_in_layer=GRUGate(init_gate_bias),
@@ -311,7 +312,7 @@ class GTrXLNet(RecurrentNetwork):
         # Plus all Transformer blocks' E(l) outputs concat'd together (up to
         # tau timesteps).
         return [np.zeros((self.max_seq_len, self.obs_dim), np.float32)] + \
-               [np.zeros((self.memory_tau, self.attn_dim), np.float32)
+               [np.zeros((self.memory_tau, self.attention_dim), np.float32)
                 for _ in range(self.num_transformer_units)]
 
     @override(ModelV2)

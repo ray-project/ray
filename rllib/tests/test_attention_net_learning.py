@@ -42,7 +42,7 @@ class TestAttentionNetLearning(unittest.TestCase):
                     "max_seq_len": 10,
                     "custom_model_config": {
                         "num_transformer_units": 1,
-                        "attn_dim": 32,
+                        "attention_dim": 32,
                         "num_heads": 1,
                         "memory_tau": 5,
                         "head_dim": 32,
@@ -66,7 +66,7 @@ class TestAttentionNetLearning(unittest.TestCase):
                     "max_seq_len": 65,
                     "custom_model_config": {
                         "num_transformer_units": 1,
-                        "attn_dim": 64,
+                        "attention_dim": 64,
                         "num_heads": 1,
                         "memory_tau": 10,
                         "head_dim": 32,

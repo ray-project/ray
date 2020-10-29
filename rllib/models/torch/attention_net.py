@@ -56,7 +56,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         >> config["model"]["max_seq_len"] = 10
         >> config["model"]["custom_model_config"] = {
         >>     num_transformer_units=1,
-        >>     attn_dim=32,
+        >>     attention_dim=32,
         >>     num_heads=2,
         >>     memory_tau=50,
         >>     etc..
@@ -70,7 +70,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                  model_config,
                  name,
                  num_transformer_units,
-                 attn_dim,
+                 attention_dim,
                  num_heads,
                  memory_tau,
                  head_dim,
@@ -81,8 +81,8 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         Args:
             num_transformer_units (int): The number of Transformer repeats to
                 use (denoted L in [2]).
-            attn_dim (int): The input and output dimensions of one Transformer
-                unit.
+            attention_dim (int): The input and output dimensions of one
+                Transformer unit.
             num_heads (int): The number of attention heads to use in parallel.
                 Denoted as `H` in [3].
             memory_tau (int): The number of timesteps to store in each
@@ -94,7 +94,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                 within the position-wise MLP (after the multi-head attention
                 block within one Transformer unit). This is the size of the
                 first of the two layers within the PositionwiseFeedforward. The
-                second layer always has size=`attn_dim`.
+                second layer always has size=`attention_dim`.
             init_gate_bias (float): Initial bias values for the GRU gates (two
                 GRUs per Transformer unit, one after the MHA, one after the
                 position-wise MLP).
@@ -106,7 +106,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         nn.Module.__init__(self)
 
         self.num_transformer_units = num_transformer_units
-        self.attn_dim = attn_dim
+        self.attention_dim = attention_dim
         self.num_heads = num_heads
         self.memory_tau = memory_tau
         self.head_dim = head_dim
@@ -115,10 +115,10 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
 
         # Constant (non-trainable) sinusoid rel pos encoding matrix.
         Phi = relative_position_embedding(self.max_seq_len + self.memory_tau,
-                                          self.attn_dim)
+                                          self.attention_dim)
 
         self.linear_layer = SlimFC(
-            in_size=self.obs_dim, out_size=self.attn_dim)
+            in_size=self.obs_dim, out_size=self.attention_dim)
 
         self.layers = [self.linear_layer]
 
@@ -127,44 +127,44 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
             # RelativeMultiHeadAttention part.
             MHA_layer = SkipConnection(
                 RelativeMultiHeadAttention(
-                    in_dim=self.attn_dim,
-                    out_dim=self.attn_dim,
+                    in_dim=self.attention_dim,
+                    out_dim=self.attention_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
                     rel_pos_encoder=Phi,
                     input_layernorm=True,
                     output_activation=nn.ReLU),
-                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias))
+                fan_in_layer=GRUGate(self.attention_dim, init_gate_bias))
 
             # Position-wise MultiLayerPerceptron part.
             E_layer = SkipConnection(
                 nn.Sequential(
-                    torch.nn.LayerNorm(self.attn_dim),
+                    torch.nn.LayerNorm(self.attention_dim),
                     SlimFC(
-                        in_size=self.attn_dim,
+                        in_size=self.attention_dim,
                         out_size=position_wise_mlp_dim,
                         use_bias=False,
                         activation_fn=nn.ReLU),
                     SlimFC(
                         in_size=position_wise_mlp_dim,
-                        out_size=self.attn_dim,
+                        out_size=self.attention_dim,
                         use_bias=False,
                         activation_fn=nn.ReLU)),
-                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias))
+                fan_in_layer=GRUGate(self.attention_dim, init_gate_bias))
 
             # Build a list of all layers in order.
             self.layers.extend([MHA_layer, E_layer])
 
         # Postprocess GTrXL output with another hidden layer.
         self.logits = SlimFC(
-            in_size=self.attn_dim,
+            in_size=self.attention_dim,
             out_size=self.num_outputs,
             activation_fn=nn.ReLU)
 
         # Value function used by all RLlib Torch RL implementations.
         self._value_out = None
         self.values_out = SlimFC(
-            in_size=self.attn_dim, out_size=1, activation_fn=None)
+            in_size=self.attention_dim, out_size=1, activation_fn=None)
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
@@ -219,7 +219,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         # Plus all Transformer blocks' E(l) outputs concat'd together (up to
         # tau timesteps).
         return [np.zeros((self.max_seq_len, self.obs_dim), np.float32)] + \
-               [np.zeros((self.memory_tau, self.attn_dim), np.float32)
+               [np.zeros((self.memory_tau, self.attention_dim), np.float32)
                 for _ in range(self.num_transformer_units)]
 
     @override(ModelV2)

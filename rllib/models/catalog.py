@@ -80,7 +80,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # The memory size.
     "attention_memory_tau": 10,
     # The output dim of the position-wise MLP.
-    "attention_position_wise_dim": 32,
+    "attention_position_wise_mlp_dim": 32,
     "attention_init_gru_gate_bias": 2.0,
 
     # == Atari ==
@@ -423,9 +423,17 @@ class ModelCatalog:
                 else:
                     v2_class = ModelCatalog._wrap_if_needed(
                         wrapped_cls, GTrXLNet)
-                    model_kwargs = dict(
-                        model_kwargs,
-                        **model_config.get("custom_model_config", {}))
+                    model_kwargs.update({
+                        "num_transformer_units":
+                            model_config["attention_num_transformer_units"],
+                        "attention_dim": model_config["attention_dim"],
+                        "num_heads": model_config["attention_num_heads"],
+                        "memory_tau": model_config["attention_memory_tau"],
+                        "position_wise_mlp_dim":
+                            model_config["attention_position_wise_mlp_dim"],
+                        "init_gate_bias":
+                            model_config["attention_init_gru_gate_bias"],
+                    })
 
                 v2_class._wrapped_forward = forward
 

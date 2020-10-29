@@ -205,7 +205,7 @@ class TestAttentionNets(unittest.TestCase):
                     model_config={"max_seq_len": 2},
                     name="TestTorchAttentionNet",
                     num_transformer_units=2,
-                    attn_dim=D_in,
+                    attention_dim=D_in,
                     num_heads=2,
                     memory_tau=L,
                     head_dim=D_out,
@@ -247,7 +247,7 @@ class TestAttentionNets(unittest.TestCase):
                     model_config={"max_seq_len": 2},
                     name="TestTFAttentionNet",
                     num_transformer_units=2,
-                    attn_dim=D_in,
+                    attention_dim=D_in,
                     num_heads=2,
                     memory_tau=L,
                     head_dim=D_out,
@@ -274,7 +274,7 @@ class TestAttentionNets(unittest.TestCase):
         config["model"]["attention_dim"] = 32
         config["model"]["attention_head_dim"] = 16
         config["model"]["attention_num_transformer_units"] = 2
-        config["model"]["attention_position_wise_dim"] = 4
+        config["model"]["attention_position_wise_mlp_dim"] = 4
         config["model"]["attention_init_gru_gate_bias"] = 3.0
 
         for _ in framework_iterator(config, frameworks="tf"):
