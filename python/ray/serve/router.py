@@ -67,11 +67,6 @@ class Query:
         return Query(**kwargs)
 
 
-class ReplicaSet:
-    def __init__(self) -> None:
-        self.worker_replicas: List[ActorHandle]
-
-
 class Router:
     """A router that routes request to available workers."""
 
