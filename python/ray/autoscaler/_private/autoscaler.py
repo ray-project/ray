@@ -329,7 +329,9 @@ class StandardAutoscaler:
             try:
                 validate_config(new_config)
             except Exception as e:
-                if log_once("cluster_validate_config_fail"):
+                if not new_config.get(
+                        "no_config_validation_warning",
+                        False) and log_once("cluster_validate_config_fail"):
                     logger.warning(
                         "Cluster config validation failed. The version of the ray CLI "
                         "you launched this cluster with may be higher than the version "
