@@ -39,13 +39,14 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id,
-    bool placement_group_capture_child_tasks) {
+    bool placement_group_capture_child_tasks,
+    const std::unordered_map<std::string, std::string> &override_environment_variables) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(task_id, name, function.GetLanguage(),
-                            function.GetFunctionDescriptor(), job_id, current_task_id,
-                            task_index, caller_id, address, num_returns,
-                            required_resources, required_placement_resources,
-                            placement_group_id, placement_group_capture_child_tasks);
+  builder.SetCommonTaskSpec(
+      task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
+      current_task_id, task_index, caller_id, address, num_returns, required_resources,
+      required_placement_resources, placement_group_id,
+      placement_group_capture_child_tasks, override_environment_variables);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1282,19 +1283,27 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
-
   auto constrained_resources = AddPlacementGroupConstraint(
       task_options.resources, placement_options.first, placement_options.second);
   const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
+  // Propagate existing environment variable overrides, but override them with any new
+  // ones
+  std::unordered_map<std::string, std::string> current_override_environment_variables =
+      worker_context_.GetCurrentOverrideEnvironmentVariables();
+  std::unordered_map<std::string, std::string> override_environment_variables =
+      task_options.override_environment_variables;
+  override_environment_variables.insert(current_override_environment_variables.begin(),
+                                        current_override_environment_variables.end());
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
-                      placement_options.first, placement_group_capture_child_tasks);
+                      placement_options.first, placement_group_capture_child_tasks,
+                      override_environment_variables);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1322,6 +1331,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                   next_task_index);
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
   const JobID job_id = worker_context_.GetCurrentJobID();
+  // Propagate existing environment variable overrides, but override them with any new
+  // ones
+  std::unordered_map<std::string, std::string> current_override_environment_variables =
+      worker_context_.GetCurrentOverrideEnvironmentVariables();
+  std::unordered_map<std::string, std::string> override_environment_variables =
+      actor_creation_options.override_environment_variables;
+  override_environment_variables.insert(current_override_environment_variables.begin(),
+                                        current_override_environment_variables.end());
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
@@ -1341,7 +1358,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, &return_ids,
                       actor_creation_options.placement_options.first,
-                      actor_creation_options.placement_group_capture_child_tasks);
+                      actor_creation_options.placement_group_capture_child_tasks,
+                      override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.max_concurrency,
@@ -1442,13 +1460,15 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
+  const std::unordered_map<std::string, std::string> override_environment_variables = {};
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, return_ids, PlacementGroupID::Nil(),
-                      true /* placement_group_capture_child_tasks */);
-  // NOTE: placement_group_capture_child_tasks will be ignored in the actor because
-  // we should always follow actor's option.
+                      true, /* placement_group_capture_child_tasks */
+                      override_environment_variables);
+  // NOTE: placement_group_capture_child_tasks and override_environment_variables will be
+  // ignored in the actor because we should always follow the actor's option.
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, new_cursor);
