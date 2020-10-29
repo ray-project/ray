@@ -493,18 +493,18 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.PREV_REWARDS: self._prev_reward_input,
                     SampleBatch.CUR_OBS: self._obs_input,
                 })
-                loss_inputs = [
-                    (SampleBatch.PREV_ACTIONS, self._prev_action_input),
-                    (SampleBatch.PREV_REWARDS, self._prev_reward_input),
-                    (SampleBatch.CUR_OBS, self._obs_input),
-                ]
+                #loss_inputs = [
+                #    (SampleBatch.PREV_ACTIONS, self._prev_action_input),
+                #    (SampleBatch.PREV_REWARDS, self._prev_reward_input),
+                #    (SampleBatch.CUR_OBS, self._obs_input),
+                #]
             else:
                 train_batch = UsageTrackingDict({
                     SampleBatch.CUR_OBS: self._obs_input,
                 })
-                loss_inputs = [
-                    (SampleBatch.CUR_OBS, self._obs_input),
-                ]
+                #loss_inputs = [
+                #    (SampleBatch.CUR_OBS, self._obs_input),
+                #]
 
             for k, v in postprocessed_batch.items():
                 if k in train_batch:
