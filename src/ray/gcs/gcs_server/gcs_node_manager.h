@@ -95,6 +95,18 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get all heartbeat rpc request. Only used when light heartbeat enabled.
+  void HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &request,
+                             rpc::GetAllHeartbeatReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Update heartbeat of given node.
+  ///
+  /// \param node_id Node id.
+  /// \param request Request containing heartbeat.
+  void UpdateNodeHeartbeat(const NodeID node_id,
+                           const rpc::ReportHeartbeatRequest &request);
+
   /// Add an alive node.
   ///
   /// \param node The info of the node to be added.
@@ -259,6 +271,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::list<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
   /// Cluster resources.
   absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
+  /// Newest heartbeat of all nodes.
+  absl::flat_hash_map<NodeID, rpc::HeartbeatTableData> node_heartbeats_;
   /// A buffer containing heartbeats received from node managers in the last tick.
   absl::flat_hash_map<NodeID, rpc::HeartbeatTableData> heartbeat_buffer_;
   /// Listeners which monitors the addition of nodes.

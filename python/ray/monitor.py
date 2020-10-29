@@ -8,11 +8,14 @@ import json
 import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.load_metrics import LoadMetrics
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.utils import binary_to_hex, setup_logger
+from ray._raylet import GlobalStateAccessor
+
 import redis
 
 logger = logging.getLogger(__name__)
@@ -75,6 +78,9 @@ class Monitor:
             redis_address, redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
+        self.global_state_accessor = GlobalStateAccessor(
+            redis_address, redis_password, False)
+        self.global_state_accessor.connect()
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
@@ -85,7 +91,6 @@ class Monitor:
         # Keep a mapping from raylet client ID to IP address to use
         # for updating the load metrics.
         self.raylet_id_to_ip_map = {}
-        self.light_heartbeat_enabled = ray._config.light_heartbeat_enabled()
         self.load_metrics = LoadMetrics()
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
@@ -104,6 +109,9 @@ class Monitor:
             primary_subscribe_client = None
         if primary_subscribe_client is not None:
             primary_subscribe_client.close()
+        if self.global_state_accessor is not None:
+            self.global_state_accessor.disconnect()
+            self.global_state_accessor = None
 
     def subscribe(self, channel):
         """Subscribe to the given channel on the primary Redis shard.
@@ -127,38 +135,29 @@ class Monitor:
         """
         self.primary_subscribe_client.psubscribe(pattern)
 
-    def xray_heartbeat_batch_handler(self, unused_channel, data):
-        """Handle an xray heartbeat batch message from Redis."""
-
-        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
-        heartbeat_data = pub_message.data
-
-        message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
-            heartbeat_data)
-        for heartbeat_message in message.batch:
+    def get_all_heartbeat(self):
+        all_heartbeat = self.global_state_accessor.get_all_heartbeat()
+        heartbeat_batch_data = \
+            ray.gcs_utils.HeartbeatBatchTableData.FromString(all_heartbeat)
+        for heartbeat_message in heartbeat_batch_data.batch:
             resource_load = dict(heartbeat_message.resource_load)
             total_resources = dict(heartbeat_message.resources_total)
             available_resources = dict(heartbeat_message.resources_available)
 
-            waiting_bundles, infeasible_bundles = \
-                parse_resource_demands(message.resource_load_by_shape)
+            waiting_bundles, infeasible_bundles = parse_resource_demands(
+                heartbeat_batch_data.resource_load_by_shape)
 
             pending_placement_groups = list(
-                message.placement_group_load.placement_group_data)
+                heartbeat_batch_data.placement_group_load.placement_group_data)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
             if ip:
-                update_available_resources = not self.light_heartbeat_enabled \
-                    or heartbeat_message.resources_available_changed()
-                update_resource_load = not self.light_heartbeat_enabled \
-                    or heartbeat_message.resource_load_changed()
-                self.load_metrics.update(
-                    ip, total_resources, update_available_resources,
-                    available_resources, update_resource_load, resource_load,
-                    waiting_bundles, infeasible_bundles,
-                    pending_placement_groups)
+                self.load_metrics.update(ip, total_resources,
+                                         available_resources, resource_load,
+                                         waiting_bundles, infeasible_bundles,
+                                         pending_placement_groups)
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")
@@ -227,10 +226,7 @@ class Monitor:
                 data = message["data"]
 
                 # Determine the appropriate message handler.
-                if pattern == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
-                    # Similar functionality as raylet info channel
-                    message_handler = self.xray_heartbeat_batch_handler
-                elif pattern == ray.gcs_utils.XRAY_JOB_PATTERN:
+                if pattern == ray.gcs_utils.XRAY_JOB_PATTERN:
                     # Handles driver death.
                     message_handler = self.xray_job_notification_handler
                 elif (channel ==
@@ -269,8 +265,8 @@ class Monitor:
         # Initialize the mapping from raylet client ID to IP address.
         self.update_raylet_map()
 
+        self.get_all_heartbeat()
         # Initialize the subscription channel.
-        self.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
         self.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)
 
         if self.autoscaler:
@@ -288,13 +284,13 @@ class Monitor:
                 self.update_raylet_map()
                 self.autoscaler.update()
 
+            self.get_all_heartbeat()
             # Process a round of messages.
             self.process_messages()
 
-            # Wait for a heartbeat interval before processing the next round of
-            # messages.
-            time.sleep(
-                ray._config.raylet_heartbeat_timeout_milliseconds() * 1e-3)
+            # Wait for a autoscaler update interval before processing the next
+            # round of messages.
+            time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
 
     def destroy_autoscaler_workers(self):
         """Cleanup the autoscaler, in case of an exception in the run() method.

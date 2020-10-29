@@ -33,8 +33,9 @@ Using Resources (CPUs, GPUs)
 ============================
 
 To assign hardware resources per worker, you can pass resource requirements to
-``ray_actor_options``. To learn about options to pass in, take a look at
-:ref:`Resources with Actor<actor-resource-guide>` guide.
+``ray_actor_options``.
+By default, each worker requires one CPU.
+To learn about options to pass in, take a look at :ref:`Resources with Actor<actor-resource-guide>` guide.
 
 For example, to create a backend where each replica uses a single GPU, you can do the
 following:
@@ -43,6 +44,20 @@ following:
 
   config = {"num_gpus": 1}
   client.create_backend("my_gpu_backend", handle_request, ray_actor_options=config)
+
+Fractional Resources
+--------------------
+
+The resources specified in ``ray_actor_options`` can also be *fractional*.
+This allows you to flexibly share resources between workers.
+For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
+The same could be done to multiplex over CPUs.
+
+.. code-block:: python
+
+  half_gpu_config = {"num_gpus": 0.5}
+  client.create_backend("my_gpu_backend_1", handle_request, ray_actor_options=half_gpu_config)
+  client.create_backend("my_gpu_backend_2", handle_request, ray_actor_options=half_gpu_config)
 
 Configuring Parallelism with OMP_NUM_THREADS
 --------------------------------------------
