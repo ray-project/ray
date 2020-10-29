@@ -333,10 +333,11 @@ class StandardAutoscaler:
                         "no_config_validation_warning",
                         False) and log_once("cluster_validate_config_fail"):
                     logger.warning(
-                        "Cluster config validation failed. The version of the ray CLI "
-                        "you launched this cluster with may be higher than the version "
-                        "of ray being run on the cluster. Some new features may not be "
-                        "available until you upgrade ray on your cluster.",
+                        "Cluster config validation failed. The version of the "
+                        "ray CLI you launched this cluster with may be higher "
+                        "than the version of ray being run on the cluster. "
+                        "Some new features may not be available until you "
+                        "upgrade ray on your cluster.",
                         exc_info=e)
             (new_runtime_hash,
              new_file_mounts_contents_hash) = hash_runtime_conf(
