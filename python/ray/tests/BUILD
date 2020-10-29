@@ -76,6 +76,7 @@ py_test_module_list(
     "test_asyncio.py",
     "test_autoscaler.py",
     "test_autoscaler_yaml.py",
+    "test_autoscaling_policy.py",
     "test_component_failures.py",
     "test_command_runner.py",
     "test_coordinator_server.py",

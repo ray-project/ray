@@ -2,7 +2,7 @@ import copy
 import time
 import yaml
 import tempfile
-from typing import Any, Optional, Dict, Callable
+from typing import Dict, Callable
 import shutil
 from queue import PriorityQueue
 import unittest
@@ -10,27 +10,24 @@ import unittest
 import ray
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
-from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
+from ray.autoscaler._private.providers import _NODE_PROVIDERS, \
+    _clear_provider_cache
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.node_launcher import NodeLauncher
-from ray.autoscaler.tags import (
-    TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_KIND,
-    NODE_KIND_WORKER,
-    TAG_RAY_NODE_STATUS,
-    STATUS_UP_TO_DATE,
-    STATUS_UNINITIALIZED,
-)
+from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE,
+                                 TAG_RAY_NODE_KIND)
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 
+
 class Task:
-    def __init__(self,
-        duration : float,
-        resources : Dict[str, float],
-        start_callback : Callable[[None], None] = None,
-        done_callback : Callable[[None], None] = None,
-        submission_time : float=None
+    def __init__(
+            self,
+            duration: float,
+            resources: Dict[str, float],
+            start_callback: Callable[[None], None] = None,
+            done_callback: Callable[[None], None] = None,
+            submission_time: float = None,
     ):
         self.duration = duration
         self.resources = resources
@@ -91,11 +88,20 @@ class Event:
 
         return self.time == other.time
 
+
 SIMULATOR_EVENT_AUTOSCALER_UPDATE = 0
 SIMULATOR_EVENT_TASK_DONE = 1
 SIMULATOR_EVEN_NODE_JOINED = 2
+
+
 class Simulator:
-    def __init__(self, config_path, provider, autoscaler_update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S, node_startup_delay_s=120):
+    def __init__(
+            self,
+            config_path,
+            provider,
+            autoscaler_update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
+            node_startup_delay_s=120,
+    ):
         self.config_path = config_path
         self.provider = provider
         self.autoscaler_update_interval_s = autoscaler_update_interval_s
@@ -108,13 +114,17 @@ class Simulator:
         self.runner = MockProcessRunner()
         self.config = yaml.safe_load(open(self.config_path).read())
 
-        self.provider.create_node({}, {
-            TAG_RAY_NODE_KIND: "head",
-            TAG_RAY_USER_NODE_TYPE: self.config["head_node_type"]
-        }, 1)
+        self.provider.create_node(
+            {},
+            {
+                TAG_RAY_NODE_KIND: "head",
+                TAG_RAY_USER_NODE_TYPE: self.config["head_node_type"],
+            },
+            1,
+        )
         self.head_ip = self.provider.non_terminated_node_ips({})[0]
 
-        self.load_metrics = LoadMetrics(local_ip = self.head_ip)
+        self.load_metrics = LoadMetrics(local_ip=self.head_ip)
         self.autoscaler = StandardAutoscaler(
             self.config_path,
             self.load_metrics,
@@ -123,7 +133,8 @@ class Simulator:
             max_concurrent_launches=0,
             max_failures=0,
             process_runner=self.runner,
-            update_interval_s=0)
+            update_interval_s=0,
+        )
 
         # Manually create a node launcher. Note that we won't start it as a separate thread.
         self.node_launcher = NodeLauncher(
@@ -152,13 +163,14 @@ class Simulator:
             node_tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in node_tags:
                 node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
-                resources = self.config["available_node_types"][node_type].get("resources", {})
+                resources = self.config["available_node_types"][node_type].get(
+                    "resources", {})
                 node = Node(resources, join_immediately)
                 self.ip_to_nodes[ip] = node
                 if not join_immediately:
                     join_time = self.virtual_time + self.node_startup_delay_s
-                    self.event_queue.put(Event(join_time, SIMULATOR_EVEN_NODE_JOINED, node))
-
+                    self.event_queue.put(
+                        Event(join_time, SIMULATOR_EVEN_NODE_JOINED, node))
 
     def submit(self, work):
         if isinstance(work, list):
@@ -173,7 +185,8 @@ class Simulator:
                 task.node = node
                 task.start_time = self.virtual_time
                 end_time = self.virtual_time + task.duration
-                self.event_queue.put(Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
+                self.event_queue.put(
+                    Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
                 if task.start_callback:
                     task.start_callback()
                 return True
@@ -198,6 +211,7 @@ class Simulator:
         """
         while not self.node_launcher.queue.empty():
             config, count, node_type = self.node_launcher.queue.get()
+            print(f"[{self.virtual_time}]\tLaunching {count} {node_type} nodes")
             try:
                 self.node_launcher._launch_node(config, count, node_type)
             except Exception:
@@ -235,7 +249,7 @@ class Simulator:
                 resource_load={},
                 waiting_bundles=waiting_bundles,
                 infeasible_bundles=infeasible_bundles,
-                pending_placement_groups=[]
+                pending_placement_groups=[],
             )
 
         self.autoscaler.update()
@@ -246,7 +260,8 @@ class Simulator:
         if event.event_type == SIMULATOR_EVENT_AUTOSCALER_UPDATE:
             self.run_autoscaler()
             next_update = self.virtual_time + self.autoscaler_update_interval_s
-            self.event_queue.put(Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE))
+            self.event_queue.put(
+                Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE))
         elif event.event_type == SIMULATOR_EVENT_TASK_DONE:
             task = event.data
             task.node.free(task.resources)
@@ -255,7 +270,6 @@ class Simulator:
         elif event.event_type == SIMULATOR_EVEN_NODE_JOINED:
             node = event.data
             node.in_cluster = True
-
 
     def step(self):
         self.virtual_time = self.event_queue.queue[0].time
@@ -270,8 +284,10 @@ SAMPLE_CLUSTER_CONFIG = copy.deepcopy(MULTI_WORKER_CLUSTER)
 SAMPLE_CLUSTER_CONFIG["min_workers"] = 0
 SAMPLE_CLUSTER_CONFIG["max_workers"] = 9999
 SAMPLE_CLUSTER_CONFIG["target_utilization_fraction"] = 1.0
-SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"]["max_workers"] = 100
-SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"]["max_workers"] = 10000
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"][
+    "max_workers"] = 100
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"][
+    "max_workers"] = 10000
 
 
 class AutoscalingPolicyTest(unittest.TestCase):
@@ -318,18 +334,24 @@ class AutoscalingPolicyTest(unittest.TestCase):
         simulator = Simulator(config_path, self.provider)
 
         done_count = 0
+
         def done_callback():
             nonlocal done_count
             done_count += 1
 
-        tasks = [Task(duration=200, resources={"CPU": 1}, done_callback=done_callback) for _ in range(10000)]
+        tasks = [
+            Task(
+                duration=200,
+                resources={"CPU": 1},
+                done_callback=done_callback) for _ in range(5000)
+        ]
         simulator.submit(tasks)
 
         time = 0
         while done_count < len(tasks):
             time = simulator.step()
 
-        assert time < 200
+        assert time < 400
 
     def testManyActors(self):
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
@@ -338,11 +360,18 @@ class AutoscalingPolicyTest(unittest.TestCase):
         simulator = Simulator(config_path, self.provider)
 
         start_count = 0
+
         def start_callback():
             nonlocal start_count
             start_count += 1
 
-        tasks = [Actor(duration=float("inf"), resources={"CPU": 1}, start_callback=start_callback) for _ in range(10000)]
+        tasks = [
+            Actor(
+                duration=float("inf"),
+                resources={"CPU": 1},
+                start_callback=start_callback,
+            ) for _ in range(5000)
+        ]
         simulator.submit(tasks)
 
         time = 0
@@ -350,5 +379,3 @@ class AutoscalingPolicyTest(unittest.TestCase):
             time = simulator.step()
 
         assert time < 200
-
-
