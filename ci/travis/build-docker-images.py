@@ -203,9 +203,19 @@ def push_and_tag_images(push_base_images: bool):
 
     def docker_push(image, tag):
         if _merge_build():
-            result = DOCKER_CLIENT.api.push(image, tag=tag)
             print(f"PUSHING: {image}:{tag}, result:")
-            print(result)
+            # This docker API is janky. Without "stream=True" it returns a
+            # massive string filled with every progress bar update, which can
+            # cause CI to back up.
+            #
+            # With stream=True, it's a line-at-a-time generator of the same
+            # info. So we can slow it down by printing every couple hundred
+            # lines
+            i = 0
+            for progress_line in DOCKER_CLIENT.api.push(
+                    image, tag=tag, stream=True):
+                if i % 100 == 0:
+                    print(progress_line)
         else:
             print(
                 "This is a PR Build! On a merge build, we would normally push "
