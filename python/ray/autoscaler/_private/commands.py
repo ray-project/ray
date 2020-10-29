@@ -32,6 +32,7 @@ from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
+from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.worker import global_worker
 from ray.util.debug import log_once
@@ -507,6 +508,7 @@ def get_or_create_head_node(config,
                             _provider=None,
                             _runner=subprocess):
     """Create the cluster head node, which in turn creates the workers."""
+    global_event_system.execute_callback(CreateClusterEvent.cluster_booting_started, {})
     provider = (_provider or _get_node_provider(config["provider"],
                                                 config["cluster_name"]))
 
@@ -757,6 +759,7 @@ def get_or_create_head_node(config,
             cli_logger.print("  {}", remote_shell_str.strip())
     finally:
         provider.cleanup()
+        global_event_system.execute_callback(CreateClusterEvent.cluster_booting_completed, {"head_node_id": head_node, "head_node_ip": head_node_ip})
 
 
 def attach_cluster(config_file: str,
@@ -1128,8 +1131,3 @@ def _get_head_node(config: Dict[str, Any],
 
 def confirm(msg, yes):
     return None if yes else click.confirm(msg, abort=True)
-
-
-def _register_callback_handler(event_name: str, callback: Callable[[Dict], None]) -> None:
-    """Registers a callback handler for autoscaler events."""
-    cli_logger.add_callback_handler(event_name, callback)

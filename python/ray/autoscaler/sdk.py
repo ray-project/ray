@@ -7,7 +7,7 @@ import os
 import tempfile
 
 from ray.autoscaler._private import commands
-from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 
 
 def create_or_update_cluster(cluster_config: Union[dict, str],
@@ -28,7 +28,7 @@ def create_or_update_cluster(cluster_config: Union[dict, str],
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
     """
-    cli_logger.execute_callback("up_started", {"cluster_config": cluster_config})
+    global_event_system.execute_callback(CreateClusterEvent.up_started, {"cluster_config": cluster_config})
     with _as_config_file(cluster_config) as config_file:
         return commands.create_or_update_cluster(
             config_file=config_file,
@@ -213,4 +213,4 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def register_callback_handler(event_name: str, callback: Callable[[Dict], None]) -> None:
     """Registers a callback handler for autoscaler events."""
-    commands._register_callback_handler(event_name, callback)
+    global_event_system.add_callback_handler(event_name, callback)
