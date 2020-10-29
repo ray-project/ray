@@ -614,9 +614,7 @@ class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
         lm.update(
-            "1.1.1.1", {"CPU": 2},
-            True, {"CPU": 1},
-            True, {},
+            "1.1.1.1", {"CPU": 2}, {"CPU": 1}, {},
             waiting_bundles=[{
                 "GPU": 1
             }],
@@ -642,9 +640,7 @@ class LoadMetricsTest(unittest.TestCase):
                 bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
         ]
         lm.update(
-            "1.1.1.1", {},
-            True, {},
-            True, {},
+            "1.1.1.1", {}, {}, {},
             pending_placement_groups=pending_placement_groups)
         assert lm.get_pending_placement_groups() == pending_placement_groups
 
@@ -773,9 +769,7 @@ class AutoscalingTest(unittest.TestCase):
             "GPU_group_6c2506ac733bc37496295b02c4fad446": 0.0101
         }]
         lm.update(
-            head_ip, {"CPU": 16},
-            True, {"CPU": 16},
-            False, {},
+            head_ip, {"CPU": 16}, {"CPU": 16}, {},
             infeasible_bundles=placement_group_resource_demands,
             waiting_bundles=[{
                 "GPU": 8
@@ -873,16 +867,14 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(1)
-        lm.update(head_ip, {"CPU": 4, "GPU": 1}, True, {}, True, {})
+        lm.update(head_ip, {"CPU": 4, "GPU": 1}, {}, {})
         self.waitForNodes(1)
 
         lm.update(
             head_ip, {
                 "CPU": 4,
                 "GPU": 1
-            },
-            True, {"GPU": 0},
-            True, {},
+            }, {"GPU": 0}, {},
             waiting_bundles=[{
                 "GPU": 1
             }])
@@ -1016,9 +1008,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(0)
         autoscaler.update()
         lm.update(
-            "1.2.3.4", {},
-            True, {},
-            True, {},
+            "1.2.3.4", {}, {}, {},
             waiting_bundles=[{
                 "GPU": 1
             }],

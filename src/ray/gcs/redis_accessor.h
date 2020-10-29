@@ -370,6 +370,11 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncReReportHeartbeat() override;
 
+  Status AsyncGetAllHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override {
+    return Status::NotImplemented("AsyncGetAllHeartbeat not implemented");
+  }
+
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;

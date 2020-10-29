@@ -194,6 +194,9 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncReReportHeartbeat() override;
 
+  Status AsyncGetAllHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override;
+
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
