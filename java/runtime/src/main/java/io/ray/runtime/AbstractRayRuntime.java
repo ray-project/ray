@@ -165,9 +165,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
-      PlacementStrategy strategy) {
-    return taskSubmitter.createPlacementGroup(bundles, strategy);
+  public PlacementGroup createPlacementGroup(String name,
+      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    return taskSubmitter.createPlacementGroup(name, bundles, strategy);
   }
 
   @SuppressWarnings("unchecked")

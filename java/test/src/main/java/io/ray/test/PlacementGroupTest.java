@@ -5,6 +5,7 @@ import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementStrategy;
+import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +39,8 @@ public class PlacementGroupTest extends BaseTest {
     bundles.add(bundle);
     PlacementStrategy strategy = PlacementStrategy.PACK;
     PlacementGroup placementGroup = Ray.createPlacementGroup(bundles, strategy);
+
+    Assert.assertEquals(((PlacementGroupImpl)placementGroup).getName(),"unnamed_group");
 
     // Test creating an actor from a constructor.
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 1)
