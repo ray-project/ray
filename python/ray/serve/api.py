@@ -9,9 +9,11 @@ from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_random_letters, logger)
 from ray.serve.exceptions import RayServeException
-from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
+from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
+                              CondaEnv)
 from ray.actor import ActorHandle
 from typing import Any, Callable, Dict, List, Optional, Type, Union
+import os
 
 _INTERNAL_CONTROLLER_NAME = None
 
@@ -197,8 +199,8 @@ class Client:
             func_or_class: Union[Callable, Type[Callable]],
             *actor_init_args: Any,
             ray_actor_options: Optional[Dict] = None,
-            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
-    ) -> None:
+            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
+            env: Optional[CondaEnv] = None) -> None:
         """Create a backend with the provided tag.
 
         The backend will serve requests with func_or_class.
@@ -224,6 +226,10 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries that
                 will be sent to a replica of this backend without receiving a
                 response.
+            env (serve.CondaEnv, optional): conda environment to run
+                backend in.  Requires the client to be running in an activated
+                conda environment (not necessarily "env"), and requires "env"
+                to be an existing conda environment on all nodes.
         """
         if backend_tag in self.list_backends():
             raise ValueError(
@@ -232,6 +238,23 @@ class Client:
 
         if config is None:
             config = {}
+        if ray_actor_options is None:
+            ray_actor_options = {}
+        if env is None:
+            # If conda is activated, default to conda env of the driver.
+            if os.environ.get("CONDA_PREFIX"):
+                ray_actor_options.update(override_environment_variables={
+                    "PYTHONHOME": os.environ.get("CONDA_PREFIX")
+                })
+        else:
+            if not os.environ.get("CONDA_PREFIX"):
+                raise ValueError("conda must be activated to use CondaEnv.")
+            python_home = os.path.join(
+                os.path.split(os.environ.get("CONDA_PREFIX"))[0], env.name)
+            if not os.path.isdir(python_home):
+                raise ValueError("conda env " + env.name + " not found.")
+            ray_actor_options.update(
+                override_environment_variables={"PYTHONHOME": python_home})
         replica_config = ReplicaConfig(
             func_or_class,
             *actor_init_args,
