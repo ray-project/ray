@@ -801,6 +801,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   int64_t max_restarts = mutable_actor_table_data->max_restarts();
   uint64_t num_restarts = mutable_actor_table_data->num_restarts();
   int64_t remaining_restarts;
+  // SANG-TODO Write a new method.
+  NotifyActorDeathToListener(actor_id);
   if (!need_reschedule) {
     remaining_restarts = 0;
   } else if (max_restarts == -1) {
@@ -851,10 +853,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           // when its owners are dead because it doesn't have owners.
           if (actor->IsDetached()) {
             DestroyActor(actor_id);
-            // NOTE: This method won't be invoked inside DestroyActor if the actor is
-            // detached because the actor state is already DEAD, so we should invoke here.
-            // TODO(sang): Refactor this to be cleaner.
-            NotifyActorDeathToListener(actor_id);
           }
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
