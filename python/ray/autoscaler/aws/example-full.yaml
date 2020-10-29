@@ -32,8 +32,7 @@ docker:
 
     # Example of running a GPU head with CPU workers
     # head_image: "rayproject/ray:0.8.7-gpu"
-    # head_run_options:
-    #     - --runtime=nvidia
+    # Allow Ray to automatically detect GPUs
 
     # worker_image: "rayproject/ray:0.8.7"
     # worker_run_options: []
@@ -137,7 +136,7 @@ setup_commands:
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
-    - pip install boto3>=1.4.8  # 1.4.8 adds InstanceMarketOptions
+    - pip install 'boto3>=1.4.8'  # 1.4.8 adds InstanceMarketOptions
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

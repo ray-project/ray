@@ -9,18 +9,14 @@ These pages will demonstrate the various features and configurations of Tune.
 
 This document provides an overview of the core concepts as well as some of the configurations for running Tune.
 
-.. contents:: :local:
-
 .. _tune-parallelism:
 
-Parallelism / GPUs
-------------------
+Resources (Parallelism, GPUs, Distributed)
+------------------------------------------
 
 .. tip:: To run everything sequentially, use :ref:`Ray Local Mode <tune-debugging>`.
 
 Parallelism is determined by ``resources_per_trial`` (defaulting to 1 CPU, 0 GPU per trial) and the resources available to Tune (``ray.cluster_resources()``).
-
-Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial. A trial will not be scheduled unless at least that amount of resources is available, preventing the cluster from being overloaded.
 
 By default, Tune automatically runs N concurrent trials, where N is the number of CPUs (cores) on your machine.
 
@@ -42,7 +38,13 @@ You can override this parallelism with ``resources_per_trial``:
     # Fractional values are also supported, (i.e., {"cpu": 0.5}).
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 0.5})
 
-To leverage GPUs, you must set ``gpu`` in ``resources_per_trial``. This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
+
+Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial. A trial will not be scheduled unless at least that amount of resources is available, preventing the cluster from being overloaded.
+
+Using GPUs
+~~~~~~~~~~
+
+To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial={})``. This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
 
 .. code-block:: python
 
@@ -56,6 +58,35 @@ You can find an example of this in the :doc:`Keras MNIST example </tune/examples
 
 .. warning:: If 'gpu' is not set, ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
 
+**Troubleshooting**: Occasionally, you may run into GPU memory issues when running a new trial. This may be
+due to the previous trial not cleaning up its GPU state fast enough. To avoid this,
+you can use ``tune.utils.wait_for_gpu`` - see :ref:`docstring <tune-util-ref>`.
+
+
+Concurrent samples
+~~~~~~~~~~~~~~~~~~
+
+If using a :ref:`search algorithm <tune-search-alg>`, you may want to limit the number of trials that are being evaluated. For example, you may want to serialize the evaluation of trials to do sequential optimization.
+
+In this case, ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency:
+
+.. code-block:: python
+
+    algo = BayesOptSearch(utility_kwargs={
+        "kind": "ucb",
+        "kappa": 2.5,
+        "xi": 0.0
+    })
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+    scheduler = AsyncHyperBandScheduler()
+
+See :ref:`limiter` for more details.
+
+
+
+Distributed Tuning
+~~~~~~~~~~~~~~~~~~
+
 To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :ref:`start-ray-cli` for more information about ``ray.init``:
 
 .. code-block:: python
@@ -64,7 +95,7 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :re
     ray.init(address=<ray_address>)
     tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
 
-
+Read more in the Tune :ref:`distributed experiments guide <tune-distributed>`.
 
 .. _tune-default-search-space:
 
@@ -106,37 +137,51 @@ By default, each random variable and grid search point is sampled once. To take 
 
 Note that search spaces may not be interoperable across different search algorithms. For example, for many search algorithms, you will not be able to use a ``grid_search`` parameter. Read about this in the :ref:`Search Space API <tune-search-space>` page.
 
-Reporting Metrics
------------------
+.. _tune-autofilled-metrics:
+
+Auto-filled Metrics
+-------------------
 
 You can log arbitrary values and metrics in both training APIs:
 
 .. code-block:: python
 
     def trainable(config):
-        num_epochs = 100
         for i in range(num_epochs):
-            accuracy = model.train()
-            metric_1 = f(model)
-            metric_2 = model.get_loss()
+            ...
             tune.report(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
     class Trainable(tune.Trainable):
-        ...
-
-        def step(self):  # this is called iteratively
-            accuracy = self.model.train()
-            metric_1 = f(self.model)
-            metric_2 = self.model.get_loss()
+        def step(self):
+            ...
             # don't call report here!
             return dict(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
 During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
 
-.. literalinclude:: ../../../python/ray/tune/result.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+* ``config``: The hyperparameter configuration
+* ``date``: String-formatted date and time when the result was processed
+* ``done``: True if the trial has been finished, False otherwise
+* ``episodes_total``: Total number of episodes (for RLLib trainables)
+* ``experiment_id``: Unique experiment ID
+* ``experiment_tag``: Unique experiment tag (includes parameter values)
+* ``hostname``: Hostname of the worker
+* ``iterations_since_restore``: The number of times ``tune.report()/trainable.train()`` has been
+  called after restoring the worker from a checkpoint
+* ``node_ip``: Host IP of the worker
+* ``pid``: Process ID (PID) of the worker process
+* ``time_since_restore``: Time in seconds since restoring from a checkpoint.
+* ``time_this_iter_s``: Runtime of the current training iteration in seconds (i.e.
+  one call to the trainable function or to ``_train()`` in the class API.
+* ``time_total_s``: Total runtime in seconds.
+* ``timestamp``: Timestamp when the result was processed
+* ``timesteps_since_restore``: Number of timesteps since restoring from a checkpoint
+* ``timesteps_total``: Total number of timesteps
+* ``training_iteration``: The number of times ``tune.report()`` has been
+  called
+* ``trial_id``: Unique trial ID
+
+All of these metrics can be seen in the ``Trial.last_result`` dictionary.
 
 .. _tune-checkpoint:
 
@@ -378,14 +423,7 @@ If using TF2, Tune also automatically generates TensorBoard HParams output, as s
 Console Output
 --------------
 
-The following fields will automatically show up on the console output, if provided:
-
-1. ``episode_reward_mean``
-2. ``mean_loss``
-3. ``mean_accuracy``
-4. ``timesteps_this_iter`` (aggregated into ``timesteps_total``).
-
-Below is an example of the console output:
+User-provided fields will be outputted automatically on a best-effort basis. You can use a :ref:`Reporter <tune-reporter-doc>` object to customize the console output.
 
 .. code-block:: bash
 
@@ -404,7 +442,6 @@ Below is an example of the console output:
     | MyTrainable_a826b7bc | RUNNING  | 10.234.98.164:31112 | 0.729127  | 0.0748 | 0.1797 |        7.05715 |    14 |
     +----------------------+----------+---------------------+-----------+--------+--------+----------------+-------+
 
-You can use a :ref:`Reporter <tune-reporter-doc>` object to customize the console output.
 
 
 Uploading Results
@@ -447,6 +484,27 @@ If a string is provided, then it must include replacement fields ``{source}`` an
 By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period.
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``TUNE_GLOBAL_CHECKPOINT_S`` environment variable. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, TUNE_GLOBAL_CHECKPOINT_S)``.
+
+
+.. _tune-docker:
+
+Using Tune with Docker
+----------------------
+Tune automatically syncs files and checkpoints between different remote
+containers as needed.
+
+To make this work in your Docker cluster, e.g. when you are using the Ray autoscaler
+with docker containers, you will need to pass a
+``DockerSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
+
+.. code-block:: python
+
+    from ray.tune.integration.docker import DockerSyncer
+    sync_config = tune.SyncConfig(
+        sync_to_driver=DockerSyncer)
+
+    tune.run(train, sync_config=sync_config)
+
 
 .. _tune-kubernetes:
 
@@ -587,6 +645,8 @@ These are the environment variables Ray Tune currently considers:
   or a search algorithm, Tune will error
   if the metric was not reported in the result. Setting this environment variable
   to ``1`` will disable this check.
+* **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
+  for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
   experiment state is checkpointed. If not set this will default to ``10``.
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those

@@ -671,7 +671,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
             self.container_name,
             self.docker_config.get("run_options", []) + self.docker_config.get(
-                f"{'head' if as_head else 'worker'}_run_options", []))
+                f"{'head' if as_head else 'worker'}_run_options",
+                []) + self._configure_runtime())
 
         if not self._check_container_status():
             self.run(start_command, run_env="host")
@@ -714,3 +715,14 @@ class DockerCommandRunner(CommandRunnerInterface):
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True
+
+    def _configure_runtime(self):
+        if self.docker_config.get("disable_automatic_runtime_detection"):
+            return []
+
+        runtime_output = self.ssh_command_runner.run(
+            "docker info -f '{{.Runtimes}}' ",
+            with_output=True).decode().strip()
+        if "nvidia-container-runtime" in runtime_output:
+            return ["--runtime=nvidia"]
+        return []

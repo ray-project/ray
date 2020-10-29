@@ -7,7 +7,7 @@ import {
   withStyles,
 } from "@material-ui/core";
 import React from "react";
-import { getLogs, LogsResponse } from "../../../../../api";
+import { getLogs, LogsByPid } from "../../../../../api";
 import DialogWithTitle from "../../../../../common/DialogWithTitle";
 import NumberedLines from "../../../../../common/NumberedLines";
 
@@ -29,12 +29,12 @@ const styles = (theme: Theme) =>
 
 type Props = {
   clearLogDialog: () => void;
-  hostname: string;
+  nodeIp: string;
   pid: number | null;
 };
 
 type State = {
-  result: LogsResponse | null;
+  result: LogsByPid | null;
   error: string | null;
 };
 
@@ -46,16 +46,16 @@ class Logs extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   async componentDidMount() {
     try {
-      const { hostname, pid } = this.props;
-      const result = await getLogs(hostname, pid);
-      this.setState({ result, error: null });
+      const { nodeIp, pid } = this.props;
+      const result = await getLogs(nodeIp, pid);
+      this.setState({ result: result.logs, error: null });
     } catch (error) {
       this.setState({ result: null, error: error.toString() });
     }
   }
 
   render() {
-    const { classes, clearLogDialog, hostname } = this.props;
+    const { classes, clearLogDialog, nodeIp } = this.props;
     const { result, error } = this.state;
 
     return (
@@ -68,7 +68,7 @@ class Logs extends React.Component<Props & WithStyles<typeof styles>, State> {
           Object.entries(result).map(([pid, lines]) => (
             <React.Fragment key={pid}>
               <Typography className={classes.header}>
-                {hostname} (PID: {pid})
+                {nodeIp} (PID: {pid})
               </Typography>
               {lines.length > 0 ? (
                 <div className={classes.log}>

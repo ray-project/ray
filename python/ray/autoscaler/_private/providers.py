@@ -1,11 +1,15 @@
 import importlib
 import logging
+import json
 import os
 from typing import Any, Dict
 
 import yaml
 
 logger = logging.getLogger(__name__)
+
+# For caching provider instantiations across API calls of one python session
+_provider_instances = {}
 
 
 def _import_aws(provider_config):
@@ -131,18 +135,28 @@ def _load_class(path):
 
 
 def _get_node_provider(provider_config: Dict[str, Any],
-                       cluster_name: str) -> Any:
-    """Retrieve a node provider.
-
-    This returns access to an INTERNAL API. It is not allowed to call this
-    from any Ray package outside the autoscaler.
-    """
+                       cluster_name: str,
+                       use_cache: bool = True) -> Any:
     importer = _NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))
     provider_cls = importer(provider_config)
-    return provider_cls(provider_config, cluster_name)
+    provider_key = (json.dumps(provider_config, sort_keys=True), cluster_name)
+    if use_cache and provider_key in _provider_instances:
+        return _provider_instances[provider_key]
+
+    new_provider = provider_cls(provider_config, cluster_name)
+
+    if use_cache:
+        _provider_instances[provider_key] = new_provider
+
+    return new_provider
+
+
+def _clear_provider_cache():
+    global _provider_instances
+    _provider_instances = {}
 
 
 def _get_default_config(provider_config):

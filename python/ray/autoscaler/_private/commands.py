@@ -19,7 +19,8 @@ except ImportError:  # py2
 
 from ray.experimental.internal_kv import _internal_kv_get
 import ray._private.services as services
-from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
@@ -119,7 +120,7 @@ def create_or_update_cluster(config_file: str,
                              no_restart: bool,
                              restart_only: bool,
                              yes: bool,
-                             override_cluster_name: Optional[str],
+                             override_cluster_name: Optional[str] = None,
                              no_config_cache: bool = False,
                              redirect_command_output: bool = False,
                              use_login_shells: bool = True) -> None:
@@ -304,7 +305,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             # todo: add better exception info
             cli_logger.verbose_error("{}", str(e))
             cli_logger.warning(
-                "Exception occured when stopping the cluster Ray runtime "
+                "Exception occurred when stopping the cluster Ray runtime "
                 "(use -v to dump teardown exceptions).")
             cli_logger.warning(
                 "Ignoring the exception and "
@@ -941,8 +942,11 @@ def rsync(config_file: str,
           target: Optional[str],
           override_cluster_name: Optional[str],
           down: bool,
+          ip_address: Optional[str] = None,
+          use_internal_ip: bool = False,
           no_config_cache: bool = False,
-          all_nodes: bool = False):
+          all_nodes: bool = False,
+          _runner=subprocess):
     """Rsyncs files.
 
     Arguments:
@@ -951,6 +955,10 @@ def rsync(config_file: str,
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
+        ip_address (str): Address of node. Raise Exception
+            if both ip_address and 'all_nodes' are provided.
+        use_internal_ip (bool): Whether the provided ip_address is
+            public or private.
         all_nodes: whether to sync worker nodes in addition to the head node
     """
     if bool(source) != bool(target):
@@ -959,6 +967,9 @@ def rsync(config_file: str,
 
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
+
+    if ip_address and all_nodes:
+        cli_logger.abort("Cannot provide both ip_address and 'all_nodes'.")
 
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
@@ -973,54 +984,60 @@ def rsync(config_file: str,
                 break
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
+
+    def rsync_to_node(node_id, is_head_node):
+        updater = NodeUpdaterThread(
+            node_id=node_id,
+            provider_config=config["provider"],
+            provider=provider,
+            auth_config=config["auth"],
+            cluster_name=config["cluster_name"],
+            file_mounts=config["file_mounts"],
+            initialization_commands=[],
+            setup_commands=[],
+            ray_start_commands=[],
+            runtime_hash="",
+            use_internal_ip=use_internal_ip,
+            process_runner=_runner,
+            file_mounts_contents_hash="",
+            is_head_node=is_head_node,
+            docker_config=config.get("docker"))
+        if down:
+            rsync = updater.rsync_down
+        else:
+            rsync = updater.rsync_up
+
+        if source and target:
+            # print rsync progress for single file rsync
+            cmd_output_util.set_output_redirected(False)
+            set_rsync_silent(False)
+            rsync(source, target, is_file_mount)
+        else:
+            updater.sync_file_mounts(rsync)
+
     try:
         nodes = []
-        if all_nodes:
-            # technically we re-open the provider for no reason
-            # in get_worker_nodes but it's cleaner this way
-            # and _get_head_node does this too
-            nodes = _get_worker_nodes(config, override_cluster_name)
-
         head_node = _get_head_node(
             config, config_file, override_cluster_name, create_if_needed=False)
-
-        nodes += [head_node]
+        if ip_address:
+            nodes = [
+                provider.get_node_id(
+                    ip_address, use_internal_ip=use_internal_ip)
+            ]
+        else:
+            if all_nodes:
+                nodes = _get_worker_nodes(config, override_cluster_name)
+            nodes += [head_node]
 
         for node_id in nodes:
-            updater = NodeUpdaterThread(
-                node_id=node_id,
-                provider_config=config["provider"],
-                provider=provider,
-                auth_config=config["auth"],
-                cluster_name=config["cluster_name"],
-                file_mounts=config["file_mounts"],
-                initialization_commands=[],
-                setup_commands=[],
-                ray_start_commands=[],
-                runtime_hash="",
-                file_mounts_contents_hash="",
-                is_head_node=(node_id == head_node),
-                docker_config=config.get("docker"))
-            if down:
-                rsync = updater.rsync_down
-            else:
-                rsync = updater.rsync_up
-
-            if source and target:
-                # print rsync progress for single file rsync
-                cmd_output_util.set_output_redirected(False)
-                set_rsync_silent(False)
-
-                rsync(source, target, is_file_mount)
-            else:
-                updater.sync_file_mounts(rsync)
+            rsync_to_node(node_id, is_head_node=(node_id == head_node))
 
     finally:
         provider.cleanup()
 
 
 def get_head_node_ip(config_file: str,
-                     override_cluster_name: Optional[str]) -> str:
+                     override_cluster_name: Optional[str] = None) -> str:
     """Returns head node IP for given configuration file if exists."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -1030,7 +1047,7 @@ def get_head_node_ip(config_file: str,
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node = _get_head_node(config, config_file, override_cluster_name)
-        if config.get("provider", {}).get("use_internal_ips", False) is True:
+        if config.get("provider", {}).get("use_internal_ips", False):
             head_node_ip = provider.internal_ip(head_node)
         else:
             head_node_ip = provider.external_ip(head_node)
@@ -1041,7 +1058,8 @@ def get_head_node_ip(config_file: str,
 
 
 def get_worker_node_ips(config_file: str,
-                        override_cluster_name: Optional[str]) -> List[str]:
+                        override_cluster_name: Optional[str] = None
+                        ) -> List[str]:
     """Returns worker node IPs for given configuration file."""
 
     config = yaml.safe_load(open(config_file).read())

@@ -12,17 +12,13 @@ export const NodeWorkerRow: React.FC<NodeWorkerRowProps> = ({
   features,
   data,
 }) => {
-  const { node, worker, rayletWorker } = data;
+  const { node, worker } = data;
   return (
     <TableRow hover>
       <StyledTableCell />
       {features.map((WorkerFeature, index) => (
         <StyledTableCell key={index}>
-          <WorkerFeature
-            node={node}
-            worker={worker}
-            rayletWorker={rayletWorker}
-          />
+          <WorkerFeature node={node} worker={worker} />
         </StyledTableCell>
       ))}
     </TableRow>
