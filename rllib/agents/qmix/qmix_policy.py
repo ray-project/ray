@@ -215,8 +215,6 @@ class QMixTorchPolicy(Policy):
             name="target_model",
             default_model=RNNModel).to(self.device)
 
-        # Auto-update model's inference view requirements, if recurrent.
-        self.model.update_view_requirements_from_init_state()
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.inference_view_requirements)
 
