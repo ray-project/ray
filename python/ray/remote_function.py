@@ -142,7 +142,8 @@ class RemoteFunction:
                 name=""):
         """Configures and overrides the task invocation parameters.
 
-        Options are overlapping values provided by :obj:`ray.remote`.
+        The arguments are the same as those that can be passed to
+        :obj:`ray.remote`.
 
         Examples:
 
