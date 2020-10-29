@@ -5,18 +5,6 @@ from typing import List
 import ray
 
 
-class ExternalStorageConfigInvalidError(Exception):
-    """Exception that indicates external storage is not properly setup.
-
-    This exception should be thrown when external storage setup is not
-    successful. For example, if the directory path for file system object
-    spilling doesn't exist, that means object spilling wouldn't work. In
-    that case, this exception should be thrown. This should be thrown
-    only from __init__ method inside External storage inherited classes.
-    """
-    pass
-
-
 class ExternalStorage(metaclass=abc.ABCMeta):
     """The base class for external storage.
 
@@ -29,7 +17,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     instantiating external storage to validate the config.
 
     Raises:
-        ExternalStorageConfigInvalidError: when given configuration for
+        ValueError: when given configuration for
             the external storage is invalid.
     """
 
@@ -85,7 +73,7 @@ class FileSystemStorage(ExternalStorage):
     """The class for filesystem-like external storage.
 
     Raises:
-        ExternalStorageConfigInvalidError: Raises directory path to
+        ValueError: Raises directory path to
             spill objects doesn't exist.
     """
 
@@ -93,9 +81,8 @@ class FileSystemStorage(ExternalStorage):
         self.directory_path = directory_path
         self.prefix = "ray_spilled_object_"
         if not os.path.exists(self.directory_path):
-            raise ExternalStorageConfigInvalidError(
-                "The given directory path to store objects, "
-                f"{self.directory_path}, doesn't exist.")
+            raise ValueError("The given directory path to store objects, "
+                             f"{self.directory_path}, doesn't exist.")
 
     def spill_objects(self, object_refs):
         keys = []
@@ -137,7 +124,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             transport_params for smart-open library.
 
     Raises:
-        ExternalStorageConfigInvalidError: If it fails to setup.
+        ModuleNotFoundError: If it fails to setup.
             For example, if smart open library
             is not downloaded, this will fail.
     """
@@ -148,11 +135,11 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                  override_transport_params: dict = None):
         try:
             from smart_open import open  # noqa
-        except ModuleNotFoundError:
-            raise ExternalStorageConfigInvalidError(
-                "S3 storage is chosen to be a object spilling "
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError(
+                "Smart open is chosen to be a object spilling "
                 "external storage, but smart_open "
-                "is not downloaded.")
+                f"is not downloaded. Original error: {e}")
 
         self.uri = uri.strip("/")
         self.prefix = prefix

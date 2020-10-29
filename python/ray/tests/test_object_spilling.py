@@ -10,8 +10,6 @@ import pytest
 import psutil
 import ray
 
-from ray.external_storage import ExternalStorageConfigInvalidError
-
 bucket_name = "object-spilling-test"
 file_system_object_spilling_config = {
     "type": "filesystem",
@@ -30,9 +28,9 @@ smart_open_object_spilling_config = {
 @pytest.fixture(
     scope="module",
     params=[
-        file_system_object_spilling_config,
+        # file_system_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
-        # smart_open_object_spilling_config,
+        smart_open_object_spilling_config,
     ])
 def object_spilling_config(request):
     yield request.param
@@ -101,7 +99,7 @@ def test_invalid_config_raises_exception(shutdown_only):
         copied_config["params"].update({"random_arg": "abc"})
         ray.init(_object_spilling_config=copied_config)
 
-    with pytest.raises(ExternalStorageConfigInvalidError):
+    with pytest.raises(ValueError):
         copied_config = copy.deepcopy(file_system_object_spilling_config)
         copied_config["params"].update({"directory_path": "not_exist_path"})
         ray.init(_object_spilling_config=copied_config)
