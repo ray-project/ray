@@ -127,11 +127,16 @@ def initialize_loss_with_dummy_batch(policy, auto=True):
 
 
 def _get_dummy_batch(policy, batch_size=1):
+    from ray.rllib.models.catalog import ModelCatalog
+
     # Generate a 2 batch (safer since some loss functions require at least
     # a batch size of 2).
-    return {
-        view_col: np.zeros_like(
-            [view_req.space.sample() for _ in range(batch_size)])
-        for view_col, view_req in policy.view_requirements.items()
-    }
-
+    ret = {}
+    for view_col, view_req in policy.view_requirements.items():
+        if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
+            _, shape = ModelCatalog.get_action_shape(view_req.space)
+            ret[view_col] = np.zeros((batch_size, ) + shape[1:], np.float32)
+        else:
+            ret[view_col] = np.zeros_like(
+                [view_req.space.sample() for _ in range(batch_size)])
+    return ret

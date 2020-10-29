@@ -218,12 +218,15 @@ class DynamicTFPolicy(TFPolicy):
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
         else:
+            prev_action_ph = ModelCatalog.get_action_placeholder(
+                action_space, "prev_action")
             if self.config["_use_trajectory_view_api"]:
                 action_ph = ModelCatalog.get_action_placeholder(action_space)
                 self._input_dict, self._dummy_batch = \
                     self._get_input_dict_and_dummy_batch(
                         self.view_requirements,
-                        {SampleBatch.ACTIONS: action_ph})
+                        {SampleBatch.ACTIONS: action_ph,
+                         SampleBatch.PREV_ACTIONS: prev_action_ph})
             else:
                 self._input_dict = {
                     SampleBatch.CUR_OBS: tf1.placeholder(
@@ -233,8 +236,7 @@ class DynamicTFPolicy(TFPolicy):
                 }
                 if self._obs_include_prev_action_reward:
                     self._input_dict.update({
-                        SampleBatch.PREV_ACTIONS: ModelCatalog.
-                        get_action_placeholder(action_space, "prev_action"),
+                        SampleBatch.PREV_ACTIONS: prev_action_ph,
                         SampleBatch.PREV_REWARDS: tf1.placeholder(
                             tf.float32, [None], name="prev_reward"),
                     })
