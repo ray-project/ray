@@ -301,16 +301,6 @@ class _CliLogger():
         self._autodetected_cf_colormode = cf.colorful.colormode
         self.set_format()
 
-        self.callback_map = {}
-
-    def add_callback_handler(self, event, callback):
-        self.callback_map[event] = callback
-
-    def execute_callback(self, event, event_data):
-        if event in self.callback_map:
-            event_data["event_name"] = event
-            self.callback_map[event](event_data)
-
     def set_format(self, format_tmpl=None):
         if not format_tmpl:
             from ray.autoscaler._private.constants import LOGGER_FORMAT
