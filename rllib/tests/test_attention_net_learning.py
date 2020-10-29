@@ -46,7 +46,7 @@ class TestAttentionNetLearning(unittest.TestCase):
                         "num_heads": 1,
                         "memory_tau": 5,
                         "head_dim": 32,
-                        "ff_hidden_dim": 32,
+                        "position_wise_mlp_dim": 32,
                     },
                 },
             })
@@ -70,7 +70,7 @@ class TestAttentionNetLearning(unittest.TestCase):
                         "num_heads": 1,
                         "memory_tau": 10,
                         "head_dim": 32,
-                        "ff_hidden_dim": 32,
+                        "position_wise_mlp_dim": 32,
                     },
                 },
             })

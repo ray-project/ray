@@ -74,7 +74,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                  num_heads,
                  memory_tau,
                  head_dim,
-                 ff_hidden_dim,
+                 position_wise_mlp_dim,
                  init_gate_bias=2.0):
         """Initializes a GTrXLNet.
 
@@ -90,10 +90,10 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                 next transformer block as input).
             head_dim (int): The dimension of a single(!) head.
                 Denoted as `d` in [3].
-            ff_hidden_dim (int): The dimension of the hidden layer within
-                the position-wise MLP (after the multi-head attention block
-                within one Transformer unit). This is the size of the first
-                of the two layers within the PositionwiseFeedforward. The
+            position_wise_mlp_dim (int): The dimension of the hidden layer
+                within the position-wise MLP (after the multi-head attention
+                block within one Transformer unit). This is the size of the
+                first of the two layers within the PositionwiseFeedforward. The
                 second layer always has size=`attn_dim`.
             init_gate_bias (float): Initial bias values for the GRU gates (two
                 GRUs per Transformer unit, one after the MHA, one after the
@@ -142,11 +142,11 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                     torch.nn.LayerNorm(self.attn_dim),
                     SlimFC(
                         in_size=self.attn_dim,
-                        out_size=ff_hidden_dim,
+                        out_size=position_wise_mlp_dim,
                         use_bias=False,
                         activation_fn=nn.ReLU),
                     SlimFC(
-                        in_size=ff_hidden_dim,
+                        in_size=position_wise_mlp_dim,
                         out_size=self.attn_dim,
                         use_bias=False,
                         activation_fn=nn.ReLU)),

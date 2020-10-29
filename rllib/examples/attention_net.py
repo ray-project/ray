@@ -59,7 +59,7 @@ if __name__ == "__main__":
                 "num_heads": 2,
                 "memory_tau": 50,
                 "head_dim": 32,
-                "ff_hidden_dim": 32,
+                "position_wise_mlp_dim": 32,
             },
         },
         "framework": "torch" if args.torch else "tf",

@@ -36,7 +36,7 @@ def train_bit_shift(seq_length, num_iterations, print_every_n):
         attn_dim=10,
         num_heads=5,
         head_dim=20,
-        ff_hidden_dim=20,
+        position_wise_mlp_dim=20,
     )
 
     shift = 10

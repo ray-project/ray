@@ -10,7 +10,6 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
-from ray.rllib.models.tf.recurrent_net import LSTMWrapper
 from ray.rllib.models.tf.tf_action_dist import Categorical, \
     Deterministic, DiagGaussian, Dirichlet, \
     MultiActionDistribution, MultiCategorical
@@ -63,6 +62,26 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Experimental (only works with `_use_trajectory_view_api`=True):
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
+    
+    # == Attention Nets (experimental: torch-version is untested) ==
+    # Whether to use a GTrXL ("Gru transformer XL"; attention net) as the
+    # wrapper Model around the default Model.
+    "use_attention": False,
+    # The number of transformer units within GTrXL.
+    # A transformer unit in GTrXL consists of a) MultiHeadAttention module and
+    # b) a position-wise MLP.
+    "attention_num_transformer_units": 1,
+    # The input and output size of each transformer unit.
+    "attention_dim": 64,
+    # The number of attention heads within the MultiHeadAttention units.
+    "attention_num_heads": 1,
+    # The dim of a single head (within the MultiHeadAttention units).
+    "attention_head_dim": 32,
+    # The memory size.
+    "attention_memory_tau": 10,
+    # The output dim of the position-wise MLP.
+    "attention_position_wise_dim": 32,
+    "attention_init_gru_gate_bias": 2.0,
 
     # == Atari ==
     # Whether to enable framestack for Atari envs
@@ -275,7 +294,9 @@ class ModelCatalog:
                 unflatten the tensor into a ragged tensor.
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
-            framework (str): One of "tf", "tfe", or "torch".
+            model_config (ModelConfigDict): The "model" sub-config dict
+                within the Trainer's config dict.
+            framework (str): One of "tf2", "tf", "tfe", or "torch".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
@@ -285,6 +306,9 @@ class ModelCatalog:
         Returns:
             model (ModelV2): Model to use for the policy.
         """
+
+        # Validate the given config dict.
+        ModelCatalog._validate_config(config=model_config, framework=framework)
 
         if model_config.get("custom_model"):
 
@@ -381,16 +405,28 @@ class ModelCatalog:
             # Try to get a default v2 model.
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, model_config, framework=framework)
+                    obs_space, framework=framework)
 
             if not v2_class:
                 raise ValueError("ModelV2 class could not be determined!")
 
-            if model_config.get("use_lstm"):
+            from ray.rllib.models.tf.recurrent_net import LSTMWrapper
+            from ray.rllib.models.tf.attention_net import GTrXLNet
+
+            if model_config.get("use_lstm") or \
+                    model_config.get("use_attention"):
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
-                v2_class = ModelCatalog._wrap_if_needed(
-                    wrapped_cls, LSTMWrapper)
+                if model_config.get("use_lstm"):
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, LSTMWrapper)
+                else:
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, GTrXLNet)
+                    model_kwargs = dict(
+                        model_kwargs,
+                        **model_config.get("custom_model_config", {}))
+
                 v2_class._wrapped_forward = forward
 
             # Wrap in the requested interface.
@@ -400,7 +436,7 @@ class ModelCatalog:
         elif framework == "torch":
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, model_config, framework=framework)
+                    obs_space, framework=framework)
             if model_config.get("use_lstm"):
                 from ray.rllib.models.torch.recurrent_net import LSTMWrapper \
                     as TorchLSTMWrapper
@@ -532,7 +568,7 @@ class ModelCatalog:
         return wrapper
 
     @staticmethod
-    def _get_v2_model_class(input_space, model_config, framework="tf"):
+    def _get_v2_model_class(input_space, framework="tf"):
         if framework == "torch":
             from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                       FCNet)
@@ -573,3 +609,22 @@ class ModelCatalog:
                 child_distributions=child_dists,
                 input_lens=input_lens), int(sum(input_lens))
         return dist_class
+
+    @staticmethod
+    def _validate_config(config: ModelConfigDict, framework: str) -> None:
+        """Validates a given model config dict.
+
+        Args:
+            config (ModelConfigDict): The "model" sub-config dict
+                within the Trainer's config dict.
+            framework (str): One of "tf2", "tf", "tfe", or "torch".
+
+        Raises:
+            ValueError: If something is wrong with the given config.
+        """
+        if config["use_lstm"] and config["use_attention"]:
+            raise ValueError("Only one of `use_lstm` or `use_attention` may "
+                             "be set to True!")
+        if framework == "torch" and config["use_attention"]:
+            raise ValueError("`use_attention` not available for "
+                             "framework=torch so far!")

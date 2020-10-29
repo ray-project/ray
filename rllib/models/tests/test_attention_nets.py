@@ -2,6 +2,8 @@ import gym
 import numpy as np
 import unittest
 
+import ray
+import ray.rllib.agents.ppo as ppo
 from ray.rllib.models.tf.attention_net import relative_position_embedding, \
     GTrXLNet
 from ray.rllib.models.tf.layers import MultiHeadAttention
@@ -18,6 +20,14 @@ tf1, tf, tfv = try_import_tf()
 
 class TestAttentionNets(unittest.TestCase):
     """Tests various torch/modules and tf/layers required for AttentionNet"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def train_torch_full_model(self,
                                model,
@@ -199,7 +209,7 @@ class TestAttentionNets(unittest.TestCase):
                     num_heads=2,
                     memory_tau=L,
                     head_dim=D_out,
-                    ff_hidden_dim=16,
+                    position_wise_mlp_dim=16,
                     init_gate_bias=2.0)
 
                 init_state = attention_net.get_initial_state()
@@ -241,7 +251,7 @@ class TestAttentionNets(unittest.TestCase):
                     num_heads=2,
                     memory_tau=L,
                     head_dim=D_out,
-                    ff_hidden_dim=16,
+                    position_wise_mlp_dim=16,
                     init_gate_bias=2.0)
                 model = attention_net.trxl_model
 
@@ -254,6 +264,23 @@ class TestAttentionNets(unittest.TestCase):
                     [y, value_labels, memory_labels, mlp_labels],
                     num_epochs=200,
                     minibatch_size=B)
+
+    def test_use_attention_flag(self):
+        """Tests `use_attention=True` wrapping of a default model."""
+        config = ppo.DEFAULT_CONFIG
+        config["num_workers"] = 0
+        config["model"]["use_attention"] = True
+        config["model"]["attention_num_heads"] = 2
+        config["model"]["attention_dim"] = 32
+        config["model"]["attention_head_dim"] = 16
+        config["model"]["attention_num_transformer_units"] = 2
+        config["model"]["attention_position_wise_dim"] = 4
+        config["model"]["attention_init_gru_gate_bias"] = 3.0
+
+        for _ in framework_iterator(config, frameworks="tf"):
+            trainer = ppo.PPOTrainer(config, env="CartPole-v0")
+            trainer.train()
+            trainer.stop()
 
 
 if __name__ == "__main__":

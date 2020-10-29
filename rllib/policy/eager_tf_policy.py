@@ -615,9 +615,9 @@ def build_eager_tf_policy(name,
         def _initialize_loss_with_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
             dummy_batch = {
-                SampleBatch.CUR_OBS: np.array(
+                SampleBatch.CUR_OBS: np.zeros_like(
                     [self.observation_space.sample()]),
-                SampleBatch.NEXT_OBS: np.array(
+                SampleBatch.NEXT_OBS: np.zeros_like(
                     [self.observation_space.sample()]),
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),

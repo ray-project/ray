@@ -50,7 +50,7 @@ class TrXLNet(RecurrentNetwork):
 
     def __init__(self, observation_space, action_space, num_outputs,
                  model_config, name, num_transformer_units, attn_dim,
-                 num_heads, head_dim, ff_hidden_dim):
+                 num_heads, head_dim, position_wise_mlp_dim):
         """Initializes a TfXLNet object.
 
         Args:
@@ -60,12 +60,12 @@ class TrXLNet(RecurrentNetwork):
                 unit.
             num_heads (int): The number of attention heads to use in parallel.
                 Denoted as `H` in [3].
-            head_dim (int): The dimension of a single(!) head.
-                Denoted as `d` in [3].
-            ff_hidden_dim (int): The dimension of the hidden layer within
-                the position-wise MLP (after the multi-head attention block
-                within one Transformer unit). This is the size of the first
-                of the two layers within the PositionwiseFeedforward. The
+            head_dim (int): The dimension of a single(!) attention head within
+                a multi-head attention unit. Denoted as `d` in [3].
+            position_wise_mlp_dim (int): The dimension of the hidden layer
+                within the position-wise MLP (after the multi-head attention
+                block within one Transformer unit). This is the size of the
+                first of the two layers within the PositionwiseFeedforward. The
                 second layer always has size=`attn_dim`.
         """
 
@@ -96,7 +96,8 @@ class TrXLNet(RecurrentNetwork):
                     output_activation=None),
                 fan_in_layer=None)(E_out)
             E_out = SkipConnection(
-                PositionwiseFeedforward(attn_dim, ff_hidden_dim))(MHA_out)
+                PositionwiseFeedforward(attn_dim, position_wise_mlp_dim))(
+                MHA_out)
             E_out = tf.keras.layers.LayerNormalization(axis=-1)(E_out)
 
         # Postprocess TrXL output with another hidden layer and compute values.
@@ -161,13 +162,14 @@ class GTrXLNet(RecurrentNetwork):
                  num_outputs,
                  model_config,
                  name,
-                 num_transformer_units,
-                 attn_dim,
-                 num_heads,
-                 memory_tau,
-                 head_dim,
-                 ff_hidden_dim,
-                 init_gate_bias=2.0):
+                 *,
+                 num_transformer_units: int = 1,
+                 attn_dim: int = 64,
+                 num_heads: int = 2,
+                 memory_tau: int = 50,
+                 head_dim: int = 32,
+                 position_wise_mlp_dim: int = 32,
+                 init_gate_bias: float = 2.0):
         """Initializes a GTrXLNet.
 
         Args:
@@ -180,12 +182,12 @@ class GTrXLNet(RecurrentNetwork):
             memory_tau (int): The number of timesteps to store in each
                 transformer block's memory M (concat'd over time and fed into
                 next transformer block as input).
-            head_dim (int): The dimension of a single(!) head.
-                Denoted as `d` in [3].
-            ff_hidden_dim (int): The dimension of the hidden layer within
-                the position-wise MLP (after the multi-head attention block
-                within one Transformer unit). This is the size of the first
-                of the two layers within the PositionwiseFeedforward. The
+            head_dim (int): The dimension of a single(!) attention head within
+                a multi-head attention unit. Denoted as `d` in [3].
+            position_wise_mlp_dim (int): The dimension of the hidden layer
+                within the position-wise MLP (after the multi-head attention
+                block within one Transformer unit). This is the size of the
+                first of the two layers within the PositionwiseFeedforward. The
                 second layer always has size=`attn_dim`.
             init_gate_bias (float): Initial bias values for the GRU gates (two
                 GRUs per Transformer unit, one after the MHA, one after the
@@ -244,7 +246,7 @@ class GTrXLNet(RecurrentNetwork):
                     (tf.keras.layers.LayerNormalization(axis=-1),
                      PositionwiseFeedforward(
                          out_dim=self.attn_dim,
-                         hidden_dim=ff_hidden_dim,
+                         hidden_dim=position_wise_mlp_dim,
                          output_activation=tf.nn.relu))),
                 fan_in_layer=GRUGate(init_gate_bias),
                 name="pos_wise_mlp_{}".format(i + 1))(MHA_out)
@@ -282,7 +284,8 @@ class GTrXLNet(RecurrentNetwork):
         memory = state[1:]
 
         observations = tf.concat(
-            (observations, inputs), axis=1)[:, -self.max_seq_len:]
+            (observations, tf.cast(inputs, tf.float32)), axis=1)[:,
+                       -self.max_seq_len:]
         all_out = self.trxl_model([observations] + memory)
         logits, self._value_out = all_out[0], all_out[1]
         memory_outs = all_out[2:]
