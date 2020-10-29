@@ -243,10 +243,10 @@ class PopulationBasedTraining(FIFOScheduler):
                                  "You must use other built in primitives like"
                                  "tune.uniform, tune.loguniform, etc.")
 
-        if not hyperparam_mutations and not custom_explore_fn:
-            raise TuneError(
-                "You must specify at least one of `hyperparam_mutations` or "
-                "`custom_explore_fn` to use PBT.")
+            if not hyperparam_mutations and not custom_explore_fn:
+                raise TuneError(
+                    "You must specify at least one of `hyperparam_mutations` "
+                    "or `custom_explore_fn` to use PBT.")
 
         if quantile_fraction > 0.5 or quantile_fraction < 0:
             raise ValueError(
@@ -378,11 +378,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
-        # This trial has reached its perturbation interval
-        score = self._metric_op * result[self._metric]
-        state.last_score = score
-        state.last_train_time = time
-        state.last_result = result
+        self._save_trial_state(state, time, result, trial)
 
         if not self._synch:
             state.last_perturbation_time = time
@@ -433,6 +429,25 @@ class PopulationBasedTraining(FIFOScheduler):
             # the paused trials.
             return TrialScheduler.PAUSE
 
+    def _save_trial_state(self, state: PBTTrialState, time: int, result: Dict,
+                          trial: Trial):
+        """Saves necessary trial information when result is received.
+        Args:
+            state (PBTTrialState): The state object for the trial.
+            time (int): The current timestep of the trial.
+            result (dict): The trial's result dictionary.
+            trial (dict): The trial object.
+        """
+
+        # This trial has reached its perturbation interval.
+        # Record new state in the state object.
+        score = self._metric_op * result[self._metric]
+        state.last_score = score
+        state.last_train_time = time
+        state.last_result = result
+
+        return score
+
     def _perturb_trial(
             self, trial: Trial, trial_runner: "trial_runner.TrialRunner",
             upper_quantile: List[Trial], lower_quantile: List[Trial]):
@@ -457,6 +472,10 @@ class PopulationBasedTraining(FIFOScheduler):
             logger.debug("Trial {} is in lower quantile".format(trial))
             trial_to_clone = random.choice(upper_quantile)
             assert trial is not trial_to_clone
+            if not self._trial_state[trial_to_clone].last_checkpoint:
+                logger.info("[pbt]: no checkpoint for trial."
+                            " Skip exploit for Trial {}".format(trial))
+                return
             self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
 
     def _log_config_on_step(self, trial_state: PBTTrialState,
@@ -492,6 +511,11 @@ class PopulationBasedTraining(FIFOScheduler):
         with open(trial_path, "a+") as f:
             f.write(json.dumps(policy, cls=_SafeFallbackEncoder) + "\n")
 
+    def _get_new_config(self, trial, trial_to_clone):
+        """Gets new config for trial by exploring trial_to_clone's config."""
+        return explore(trial_to_clone.config, self._hyperparam_mutations,
+                       self._resample_probability, self._custom_explore_fn)
+
     def _exploit(self, trial_executor: "trial_executor.TrialExecutor",
                  trial: Trial, trial_to_clone: Trial):
         """Transfers perturbed state from trial_to_clone -> trial.
@@ -500,17 +524,13 @@ class PopulationBasedTraining(FIFOScheduler):
         """
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
-        if not new_state.last_checkpoint:
-            logger.info("[pbt]: no checkpoint for trial."
-                        " Skip exploit for Trial {}".format(trial))
-            return
-        new_config = explore(trial_to_clone.config, self._hyperparam_mutations,
-                             self._resample_probability,
-                             self._custom_explore_fn)
         logger.info("[exploit] transferring weights from trial "
                     "{} (score {}) -> {} (score {})".format(
                         trial_to_clone, new_state.last_score, trial,
                         trial_state.last_score))
+
+        new_config = self._get_new_config(trial, trial_to_clone)
+
         # Only log mutated hyperparameters and not entire config.
         old_hparams = {
             k: v

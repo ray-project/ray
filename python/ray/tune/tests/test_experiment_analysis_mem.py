@@ -15,6 +15,14 @@ from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=False, num_cpus=1)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def setUp(self):
         class MockTrainable(Trainable):
             scores_dict = {
@@ -42,11 +50,9 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
         self.MockTrainable = MockTrainable
         self.test_dir = tempfile.mkdtemp()
-        ray.init(local_mode=False, num_cpus=1)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
     def testInit(self):
         experiment_checkpoint_path = os.path.join(self.test_dir,
@@ -123,8 +129,15 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
 
 class AnalysisSuite(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=True, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def setUp(self):
-        ray.init(local_mode=True)
         self.test_dir = tempfile.mkdtemp()
         self.num_samples = 10
         self.metric = "episode_reward_mean"
@@ -145,7 +158,6 @@ class AnalysisSuite(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
     def testDataframe(self):
         analysis = Analysis(self.test_dir)

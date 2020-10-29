@@ -57,6 +57,28 @@ class WorkerPoolInterface {
   virtual ~WorkerPoolInterface(){};
 };
 
+/// \class IOWorkerPoolInterface
+///
+/// Used for object spilling manager unit tests.
+class IOWorkerPoolInterface {
+ public:
+  /// Add an idle I/O worker to the pool.
+  ///
+  /// \param worker The idle I/O worker to add.
+  virtual void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  /// Pop an idle I/O worker from the pool and trigger a callback when
+  /// an I/O worker is available.
+  /// The caller is responsible for pushing the worker back onto the
+  /// pool once the worker has completed its work.
+  ///
+  /// \param callback The callback that returns an available I/O worker.
+  virtual void PopIOWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
+  virtual ~IOWorkerPoolInterface(){};
+};
+
 class WorkerInterface;
 class Worker;
 
@@ -64,7 +86,7 @@ class Worker;
 ///
 /// The WorkerPool is responsible for managing a pool of Workers. Each Worker
 /// is a container for a unit of work.
-class WorkerPool : public WorkerPoolInterface {
+class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
  public:
   /// Create a pool and asynchronously start at least the specified number of workers per
   /// language.
@@ -261,9 +283,10 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  Process StartWorkerProcess(const Language &language, const rpc::WorkerType worker_type,
-                             const JobID &job_id,
-                             std::vector<std::string> dynamic_options = {});
+  Process StartWorkerProcess(
+      const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
+      std::vector<std::string> dynamic_options = {},
+      std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,

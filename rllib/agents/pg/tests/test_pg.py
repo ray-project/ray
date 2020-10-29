@@ -105,14 +105,15 @@ class TestPG(unittest.TestCase):
                     framework=fw)
             expected_logp = dist_cls(expected_logits, policy.model).logp(
                 train_batch[SampleBatch.ACTIONS])
+            adv = train_batch[Postprocessing.ADVANTAGES]
             if sess:
                 expected_logp = sess.run(expected_logp)
+            elif fw == "torch":
+                expected_logp = expected_logp.detach().cpu().numpy()
+                adv = adv.detach().cpu().numpy()
             else:
                 expected_logp = expected_logp.numpy()
-            expected_loss = -np.mean(
-                expected_logp *
-                (train_batch[Postprocessing.ADVANTAGES] if fw != "torch" else
-                 train_batch[Postprocessing.ADVANTAGES].numpy()))
+            expected_loss = -np.mean(expected_logp * adv)
             check(results, expected_loss, decimals=4)
 
 

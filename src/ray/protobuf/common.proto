@@ -190,6 +190,8 @@ message TaskSpec {
   bytes placement_group_id = 18;
   // Whether or not this task should capture parent's placement group automatically.
   bool placement_group_capture_child_tasks = 19;
+  // Environment variables to override for this task
+  map<string, string> override_environment_variables = 20;
 }
 
 message Bundle {
@@ -392,6 +394,14 @@ message CoreWorkerStats {
   repeated ObjectRefInfo object_refs = 18;
   // Job ID.
   bytes job_id = 19;
+  // Worker id of core worker.
+  bytes worker_id = 20;
+  // Language
+  Language language = 21;
+  // PID of the worker process.
+  uint32 pid = 22;
+  // The worker type.
+  WorkerType worker_type = 23;
 }
 
 message MetricPoint {
