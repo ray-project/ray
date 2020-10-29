@@ -91,6 +91,7 @@ py_test_module_list(
   files = [
     "test_args.py",
     "test_asyncio.py",
+    "test_asyncio_cluster.py",
     "test_autoscaler.py",
     "test_autoscaler_yaml.py",
     "test_component_failures.py",

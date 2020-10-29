@@ -176,6 +176,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id,
     return ray::Status::OK();
   }
   if (pull_requests_.find(object_id) != pull_requests_.end()) {
+    RAY_LOG(DEBUG) << object_id << " has inflight pull_requests, skipping.";
     return ray::Status::OK();
   }
 

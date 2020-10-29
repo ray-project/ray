@@ -2278,48 +2278,6 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   event.Wait();
 }
 
-void CoreWorker::PlasmaCallback(SetResultCallback success,
-                                std::shared_ptr<RayObject> ray_object, ObjectID object_id,
-                                void *py_future) {
-  std::vector<std::shared_ptr<RayObject>> vec;
-  // Check if object is available before subscribing to plasma.
-  if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
-    return success(vec.front(), object_id, py_future);
-  }
-  {
-    absl::MutexLock lock(&plasma_mutex_);
-    auto it = async_plasma_callbacks_.find(object_id);
-    auto plasma_arrived_callback = [this, success, object_id, py_future]() {
-      GetAsync(object_id, success, py_future);
-    };
-
-    if (it == async_plasma_callbacks_.end()) {
-      async_plasma_callbacks_.emplace(
-          object_id, std::vector<std::function<void(void)>>{plasma_arrived_callback});
-    } else {
-      it->second.push_back({plasma_arrived_callback});
-    }
-  }
-  SubscribeToPlasmaAdd(object_id);
-
-  // Check in-memory store in case object became ready *before* SubscribeToPlasmaAdd.
-  if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
-    std::vector<std::function<void(void)>> callbacks;
-    {
-      absl::MutexLock lock(&plasma_mutex_);
-      auto after_iter = async_plasma_callbacks_.extract(object_id);
-      callbacks = after_iter.mapped();
-    }
-    for (auto callback : callbacks) {
-      // This callback needs to be asynchronous because it runs on the io_service_, so no
-      // RPCs can be processed while it's running. This can easily lead to deadlock (for
-      // example if the callback calls ray.get() on an object that is dependent on an RPC
-      // to be ready).
-      callback();
-    }
-  }
-}
-
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                           void *python_future) {
   auto fallback_callback =
@@ -2336,8 +2294,40 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
-void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
-  RAY_CHECK_OK(local_raylet_client_->SubscribeToPlasma(object_id));
+void CoreWorker::PlasmaCallback(SetResultCallback success,
+                                std::shared_ptr<RayObject> ray_object, ObjectID object_id,
+                                void *py_future) {
+  RAY_CHECK(ray_object->IsInPlasmaError());
+
+  // First check if the object is available in local plasma store.
+  // Note that we are using Contains instead of Get so it won't trigger pull request
+  // to remote nodes.
+  bool object_is_local = false;
+  if (Contains(object_id, &object_is_local).ok() && object_is_local) {
+    std::vector<std::shared_ptr<RayObject>> vec;
+    RAY_CHECK_OK(Get(std::vector<ObjectID>{object_id}, 0, &vec));
+    RAY_CHECK(vec.size() > 0)
+        << "Failed to get local object but Raylet notified object is local.";
+    return success(vec.front(), object_id, py_future);
+  }
+
+  // Object is not available locally. We now add the callback to listener queue.
+  {
+    absl::MutexLock lock(&plasma_mutex_);
+    auto plasma_arrived_callback = [this, success, object_id, py_future]() {
+      // This callback is invoked on the io_service_ event loop, so it cannot call
+      // blocking call like Get(). We used GetAsync here, which should immediate call
+      // PlasmaCallback again with object available locally.
+      GetAsync(object_id, success, py_future);
+    };
+
+    async_plasma_callbacks_[object_id].push_back(plasma_arrived_callback);
+  }
+
+  // Ask raylet to subscribe to object notification. Raylet will call this core worker
+  // when the object is local (and it will fire the callback immediately if the object
+  // exists). CoreWorker::HandlePlasmaObjectReady handles such request.
+  local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id));
 }
 
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
