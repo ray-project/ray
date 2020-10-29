@@ -903,7 +903,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   using SetResultCallback =
       std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
 
-  /// Perform async get from in-memory store.
+  /// Perform async get from the object store.
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.

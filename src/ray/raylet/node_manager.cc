@@ -2970,8 +2970,8 @@ void NodeManager::ProcessSubscribePlasmaReady(
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
 
   if (task_dependency_manager_.CheckObjectLocal(id)) {
-    // Object is already local, so we directly fires the callback to tell core worker
-    // plasma object is ready.
+    // Object is already local, so we directly fire the callback to tell the core worker
+    // that the plasma object is ready.
     rpc::PlasmaObjectReadyRequest request;
     request.set_object_id(id.Binary());
 
@@ -2993,22 +2993,16 @@ void NodeManager::ProcessSubscribePlasmaReady(
     // 1. We currently do not allow user to cancel this call. The object will be pulled
     //    even if the `await object_ref` is cancelled.
     // 2. We currently do not handle edge cases with object eviction where the object
-    //    is evicted locally or on remote machine.
+    //    is local at this time but when the core worker was notified, the object is
+    //    is evicted. The core worker should be able to handle evicted object in this
+    //    case.
     task_dependency_manager_.SubscribeWaitDependencies(associated_worker->WorkerId(),
                                                        refs);
 
-    // Add this worker to listener for the object id.
+    // Add this worker to the listeners for the object ID.
     {
       absl::MutexLock guard(&plasma_object_notification_lock_);
-      if (!async_plasma_objects_notification_.contains(id)) {
-        async_plasma_objects_notification_.emplace(
-            id, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>());
-      }
-
-      // Only insert a worker once
-      if (!async_plasma_objects_notification_[id].contains(associated_worker)) {
-        async_plasma_objects_notification_[id].insert(associated_worker);
-      }
+      async_plasma_objects_notification_[id].insert(associated_worker);
     }
   }
 }
