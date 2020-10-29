@@ -103,7 +103,7 @@ You can also obtain profiling information:
 
 .. code-block:: python
 
-    >>> from ray.tune.logger import pretty_print
+    >>> from ray.tune.utils.util import pretty_print
     >>> print(pretty_print(trainer.train(profile=True)))
 
     batch_count: 16
