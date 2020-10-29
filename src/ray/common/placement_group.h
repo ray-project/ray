@@ -68,14 +68,18 @@ class PlacementGroupSpecBuilder {
       const PlacementGroupID &placement_group_id, std::string name,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
       const rpc::PlacementStrategy strategy, const JobID &creator_job_id,
-      const ActorID &creator_actor_id) {
+      const ActorID &creator_actor_id, bool is_creator_detached_actor) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
     // Configure creator job and actor ID for automatic lifecycle management.
     RAY_CHECK(!creator_job_id.IsNil());
     message_->set_creator_job_id(creator_job_id.Binary());
-    message_->set_creator_job_dead(false);
+    // When the creator is detached actor, we should just consider the job is dead.
+    // It is because the detached actor can be created AFTER the job is dead.
+    // Imagine a case where detached actor is restarted by GCS after the creator job is
+    // dead.
+    message_->set_creator_job_dead(is_creator_detached_actor);
     message_->set_creator_actor_id(creator_actor_id.Binary());
     message_->set_creator_actor_dead(creator_actor_id.IsNil());
 

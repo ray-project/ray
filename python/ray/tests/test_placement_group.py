@@ -1128,7 +1128,6 @@ ray.shutdown()
         return ray.available_resources()["CPU"] == expected_num_cpus
 
     wait_for_condition(is_job_done)
-    print(ray.actors())
     assert assert_num_cpus(num_nodes)
     # Make sure when a child actor spawned by a detached actor
     # is killed, the placement group is removed.
@@ -1142,14 +1141,13 @@ ray.shutdown()
     # Make sure placement groups are cleaned when detached actors are killed.
     ray.kill(a, no_restart=False)
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
-    print(ray.actors())
     # The detached actor a should've been restarted.
     # Recreate a placement group.
     ray.get(a.create_pg.remote())
     wait_for_condition(lambda: assert_num_cpus(num_nodes))
     # Kill it again and make sure the placement group
     # that is created is deleted again.
-    ray.kill(a)
+    ray.kill(a, no_restart=False)
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 

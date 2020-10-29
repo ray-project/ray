@@ -161,10 +161,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_pub_sub Used to publish gcs message.
-  GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-                  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                  const rpc::ClientFactoryFn &worker_client_factory = nullptr);
+  GcsActorManager(
+      std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+      std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+      std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
+      const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
 
@@ -285,11 +287,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param job_id The id of finished job.
   void OnJobFinished(const JobID &job_id);
 
-  /// Add a listener on all actor death.
-  ///
-  /// \param listener The listener method to be invoked when actors are permanantly dead.
-  void AddActorDeadListener(std::function<void(const ActorID &)> listener);
-
   /// Get the created actors.
   ///
   /// \return The created actors.
@@ -364,11 +361,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param actor The actor to be killed.
   void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
 
-  /// Notify to all listener that the actor is dead.
-  ///
-  /// \param actor_id The actor id of the dead actor.
-  void NotifyActorDeathToListener(const ActorID &actor_id);
-
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
@@ -414,8 +406,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Factory to produce clients to workers. This is used to communicate with
   /// actors and their owners.
   rpc::ClientFactoryFn worker_client_factory_;
-  /// Listeners which monitors the death of actors.
-  std::vector<std::function<void(const ActorID &)>> actor_death_listeners_;
+  /// A callback that is used to destroy placemenet group owned by the actor.
+  /// This method MUST BE IDEMPOTENT because it can be called multiple times during
+  /// actor destroy process.
+  std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed_;
 };
 
 }  // namespace gcs
