@@ -182,9 +182,9 @@ class ResourceDemandScheduler:
         pending_nodes = collections.defaultdict(int)
         for node_id in non_terminated_nodes:
             tags = self.provider.node_tags(node_id)
-            node_ip = self.provider.internal_ip(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                node_ip = self.provider.internal_ip(node_id)
                 if node_ip in connected_nodes:
                     running_nodes[node_type] += 1
                 else:
