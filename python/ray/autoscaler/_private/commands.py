@@ -572,6 +572,7 @@ def get_or_create_head_node(config,
         if head_node is None or provider.node_tags(head_node).get(
                 TAG_RAY_LAUNCH_CONFIG) != launch_hash:
             with cli_logger.group("Acquiring an up-to-date head node"):
+                global_event_system.execute_callback(CreateClusterEvent.acquiring_new_head_node, {})
                 if head_node is not None:
                     cli_logger.print(
                         "Currently running head node is out-of-date with "
@@ -617,6 +618,8 @@ def get_or_create_head_node(config,
                             break
                         time.sleep(POLL_INTERVAL)
                 cli_logger.newline()
+
+        global_event_system.execute_callback(CreateClusterEvent.head_node_acquired, {})
 
         with cli_logger.group(
                 "Setting up head node",

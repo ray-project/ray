@@ -1,14 +1,17 @@
 from enum import auto, Enum
 
 class CreateClusterEvent(Enum):
-	up_started = auto()
-	ssh_keypair_downloaded = auto()
-	cluster_booting_started = auto()
-	run_initialization_cmd = auto()
-	run_setup_cmd = auto()
-	start_ray_runtime = auto()
-	start_ray_runtime_completed = auto()
-	cluster_booting_completed = auto()
+    up_started = auto()
+    ssh_keypair_downloaded = auto()
+    cluster_booting_started = auto()
+    acquiring_new_head_node = auto()
+    head_node_acquired = auto()
+    ssh_control_acquired = auto()
+    run_initialization_cmd = auto()
+    run_setup_cmd = auto()
+    start_ray_runtime = auto()
+    start_ray_runtime_completed = auto()
+    cluster_booting_completed = auto()
 
 class _EventSystem:
     def __init__(self):

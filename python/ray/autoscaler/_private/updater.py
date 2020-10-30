@@ -289,6 +289,7 @@ class NodeUpdater:
 
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
+        global_event_system.execute_callback(CreateClusterEvent.ssh_control_acquired, {})
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
