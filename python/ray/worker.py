@@ -1857,6 +1857,12 @@ def remote(*args, **kwargs):
             crashes unexpectedly. The minimum valid value is 0,
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
+        override_environment_variables (Dict[str, str]): This specifies
+            environment variables to override for the actor or task.  The
+            overrides are propagated to all child actors and tasks.  This
+            is a dictionary mapping variable names to their values.  Existing
+            variables can be overridden, new ones can be created, and an
+            existing variable can be unset by setting it to an empty string.
 
     """
     worker = global_worker
