@@ -1,6 +1,4 @@
 import copy
-import time
-import os
 import logging
 import yaml
 import tempfile
@@ -17,8 +15,7 @@ from ray.autoscaler._private.providers import _NODE_PROVIDERS, \
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.node_launcher import NodeLauncher
-from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE,
-                                 TAG_RAY_NODE_KIND)
+from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND)
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.cli_logger import cli_logger
 
@@ -139,7 +136,8 @@ class Simulator:
             update_interval_s=0,
         )
 
-        # Manually create a node launcher. Note that we won't start it as a separate thread.
+        # Manually create a node launcher. Note that we won't start it as a
+        # separate thread.
         self.node_launcher = NodeLauncher(
             provider=self.autoscaler.provider,
             queue=self.autoscaler.launch_queue,
@@ -298,11 +296,14 @@ class AutoscalingPolicyTest(unittest.TestCase):
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
         logging.disable(level=logging.CRITICAL)
+
         # This seems to be the only way of turning the cli logger off. The
         # expected methods like `cli_logger.configure` don't work.
         def do_nothing(*args, **kwargs):
             pass
-        cli_logger._print = type(cli_logger._print)(do_nothing, type(cli_logger))
+
+        cli_logger._print = type(cli_logger._print)(do_nothing,
+                                                    type(cli_logger))
 
     def tearDown(self):
         self.provider = None
