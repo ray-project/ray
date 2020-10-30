@@ -232,6 +232,7 @@ class Policy(metaclass=ABCMeta):
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -278,6 +279,7 @@ class Policy(metaclass=ABCMeta):
             info_batch=None,
             explore=explore,
             timestep=timestep,
+            episodes=episodes,
             **kwargs,
         )
 
@@ -533,6 +535,40 @@ class Policy(metaclass=ABCMeta):
             worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))
         return exploration
+
+    def _get_default_view_requirements(self):
+        """Returns a default ViewRequirements dict.
+
+        Note: This is the base/maximum requirement dict, from which later
+        some requirements will be subtracted again automatically to streamline
+        data collection, batch creation, and data transfer.
+
+        Returns:
+            ViewReqDict: The default view requirements dict.
+        """
+
+        from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
+
+        # Default view requirements (equal to those that we would use before
+        # the trajectory view API was introduced).
+        return {
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+            SampleBatch.NEXT_OBS: ViewRequirement(
+                data_col=SampleBatch.OBS, shift=1, space=self.observation_space),
+            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(data_col=SampleBatch.ACTIONS, shift=-1, space=self.action_space),
+            SampleBatch.REWARDS: ViewRequirement(),
+            SampleBatch.PREV_REWARDS: ViewRequirement(data_col=SampleBatch.REWARDS, shift=-1),
+            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.EPS_ID: ViewRequirement(),
+            SampleBatch.AGENT_INDEX: ViewRequirement(),
+            SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(),
+            SampleBatch.ACTION_LOGP: ViewRequirement(),
+            SampleBatch.VF_PREDS: ViewRequirement(),
+            PRIO_WEIGHTS: ViewRequirement(),
+            "t": ViewRequirement(),
+        }
 
 
 def clip_action(action, action_space):

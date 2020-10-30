@@ -318,6 +318,24 @@ class ModelV2:
         """
         return self.time_major is True
 
+    @PublicAPI
+    def update_view_requirements_from_init_state(self):
+        """Uses this Model's initial state to auto-add necessary ViewReqs.
+
+        Can be called from within a Policy to make sure RNNs automatically
+        update their internal state-related view requirements.
+        Changes the `self.inference_view_requirements` dict.
+        """
+        # Add state-ins to this model's view.
+        for i, state in enumerate(self.get_initial_state()):
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=state.shape))
+            self.inference_view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))
+
 
 class NullContextManager:
     """No-op context manager"""

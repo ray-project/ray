@@ -608,6 +608,12 @@ class TorchPolicy(Policy):
             functools.partial(convert_to_torch_tensor, device=self.device))
         return train_batch
 
+    def _lazy_numpy_dict(self, postprocessed_batch):
+        train_batch = UsageTrackingDict(postprocessed_batch)
+        train_batch.set_get_interceptor(
+            functools.partial(convert_to_non_torch_type))
+        return train_batch
+
 
 # TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
 #   and for all possible hyperparams, not just lr.
