@@ -235,8 +235,7 @@ class Monitor:
         clients and cleaning up state accordingly.
         """
 
-        self.subscribe(
-            ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
+        self.subscribe(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
 
         # Handle messages from the subscription channels.
         while True:
