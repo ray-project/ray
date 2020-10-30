@@ -39,7 +39,7 @@ class TestBC(unittest.TestCase):
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
         config["input"] = [data_file]
-        num_iterations = 300
+        num_iterations = 350
         min_reward = 70.0
 
         # Test for all frameworks.
@@ -59,7 +59,7 @@ class TestBC(unittest.TestCase):
             if not learnt:
                 raise ValueError(
                     "BCTrainer did not reach {} reward from expert offline "
-                    "data".format(min_reward))
+                    "data!".format(min_reward))
 
             check_compute_single_action(
                 trainer, include_prev_action_reward=True)
