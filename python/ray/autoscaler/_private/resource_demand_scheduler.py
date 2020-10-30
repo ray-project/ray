@@ -17,8 +17,7 @@ from typing import List, Dict
 from ray.autoscaler.node_provider import NodeProvider
 from ray.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import PlacementStrategy
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED, \
-    STATUS_UPDATE_FAILED, STATUS_UP_TO_DATE, TAG_RAY_NODE_STATUS
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +30,11 @@ NodeTypeConfigDict = str
 # e.g., {"GPU": 1}.
 ResourceDict = Dict[str, Number]
 
-# e.g., IP address of the node.
+# e.g., "node-1".
 NodeID = str
+
+# e.g., "127.0.0.1".
+NodeIP = str
 
 
 class ResourceDemandScheduler:
@@ -46,7 +48,7 @@ class ResourceDemandScheduler:
     def get_nodes_to_launch(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeType, int],
             resource_demands: List[ResourceDict],
-            usage_by_ip: Dict[str, ResourceDict],
+            usage_by_ip: Dict[NodeIP, ResourceDict],
             pending_placement_groups: List[PlacementGroupTableData]
     ) -> Dict[NodeType, int]:
         """Given resource demands, return node types to add to the cluster.
@@ -111,14 +113,14 @@ class ResourceDemandScheduler:
 
         # Limit the number of concurrent launches
         total_nodes_to_add = self._get_concurrent_resource_demand_to_launch(
-            total_nodes_to_add, nodes, pending_nodes)
+            total_nodes_to_add, usage_by_ip.keys(), nodes, pending_nodes)
 
         logger.info("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add
 
     def _get_concurrent_resource_demand_to_launch(
             self, to_launch: Dict[NodeType, int],
-            non_terminated_nodes: List[NodeID],
+            connected_nodes: List[NodeIP], non_terminated_nodes: List[NodeID],
             pending_launches_nodes: Dict[NodeType, int]
     ) -> Dict[NodeType, int]:
         """Updates the max concurrent resources to launch for each node type.
@@ -133,7 +135,9 @@ class ResourceDemandScheduler:
                to-be-launched nodes to max(5, frac * running_nodes[node_type]).
 
         Args:
-            to_launch: Number of nodes to launch based on resource demand.
+            to_launch: List of number of nodes to launch based on resource
+                demand for every node type.
+            connected_nodes: Running nodes (from LoadMetrics).
             non_terminated_nodes: Non terminated nodes (pending/running).
             pending_launches_nodes: Nodes that are in the launch queue.
         Returns:
@@ -145,7 +149,7 @@ class ResourceDemandScheduler:
         updated_nodes_to_launch = {}
         running_nodes, pending_nodes = \
             self._separate_running_and_pending_nodes(
-                non_terminated_nodes
+                non_terminated_nodes, connected_nodes,
             )
         for node_type in to_launch:
             # Enforce here max allowed pending nodes to be frac of total
@@ -170,19 +174,20 @@ class ResourceDemandScheduler:
     def _separate_running_and_pending_nodes(
             self,
             non_terminated_nodes: List[NodeID],
+            connected_nodes: List[NodeIP],
     ) -> (Dict[NodeType, int], Dict[NodeType, int]):
-        """Receives non terminated nodes & splits them to pending & running."""
+        """Splits connected and non terminated nodes to pending & running."""
 
         running_nodes = collections.defaultdict(int)
         pending_nodes = collections.defaultdict(int)
         for node_id in non_terminated_nodes:
             tags = self.provider.node_tags(node_id)
+            node_ip = self.provider.internal_ip(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                status = tags.get(TAG_RAY_NODE_STATUS)
-                if status == STATUS_UP_TO_DATE:
+                if node_ip in connected_nodes:
                     running_nodes[node_type] += 1
-                elif status != STATUS_UPDATE_FAILED:
+                else:
                     pending_nodes[node_type] += 1
         return running_nodes, pending_nodes
 
