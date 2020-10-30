@@ -61,6 +61,7 @@ py_test_module_list(
     "test_reference_counting_2.py",
     "test_unreconstructable_errors.py",
     "test_tensorflow.py",
+    "test_object_spilling.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -130,7 +131,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_stress_failure.py",
-    "test_object_spilling.py",
   ],
   size = "large",
   extra_srcs = SRCS,

@@ -28,9 +28,9 @@ smart_open_object_spilling_config = {
 @pytest.fixture(
     scope="module",
     params=[
-        # file_system_object_spilling_config,
+        file_system_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
-        smart_open_object_spilling_config,
+        # smart_open_object_spilling_config,
     ])
 def object_spilling_config(request):
     yield request.param
