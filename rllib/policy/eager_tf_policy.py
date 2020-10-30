@@ -10,6 +10,7 @@ from gym.spaces import Tuple, Dict
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
@@ -208,6 +209,12 @@ def build_eager_tf_policy(name,
             self._loss_initialized = False
             self._sess = None
 
+            self._loss = loss_fn
+            self.batch_divisibility_req = get_batch_divisibility_req(self) if \
+                callable(get_batch_divisibility_req) else \
+                (get_batch_divisibility_req or 1)
+            self._max_seq_len = config["model"]["max_seq_len"]
+
             if get_default_config:
                 config = dict(get_default_config(), **config)
 
@@ -290,6 +297,13 @@ def build_eager_tf_policy(name,
         @convert_eager_inputs
         @convert_eager_outputs
         def learn_on_batch(self, samples):
+            # Get batch ready for RNNs, if applicable.
+            pad_batch_to_sequences_of_same_size(
+                samples,
+                shuffle=False,
+                max_seq_len=self._max_seq_len,
+                batch_divisibility_req=self.batch_divisibility_req)
+
             with tf.variable_creator_scope(_disallow_var_creation):
                 grads_and_vars, stats = self._compute_gradients(samples)
             self._apply_gradients(grads_and_vars)
