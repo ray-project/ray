@@ -110,6 +110,8 @@ class TorchPolicy(Policy):
             logger.info("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+        # Auto-update model's inference view requirements, if recurrent.
+        self.model.update_view_requirements_from_init_state()
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.inference_view_requirements)
 
@@ -593,6 +595,12 @@ class TorchPolicy(Policy):
         train_batch = UsageTrackingDict(postprocessed_batch)
         train_batch.set_get_interceptor(
             functools.partial(convert_to_torch_tensor, device=self.device))
+        return train_batch
+
+    def _lazy_numpy_dict(self, postprocessed_batch):
+        train_batch = UsageTrackingDict(postprocessed_batch)
+        train_batch.set_get_interceptor(
+            functools.partial(convert_to_non_torch_type))
         return train_batch
 
 

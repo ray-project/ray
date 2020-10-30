@@ -208,9 +208,13 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
         T = tensor.shape[0] // B
     else:
         # Important: chop the tensor into batches at known episode cut
-        # boundaries. TODO(ekl) this is kind of a hack
+        # boundaries.
         T = policy.config["rollout_fragment_length"]
         B = tensor.shape[0] // T
+        # Cover cases, where we send a (small) test batch through this loss
+        # function.
+        if B == 0:
+            B, T = 1, tensor.shape[0]
     rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
 
     # Swap B and T axes.

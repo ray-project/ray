@@ -2,6 +2,7 @@ from collections import OrderedDict
 import gym
 import logging
 import numpy as np
+import re
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from ray.util.debug import log_once
@@ -10,8 +11,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.policy.view_requirement import get_default_view_requirements, \
-    ViewRequirement
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
@@ -138,9 +138,9 @@ class DynamicTFPolicy(TFPolicy):
             view_requirements_fn (Callable[[Policy],
                 Dict[str, ViewRequirement]]): An optional callable to retrieve
                 additional train view requirements for this policy.
-            get_batch_divisibility_req (Optional[Callable[[Policy], int]]]):
-                Optional callable that returns the divisibility requirement
-                for sample batches given the Policy.
+            get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
+                Optional callable that returns the divisibility requirement for
+                sample batches. If None, will assume a value of 1.
             obs_include_prev_action_reward (bool): Whether to include the
                 previous action and reward in the model input (default: True).
         """
@@ -175,6 +175,8 @@ class DynamicTFPolicy(TFPolicy):
                 num_outputs=logit_dim,
                 model_config=self.config["model"],
                 framework="tf")
+        # Auto-update model's inference view requirements, if recurrent.
+        self.model.update_view_requirements_from_init_state()
 
         if existing_inputs:
             self._state_inputs = [
@@ -198,27 +200,17 @@ class DynamicTFPolicy(TFPolicy):
                     for s in self.model.get_initial_state()
                 ]
 
-        self.view_requirements = {
-            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
-            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
-            SampleBatch.REWARDS: ViewRequirement(),
-            SampleBatch.DONES: ViewRequirement(),
-            SampleBatch.EPS_ID: ViewRequirement(),
-            SampleBatch.AGENT_INDEX: ViewRequirement(),
-        }
-
         # Update this Policy's ViewRequirements (if function given).
         if callable(view_requirements_fn):
-            self.view_requirements.update(view_requirements_fn(self))
+            self.view_requirements = view_requirements_fn(self)
         # If no view-requirements given, use default settings.
         # Add NEXT_OBS, STATE_IN_0.., and others.
         else:
-            self.view_requirements.update(get_default_view_requirements(self))
-        # Allow the model to override existing ViewRequirements.
-        self.view_requirements.update(
-            self.model.inference_view_requirements)
+            self.view_requirements = self._get_default_view_requirements()
+        # Combine view_requirements for Model and Policy.
+        self.view_requirements.update(self.model.inference_view_requirements)
 
-        # Setup standard placeholders
+        # Setup standard placeholders.
         if existing_inputs is not None:
             timestep = existing_inputs["timestep"]
             explore = existing_inputs["is_exploring"]
@@ -226,12 +218,15 @@ class DynamicTFPolicy(TFPolicy):
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
         else:
+            prev_action_ph = ModelCatalog.get_action_placeholder(
+                action_space, "prev_action")
             if self.config["_use_trajectory_view_api"]:
                 action_ph = ModelCatalog.get_action_placeholder(action_space)
                 self._input_dict, self._dummy_batch = \
                     self._get_input_dict_and_dummy_batch(
                         self.view_requirements,
-                        {SampleBatch.ACTIONS: action_ph})
+                        {SampleBatch.ACTIONS: action_ph,
+                         SampleBatch.PREV_ACTIONS: prev_action_ph})
             else:
                 self._input_dict = {
                     SampleBatch.CUR_OBS: tf1.placeholder(
@@ -241,8 +236,7 @@ class DynamicTFPolicy(TFPolicy):
                 }
                 if self._obs_include_prev_action_reward:
                     self._input_dict.update({
-                        SampleBatch.PREV_ACTIONS: ModelCatalog.
-                        get_action_placeholder(action_space, "prev_action"),
+                        SampleBatch.PREV_ACTIONS: prev_action_ph,
                         SampleBatch.PREV_REWARDS: tf1.placeholder(
                             tf.float32, [None], name="prev_reward"),
                     })
@@ -315,10 +309,10 @@ class DynamicTFPolicy(TFPolicy):
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session()
-        if get_batch_divisibility_req:
-            batch_divisibility_req = get_batch_divisibility_req(self)
-        else:
-            batch_divisibility_req = 1
+
+        batch_divisibility_req = get_batch_divisibility_req(self) if \
+            callable(get_batch_divisibility_req) else \
+            (get_batch_divisibility_req or 1)
 
         super().__init__(
             observation_space=obs_space,
@@ -349,7 +343,7 @@ class DynamicTFPolicy(TFPolicy):
             before_loss_init(self, obs_space, action_space, config)
 
         if not existing_inputs:
-            self._initialize_loss_dynamically()
+            self._initialize_loss_dynamically(auto=view_requirements_fn is None)
 
     @override(TFPolicy)
     @DeveloperAPI
@@ -358,14 +352,10 @@ class DynamicTFPolicy(TFPolicy):
         """Creates a copy of self using existing input placeholders."""
 
         # Note that there might be RNN state inputs at the end of the list
-        if self._state_inputs:
-            num_state_inputs = len(self._state_inputs) + 1
-        else:
-            num_state_inputs = 0
-        if len(self._loss_inputs) + num_state_inputs != len(existing_inputs):
-            raise ValueError("Tensor list mismatch", self._loss_inputs,
+        if len(self._loss_input_dict) != len(existing_inputs):
+            raise ValueError("Tensor list mismatch", self._loss_input_dict,
                              self._state_inputs, existing_inputs)
-        for i, (k, v) in enumerate(self._loss_inputs):
+        for i, (k, v) in enumerate(self._loss_input_dict_no_rnn.items()):
             if v.shape.as_list() != existing_inputs[i].shape.as_list():
                 raise ValueError("Tensor shape mismatch", i, k, v.shape,
                                  existing_inputs[i].shape)
@@ -374,12 +364,11 @@ class DynamicTFPolicy(TFPolicy):
         rnn_inputs = []
         for i in range(len(self._state_inputs)):
             rnn_inputs.append(("state_in_{}".format(i),
-                               existing_inputs[len(self._loss_inputs) + i]))
+                               existing_inputs[len(self._loss_input_dict_no_rnn) + i]))
         if rnn_inputs:
             rnn_inputs.append(("seq_lens", existing_inputs[-1]))
         input_dict = OrderedDict([("is_exploring", self._is_exploring), (
-            "timestep", self._timestep)] + [(k, existing_inputs[i]) for i, (
-                k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
+            "timestep", self._timestep)] + [(k, existing_inputs[i]) for i, k in enumerate(self._loss_input_dict_no_rnn.keys())] + rnn_inputs)
         instance = self.__class__(
             self.observation_space,
             self.action_space,
@@ -390,7 +379,7 @@ class DynamicTFPolicy(TFPolicy):
         instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)
         loss_inputs = [(k, existing_inputs[i])
-                       for i, (k, _) in enumerate(self._loss_inputs)]
+                       for i, k in enumerate(self._loss_input_dict_no_rnn.keys())]
 
         TFPolicy._initialize_loss(instance, loss, loss_inputs)
         if instance._grad_stats_fn:
@@ -412,8 +401,18 @@ class DynamicTFPolicy(TFPolicy):
         input_dict = {}
         dummy_batch = {}
         for view_col, view_req in view_requirements.items():
+            # Point state_in to the already existing self._state_inputs.
+            mo = re.match("state_in_(\d+)", view_col)
+            if mo is not None:
+                input_dict[view_col] = self._state_inputs[int(mo.group(1))]
+                dummy_batch[view_col] = np.zeros_like(
+                    [view_req.space.sample()])
+            # State-outs (no placeholders needed).
+            elif view_col.startswith("state_out_"):
+                dummy_batch[view_col] = np.zeros_like(
+                    [view_req.space.sample()])
             # Skip action dist inputs placeholder (do later).
-            if view_col == SampleBatch.ACTION_DIST_INPUTS:
+            elif view_col == SampleBatch.ACTION_DIST_INPUTS:
                 continue
             elif view_col in existing_inputs:
                 input_dict[view_col] = existing_inputs[view_col]
@@ -437,7 +436,7 @@ class DynamicTFPolicy(TFPolicy):
                     [sample] if not time_axis else [[sample]])
         return input_dict, dummy_batch
 
-    def _initialize_loss_dynamically(self):
+    def _initialize_loss_dynamically(self, auto=True):
         if self.config["_use_trajectory_view_api"]:
             dummy_batch = self._dummy_batch
         else:
@@ -476,16 +475,22 @@ class DynamicTFPolicy(TFPolicy):
         # Postprocessing might depend on variable init, so run it first here.
         self._sess.run(tf1.global_variables_initializer())
 
-        postprocessed_batch = self.postprocess_trajectory(
-            SampleBatch(dummy_batch))
-        # Add new columns automatically to dummy_batch/input_dict.
+        sb = SampleBatch(dummy_batch)
+        batch_for_postproc = UsageTrackingDict(sb)
+        batch_for_postproc.count = sb.count
+        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+        # Add new columns automatically to (loss) input_dict.
         if self.config["_use_trajectory_view_api"]:
-            for new_col in postprocessed_batch.new_columns:
-                self._input_dict[new_col] = get_placeholder(
-                    value=postprocessed_batch[new_col])
+            for key in batch_for_postproc.added_keys:
+                if key not in self._input_dict:
+                    self._input_dict[key] = get_placeholder(
+                        value=batch_for_postproc[key])
+                if key not in self.view_requirements:
+                    self.view_requirements[key] = ViewRequirement()
 
         # Model forward pass for the loss (needed after postprocess to
         # overwrite any tensor state from that call).
+        #TODO: replace with `compute_actions_from_input_dict`
         self.model(self._input_dict, self._state_inputs, self._seq_lens)
 
         if not self.config["_use_trajectory_view_api"]:
@@ -495,18 +500,18 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.PREV_REWARDS: self._prev_reward_input,
                     SampleBatch.CUR_OBS: self._obs_input,
                 })
-                loss_inputs = [
-                    (SampleBatch.PREV_ACTIONS, self._prev_action_input),
-                    (SampleBatch.PREV_REWARDS, self._prev_reward_input),
-                    (SampleBatch.CUR_OBS, self._obs_input),
-                ]
+                #loss_inputs = [
+                #    (SampleBatch.PREV_ACTIONS, self._prev_action_input),
+                #    (SampleBatch.PREV_REWARDS, self._prev_reward_input),
+                #    (SampleBatch.CUR_OBS, self._obs_input),
+                #]
             else:
                 train_batch = UsageTrackingDict({
                     SampleBatch.CUR_OBS: self._obs_input,
                 })
-                loss_inputs = [
-                    (SampleBatch.CUR_OBS, self._obs_input),
-                ]
+                #loss_inputs = [
+                #    (SampleBatch.CUR_OBS, self._obs_input),
+                #]
 
             for k, v in postprocessed_batch.items():
                 if k in train_batch:
@@ -523,28 +528,63 @@ class DynamicTFPolicy(TFPolicy):
             for i, si in enumerate(self._state_inputs):
                 train_batch["state_in_{}".format(i)] = si
         else:
-            loss_inputs = [(k, v) for k, v in self._input_dict.items()
-                           if k in self.view_requirements
-                           and self.view_requirements[k].used_for_training]
+            #loss_inputs = [(k, v) for k, v in self._input_dict.items()
+            #               if k in self.view_requirements
+            #               and self.view_requirements[k].used_for_training]
             train_batch = UsageTrackingDict(self._input_dict)
-        train_batch["seq_lens"] = self._seq_lens
+
+        if self._state_inputs:
+            train_batch["seq_lens"] = self._seq_lens
 
         if log_once("loss_init"):
             logger.debug(
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(train_batch)))
 
-        self._loss_input_dict = train_batch
+        self._loss_input_dict = {k: v for k, v in train_batch.items()}
         loss = self._do_loss_init(train_batch)
-        for k in sorted(train_batch.accessed_keys):
-            if k != "seq_lens" and not k.startswith("state_in_"):
-                loss_inputs.append((k, train_batch[k]))
 
-        TFPolicy._initialize_loss(self, loss, loss_inputs)
+        TFPolicy._initialize_loss(self, loss, [(k, v) for k, v in train_batch.items()]) #loss_inputs
+        del self._loss_input_dict["is_training"]
         if self._grad_stats_fn:
             self._stats_fetches.update(
                 self._grad_stats_fn(self, train_batch, self._grads))
         self._sess.run(tf1.global_variables_initializer())
+
+        # Add new columns automatically to view-reqs.
+        if self.config["_use_trajectory_view_api"] and auto:
+            # Add those needed for postprocessing and training.
+            all_accessed_keys = train_batch.accessed_keys | batch_for_postproc.accessed_keys
+            #for key in all_accessed_keys:
+            #    if key not in self.view_requirements:
+            #        self.view_requirements[key] = ViewRequirement()
+            # Tag those only needed for post-processing.
+            for key in batch_for_postproc.accessed_keys:
+                if key not in train_batch.accessed_keys:
+                    self.view_requirements[key].used_for_training = False
+                    if key in self._loss_input_dict:
+                        del self._loss_input_dict[key]
+            # Remove those not needed at all (leave those that are needed
+            # by Sampler to properly execute sample collection).
+            for key in list(self.view_requirements.keys()):
+                if key not in all_accessed_keys and key not in [
+                    SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                    SampleBatch.UNROLL_ID, SampleBatch.DONES] and \
+                        key not in self.model.inference_view_requirements:
+                    del self.view_requirements[key]
+                    del self._loss_input_dict[key]
+            # Add those data_cols (again) that are missing and have
+            # dependencies by view_cols.
+            for key in list(self.view_requirements.keys()):
+                vr = self.view_requirements[key]
+                if vr.data_col is not None and vr.data_col not in self.view_requirements:
+                    used_for_training = vr.data_col in train_batch.accessed_keys
+                    self.view_requirements[vr.data_col] = ViewRequirement(space=vr.space, used_for_training=used_for_training)
+
+        self._loss_input_dict_no_rnn = {
+            k: v for k, v in self._loss_input_dict.items() if
+            not v in self._state_inputs and v != self._seq_lens
+        }
 
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)

@@ -150,7 +150,7 @@ class TrainTFMultiGPU:
                             LocalSyncParallelOptimizer(
                                 policy._optimizer, self.devices,
                                 [v
-                                 for _, v in policy._loss_inputs], rnn_inputs,
+                                 for v in policy._loss_input_dict_no_rnn.values()], rnn_inputs,
                                 self.per_device_batch_size, policy.copy))
 
                 self.sess = self.workers.local_worker().tf_sess
@@ -180,7 +180,8 @@ class TrainTFMultiGPU:
                 policy._debug_vars()
                 tuples = policy._get_loss_inputs_dict(
                     batch, shuffle=self.shuffle_sequences)
-                data_keys = [ph for _, ph in policy._loss_inputs]
+                data_keys = \
+                    [ph for ph in policy._loss_input_dict_no_rnn.values()]
                 if policy._state_inputs:
                     state_keys = policy._state_inputs + [policy._seq_lens]
                 else:

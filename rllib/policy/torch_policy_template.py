@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -8,8 +9,8 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.policy.view_requirement import get_default_view_requirements, \
-    ViewRequirement
+from ray.rllib.policy.view_requirement import \
+    initialize_loss_with_dummy_batch, ViewRequirement
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -49,6 +50,9 @@ def build_torch_policy(
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
         before_init: Optional[Callable[
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+        before_loss_init: Optional[Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict],
+            None]] = None,
         after_init: Optional[Callable[
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
         action_sampler_fn: Optional[Callable[[TensorType, List[
@@ -118,6 +122,9 @@ def build_torch_policy(
             TrainerConfigDict], None]]): Optional callable to run at the
             beginning of `Policy.__init__` that takes the same arguments as
             the Policy constructor. If None, this step will be skipped.
+        before_loss_init (Optional[Callable[[Policy, gym.spaces.Space,
+            gym.spaces.Space, TrainerConfigDict], None]]): Optional callable to
+            run prior to loss init. If None, this step will be skipped.
         after_init (Optional[Callable[[Policy, gym.Space, gym.Space,
             TrainerConfigDict], None]]): Optional callable to run at the end of
             policy init that takes the same arguments as the policy
@@ -227,23 +234,28 @@ def build_torch_policy(
                 action_sampler_fn=action_sampler_fn,
                 action_distribution_fn=action_distribution_fn,
                 max_seq_len=config["model"]["max_seq_len"],
+                #view_requirements_fn=view_requirements_fn,
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
 
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
-                self.view_requirements.update(view_requirements_fn(self))
-            # If no view-requirements given, use default settings.
-            # Add NEXT_OBS, STATE_IN_0.., and others.
-            else:
-                self.view_requirements.update(
-                    get_default_view_requirements(self))
-            # Allow the model to override existing ViewRequirements.
+                self.view_requirements = view_requirements_fn(self)
             self.view_requirements.update(
                 self.model.inference_view_requirements)
 
+            if before_loss_init:
+                before_loss_init(
+                    self, self.observation_space, self.action_space, config)
+
+            initialize_loss_with_dummy_batch(
+                self, auto=view_requirements_fn is None)
+
             if after_init:
                 after_init(self, obs_space, action_space, config)
+
+            # Got to reset global_timestep again after this fake run-through.
+            self.global_timestep = 0
 
         @override(Policy)
         def postprocess_trajectory(self,
@@ -255,8 +267,7 @@ def build_torch_policy(
             with torch.no_grad():
                 # Call super's postprocess_trajectory first.
                 sample_batch = super().postprocess_trajectory(
-                    convert_to_non_torch_type(sample_batch),
-                    convert_to_non_torch_type(other_agent_batches), episode)
+                    sample_batch, other_agent_batches, episode)
                 if postprocess_fn:
                     return postprocess_fn(self, sample_batch,
                                           other_agent_batches, episode)

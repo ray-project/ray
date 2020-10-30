@@ -1,9 +1,33 @@
+import gym
 import numpy as np
+import tree
 
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
 
+
+def convert_to_non_tf_type(stats):
+    """Converts values in `stats` to non-Tensor numpy or python types.
+
+    Args:
+        stats (any): Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all tf (eager) tensors
+            being converted to numpy types.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to non-tf Tensor types.
+    """
+
+    # The mapping function used to numpyize torch Tensors.
+    def mapping(item):
+        if isinstance(item, (tf.Tensor, tf.Variable)):
+            return item.numpy()
+        else:
+            return item
+
+    return tree.map_structure(mapping, stats)
 
 def explained_variance(y, pred):
     _, y_var = tf.nn.moments(y, axes=[0])
@@ -12,15 +36,22 @@ def explained_variance(y, pred):
 
 
 def get_placeholder(*, space=None, value=None, time_axis=False):
+    from ray.rllib.models.catalog import ModelCatalog
+
     if space is not None:
+        if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+            return ModelCatalog.get_action_placeholder(space, None)
         return tf1.placeholder(
             shape=(None, ) + ((None, ) if time_axis else ()) + space.shape,
             dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
         )
     else:
         assert value is not None
+        shape = value.shape[1:]
         return tf1.placeholder(
-            shape=(None, ) + ((None, ) if time_axis else ()) + value.shape[1:],
+            shape=(None,) + ((None,) if time_axis else ()) +
+                  (shape if isinstance(shape, tuple) else
+                   tuple(shape.as_list())),
             dtype=tf.float32 if value.dtype == np.float64 else value.dtype,
         )
 

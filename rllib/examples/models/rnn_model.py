@@ -5,7 +5,6 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.models.torch.recurrent_net import RecurrentNetwork as TorchRNN
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -102,14 +101,6 @@ class TorchRNNModel(TorchRNN, nn.Module):
         self.value_branch = nn.Linear(self.lstm_state_size, 1)
         # Holds the current "base" output (before logits layer).
         self._features = None
-
-        # Add state-ins to this model's view.
-        for i in range(2):
-            self.inference_view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=-1,
-                    space=Box(-1.0, 1.0, shape=(self.lstm_state_size,)))
 
     @override(ModelV2)
     def get_initial_state(self):

@@ -81,5 +81,5 @@ MARWILTorchPolicy = build_torch_policy(
     get_default_config=lambda: ray.rllib.agents.marwil.marwil.DEFAULT_CONFIG,
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,
-    after_init=setup_mixins,
+    before_loss_init=setup_mixins,
     mixins=[ValueNetworkMixin])

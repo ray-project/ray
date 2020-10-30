@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import contextlib
 import gym
+from gym.spaces import Box
 import numpy as np
 from typing import Dict, List, Any, Union
 
@@ -59,6 +60,7 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
+        # Basic view requirement for all models: Use the observation as input.
         self.inference_view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
@@ -237,20 +239,22 @@ class ModelV2:
         right input dict, state, and seq len arguments.
         """
 
-        input_dict = {
-            "obs": train_batch[SampleBatch.CUR_OBS],
-            "is_training": is_training,
-        }
-        if SampleBatch.PREV_ACTIONS in train_batch:
-            input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
-        if SampleBatch.PREV_REWARDS in train_batch:
-            input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
+        input_dict = train_batch.copy()
+        #input_dict = {
+        #    "obs": train_batch[SampleBatch.CUR_OBS],
+        #    "is_training": is_training,
+        #}
+        input_dict["is_training"] = is_training
+        #if SampleBatch.PREV_ACTIONS in train_batch:
+        #    input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
+        #if SampleBatch.PREV_REWARDS in train_batch:
+        #    input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
         states = []
         i = 0
-        while "state_in_{}".format(i) in train_batch:
-            states.append(train_batch["state_in_{}".format(i)])
+        while "state_in_{}".format(i) in input_dict:
+            states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        return self.__call__(input_dict, states, train_batch.get("seq_lens"))
+        return self.__call__(input_dict, states, input_dict.get("seq_lens"))
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
@@ -317,6 +321,18 @@ class ModelV2:
                 format.
         """
         return self.time_major is True
+
+    @PublicAPI
+    def update_view_requirements_from_init_state(self):
+        # Add state-ins to this model's view.
+        for i, state in enumerate(self.get_initial_state()):
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=state.shape))
+            self.inference_view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))
 
 
 class NullContextManager:

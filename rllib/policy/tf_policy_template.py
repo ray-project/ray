@@ -212,6 +212,7 @@ def build_tf_policy(
                     policy._extra_action_fetches = {}
                 else:
                     policy._extra_action_fetches = extra_action_fetches_fn(policy)
+                    #TODO: remove this in favor of torch/eager way.
                     # Update default view requirements by extra action fetches.
                     if view_requirements_fn is None and config[
                         "_use_trajectory_view_api"]:
