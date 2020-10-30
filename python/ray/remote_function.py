@@ -138,10 +138,12 @@ class RemoteFunction:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                override_environment_variables=None,
                 name=""):
         """Configures and overrides the task invocation parameters.
 
-        Options are overlapping values provided by :obj:`ray.remote`.
+        The arguments are the same as those that can be passed to
+        :obj:`ray.remote`.
 
         Examples:
 
@@ -173,6 +175,8 @@ class RemoteFunction:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
+                    override_environment_variables=(
+                        override_environment_variables),
                     name=name)
 
         return FuncWrapper()
@@ -191,6 +195,7 @@ class RemoteFunction:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
@@ -260,11 +265,18 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
-                self._language, self._function_descriptor, list_args, name,
-                num_returns, resources, max_retries, placement_group.id,
+                self._language,
+                self._function_descriptor,
+                list_args,
+                name,
+                num_returns,
+                resources,
+                max_retries,
+                placement_group.id,
                 placement_group_bundle_index,
-                placement_group_capture_child_tasks)
-
+                placement_group_capture_child_tasks,
+                override_environment_variables=override_environment_variables
+                or dict())
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:

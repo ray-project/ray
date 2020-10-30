@@ -247,9 +247,13 @@ def push_and_tag_images(push_base_images: bool):
 
         for arch_tag in ["-cpu", "-gpu", ""]:
             full_arch_tag = f"nightly{arch_tag}"
-            # Tag and push rayproject/<image>:nightly<arch_tag>
-            docker_push(full_image, full_arch_tag)
+            # Do not tag release builds because they are no longer up to date
+            # after the branch cut.
+            if not _release_build():
+                # Tag and push rayproject/<image>:nightly<arch_tag>
+                docker_push(full_image, full_arch_tag)
 
+            # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
             specific_tag = get_new_tag(
                 full_arch_tag, date_tag if "-deps" in image else sha_tag)
             # Tag and push rayproject/<image>:<sha/date><arch_tag>
@@ -258,15 +262,6 @@ def push_and_tag_images(push_base_images: bool):
                 repository=full_image,
                 tag=specific_tag)
             docker_push(full_image, specific_tag)
-
-            if _release_build():
-                latest_tag = get_new_tag(full_arch_tag, "latest")
-                # Tag and push rayproject/<image>:latest<arch_tag>
-                DOCKER_CLIENT.api.tag(
-                    image=f"{full_image}:{full_arch_tag}",
-                    repository=full_image,
-                    tag=latest_tag)
-                docker_push(full_image, latest_tag)
 
 
 # Push infra here:

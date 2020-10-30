@@ -190,6 +190,8 @@ message TaskSpec {
   bytes placement_group_id = 18;
   // Whether or not this task should capture parent's placement group automatically.
   bool placement_group_capture_child_tasks = 19;
+  // Environment variables to override for this task
+  map<string, string> override_environment_variables = 20;
 }
 
 message Bundle {
