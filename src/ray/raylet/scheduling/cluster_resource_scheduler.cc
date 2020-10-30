@@ -181,9 +181,9 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
         idx--;
       }
     }
-    RAY_LOG(WARNING) << "GetBestSchedulableNode, best_node = " << best_node
-                     << ", # nodes = " << nodes_.size()
-                     << ", task_req = " << task_req.DebugString();
+    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
+                   << ", # nodes = " << nodes_.size()
+                   << ", task_req = " << task_req.DebugString();
     return best_node;
   }
 
