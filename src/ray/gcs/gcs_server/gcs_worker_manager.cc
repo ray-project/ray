@@ -55,6 +55,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
+  // As soon as the worker starts, it will register with GCS. It ensures that GCS receives
+  // the worker registration information first and then the worker failure message, so we
+  // delete the get operation. Related issues:
+  // https://github.com/ray-project/ray/pull/11599
   Status status =
       gcs_table_storage_->WorkerTable().Put(worker_id, *worker_failure_data, on_done);
   if (!status.ok()) {
