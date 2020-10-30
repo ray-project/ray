@@ -126,7 +126,7 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({ actor }) => {
         <ActorStateRepr state={actor.state} />
       </div>
       {isFullActorInfo(actor) && (
-        <Grid container className={classes.detailsPane}>
+        <Grid container spacing={3} className={classes.detailsPane}>
           <Grid container item xs={6}>
             <Grid item xs={4}>
               <Typography>CPU Usage</Typography>
