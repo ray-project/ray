@@ -1,5 +1,7 @@
 import copy
 import time
+import os
+import logging
 import yaml
 import tempfile
 from typing import Dict, Callable
@@ -18,6 +20,7 @@ from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE,
                                  TAG_RAY_NODE_KIND)
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
+from ray.autoscaler._private.cli_logger import cli_logger
 
 
 class Task:
@@ -211,7 +214,6 @@ class Simulator:
         """
         while not self.node_launcher.queue.empty():
             config, count, node_type = self.node_launcher.queue.get()
-            print(f"[{self.virtual_time}]\tLaunching {count} {node_type} nodes")
             try:
                 self.node_launcher._launch_node(config, count, node_type)
             except Exception:
@@ -295,6 +297,12 @@ class AutoscalingPolicyTest(unittest.TestCase):
         _NODE_PROVIDERS["mock"] = lambda config: self.create_provider
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
+        logging.disable(level=logging.CRITICAL)
+        # This seems to be the only way of turning the cli logger off. The
+        # expected methods like `cli_logger.configure` don't work.
+        def do_nothing(*args, **kwargs):
+            pass
+        cli_logger._print = type(cli_logger._print)(do_nothing, type(cli_logger))
 
     def tearDown(self):
         self.provider = None
@@ -302,20 +310,6 @@ class AutoscalingPolicyTest(unittest.TestCase):
         _clear_provider_cache()
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
-
-    def waitForNodes(self, expected, comparison=None, tag_filters={}):
-        MAX_ITER = 50
-        for i in range(MAX_ITER):
-            n = len(self.provider.non_terminated_nodes(tag_filters))
-            if comparison is None:
-                comparison = self.assertEqual
-            try:
-                comparison(n, expected)
-                return
-            except Exception:
-                if i == MAX_ITER - 1:
-                    raise
-            time.sleep(0.1)
 
     def create_provider(self, config, cluster_name):
         assert self.provider
@@ -328,6 +322,7 @@ class AutoscalingPolicyTest(unittest.TestCase):
         return path
 
     def testManyTasks(self):
+        cli_logger.configure(log_style="record", verbosity=-1)
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -354,6 +349,7 @@ class AutoscalingPolicyTest(unittest.TestCase):
         assert time < 400
 
     def testManyActors(self):
+        # cli_logger.configure(log_style="record", verbosity=-1)
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
         config_path = self.write_config(config)
         self.provider = MockProvider()
