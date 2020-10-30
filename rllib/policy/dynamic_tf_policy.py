@@ -2,7 +2,7 @@ from collections import OrderedDict
 import gym
 import logging
 import numpy as np
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from ray.util.debug import log_once
 from ray.rllib.models.modelv2 import ModelV2
