@@ -404,8 +404,7 @@ class DynamicTFPolicy(TFPolicy):
                     [view_req.space.sample()])
         return input_dict, dummy_batch
 
-    @override(Policy)
-    def _initialize_loss_dynamically(self, auto=True):
+    def _initialize_loss_dynamically(self):
         if self.config["_use_trajectory_view_api"]:
             dummy_batch = self._dummy_batch
         else:
