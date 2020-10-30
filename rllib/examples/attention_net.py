@@ -63,7 +63,7 @@ if __name__ == "__main__":
                 "ff_hidden_dim": 32,
             },
         },
-        "framework": "torch" if args.torch else "tf",
+        "framework": "torch" if args.torch else "tf2",#TODO tf
     }
 
     stop = {

@@ -9,8 +9,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.policy.view_requirement import \
-    initialize_loss_with_dummy_batch, ViewRequirement
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -248,7 +247,7 @@ def build_torch_policy(
                 before_loss_init(
                     self, self.observation_space, self.action_space, config)
 
-            initialize_loss_with_dummy_batch(
+            self._initialize_loss_dynamically(
                 self, auto=view_requirements_fn is None)
 
             if after_init:

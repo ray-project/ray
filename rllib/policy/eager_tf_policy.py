@@ -11,7 +11,6 @@ from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import initialize_loss_with_dummy_batch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -267,8 +266,8 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            initialize_loss_with_dummy_batch(
-                self, auto=view_requirements_fn is None)
+            self._initialize_loss_dynamically(
+                auto_remove_unneeded_view_reqs=view_requirements_fn is None)
             self._loss_initialized = True
 
             if optimizer_fn:

@@ -67,7 +67,6 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         # Add previous memory chunk (as const, w/o gradient) to input.
         # Tau (number of (prev) time slices in each memory chunk).
         Tau = tf.shape(memory)[1]  #if memory is not None else 0
-        #if memory is not None:
         inputs = tf.concat([tf.stop_gradient(memory), inputs], axis=1)
 
         # Apply the Layer-Norm.
@@ -80,6 +79,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         # Cut out memory timesteps from query.
         queries = queries[:, -T:]
 
+        # Splitting up queries into per-head dims (d).
         queries = tf.reshape(queries, [-1, T, H, d])
         keys = tf.reshape(keys, [-1, Tau + T, H, d])
         values = tf.reshape(values, [-1, Tau + T, H, d])

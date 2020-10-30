@@ -1,4 +1,3 @@
-from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -49,7 +48,7 @@ class RecurrentNetwork(TFModelV2):
             self.register_variables(self.rnn_model.variables)
             self.rnn_model.summary()
     """
-    
+
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         """Adds time dimension to batch before sending inputs to forward_rnn().
@@ -109,10 +108,10 @@ class LSTMWrapper(RecurrentNetwork):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
 
-        self.cell_size = model_config["lstm_cell_size"]
         super(LSTMWrapper, self).__init__(obs_space, action_space, None,
                                           model_config, name)
 
+        self.cell_size = model_config["lstm_cell_size"]
         self.use_prev_action_reward = model_config[
             "lstm_use_prev_action_reward"]
         if action_space.shape is not None:

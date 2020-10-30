@@ -203,6 +203,9 @@ class GTrXLNet(RecurrentNetwork):
                 position-wise MLP).
         """
 
+        super().__init__(observation_space, action_space, num_outputs,
+                         model_config, name)
+
         self.num_transformer_units = num_transformer_units
         self.attn_dim = attn_dim
         self.num_heads = num_heads
@@ -211,9 +214,6 @@ class GTrXLNet(RecurrentNetwork):
         self.head_dim = head_dim
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
-
-        super().__init__(observation_space, action_space, num_outputs,
-                         model_config, name)
 
         # Constant (non-trainable) sinusoid rel pos encoding matrices
         # (use different ones for inference and training due to the different
@@ -294,11 +294,11 @@ class GTrXLNet(RecurrentNetwork):
 
         # Setup inference view (memory-inference x past observations +
         # current one (0))
-        self.inference_view_requirements.update({
-            SampleBatch.OBS: ViewRequirement(
-                shift="-{}:0".format(self.memory_inference),
-                space=self.obs_space)
-        })
+        #self.inference_view_requirements.update({
+        #    SampleBatch.OBS: ViewRequirement(
+        #        shift="-{}:0".format(self.memory_inference),
+        #        space=self.obs_space)
+        #})
         # Setup additional view requirements for attention net inference calls.
         # 0: The last `max_seq_len` observations.
         #self.inference_view_requirements["state_in_0"] = ViewRequirement(
@@ -318,6 +318,10 @@ class GTrXLNet(RecurrentNetwork):
     def forward(self, input_dict, state, seq_lens):
         is_training = input_dict["is_training"]
         observations = input_dict[SampleBatch.OBS]
+        # Add the time dim to observations.
+        B = len(seq_lens)
+        T = tf.shape(observations)[0] // B
+        observations = tf.reshape(observations, [-1, T] + observations.shape.as_list()[1:])
 
         assert seq_lens is not None
         #padded_inputs = input_dict["obs_flat"]
@@ -341,7 +345,7 @@ class GTrXLNet(RecurrentNetwork):
         #logits = logits[:, -T:]
         #self._value_out = self._value_out[:, -T:]
 
-        return tf.reshape(logits, [-1, self.num_outputs]), memory_outs
+        return tf.reshape(logits, [-1, self.num_outputs]), [tf.reshape(m, [-1, self.attn_dim]) for m in memory_outs]
 
     #@override(RecurrentNetwork)
     #def forward_rnn(self, observations, states, seq_lens):
@@ -370,6 +374,20 @@ class GTrXLNet(RecurrentNetwork):
         #self._value_out = self._value_out[:, -T:]
 
     #    return logits, memory_outs
+
+    @override(ModelV2)
+    def update_view_requirements_from_init_state(self):
+        # 1 to `num_transformer_units`: Memory data (one per transformer unit).
+        for i in range(self.num_transformer_units):
+            self.inference_view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(
+                    shift="-{}:-1".format(self.memory_inference),
+                    space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                   "state_out_{}".format(i),
+                    shift="-{}:-1".format(self.memory_inference),
+                    space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
 
     # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
