@@ -8,8 +8,6 @@ import time
 import ray
 import ray.ray_constants
 import ray.test_utils
-from ray import gcs_utils
-from ray.utils import binary_to_hex
 
 from ray._raylet import GlobalStateAccessor
 
