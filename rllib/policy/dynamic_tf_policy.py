@@ -2,10 +2,12 @@ from collections import OrderedDict
 import gym
 import logging
 import numpy as np
+import re
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from ray.util.debug import log_once
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -13,6 +15,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import get_placeholder
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -357,11 +360,11 @@ class DynamicTFPolicy(TFPolicy):
     def _get_input_dict_and_dummy_batch(self, view_requirements,
                                         existing_inputs):
         """Creates input_dict and dummy_batch for loss initialization.
-        
+
         Used for managing the Policy's input placeholders and for loss
         initialization.
         Input_dict: Str -> tf.placeholders, dummy_batch: str -> np.arrays.
-        
+
         Args:
             view_requirements (ViewReqs): The view requirements dict.
             existing_inputs (Dict[str, tf.placeholder]): A dict of already

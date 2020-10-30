@@ -48,13 +48,14 @@ def build_torch_policy(
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
         before_init: Optional[Callable[
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        before_loss_init: Optional[Callable[
-            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict],
-            None]] = None,
+        before_loss_init: Optional[Callable[[
+            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+        ], None]] = None,
         after_init: Optional[Callable[
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        _after_loss_init: Optional[Callable[[Policy, gym.spaces.Space,
-            gym.spaces.Space, TrainerConfigDict], None]] = None,
+        _after_loss_init: Optional[Callable[[
+            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+        ], None]] = None,
         action_sampler_fn: Optional[Callable[[TensorType, List[
             TensorType]], Tuple[TensorType, TensorType]]] = None,
         action_distribution_fn: Optional[Callable[[

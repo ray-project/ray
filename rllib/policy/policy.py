@@ -555,11 +555,17 @@ class Policy(metaclass=ABCMeta):
         return {
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
-                data_col=SampleBatch.OBS, shift=1, space=self.observation_space),
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=self.observation_space),
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
-            SampleBatch.PREV_ACTIONS: ViewRequirement(data_col=SampleBatch.ACTIONS, shift=-1, space=self.action_space),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(
+                data_col=SampleBatch.ACTIONS,
+                shift=-1,
+                space=self.action_space),
             SampleBatch.REWARDS: ViewRequirement(),
-            SampleBatch.PREV_REWARDS: ViewRequirement(data_col=SampleBatch.REWARDS, shift=-1),
+            SampleBatch.PREV_REWARDS: ViewRequirement(
+                data_col=SampleBatch.REWARDS, shift=-1),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
@@ -572,8 +578,7 @@ class Policy(metaclass=ABCMeta):
         }
 
     def _initialize_loss_dynamically(
-            self,
-            auto_remove_unneeded_view_reqs: bool = True) -> None:
+            self, auto_remove_unneeded_view_reqs: bool = True) -> None:
         """Performs test calls through policy's model and loss.
 
         NOTE: This base method should work for define-by-run Policies such as
@@ -658,10 +663,9 @@ class Policy(metaclass=ABCMeta):
                             used_for_training=used_for_training)
 
     def _get_dummy_batch_from_view_requirements(
-            self,
-            batch_size: int = 1) -> Dict[str, TensorType]:
+            self, batch_size: int = 1) -> Dict[str, TensorType]:
         """Creates a numpy dummy batch based on the Policy's view requirements.
-        
+
         Args:
             batch_size (int): The size of the batch to create.
 

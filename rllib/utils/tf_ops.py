@@ -29,6 +29,7 @@ def convert_to_non_tf_type(stats):
 
     return tree.map_structure(mapping, stats)
 
+
 def explained_variance(y, pred):
     _, y_var = tf.nn.moments(y, axes=[0])
     _, diff_var = tf.nn.moments(y - pred, axes=[0])

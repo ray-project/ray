@@ -1,11 +1,7 @@
 import gym
-import numpy as np
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import List, Optional, Union
 
 from ray.rllib.utils.framework import try_import_torch
-
-if TYPE_CHECKING:
-    from ray.rllib.policy.policy import Policy
 
 torch, _ = try_import_torch()
 
