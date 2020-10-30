@@ -156,6 +156,11 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
   }
 }
 
+const std::unordered_map<std::string, std::string>
+    &WorkerContext::GetCurrentOverrideEnvironmentVariables() const {
+  return override_environment_variables_;
+}
+
 void WorkerContext::SetCurrentJobId(const JobID &job_id) { current_job_id_ = job_id; }
 
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
@@ -168,6 +173,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
     current_task_is_direct_call_ = true;
+    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
@@ -178,6 +184,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupId();
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
+    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_job_id_ == task_spec.JobId());
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
