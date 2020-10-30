@@ -20,14 +20,12 @@ def test_spill_objects_manually(shutdown_only):
             "object_store_full_max_retries": 0,
             "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
-            "object_spilling_config": json.dumps(
-                {
-                    "type": "filesystem",
-                    "params": {
-                        "directory_path": "/tmp"
-                    }
-                },
-                separators=(",", ":")),
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": "/tmp"
+                }
+            }).encode("utf-8"),
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -77,14 +75,12 @@ def test_spill_objects_manually_from_workers(shutdown_only):
             "object_store_full_max_retries": 0,
             "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
-            "object_spilling_config": json.dumps(
-                {
-                    "type": "filesystem",
-                    "params": {
-                        "directory_path": "/tmp"
-                    }
-                },
-                separators=(",", ":")),
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": "/tmp"
+                }
+            }).encode("utf-8"),
         })
 
     @ray.remote
@@ -113,14 +109,12 @@ def test_spill_objects_manually_with_workers(shutdown_only):
             "object_store_full_max_retries": 0,
             "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
-            "object_spilling_config": json.dumps(
-                {
-                    "type": "filesystem",
-                    "params": {
-                        "directory_path": "/tmp"
-                    }
-                },
-                separators=(",", ":")),
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": "/tmp"
+                }
+            }).encode("utf-8"),
         })
     arrays = [np.random.rand(100 * 1024) for _ in range(50)]
     objects = [ray.put(arr) for arr in arrays]
@@ -146,14 +140,12 @@ def test_spill_objects_manually_with_workers(shutdown_only):
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
             "max_io_workers": 4,
-            "object_spilling_config": json.dumps(
-                {
-                    "type": "filesystem",
-                    "params": {
-                        "directory_path": "/tmp"
-                    }
-                },
-                separators=(",", ":")),
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": "/tmp"
+                }
+            }).encode("utf-8"),
         },
     }],
     indirect=True)
@@ -196,14 +188,12 @@ def test_spill_objects_automatically(shutdown_only):
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
-            "object_spilling_config": json.dumps(
-                {
-                    "type": "filesystem",
-                    "params": {
-                        "directory_path": "/tmp"
-                    }
-                },
-                separators=(",", ":")),
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": "/tmp"
+                }
+            }).encode("utf-8"),
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []

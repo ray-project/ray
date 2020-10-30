@@ -109,8 +109,10 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
                                       std::function<void(const ray::Status &)> callback) {
   std::vector<ObjectID> objects_to_spill;
+  // Filter for the objects that can be spilled.
   for (const auto &id : object_ids) {
-    // We should not spill an object that we are not the primary copy for.
+    // We should not spill an object that we are not the primary copy for, or
+    // objects that are already being spilled.
     if (pinned_objects_.count(id) == 0 && objects_pending_spill_.count(id) == 0) {
       if (callback) {
         callback(
@@ -120,7 +122,8 @@ void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
       return;
     }
 
-    // Only spill objects that are not already being spilled.
+    // Add objects that we are the primary copy for, and that we are not
+    // already spilling.
     auto it = pinned_objects_.find(id);
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;

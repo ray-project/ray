@@ -1,4 +1,5 @@
 import argparse
+import base64
 import json
 import time
 import sys
@@ -124,9 +125,10 @@ if __name__ == "__main__":
     # external storage is intialized.
     if mode == ray.IO_WORKER_MODE:
         from ray import external_storage
-        print("OBJECTCONFIG", args.object_spilling_config)
         if args.object_spilling_config:
-            object_spilling_config = json.loads(args.object_spilling_config)
+            object_spilling_config = base64.b64decode(
+                args.object_spilling_config)
+            object_spilling_config = json.loads(object_spilling_config)
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(object_spilling_config)

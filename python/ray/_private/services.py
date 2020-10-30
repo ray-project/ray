@@ -1,3 +1,4 @@
+import base64
 import collections
 import errno
 import io
@@ -67,6 +68,19 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
     "use_perftools_profiler",
     "use_tmux",
 ])
+
+
+def serialize_config(config):
+    config_pairs = []
+    for key, value in config.items():
+        if isinstance(value, bytes):
+            value = base64.b64encode(value).decode('utf-8')
+        config_pairs.append((key, value))
+    config_str = ";".join(["{},{}".format(*kv) for kv in config_pairs])
+    assert " " not in config_str, (
+        "Config parameters currently do not support "
+        "spaces:", config_str)
+    return config_str
 
 
 class ConsolePopen(subprocess.Popen):
@@ -1121,10 +1135,7 @@ def start_gcs_server(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    config_str = ";".join(["{},{}".format(*kv) for kv in config.items()])
-    assert " " not in config_str, (
-        "Config parameters currently do not support "
-        "spaces.")
+    config_str = serialize_config(config)
     if gcs_server_port is None:
         gcs_server_port = 0
 
@@ -1225,10 +1236,7 @@ def start_raylet(redis_address,
     # The caller must provide a node manager port so that we can correctly
     # populate the command to start a worker.
     assert node_manager_port is not None and node_manager_port != 0
-    config_str = ";".join(["{},{}".format(*kv) for kv in config.items()])
-    assert " " not in config_str, (
-        "Config parameters currently do not support "
-        "spaces.")
+    config_str = serialize_config(config)
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")

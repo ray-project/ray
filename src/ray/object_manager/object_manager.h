@@ -192,7 +192,7 @@ class ObjectManager : public ObjectManagerInterface,
                          const NodeID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
                          RestoreSpilledObjectCallback restore_spilled_object,
-                         SpillObjectsCallback spill_objects_callback);
+                         SpillObjectsCallback spill_objects_callback = nullptr);
 
   ~ObjectManager();
 
