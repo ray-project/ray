@@ -87,7 +87,7 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
         mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_,
-        [this](const ActorID &actor_id) {},
+        [](const ActorID &actor_id) {},
         [this](const rpc::Address &addr) { return worker_client_; }));
   }
 
