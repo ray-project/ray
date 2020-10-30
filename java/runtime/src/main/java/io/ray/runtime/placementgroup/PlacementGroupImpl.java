@@ -14,14 +14,17 @@ public class PlacementGroupImpl implements PlacementGroup {
   private final String name;
   private final List<Map<String, Double>> bundles;
   private final PlacementStrategy strategy;
+  private final PlacementGroupState state;
 
   public PlacementGroupImpl(PlacementGroupId id, String name,
                             List<Map<String, Double>> bundles,
-                            PlacementStrategy strategy) {
+                            PlacementStrategy strategy,
+                            PlacementGroupState state) {
     this.id = id;
     this.name = name;
     this.bundles = bundles;
     this.strategy = strategy;
+    this.state = state;
   }
 
   public PlacementGroupId getId() {
@@ -40,6 +43,10 @@ public class PlacementGroupImpl implements PlacementGroup {
     return strategy;
   }
 
+  public PlacementGroupState getState() {
+    return state;
+  }
+
   /**
    * A help class for create the Placement Group.
    */
@@ -48,6 +55,7 @@ public class PlacementGroupImpl implements PlacementGroup {
     private String name;
     private List<Map<String, Double>> bundles;
     private PlacementStrategy strategy;
+    private PlacementGroupState state;
 
     /**
      * Set the Id of the Placement Group.
@@ -89,8 +97,18 @@ public class PlacementGroupImpl implements PlacementGroup {
       return this;
     }
 
+    /**
+     * Set the placement state of the Placement Group.
+     * @param state the state of the Placement Group.
+     * @return self.
+     */
+    public Builder setState(PlacementGroupState state) {
+      this.state = state;
+      return this;
+    }
+
     public PlacementGroupImpl build() {
-      return new PlacementGroupImpl(id, name, bundles, strategy);
+      return new PlacementGroupImpl(id, name, bundles, strategy, state);
     }
   }
 
