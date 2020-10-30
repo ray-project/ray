@@ -299,7 +299,7 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   // Task will not execute.
   ASSERT_FALSE(reply.canceled());
-  ASSERT_TRUE(callback_called);
+  ASSERT_FALSE(callback_called);
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(leased_workers_.size(), 1);
 }
