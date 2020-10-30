@@ -294,8 +294,6 @@ def build_eager_tf_policy(name,
             return sample_batch
 
         @override(Policy)
-        @convert_eager_inputs
-        @convert_eager_outputs
         def learn_on_batch(self, samples):
             # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
@@ -303,16 +301,29 @@ def build_eager_tf_policy(name,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
                 batch_divisibility_req=self.batch_divisibility_req)
+            return self._learn_on_batch(samples)
 
+        @convert_eager_inputs
+        @convert_eager_outputs
+        def _learn_on_batch(self, samples):
             with tf.variable_creator_scope(_disallow_var_creation):
                 grads_and_vars, stats = self._compute_gradients(samples)
             self._apply_gradients(grads_and_vars)
             return stats
 
         @override(Policy)
+        def compute_gradients(self, samples):
+            # Get batch ready for RNNs, if applicable.
+            pad_batch_to_sequences_of_same_size(
+                samples,
+                shuffle=False,
+                max_seq_len=self._max_seq_len,
+                batch_divisibility_req=self.batch_divisibility_req)
+            return self._compute_gradients_eager(samples)
+
         @convert_eager_inputs
         @convert_eager_outputs
-        def compute_gradients(self, samples):
+        def _compute_gradients_eager(self, samples):
             with tf.variable_creator_scope(_disallow_var_creation):
                 grads_and_vars, stats = self._compute_gradients(samples)
             grads = [g for g, v in grads_and_vars]
@@ -568,14 +579,8 @@ def build_eager_tf_policy(name,
                     state_in.append(samples["state_in_{}".format(i)])
                 self._state_in = state_in
 
-                self._seq_lens = None
-                if len(state_in) > 0:
-                    self._seq_lens = tf.ones(
-                        samples[SampleBatch.CUR_OBS].shape[0], dtype=tf.int32)
-                    samples["seq_lens"] = self._seq_lens
-
                 model_out, _ = self.model(samples, self._state_in,
-                                          self._seq_lens)
+                                          samples["seq_lens"])
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
             variables = self.model.trainable_variables()
