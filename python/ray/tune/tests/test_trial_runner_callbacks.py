@@ -9,12 +9,16 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.logger import DEFAULT_LOGGERS, ExperimentLogger, \
+    LegacyExperimentLogger
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
+from ray.tune.syncer import SyncConfig, SyncerCallback
 
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune import Callback
+from ray.tune.tune import _create_callbacks
 
 
 class TestCallback(Callback):
@@ -199,6 +203,70 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(
             self.callback.state["trial_complete"]["trial"].config["do"],
             "delay")
+
+    def testCallbackReordering(self):
+        """SyncerCallback should come after ExperimentLogger callbacks"""
+
+        def get_positions(callbacks):
+            first_logger_pos = None
+            last_logger_pos = None
+            syncer_pos = None
+            for i, callback in enumerate(callbacks):
+                if isinstance(callback, ExperimentLogger):
+                    if first_logger_pos is None:
+                        first_logger_pos = i
+                    last_logger_pos = i
+                elif isinstance(callback, SyncerCallback):
+                    syncer_pos = i
+            return first_logger_pos, last_logger_pos, syncer_pos
+
+        # Auto creation of loggers, no callbacks, no syncer
+        callbacks = _create_callbacks(None, SyncConfig(), None)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
+            callbacks)
+        self.assertLess(last_logger_pos, syncer_pos)
+
+        # Auto creation of loggers with callbacks
+        callbacks = _create_callbacks([Callback()], SyncConfig(), None)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
+            callbacks)
+        self.assertLess(last_logger_pos, syncer_pos)
+
+        # Auto creation of loggers with existing logger (but no CSV/JSON)
+        callbacks = _create_callbacks([ExperimentLogger()], SyncConfig(), None)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
+            callbacks)
+        self.assertLess(last_logger_pos, syncer_pos)
+
+        # This should be reordered
+        callbacks = _create_callbacks(
+            [SyncerCallback(None), ExperimentLogger()], SyncConfig(), None)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
+            callbacks)
+        self.assertLess(last_logger_pos, syncer_pos)
+
+        # This should be reordered but preserve the regular callback order
+        [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
+        sc = SyncerCallback(None)
+        # Has to be legacy logger to avoid logger callback creation
+        lc = LegacyExperimentLogger(logger_classes=DEFAULT_LOGGERS)
+        callbacks = _create_callbacks([mc1, sc, mc2, lc, mc3], SyncConfig(),
+                                      None)
+        print(callbacks)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
+            callbacks)
+        self.assertLess(last_logger_pos, syncer_pos)
+        self.assertLess(callbacks.index(mc1), callbacks.index(mc2))
+        self.assertLess(callbacks.index(mc2), callbacks.index(mc3))
+        self.assertLess(callbacks.index(lc), callbacks.index(mc3))
+        self.assertLess(callbacks.index(sc), callbacks.index(mc3))
+
+        # Disable reordering
+        os.environ["TUNE_DISABLE_REORDER_CALLBACK_SYNCER"] = "1"
+        pre_order = [mc1, sc, mc2, lc, mc3]
+        callbacks = _create_callbacks([mc1, sc, mc2, lc, mc3], SyncConfig(),
+                                      None)
+        self.assertSequenceEqual(pre_order, callbacks)
 
 
 if __name__ == "__main__":
