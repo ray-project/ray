@@ -11,6 +11,7 @@ from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
                              AUTO_RESULT_KEYS)
 from ray.tune.trial import Trial
 from ray.tune.utils import unflattened_lookup
+from ray.tune.utils.log import Verbosity, has_verbosity
 
 try:
     from collections.abc import Mapping
@@ -224,15 +225,18 @@ class TuneReporterBase(ProgressReporter):
                 best_trial_str(current_best_trial, metric,
                                self._parameter_columns))
 
-        messages.append(
-            trial_progress_str(
-                trials,
-                metric_columns=self._metric_columns,
-                parameter_columns=self._parameter_columns,
-                total_samples=self._total_samples,
-                fmt=fmt,
-                max_rows=max_progress))
-        messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
+        if has_verbosity(Verbosity.TRIAL_DETAILS):
+            messages.append(
+                trial_progress_str(
+                    trials,
+                    metric_columns=self._metric_columns,
+                    parameter_columns=self._parameter_columns,
+                    total_samples=self._total_samples,
+                    fmt=fmt,
+                    max_rows=max_progress))
+        if has_verbosity(Verbosity.EXPERIMENT):
+            messages.append(
+                trial_errors_str(trials, fmt=fmt, max_rows=max_error))
 
         return delim.join(messages) + delim
 

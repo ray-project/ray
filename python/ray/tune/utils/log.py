@@ -15,7 +15,7 @@ class Verbosity(Enum):
 verbosity: Union[int, Verbosity] = Verbosity.TRIAL_DETAILS
 
 
-def verbose_log(level: Union[int, Verbosity], logger: Callable[[str], Any],
+def verbose_log(logger: Callable[[str], Any], level: Union[int, Verbosity],
                 message: str):
     """Log `message` if specified level exceeds global verbosity level.
 
