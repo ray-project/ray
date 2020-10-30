@@ -790,6 +790,127 @@ def test_detect_docker_cpus():
             cpuset_file_name=cpuset_file.name) == 0.42
 
 
+def test_override_environment_variables_task(ray_start_regular):
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("a")) == "b")
+
+
+def test_override_environment_variables_actor(ray_start_regular):
+    @ray.remote
+    class EnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+    a = EnvGetter.options(override_environment_variables={
+        "a": "b",
+        "c": "d"
+    }).remote()
+    assert (ray.get(a.get.remote("a")) == "b")
+    assert (ray.get(a.get.remote("c")) == "d")
+
+
+def test_override_environment_variables_nested_task(ray_start_regular):
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    @ray.remote
+    def get_env_wrapper(key):
+        return ray.get(get_env.remote(key))
+
+    assert (ray.get(
+        get_env_wrapper.options(override_environment_variables={
+            "a": "b"
+        }).remote("a")) == "b")
+
+
+def test_override_environment_variables_multitenancy(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "foo1": "bar1",
+            "foo2": "bar2"
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert ray.get(get_env.remote("foo1")) == "bar1"
+    assert ray.get(get_env.remote("foo2")) == "bar2"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1"
+        }).remote("foo1")) == "baz1"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1"
+        }).remote("foo2")) == "bar2"
+
+
+def test_override_environment_variables_complex(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "a": "job_a",
+            "b": "job_b",
+            "z": "job_z"
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    @ray.remote
+    class NestedEnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+        def get_task(self, key):
+            return ray.get(get_env.remote(key))
+
+    @ray.remote
+    class EnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+        def get_task(self, key):
+            return ray.get(get_env.remote(key))
+
+        def nested_get(self, key):
+            aa = NestedEnvGetter.options(override_environment_variables={
+                "c": "e",
+                "d": "dd"
+            }).remote()
+            return ray.get(aa.get.remote(key))
+
+    a = EnvGetter.options(override_environment_variables={
+        "a": "b",
+        "c": "d"
+    }).remote()
+    assert (ray.get(a.get.remote("a")) == "b")
+    assert (ray.get(a.get_task.remote("a")) == "b")
+    assert (ray.get(a.nested_get.remote("a")) == "b")
+    assert (ray.get(a.nested_get.remote("c")) == "e")
+    assert (ray.get(a.nested_get.remote("d")) == "dd")
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("a")) == "b")
+
+    assert (ray.get(a.get.remote("z")) == "job_z")
+    assert (ray.get(a.get_task.remote("z")) == "job_z")
+    assert (ray.get(a.nested_get.remote("z")) == "job_z")
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("z")) == "job_z")
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

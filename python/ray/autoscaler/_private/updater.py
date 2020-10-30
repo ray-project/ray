@@ -75,7 +75,6 @@ class NodeUpdater:
             process_runner, use_internal_ip, docker_config)
 
         self.daemon = True
-        self.process_runner = process_runner
         self.node_id = node_id
         self.provider = provider
         # Some node providers don't specify empty structures as

@@ -80,7 +80,7 @@ enum MessageType:int {
   ConnectClient,
   // Set dynamic custom resource.
   SetResourceRequest,
-  // Subscribe to Plasma updates
+  // Subscribe to Plasma updates.
   SubscribePlasmaReady,
 }
 
@@ -296,6 +296,8 @@ table SetResourceRequest {
 table SubscribePlasmaReady {
   // ObjectID to wait for
   object_id: string;
+  // The owner address for the ObjectID
+  owner_address: Address;
 }
 
 table ForceSpillObjectsRequest {

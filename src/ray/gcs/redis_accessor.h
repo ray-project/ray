@@ -340,7 +340,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
       const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  boost::optional<GcsNodeInfo> Get(const NodeID &node_id) const override;
+  boost::optional<GcsNodeInfo> Get(const NodeID &node_id,
+                                   bool filter_dead_nodes = true) const override;
 
   const std::unordered_map<NodeID, GcsNodeInfo> &GetAll() const override;
 
@@ -368,6 +369,11 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
                               const StatusCallback &callback) override;
 
   void AsyncReReportHeartbeat() override;
+
+  Status AsyncGetAllHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override {
+    return Status::NotImplemented("AsyncGetAllHeartbeat not implemented");
+  }
 
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<HeartbeatBatchTableData> &subscribe,

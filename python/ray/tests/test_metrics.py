@@ -4,6 +4,7 @@ import requests
 import time
 
 import ray
+from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.test_utils import (RayTestTimeoutException,
@@ -36,7 +37,10 @@ def test_worker_stats(shutdown_only):
 
     reply = try_get_node_stats()
     # Check that there is one connected driver.
-    drivers = [worker for worker in reply.workers_stats if worker.is_driver]
+    drivers = [
+        worker for worker in reply.core_workers_stats
+        if worker.worker_type == common_pb2.DRIVER
+    ]
     assert len(drivers) == 1
     assert os.getpid() == drivers[0].pid
 
@@ -58,11 +62,10 @@ def test_worker_stats(shutdown_only):
     worker_pid = ray.get(f.remote())
     reply = try_get_node_stats()
     target_worker_present = False
-    for worker in reply.workers_stats:
-        stats = worker.core_worker_stats
+    for stats in reply.core_workers_stats:
         if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
             target_worker_present = True
-            assert worker.pid == worker_pid
+            assert stats.pid == worker_pid
         else:
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
@@ -72,11 +75,10 @@ def test_worker_stats(shutdown_only):
     worker_pid = ray.get(a.f.remote())
     reply = try_get_node_stats()
     target_worker_present = False
-    for worker in reply.workers_stats:
-        stats = worker.core_worker_stats
+    for stats in reply.core_workers_stats:
         if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
             target_worker_present = True
-            assert worker.pid == worker_pid
+            assert stats.pid == worker_pid
         else:
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
@@ -89,15 +91,15 @@ def test_worker_stats(shutdown_only):
                 "Timed out while waiting for worker processes")
 
         # Wait for the workers to start.
-        if len(reply.workers_stats) < num_cpus + 1:
+        if len(reply.core_workers_stats) < num_cpus + 1:
             time.sleep(1)
             reply = try_get_node_stats()
             continue
 
         # Check that the rest of the processes are workers, 1 for each CPU.
-        assert len(reply.workers_stats) == num_cpus + 1
+        assert len(reply.core_workers_stats) == num_cpus + 1
         # Check that all processes are Python.
-        pids = [worker.pid for worker in reply.workers_stats]
+        pids = [worker.pid for worker in reply.core_workers_stats]
         processes = [
             p.info["name"] for p in psutil.process_iter(attrs=["pid", "name"])
             if p.info["pid"] in pids
