@@ -50,7 +50,7 @@ class ClusterResourceScheduler {
   /// to integer representation. Used for improving map performance.
   StringIdMap string_to_int_map_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
-  NodeResources last_report_resources_;
+  std::unique_ptr<NodeResources> last_report_resources_;
 
   /// Set predefined resources.
   ///
@@ -381,8 +381,7 @@ class ClusterResourceScheduler {
   /// \param light_heartbeat_enabled Only send changed fields if true.
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void Heartbeat(bool light_heartbeat_enabled,
-                 std::shared_ptr<HeartbeatTableData> data) const;
+  void Heartbeat(bool light_heartbeat_enabled, std::shared_ptr<HeartbeatTableData> data);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

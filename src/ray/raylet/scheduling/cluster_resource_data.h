@@ -148,6 +148,10 @@ class TaskResourceInstances {
 /// Total and available capacities of each resource of a node.
 class NodeResources {
  public:
+  NodeResources() {}
+  NodeResources(const NodeResources &other)
+      : predefined_resources(other.predefined_resources),
+        custom_resources(other.custom_resources) {}
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the

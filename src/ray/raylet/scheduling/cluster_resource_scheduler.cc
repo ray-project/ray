@@ -783,15 +783,15 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
 }
 
 void ClusterResourceScheduler::Heartbeat(
-    bool light_heartbeat_enabled,
-    std::shared_ptr<HeartbeatTableData> heartbeat_data) const {
+    bool light_heartbeat_enabled, std::shared_ptr<HeartbeatTableData> heartbeat_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
       << "Error: Populating heartbeat failed. Please file a bug report: "
          "https://github.com/ray-project/ray/issues/new.";
 
-  if (light_heartbeat_enabled && resources == last_report_resources_) {
+  if (light_heartbeat_enabled && last_report_resources_ &&
+      resources == *last_report_resources_.get()) {
     return;
   } else {
     for (int i = 0; i < PredefinedResources_MAX; i++) {
@@ -819,6 +819,9 @@ void ClusterResourceScheduler::Heartbeat(
       }
     }
     heartbeat_data->set_resources_available_changed(true);
+    if (light_heartbeat_enabled) {
+      last_report_resources_.reset(new NodeResources(resources));
+    }
   }
 }
 
