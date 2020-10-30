@@ -332,75 +332,9 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+        # Compute gradients (will calculate all losses and `backward()`
+        # them to get the grads).
         grads, fetches = self.compute_gradients(postprocessed_batch)
-
-        ## TODO: (sven) move the below into self.compute_gradients.
-        ## Get batch ready for RNNs, if applicable.
-        #pad_batch_to_sequences_of_same_size(
-        #    postprocessed_batch,
-        #    max_seq_len=self.max_seq_len,
-        #    shuffle=False,
-        #    batch_divisibility_req=self.batch_divisibility_req,
-        #)
-
-        #train_batch = self._lazy_tensor_dict(postprocessed_batch)
-
-        ## Calculate the actual policy loss.
-        #loss_out = force_list(
-        #    self._loss(self, self.model, self.dist_class, train_batch))
-
-        ## Call Model's custom-loss with Policy loss outputs and train_batch.
-        #if self.model:
-        #    loss_out = self.model.custom_loss(loss_out, train_batch)
-
-        ## Give Exploration component that chance to modify the loss (or add
-        ## its own terms).
-        #if hasattr(self, "exploration"):
-        #    loss_out = self.exploration.get_exploration_loss(
-        #        loss_out, train_batch)
-
-        #assert len(loss_out) == len(self._optimizers)
-
-        ## assert not any(torch.isnan(l) for l in loss_out)
-        #fetches = self.extra_compute_grad_fetches()
-
-        ## Loop through all optimizers.
-        #grad_info = {"allreduce_latency": 0.0}
-
-        #for i, opt in enumerate(self._optimizers):
-        #    # Erase gradients in all vars of this optimizer.
-        #    opt.zero_grad()
-        #    # Recompute gradients of loss over all variables.
-        #    loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
-        #    grad_info.update(self.extra_grad_process(opt, loss_out[i]))
-
-        #    if self.distributed_world_size:
-        #        grads = []
-        #        for param_group in opt.param_groups:
-        #            for p in param_group["params"]:
-        #                if p.grad is not None:
-        #                    grads.append(p.grad)
-
-        #        start = time.time()
-        #        if torch.cuda.is_available():
-        #            # Sadly, allreduce_coalesced does not work with CUDA yet.
-        #            for g in grads:
-        #                torch.distributed.all_reduce(
-        #                    g, op=torch.distributed.ReduceOp.SUM)
-        #        else:
-        #            torch.distributed.all_reduce_coalesced(
-        #                grads, op=torch.distributed.ReduceOp.SUM)
-
-        #        for param_group in opt.param_groups:
-        #            for p in param_group["params"]:
-        #                if p.grad is not None:
-        #                    p.grad /= self.distributed_world_size
-
-        #        grad_info["allreduce_latency"] += time.time() - start
-        # TODO: (sven) move the above into self.compute_gradients.
-
-        #grad_info["allreduce_latency"] /= len(self._optimizers)
-        #grad_info.update(self.extra_grad_info(train_batch))
 
         # Step the optimizers.
         for i, opt in enumerate(self._optimizers):
@@ -408,7 +342,7 @@ class TorchPolicy(Policy):
 
         if self.model:
             fetches["model"] = self.model.metrics()
-        return fetches  #dict(fetches, **{LEARNER_STATS_KEY: grad_info})
+        return fetches
 
     @override(Policy)
     @DeveloperAPI
@@ -443,16 +377,12 @@ class TorchPolicy(Policy):
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
 
-        #grad_process_info = {}
         grads = []
         for i, opt in enumerate(self._optimizers):
             opt.zero_grad()
             # Recompute gradients of loss over all variables.
             loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
             grad_info.update(self.extra_grad_process(opt, loss_out[i]))
-
-            #loss_out[i].backward()
-            #grad_process_info = self.extra_grad_process(opt, loss_out[i])
 
             if self.distributed_world_size:
                 # Note that return values are just references;
@@ -481,20 +411,9 @@ class TorchPolicy(Policy):
 
                 grad_info["allreduce_latency"] += time.time() - start
 
-            ## Note that return values are just references;
-            ## calling zero_grad would modify the values
-            #for param_group in opt.param_groups:
-            #    for p in param_group["params"]:
-            #        if p.grad is not None:
-            #            grads.append(p.grad.data.cpu().numpy())
-            #        else:
-            #            grads.append(None)
-
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
 
-        #grad_info = self.extra_grad_info(train_batch)
-        #grad_info.update(grad_process_info)
         return grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
