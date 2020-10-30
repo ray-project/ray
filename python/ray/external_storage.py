@@ -65,9 +65,6 @@ class NullStorage(ExternalStorage):
     def restore_spilled_objects(self, keys):
         raise NotImplementedError("External storage is not initialized")
 
-    def get_stats(self):
-        raise NotImplementedError("External storage is not initialized")
-
 
 class FileSystemStorage(ExternalStorage):
     """The class for filesystem-like external storage.
