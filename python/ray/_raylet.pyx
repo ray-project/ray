@@ -397,11 +397,6 @@ cdef execute_task(
         next_title = f"ray::{class_name}"
         pid = os.getpid()
         worker_name = f"ray_{class_name}_{pid}"
-        if c_resources.find(b"memory") != c_resources.end():
-            worker.memory_monitor.set_heap_limit(
-                worker_name,
-                ray_constants.from_memory_units(
-                    dereference(c_resources.find(b"memory")).second))
         if c_resources.find(b"object_store_memory") != c_resources.end():
             worker.core_worker.set_object_store_client_options(
                 worker_name,
@@ -1006,28 +1001,32 @@ cdef class CoreWorker:
                     int max_retries,
                     PlacementGroupID placement_group_id,
                     int64_t placement_group_bundle_index,
-                    c_bool placement_group_capture_child_tasks):
+                    c_bool placement_group_capture_child_tasks,
+                    override_environment_variables):
         cdef:
             unordered_map[c_string, double] c_resources
-            CTaskOptions task_options
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectID] return_ids
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
+            unordered_map[c_string, c_string] \
+                c_override_environment_variables = \
+                override_environment_variables
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
-            task_options = CTaskOptions(
-                name, num_returns, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
 
             with nogil:
                 CCoreWorkerProcess.GetCoreWorker().SubmitTask(
-                    ray_function, args_vector, task_options, &return_ids,
-                    max_retries, c_pair[CPlacementGroupID, int64_t](
+                    ray_function, args_vector, CTaskOptions(
+                        name, num_returns, c_resources,
+                        c_override_environment_variables),
+                    &return_ids, max_retries,
+                    c_pair[CPlacementGroupID, int64_t](
                         c_placement_group_id, placement_group_bundle_index),
                     placement_group_capture_child_tasks)
 
@@ -1048,7 +1047,8 @@ cdef class CoreWorker:
                      PlacementGroupID placement_group_id,
                      int64_t placement_group_bundle_index,
                      c_bool placement_group_capture_child_tasks,
-                     c_string extension_data
+                     c_string extension_data,
+                     override_environment_variables
                      ):
         cdef:
             CRayFunction ray_function
@@ -1059,6 +1059,9 @@ cdef class CoreWorker:
             CActorID c_actor_id
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
+            unordered_map[c_string, c_string] \
+                c_override_environment_variables = \
+                override_environment_variables
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1077,7 +1080,8 @@ cdef class CoreWorker:
                         c_pair[CPlacementGroupID, int64_t](
                             c_placement_group_id,
                             placement_group_bundle_index),
-                        placement_group_capture_child_tasks),
+                        placement_group_capture_child_tasks,
+                        c_override_environment_variables),
                     extension_data,
                     &c_actor_id))
 
@@ -1139,7 +1143,6 @@ cdef class CoreWorker:
         cdef:
             CActorID c_actor_id = actor_id.native()
             unordered_map[c_string, double] c_resources
-            CTaskOptions task_options
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectID] return_ids
@@ -1147,7 +1150,6 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(name, num_returns, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1156,7 +1158,8 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                     c_actor_id,
                     ray_function,
-                    args_vector, task_options, &return_ids)
+                    args_vector, CTaskOptions(name, num_returns, c_resources),
+                    &return_ids)
 
             return VectorToObjectRefs(return_ids)
 

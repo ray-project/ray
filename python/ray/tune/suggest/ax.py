@@ -1,8 +1,10 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from ax.service.ax_client import AxClient
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
@@ -103,7 +105,7 @@ class AxSearch(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[List[Dict]] = None,
+                 space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  parameter_constraints: Optional[List] = None,
@@ -122,6 +124,15 @@ class AxSearch(Searcher):
             use_early_stopped_trials=use_early_stopped_trials)
 
         self._ax = ax_client
+
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
+
         self._space = space
         self._parameter_constraints = parameter_constraints
         self._outcome_constraints = outcome_constraints
@@ -193,10 +204,15 @@ class AxSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._ax:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:

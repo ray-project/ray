@@ -164,20 +164,6 @@ service ActorInfoGcsService {
       returns (GetActorCheckpointIDReply);
 }
 
-// Service for placement group info access.
-service PlacementGroupInfoGcsService {
-  // Create placement group via gcs service.
-  rpc CreatePlacementGroup(CreatePlacementGroupRequest)
-      returns (CreatePlacementGroupReply);
-
-  // Remove placement group via gcs service.
-  rpc RemovePlacementGroup(RemovePlacementGroupRequest)
-      returns (RemovePlacementGroupReply);
-
-  // Get placement group information via gcs service.
-  rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
-}
-
 message RegisterNodeRequest {
   // Info of node.
   GcsNodeInfo node_info = 1;
@@ -212,12 +198,12 @@ message ReportHeartbeatReply {
   GcsStatus status = 1;
 }
 
-message ReportBatchHeartbeatRequest {
-  HeartbeatBatchTableData heartbeat_batch = 1;
+message GetAllHeartbeatRequest {
 }
 
-message ReportBatchHeartbeatReply {
+message GetAllHeartbeatReply {
   GcsStatus status = 1;
+  HeartbeatBatchTableData heartbeat_data = 2;
 }
 
 message GetResourcesRequest {
@@ -282,6 +268,8 @@ service NodeInfoGcsService {
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
   // Get node's resources from GCS Service.
+  // Get newest heartbeat of all nodes from GCS Service.
+  rpc GetAllHeartbeat(GetAllHeartbeatRequest) returns (GetAllHeartbeatReply);
   rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
   // Update resources of a node in GCS Service.
   rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
@@ -542,4 +530,31 @@ message GetPlacementGroupReply {
 enum GcsServiceFailureType {
   RPC_DISCONNECT = 0;
   GCS_SERVER_RESTART = 1;
+}
+
+message GetAllPlacementGroupRequest {
+}
+
+message GetAllPlacementGroupReply {
+  GcsStatus status = 1;
+  // Data of placement group
+  repeated PlacementGroupTableData placement_group_table_data = 2;
+}
+
+// Service for placement group info access.
+service PlacementGroupInfoGcsService {
+  // Create placement group via gcs service.
+  rpc CreatePlacementGroup(CreatePlacementGroupRequest)
+      returns (CreatePlacementGroupReply);
+
+  // Remove placement group via gcs service.
+  rpc RemovePlacementGroup(RemovePlacementGroupRequest)
+      returns (RemovePlacementGroupReply);
+
+  // Get placement group information via gcs service.
+  rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
+
+  // Get information of all placement group from GCS Service.
+  rpc GetAllPlacementGroup(GetAllPlacementGroupRequest)
+      returns (GetAllPlacementGroupReply);
 }

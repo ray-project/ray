@@ -16,7 +16,7 @@ All Trial Schedulers take in a ``metric``, which is a value returned in the resu
 Summary
 -------
 
-Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__. Tune also includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__.
+Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__. Tune also includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__ and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 
 .. tip:: The easiest scheduler to start with is the ``ASHAScheduler`` which will aggressively terminate low-performing trials.
 
@@ -48,7 +48,11 @@ When using schedulers, you may face compatibility issues, as shown in the below 
    * - :ref:`Population Based Training <tune-scheduler-pbt>`
      - Yes
      - Not Compatible
-     - :doc:`Link </tune/examples/pbt_example>`
+     - :doc:`Link </tune/examples/pbt_function>`
+   * - :ref:`Population Based Bandits <tune-scheduler-pb2>`
+     - Yes
+     - Not Compatible
+     - :doc:`Basic Example </tune/examples/pb2_example>`, :doc:`PPO example </tune/examples/pb2_ppo_example>`
 
 .. _tune-scheduler-hyperband:
 
@@ -171,6 +175,38 @@ See :ref:`here for an example <tune-advanced-tutorial-pbt-replay>` on how to use
 replay utility in practice.
 
 .. autoclass:: ray.tune.schedulers.PopulationBasedTrainingReplay
+
+
+.. _tune-scheduler-pb2:
+
+Population Based Bandits (PB2) (tune.schedulers.PB2)
+-------------------------------------------------------------------
+
+Tune includes a distributed implementation of `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__. This can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.
+
+.. code-block:: python
+
+    pb2_scheduler = PB2(
+            time_attr='time_total_s',
+            metric='mean_accuracy',
+            mode='max',
+            perturbation_interval=600.0,
+            hyperparam_bounds={
+                "lr": [1e-3, 1e-5],
+                "alpha": [0.0, 1.0],
+            ...
+            })
+    tune.run( ... , scheduler=pb2_scheduler)
+
+This code builds upon PBT, with the main difference being that instead of using random perturbations, PB2 selects new hyperparameter configurations using a Gaussian Process model. 
+
+When the PB2 scheduler is enabled, each trial variant is treated as a member of the population. Periodically, top-performing trials are checkpointed (this requires your Trainable to support :ref:`save and restore <tune-checkpoint>`). Low-performing trials clone the checkpoints of top performers and perturb the configurations in the hope of discovering an even better variation.
+
+The primary motivation for PB2 is the ability to find promising hyperparamters with only a small population size. With that in mind, you can run this :doc:`PB2 PPO example </tune/examples/pb2_ppo_example>` to compare PB2 vs. PBT, with a population size of ``4`` (as in the paper). The example uses the ``BipedalWalker`` environment so does not require any additional licenses.
+
+
+.. autoclass:: ray.tune.schedulers.PB2
+
 
 .. _tune-scheduler-bohb:
 

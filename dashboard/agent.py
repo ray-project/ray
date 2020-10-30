@@ -3,6 +3,7 @@ import asyncio
 import logging
 import logging.handlers
 import os
+import platform
 import sys
 import socket
 import json
@@ -38,6 +39,7 @@ aiogrpc.init_grpc_aio()
 class DashboardAgent(object):
     def __init__(self,
                  redis_address,
+                 dashboard_agent_port,
                  redis_password=None,
                  temp_dir=None,
                  log_dir=None,
@@ -51,6 +53,7 @@ class DashboardAgent(object):
         self.redis_password = redis_password
         self.temp_dir = temp_dir
         self.log_dir = log_dir
+        self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
         self.object_store_name = object_store_name
@@ -59,7 +62,8 @@ class DashboardAgent(object):
         assert self.node_id, "Empty node id (RAY_NODE_ID)."
         self.ip = ray._private.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = self.server.add_insecure_port("[::]:0")
+        self.grpc_port = self.server.add_insecure_port(
+            f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
@@ -187,6 +191,11 @@ if __name__ == "__main__":
         type=int,
         help="The port to expose metrics through Prometheus.")
     parser.add_argument(
+        "--dashboard-agent-port",
+        required=True,
+        type=int,
+        help="The port on which the dashboard agent will receive GRPCs.")
+    parser.add_argument(
         "--node-manager-port",
         required=True,
         type=int,
@@ -247,35 +256,23 @@ if __name__ == "__main__":
         format(dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT))
     parser.add_argument(
         "--log-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of log directory.")
     parser.add_argument(
         "--temp-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
 
     args = parser.parse_args()
     try:
-        if args.temp_dir:
-            temp_dir = "/" + args.temp_dir.strip("/")
-        else:
-            temp_dir = "/tmp/ray"
-        os.makedirs(temp_dir, exist_ok=True)
-
-        if args.log_dir:
-            log_dir = args.log_dir
-        else:
-            log_dir = os.path.join(temp_dir, "session_latest/logs")
-        os.makedirs(log_dir, exist_ok=True)
-
         if args.logging_filename:
             logging_handlers = [
                 logging.handlers.RotatingFileHandler(
-                    os.path.join(log_dir, args.logging_filename),
+                    os.path.join(args.log_dir, args.logging_filename),
                     maxBytes=args.logging_rotate_bytes,
                     backupCount=args.logging_rotate_backup_count)
             ]
@@ -288,9 +285,10 @@ if __name__ == "__main__":
 
         agent = DashboardAgent(
             args.redis_address,
+            args.dashboard_agent_port,
             redis_password=args.redis_password,
-            temp_dir=temp_dir,
-            log_dir=log_dir,
+            temp_dir=args.temp_dir,
+            log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
             object_store_name=args.object_store_name,
@@ -304,7 +302,7 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The agent on node {} failed with the following "
-                   "error:\n{}".format(os.uname()[1], traceback_str))
+                   "error:\n{}".format(platform.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
         raise e

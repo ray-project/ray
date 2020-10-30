@@ -6,6 +6,8 @@ import ray
 import ray.cloudpickle as pickle
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     Uniform
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 from zoopt import ValueType
@@ -140,6 +142,15 @@ class ZOOptSearch(Searcher):
                          ], "`algo` must be in ['asracos', 'sracos'] currently"
 
         self._algo = _algo
+
+        if isinstance(dim_dict, dict) and dim_dict:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(dim_dict)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="dim_dict", cls=type(self)))
+                dim_dict = self.convert_search_space(dim_dict, join=True)
+
         self._dim_dict = dim_dict
         self._budget = budget
 
@@ -198,10 +209,14 @@ class ZOOptSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._dim_dict or not self.optimizer:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="dim_dict"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         _solution = self.optimizer.suggest()
 
@@ -243,12 +258,13 @@ class ZOOptSearch(Searcher):
         self.optimizer = trials_object
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict[str, Tuple]:
+    def convert_search_space(spec: Dict,
+                             join: bool = False) -> Dict[str, Tuple]:
         spec = copy.deepcopy(spec)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if not domain_vars and not grid_vars:
-            return []
+            return {}
 
         if grid_vars:
             raise ValueError(
@@ -287,9 +303,13 @@ class ZOOptSearch(Searcher):
                                  type(domain).__name__,
                                  type(domain.sampler).__name__))
 
-        spec = {
+        conv_spec = {
             "/".join(path): resolve_value(domain)
             for path, domain in domain_vars
         }
 
-        return spec
+        if join:
+            spec.update(conv_spec)
+            conv_spec = spec
+
+        return conv_spec

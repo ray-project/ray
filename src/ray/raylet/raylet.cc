@@ -69,12 +69,13 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                                                                     gcs_client_))
               : std::dynamic_pointer_cast<ObjectDirectoryInterface>(
                     std::make_shared<ObjectDirectory>(main_service, gcs_client_))),
-      object_manager_(
-          main_service, self_node_id_, object_manager_config, object_directory_,
-          [this](const ObjectID &object_id, const std::string &spilled_url,
-                 std::function<void(const ray::Status &)> callback) {
-            node_manager_.AsyncRestoreSpilledObject(object_id, spilled_url, callback);
-          }),
+      object_manager_(main_service, self_node_id_, object_manager_config,
+                      object_directory_,
+                      [this](const ObjectID &object_id, const std::string &spilled_url,
+                             std::function<void(const ray::Status &)> callback) {
+                        node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
+                            object_id, spilled_url, callback);
+                      }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_),
       socket_name_(socket_name),

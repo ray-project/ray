@@ -611,7 +611,7 @@ def init(
             development, and the API is subject to change.
         _object_spilling_config (str): The configuration json string for object
             spilling I/O worker.
-        _system_config (str): JSON configuration for overriding
+        _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
     Returns:
@@ -621,6 +621,29 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    # Try to increase the file descriptor limit, which is too low by
+    # default for Ray: https://github.com/ray-project/ray/issues/11239
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < hard:
+            logger.debug("Automatically increasing RLIMIT_NOFILE to max "
+                         "value of {}".format(hard))
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+            except ValueError:
+                logger.debug("Failed to raise limit.")
+        soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < 4096:
+            logger.warning(
+                "File descriptor limit {} is too low for production "
+                "servers and may result in connection errors. "
+                "At least 8192 is recommended. --- "
+                "Fix with 'ulimit -n 8192'".format(soft))
+    except ImportError:
+        logger.debug("Could not import resource module (on Windows)")
+        pass
 
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
@@ -1834,6 +1857,12 @@ def remote(*args, **kwargs):
             crashes unexpectedly. The minimum valid value is 0,
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
+        override_environment_variables (Dict[str, str]): This specifies
+            environment variables to override for the actor or task.  The
+            overrides are propagated to all child actors and tasks.  This
+            is a dictionary mapping variable names to their values.  Existing
+            variables can be overridden, new ones can be created, and an
+            existing variable can be unset by setting it to an empty string.
 
     """
     worker = global_worker
