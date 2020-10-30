@@ -360,7 +360,6 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
                                             demand.backlog_size());
         }
       }
-      heartbeat.second.clear_resource_load_by_shape();
 
       batch->add_batch()->Swap(&heartbeat.second);
     }
@@ -405,6 +404,8 @@ void GcsNodeManager::UpdateNodeHeartbeat(const NodeID node_id,
     if (request.heartbeat().resource_load_changed()) {
       (*iter->second.mutable_resource_load()) = request.heartbeat().resource_load();
     }
+    (*iter->second.mutable_resource_load_by_shape()) =
+        request.heartbeat().resource_load_by_shape();
   }
 }
 
