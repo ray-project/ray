@@ -16,6 +16,7 @@ from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import FIFOScheduler
+from ray.tune.utils.log import Verbosity, has_verbosity
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def run(
         checkpoint_score_attr=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
-        verbose=2,
+        verbose=Verbosity.TRIAL_DETAILS,
         progress_reporter=None,
         loggers=None,
         log_to_file=False,
@@ -362,7 +363,6 @@ def run(
         stopper=experiments[0].stopper,
         resume=resume,
         server_port=server_port,
-        verbose=bool(verbose > 1),
         fail_fast=fail_fast,
         trial_executor=trial_executor,
         callbacks=callbacks,
@@ -376,7 +376,8 @@ def run(
 
     if progress_reporter is None:
         if IS_NOTEBOOK:
-            progress_reporter = JupyterNotebookReporter(overwrite=verbose < 2)
+            progress_reporter = JupyterNotebookReporter(
+                overwrite=not has_verbosity(Verbosity.TRIAL_NORM))
         else:
             progress_reporter = CLIReporter()
 
@@ -409,7 +410,7 @@ def run(
     tune_start = time.time()
     while not runner.is_finished():
         runner.step()
-        if verbose:
+        if has_verbosity(Verbosity.EXPERIMENT):
             _report_progress(runner, progress_reporter)
     tune_taken = time.time() - tune_start
 
@@ -418,7 +419,7 @@ def run(
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
-    if verbose:
+    if has_verbosity(Verbosity.EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
@@ -450,7 +451,7 @@ def run(
 def run_experiments(experiments,
                     scheduler=None,
                     server_port=None,
-                    verbose=2,
+                    verbose=3,
                     progress_reporter=None,
                     resume=False,
                     queue_trials=False,
