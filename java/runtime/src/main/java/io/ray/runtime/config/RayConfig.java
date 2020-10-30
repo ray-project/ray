@@ -52,7 +52,7 @@ public class RayConfig {
   public int nodeManagerPort;
   public final Map<String, String> rayletConfigParameters;
 
-  public List<String> codeSearchPath;
+  public final List<String> codeSearchPath;
 
   public final List<String> headArgs;
 
@@ -146,7 +146,6 @@ public class RayConfig {
     } else {
       Preconditions.checkState(workerMode != WorkerType.WORKER,
           "Worker started by raylet should accept the node manager port from raylet.");
-      nodeManagerPort = NetworkUtil.getUnusedPort();
     }
 
     // Raylet parameters.
@@ -158,13 +157,13 @@ public class RayConfig {
     }
 
     // Job code search path.
+    String codeSearchPathString = null;
     if (config.hasPath("ray.job.code-search-path")) {
-      String str = config.getString("ray.job.code-search-path");
-      if (!StringUtils.isEmpty(str)) {
-        codeSearchPath = Arrays.asList(str.split(":"));
-      }
+      codeSearchPathString = config.getString("ray.job.code-search-path");
     }
-    if (codeSearchPath == null) {
+    if (!StringUtils.isEmpty(codeSearchPathString)) {
+      codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
+    } else {
       codeSearchPath = Collections.emptyList();
     }
 
@@ -231,7 +230,8 @@ public class RayConfig {
   /**
    * Renders the config value as a HOCON string.
    */
-  public String render() {
+  @Override
+  public String toString() {
     // These items might be dynamically generated or mutated at runtime.
     // Explicitly include them.
     Map<String, Object> dynamic = new HashMap<>();
@@ -240,7 +240,6 @@ public class RayConfig {
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
     dynamic.put("ray.address", redisAddress);
-    dynamic.put("ray.job.code-search-path", codeSearchPath);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());
   }
@@ -265,11 +264,6 @@ public class RayConfig {
     } else {
       logDir = localLogDir;
     }
-  }
-
-  @Override
-  public String toString() {
-    return render();
   }
 
   /**

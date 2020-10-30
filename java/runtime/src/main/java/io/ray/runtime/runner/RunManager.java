@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,6 +67,7 @@ public class RunManager {
     List<String> command = new ArrayList<>();
     command.add("ray");
     command.add("stop");
+    command.add("--force");
 
     try {
       runCommand(command);
@@ -78,7 +78,8 @@ public class RunManager {
 
   public static void fillConfigForDriver(RayConfig rayConfig) {
     String script = String.format("import ray;"
-        + " print(ray._private.services.get_address_info_from_redis('%s', '%s', redis_password='%s', no_warning=True))",
+        + " print(ray._private.services.get_address_info_from_redis("
+        + "'%s', '%s', redis_password='%s', no_warning=True))",
         rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 
