@@ -58,7 +58,8 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
                        int num_workers_soft_limit,
                        int num_initial_python_workers_for_first_job,
                        int maximum_startup_concurrency, int min_worker_port,
-                       int max_worker_port, std::shared_ptr<gcs::GcsClient> gcs_client,
+                       int max_worker_port, const std::vector<int> &worker_ports,
+                       std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
                        const std::unordered_map<std::string, std::string> &raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
@@ -114,7 +115,12 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
   }
   // Initialize free ports list with all ports in the specified range.
-  if (min_worker_port != 0) {
+  if (!worker_ports.empty()) {
+    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    for (int port : worker_ports) {
+      free_ports_->push(port);
+    }
+  } else if (min_worker_port != 0) {
     if (max_worker_port == 0) {
       max_worker_port = 65535;  // Maximum valid port number.
     }
@@ -167,16 +173,16 @@ WorkerPool::~WorkerPool() {
   }
 }
 
-Process WorkerPool::StartWorkerProcess(const Language &language,
-                                       const rpc::WorkerType worker_type,
-                                       const JobID &job_id,
-                                       std::vector<std::string> dynamic_options) {
+Process WorkerPool::StartWorkerProcess(
+    const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
+    std::vector<std::string> dynamic_options,
+    std::unordered_map<std::string, std::string> override_environment_variables) {
   rpc::JobConfig *job_config = nullptr;
   if (RayConfig::instance().enable_multi_tenancy() &&
       worker_type != rpc::WorkerType::IO_WORKER) {
     RAY_CHECK(!job_id.IsNil());
-    auto it = unfinished_jobs_.find(job_id);
-    if (it == unfinished_jobs_.end()) {
+    auto it = all_jobs_.find(job_id);
+    if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
       // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
       return Process();
@@ -238,7 +244,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
         break;
       }
       case Language::JAVA: {
-        code_search_path_str = "-Dray.job.code-search-path" + code_search_path_str;
+        code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
         break;
       }
       default:
@@ -318,6 +324,11 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
+
+  for (const auto &pair : override_environment_variables) {
+    env[pair.first] = pair.second;
+  }
+
   Process proc = StartProcess(worker_command_args, env);
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     // If the pid is reused between processes, the old process must have exited.
@@ -427,11 +438,13 @@ void WorkerPool::MarkPortAsFree(int port) {
 }
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
-  unfinished_jobs_[job_id] = job_config;
+  all_jobs_[job_id] = job_config;
 }
 
 void WorkerPool::HandleJobFinished(const JobID &job_id) {
-  unfinished_jobs_.erase(job_id);
+  // Currently we don't erase the job from `all_jobs_` , as a workaround for
+  // https://github.com/ray-project/ray/issues/11437.
+  // unfinished_jobs_.erase(job_id);
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
@@ -471,12 +484,12 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     RAY_CHECK(dedicated_workers_it != state.worker_pids_to_assigned_jobs.end());
     auto job_id = dedicated_workers_it->second;
 
-    // If the job is finished, we don't allow new registrations.
-    if (!unfinished_jobs_.contains(job_id)) {
+    // If the job is unknown to Raylet, we don't allow new registrations.
+    if (!all_jobs_.contains(job_id)) {
       auto process = Process::FromPid(pid);
       state.starting_worker_processes.erase(process);
       Status status =
-          Status::Invalid("The job is not running anymore. Reject registration.");
+          Status::Invalid("The provided job ID is unknown. Reject registration.");
       send_reply_callback(status, /*port=*/0);
       return status;
     }
@@ -541,7 +554,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   driver->AssignJobId(job_id);
-  unfinished_jobs_[job_id] = job_config;
+  all_jobs_[job_id] = job_config;
 
   // This is a workaround to start initial workers on this node if and only if Raylet is
   // started by a Python driver and the job config is not set in `ray.init(...)`.
@@ -638,7 +651,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     const auto task_id = it->second;
     state.idle_dedicated_workers[task_id] = worker;
   } else {
-    // The worker is not used for the actor creation task without dynamic options.
+    // The worker is not used for the actor creation task with dynamic options.
     // Put the worker to the corresponding idle pool.
     if (worker->GetActorId().IsNil()) {
       state.idle.insert(worker);
@@ -774,8 +787,10 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
-  if (task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) {
-    // Code path of actor creation task with dynamic worker options.
+  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
+      task_spec.OverrideEnvironmentVariables().size() > 0) {
+    // Code path of task that needs a dedicated worker: an actor creation task with
+    // dynamic worker options, or any task with environment variable overrides.
     // Try to pop it from idle dedicated pool.
     auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
     if (it != state.idle_dedicated_workers.end()) {
@@ -789,8 +804,13 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
+      std::vector<std::string> dynamic_options = {};
+      if (task_spec.IsActorCreationTask()) {
+        dynamic_options = task_spec.DynamicWorkerOptions();
+      }
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), task_spec.DynamicWorkerOptions());
+                                task_spec.JobId(), dynamic_options,
+                                task_spec.OverrideEnvironmentVariables());
       if (proc.IsValid()) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
@@ -903,30 +923,40 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasks
   return workers;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers()
-    const {
+const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
+    bool filter_dead_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
-      if (worker->IsRegistered()) {
-        workers.push_back(worker);
+      if (!worker->IsRegistered()) {
+        continue;
       }
+
+      if (filter_dead_workers && worker->IsDead()) {
+        continue;
+      }
+      workers.push_back(worker);
     }
   }
 
   return workers;
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers()
-    const {
+const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
+    bool filter_dead_drivers) const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &driver : entry.second.registered_drivers) {
-      if (driver->IsRegistered()) {
-        drivers.push_back(driver);
+      if (!driver->IsRegistered()) {
+        continue;
       }
+
+      if (filter_dead_drivers && driver->IsDead()) {
+        continue;
+      }
+      drivers.push_back(driver);
     }
   }
 
@@ -1018,7 +1048,7 @@ std::string WorkerPool::DebugString() const {
     result << "\n- num " << Language_Name(entry.first)
            << " drivers: " << entry.second.registered_drivers.size();
   }
-  result << "- num idle workers: " << idle_of_all_languages_.size();
+  result << "\n- num idle workers: " << idle_of_all_languages_.size();
   return result.str();
 }
 

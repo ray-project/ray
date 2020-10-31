@@ -287,8 +287,6 @@ message LocalGCReply {
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
-  int64 data_size = 2;
-  int64 metadata_size = 3;
 }
 
 message PlasmaObjectReadyReply {

@@ -29,7 +29,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
         {{"ping_gcs_rpc_server_max_retries", std::to_string(60)},
-         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)}});
+         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)},
+         {"maximum_gcs_dead_node_cached_count", std::to_string(10)}});
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -571,6 +572,18 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     ASSERT_TRUE(actor.state() == expected_state);
   }
 
+  absl::flat_hash_set<NodeID> RegisterNodeAndMarkDead(int node_count) {
+    absl::flat_hash_set<NodeID> node_ids;
+    for (int index = 0; index < node_count; ++index) {
+      auto node_info = Mocker::GenNodeInfo();
+      auto node_id = NodeID::FromBinary(node_info->node_id());
+      EXPECT_TRUE(RegisterNode(*node_info));
+      EXPECT_TRUE(UnregisterNode(node_id));
+      node_ids.insert(node_id);
+    }
+    return node_ids;
+  }
+
   // GCS server.
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -1030,10 +1043,13 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // notification of DEAD state.
   WaitForExpectedCount(num_subscribe_all_notifications, 3);
   WaitForExpectedCount(num_subscribe_one_notifications, 3);
-  CheckActorData(subscribe_all_notifications[1], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[1], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_all_notifications[2], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[2], rpc::ActorTableData::DEAD);
+  /// NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
+  /// client will register the actor again. When an actor is registered, the status in GCS
+  /// is `DEPENDENCIES_UNREADY`. When GCS finds that the owner of an actor is nil, it will
+  /// destroy the actor and the status of the actor will change to `DEAD`. The GCS client
+  /// fetch actor info from the GCS server, and the status of the actor may be
+  /// `DEPENDENCIES_UNREADY` or `DEAD`, so we do not assert the actor status here any
+  /// more.
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
@@ -1311,13 +1327,23 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
                 << actor_count << " actors.";
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDestroyedActors) {
+TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   // Register actors and the actors will be destroyed.
   JobID job_id = JobID::FromInt(1);
-  int actor_count = 20;
+  int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);
+  }
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  absl::flat_hash_set<ActorID> actor_ids;
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    RegisterActor(actor_table_data, false);
+    actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
   }
 
   // Get all actors.
@@ -1326,6 +1352,34 @@ TEST_F(ServiceBasedGcsClientTest, TestRandomEvictDestroyedActors) {
            RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  auto actors = GetAllActors();
+  for (const auto &actor : actors) {
+    EXPECT_TRUE(actor_ids.contains(ActorID::FromBinary(actor.actor_id())));
+  }
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDeadNodes) {
+  // Simulate the scenario of node dead.
+  int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  RegisterNodeAndMarkDead(node_count);
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  const auto &node_ids = RegisterNodeAndMarkDead(node_count);
+
+  // Get all nodes.
+  auto condition = [this]() {
+    return GetNodeInfoList().size() ==
+           RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  auto nodes = GetNodeInfoList();
+  for (const auto &node : nodes) {
+    EXPECT_TRUE(node_ids.contains(NodeID::FromBinary(node.node_id())));
+  }
 }
 
 // TODO(sang): Add tests after adding asyncAdd

@@ -12,7 +12,7 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
-                            wait_for_condition)
+                            wait_for_condition, new_scheduler_enabled)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
@@ -91,6 +91,7 @@ def test_actor_load_balancing(ray_start_cluster):
     ray.get(results)
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="multi node broken")
 def test_actor_lifetime_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -694,9 +695,22 @@ existing_actor = ray.get_actor("{}")
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
 @ray.remote
+def foo():
+    return "bar"
+
+@ray.remote
+class NonDetachedActor:
+    def foo(self):
+        return "bar"
+
+@ray.remote
 class DetachedActor:
     def ping(self):
         return "pong"
+
+    def foobar(self):
+        actor = NonDetachedActor.remote()
+        return ray.get([foo.remote(), actor.foo.remote()])
 
 actor = DetachedActor._remote(lifetime="detached", name="{}")
 ray.get(actor.ping.remote())
@@ -705,6 +719,9 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+    # Verify that a detached actor is able to create tasks/actors
+    # even if the driver of the detached actor has exited.
+    assert ray.get(detached_actor.foobar.remote()) == ["bar", "bar"]
 
 
 def test_detached_actor_cleanup(ray_start_regular):
@@ -927,6 +944,7 @@ def test_actor_creation_task_crash(ray_start_regular):
         }
     }],
     indirect=True)
+@pytest.mark.skipif(new_scheduler_enabled(), reason="todo hangs")
 def test_pending_actor_removed_by_owner(ray_start_regular):
     # Verify when an owner of pending actors is killed, the actor resources
     # are correctly returned.

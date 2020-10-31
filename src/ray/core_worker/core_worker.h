@@ -123,6 +123,8 @@ struct CoreWorkerOptions {
   std::string stderr_file;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
+  /// The callback to be called when shutting down a `CoreWorker` instance.
+  std::function<void(const WorkerID &)> on_worker_shutdown;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
@@ -901,7 +903,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   using SetResultCallback =
       std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
 
-  /// Perform async get from in-memory store.
+  /// Perform async get from the object store.
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
@@ -909,12 +911,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
-
-  /// Subscribe to receive notification of an object entering the plasma store.
-  ///
-  /// \param[in] object_id The object to wait for.
-  /// \return void
-  void SubscribeToPlasmaAdd(const ObjectID &object_id);
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);

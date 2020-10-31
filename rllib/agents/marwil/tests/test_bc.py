@@ -39,19 +39,27 @@ class TestBC(unittest.TestCase):
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
         config["input"] = [data_file]
-        num_iterations = 300
+        num_iterations = 350
+        min_reward = 70.0
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = marwil.BCTrainer(config=config, env="CartPole-v0")
+            learnt = False
             for i in range(num_iterations):
                 eval_results = trainer.train()["evaluation"]
                 print("iter={} R={}".format(
                     i, eval_results["episode_reward_mean"]))
-                # Learn until some reward is reached on an actual live env.
-                if eval_results["episode_reward_mean"] > 60.0:
+                # Learn until good reward is reached on an actual live env.
+                if eval_results["episode_reward_mean"] > min_reward:
                     print("learnt!")
+                    learnt = True
                     break
+
+            if not learnt:
+                raise ValueError(
+                    "BCTrainer did not reach {} reward from expert offline "
+                    "data!".format(min_reward))
 
             check_compute_single_action(
                 trainer, include_prev_action_reward=True)

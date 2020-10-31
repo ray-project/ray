@@ -29,8 +29,8 @@ class MADDPGPostprocessing:
                                episode=None):
         # FIXME: Get done from info is required since agentwise done is not
         # supported now.
-        sample_batch.data["dones"] = self.get_done_from_info(
-            sample_batch.data["infos"])
+        sample_batch.data[SampleBatch.DONES] = self.get_done_from_info(
+            sample_batch.data[SampleBatch.INFOS])
 
         # N-step Q adjustments
         if self.config["n_step"] > 1:
@@ -94,9 +94,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                     name=name + "_%d" % i) for i, space in enumerate(space_n)
             ]
 
-        obs_ph_n = _make_ph_n(obs_space_n, "obs")
-        act_ph_n = _make_ph_n(act_space_n, "actions")
-        new_obs_ph_n = _make_ph_n(obs_space_n, "new_obs")
+        obs_ph_n = _make_ph_n(obs_space_n, SampleBatch.OBS)
+        act_ph_n = _make_ph_n(act_space_n, SampleBatch.ACTIONS)
+        new_obs_ph_n = _make_ph_n(obs_space_n, SampleBatch.NEXT_OBS)
         new_act_ph_n = _make_ph_n(act_space_n, "new_actions")
         rew_ph = tf1.placeholder(
             tf.float32, shape=None, name="rewards_{}".format(agent_id))
@@ -328,7 +328,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             if use_state_preprocessor:
                 model_n = [
                     ModelCatalog.get_model({
-                        "obs": obs,
+                        SampleBatch.OBS: obs,
                         "is_training": self._get_is_training_placeholder(),
                     }, obs_space, act_space, 1, self.config["model"])
                     for obs, obs_space, act_space in zip(
@@ -359,7 +359,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
                 model = ModelCatalog.get_model({
-                    "obs": obs,
+                    SampleBatch.OBS: obs,
                     "is_training": self._get_is_training_placeholder(),
                 }, obs_space, act_space, 1, self.config["model"])
                 out = model.last_layer

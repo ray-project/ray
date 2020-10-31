@@ -153,7 +153,7 @@ head_node:
           #   - rsync (used for `ray rsync` commands and file mounts)
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
-          image: rayproject/autoscaler
+          image: rayproject/ray
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -226,7 +226,7 @@ worker_nodes:
           # You are free (and encouraged) to use your own container image,
           # but it should have the following installed:
           #   - rsync (used for `ray rsync` commands and file mounts)
-          image: rayproject/autoscaler
+          image: rayproject/ray
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -275,6 +275,16 @@ cluster_synced_files: []
 # should sync to the worker node continuously
 file_mounts_sync_continuously: False
 
+# Patterns for files to exclude when running rsync up or rsync down.
+# This is not supported on kubernetes.
+rsync_exclude: []
+
+# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
+# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
+# as a value, the behavior will match git's behavior for finding and using .gitignore files.
+# This is not supported on kubernetes.
+rsync_filter: []
+
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
@@ -293,7 +303,7 @@ worker_setup_commands: []
 # Note webui-host is set to 0.0.0.0 so that kubernetes can port forward.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --webui-host 0.0.0.0
+    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host 0.0.0.0
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

@@ -795,6 +795,18 @@ cc_test(
 )
 
 cc_test(
+    name = "local_object_manager_test",
+    srcs = [
+        "src/ray/raylet/test/local_object_manager_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "reconstruction_policy_test",
     srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
     copts = COPTS + select({
@@ -1777,17 +1789,17 @@ filegroup(
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
         "python/ray/autoscaler/_private/*.py",
-        "python/ray/autoscaler/aws/example-full.yaml",
-        "python/ray/autoscaler/azure/example-full.yaml",
-        "python/ray/autoscaler/gcp/example-full.yaml",
-        "python/ray/autoscaler/local/example-full.yaml",
+        "python/ray/autoscaler/_private/azure/*.json",
+        "python/ray/autoscaler/aws/defaults.yaml",
+        "python/ray/autoscaler/azure/defaults.yaml",
+        "python/ray/autoscaler/gcp/defaults.yaml",
+        "python/ray/autoscaler/local/defaults.yaml",
         "python/ray/cloudpickle/*.py",
         "python/ray/core/__init__.py",
         "python/ray/core/generated/__init__.py",
         "python/ray/core/generated/ray/__init__.py",
         "python/ray/core/generated/ray/protocol/__init__.py",
-        "python/ray/dashboard/*.py",
-        "python/ray/dashboard/metrics_exporter/*.py",
+        "python/ray/new_dashboard/**/*.py",
         "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",

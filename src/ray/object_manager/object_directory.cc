@@ -94,10 +94,8 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
   if (node_info) {
     NodeID result_node_id = NodeID::FromBinary(node_info->node_id());
     RAY_CHECK(result_node_id == connection_info.client_id);
-    if (node_info->state() == GcsNodeInfo::ALIVE) {
-      connection_info.ip = node_info->node_manager_address();
-      connection_info.port = static_cast<uint16_t>(node_info->object_manager_port());
-    }
+    connection_info.ip = node_info->node_manager_address();
+    connection_info.port = static_cast<uint16_t>(node_info->object_manager_port());
   }
 }
 

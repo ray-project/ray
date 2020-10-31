@@ -55,6 +55,7 @@
             "type": "int",
             "defaultValue": 1,
             "minValue": 0,
+            "maxValue": 1000,
             "metadata": {
                 "description": "Initial number of worker nodes"
             }
@@ -63,6 +64,7 @@
             "type": "int",
             "defaultValue": 1,
             "minValue": 0,
+            "maxValue": 1000,
             "metadata": {
                 "description": "Minimum number of worker nodes"
             }
@@ -71,6 +73,7 @@
             "type": "int",
             "defaultValue": 1,
             "minValue": 0,
+            "maxValue": 1000,
             "metadata": {
                 "description": "Maximum number of worker nodes"
             }
@@ -107,30 +110,35 @@
     },
     "variables": {
         "azureScriptInitUrl": "https://raw.githubusercontent.com/ray-project/ray/master/doc/azure/azure-init.sh",
+        "location": "[resourceGroup().location]",
         "vmName": "ray-node",
         "subnetWorkers": "10.32.0.0/16",
         "subnetHead": "10.33.0.0/16",
         "publicIpAddressName": "[concat(variables('vmName'), '-ip' )]",
         "networkIpConfig": "[guid(resourceGroup().id, variables('vmName'))]",
-        "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'ray-vnet', 'ray-subnet')]",
-        "subnetHeadRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'ray-vnet', 'ray-subnet-head')]",
+        "subnetName": "ray-subnet",
+        "subnetHeadName": "ray-subnet-head",
+        "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vNetName'), variables('subnetName'))]",
+        "subnetHeadRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vNetName'), variables('subnetHeadName'))]",
         "osDiskType": "Standard_LRS",
         "vmNameHead": "[concat(variables('vmName'), '-head')]",
         "vmNameWorker": "[concat(variables('vmName'), '-workers')]",
         "networkInterfaceName": "[concat(variables('vmName'), '-nic')]",
+        "networkSecurityGroupName": "ray-nsg",
+        "vNetName": "ray-vnet",
         "subnetNetwork": "[split(variables('subnetHead'), '/')[0]]",
         "headInternalIP": "[concat(substring(variables('subnetNetwork'), 0, lastIndexOf(variables('subnetNetwork'), '.')), '.5')]",
         "imagePublisher": "microsoft-dsvm",
         "imageOffer": "ubuntu-1804",
         "imageSku": "1804",
-        "imageVersion": "latest"
+        "imageVersion": "20.07.06"
     },
     "resources": [
         {
             "type": "Microsoft.Network/networkSecurityGroups",
             "apiVersion": "2019-02-01",
-            "name": "ray-nsg",
-            "location": "[resourceGroup().location]",
+            "name": "[variables('networkSecurityGroupName')]",
+            "location": "[variables('location')]",
             "properties": {
                 "securityRules": [
                     {
@@ -191,8 +199,8 @@
         {
             "type": "Microsoft.Network/virtualNetworks",
             "apiVersion": "2019-11-01",
-            "name": "ray-vnet",
-            "location": "[resourceGroup().location]",
+            "name": "[variables('vNetName')]",
+            "location": "[variables('location')]",
             "properties": {
                 "addressSpace": {
                     "addressPrefixes": [
@@ -202,13 +210,13 @@
                 },
                 "subnets": [
                     {
-                        "name": "ray-subnet",
+                        "name": "[variables('subnetName')]",
                         "properties": {
                             "addressPrefix": "[variables('subnetWorkers')]"
                         }
                     },
                     {
-                        "name": "ray-subnet-head",
+                        "name": "[variables('subnetHeadName')]",
                         "properties": {
                             "addressPrefix": "[variables('subnetHead')]"
                         }
@@ -220,7 +228,7 @@
             "type": "Microsoft.Network/publicIpAddresses",
             "apiVersion": "2019-02-01",
             "name": "[variables('publicIpAddressName')]",
-            "location": "[resourceGroup().location]",
+            "location": "[variables('location')]",
             "properties": {
                 "publicIpAllocationMethod": "Static",
                 "publicIPAddressVersion": "IPv4"
@@ -232,12 +240,12 @@
         },
         {
             "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "2018-10-01",
+            "apiVersion": "2020-06-01",
             "name": "[variables('networkInterfaceName')]",
-            "location": "[resourceGroup().location]",
+            "location": "[variables('location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.Network/publicIpAddresses/', variables('publicIpAddressName'))]",
-                "[resourceId('Microsoft.Network/networkSecurityGroups','ray-nsg')]"
+                "[resourceId('Microsoft.Network/publicIpAddresses', variables('publicIpAddressName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
             ],
             "properties": {
                 "ipConfigurations": [
@@ -256,17 +264,17 @@
                     }
                 ],
                 "networkSecurityGroup": {
-                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups','ray-nsg')]"
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
                 }
             }
         },
         {
             "type": "Microsoft.Compute/virtualMachines",
-            "apiVersion": "2019-07-01",
+            "apiVersion": "2020-06-01",
             "name": "[variables('vmNameHead')]",
-            "location": "[resourceGroup().location]",
+            "location": "[variables('location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName'))]"
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
             ],
             "properties": {
                 "hardwareProfile": {
@@ -315,10 +323,10 @@
                 {
                     "type": "Microsoft.Compute/virtualMachines/extensions",
                     "name": "[concat(variables('vmNameHead'), '/HeadNodeInitScript')]",
-                    "apiVersion": "2017-03-30",
-                    "location": "[resourceGroup().location]",
+                    "apiVersion": "2020-06-01",
+                    "location": "[variables('location')]",
                     "dependsOn": [
-                        "[concat('Microsoft.Compute/virtualMachines/', variables('vmNameHead'))]"
+                        "[resourceId('Microsoft.Compute/virtualMachines', variables('vmNameHead'))]"
                     ],
                     "properties": {
                         "publisher": "Microsoft.Azure.Extensions",
@@ -338,10 +346,10 @@
         {
             "type": "Microsoft.Compute/virtualMachineScaleSets",
             "name": "[variables('vmNameWorker')]",
-            "location": "[resourceGroup().location]",
+            "location": "[variables('location')]",
             "apiVersion": "2019-07-01",
             "dependsOn": [
-                "Microsoft.Network/virtualNetworks/ray-vnet"
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vNetName'))]"
             ],
             "sku": {
                 "name": "[parameters('workerNodeSize')]",
@@ -430,13 +438,13 @@
             "type": "Microsoft.Insights/autoscaleSettings",
             "apiVersion": "2015-04-01",
             "name": "cpuautoscale",
-            "location": "[resourceGroup().location]",
+            "location": "[variables('location')]",
             "dependsOn": [
-                "[concat('Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]"
+                "[resourceId('Microsoft.Compute/virtualMachineScaleSets', variables('vmNameWorker'))]"
             ],
             "properties": {
                 "name": "cpuautoscale",
-                "targetResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/',  resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
+                "targetResourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
                 "enabled": true,
                 "profiles": [
                     {
@@ -450,8 +458,7 @@
                             {
                                 "metricTrigger": {
                                     "metricName": "Percentage CPU",
-                                    "metricNamespace": "",
-                                    "metricResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/',  resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
+                                    "metricResourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
                                     "timeGrain": "PT1M",
                                     "statistic": "Average",
                                     "timeWindow": "PT10M",
@@ -469,8 +476,7 @@
                             {
                                 "metricTrigger": {
                                     "metricName": "Percentage CPU",
-                                    "metricNamespace": "",
-                                    "metricResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/',  resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
+                                    "metricResourceUri": "[concat(resourceGroup().id, '/providers/Microsoft.Compute/virtualMachineScaleSets/', variables('vmNameWorker'))]",
                                     "timeGrain": "PT1M",
                                     "statistic": "Average",
                                     "timeWindow": "PT30M",

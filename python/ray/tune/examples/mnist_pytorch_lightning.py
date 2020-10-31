@@ -13,8 +13,7 @@ import os
 
 # __import_tune_begin__
 import shutil
-from functools import partial
-from tempfile import mkdtemp
+import tempfile
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.cloud_io import load as pl_load
 from ray import tune
@@ -178,7 +177,7 @@ def train_mnist_tune_checkpoint(config,
         ckpt = pl_load(
             os.path.join(checkpoint_dir, "checkpoint"),
             map_location=lambda storage, loc: storage)
-        model = LightningMNISTClassifier._load_model_state(ckpt, config=config)
+        model = LightningMNISTClassifier._load_model_state(ckpt, config=config, data_dir=data_dir)
         trainer.current_epoch = ckpt["epoch"]
     else:
         model = LightningMNISTClassifier(config=config, data_dir=data_dir)
@@ -189,7 +188,7 @@ def train_mnist_tune_checkpoint(config,
 
 # __tune_asha_begin__
 def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = mkdtemp(prefix="mnist_data_")
+    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
     LightningMNISTClassifier.download_data(data_dir)
 
     config = {
@@ -211,7 +210,7 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
         metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
     tune.run(
-        partial(
+        tune.with_parameters(
             train_mnist_tune,
             data_dir=data_dir,
             num_epochs=num_epochs,
@@ -232,7 +231,7 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
 # __tune_pbt_begin__
 def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = mkdtemp(prefix="mnist_data_")
+    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
     LightningMNISTClassifier.download_data(data_dir)
 
     config = {
@@ -248,7 +247,7 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
         mode="min",
         perturbation_interval=4,
         hyperparam_mutations={
-            "lr": lambda: tune.loguniform(1e-4, 1e-1).func(None),
+            "lr": tune.loguniform(1e-4, 1e-1),
             "batch_size": [32, 64, 128]
         })
 
@@ -257,7 +256,7 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
         metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
     tune.run(
-        partial(
+        tune.with_parameters(
             train_mnist_tune_checkpoint,
             data_dir=data_dir,
             num_epochs=num_epochs,
@@ -285,8 +284,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_mnist_asha(num_samples=1, num_epochs=1, gpus_per_trial=0)
-        tune_mnist_pbt(num_samples=1, num_epochs=1, gpus_per_trial=0)
+        tune_mnist_asha(num_samples=1, num_epochs=6, gpus_per_trial=0)
+        tune_mnist_pbt(num_samples=1, num_epochs=6, gpus_per_trial=0)
     else:
         # ASHA scheduler
         tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0)

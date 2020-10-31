@@ -1,7 +1,7 @@
 import json
 import logging
+from pathlib import Path
 import random
-import os
 
 from azure.common.client_factory import get_client_from_cli_profile
 from azure.mgmt.resource import ResourceManagementClient
@@ -55,8 +55,8 @@ def _configure_resource_group(config):
         resource_group_name=resource_group, parameters=params)
 
     # load the template file
-    current_path = os.path.dirname(os.path.abspath(__file__))
-    template_path = os.path.join(current_path, "azure-config-template.json")
+    current_path = Path(__file__).parent
+    template_path = current_path.joinpath("azure-config-template.json")
     with open(template_path, "r") as template_fp:
         template = json.load(template_fp)
 
@@ -86,16 +86,17 @@ def _configure_resource_group(config):
 
 def _configure_key_pair(config):
     ssh_user = config["auth"]["ssh_user"]
+    public_key = None
     # search if the keys exist
     for key_type in ["ssh_private_key", "ssh_public_key"]:
         try:
-            key_path = os.path.expanduser(config["auth"][key_type])
+            key_path = Path(config["auth"][key_type]).expanduser()
         except KeyError:
             raise Exception("Config must define {}".format(key_type))
         except TypeError:
             raise Exception("Invalid config value for {}".format(key_type))
 
-        assert os.path.exists(key_path), (
+        assert key_path.is_file(), (
             "Could not find ssh key: {}".format(key_path))
 
         if key_type == "ssh_public_key":
