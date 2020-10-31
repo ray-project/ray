@@ -144,7 +144,7 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
     rdb = RemotePdb(host=host, port=port, patch_stdstreams=patch_stdstreams, quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
     pdb_address = "{}:{}".format(sockname[0], sockname[1])
-    parentframeinfo = inspect.getouterframes(inspect.currentframe())[1]
+    parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
     data = {
         "proctitle": setproctitle.getproctitle(),
         "pdb_address": pdb_address,
@@ -160,8 +160,9 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
 
 
 def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None):
+    frame = sys._getframe().f_back
     rdb = connect_ray_pdb(host, port, patch_stdstreams, quiet)
-    rdb.set_trace(frame=sys._getframe().f_back)
+    rdb.set_trace(frame=frame)
 
 
 def post_mortem(host=None, port=None, patch_stdstreams=False, quiet=None):
