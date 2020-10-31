@@ -60,7 +60,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   # dashboard directory.
   git clean -f -f -x -d -e .whl -e python/ray/new_dashboard/client -e dashboard/client
 
-  export BAZEL_LINKLIBS="-l%:libstdc++.a"
+#  export BAZEL_LINKLIBS="-l%:libstdc++.a"
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
