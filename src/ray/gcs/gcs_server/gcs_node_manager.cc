@@ -593,5 +593,24 @@ void GcsNodeManager::SendBatchedHeartbeat() {
   });
 }
 
+void GcsNodeManager::DumpDebugMetrics() const {
+  std::ostringstream stream;
+  stream << "GcsNodeManager metrics: "
+         << "\n{"
+         << "\nRegisterNode count: " << metrics_[MetricsType::REGISTER_NODE]
+         << "\nUnregisterNode count: " << metrics_[MetricsType::UNREGISTER_NODE]
+         << "\nGetAllNodeInfo count: " << metrics_[MetricsType::GET_ALL_NODE_INFO]
+         << "\nReportHeartbeat count: " << metrics_[MetricsType::REPORT_HEARTBEAT]
+         << "\nGetHeartbeat count: " << metrics_[MetricsType::GET_HEARTBEAT]
+         << "\nGetAllHeartbeat count: " << metrics_[MetricsType::GET_ALL_HEARTBEAT]
+         << "\nGetResources count: " << metrics_[MetricsType::GET_RESOURCES]
+         << "\nUpdateResources count: " << metrics_[MetricsType::UPDATE_RESOURCES]
+         << "\nDeleteResources count: " << metrics_[MetricsType::DELETE_RESOURCES]
+         << "\nSetInternalConfig count: " << metrics_[MetricsType::SET_INTERNAL_CONFIG]
+         << "\nGetInternalConfig count: " << metrics_[MetricsType::GET_INTERNAL_CONFIG]
+         << "\n}";
+  RAY_LOG(INFO) << stream.str();
+}
+
 }  // namespace gcs
 }  // namespace ray

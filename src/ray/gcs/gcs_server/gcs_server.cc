@@ -301,7 +301,9 @@ void GcsServer::CollectStats() {
 }
 
 void GcsServer::PrintDebugInfo() {
-  print_debug_info_timer_.expires_from_now(std::chrono::seconds(60));
+  auto dump_interval_minutes =
+      RayConfig::instance().gcs_dump_debug_log_interval_minutes();
+  print_debug_info_timer_.expires_from_now(std::chrono::minutes(dump_interval_minutes));
   print_debug_info_timer_.async_wait([this](const boost::system::error_code &error) {
     RAY_CHECK(!error);
     gcs_node_manager_->DumpDebugMetrics();

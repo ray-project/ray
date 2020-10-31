@@ -178,5 +178,19 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
   ++metrics_[MetricsType::ATTEMPT_TASK_RECONSTRUCTION];
 }
 
+void DefaultTaskInfoHandler::DumpDebugMetrics() const {
+  std::ostringstream stream;
+  stream << "DefaultTaskInfoHandler metrics: "
+         << "\n{"
+         << "\nAddTask count: " << metrics_[MetricsType::ADD_TASK]
+         << "\nGetTask count: " << metrics_[MetricsType::GET_TASK]
+         << "\nDeleteTasks count: " << metrics_[MetricsType::DELETE_TASKS]
+         << "\nAddTaskLease count: " << metrics_[MetricsType::ADD_TASK_LEASE]
+         << "\nGetTaskLease count: " << metrics_[MetricsType::GET_TASK_LEASE]
+         << "\nAttemptTaskReconstruction count: "
+         << metrics_[MetricsType::ATTEMPT_TASK_RECONSTRUCTION] << "\n}";
+  RAY_LOG(INFO) << stream.str();
+}
+
 }  // namespace rpc
 }  // namespace ray
