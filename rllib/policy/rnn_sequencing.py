@@ -228,7 +228,7 @@ def chop_into_sequences(episode_ids,
     if seq_len:
         seq_lens.append(seq_len)
     assert sum(seq_lens) == len(unique_ids)
-    seq_lens = np.array(seq_lens)
+    seq_lens = np.array(seq_lens, dtype=np.int32)
 
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
