@@ -176,6 +176,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
+  void DumpDebugMetrics() const;
+
  protected:
   class NodeFailureDetector {
    public:
@@ -289,6 +291,24 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>> cluster_realtime_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
+
+  // Debug info.
+  enum MetricsType {
+    REGISTER_NODE = 0,
+    UNREGISTER_NODE = 1,
+    GET_ALL_NODE_INFO = 2,
+    REPORT_HEARTBEAT = 3,
+    GET_HEARTBEAT = 4,
+    GET_ALL_HEARTBEAT = 5,
+    GET_RESOURCES = 6,
+    UPDATE_RESOURCES = 7,
+    DELETE_RESOURCES = 8,
+    SET_INTERNAL_CONFIG = 9,
+    GET_INTERNAL_CONFIG = 10,
+    GET_ALL_AVAILABLE_RESOURCES = 11,
+    MetricsType_MAX = 12,
+  };
+  uint64_t metrics_[MetricsType::MetricsType_MAX] = {0};
 };
 
 }  // namespace gcs

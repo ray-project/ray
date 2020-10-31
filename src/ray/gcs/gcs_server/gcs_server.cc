@@ -126,6 +126,9 @@ void GcsServer::Start() {
   };
   gcs_object_manager_->LoadInitialData(on_done);
   gcs_node_manager_->LoadInitialData(on_done);
+
+  // Print debug info periodically.
+  PrintDebugInfo();
 }
 
 void GcsServer::Stop() {
@@ -294,6 +297,18 @@ void GcsServer::CollectStats() {
   execute_after(
       main_service_, [this] { CollectStats(); },
       (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
+}
+
+void GcsServer::PrintDebugInfo() {
+  print_debug_info_timer_.expires_from_now(std::chrono::seconds(60));
+  print_debug_info_timer_.async_wait([this](const boost::system::error_code &error) {
+    RAY_CHECK(!error);
+    gcs_node_manager_->DumpDebugMetrics();
+    gcs_actor_manager_->DumpDebugMetrics();
+    gcs_object_manager_->DumpDebugMetrics();
+    ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DumpDebugMetrics();
+    PrintDebugInfo();
+  });
 }
 
 }  // namespace gcs

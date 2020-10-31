@@ -113,6 +113,9 @@ class GcsServer {
   /// Collect stats from each module for every (metrics_report_interval_ms / 2) ms.
   void CollectStats();
 
+  /// Print debug info periodically.
+  void PrintDebugInfo();
+
   /// Gcs server configuration
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
@@ -161,6 +164,8 @@ class GcsServer {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// The timer used to print debug info.
+  boost::asio::steady_timer print_debug_info_timer_;
   /// Gcs service state flag, which is used for ut.
   bool is_started_ = false;
   bool is_stopped_ = false;

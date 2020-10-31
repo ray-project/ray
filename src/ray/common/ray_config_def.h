@@ -238,6 +238,8 @@ RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
+/// The interval at which the gcs server will print debug info.
+RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minute, 1)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.

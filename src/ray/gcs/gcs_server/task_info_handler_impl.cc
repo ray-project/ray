@@ -42,6 +42,7 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
   if (!status.ok()) {
     on_done(status);
   }
+  ++metrics_[MetricsType::ADD_TASK];
 }
 
 void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
@@ -64,6 +65,7 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
   if (!status.ok()) {
     on_done(status, boost::none);
   }
+  ++metrics_[MetricsType::GET_TASK];
 }
 
 void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request,
@@ -87,6 +89,7 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
   }
   RAY_LOG(DEBUG) << "Finished deleting tasks, job id = " << job_id
                  << ", task id list size = " << task_ids.size();
+  ++metrics_[MetricsType::DELETE_TASKS];
 }
 
 void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &request,
@@ -116,6 +119,7 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
   if (!status.ok()) {
     on_done(status);
   }
+  ++metrics_[MetricsType::ADD_TASK_LEASE];
 }
 
 void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &request,
@@ -138,6 +142,7 @@ void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &reque
   if (!status.ok()) {
     on_done(status, boost::none);
   }
+  ++metrics_[MetricsType::GET_TASK_LEASE];
 }
 
 void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
@@ -170,6 +175,7 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
   if (!status.ok()) {
     on_done(status);
   }
+  ++metrics_[MetricsType::ATTEMPT_TASK_RECONSTRUCTION];
 }
 
 }  // namespace rpc

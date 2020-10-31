@@ -59,6 +59,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
+  void DumpDebugMetrics() const;
+
  protected:
   struct LocationSet {
     absl::flat_hash_set<NodeID> locations;
@@ -138,6 +140,16 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
 
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+
+  // Debug info.
+  enum MetricsType {
+    GET_OBJECT_LOCATIONS = 0,
+    GET_ALL_OBJECT_LOCATIONS = 1,
+    ADD_OBJECT_LOCATION = 2,
+    REMOVE_OBJECT_LOCATION = 3,
+    MetricsType_MAX = 4,
+  };
+  uint64_t metrics_[MetricsType::MetricsType_MAX] = {0};
 };
 
 }  // namespace gcs

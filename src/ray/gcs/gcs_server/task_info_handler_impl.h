@@ -48,9 +48,23 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
                                        AttemptTaskReconstructionReply *reply,
                                        SendReplyCallback send_reply_callback) override;
 
+  void DumpDebugMetrics() const;
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
+
+  // Debug info.
+  enum MetricsType {
+    ADD_TASK = 0,
+    GET_TASK = 1,
+    DELETE_TASKS = 2,
+    ADD_TASK_LEASE = 3,
+    GET_TASK_LEASE = 4,
+    ATTEMPT_TASK_RECONSTRUCTION = 5,
+    MetricsType_MAX = 6,
+  };
+  uint64_t metrics_[MetricsType::MetricsType_MAX] = {0};
 };
 
 }  // namespace rpc

@@ -120,6 +120,7 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
                    << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
+  ++metrics_[MetricsType::REGISTER_ACTOR];
 }
 
 void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
@@ -142,6 +143,7 @@ void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
                    << ", actor id = " << actor_id << ", status: " << status.ToString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
+  ++metrics_[MetricsType::CREATE_ACTOR];
 }
 
 void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
@@ -166,6 +168,7 @@ void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request
   RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++metrics_[MetricsType::GET_ACTOR_INFO];
 }
 
 void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
@@ -181,6 +184,7 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
   }
   RAY_LOG(DEBUG) << "Finished getting all actor info.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++metrics_[MetricsType::GET_ALL_ACTOR_INFO];
 }
 
 void GcsActorManager::HandleGetNamedActorInfo(
@@ -207,6 +211,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
                    << ", actor id = " << actor_id;
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  ++metrics_[MetricsType::GET_NAMED_ACTOR_INFO];
 }
 void GcsActorManager::HandleRegisterActorInfo(
     const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
@@ -234,6 +239,7 @@ void GcsActorManager::HandleRegisterActorInfo(
   if (!status.ok()) {
     on_done(status);
   }
+  ++metrics_[MetricsType::REGISTER_ACTOR_INFO];
 }
 
 void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &request,
@@ -262,6 +268,7 @@ void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &r
   if (!status.ok()) {
     on_done(status);
   }
+  ++metrics_[MetricsType::UPDATE_ACTOR_INFO];
 }
 
 void GcsActorManager::HandleAddActorCheckpoint(
@@ -310,6 +317,7 @@ void GcsActorManager::HandleAddActorCheckpoint(
   if (!status.ok()) {
     on_done(status);
   }
+  ++metrics_[MetricsType::ADD_ACTOR_CHECKPOINT];
 }
 
 void GcsActorManager::HandleGetActorCheckpoint(
@@ -341,6 +349,7 @@ void GcsActorManager::HandleGetActorCheckpoint(
   if (!status.ok()) {
     on_done(status, boost::none);
   }
+  ++metrics_[MetricsType::GET_ACTOR_CHECKPOINT];
 }
 
 void GcsActorManager::HandleGetActorCheckpointID(
@@ -369,6 +378,7 @@ void GcsActorManager::HandleGetActorCheckpointID(
   if (!status.ok()) {
     on_done(status, boost::none);
   }
+  ++metrics_[MetricsType::GET_ACTOR_CHECKPOINT_ID];
 }
 
 Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
@@ -1135,6 +1145,28 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   destroyed_actors_.emplace(actor->GetActorID(), actor);
   sorted_destroyed_actor_list_.emplace_back(
       actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
+}
+
+void GcsActorManager::DumpDebugMetrics() const {
+  std::ostringstream stream;
+  stream << "GcsActorManager metrics: "
+         << "\n{"
+         << "\nRegisterActor count: " << metrics_[MetricsType::REGISTER_ACTOR]
+         << "\nCreateActor count: " << metrics_[MetricsType::CREATE_ACTOR]
+         << "\nGetActorInfo count: " << metrics_[MetricsType::GET_ACTOR_INFO]
+         << "\nGetNamedActorInfo count: " << metrics_[MetricsType::GET_NAMED_ACTOR_INFO]
+         << "\nRegisterActorInfo count: " << metrics_[MetricsType::REGISTER_ACTOR_INFO]
+         << "\nUpdateActorInfo count: " << metrics_[MetricsType::UPDATE_ACTOR_INFO]
+         << "\nAddActorCheckpoint: " << metrics_[MetricsType::ADD_ACTOR_CHECKPOINT]
+         << "\nGetActorCheckpoint: " << metrics_[MetricsType::GET_ACTOR_CHECKPOINT]
+         << "\nGetActorCheckpointID: " << metrics_[MetricsType::GET_ACTOR_CHECKPOINT_ID]
+         << "\nRegistered actors count: " << registered_actors_.size()
+         << "\nDestroyed actors count: " << destroyed_actors_.size()
+         << "\nNamed actors count: " << named_actors_.size()
+         << "\nUnresolved actors count: " << unresolved_actors_.size()
+         << "\nPending actors count: " << pending_actors_.size()
+         << "\nCreated actors count: " << created_actors_.size() << "\n}";
+  RAY_LOG(INFO) << stream.str();
 }
 
 }  // namespace gcs

@@ -147,6 +147,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
   };
   RAY_CHECK_OK(
       gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  ++metrics_[MetricsType::REGISTER_NODE];
 }
 
 void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
@@ -173,6 +174,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     // Update node state to DEAD instead of deleting it.
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
   }
+  ++metrics_[MetricsType::UNREGISTER_NODE];
 }
 
 void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
@@ -185,6 +187,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
     reply->add_node_info_list()->CopyFrom(*entry.second);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++metrics_[MetricsType::GET_ALL_NODE_INFO];
 }
 
 void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
@@ -212,6 +215,7 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
     node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
   });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++metrics_[MetricsType::REPORT_HEARTBEAT];
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -225,6 +229,7 @@ void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
     }
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++metrics_[MetricsType::GET_RESOURCES];
 }
 
 void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
@@ -262,6 +267,7 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
     RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
                    << " is not registered.";
   }
+  ++metrics_[MetricsType::UPDATE_RESOURCES];
 }
 
 void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
@@ -295,6 +301,7 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
   }
+  ++metrics_[MetricsType::DELETE_RESOURCES];
 }
 
 void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
@@ -306,6 +313,7 @@ void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest
   };
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),
                                                              request.config(), on_done));
+  ++metrics_[MetricsType::SET_INTERNAL_CONFIG];
 }
 
 void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
@@ -321,6 +329,7 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
   };
   RAY_CHECK_OK(
       gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
+  ++metrics_[MetricsType::GET_INTERNAL_CONFIG];
 }
 
 void GcsNodeManager::HandleGetAllAvailableResources(
@@ -336,6 +345,7 @@ void GcsNodeManager::HandleGetAllAvailableResources(
     reply->add_resources_list()->CopyFrom(resource);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++metrics_[MetricsType::GET_ALL_AVAILABLE_RESOURCES];
 }
 
 void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &request,
@@ -385,6 +395,7 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++metrics_[MetricsType::GET_ALL_HEARTBEAT];
 }
 
 void GcsNodeManager::UpdateNodeHeartbeat(const NodeID node_id,

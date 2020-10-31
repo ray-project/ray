@@ -302,6 +302,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Collect stats from gcs actor manager in-memory data structures.
   void CollectStats() const;
 
+  void DumpDebugMetrics() const;
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -413,6 +415,22 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
+
+  // Debug info.
+  enum MetricsType {
+    REGISTER_ACTOR = 0,
+    CREATE_ACTOR = 1,
+    GET_ACTOR_INFO = 2,
+    GET_NAMED_ACTOR_INFO = 3,
+    GET_ALL_ACTOR_INFO = 4,
+    REGISTER_ACTOR_INFO = 5,
+    UPDATE_ACTOR_INFO = 6,
+    ADD_ACTOR_CHECKPOINT = 7,
+    GET_ACTOR_CHECKPOINT = 8,
+    GET_ACTOR_CHECKPOINT_ID = 9,
+    MetricsType_MAX = 10,
+  };
+  uint64_t metrics_[MetricsType::MetricsType_MAX] = {0};
 };
 
 }  // namespace gcs
