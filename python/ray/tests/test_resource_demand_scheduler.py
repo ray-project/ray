@@ -468,40 +468,39 @@ def test_get_concurrent_resource_demand_to_launch():
 
     # Sanity check.
     updated_to_launch = \
-        scheduler._get_concurrent_resource_demand_to_launch({}, [], {})
+        scheduler._get_concurrent_resource_demand_to_launch({}, [], [], {})
     assert updated_to_launch == {}
 
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
         TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-        TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
     }, 1)
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "m4.large",
         TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-        TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
     }, 2)
 
     # All nodes so far are pending/launching here.
     to_launch = {"p2.8xlarge": 4, "m4.large": 40}
     non_terminated_nodes = provider.non_terminated_nodes({})
     pending_launches_nodes = {"p2.8xlarge": 1, "m4.large": 1}
-    updated_to_launch = \
-        scheduler._get_concurrent_resource_demand_to_launch(
-            to_launch, non_terminated_nodes, pending_launches_nodes)
+    connected_nodes = []  # All the non_terminated_nodes are not connected yet.
+    updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
+        to_launch, connected_nodes, non_terminated_nodes,
+        pending_launches_nodes)
     # Note: we have 2 pending/launching gpus, 3 pending/launching cpus,
     # 0 running gpu, and 0 running cpus.
     assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 2}
 
     # This starts the min workers only, so we have no more pending workers.
-    # The workers here are either running or in pending_launches_nodes,
-    # which is "launching".
-    for node_id in non_terminated_nodes:
-        provider.set_node_tags(node_id,
-                               {TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-    updated_to_launch = \
-        scheduler._get_concurrent_resource_demand_to_launch(
-            to_launch, non_terminated_nodes, pending_launches_nodes)
+    # The workers here are either running (connected) or in
+    # pending_launches_nodes (i.e., launching).
+    connected_nodes = [
+        provider.internal_ip(node_id) for node_id in non_terminated_nodes
+    ]
+    updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
+        to_launch, connected_nodes, non_terminated_nodes,
+        pending_launches_nodes)
     # Note that here we have 1 launching gpu, 1 launching cpu,
     # 1 running gpu, and 2 running cpus.
     assert updated_to_launch == {"p2.8xlarge": 4, "m4.large": 4}
@@ -510,31 +509,30 @@ def test_get_concurrent_resource_demand_to_launch():
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
         TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-        TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
     }, 5)
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "m4.large",
         TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-        TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
     }, 5)
 
     # Continue scaling.
     non_terminated_nodes = provider.non_terminated_nodes({})
     to_launch = {"m4.large": 36}  # No more gpus are necessary
     pending_launches_nodes = {}  # No pending launches
-    updated_to_launch = \
-        scheduler._get_concurrent_resource_demand_to_launch(
-            to_launch, non_terminated_nodes, pending_launches_nodes)
+    updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
+        to_launch, connected_nodes, non_terminated_nodes,
+        pending_launches_nodes)
     # Note: we have 5 pending cpus. So we are not allowed to start any.
     # Still only 2 running cpus.
     assert updated_to_launch == {}
 
-    for node_id in non_terminated_nodes:
-        provider.set_node_tags(node_id,
-                               {TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-    updated_to_launch = \
-        scheduler._get_concurrent_resource_demand_to_launch(
-            to_launch, non_terminated_nodes, pending_launches_nodes)
+    # All the non_terminated_nodes are connected here.
+    connected_nodes = [
+        provider.internal_ip(node_id) for node_id in non_terminated_nodes
+    ]
+    updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
+        to_launch, connected_nodes, non_terminated_nodes,
+        pending_launches_nodes)
     # Note: that here we have 7 running cpus and nothing pending/launching.
     assert updated_to_launch == {"m4.large": 7}
 
@@ -542,26 +540,26 @@ def test_get_concurrent_resource_demand_to_launch():
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "m4.large",
         TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-        TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
     }, 7)
 
     # Continue scaling.
     non_terminated_nodes = provider.non_terminated_nodes({})
     to_launch = {"m4.large": 29}
     pending_launches_nodes = {"m4.large": 1}
-    updated_to_launch = \
-        scheduler._get_concurrent_resource_demand_to_launch(
-            to_launch, non_terminated_nodes, pending_launches_nodes)
+    updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
+        to_launch, connected_nodes, non_terminated_nodes,
+        pending_launches_nodes)
     # Note: we have 8 pending/launching cpus and only 7 running.
     # So we should not launch anything (8 < 7).
     assert updated_to_launch == {}
 
-    for node_id in non_terminated_nodes:
-        provider.set_node_tags(node_id,
-                               {TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-    updated_to_launch = \
-        scheduler._get_concurrent_resource_demand_to_launch(
-            to_launch, non_terminated_nodes, pending_launches_nodes)
+    # All the non_terminated_nodes are connected here.
+    connected_nodes = [
+        provider.internal_ip(node_id) for node_id in non_terminated_nodes
+    ]
+    updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
+        to_launch, connected_nodes, non_terminated_nodes,
+        pending_launches_nodes)
     # Note: that here we have 14 running cpus and 1 launching.
     assert updated_to_launch == {"m4.large": 13}
 
@@ -574,7 +572,7 @@ def test_get_nodes_to_launch_max_launch_concurrency():
 
     scheduler = ResourceDemandScheduler(provider, new_types, 30)
 
-    to_launch = scheduler.get_nodes_to_launch([], {}, [], [], [])
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [])
     # Respects min_workers despite concurrency limitation.
     assert to_launch == {"p2.8xlarge": 4}
 
@@ -583,7 +581,11 @@ def test_get_nodes_to_launch_max_launch_concurrency():
         TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
     }, 1)
     nodes = provider.non_terminated_nodes({})
-    ips = provider.non_terminated_node_ips({})
+    # Trying to force here that the node shows in nodes but not connected yet
+    # and hence does not show up in LoadMetrics (or utilizations).
+    ips = provider.non_terminated_node_ips({
+        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+    })
     utilizations = {ip: {"GPU": 8} for ip in ips}
     launching_nodes = {"p2.8xlarge": 1}
     # requires 41 p2.8xls (currently 1 pending, 1 launching, 0 running}
@@ -598,10 +600,12 @@ def test_get_nodes_to_launch_max_launch_concurrency():
         TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
     }, 8)
     nodes = provider.non_terminated_nodes({})
-    ips = provider.non_terminated_node_ips({})
+    ips = provider.non_terminated_node_ips({
+        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+    })
     utilizations = {ip: {"GPU": 8} for ip in ips}
     launching_nodes = {"p2.8xlarge": 1}
-    # requires 17 p2.8xls (currently 1 pending, 1 launching, 8 running}
+    # Requires additional 17 p2.8xls (now 1 pending, 1 launching, 8 running}
     demands = [{"GPU": 8}] * (len(utilizations) + 15)
     to_launch = scheduler.get_nodes_to_launch(nodes, launching_nodes, demands,
                                               utilizations, [])
@@ -614,9 +618,7 @@ class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
         lm.update(
-            "1.1.1.1", {"CPU": 2},
-            True, {"CPU": 1},
-            True, {},
+            "1.1.1.1", {"CPU": 2}, {"CPU": 1}, {},
             waiting_bundles=[{
                 "GPU": 1
             }],
@@ -642,9 +644,7 @@ class LoadMetricsTest(unittest.TestCase):
                 bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
         ]
         lm.update(
-            "1.1.1.1", {},
-            True, {},
-            True, {},
+            "1.1.1.1", {}, {}, {},
             pending_placement_groups=pending_placement_groups)
         assert lm.get_pending_placement_groups() == pending_placement_groups
 
@@ -773,9 +773,7 @@ class AutoscalingTest(unittest.TestCase):
             "GPU_group_6c2506ac733bc37496295b02c4fad446": 0.0101
         }]
         lm.update(
-            head_ip, {"CPU": 16},
-            True, {"CPU": 16},
-            False, {},
+            head_ip, {"CPU": 16}, {"CPU": 16}, {},
             infeasible_bundles=placement_group_resource_demands,
             waiting_bundles=[{
                 "GPU": 8
@@ -873,16 +871,14 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(1)
-        lm.update(head_ip, {"CPU": 4, "GPU": 1}, True, {}, True, {})
+        lm.update(head_ip, {"CPU": 4, "GPU": 1}, {}, {})
         self.waitForNodes(1)
 
         lm.update(
             head_ip, {
                 "CPU": 4,
                 "GPU": 1
-            },
-            True, {"GPU": 0},
-            True, {},
+            }, {"GPU": 0}, {},
             waiting_bundles=[{
                 "GPU": 1
             }])
@@ -1016,9 +1012,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(0)
         autoscaler.update()
         lm.update(
-            "1.2.3.4", {},
-            True, {},
-            True, {},
+            "1.2.3.4", {}, {}, {},
             waiting_bundles=[{
                 "GPU": 1
             }],

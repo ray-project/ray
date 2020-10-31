@@ -21,6 +21,7 @@ test --action_env=VIRTUAL_ENV
 test --action_env=PYENV_VIRTUAL_ENV
 test --action_env=PYENV_VERSION
 test --action_env=PYENV_SHELL
+test --action_env=RAY_ENABLE_NEW_SCHEDULER
 # This is needed for some core tests to run correctly
 test:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug

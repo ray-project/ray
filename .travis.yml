@@ -22,6 +22,50 @@ matrix:
   include:
     - os: linux
       env:
+        - PYTHON=3.6 SMALL_AND_LARGE_TESTS=1 RAY_ENABLE_NEW_SCHEDULER=1
+        - PYTHONWARNINGS=ignore
+        - RAY_DEFAULT_BUILD=1
+        - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+      # bazel python tests. This should be run last to keep its logs at the end of travis logs.
+      - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-new_scheduler_broken python/ray/tests/...; fi
+
+    - os: linux
+      env:
+        - PYTHON=3.6 MEDIUM_TESTS_A_TO_J=1 RAY_ENABLE_NEW_SCHEDULER=1
+        - PYTHONWARNINGS=ignore
+        - RAY_DEFAULT_BUILD=1
+        - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        # bazel python tests for medium size tests. Used for parallelization.
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_a_to_j,-new_scheduler_broken python/ray/tests/...; fi
+
+    - os: linux
+      env:
+        - PYTHON=3.6 MEDIUM_TESTS_K_TO_Z=1 RAY_ENABLE_NEW_SCHEDULER=1
+        - PYTHONWARNINGS=ignore
+        - RAY_DEFAULT_BUILD=1
+        - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        # bazel python tests for medium size tests. Used for parallelization.
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_k_to_z,-new_scheduler_broken python/ray/tests/...; fi
+    - os: linux
+      env:
         - PYTHON=3.6 SMALL_AND_LARGE_TESTS=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
@@ -276,7 +320,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -297,7 +341,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -318,7 +362,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_L=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -336,7 +380,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_M_TO_Z=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -357,7 +401,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.2.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
@@ -447,9 +491,6 @@ script:
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...; fi
-
-  # ray dashboard tests
-  - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/dashboard/...; fi
 
   # ray new dashboard tests
   - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi

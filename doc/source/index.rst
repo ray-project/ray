@@ -217,7 +217,6 @@ Papers
    cluster/index.rst
    cluster/launcher.rst
    cluster/autoscaling.rst
-   cluster/cloud.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -273,6 +272,7 @@ Papers
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
    raysgd/raysgd_dataset.rst
+   raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
 
 .. toctree::
