@@ -100,8 +100,16 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
     objects_to_spill.push_back(it->first);
     it++;
   }
-  RAY_LOG(INFO) << "Spilling objects of total size " << num_bytes_to_spill;
-  SpillObjects(objects_to_spill, nullptr);
+  RAY_LOG(ERROR) << "Spilling objects of total size " << num_bytes_to_spill;
+  auto start_time = current_time_ms();
+  SpillObjects(objects_to_spill, [num_bytes_to_spill, start_time](const Status &status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
+    } else {
+      RAY_LOG(INFO) << "Spilled " << num_bytes_to_spill << " in "
+                    << (current_time_ms() - start_time) << "ms";
+    }
+  });
   num_bytes_required -= num_bytes_to_spill;
   return num_bytes_required;
 }
