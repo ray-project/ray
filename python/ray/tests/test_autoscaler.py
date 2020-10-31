@@ -381,11 +381,26 @@ class AutoscalingTest(unittest.TestCase):
             f.write(yaml.dump(config))
         return path
 
-    def testInvalidConfig(self):
-        invalid_config = os.devnull
-        with pytest.raises(ValueError):
-            StandardAutoscaler(
-                invalid_config, LoadMetrics(), update_interval_s=0)
+    def testAutoscalerConfigValidationFailNotFatal(self):
+        invalid_config = {**SMALL_CLUSTER, "invalid_property_12345": "test"}
+        # First check that this config is actually invalid
+        with pytest.raises(ValidationError):
+            validate_config(invalid_config)
+
+        config_path = self.write_config(invalid_config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(2)
+        autoscaler.update()
+        self.waitForNodes(2)
 
     def testValidation(self):
         """Ensures that schema validation is working."""

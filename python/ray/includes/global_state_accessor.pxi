@@ -112,7 +112,7 @@ cdef class GlobalStateAccessor:
     def get_worker_table(self):
         cdef c_vector[c_string] result
         with nogil:
-            self.inner.get().GetAllWorkerInfo()
+            result = self.inner.get().GetAllWorkerInfo()
         return result
 
     def get_worker_info(self, worker_id):
