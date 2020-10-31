@@ -228,7 +228,7 @@ def push_and_tag_images(push_base_images: bool):
     sha_tag = os.environ.get("TRAVIS_COMMIT")[:6]
     if _release_build():
         release_name = re.search("[0-9]\.[0-9]\.[0-9]",
-                                 os.environ.get("TRAVIS_BRANCH"))
+                                 os.environ.get("TRAVIS_BRANCH")).group(0)
         date_tag = release_name
         sha_tag = release_name
 
