@@ -408,14 +408,10 @@ class DynamicTFPolicy(TFPolicy):
         return input_dict, dummy_batch
 
     def _initialize_loss_dynamically(self):
-        if self.config["_use_trajectory_view_api"]:
-            dummy_batch = self._dummy_batch
-        else:
-
-            def fake_array(tensor):
-                shape = tensor.shape.as_list()
-                shape = [s if s is not None else 1 for s in shape]
-                return np.zeros(shape, dtype=tensor.dtype.as_numpy_dtype)
+        def fake_array(tensor):
+            shape = tensor.shape.as_list()
+            shape = [s if s is not None else 1 for s in shape]
+            return np.zeros(shape, dtype=tensor.dtype.as_numpy_dtype)
 
         dummy_batch = {
             SampleBatch.CUR_OBS: fake_array(self._obs_input),
