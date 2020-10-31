@@ -318,3 +318,11 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
+
+        # Make sure object spilling configuration is applicable.
+        object_spilling_config = self.object_spilling_config or {}
+        if object_spilling_config:
+            from ray import external_storage
+            # Validate external storage usage.
+            external_storage.setup_external_storage(object_spilling_config)
+            external_storage.reset_external_storage()

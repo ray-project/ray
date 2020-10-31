@@ -224,7 +224,7 @@ class Node:
         ray.utils.set_sigterm_handler(sigterm_handler)
 
     def _init_temp(self, redis_client):
-        # Create an dictionary to store temp file index.
+        # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
         if self.head:

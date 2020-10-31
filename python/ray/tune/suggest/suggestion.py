@@ -15,6 +15,18 @@ UNRESOLVED_SEARCH_SPACE = str(
     "conversion, pass the space definition as part of the `config` argument "
     "to `tune.run()` instead.")
 
+UNDEFINED_SEARCH_SPACE = str(
+    "Trying to sample a configuration from {cls}, but no search "
+    "space has been defined. Either pass the `{space}` argument when "
+    "instantiating the search algorithm, or pass a `config` to "
+    "`tune.run()`.")
+
+UNDEFINED_METRIC_MODE = str(
+    "Trying to sample a configuration from {cls}, but the `metric` "
+    "({metric}) or `mode` ({mode}) parameters have not been set. "
+    "Either pass these arguments when instantiating the search algorithm, "
+    "or pass them to `tune.run()`.")
+
 
 class Searcher:
     """Abstract class for wrapping suggesting algorithms.

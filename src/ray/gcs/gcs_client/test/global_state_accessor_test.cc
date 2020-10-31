@@ -191,6 +191,34 @@ TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
   }
 }
 
+TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
+  std::unique_ptr<std::string> heartbeats = global_state_->GetAllHeartbeat();
+  rpc::HeartbeatBatchTableData heartbeat_batch_data;
+  heartbeat_batch_data.ParseFromString(*heartbeats.get());
+
+  ASSERT_EQ(heartbeat_batch_data.batch_size(), 0);
+
+  auto node_table_data = Mocker::GenNodeInfo();
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  WaitReady(promise.get_future(), timeout_ms_);
+  auto node_table = global_state_->GetAllNodeInfo();
+  ASSERT_EQ(node_table.size(), 1);
+
+  // Report heartbeat
+  std::promise<bool> promise1;
+  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat->set_client_id(node_table_data->node_id());
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
+      heartbeat, [&promise1](Status status) { promise1.set_value(status.ok()); }));
+  WaitReady(promise1.get_future(), timeout_ms_);
+
+  heartbeats = global_state_->GetAllHeartbeat();
+  heartbeat_batch_data.ParseFromString(*heartbeats.get());
+  ASSERT_EQ(heartbeat_batch_data.batch_size(), 1);
+}
+
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
   int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);

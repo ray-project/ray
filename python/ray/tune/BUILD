@@ -87,7 +87,7 @@ py_test(
 
 py_test(
     name = "test_function_api",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_function_api.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -415,7 +415,7 @@ py_test(
 
 py_test(
     name = "hyperband_function_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/hyperband_function_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -433,7 +433,7 @@ py_test(
 
 py_test(
     name = "lightgbm_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/lightgbm_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"]
@@ -441,7 +441,7 @@ py_test(
 
 py_test(
     name = "logging_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/logging_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -504,7 +504,7 @@ py_test(
 
 py_test(
     name = "nevergrad_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/nevergrad_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -513,7 +513,7 @@ py_test(
 
 py_test(
     name = "optuna_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/optuna_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -531,7 +531,7 @@ py_test(
 
 py_test(
     name = "pbt_convnet_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/pbt_convnet_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -540,7 +540,7 @@ py_test(
 
 py_test(
     name = "pbt_convnet_function_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/pbt_convnet_function_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -567,7 +567,7 @@ py_test(
 
 py_test(
     name = "pbt_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/pbt_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
