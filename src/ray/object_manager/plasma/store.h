@@ -96,6 +96,9 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
+  ///  - PlasmaError::TransientOutOfMemory, if the store is temporarily out of
+  ///    memory but there may be space soon to create the object.  In this
+  ///    case, the client should not call plasma_release.
   PlasmaError CreateObject(const ObjectID& object_id, const NodeID& owner_raylet_id,
                            const std::string& owner_ip_address, int owner_port,
                            const WorkerID& owner_worker_id, bool evict_if_full,
@@ -224,7 +227,8 @@ class PlasmaStore {
   void EraseFromObjectTable(const ObjectID& object_id);
 
   uint8_t* AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE* fd, int64_t* map_size,
-                          ptrdiff_t* offset, const std::shared_ptr<Client> &client, bool is_create);
+                          ptrdiff_t* offset, const std::shared_ptr<Client> &client, bool is_create,
+                          PlasmaError *error);
 #ifdef PLASMA_CUDA
   Status AllocateCudaMemory(int device_num, int64_t size, uint8_t** out_pointer,
                             std::shared_ptr<CudaIpcMemHandle>* out_ipc_handle);

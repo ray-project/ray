@@ -217,5 +217,42 @@ def test_spill_objects_automatically(shutdown_only):
         assert np.array_equal(sample, arr)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_spill_during_get(shutdown_only):
+    ray.init(
+        num_cpus=4,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "automatic_object_spilling_enabled": True,
+            # This test will deadlock if only one IO worker is allowed because
+            # the IO worker will try to restore an object, but this requires
+            # another object to be spilled, which also requires an IO worker.
+            "max_io_workers": 2,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": "/tmp/spill"
+                }
+            })
+        },
+    )
+
+    @ray.remote
+    def f():
+        return np.zeros(10 * 1024 * 1024)
+
+    ids = []
+    for i in range(10):
+        x = f.remote()
+        print(i, x)
+        ids.append(x)
+
+    # Concurrent gets, which require restoring from external storage, while
+    # objects are being created.
+    for x in ids:
+        print(ray.get(x).shape)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

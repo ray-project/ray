@@ -140,6 +140,10 @@ class LocalObjectManager {
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
   std::vector<ObjectID> objects_to_free_;
+
+  /// The total size of the objects that are currently being
+  /// spilled from this node, in bytes.
+  size_t num_bytes_pending_spill_ = 0;
 };
 
 };  // namespace raylet

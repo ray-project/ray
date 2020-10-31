@@ -100,17 +100,25 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
     objects_to_spill.push_back(it->first);
     it++;
   }
-  RAY_LOG(ERROR) << "Spilling objects of total size " << num_bytes_to_spill;
-  auto start_time = current_time_ms();
-  SpillObjects(objects_to_spill, [num_bytes_to_spill, start_time](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
-    } else {
-      RAY_LOG(INFO) << "Spilled " << num_bytes_to_spill << " in "
-                    << (current_time_ms() - start_time) << "ms";
-    }
-  });
-  num_bytes_required -= num_bytes_to_spill;
+  if (!objects_to_spill.empty()) {
+    RAY_LOG(ERROR) << "Spilling objects of total size " << num_bytes_to_spill;
+    auto start_time = current_time_ms();
+    SpillObjects(objects_to_spill,
+                 [num_bytes_to_spill, start_time](const Status &status) {
+                   if (!status.ok()) {
+                     RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
+                   } else {
+                     RAY_LOG(INFO) << "Spilled " << num_bytes_to_spill << " in "
+                                   << (current_time_ms() - start_time) << "ms";
+                   }
+                 });
+  }
+  //  We do not track a mapping between objects that need to be created to
+  //  objects that are being spilled, so we just subtract the total number of
+  //  bytes that are currently being spilled from the amount of space
+  //  requested. If the space is claimed by another client, this client may
+  //  need to request space again.
+  num_bytes_required -= num_bytes_pending_spill_;
   return num_bytes_required;
 }
 
@@ -136,6 +144,7 @@ void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;
       objects_to_spill.push_back(id);
+      num_bytes_pending_spill_ += it->second->GetSize();
       objects_pending_spill_[id] = std::move(it->second);
       pinned_objects_.erase(it);
     }
@@ -160,6 +169,13 @@ void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
               io_worker_pool_.PushIOWorker(io_worker);
               if (!status.ok()) {
+                for (const auto &object_id : objects_to_spill) {
+                  auto it = objects_pending_spill_.find(object_id);
+                  RAY_CHECK(it != objects_pending_spill_.end());
+                  pinned_objects_.emplace(object_id, std::move(it->second));
+                  objects_pending_spill_.erase(it);
+                }
+
                 RAY_LOG(ERROR) << "Failed to send object spilling request: "
                                << status.ToString();
                 if (callback) {
@@ -187,11 +203,11 @@ void LocalObjectManager::AddSpilledUrls(
         object_id, object_url, [this, object_id, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
           // Unpin the object.
-          // NOTE(swang): Due to a race condition, the object may not be in
-          // the map yet. In that case, the owner will respond to the
-          // WaitForObjectEvictionRequest and we will unpin the object
-          // then.
-          objects_pending_spill_.erase(object_id);
+          auto it = objects_pending_spill_.find(object_id);
+          RAY_CHECK(it != objects_pending_spill_.end());
+          num_bytes_pending_spill_ -= it->second->GetSize();
+          objects_pending_spill_.erase(it);
+
           (*num_remaining)--;
           if (*num_remaining == 0 && callback) {
             callback(status);
