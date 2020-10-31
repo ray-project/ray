@@ -14,6 +14,7 @@ import ray.test_utils
 from ray.test_utils import (
     RayTestTimeoutException,
     wait_for_condition,
+    new_scheduler_enabled,
 )
 
 logger = logging.getLogger(__name__)
@@ -251,6 +252,7 @@ def test_zero_cpus(shutdown_only):
     ray.get(x)
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="zero cpu handling")
 def test_zero_cpus_actor(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)

@@ -266,10 +266,13 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.QueueTask(task, &reply, callback);
 
   // Task is now queued so cancellation works.
+  callback_called = false;
+  reply.Clear();
   ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
   // Task will not execute.
-  ASSERT_FALSE(callback_called);
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -277,9 +280,12 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.SchedulePendingTasks();
 
   // We can still cancel the task if it's on the dispatch queue.
+  callback_called = false;
+  reply.Clear();
   ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   // Task will not execute.
-  ASSERT_FALSE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_TRUE(callback_called);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -288,9 +294,12 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   // Task is now running so we can't cancel it.
+  callback_called = false;
+  reply.Clear();
   ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   // Task will not execute.
-  ASSERT_TRUE(callback_called);
+  ASSERT_FALSE(reply.canceled());
+  ASSERT_FALSE(callback_called);
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(leased_workers_.size(), 1);
 }
