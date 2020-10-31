@@ -343,7 +343,7 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
   if (!node_heartbeats_.empty()) {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
     absl::flat_hash_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
-    for (auto &heartbeat : node_heartbeats_) {
+    for (const auto &heartbeat : node_heartbeats_) {
       // Aggregate the load reported by each raylet.
       auto load = heartbeat.second.resource_load_by_shape();
       for (const auto &demand : load.resource_demands()) {
@@ -361,12 +361,12 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
         }
       }
 
-      batch->add_batch()->Swap(&heartbeat.second);
+      batch->add_batch()->CopyFrom(heartbeat.second);
     }
 
-    for (auto &demand : aggregate_load) {
+    for (const auto &demand : aggregate_load) {
       auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
-      demand_proto->Swap(&demand.second);
+      demand_proto->CopyFrom(demand.second);
       for (const auto &resource_pair : demand.first.GetResourceMap()) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
       }
