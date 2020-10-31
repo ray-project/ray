@@ -73,6 +73,8 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
 def serialize_config(config):
     config_pairs = []
     for key, value in config.items():
+        if isinstance(value, str):
+            value = value.encode("utf-8")
         if isinstance(value, bytes):
             value = base64.b64encode(value).decode('utf-8')
         config_pairs.append((key, value))

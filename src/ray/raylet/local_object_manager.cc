@@ -197,18 +197,20 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     std::function<void(const ray::Status &)> callback) {
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
-  io_worker_pool_.PopIOWorker([this, object_url,
+  io_worker_pool_.PopIOWorker([this, object_id, object_url,
                                callback](std::shared_ptr<WorkerInterface> io_worker) {
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
     io_worker->rpc_client()->RestoreSpilledObjects(
-        request, [this, callback, io_worker](const ray::Status &status,
+        request, [this, object_id, callback, io_worker](const ray::Status &status,
                                              const rpc::RestoreSpilledObjectsReply &r) {
           io_worker_pool_.PushIOWorker(io_worker);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
+          } else {
+            RAY_LOG(DEBUG) << "Restored object " << object_id;
           }
           if (callback) {
             callback(status);
