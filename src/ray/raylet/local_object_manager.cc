@@ -203,8 +203,9 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
     io_worker->rpc_client()->RestoreSpilledObjects(
-        request, [this, object_id, callback, io_worker](const ray::Status &status,
-                                             const rpc::RestoreSpilledObjectsReply &r) {
+        request,
+        [this, object_id, callback, io_worker](const ray::Status &status,
+                                               const rpc::RestoreSpilledObjectsReply &r) {
           io_worker_pool_.PushIOWorker(io_worker);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
