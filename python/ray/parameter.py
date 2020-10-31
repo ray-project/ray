@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -190,7 +191,7 @@ class RayParams:
         self.metrics_export_port = metrics_export_port
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
-        self._system_config = _system_config
+        self._system_config = _system_config or {}
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
@@ -320,8 +321,10 @@ class RayParams:
                            "serialization. Upgrade numpy if using with ray.")
 
         # Make sure object spilling configuration is applicable.
-        object_spilling_config = self.object_spilling_config or {}
+        object_spilling_config = self._system_config.get(
+            "object_spilling_config", {})
         if object_spilling_config:
+            object_spilling_config = json.loads(object_spilling_config)
             from ray import external_storage
             # Validate external storage usage.
             external_storage.setup_external_storage(object_spilling_config)

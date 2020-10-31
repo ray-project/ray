@@ -26,14 +26,16 @@ smart_open_object_spilling_config = {
 
 
 @pytest.fixture(
-    scope="module",
+    scope="function",
     params=[
         file_system_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
         # smart_open_object_spilling_config,
     ])
-def object_spilling_config(request):
-    yield request.param
+def object_spilling_config(request, tmpdir):
+    if request.param["type"] == "filesystem":
+        request.param["params"]["directory_path"] = str(tmpdir)
+    yield json.dumps(request.param)
 
 
 @pytest.mark.skip("This test is for local benchmark.")
@@ -48,10 +50,10 @@ def test_sample_benchmark(object_spilling_config, shutdown_only):
     # Limit our object store to 200 MiB of memory.
     ray.init(
         object_store_memory=object_store_limit,
-        _object_spilling_config=object_spilling_config,
         _system_config={
             "object_store_full_max_retries": 0,
             "max_io_workers": max_io_workers,
+            "object_spilling_config": object_spilling_config,
         })
     arr = np.random.rand(object_size)
     replay_buffer = []
@@ -91,18 +93,26 @@ def test_invalid_config_raises_exception(shutdown_only):
     # it starts processes when invalid object spilling
     # config is given.
     with pytest.raises(ValueError):
-        ray.init(_object_spilling_config={"type": "abc"})
+        ray.init(_system_config={
+            "object_spilling_config": json.dumps({
+                "type": "abc"
+            }),
+        })
 
     with pytest.raises(Exception):
         copied_config = copy.deepcopy(file_system_object_spilling_config)
         # Add invalid params to the config.
         copied_config["params"].update({"random_arg": "abc"})
-        ray.init(_object_spilling_config=copied_config)
+        ray.init(_system_config={
+            "object_spilling_config": json.dumps(copied_config),
+        })
 
     with pytest.raises(ValueError):
         copied_config = copy.deepcopy(file_system_object_spilling_config)
         copied_config["params"].update({"directory_path": "not_exist_path"})
-        ray.init(_object_spilling_config=copied_config)
+        ray.init(_system_config={
+            "object_spilling_config": json.dumps(copied_config),
+        })
 
 
 @pytest.mark.skipif(
@@ -115,12 +125,7 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
             "object_store_full_max_retries": 0,
             "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": "/tmp"
-                }
-            }).encode("utf-8"),
+            "object_spilling_config": object_spilling_config,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -171,12 +176,7 @@ def test_spill_objects_manually_from_workers(object_spilling_config,
             "object_store_full_max_retries": 0,
             "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": "/tmp"
-                }
-            }).encode("utf-8"),
+            "object_spilling_config": object_spilling_config,
         })
 
     @ray.remote
@@ -206,12 +206,7 @@ def test_spill_objects_manually_with_workers(object_spilling_config,
             "object_store_full_max_retries": 0,
             "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": "/tmp"
-                }
-            }).encode("utf-8"),
+            "object_spilling_config": object_spilling_config,
         })
     arrays = [np.random.rand(100 * 1024) for _ in range(50)]
     objects = [ray.put(arr) for arr in arrays]
@@ -242,7 +237,7 @@ def test_spill_objects_manually_with_workers(object_spilling_config,
                 "params": {
                     "directory_path": "/tmp"
                 }
-            }).encode("utf-8"),
+            }),
         },
     }],
     indirect=True)
@@ -276,7 +271,7 @@ def test_spill_remote_object(ray_start_cluster_head):
     ray.get(depends.remote(ref))
 
 
-def test_spill_objects_automatically(shutdown_only):
+def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
@@ -285,12 +280,7 @@ def test_spill_objects_automatically(shutdown_only):
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": "/tmp"
-                }
-            }).encode("utf-8"),
+            "object_spilling_config": object_spilling_config,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -316,7 +306,7 @@ def test_spill_objects_automatically(shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_during_get(shutdown_only):
+def test_spill_during_get(object_spilling_config, shutdown_only):
     ray.init(
         num_cpus=4,
         object_store_memory=100 * 1024 * 1024,
@@ -326,12 +316,7 @@ def test_spill_during_get(shutdown_only):
             # the IO worker will try to restore an object, but this requires
             # another object to be spilled, which also requires an IO worker.
             "max_io_workers": 2,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": "/tmp/spill"
-                }
-            })
+            "object_spilling_config": object_spilling_config,
         },
     )
 
