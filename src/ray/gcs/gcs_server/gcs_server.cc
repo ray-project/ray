@@ -35,7 +35,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
-      client_call_manager_(main_service) {}
+      client_call_manager_(main_service),
+      print_debug_info_timer_(main_service_) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
