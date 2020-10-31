@@ -68,8 +68,10 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
     }
     auto callback = callbacks.front();
     auto reply = rpc::SpillObjectsReply();
-    for (const auto &url : urls) {
-      reply.add_spilled_objects_url(url);
+    if (status.ok()) {
+      for (const auto &url : urls) {
+        reply.add_spilled_objects_url(url);
+      }
     }
     callback(status, reply);
     callbacks.pop_front();
@@ -354,6 +356,10 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
+  // Check that this returns the total number of bytes currently being spilled.
+  num_bytes_required = manager.SpillObjectsOfSize(0);
+  ASSERT_EQ(num_bytes_required, -2 * object_size);
+
   // Check that half the objects get spilled and the URLs get added to the
   // global object directory.
   std::vector<std::string> urls;
@@ -370,6 +376,51 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
     ASSERT_TRUE(it != urls.end());
     ASSERT_EQ((*unpins)[object_url.first], 1);
   }
+
+  // Check that this returns the total number of bytes currently being spilled.
+  num_bytes_required = manager.SpillObjectsOfSize(0);
+  ASSERT_EQ(num_bytes_required, 0);
+}
+
+TEST_F(LocalObjectManagerTest, TestSpillError) {
+  // Check that we can spill an object again if there was a transient error
+  // during the first attempt.
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  ObjectID object_id = ObjectID::FromRandom();
+  auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
+  std::unique_ptr<RayObject> object(
+      new RayObject(std::move(data_buffer), nullptr, std::vector<ObjectID>()));
+
+  std::vector<std::unique_ptr<RayObject>> objects;
+  objects.push_back(std::move(object));
+  manager.PinObjects({object_id}, std::move(objects));
+
+  int num_times_fired = 0;
+  manager.SpillObjects({object_id}, [&](const Status &status) mutable {
+    ASSERT_FALSE(status.ok());
+    num_times_fired++;
+  });
+
+  // Return an error from the IO worker during spill.
+  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  ASSERT_TRUE(
+      worker_pool.io_worker_client->ReplySpillObjects({}, Status::IOError("error")));
+  ASSERT_EQ(num_times_fired, 1);
+  ASSERT_EQ((*unpins)[object_id], 0);
+
+  // Try to spill the same object again.
+  manager.SpillObjects({object_id}, [&](const Status &status) mutable {
+    ASSERT_TRUE(status.ok());
+    num_times_fired++;
+  });
+  std::string url = "url";
+  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
+  ASSERT_EQ(num_times_fired, 2);
+  ASSERT_EQ(object_table.object_urls[object_id], url);
+  ASSERT_EQ((*unpins)[object_id], 1);
 }
 
 }  // namespace raylet
