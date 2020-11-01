@@ -34,16 +34,8 @@ ALL_SLATEQ_STRATEGIES = ["RANDOM", "MYOP", "SARSA", "QL"]
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
-    # Number of atoms for representing the distribution of return. When
-    # this is greater than 1, distributional Q-learning is used.
-    # the discrete supports are bounded by v_min and v_max
-    "num_atoms": 1,
-    "v_min": -10.0,
-    "v_max": 10.0,
     # Whether to use noisy network
     "noisy": False,
-    # control the initial value of noisy nets
-    "sigma0": 0.5,
     # Whether to use dueling dqn
     "dueling": False,
     # Dense-layer setup for each the advantage branch and the value branch

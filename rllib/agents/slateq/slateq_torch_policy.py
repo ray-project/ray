@@ -25,6 +25,8 @@ if nn:
 
 
 class QValueModel(nn.Module):
+    """The Q-value model for SlateQ"""
+
     def __init__(self, embedding_size: int = 20):
         super().__init__()
         self.layers = nn.Sequential(
@@ -63,13 +65,28 @@ class QValueModel(nn.Module):
 
 
 class UserChoiceModel(nn.Module):
+    r"""The user choice model for SlateQ
+
+    This class implements a multinomial logit model for predicting user clicks.
+
+    Under this model, the click probability of a document is proportional to:
+
+    .. math::
+        \exp(\text{beta} * \text{doc_user_affinity} + \text{score_no_click})
+    """
+
     def __init__(self):
         super().__init__()
-        self.a = nn.Parameter(torch.tensor(0, dtype=torch.float))
-        self.b = nn.Parameter(torch.tensor(0, dtype=torch.float))
+        self.beta = nn.Parameter(torch.tensor(0., dtype=torch.float))
+        self.score_no_click = nn.Parameter(torch.tensor(0., dtype=torch.float))
 
     def forward(self, user: TensorType, doc: TensorType) -> TensorType:
         """Evaluate the user choice model
+
+        This function outputs user click scores for candidate documents. The
+        exponentials of these scores are proportional user click probabilities.
+        Here we return the scores unnormalized because because only some of the
+        documents will be selected and shown to the user.
 
         Args:
             user (TensorType): User embeddings of shape (batch_size,
@@ -78,35 +95,46 @@ class UserChoiceModel(nn.Module):
                 embedding_size).
 
         Returns:
-            score (TensorType): logits of shape (batch_size,
-                num_docs + 1), where the last dimension represents no_click.
+            score (TensorType): logits of shape (batch_size, num_docs + 1),
+                where the last dimension represents no_click.
         """
         batch_size = user.shape[0]
         s = torch.einsum("be,bde->bd", user, doc)
-        s = s * self.a
-        s = torch.cat([s, self.b.expand((batch_size, 1))], dim=1)
+        s = s * self.beta
+        s = torch.cat([s, self.score_no_click.expand((batch_size, 1))], dim=1)
         return s
 
 
 class SlateQModel(TorchModelV2, nn.Module):
+    """The SlateQ model class
+
+    It includes both the user choice model and the Q-value model.
+    """
+
     def __init__(
             self,
             obs_space: gym.spaces.Space,
             action_space: gym.spaces.Space,
-            num_outputs: int,
             model_config: ModelConfigDict,
             name: str,
     ):
         nn.Module.__init__(self)
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
+        TorchModelV2.__init__(
+            self,
+            obs_space,
+            action_space,
+            # This required parameter (num_outputs) seems redundant: it has no
+            # real imact, and can be set arbitrarily. TODO: fix this.
+            num_outputs=0,
+            model_config=model_config,
+            name=name)
         self.choice_model = UserChoiceModel()
         self.q_model = QValueModel()
         self.slate_size = len(action_space.nvec)
 
     def choose_slate(self, user: TensorType,
                      doc: TensorType) -> Tuple[TensorType, TensorType]:
-        """Build a slate from candidate documents
+        """Build a slate by selecting from candidate documents
 
         Args:
             user (TensorType): User embeddings of shape (batch_size,
@@ -118,7 +146,7 @@ class SlateQModel(TorchModelV2, nn.Module):
             slate_selected (TensorType): Indices of documents selected for
                 the slate, with shape (batch_size, slate_size).
             best_slate_q_value (TensorType): The Q-value of the selected slate,
-                with shape (batch_size)
+                with shape (batch_size).
         """
         # Step 1: compute item scores (proportional to click probabilities)
         # raw_scores.shape=[batch_size, num_docs+1]
@@ -203,11 +231,7 @@ def build_slateq_model_and_distribution(
         (q_model, TorchCategorical)
     """
     model = SlateQModel(
-        obs_space,
-        action_space,
-        num_outputs=3,
-        model_config=config,
-        name="model")
+        obs_space, action_space, model_config=config, name="slateq_model")
     return model, TorchCategorical
 
 
@@ -362,10 +386,10 @@ def setup_early_mixins(policy: Policy, obs_space, action_space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def postprocess_add_next_actions(policy: Policy,
-                                 batch: SampleBatch,
-                                 other_agent=None,
-                                 episode=None) -> SampleBatch:
+def postprocess_fn_add_next_actions_for_sarsa(policy: Policy,
+                                              batch: SampleBatch,
+                                              other_agent=None,
+                                              episode=None) -> SampleBatch:
     """Add next_actions to SampleBatch for SARSA training"""
     if policy.config["slateq_strategy"] == "SARSA":
         if not batch["dones"][-1]:
@@ -389,7 +413,7 @@ SlateQTorchPolicy = build_torch_policy(
     action_sampler_fn=action_sampler_fn,
 
     # post processing batch sampled data
-    postprocess_fn=postprocess_add_next_actions,
+    postprocess_fn=postprocess_fn_add_next_actions_for_sarsa,
 
     # other house keeping items
     before_init=setup_early_mixins,
