@@ -41,11 +41,13 @@ class QValueModel(nn.Module):
 
     def forward(self, user: TensorType, doc: TensorType) -> TensorType:
         """Evaluate the user-doc Q model
+
         Args:
             user (TensorType): User embedding of shape (batch_size,
                 embedding_size).
             doc (TensorType): Doc embeddings of shape (batch_size, num_docs,
                 embedding_size).
+
         Returns:
             score (TensorType): q_values of shape (batch_size, num_docs + 1).
         """
@@ -54,11 +56,9 @@ class QValueModel(nn.Module):
         user_repeated = user.repeat(num_docs, 1)
         x = torch.cat([user_repeated, doc_flat], dim=1)
         x = self.layers(x)
+        # Similar to Google's SlateQ implementation in RecSim, we force the
+        # Q-values to zeros if there are no clicks.
         x_no_click = torch.zeros((batch_size, 1), device=x.device)
-        # x_no_click = torch.cat(
-        #     [user, self.no_click_embedding.repeat(batch_size, 1)], dim=1
-        # )
-        # x_no_click = self.layers(x_no_click)
         return torch.cat([x.view((batch_size, num_docs)), x_no_click], dim=1)
 
 
@@ -262,9 +262,10 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
     # print(model.choice_model.a.item(), model.choice_model.b.item())
 
     # Step 2: Build qvalue loss
-    # train_batch: dict_keys(['t', 'eps_id', 'agent_index', 'next_actions',
-    # 'obs', 'actions', 'rewards', 'prev_actions', 'prev_rewards',
-    # 'dones', 'infos', 'new_obs', 'unroll_id', 'weights', 'batch_indexes'])
+    # Fields in available in train_batch: ['t', 'eps_id', 'agent_index',
+    # 'next_actions', 'obs', 'actions', 'rewards', 'prev_actions',
+    # 'prev_rewards', 'dones', 'infos', 'new_obs', 'unroll_id', 'weights',
+    # 'batch_indexes']
     learning_strategy = policy.config["slateq_strategy"]
 
     if learning_strategy == "SARSA":
@@ -365,9 +366,13 @@ def postprocess_add_next_actions(policy: Policy,
                                  batch: SampleBatch,
                                  other_agent=None,
                                  episode=None) -> SampleBatch:
-    assert batch["dones"][-1]
-    # Add next actions so that we can use SARSA training
-    batch["next_actions"] = np.roll(batch["actions"], -1, axis=0)
+    """Add next_actions to SampleBatch for SARSA training"""
+    if policy.config["slateq_strategy"] == "SARSA":
+        if not batch["dones"][-1]:
+            raise RuntimeError(
+                "Expected a complete episode in each sample batch. "
+                f"But this batch is not: {batch}.")
+        batch["next_actions"] = np.roll(batch["actions"], -1, axis=0)
     return batch
 
 
