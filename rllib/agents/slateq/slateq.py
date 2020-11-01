@@ -73,7 +73,7 @@ DEFAULT_CONFIG = with_common_config({
     # Learning rate for adam optimizer for the user choice model
     "lr_choice_model": 1e-2,
     # Learning rate for adam optimizer for the q model
-    "lr_q_model":1e-2,
+    "lr_q_model": 1e-2,
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
@@ -153,7 +153,8 @@ def execution_plan(workers: WorkerSet,
 
     if config["slateq_strategy"] != "RANDOM":
         # Alternate deterministically between (1) and (2). Only return the
-        # output of (2) since training metrics are not available until (2) runs.
+        # output of (2) since training metrics are not available until (2)
+        # runs.
         train_op = Concurrently(
             [store_op, replay_op],
             mode="round_robin",
