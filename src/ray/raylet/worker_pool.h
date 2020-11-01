@@ -57,6 +57,28 @@ class WorkerPoolInterface {
   virtual ~WorkerPoolInterface(){};
 };
 
+/// \class IOWorkerPoolInterface
+///
+/// Used for object spilling manager unit tests.
+class IOWorkerPoolInterface {
+ public:
+  /// Add an idle I/O worker to the pool.
+  ///
+  /// \param worker The idle I/O worker to add.
+  virtual void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  /// Pop an idle I/O worker from the pool and trigger a callback when
+  /// an I/O worker is available.
+  /// The caller is responsible for pushing the worker back onto the
+  /// pool once the worker has completed its work.
+  ///
+  /// \param callback The callback that returns an available I/O worker.
+  virtual void PopIOWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
+  virtual ~IOWorkerPoolInterface(){};
+};
+
 class WorkerInterface;
 class Worker;
 
@@ -64,7 +86,7 @@ class Worker;
 ///
 /// The WorkerPool is responsible for managing a pool of Workers. Each Worker
 /// is a container for a unit of work.
-class WorkerPool : public WorkerPoolInterface {
+class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
  public:
   /// Create a pool and asynchronously start at least the specified number of workers per
   /// language.
@@ -83,6 +105,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// If this is set to 0, workers will bind on random ports.
   /// \param max_worker_port The highest port number that workers started will bind on.
   /// If this is not set to 0, min_worker_port must also not be set to 0.
+  /// \param worker_ports An explicit list of open ports that workers started will bind
+  /// on. This takes precedence over min_worker_port and max_worker_port.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   /// \param raylet_config The raylet config list of this node.
@@ -91,6 +115,7 @@ class WorkerPool : public WorkerPoolInterface {
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
              int num_workers_soft_limit, int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
+             const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              const std::unordered_map<std::string, std::string> &raylet_config,
@@ -211,13 +236,17 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Get all the registered workers.
   ///
-  /// \return A list containing all the workers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers() const;
+  /// \param filter_dead_workers whether or not if this method will filter dead workers
+  /// that are still registered. \return A list containing all the workers.
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers = false) const;
 
   /// Get all the registered drivers.
   ///
-  /// \return A list containing all the drivers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers() const;
+  /// \param filter_dead_drivers whether or not if this method will filter dead drivers
+  /// that are still registered. \return A list containing all the drivers.
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+      bool filter_dead_drivers = false) const;
 
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
@@ -254,9 +283,10 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  Process StartWorkerProcess(const Language &language, const rpc::WorkerType worker_type,
-                             const JobID &job_id,
-                             std::vector<std::string> dynamic_options = {});
+  Process StartWorkerProcess(
+      const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
+      std::vector<std::string> dynamic_options = {},
+      std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -407,7 +437,7 @@ class WorkerPool : public WorkerPoolInterface {
   int num_initial_python_workers_for_first_job_;
 
   /// This map tracks the latest infos of unfinished jobs.
-  absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
+  absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
 
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
   /// workers in FIFO order. The second element of std::pair is the time a worker becomes

@@ -21,7 +21,7 @@ Basic Usage
 Setting up training
 ~~~~~~~~~~~~~~~~~~~
 
-.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using RayTune *without* restructuring your code, check out the :ref:`Tune PyTorch user guide <tune-pytorch-cifar>` and Tune's  :ref:`distributed pytorch integrations <tune-ddp-doc>`.
+.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using RayTune *without* using RaySGD, check out the :ref:`Tune PyTorch user guide <tune-pytorch-cifar>` and Tune's  :ref:`distributed pytorch integrations <tune-ddp-doc>`.
 
 The :ref:`ref-torch-trainer`  can be constructed from a custom :ref:`ref-torch-operator` subclass that defines training components like the model, data, optimizer, loss, and ``lr_scheduler``. These components are all automatically replicated across different machines and devices so that training can be executed in parallel.
 
@@ -466,18 +466,6 @@ During each ``train`` method, each parallel worker iterates through the iterable
   6. If there are available resources and the Trainer has fewer workers than initially specified, then it will scale up its worker pool until it reaches the initially specified ``num_workers``.
 
 Note that we assume the Trainer itself is not on a pre-emptible node. To allow the entire Trainer to recover from failure, you must use Tune to execute the training.
-
-Advanced: Hyperparameter Tuning
--------------------------------
-``TorchTrainer`` naturally integrates with Tune via the ``BaseTorchTrainable`` interface. Without changing any arguments, you can call ``TorchTrainer.as_trainable(model_creator...)`` to create a Tune-compatible class. See the documentation (:ref:`BaseTorchTrainable-doc`).
-
-.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/tune_example.py
-   :language: python
-   :start-after: __torch_tune_example__
-   :end-before: __end_torch_tune_example__
-
-You can see the `Tune example script <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`_ for an end-to-end example.
-
 
 Simultaneous Multi-model Training
 ---------------------------------

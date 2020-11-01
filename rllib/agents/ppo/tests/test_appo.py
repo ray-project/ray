@@ -22,6 +22,7 @@ class TestAPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config):
+            print("w/o v-trace")
             _config = config.copy()
             trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
             for i in range(num_iterations):
@@ -29,6 +30,7 @@ class TestAPPO(unittest.TestCase):
             check_compute_single_action(trainer)
             trainer.stop()
 
+            print("w/ v-trace")
             _config = config.copy()
             _config["vtrace"] = True
             trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")

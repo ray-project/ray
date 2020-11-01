@@ -226,41 +226,53 @@ class StaroidNodeProvider(NodeProvider):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod(node_id, self.namespace)
-        pod.metadata.labels.update(tags)
-        core_api.patch_namespaced_pod(node_id, self.namespace, pod)
+        max_retry = 10
+        for i in range(max_retry):
+            try:
+                pod = core_api.read_namespaced_pod(node_id, self.namespace)
+                pod.metadata.labels.update(tags)
+                core_api.patch_namespaced_pod(node_id, self.namespace, pod)
+            except ApiException as e:
+                if e.status == 409 and max_retry - 1 > i:
+                    # conflict. pod modified before apply patch. retry
+                    time.sleep(0.2)
+                    continue
+
+                raise e
 
     def create_node(self, node_config, tags, count):
         instance_name = self.cluster_name
 
-        # get or create ske
-        cluster_api = self.__star.cluster()
-        ske = cluster_api.create(self.__ske, self.__ske_region)
-        if ske is None:
-            raise Exception("Failed to create an SKE '{}' in '{}' region"
-                            .format(self.__ske, self.__ske_region))
+        incluster = self._connect_kubeapi(instance_name)
+        if incluster is None:
+            # get or create ske
+            cluster_api = self.__star.cluster()
+            ske = cluster_api.create(self.__ske, self.__ske_region)
+            if ske is None:
+                raise Exception("Failed to create an SKE '{}' in '{}' region"
+                                .format(self.__ske, self.__ske_region))
 
-        # create a namespace
-        ns_api = self.__star.namespace(ske)
-        ns = ns_api.create(
-            instance_name,
-            self.provider_config["project"],
+            # create a namespace
+            ns_api = self.__star.namespace(ske)
+            ns = ns_api.create(
+                instance_name,
+                self.provider_config["project"],
 
-            # Configure 'start-head' param to 'false'.
-            # head node will be created using Kubernetes api.
-            params=[{
-                "group": "Misc",
-                "name": "start-head",
-                "value": "false"
-            }])
-        if ns is None:
-            raise Exception("Failed to create a cluster '{}' in SKE '{}'"
-                            .format(instance_name, self.__ske))
+                # Configure 'start-head' param to 'false'.
+                # head node will be created using Kubernetes api.
+                params=[{
+                    "group": "Misc",
+                    "name": "start-head",
+                    "value": "false"
+                }])
+            if ns is None:
+                raise Exception("Failed to create a cluster '{}' in SKE '{}'"
+                                .format(instance_name, self.__ske))
 
-        # 'ray down' will change staroid namespace status to "PAUSE"
-        # in this case we need to start namespace again.
-        if ns.status() == "PAUSE":
-            ns = ns_api.start(instance_name)
+            # 'ray down' will change staroid namespace status to "PAUSE"
+            # in this case we need to start namespace again.
+            if ns.status() == "PAUSE":
+                ns = ns_api.start(instance_name)
 
         # kube client
         kube_client = self._connect_kubeapi(instance_name)
@@ -292,6 +304,14 @@ class StaroidNodeProvider(NodeProvider):
             pod_spec["metadata"]["labels"].update(tags)
         else:
             pod_spec["metadata"]["labels"] = tags
+
+        if "generateName" not in pod_spec["metadata"]:
+            pod_spec["metadata"]["generateName"] = \
+                "ray-" + pod_spec["metadata"]["labels"]["ray-node-type"] + "-"
+
+        if "component" not in pod_spec["metadata"]["labels"]:
+            pod_spec["metadata"]["labels"]["component"] = \
+                "ray-" + pod_spec["metadata"]["labels"]["ray-node-type"]
 
         if image is not None:
             containers = pod_spec["spec"]["containers"]

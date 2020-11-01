@@ -4,7 +4,7 @@ Batching Tutorial
 =================
 
 In this guide, we will deploy a simple vectorized adder that takes
-a batch of queries and add them at once. In particular, we show:
+a batch of queries and adds them at once. In particular, we show:
 
 - How to implement and deploy Ray Serve model that accepts batches.
 - How to configure the batch size.
@@ -60,7 +60,7 @@ the input value, convert them into an array, and use NumPy to add 1 to each elem
 
 Let's deploy it. Note that in the ``config`` section of ``create_backend``, we
 are specifying the maximum batch size via ``config={"max_batch_size": 4}``. This
-configuration option limits the maximum possible batch size send to the backend.
+configuration option limits the maximum possible batch size sent to the backend.
 
 .. note::
     Ray Serve performs *opportunistic batching*. When a worker is free to evaluate

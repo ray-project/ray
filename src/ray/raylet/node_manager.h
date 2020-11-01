@@ -28,6 +28,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/agent_manager.h"
+#include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -36,6 +37,7 @@
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
 #include "ray/common/bundle_spec.h"
 // clang-format on
@@ -65,6 +67,9 @@ struct NodeManagerConfig {
   /// The highest port number that workers started will bind on.
   /// If this is not set to 0, min_worker_port must also not be set to 0.
   int max_worker_port;
+  /// An explicit list of open ports that workers started will bind
+  /// on. This takes precedence over min_worker_port and max_worker_port.
+  std::vector<int> worker_ports;
   /// The initial number of workers to create.
   int num_initial_workers;
   /// The soft limit of the number of workers.
@@ -82,9 +87,6 @@ struct NodeManagerConfig {
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
   uint64_t debug_dump_period_ms;
-  /// The time between attempts to eagerly evict objects from plasma in
-  /// milliseconds, or -1 to disable.
-  int64_t free_objects_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled;
   /// Whether to enable pinning for plasma objects.
@@ -168,13 +170,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
-  /// Restore a spilled object from external storage back into local memory.
-  /// \param object_id The ID of the object to restore.
-  /// \param object_url The URL in external storage from which the object can be restored.
-  /// \param callback A callback to call when the restoration is done. Status
-  /// will contain the error during restoration, if any.
-  void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
-                                 std::function<void(const ray::Status &)> callback);
+  LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
 
  private:
   /// Methods for handling clients.
@@ -574,7 +570,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignTask(const std::shared_ptr<WorkerInterface> &worker,
                         const TaskID &task_id, bool success);
 
-  /// Process worker subscribing to plasma.
+  /// Process worker subscribing to a given plasma object become available. This handler
+  /// makes sure that the plasma object is local and calls core worker's PlasmaObjectReady
+  /// gRPC endpoint.
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
@@ -653,11 +651,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
 
-  /// Spill objects to external storage.
-  /// \param objects_ids_to_spill The objects to be spilled.
-  void SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
-                    std::function<void(const ray::Status &)> callback = nullptr);
-
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
@@ -699,8 +692,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::chrono::milliseconds heartbeat_period_;
   /// The period between debug state dumps.
   int64_t debug_dump_period_;
-  /// The period between attempts to eagerly evict objects from plasma.
-  int64_t free_objects_period_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
@@ -724,9 +715,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   SchedulingResources last_heartbeat_resources_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
-  /// The time that we last sent a FreeObjects request to other nodes for
-  /// objects that have gone out of scope in the application.
-  uint64_t last_free_objects_at_ms_;
   /// The number of heartbeats that we should wait before sending the
   /// next load report.
   uint8_t num_heartbeats_before_load_report_;
@@ -769,6 +757,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// as well as all `CoreWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
 
+  /// Pool of RPC client connections to core workers.
+  rpc::CoreWorkerClientPool worker_rpc_pool_;
+
+  /// Manages all local objects that are pinned (primary
+  /// copies), freed, and/or spilled.
+  LocalObjectManager local_object_manager_;
+
   /// Map from node ids to clients of the remote node managers.
   std::unordered_map<NodeID, std::unique_ptr<rpc::NodeManagerClient>>
       remote_node_manager_clients_;
@@ -801,13 +796,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 
-  /// Cache of gRPC clients to workers (not necessarily running on this node).
-  /// Also includes the number of inflight requests to each worker - when this
-  /// reaches zero, the client will be deleted and a new one will need to be created
-  /// for any subsequent requests.
-  absl::flat_hash_map<WorkerID, std::pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>>
-      worker_rpc_clients_;
-
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
   // TODO(swang): Evict entries from these caches.
@@ -822,12 +810,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Keeps track of workers waiting for objects
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
       async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
-
-  /// Objects that are out of scope in the application and that should be freed
-  /// from plasma. The cache is flushed when it reaches the config's
-  /// free_objects_batch_size, or if objects have been in the cache for longer
-  /// than the config's free_objects_period, whichever occurs first.
-  std::vector<ObjectID> objects_to_free_;
 
   /// This map represents the commit state of 2PC protocol for atomic placement group
   /// creation.
