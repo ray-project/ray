@@ -1,4 +1,6 @@
-from __future__ import print_function
+# Some code in this file is from
+# https://github.com/ionelmc/python-remote-pdb/blob/07d563331c4ab9eb45731bb272b158816d98236e/src/remote_pdb.py
+# (BSD 2-Clause "Simplified" License)
 
 import errno
 import inspect
