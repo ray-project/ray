@@ -30,15 +30,16 @@ def cry(message, stderr=sys.__stderr__):
 class LF2CRLF_FileWrapper(object):
     def __init__(self, connection):
         self.connection = connection
-        self.stream = fh = connection.makefile('rw')
+        self.stream = fh = connection.makefile("rw")
         self.read = fh.read
         self.readline = fh.readline
         self.readlines = fh.readlines
         self.close = fh.close
         self.flush = fh.flush
         self.fileno = fh.fileno
-        if hasattr(fh, 'encoding'):
-            self._send = lambda data: connection.sendall(data.encode(fh.encoding))
+        if hasattr(fh, "encoding"):
+            self._send = lambda data: connection.sendall(
+                data.encode(fh.encoding))
         else:
             self._send = connection.sendall
 
@@ -65,7 +66,7 @@ class RemotePdb(Pdb):
     client has connected.
     Based on https://github.com/tamentis/rpdb I think ...
     To use this::
-        RemotePdb(host='0.0.0.0', port=4444).set_trace()
+        RemotePdb(host="0.0.0.0", port=4444).set_trace()
     Then run: telnet 127.0.0.1 4444
     """
     active_instance = None
@@ -85,16 +86,16 @@ class RemotePdb(Pdb):
         if not self._quiet:
             cry("RemotePdb accepted connection from %s." % repr(address))
         self.handle = LF2CRLF_FileWrapper(connection)
-        Pdb.__init__(self, completekey='tab', stdin=self.handle, stdout=self.handle)
+        Pdb.__init__(self, completekey="tab", stdin=self.handle, stdout=self.handle)
         self.backup = []
         if self._patch_stdstreams:
             for name in (
-                    'stderr',
-                    'stdout',
-                    '__stderr__',
-                    '__stdout__',
-                    'stdin',
-                    '__stdin__',
+                    "stderr",
+                    "stdout",
+                    "__stderr__",
+                    "__stdout__",
+                    "stdin",
+                    "__stdin__",
             ):
                 self.backup.append((name, getattr(sys, name)))
                 setattr(sys, name, self.handle)
@@ -102,7 +103,7 @@ class RemotePdb(Pdb):
 
     def __restore(self):
         if self.backup and not self._quiet:
-            cry('Restoring streams: %s ...' % self.backup)
+            cry("Restoring streams: %s ..." % self.backup)
         for name, fh in self.backup:
             setattr(sys, name, fh)
         self.handle.close()
@@ -137,11 +138,11 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
     Opens a remote PDB on first available port.
     """
     if host is None:
-        host = os.environ.get('REMOTE_PDB_HOST', '127.0.0.1')
+        host = os.environ.get("REMOTE_PDB_HOST", "127.0.0.1")
     if port is None:
-        port = int(os.environ.get('REMOTE_PDB_PORT', '0'))
+        port = int(os.environ.get("REMOTE_PDB_PORT", "0"))
     if quiet is None:
-        quiet = bool(os.environ.get('REMOTE_PDB_QUIET', ''))
+        quiet = bool(os.environ.get("REMOTE_PDB_QUIET", ""))
     rdb = RemotePdb(host=host, port=port, patch_stdstreams=patch_stdstreams, quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
     pdb_address = "{}:{}".format(sockname[0], sockname[1])
