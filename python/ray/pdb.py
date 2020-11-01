@@ -11,6 +11,7 @@ import sys
 import uuid
 from pdb import Pdb
 import setproctitle
+import traceback
 
 
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
@@ -149,7 +150,8 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
         "proctitle": setproctitle.getproctitle(),
         "pdb_address": pdb_address,
         "filename": parentframeinfo.filename,
-        "lineno": parentframeinfo.lineno
+        "lineno": parentframeinfo.lineno,
+        "traceback": "\n".join(traceback.format_exception(*sys.exc_info()))
     }
     breakpoint_uuid = uuid.uuid4()
     _internal_kv_put("RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)

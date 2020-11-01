@@ -169,6 +169,7 @@ def debug(address):
         for i, active_session in enumerate(active_sessions):
             data = json.loads(ray.experimental.internal_kv._internal_kv_get(active_session))
             print(str(i) + ": " + data["proctitle"] + " | " + data["filename"] + ":" + str(data["lineno"]))
+            print(data["traceback"])
         inp = input("Enter breakpoing index or press enter to refresh: ")
         if inp == "":
             print()
