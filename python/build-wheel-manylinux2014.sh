@@ -32,6 +32,7 @@ yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 # If converting down to manylinux2010, the following configuration should
 # be set for bazel
 #echo "build --config=manylinux2010" >> /root/.bazelrc
+echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
 
 # Install and use the latest version of Node.js in order to build the dashboard.
