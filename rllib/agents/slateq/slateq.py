@@ -2,9 +2,14 @@
 SlateQ (Reinforcement Learning for Recommendation)
 ==================================================
 
-This file defines the distributed Trainer class for the SlateQ algorithm.
+This file defines the trainer class for the SlateQ algorithm from the
+`"Reinforcement Learning for Slate-based Recommender Systems: A Tractable
+Decomposition and Practical Methodology" <https://arxiv.org/abs/1905.12767>`_
+paper.
+
 See `slateq_torch_policy.py` for the definition of the policy. Currently, only
-PyTorch is supported.
+PyTorch is supported. The algorithm is written and tested for Google's RecSim
+environment (https://github.com/google-research/recsim).
 """
 
 import logging
@@ -27,7 +32,19 @@ from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-ALL_SLATEQ_STRATEGIES = ["RANDOM", "MYOP", "SARSA", "QL"]
+# Defines all SlateQ strategies implemented.
+ALL_SLATEQ_STRATEGIES = [
+    # RANDOM: Randomly select documents for slates.
+    "RANDOM",
+    # MYOP: Select documents that maximize user click probabilities. This is
+    # a myopic strategy and ignores long term rewards. This is equivalent to
+    # setting a zero discount rate for future rewards.
+    "MYOP",
+    # SARSA: Use the SlateQ SARSA learning algorithm.
+    "SARSA",
+    # QL: Use the SlateQ Q-learning algorithm.
+    "QL",
+]
 
 # yapf: disable
 # __sphinx_doc_begin__
