@@ -191,7 +191,7 @@ def build_slateq_model_and_distribution(
         policy: Policy, obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
-    """Build q_model and target_q_model for DQN
+    """Build q_model and target_q_model for SlateQ
 
     Args:
         policy (Policy): The policy, which will use the model for optimization.
@@ -265,7 +265,6 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
     # train_batch: dict_keys(['t', 'eps_id', 'agent_index', 'next_actions',
     # 'obs', 'actions', 'rewards', 'prev_actions', 'prev_rewards',
     # 'dones', 'infos', 'new_obs', 'unroll_id', 'weights', 'batch_indexes'])
-
     learning_strategy = policy.config["slateq_strategy"]
 
     if learning_strategy == "SARSA":
