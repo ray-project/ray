@@ -2,10 +2,9 @@
 SlateQ (Reinforcement Learning for Recommendation)
 ==================================================
 
-This file defines the distributed Trainer class for the Deep Q-Networks
-algorithm. See `slateq_torch_policy.py` for the definition of the policy.
-
-Currently, only Torch is supported
+This file defines the distributed Trainer class for the SlateQ algorithm.
+See `slateq_torch_policy.py` for the definition of the policy. Currently, only
+PyTorch is supported.
 """
 
 import logging
@@ -34,17 +33,9 @@ ALL_SLATEQ_STRATEGIES = ["RANDOM", "MYOP", "SARSA", "QL"]
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
-    # Whether to use noisy network
-    "noisy": False,
-    # Whether to use dueling dqn
-    "dueling": False,
     # Dense-layer setup for each the advantage branch and the value branch
     # in a dueling architecture.
     "hiddens": [256],
-    # Whether to use double dqn
-    "double_q": True,
-    # N-step Q learning
-    "n_step": 1,
 
     # set batchmode
     "batch_mode": "complete_episodes",
@@ -74,8 +65,6 @@ DEFAULT_CONFIG = with_common_config({
     "buffer_size": 50000,
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # Callback to run before learning on a multi-agent batch of experiences.
-    "before_learn_on_batch": None,
     # If set, this will fix the ratio of replayed from a buffer and learned on
     # timesteps to sampled from an environment and stored in the replay buffer
     # timesteps. Otherwise, the replay will proceed at the native ratio
@@ -121,34 +110,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def validate_config(config: TrainerConfigDict) -> None:
-    """Checks and updates the config based on settings.
-
-    Rewrites rollout_fragment_length to take into account n_step truncation.
-    """
-    if config["exploration_config"]["type"] == "ParameterNoise":
-        if config["batch_mode"] != "complete_episodes":
-            logger.warning(
-                "ParameterNoise Exploration requires `batch_mode` to be "
-                "'complete_episodes'. Setting batch_mode=complete_episodes.")
-            config["batch_mode"] = "complete_episodes"
-        if config.get("noisy", False):
-            raise ValueError(
-                "ParameterNoise Exploration and `noisy` network cannot be "
-                "used at the same time!")
-
-    # Update effective batch size to include n-step
-    adjusted_batch_size = max(config["rollout_fragment_length"],
-                              config.get("n_step", 1))
-    config["rollout_fragment_length"] = adjusted_batch_size
-
-    if config.get("prioritized_replay"):
-        if config["multiagent"]["replay_mode"] == "lockstep":
-            raise ValueError("Prioritized replay is not supported when "
-                             "replay_mode=lockstep.")
-        elif config["replay_sequence_length"] > 1:
-            raise ValueError("Prioritized replay is not supported when "
-                             "replay_sequence_length > 1.")
-
+    """Checks the config based on settings"""
     if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
         raise ValueError("Unknown slateq_strategy: "
                          f"{config['slateq_strategy']}.")
@@ -166,15 +128,6 @@ def execution_plan(workers: WorkerSet,
     Returns:
         LocalIterator[dict]: A local iterator over training metrics.
     """
-    if config.get("prioritized_replay"):
-        prio_args = {
-            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
-            "prioritized_replay_beta": config["prioritized_replay_beta"],
-            "prioritized_replay_eps": config["prioritized_replay_eps"],
-        }
-    else:
-        prio_args = {}
-
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=config["learning_starts"],
@@ -182,7 +135,7 @@ def execution_plan(workers: WorkerSet,
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
         replay_sequence_length=config["replay_sequence_length"],
-        **prio_args)
+    )
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -194,10 +147,8 @@ def execution_plan(workers: WorkerSet,
 
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
-    # take a SGD step, and then we decide whether to update the target network.
-    post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+    # take a SGD step.
     replay_op = Replay(local_buffer=local_replay_buffer) \
-        .for_each(lambda x: post_fn(x, workers, config)) \
         .for_each(TrainOneStep(workers))
 
     # Alternate deterministically between (1) and (2). Only return the output
@@ -207,14 +158,14 @@ def execution_plan(workers: WorkerSet,
             [store_op, replay_op],
             mode="round_robin",
             output_indexes=[1],
-            round_robin_weights=calculate_rr_weights(config))
+            round_robin_weights=calculate_round_robin_weights(config))
     else:
         train_op = rollouts
 
     return StandardMetricsReporting(train_op, workers, config)
 
 
-def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
+def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
