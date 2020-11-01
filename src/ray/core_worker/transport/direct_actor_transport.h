@@ -498,7 +498,9 @@ class NormalSchedulingQueue : public SchedulingQueue {
  public:
   NormalSchedulingQueue(){};
 
-  bool TaskQueueEmpty() const EXCLUSIVE_LOCKS_REQUIRED(mu_) { return pending_normal_tasks_.empty(); }
+  bool TaskQueueEmpty() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return pending_normal_tasks_.empty();
+  }
 
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
@@ -553,15 +555,15 @@ class CoreWorkerDirectTaskReceiver {
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
             std::shared_ptr<DependencyWaiter> dependency_waiter);
 
-  /// Handle a `PushTask` request. If it's an actor request, this function will enqueue the task
-  /// and then start scheduling the requests to begin the execution. If it's a non-actor request, 
-  /// this function will just enqueue the task.
+  /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
+  /// the task and then start scheduling the requests to begin the execution. If it's a
+  /// non-actor request, this function will just enqueue the task.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   void HandleTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                       rpc::SendReplyCallback send_reply_callback);
+                  rpc::SendReplyCallback send_reply_callback);
 
   /// Pop tasks from the queue and execute them sequentially
   void RunNormalTasksFromQueue();
@@ -585,7 +587,8 @@ class CoreWorkerDirectTaskReceiver {
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<WorkerID, std::unique_ptr<SchedulingQueue>> actor_scheduling_queues_;
   // Queue of pending normal (non-actor) tasks.
-  std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ = std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
+  std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
+      std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
 };
 
 }  // namespace ray

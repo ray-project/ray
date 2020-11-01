@@ -1944,9 +1944,8 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
       direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
     });
   } else {
-
-    // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to the
-    // task execution service.
+    // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
+    // the task execution service.
     direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
     task_execution_service_.post([=] {
       // We have posted an exit task onto the main event loop,
