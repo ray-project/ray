@@ -75,18 +75,21 @@ class RemotePdb(Pdb):
         self._quiet = quiet
         self._patch_stdstreams = patch_stdstreams
         self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+        self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,
+                                       True)
         self._listen_socket.bind((host, port))
     
     def listen(self):
         if not self._quiet:
-            cry("RemotePdb session open at %s:%s, waiting for connection ..." % self._listen_socket.getsockname())
+            cry("RemotePdb session open at %s:%s, waiting for connection ..." %
+                self._listen_socket.getsockname())
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()
         if not self._quiet:
             cry("RemotePdb accepted connection from %s." % repr(address))
         self.handle = LF2CRLF_FileWrapper(connection)
-        Pdb.__init__(self, completekey="tab", stdin=self.handle, stdout=self.handle)
+        Pdb.__init__(
+            self, completekey="tab", stdin=self.handle, stdout=self.handle)
         self.backup = []
         if self._patch_stdstreams:
             for name in (
@@ -143,7 +146,8 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
         port = int(os.environ.get("REMOTE_PDB_PORT", "0"))
     if quiet is None:
         quiet = bool(os.environ.get("REMOTE_PDB_QUIET", ""))
-    rdb = RemotePdb(host=host, port=port, patch_stdstreams=patch_stdstreams, quiet=quiet)
+    rdb = RemotePdb(
+        host=host, port=port, patch_stdstreams=patch_stdstreams, quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
     pdb_address = "{}:{}".format(sockname[0], sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
@@ -155,7 +159,8 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
         "traceback": "\n".join(traceback.format_exception(*sys.exc_info()))
     }
     breakpoint_uuid = uuid.uuid4()
-    _internal_kv_put("RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)
+    _internal_kv_put(
+        "RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)
     rdb.listen()
     _internal_kv_del("RAY_PDB_{}".format(breakpoint_uuid))
 
