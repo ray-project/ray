@@ -1,6 +1,6 @@
 """PyTorch policy class used for SlateQ"""
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 import gym
 import numpy as np
@@ -12,7 +12,6 @@ from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import (ModelConfigDict, TensorType,
@@ -27,19 +26,18 @@ if nn:
 class QValueModel(nn.Module):
     """The Q-value model for SlateQ"""
 
-    def __init__(self, embedding_size: int = 20):
+    def __init__(self, embedding_size: int, q_hiddens: Sequence[int]):
         super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(embedding_size * 2, 256),
-            nn.LeakyReLU(),
-            nn.Linear(256, 64),
-            nn.LeakyReLU(),
-            nn.Linear(64, 16),
-            nn.LeakyReLU(),
-            nn.Linear(16, 1),
-        )
-        self.no_click_embedding = nn.Parameter(
-            torch.randn(embedding_size) / 10.0)
+
+        # construct hidden layers
+        layers = []
+        ins = 2 * embedding_size
+        for n in q_hiddens:
+            layers.append(nn.Linear(ins, n))
+            layers.append(nn.LeakyReLU())
+            ins = n
+        layers.append(nn.Linear(ins, 1))
+        self.layers = nn.Sequential(*layers)
 
     def forward(self, user: TensorType, doc: TensorType) -> TensorType:
         """Evaluate the user-doc Q model
@@ -117,6 +115,9 @@ class SlateQModel(TorchModelV2, nn.Module):
             action_space: gym.spaces.Space,
             model_config: ModelConfigDict,
             name: str,
+            *,
+            embedding_size: int,
+            q_hiddens: Sequence[int],
     ):
         nn.Module.__init__(self)
         TorchModelV2.__init__(
@@ -129,7 +130,7 @@ class SlateQModel(TorchModelV2, nn.Module):
             model_config=model_config,
             name=name)
         self.choice_model = UserChoiceModel()
-        self.q_model = QValueModel()
+        self.q_model = QValueModel(embedding_size, q_hiddens)
         self.slate_size = len(action_space.nvec)
 
     def choose_slate(self, user: TensorType,
@@ -231,7 +232,13 @@ def build_slateq_model_and_distribution(
         (q_model, TorchCategorical)
     """
     model = SlateQModel(
-        obs_space, action_space, model_config=config, name="slateq_model")
+        obs_space,
+        action_space,
+        model_config=config["model"],
+        name="slateq_model",
+        embedding_size=config["recsim_embedding_size"],
+        q_hiddens=config["hiddens"],
+    )
     return model, TorchCategorical
 
 
@@ -352,9 +359,11 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
 def build_slateq_optimizers(policy: Policy, config: TrainerConfigDict
                             ) -> List["torch.optim.Optimizer"]:
     optimizer_choice = torch.optim.Adam(
-        policy.model.choice_model.parameters(), lr=0.01)
+        policy.model.choice_model.parameters(), lr=config["lr_choice_model"])
     optimizer_q_value = torch.optim.Adam(
-        policy.model.q_model.parameters(), eps=config["adam_epsilon"])
+        policy.model.q_model.parameters(),
+        lr=config["lr_q_model"],
+        eps=config["adam_epsilon"])
     return [optimizer_choice, optimizer_q_value]
 
 
@@ -375,15 +384,9 @@ def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
     selected_slates, _ = model.choose_slate(user, doc)
 
     action = selected_slates
-    # logp = torch.zeros(selected_slates.shape)
     logp = None
     state_out = []
     return action, logp, state_out
-
-
-def setup_early_mixins(policy: Policy, obs_space, action_space,
-                       config: TrainerConfigDict) -> None:
-    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
 def postprocess_fn_add_next_actions_for_sarsa(policy: Policy,
@@ -414,9 +417,4 @@ SlateQTorchPolicy = build_torch_policy(
 
     # post processing batch sampled data
     postprocess_fn=postprocess_fn_add_next_actions_for_sarsa,
-
-    # other house keeping items
-    before_init=setup_early_mixins,
-    mixins=[
-        LearningRateSchedule,
-    ])
+)

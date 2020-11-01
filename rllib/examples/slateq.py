@@ -1,6 +1,7 @@
 """The SlateQ algorithm for recommendation"""
 
 import argparse
+from datetime import datetime
 
 import ray
 from ray import tune
@@ -34,6 +35,7 @@ def main():
         help=("Run with Tune so that the results are logged into Tensorboard. "
               "For debugging, it's easier to run without Ray Tune."),
     )
+    parser.add_argument("--tune-num-samples", type=int, default=10)
     parser.add_argument("--env-slate-size", type=int, default=2)
     parser.add_argument("--env-seed", type=int, default=0)
     parser.add_argument(
@@ -59,30 +61,35 @@ def main():
 
     ray.init()
     if args.use_tune:
+        time_signature = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
+        name = f"SlateQ/{args.agent}-seed{args.env_seed}-{time_signature}"
         if args.agent == "DQN":
             tune.run(
                 "DQN",
                 stop={"timesteps_total": 4000000},
-                name=f"SlateQ/{args.agent}-seed{args.env_seed}",
+                name=name,
                 config={
                     "env": recsim_env_name,
                     "num_gpus": args.num_gpus,
                     "num_workers": args.num_workers,
                     "env_config": env_config,
-                })
+                },
+                num_samples=args.tune_num_samples,
+                verbose=1)
         else:
             tune.run(
                 "SlateQ",
                 stop={"timesteps_total": 4000000},
-                name=f"SlateQ/{args.agent}-seed{args.env_seed}",
+                name=name,
                 config={
                     "env": recsim_env_name,
                     "num_gpus": args.num_gpus,
                     "num_workers": args.num_workers,
-                    "slateq_strategy": tune.choice(ALL_SLATEQ_STRATEGIES),
+                    "slateq_strategy": tune.grid_search(ALL_SLATEQ_STRATEGIES),
                     "env_config": env_config,
                 },
-                num_samples=40)
+                num_samples=args.tune_num_samples,
+                verbose=1)
     else:
         # directly run using the trainer interface (good for debugging)
         if args.agent == "DQN":

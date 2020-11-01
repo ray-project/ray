@@ -35,7 +35,7 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Dense-layer setup for each the advantage branch and the value branch
     # in a dueling architecture.
-    "hiddens": [256],
+    "hiddens": [256, 64, 16],
 
     # set batchmode
     "batch_mode": "complete_episodes",
@@ -57,8 +57,6 @@ DEFAULT_CONFIG = with_common_config({
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
-    # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 500,
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
@@ -72,10 +70,10 @@ DEFAULT_CONFIG = with_common_config({
     "training_intensity": None,
 
     # === Optimization ===
-    # Learning rate for adam optimizer
-    "lr": 5e-4,
-    # Learning rate schedule
-    "lr_schedule": None,
+    # Learning rate for adam optimizer for the user choice model
+    "lr_choice_model": 1e-2,
+    # Learning rate for adam optimizer for the q model
+    "lr_q_model":1e-2,
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
@@ -100,10 +98,12 @@ DEFAULT_CONFIG = with_common_config({
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
 
-
+    # === SlateQ specific options ===
     # Learning method used by the slateq policy. Choose from: RANDOM,
     # MYOP (myopic), SARSA, QL (Q-Learning),
     "slateq_strategy": "QL",
+    # user/doc embedding size for the recsim environment
+    "recsim_embedding_size": 20,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -151,15 +151,16 @@ def execution_plan(workers: WorkerSet,
     replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(TrainOneStep(workers))
 
-    # Alternate deterministically between (1) and (2). Only return the output
-    # of (2) since training metrics are not available until (2) runs.
     if config["slateq_strategy"] != "RANDOM":
+        # Alternate deterministically between (1) and (2). Only return the
+        # output of (2) since training metrics are not available until (2) runs.
         train_op = Concurrently(
             [store_op, replay_op],
             mode="round_robin",
             output_indexes=[1],
             round_robin_weights=calculate_round_robin_weights(config))
     else:
+        # No training is needed for the RANDOM strategy.
         train_op = rollouts
 
     return StandardMetricsReporting(train_op, workers, config)
