@@ -5,6 +5,7 @@ from telnetlib import Telnet
 
 import ray
 
+
 def test_ray_debugger_breakpoint(shutdown_only):
     ray.init(num_cpus=1)
 

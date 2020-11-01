@@ -17,7 +17,6 @@ import traceback
 
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 
-
 PY3 = sys.version_info[0] == 3
 log = logging.getLogger(__name__)
 
