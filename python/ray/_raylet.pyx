@@ -744,7 +744,6 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.get_lang_stack = get_py_stack
-        options.ref_counting_enabled = True
         options.is_local_mode = local_mode
         options.num_workers = 1
         options.kill_main = kill_main_task

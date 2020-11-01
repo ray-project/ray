@@ -395,7 +395,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         PutObjectIntoPlasma(object, object_id);
         return Status::OK();
       },
-      options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
+      reference_counter_, local_raylet_client_,
       options_.check_signals));
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
@@ -1027,8 +1027,7 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
     if (ready_iter != ready.end()) {
       std::vector<std::shared_ptr<RayObject>> found;
       RAY_CHECK_OK(memory_store->Get({mem_id}, /*num_objects=*/1, /*timeout=*/0,
-                                     worker_context,
-                                     /*remote_after_get=*/false, &found));
+                                     worker_context, &found));
       if (found.size() == 1 && found[0]->IsInPlasmaError()) {
         plasma_object_ids.insert(mem_id);
         ready.erase(ready_iter);
@@ -1776,9 +1775,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     RAY_LOG(DEBUG) << "Decrementing ref for borrowed ID " << borrowed_id;
     reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
   }
-  if (options_.ref_counting_enabled) {
-    memory_store_->Delete(deleted);
-  }
+  memory_store_->Delete(deleted);
 
   if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
     RAY_LOG(DEBUG)

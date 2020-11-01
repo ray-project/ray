@@ -234,7 +234,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (c_vector[c_string](const c_vector[CObjectID]&) nogil) spill_objects
         (void(const c_vector[c_string]&) nogil) restore_spilled_objects
         (void(c_string *stack_out) nogil) get_lang_stack
-        c_bool ref_counting_enabled
         c_bool is_local_mode
         int num_workers
         (c_bool() nogil) kill_main

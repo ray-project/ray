@@ -28,8 +28,8 @@ class CoreWorkerMemoryStore {
   /// Create a memory store.
   ///
   /// \param[in] store_in_plasma If not null, this is used to spill to plasma.
-  /// \param[in] counter If not null, this enables ref counting for local objects,
-  ///            and the `remove_after_get` flag for Get() will be ignored.
+  /// \param[in] counter This enables ref counting for local objects. Nullptr is used here for
+  ///            testing purpose only.
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   CoreWorkerMemoryStore(
       std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
@@ -52,12 +52,10 @@ class CoreWorkerMemoryStore {
   /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] ctx The current worker context.
-  /// \param[in] remove_after_get When to remove the objects from store after `Get`
-  /// finishes. This has no effect if ref counting is enabled.
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-             const WorkerContext &ctx, bool remove_after_get,
+             const WorkerContext &ctx,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Convenience wrapper around Get() that stores results in a given result map.
@@ -139,16 +137,15 @@ class CoreWorkerMemoryStore {
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
   /// is an exception.
   Status GetImpl(const std::vector<ObjectID> &object_ids, int num_objects,
-                 int64_t timeout_ms, const WorkerContext &ctx, bool remove_after_get,
+                 int64_t timeout_ms, const WorkerContext &ctx,
                  std::vector<std::shared_ptr<RayObject>> *results,
                  bool abort_if_any_object_is_exception);
 
   /// Optional callback for putting objects into the plasma store.
   std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
 
-  /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
-  /// mandatory once Java is supported.
-  std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
+  /// It holds a reference to local worker ref counter.
+  std::shared_ptr<ReferenceCounter> ref_counter_;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
   std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;

@@ -78,7 +78,6 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
   options.node_manager_port = config->node_manager_port;
   options.raylet_ip_address = "127.0.0.1";
   options.driver_name = "cpp_worker";
-  options.ref_counting_enabled = true;
   options.num_workers = 1;
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
