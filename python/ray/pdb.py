@@ -127,8 +127,10 @@ class RemotePdb(Pdb):
                 raise
 
     def post_mortem(self, traceback=None):
+        # See https://github.com/python/cpython/blob/022bc7572f061e1d1132a4db9d085b29707701e7/Lib/pdb.py#L1617
         try:
             t = sys.exc_info()[2]
+            self.reset()
             Pdb.interaction(self, None, t)
         except IOError as exc:
             if exc.errno != errno.ECONNRESET:
