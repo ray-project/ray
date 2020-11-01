@@ -377,7 +377,7 @@ class TorchPolicy(Policy):
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
 
-        grads = []
+        all_grads = []
         for i, opt in enumerate(self._optimizers):
             opt.zero_grad()
             # Recompute gradients of loss over all variables.
@@ -385,14 +385,16 @@ class TorchPolicy(Policy):
             grad_info.update(self.extra_grad_process(opt, loss_out[i]))
 
             if self.distributed_world_size:
+                grads = []
                 # Note that return values are just references;
                 # Calling zero_grad would modify the values.
                 for param_group in opt.param_groups:
                     for p in param_group["params"]:
                         if p.grad is not None:
-                            grads.append(p.grad.data.cpu().numpy())
+                            grads.append(p.grad)
+                            all_grads.append(p.grad.data.cpu().numpy())
                         else:
-                            grads.append(None)
+                            all_grads.append(None)
 
                 start = time.time()
                 if torch.cuda.is_available():
@@ -414,7 +416,7 @@ class TorchPolicy(Policy):
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
 
-        return grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
+        return all_grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
     @DeveloperAPI
