@@ -498,12 +498,13 @@ class NormalSchedulingQueue : public SchedulingQueue {
  public:
   NormalSchedulingQueue(){};
 
-  bool TaskQueueEmpty() const { return pending_normal_tasks_.empty(); }
+  bool TaskQueueEmpty() const EXCLUSIVE_LOCKS_REQUIRED(mu_) { return pending_normal_tasks_.empty(); }
 
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
+    absl::MutexLock lock(&mu_);
     // Normal tasks should not have ordering constraints.
     RAY_CHECK(seq_no == -1);
     // Create a InboundRequest object for the new task, and add it to the queue.
@@ -513,6 +514,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
+    absl::MutexLock lock(&mu_);
     while (!TaskQueueEmpty()) {
       auto &head = pending_normal_tasks_.front();
       head.Accept();
@@ -521,8 +523,10 @@ class NormalSchedulingQueue : public SchedulingQueue {
   }
 
  private:
+  /// Protects access to the dequeue below.
+  absl::Mutex mu_;
   /// Queue with (accept, rej) callbacks for non-actor tasks
-  std::deque<InboundRequest> pending_normal_tasks_;
+  std::deque<InboundRequest> pending_normal_tasks_ GUARDED_BY(mu_);
   friend class SchedulingQueueTest;
 };
 
@@ -579,9 +583,9 @@ class CoreWorkerDirectTaskReceiver {
   std::shared_ptr<DependencyWaiter> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<WorkerID, SchedulingQueue*> actor_scheduling_queues_;
+  std::unordered_map<WorkerID, std::unique_ptr<SchedulingQueue>> actor_scheduling_queues_;
   // Queue of pending normal (non-actor) tasks.
-  SchedulingQueue *normal_scheduling_queue_ = new NormalSchedulingQueue();
+  std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ = std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
 };
 
 }  // namespace ray
