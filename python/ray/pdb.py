@@ -13,7 +13,6 @@ from pdb import Pdb
 import setproctitle
 import traceback
 
-
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 
 
@@ -78,7 +77,7 @@ class RemotePdb(Pdb):
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,
                                        True)
         self._listen_socket.bind((host, port))
-    
+
     def listen(self):
         if not self._quiet:
             cry("RemotePdb session open at %s:%s, waiting for connection ..." %
