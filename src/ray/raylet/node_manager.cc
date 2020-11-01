@@ -2970,6 +2970,10 @@ std::string NodeManager::DebugString() const {
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
   result << "\nInitialConfigResources: " << initial_config_.resource_config.ToString();
+  if (cluster_task_manager_ != nullptr) {
+    result << "\nClusterTaskManager:\n";
+    result << cluster_task_manager_->DebugString();
+  }
   result << "\nClusterResources:";
   for (auto &pair : cluster_resource_map_) {
     result << "\n" << pair.first.Hex() << ": " << pair.second.DebugString();
