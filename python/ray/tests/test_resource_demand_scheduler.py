@@ -406,16 +406,19 @@ def test_backlog_queue_impact_on_binpacking_time():
                                                   usage_by_ip, [])
         t2 = time.time()
         assert t2 - t1 < time_to_assert
+        print("The time took to launch", to_launch,
+              "with number of available nodes set to", num_available_nodes,
+              "is:", t2 - t1)
         return to_launch
 
-    # The times asserted below are 2x the actual time took when this test
-    # was measured on 2.3 GHz 8-Core Intel (I9-9880H) Core i9.
+    # The assertions below use 10s but the actual time took when this test was
+    # measured on 2.3 GHz 8-Core Intel (I9-9880H) Core i9 is commented inline.
 
     # Check the time it takes when there are 0 nodes available and the demand
     # is requires adding another ~100 nodes.
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=0,
-        time_to_assert=0.4,
+        time_to_assert=10,  # real time 0.2s.
         demand_request_shape=[{
             "GPU": 1
         }, {
@@ -434,7 +437,7 @@ def test_backlog_queue_impact_on_binpacking_time():
     # requires another 75 nodes.
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=50,
-        time_to_assert=0.16,
+        time_to_assert=10,  # real time 0.075s.
         demand_request_shape=[{
             "GPU": 1
         }, {
@@ -448,7 +451,7 @@ def test_backlog_queue_impact_on_binpacking_time():
     # cover the demand.
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=125,
-        time_to_assert=0.14,
+        time_to_assert=10,  # real time 0.06s.
         demand_request_shape=[{
             "GPU": 1
         }, {
@@ -460,7 +463,7 @@ def test_backlog_queue_impact_on_binpacking_time():
     # demand requires another 1000 nodes.
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=500,
-        time_to_assert=2.68,
+        time_to_assert=10,  # real time 1.32s.
         demand_request_shape=[{
             "GPU": 8
         }, {
