@@ -189,6 +189,7 @@ uint8_t* PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
       // If we manage to allocate the memory, return the pointer. If we cannot
       // allocate the space, but we are also not allowed to evict anything to
       // make more space, return an error to the client.
+      *error = PlasmaError::OutOfMemory;
       break;
     }
     // Tell the eviction policy how much space we need to create this object.
@@ -277,7 +278,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id,
   auto total_size = data_size + metadata_size;
 
   if (device_num == 0) {
-    PlasmaError error;
+    PlasmaError error = PlasmaError::OK;
     pointer =
         AllocateMemory(total_size, evict_if_full, &fd, &map_size, &offset, client, true, &error);
     if (!pointer) {
@@ -504,7 +505,7 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       // Make sure the object pointer is not already allocated
       RAY_CHECK(!entry->pointer);
 
-      PlasmaError error;
+      PlasmaError error = PlasmaError::OK;
       entry->pointer =
           AllocateMemory(entry->data_size + entry->metadata_size, /*evict=*/true,
                          &entry->fd, &entry->map_size, &entry->offset, client,
