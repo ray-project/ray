@@ -31,14 +31,14 @@ message Arg {
   Type type = 4;
 }
 
-message Task {
+message ClientTask {
     // Optionally Provided Task Name
     string name = 1;
     bytes payload_id = 2;
     repeated Arg args = 3;
 }
 
-message TaskTicket {
+message ClientTaskTicket {
   bytes return_id = 1;
 }
 
@@ -62,5 +62,5 @@ message GetResponse {
 service RayletDriver {
   rpc GetObject(GetRequest) returns (GetResponse) {}
   rpc PutObject(PutRequest) returns (PutResponse) {}
-  rpc Schedule(Task) returns (TaskTicket) {}
+  rpc Schedule(ClientTask) returns (ClientTaskTicket) {}
 }

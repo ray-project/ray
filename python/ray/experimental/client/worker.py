@@ -1,8 +1,8 @@
 
 import cloudpickle
 import grpc
-import proto.task_pb2
-import proto.task_pb2_grpc
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 
 
 class ObjectID:
@@ -10,14 +10,14 @@ class ObjectID:
         self.id = id
 
     def __repr__(self):
-        return "ObjectID(%s)" % self.id.decode()
+        return "ObjectID(%s)" % self.id.hex()
 
 
 class Worker:
     def __init__(self, conn_str="", stub=None):
         if stub is None:
             self.channel = grpc.insecure_channel(conn_str)
-            self.server = proto.task_pb2_grpc.TaskServerStub(self.channel)
+            self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
         else:
             self.server = stub
 
@@ -39,7 +39,7 @@ class Worker:
         return out
 
     def _get(self, id: bytes):
-        req = proto.task_pb2.GetRequest(id=id)
+        req = ray_client_pb2.GetRequest(id=id)
         data = self.server.GetObject(req)
         return cloudpickle.loads(data.data)
 
@@ -59,8 +59,7 @@ class Worker:
 
     def _put(self, val):
         data = cloudpickle.dumps(val)
-        #print("val: %s\ndata: %s"%(val, data))
-        req = proto.task_pb2.PutRequest(data=data)
+        req = ray_client_pb2.PutRequest(data=data)
         resp = self.server.PutObject(req)
         return ObjectID(resp.id)
 
@@ -84,27 +83,7 @@ class RemoteFunc:
         raise Exception("Matching the old API")
 
     def remote(self, *args):
-        if self.id is None:
-            self._push_func()
-        t = proto.task_pb2.Task()
-        t.name = self._name
-        t.payload_id = self.id.id
-        for a in args:
-            arg = proto.task_pb2.Arg()
-            if isinstance(a, ObjectID):
-                arg.local = proto.task_pb2.Arg.Locality.REFERENCE
-                arg.reference_id = a.id
-            else:
-                arg.local = proto.task_pb2.Arg.Locality.INTERNED
-                arg.data = cloudpickle.dumps(a)
-            t.args.append(arg)
-        worker = get_worker_registry(self._worker_id)
-        ticket = worker.schedule(t)
-        return ObjectID(ticket.return_id)
-
-    def _push_func(self):
-        worker = get_worker_registry(self._worker_id)
-        self.id = worker.put(self._func)
+        pass
 
     def __repr__(self):
         return "RemoteFunc(%s, %s)" % (self._name, self.id)
