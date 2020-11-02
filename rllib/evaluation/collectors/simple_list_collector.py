@@ -124,16 +124,18 @@ class _AgentCollector:
                 postprocessing.
         """
 
-        # TODO: measure performance gains when using a UsageTrackingDict
-        #  instead of a SampleBatch for postprocessing (this would eliminate
-        #  copies (for creating this SampleBatch) of many unused columns for
-        #  no reason (not used by postprocessor)).
-
         batch_data = {}
         np_data = {}
         for view_col, view_req in view_requirements.items():
+            # Is an input_dict.
+            if view_req.is_input_dict:
+                batch_data[view_col] = self._get_input_dict(
+                    view_requirements, shift=view_req.shift)
+                continue
+
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
+
             # Some columns don't exist yet (get created during postprocessing).
             # -> skip.
             if data_col not in self.buffers:
@@ -197,6 +199,39 @@ class _AgentCollector:
                     self.buffers[col] = \
                         [np.zeros(shape=shape, dtype=dtype)
                          for _ in range(shift)]
+
+    def _get_input_dict(self, view_reqs, shift: int = -1) -> \
+            Dict[str, TensorType]:
+
+        input_dict = {}
+        for view_col, view_req in view_reqs.items():
+            # Skip input_dict view-reqs.
+            if view_req.is_input_dict:
+                continue
+
+            # Create the batch of data from the different buffers.
+            data_col = view_req.data_col or view_col
+            delta = -1 if data_col in [SampleBatch.OBS, "t", "env_id",
+                                       SampleBatch.EPS_ID,
+                                       SampleBatch.AGENT_INDEX] else 0
+            # Range of shifts, e.g. "-100:0". Note: This includes index 0!
+            if view_req.shift_from is not None:
+                time_indices = (view_req.shift_from + delta + shift, view_req.shift_to + delta + shift)
+            # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
+            else:
+                time_indices = view_req.shift + delta + shift
+            data_list = []
+            if isinstance(time_indices, tuple):
+                if time_indices[1] == -1:
+                    data_list.append(self.buffers[data_col][time_indices[0]:])
+                else:
+                    data_list.append(self.buffers[data_col][
+                                     time_indices[0]:time_indices[1] + 1])
+            else:
+                data_list.append(self.buffers[data_col][time_indices])
+            input_dict[view_col] = np.array(data_list)
+
+        return input_dict
 
 
 class _PolicyCollector:
@@ -400,6 +435,10 @@ class _SimpleListCollector(_SampleCollector):
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():
+            # Skip input_dict view-reqs.
+            if view_req.is_input_dict:
+                continue
+
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             delta = -1 if data_col in [SampleBatch.OBS, "t", "env_id",
