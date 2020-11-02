@@ -248,17 +248,18 @@ def build_torch_policy(
                 self.view_requirements.update(
                     self.model.inference_view_requirements)
 
-            if before_loss_init:
-                before_loss_init(self, self.observation_space,
-                                 self.action_space, config)
+            _before_loss_init = before_loss_init or after_init
+            if _before_loss_init:
+                _before_loss_init(self, self.observation_space,
+                                  self.action_space, config)
 
             self._initialize_loss_dynamically(
                 auto_remove_unneeded_view_reqs=view_requirements_fn is None,
                 stats_fn=stats_fn,
             )
 
-            if after_init:
-                after_init(self, obs_space, action_space, config)
+            if _after_loss_init:
+                _after_loss_init(self, obs_space, action_space, config)
 
             # Got to reset global_timestep again after this fake run-through.
             self.global_timestep = 0
