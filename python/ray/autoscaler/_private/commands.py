@@ -612,8 +612,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                     time.sleep(POLL_INTERVAL)
             cli_logger.newline()
 
-    global_event_system.execute_callback(
-        CreateClusterEvent.head_node_acquired, {})
+    global_event_system.execute_callback(CreateClusterEvent.head_node_acquired,
+                                         {})
 
     with cli_logger.group(
             "Setting up head node",
