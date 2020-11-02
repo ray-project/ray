@@ -535,10 +535,27 @@ class ServeController:
 
         self.actor_reconciler._recover_actor_handles()
 
+        # Push configuration state to the router.
+        # TODO(edoakes): should we make this a pull-only model for simplicity?
+        for endpoint, traffic_policy in self.configuration_store.\
+                traffic_policies.items():
+            await asyncio.gather(*[
+                router.set_traffic.remote(endpoint, traffic_policy)
+                for router in self.actor_reconciler.router_handles()
+            ])
+
+        for backend_tag, replica_dict in self.actor_reconciler.workers.items():
+            for replica_tag, worker in replica_dict.items():
+                await asyncio.gather(*[
+                    router.add_new_worker.remote(backend_tag, replica_tag,
+                                                 worker)
+                    for router in self.actor_reconciler.router_handles()
+                ])
+
         for backend, info in self.configuration_store.backends.items():
             await asyncio.gather(*[
                 router.set_backend_config.remote(backend, info.backend_config)
-                for router in self.actor_nursery.router_handles()
+                for router in self.actor_reconciler.router_handles()
             ])
             await self.broadcast_backend_config(backend)
             metadata = info.backend_config.internal_metadata
@@ -549,7 +566,7 @@ class ServeController:
         # Push configuration state to the routers.
         await asyncio.gather(*[
             router.set_route_table.remote(self.configuration_store.routes)
-            for router in self.actor_nursery.router_handles()
+            for router in self.actor_reconciler.router_handles()
         ])
 
         # Start/stop any pending backend replicas.
