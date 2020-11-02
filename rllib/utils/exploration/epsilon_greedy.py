@@ -96,6 +96,7 @@ class EpsilonGreedy(Exploration):
         Returns:
             tf.Tensor: The tf exploration-action op.
         """
+        # TODO: Support MultiActionDistr for tf.
         q_values = action_distribution.inputs
         epsilon = self.epsilon_schedule(timestep if timestep is not None else
                                         self.last_timestep)
