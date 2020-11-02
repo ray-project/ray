@@ -384,18 +384,18 @@ class TorchPolicy(Policy):
             loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
             grad_info.update(self.extra_grad_process(opt, loss_out[i]))
 
-            if self.distributed_world_size:
-                grads = []
-                # Note that return values are just references;
-                # Calling zero_grad would modify the values.
-                for param_group in opt.param_groups:
-                    for p in param_group["params"]:
-                        if p.grad is not None:
-                            grads.append(p.grad)
-                            all_grads.append(p.grad.data.cpu().numpy())
-                        else:
-                            all_grads.append(None)
+            grads = []
+            # Note that return values are just references;
+            # Calling zero_grad would modify the values.
+            for param_group in opt.param_groups:
+                for p in param_group["params"]:
+                    if p.grad is not None:
+                        grads.append(p.grad)
+                        all_grads.append(p.grad.data.cpu().numpy())
+                    else:
+                        all_grads.append(None)
 
+            if self.distributed_world_size:
                 start = time.time()
                 if torch.cuda.is_available():
                     # Sadly, allreduce_coalesced does not work with CUDA yet.
