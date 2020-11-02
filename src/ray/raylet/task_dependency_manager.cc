@@ -447,11 +447,7 @@ std::string TaskDependencyManager::DebugString() const {
   return result.str();
 }
 
-void TaskDependencyManager::RecordMetrics() const {
-  stats::NumSubscribedTasks().Record(task_dependencies_.size());
-  stats::NumRequiredTasks().Record(required_tasks_.size());
-  stats::NumRequiredObjects().Record(required_objects_.size());
-  stats::NumPendingTasks().Record(pending_tasks_.size());
+void TaskDependencyManager::RecordMetrics() const { /* No metrics collected yet. */
 }
 
 bool TaskDependencyManager::GetOwnerAddress(const ObjectID &object_id,
