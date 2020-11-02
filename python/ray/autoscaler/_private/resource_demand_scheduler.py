@@ -245,11 +245,11 @@ class ResourceDemandScheduler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-            node_ip = self.provider.internal_ip(node_id)
-            if node_ip in connected_nodes:
-                running_nodes[node_type] += 1
-            else:
-                pending_nodes[node_type] += 1
+                node_ip = self.provider.internal_ip(node_id)
+                if node_ip in connected_nodes:
+                    running_nodes[node_type] += 1
+                else:
+                    pending_nodes[node_type] += 1
         return running_nodes, pending_nodes
 
     def calculate_node_resources(
@@ -296,9 +296,9 @@ class ResourceDemandScheduler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-            ip = self.provider.internal_ip(node_id)
-            available_resources = usage_by_ip.get(ip)
-            add_node(node_type, available_resources)
+                ip = self.provider.internal_ip(node_id)
+                available_resources = usage_by_ip.get(ip)
+                add_node(node_type, available_resources)
 
         for node_type, count in pending_nodes.items():
             for _ in range(count):
