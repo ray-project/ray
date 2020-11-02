@@ -311,6 +311,20 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   return task_resources;
 };
 
+bool TaskRequest::IsEmpty() const {
+  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    if (this->predefined_resources[i].demand != 0) {
+      return false;
+    }
+  }
+  for (size_t i = 0; i < this->custom_resources.size(); i++) {
+    if (this->custom_resources[i].demand != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string TaskRequest::DebugString() const {
   std::stringstream buffer;
   buffer << " {";
