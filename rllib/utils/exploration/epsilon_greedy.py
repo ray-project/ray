@@ -4,7 +4,7 @@ import random
 from typing import Union, Optional
 
 from ray.rllib.models.torch.torch_action_dist \
-    import TorchMultiActionDistribution, TorchCategorical
+    import TorchMultiActionDistribution
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration, TensorType
