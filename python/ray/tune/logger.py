@@ -3,13 +3,12 @@ import json
 import logging
 import numbers
 import os
-from typing import Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
 
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
 import yaml
-from ray.tune.trial import Trial
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
@@ -18,6 +17,9 @@ from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              EXPR_RESULT_FILE)
 from ray.tune.syncer import get_node_syncer
 from ray.tune.utils import flatten_dict
+
+if TYPE_CHECKING:
+    from ray.tune.trial import Trial  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,7 @@ class Logger:
     def __init__(self,
                  config: Dict,
                  logdir: str,
-                 trial: Optional[Trial] = None):
+                 trial: Optional["Trial"] = None):
         self.config = config
         self.logdir = logdir
         self.trial = trial
@@ -322,7 +324,7 @@ class UnifiedLogger(Logger):
     def __init__(self,
                  config: Dict,
                  logdir: str,
-                 trial: Optional[Trial] = None,
+                 trial: Optional["Trial"] = None,
                  loggers: Optional[List[Type[Logger]]] = None,
                  sync_function: Union[None, Callable, str] = None):
         if loggers is None:
