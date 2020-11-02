@@ -11,7 +11,7 @@ from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.callback import create_default_callbacks
+from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.registry import get_trainable_cls
 from ray.tune.syncer import wait_for_sync, set_sync_periods, \
     SyncConfig

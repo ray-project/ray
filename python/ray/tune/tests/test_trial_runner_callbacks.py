@@ -18,7 +18,7 @@ from ray.tune.syncer import SyncConfig, SyncerCallback
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune import Callback
-from ray.tune.callback import create_default_callbacks
+from ray.tune.utils.callback import create_default_callbacks
 
 
 class TestCallback(Callback):
@@ -239,20 +239,18 @@ class TrialRunnerCallbacks(unittest.TestCase):
             callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
-        # This should be reordered
-        callbacks = create_default_callbacks(
-            [SyncerCallback(None), ExperimentLogger()], SyncConfig(), None)
-        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
-            callbacks)
-        self.assertLess(last_logger_pos, syncer_pos)
+        # This should throw an error as the syncer comes before the logger
+        with self.assertRaises(ValueError):
+            callbacks = create_default_callbacks(
+                [SyncerCallback(None),
+                 ExperimentLogger()], SyncConfig(), None)
 
         # This should be reordered but preserve the regular callback order
         [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
-        sc = SyncerCallback(None)
         # Has to be legacy logger to avoid logger callback creation
         lc = LegacyExperimentLogger(logger_classes=DEFAULT_LOGGERS)
-        callbacks = create_default_callbacks([mc1, sc, mc2, lc, mc3],
-                                             SyncConfig(), None)
+        callbacks = create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(),
+                                             None)
         print(callbacks)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(
             callbacks)
@@ -260,14 +258,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertLess(callbacks.index(mc1), callbacks.index(mc2))
         self.assertLess(callbacks.index(mc2), callbacks.index(mc3))
         self.assertLess(callbacks.index(lc), callbacks.index(mc3))
-        self.assertLess(callbacks.index(sc), callbacks.index(mc3))
-
-        # Disable reordering
-        os.environ["TUNE_DISABLE_REORDER_CALLBACK_SYNCER"] = "1"
-        pre_order = [mc1, sc, mc2, lc, mc3]
-        callbacks = create_default_callbacks([mc1, sc, mc2, lc, mc3],
-                                             SyncConfig(), None)
-        self.assertSequenceEqual(pre_order, callbacks)
+        # Syncer callback is appended
+        self.assertLess(callbacks.index(mc3), syncer_pos)
 
 
 if __name__ == "__main__":
