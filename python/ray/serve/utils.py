@@ -179,6 +179,22 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
+def get_conda_env_dir(env_name):
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if not conda_prefix:
+        raise ValueError("conda must be activated to use CondaEnv.")
+    if os.environ.get("CONDA_DEFAULT_ENV") == "base":
+        # Caller is running in base conda env.
+        # Not recommended by conda, but we can still try to support it.
+        env_dir = os.path.join(conda_prefix, "envs", env_name)
+    else:
+        env_dir = os.path.join(
+            os.path.split(os.environ.get("CONDA_PREFIX"))[0], env_name)
+    if not os.path.isdir(env_dir):
+        raise ValueError("conda env " + env_name + " not found.")
+    return env_dir
+
+
 @singledispatch
 def chain_future(src, dst):
     """Base method for chaining futures together.

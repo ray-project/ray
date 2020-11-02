@@ -186,12 +186,3 @@ class ReplicaConfig:
                 raise TypeError(
                     "resources in ray_actor_options must be a dictionary.")
             self.resource_dict.update(custom_resources)
-
-
-class CondaEnv(BaseModel):
-    """Configuration options for a conda environment.
-
-    :param name: The name of the conda environment.
-    :type name: str
-    """
-    name: str
