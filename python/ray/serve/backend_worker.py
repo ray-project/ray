@@ -153,7 +153,7 @@ class RayServeWorker:
         self.config = backend_config
         self.batch_queue = BatchQueue(self.config.max_batch_size or 1,
                                       self.config.batch_wait_timeout)
-        self.user_reconfigure(self.config.user_config)
+        self.reconfigure(self.config.user_config)
 
         self.num_ongoing_requests = 0
 
@@ -346,8 +346,7 @@ class RayServeWorker:
                 # it will not be raised.
                 await asyncio.wait(all_evaluated_futures)
 
-    def user_reconfigure(self, user_config) -> None:
-        print("user_reconfigure")
+    def reconfigure(self, user_config) -> None:
         if user_config:
             if not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
                 raise RayServeException("user_config specified but backend " +
@@ -355,14 +354,13 @@ class RayServeWorker:
                                         BACKEND_RECONFIGURE_METHOD + " method")
             reconfigure_method = getattr(self.callable,
                                          BACKEND_RECONFIGURE_METHOD)
-            print(reconfigure_method)
-            reconfigure_method(**user_config)
+            reconfigure_method(user_config)
 
     def update_config(self, new_config: BackendConfig) -> None:
         self.config = new_config
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)
-        self.user_reconfigure(self.config.user_config)
+        self.reconfigure(self.config.user_config)
 
     async def handle_request(self,
                              request: Union[Query, bytes]) -> asyncio.Future:

@@ -174,6 +174,9 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries
                 that will be sent to a replica of this backend
                 without receiving a response.
+                - "user_config" (experimental): Arguments to pass to the
+                reconfigure method of the backend. The reconfigure method is
+                called if "user_config" is not None.
         """
 
         if not isinstance(config_options, (BackendConfig, dict)):
@@ -226,10 +229,9 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries that
                 will be sent to a replica of this backend without receiving a
                 response.
-                - "user_config": Arguments to pass to the reconfigure
-                method of the backend. The reconfigure method is called if
-                "user_config" is not None.
-    :type reconfigure_args: list, optional
+                - "user_config" (experimental): Arguments to pass to the
+                reconfigure method of the backend. The reconfigure method is
+                called if "user_config" is not None.
         """
         if backend_tag in self.list_backends():
             raise ValueError(

@@ -876,10 +876,11 @@ class ServeController:
         broadcast_futures = []
         for replica_tag in self.replicas[backend_tag]:
             try:
-                replica = ray.get_actor(replica_tag)
+                replica_name = format_actor_name(replica_tag,
+                                                 self.controller_name)
+                replica = ray.get_actor(replica_name)
             except ValueError:
                 continue
-
             future = replica.update_config.remote(backend_config).as_future()
             broadcast_futures.append(future)
         if len(broadcast_futures) > 0:

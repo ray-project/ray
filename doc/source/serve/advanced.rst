@@ -1,5 +1,5 @@
 ======================================
-Advanced Topics, Configurations, & FAQ
+Advanced Topics and Configurations
 ======================================
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload.
@@ -268,3 +268,15 @@ Ray Serve exposes important system metrics like the number of successful and
 errored requests through the Ray metrics monitoring infrastructure. By default,
 the metrics are exposed in Prometheus format on each node. See the
 `Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
+
+Reconfiguring Backends (Experimental)
+=====================================
+
+Suppose you want to update a parameter in your model without creating a whole
+new backend.  You can do this by writing a `reconfigure` method for the class
+underlying your backend.  At runtime, you can then pass in your new parameters
+by setting the `user_config` field of :mod:`BackendConfig <ray.serve.BackendConfig>`.
+
+The following simple example will make the usage clear:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_reconfigure.py

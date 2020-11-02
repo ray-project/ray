@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 import time
-
+import os
 import pytest
 import requests
 
@@ -53,19 +53,35 @@ def test_backend_user_config(serve_instance):
 
     class Counter:
         def __init__(self):
-            self.count = 12
+            self.count = 10
 
         def __call__(self, flask_request):
-            return self.count
+            return self.count, os.getpid()
 
-        def reconfigure(self, **kwargs):
-            self.count = kwargs["a"]
+        def reconfigure(self, config):
+            self.count = config["count"]
 
-    backend_config = BackendConfig(user_config={"a": 123, "b": 2})
-    client.create_backend("counter", Counter, config=backend_config)
+    config = BackendConfig(num_replicas=2, user_config={"count": 123, "b": 2})
+    client.create_backend("counter", Counter, config=config)
     client.create_endpoint("counter", backend="counter", route="/counter")
+    handle = client.get_handle("counter")
 
-    assert (requests.get("http://127.0.0.1:8000/counter").text == "123")
+    def check(val, num_replicas):
+        pids_seen = set()
+        for i in range(100):
+            result = ray.get(handle.remote())
+            assert (str(result[0]) == val), result[0]
+            pids_seen.add(result[1])
+        assert (len(pids_seen) == num_replicas)
+
+    check("123", 2)
+
+    client.update_backend_config("counter", BackendConfig(num_replicas=3))
+    check("123", 3)
+
+    config = BackendConfig(user_config={"count": 456})
+    client.update_backend_config("counter", config)
+    check("456", 3)
 
 
 def test_call_method(serve_instance):
