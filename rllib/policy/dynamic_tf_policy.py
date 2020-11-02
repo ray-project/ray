@@ -365,12 +365,17 @@ class DynamicTFPolicy(TFPolicy):
         # the seq len tensor
         rnn_inputs = []
         for i in range(len(self._state_inputs)):
-            rnn_inputs.append(("state_in_{}".format(i),
-                               existing_inputs[len(self._loss_input_dict_no_rnn) + i]))
+            rnn_inputs.append(
+                ("state_in_{}".format(i),
+                 existing_inputs[len(self._loss_input_dict_no_rnn) + i]))
         if rnn_inputs:
             rnn_inputs.append(("seq_lens", existing_inputs[-1]))
-        input_dict = OrderedDict([("is_exploring", self._is_exploring), (
-            "timestep", self._timestep)] + [(k, existing_inputs[i]) for i, k in enumerate(self._loss_input_dict_no_rnn.keys())] + rnn_inputs)
+        input_dict = OrderedDict(
+            [("is_exploring", self._is_exploring), ("timestep",
+                                                    self._timestep)] +
+            [(k, existing_inputs[i])
+             for i, k in enumerate(self._loss_input_dict_no_rnn.keys())] +
+            rnn_inputs)
         instance = self.__class__(
             self.observation_space,
             self.action_space,
@@ -380,8 +385,10 @@ class DynamicTFPolicy(TFPolicy):
 
         instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)
-        loss_inputs = [(k, existing_inputs[i])
-                       for i, k in enumerate(self._loss_input_dict_no_rnn.keys())]
+        loss_inputs = [
+            (k, existing_inputs[i])
+            for i, k in enumerate(self._loss_input_dict_no_rnn.keys())
+        ]
 
         TFPolicy._initialize_loss(instance, loss, loss_inputs)
         if instance._grad_stats_fn:
@@ -501,7 +508,7 @@ class DynamicTFPolicy(TFPolicy):
 
         # Model forward pass for the loss (needed after postprocess to
         # overwrite any tensor state from that call).
-        #TODO: replace with `compute_actions_from_input_dict`
+        # TODO: replace with `compute_actions_from_input_dict`
         self.model(self._input_dict, self._state_inputs, self._seq_lens)
 
         if not self.config["_use_trajectory_view_api"]:
@@ -544,9 +551,12 @@ class DynamicTFPolicy(TFPolicy):
         self._loss_input_dict = {k: v for k, v in train_batch.items()}
         loss = self._do_loss_init(train_batch)
 
-        TFPolicy._initialize_loss(self, loss, [(k, v) for k, v in train_batch.items()]) #loss_inputs
+        TFPolicy._initialize_loss(self, loss,
+                                  [(k, v) for k, v in train_batch.items()])
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]
+        # Call the grads stats fn.
+        # TODO: (sven) rename to simply stats_fn to match eager and torch.
         if self._grad_stats_fn:
             self._stats_fetches.update(
                 self._grad_stats_fn(self, train_batch, self._grads))
@@ -555,10 +565,8 @@ class DynamicTFPolicy(TFPolicy):
         # Add new columns automatically to view-reqs.
         if self.config["_use_trajectory_view_api"] and auto:
             # Add those needed for postprocessing and training.
-            all_accessed_keys = train_batch.accessed_keys | batch_for_postproc.accessed_keys
-            #for key in all_accessed_keys:
-            #    if key not in self.view_requirements:
-            #        self.view_requirements[key] = ViewRequirement()
+            all_accessed_keys = train_batch.accessed_keys | \
+                                batch_for_postproc.accessed_keys
             # Tag those only needed for post-processing.
             for key in batch_for_postproc.accessed_keys:
                 if key not in train_batch.accessed_keys:
@@ -578,13 +586,17 @@ class DynamicTFPolicy(TFPolicy):
             # dependencies by view_cols.
             for key in list(self.view_requirements.keys()):
                 vr = self.view_requirements[key]
-                if vr.data_col is not None and vr.data_col not in self.view_requirements:
-                    used_for_training = vr.data_col in train_batch.accessed_keys
-                    self.view_requirements[vr.data_col] = ViewRequirement(space=vr.space, used_for_training=used_for_training)
+                if (vr.data_col is not None
+                        and vr.data_col not in self.view_requirements):
+                    used_for_training = \
+                        vr.data_col in train_batch.accessed_keys
+                    self.view_requirements[vr.data_col] = ViewRequirement(
+                        space=vr.space, used_for_training=used_for_training)
 
         self._loss_input_dict_no_rnn = {
-            k: v for k, v in self._loss_input_dict.items() if
-            not v in self._state_inputs and v != self._seq_lens
+            k: v
+            for k, v in self._loss_input_dict.items()
+            if (v not in self._state_inputs and v != self._seq_lens)
         }
 
     def _do_loss_init(self, train_batch: SampleBatch):

@@ -1,5 +1,4 @@
 import gym
-import numpy as np
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -210,7 +209,8 @@ def build_tf_policy(
                 if extra_action_fetches_fn is None:
                     policy._extra_action_fetches = {}
                 else:
-                    policy._extra_action_fetches = extra_action_fetches_fn(policy)
+                    policy._extra_action_fetches = extra_action_fetches_fn(
+                        policy)
 
             DynamicTFPolicy.__init__(
                 self,

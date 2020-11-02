@@ -579,7 +579,10 @@ class Policy(metaclass=ABCMeta):
         }
 
     def _initialize_loss_dynamically(
-            self, auto_remove_unneeded_view_reqs: bool = True) -> None:
+            self,
+            auto_remove_unneeded_view_reqs: bool = True,
+            stats_fn=None,
+    ) -> None:
         """Performs test calls through policy's model and loss.
 
         NOTE: This base method should work for define-by-run Policies such as
@@ -594,6 +597,9 @@ class Policy(metaclass=ABCMeta):
             auto_remove_unneeded_view_reqs (bool): Whether to automatically
                 remove those ViewRequirements records from
                 self.view_requirements that are not needed.
+            stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
+                TensorType]]]): An optional stats function to be called after
+                the loss.
         """
         sample_batch_size = max(self.batch_divisibility_req, 2)
         B = 2  # For RNNs, have B=2, T=[depends on sample_batch_size]
@@ -624,8 +630,12 @@ class Policy(metaclass=ABCMeta):
             postprocessed_batch["seq_lens"] = \
                 np.array([seq_len for _ in range(B)], dtype=np.int32)
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Call the loss function, if it exists.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
+        # Call the stats fn, if given.
+        if stats_fn is not None:
+            stats_fn(self, train_batch)
 
         # Add new columns automatically to view-reqs.
         if self.config["_use_trajectory_view_api"] and \

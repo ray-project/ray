@@ -148,10 +148,11 @@ class TrainTFMultiGPU:
                             rnn_inputs = []
                         self.optimizers[policy_id] = (
                             LocalSyncParallelOptimizer(
-                                policy._optimizer, self.devices,
-                                [v
-                                 for v in policy._loss_input_dict_no_rnn.values()], rnn_inputs,
-                                self.per_device_batch_size, policy.copy))
+                                policy._optimizer, self.devices, [
+                                    v for v in
+                                    policy._loss_input_dict_no_rnn.values()
+                                ], rnn_inputs, self.per_device_batch_size,
+                                policy.copy))
 
                 self.sess = self.workers.local_worker().tf_sess
                 self.sess.run(tf1.global_variables_initializer())

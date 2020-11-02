@@ -803,7 +803,8 @@ class TFPolicy(Policy):
             max_seq_len=self._max_seq_len,
             batch_divisibility_req=self._batch_divisibility_req,
             feature_keys=[
-                k for k in self._loss_input_dict.keys() if k != "seq_lens"],
+                k for k in self._loss_input_dict.keys() if k != "seq_lens"
+            ],
         )
         batch["is_training"] = True
 

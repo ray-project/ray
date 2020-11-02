@@ -249,11 +249,13 @@ def build_torch_policy(
                     self.model.inference_view_requirements)
 
             if before_loss_init:
-                before_loss_init(
-                    self, self.observation_space, self.action_space, config)
+                before_loss_init(self, self.observation_space,
+                                 self.action_space, config)
 
             self._initialize_loss_dynamically(
-                auto_remove_unneeded_view_reqs=view_requirements_fn is None)
+                auto_remove_unneeded_view_reqs=view_requirements_fn is None,
+                stats_fn=stats_fn,
+            )
 
             if after_init:
                 after_init(self, obs_space, action_space, config)

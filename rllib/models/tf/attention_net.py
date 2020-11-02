@@ -8,14 +8,12 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
-from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 

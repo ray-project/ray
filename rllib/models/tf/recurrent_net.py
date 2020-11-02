@@ -1,4 +1,3 @@
-from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
