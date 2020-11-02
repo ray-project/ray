@@ -10,7 +10,10 @@ import unittest
 import ray
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
-from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
+from ray.autoscaler._private.providers import (
+    _NODE_PROVIDERS,
+    _clear_provider_cache,
+)
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -187,7 +190,9 @@ class Simulator:
                 task.node = node
                 task.start_time = self.virtual_time
                 end_time = self.virtual_time + task.duration
-                self.event_queue.put(Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
+                self.event_queue.put(
+                    Event(end_time, SIMULATOR_EVENT_TASK_DONE, task)
+                )
                 if task.start_callback:
                     task.start_callback()
                 return True
@@ -260,7 +265,9 @@ class Simulator:
         if event.event_type == SIMULATOR_EVENT_AUTOSCALER_UPDATE:
             self.run_autoscaler()
             next_update = self.virtual_time + self.autoscaler_update_interval_s
-            self.event_queue.put(Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE))
+            self.event_queue.put(
+                Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE)
+            )
         elif event.event_type == SIMULATOR_EVENT_TASK_DONE:
             task = event.data
             task.node.free(task.resources)
@@ -290,8 +297,12 @@ SAMPLE_CLUSTER_CONFIG = copy.deepcopy(MULTI_WORKER_CLUSTER)
 SAMPLE_CLUSTER_CONFIG["min_workers"] = 0
 SAMPLE_CLUSTER_CONFIG["max_workers"] = 9999
 SAMPLE_CLUSTER_CONFIG["target_utilization_fraction"] = 1.0
-SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"]["max_workers"] = 100
-SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"]["max_workers"] = 10000
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"][
+    "max_workers"
+] = 100
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"][
+    "max_workers"
+] = 10000
 
 
 class AutoscalingPolicyTest(unittest.TestCase):
@@ -306,7 +317,9 @@ class AutoscalingPolicyTest(unittest.TestCase):
         def do_nothing(*args, **kwargs):
             pass
 
-        cli_logger._print = type(cli_logger._print)(do_nothing, type(cli_logger))
+        cli_logger._print = type(cli_logger._print)(
+            do_nothing, type(cli_logger)
+        )
 
     def tearDown(self):
         self.provider = None
@@ -339,7 +352,9 @@ class AutoscalingPolicyTest(unittest.TestCase):
             done_count += 1
 
         tasks = [
-            Task(duration=200, resources={"CPU": 1}, done_callback=done_callback)
+            Task(
+                duration=200, resources={"CPU": 1}, done_callback=done_callback
+            )
             for _ in range(5000)
         ]
         simulator.submit(tasks)
