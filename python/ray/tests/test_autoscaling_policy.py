@@ -179,20 +179,26 @@ class Simulator:
         else:
             self.work_queue.append(work)
 
-    def _schedule_task(self, task, nodes):
+    def _get_node_to_run(self, nodes, bundle):
         for node in nodes:
-            if node.bundle_fits(task.resources):
-                node.allocate(task.resources)
-                task.node = node
-                task.start_time = self.virtual_time
-                end_time = self.virtual_time + task.duration
-                self.event_queue.put(
-                    Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
-                if task.start_callback:
-                    task.start_callback()
-                return True
+            if node.bundle_fits(bundle):
+                return node
+        return None
 
-        return False
+    def _schedule_task(self, task, nodes):
+        node_to_run = self._get_node_to_run(task.resources, nodes)
+        if node_to_run is None:
+            return False
+
+        node.allocate(task.resources)
+        task.node = node
+        task.start_time = self.virtual_time
+        end_time = self.virtual_time + task.duration
+        self.event_queue.put(
+            Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
+        if task.start_callback:
+            task.start_callback()
+        return True
 
     def schedule(self):
         # TODO (Alex): Implement a more realistic scheduling algorithm.
