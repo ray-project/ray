@@ -78,7 +78,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
     /// TODO(Guyang Song): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
-    TaskExecutor::Invoke(task_specification, actor, runtime, dynamic_library_base_addr, actor_contexts_, actor_contexts_mutex_);
+    TaskExecutor::Invoke(task_specification, actor, runtime, dynamic_library_base_addr,
+                         actor_contexts_, actor_contexts_mutex_);
   } else {
     boost::asio::post(*thread_pool_.get(),
                       std::bind(
@@ -86,8 +87,9 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
                             if (mutex) {
                               absl::MutexLock lock(mutex.get());
                             }
-                            TaskExecutor::Invoke(ts, actor, runtime,
-                                                 dynamic_library_base_addr, this->actor_contexts_, this->actor_contexts_mutex_);
+                            TaskExecutor::Invoke(
+                                ts, actor, runtime, dynamic_library_base_addr,
+                                this->actor_contexts_, this->actor_contexts_mutex_);
                           },
                           std::move(task_specification)));
   }
@@ -99,24 +101,6 @@ ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation) {
 }
 
 ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
-  // if (dynamic_library_base_addr == 0) {
-  //   dynamic_library_base_addr =
-  //       GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
-  // }
-  //ActorID id = local_mode_ray_tuntime_.GetNextActorID();
-
-
-  // typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-  //     uintptr_t base_addr, size_t func_offset, std::shared_ptr<msgpack::sbuffer> args);
-  // ExecFunction exec_function = (ExecFunction)(invocation.fptr.exec_function_pointer);
-  // auto data = (*exec_function)(
-  //     dynamic_library_base_addr,
-  //     (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr),
-  //     invocation.args);
-  // std::unique_ptr<ActorContext> actorContext(new ActorContext());
-  // actorContext->current_actor = data;
-  // absl::MutexLock lock(&actor_contexts_mutex_);
-  // actor_contexts_.emplace(id, std::move(actorContext));
   Submit(invocation);
   return invocation.actor_id;
 }

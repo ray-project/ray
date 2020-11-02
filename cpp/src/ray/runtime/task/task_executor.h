@@ -27,11 +27,11 @@ class TaskExecutor {
   /// TODO(Guyang Song): support multiple tasks execution
   std::unique_ptr<ObjectID> Execute(InvocationSpec &invocation);
 
-  static void Invoke(const TaskSpecification &task_spec,
-                     std::shared_ptr<msgpack::sbuffer> actor, AbstractRayRuntime *runtime,
-                     const uintptr_t base_addr,
-                     std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
-                     absl::Mutex &actor_contexts_mutex);
+  static void Invoke(
+      const TaskSpecification &task_spec, std::shared_ptr<msgpack::sbuffer> actor,
+      AbstractRayRuntime *runtime, const uintptr_t base_addr,
+      std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
+      absl::Mutex &actor_contexts_mutex);
 
   static Status ExecuteTask(
       TaskType task_type, const std::string task_name, const RayFunction &ray_function,

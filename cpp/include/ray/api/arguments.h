@@ -1,9 +1,9 @@
 
 #pragma once
 
+#include <ray/api/object_ref.h>
 #include <ray/api/serializer.h>
 #include "ray/common/task/task_util.h"
-#include <ray/api/object_ref.h>
 
 #include <msgpack.hpp>
 
@@ -15,30 +15,35 @@ class Arguments {
   static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args);
 
   template <typename Arg1Type>
-  static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args, Arg1Type &arg1);
+  static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
+                       Arg1Type &arg1);
 
   template <typename Arg1Type>
-  static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args, ObjectRef<Arg1Type> &arg1);
+  static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
+                       ObjectRef<Arg1Type> &arg1);
 
   template <typename Arg1Type, typename... OtherArgTypes>
-  static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args, Arg1Type &arg1,
-                       OtherArgTypes &... args);
+  static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
+                       Arg1Type &arg1, OtherArgTypes &... args);
 
-  static void UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer, int &arg_index);
+  static void UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+                         int &arg_index);
 
   template <typename Arg1Type>
-  static void UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer, int &arg_index, std::shared_ptr<Arg1Type> *arg1);
+  static void UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+                         int &arg_index, std::shared_ptr<Arg1Type> *arg1);
 
   template <typename Arg1Type, typename... OtherArgTypes>
-  static void UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer, int &arg_index, std::shared_ptr<Arg1Type> *arg1,
+  static void UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+                         int &arg_index, std::shared_ptr<Arg1Type> *arg1,
                          std::shared_ptr<OtherArgTypes> *... args);
 };
 
 // --------- inline implementation ------------
 #include <typeinfo>
 
-inline void Arguments::WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args) {}
-
+inline void Arguments::WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args) {
+}
 
 template <typename Arg1Type>
 inline void Arguments::WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
@@ -51,18 +56,13 @@ inline void Arguments::WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *ta
   std::string type_name = typeid(arg1).name();
   Serializer::Serialize(packer, arg1);
   auto memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-    reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(),
-    true);
+      reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
   if (type_name.rfind(ObjectRefClassPrefix, 0) == 0) {
-    // /// Pass by reference.
-    // auto task_arg = new TaskArgByReference(
-    //     ((ObjectRef<Arg1Type>)arg1).ID(), rpc::Address());
-    // task_args->emplace_back(task_arg);
     throw RayException("ObjectRef can not be wrapped");
   } else {
     /// Pass by value.
-    auto task_arg = new TaskArgByValue(
-        std::make_shared<::ray::RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
+    auto task_arg = new TaskArgByValue(std::make_shared<::ray::RayObject>(
+        memory_buffer, nullptr, std::vector<ObjectID>()));
     task_args->emplace_back(task_arg);
   }
 }
@@ -71,29 +71,29 @@ template <typename Arg1Type>
 inline void Arguments::WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
                                 ObjectRef<Arg1Type> &arg1) {
   /// Pass by reference.
-  auto task_arg = new TaskArgByReference(
-      arg1.ID(), rpc::Address());
+  auto task_arg = new TaskArgByReference(arg1.ID(), rpc::Address());
   task_args->emplace_back(task_arg);
 }
 
 template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args, Arg1Type &arg1,
-                                OtherArgTypes &... args) {
+inline void Arguments::WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
+                                Arg1Type &arg1, OtherArgTypes &... args) {
   WrapArgs(task_args, arg1);
   WrapArgs(task_args, args...);
 }
 
-inline void Arguments::UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer, int &arg_index) {}
+inline void Arguments::UnwrapArgs(
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer, int &arg_index) {}
 
 template <typename Arg1Type>
-inline void Arguments::UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-                                  int &arg_index, std::shared_ptr<Arg1Type> *arg1) {
+inline void Arguments::UnwrapArgs(
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer, int &arg_index,
+    std::shared_ptr<Arg1Type> *arg1) {
   std::shared_ptr<msgpack::sbuffer> sbuffer;
   auto arg_buffer = args_buffer[arg_index]->GetData();
   sbuffer = std::make_shared<msgpack::sbuffer>(arg_buffer->Size());
   /// TODO(Guyang Song): Avoid the memory copy.
-  sbuffer->write(reinterpret_cast<const char *>(arg_buffer->Data()),
-                      arg_buffer->Size());
+  sbuffer->write(reinterpret_cast<const char *>(arg_buffer->Data()), arg_buffer->Size());
   msgpack::unpacker unpacker;
   unpacker.reserve_buffer(sbuffer->size());
   memcpy(unpacker.buffer(), sbuffer->data(), sbuffer->size());
@@ -103,9 +103,9 @@ inline void Arguments::UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> 
 }
 
 template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-                                  int &arg_index, std::shared_ptr<Arg1Type> *arg1,
-                                  std::shared_ptr<OtherArgTypes> *... args) {
+inline void Arguments::UnwrapArgs(
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer, int &arg_index,
+    std::shared_ptr<Arg1Type> *arg1, std::shared_ptr<OtherArgTypes> *... args) {
   UnwrapArgs(args_buffer, arg_index, arg1);
   UnwrapArgs(args_buffer, arg_index, args...);
 }

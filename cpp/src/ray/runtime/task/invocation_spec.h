@@ -18,7 +18,6 @@ class InvocationSpec {
   int actor_counter;
   std::string lib_name;
   RemoteFunctionPtrHolder fptr;
-  //std::shared_ptr<msgpack::sbuffer> args;
   std::vector<std::unique_ptr<::ray::TaskArg>> args;
 };
 }  // namespace api

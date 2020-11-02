@@ -230,7 +230,8 @@ inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
   MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
   ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorTaskCaller<ReturnType>(runtime_.get(), actor.ID(), ptr, std::move(task_args));
+  return ActorTaskCaller<ReturnType>(runtime_.get(), actor.ID(), ptr,
+                                     std::move(task_args));
 }
 
 // TODO(barakmich): These includes are generated files that do not contain their

@@ -42,7 +42,8 @@ Status TaskExecutor::ExecuteTask(
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   if (task_type == TaskType::ACTOR_CREATION_TASK) {
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-        uintptr_t base_addr, size_t func_offset, const std::vector<std::shared_ptr<RayObject>> &args_buffer);
+        uintptr_t base_addr, size_t func_offset,
+        const std::vector<std::shared_ptr<RayObject>> &args_buffer);
     ExecFunction exec_function = (ExecFunction)(base_addr + std::stoul(exec_func_offset));
     data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
                             args_buffer);
@@ -50,14 +51,16 @@ Status TaskExecutor::ExecuteTask(
   } else if (task_type == TaskType::ACTOR_TASK) {
     RAY_CHECK(current_actor_ != nullptr);
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-        uintptr_t base_addr, size_t func_offset, const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+        uintptr_t base_addr, size_t func_offset,
+        const std::vector<std::shared_ptr<RayObject>> &args_buffer,
         std::shared_ptr<msgpack::sbuffer> object);
     ExecFunction exec_function = (ExecFunction)(base_addr + std::stoul(exec_func_offset));
     data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
                             args_buffer, current_actor_);
   } else {  // NORMAL_TASK
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-        uintptr_t base_addr, size_t func_offset, const std::vector<std::shared_ptr<RayObject>> &args_buffer);
+        uintptr_t base_addr, size_t func_offset,
+        const std::vector<std::shared_ptr<RayObject>> &args_buffer);
     ExecFunction exec_function = (ExecFunction)(base_addr + std::stoul(exec_func_offset));
     data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
                             args_buffer);
@@ -85,26 +88,24 @@ Status TaskExecutor::ExecuteTask(
   return ray::Status::OK();
 }
 
-void TaskExecutor::Invoke(const TaskSpecification &task_spec,
-                          std::shared_ptr<msgpack::sbuffer> actor,
-                          AbstractRayRuntime *runtime, const uintptr_t base_addr,
-                          std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
-                          absl::Mutex &actor_contexts_mutex) {
-  // auto args = std::make_shared<msgpack::sbuffer>(task_spec.ArgDataSize(0));
-  // /// TODO(Guyang Song): Avoid the memory copy.
-  // args->write(reinterpret_cast<const char *>(task_spec.ArgData(0)),
-  //             task_spec.ArgDataSize(0));
+void TaskExecutor::Invoke(
+    const TaskSpecification &task_spec, std::shared_ptr<msgpack::sbuffer> actor,
+    AbstractRayRuntime *runtime, const uintptr_t base_addr,
+    std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
+    absl::Mutex &actor_contexts_mutex) {
   std::vector<std::shared_ptr<RayObject>> args_buffer;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
       auto arg = runtime->Get(task_spec.ArgId(i));
       auto memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-        reinterpret_cast<uint8_t *>(arg->data()), arg->size(), true);
-      args_buffer.emplace_back(std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
+          reinterpret_cast<uint8_t *>(arg->data()), arg->size(), true);
+      args_buffer.emplace_back(
+          std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
     } else {
       auto memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-        const_cast<uint8_t *>(task_spec.ArgData(i)), task_spec.ArgDataSize(i), true);
-      args_buffer.emplace_back(std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
+          const_cast<uint8_t *>(task_spec.ArgData(i)), task_spec.ArgDataSize(i), true);
+      args_buffer.emplace_back(
+          std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
     }
   }
 
@@ -113,7 +114,8 @@ void TaskExecutor::Invoke(const TaskSpecification &task_spec,
   std::shared_ptr<msgpack::sbuffer> data;
   if (actor) {
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-        uintptr_t base_addr, size_t func_offset, std::vector<std::shared_ptr<RayObject>> &args_buffer,
+        uintptr_t base_addr, size_t func_offset,
+        std::vector<std::shared_ptr<RayObject>> & args_buffer,
         std::shared_ptr<msgpack::sbuffer> object);
     unsigned long offset = std::stoul(typed_descriptor->ExecFunctionOffset());
     auto address = base_addr + offset;
@@ -122,11 +124,12 @@ void TaskExecutor::Invoke(const TaskSpecification &task_spec,
                             args_buffer, actor);
   } else {
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-        uintptr_t base_addr, size_t func_offset, std::vector<std::shared_ptr<RayObject>> &args_buffer);
+        uintptr_t base_addr, size_t func_offset,
+        std::vector<std::shared_ptr<RayObject>> & args_buffer);
     ExecFunction exec_function =
         (ExecFunction)(base_addr + std::stoul(typed_descriptor->ExecFunctionOffset()));
-    data =
-        (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()), args_buffer);
+    data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
+                            args_buffer);
   }
   if (task_spec.IsActorCreationTask()) {
     std::unique_ptr<ActorContext> actorContext(new ActorContext());
