@@ -129,7 +129,10 @@ class Experiment:
             # if they instantiate their `Experiment` objects themselves.
             raise ValueError(
                 "Passing `loggers` to an `Experiment` is deprecated. Use "
-                "an `ExperimentLogger` callback instead.")
+                "an `ExperimentLogger` callback instead, e.g. by passing the "
+                "`Logger` classes to `tune.logger.LegacyExperimentLogger` and "
+                "passing this as part of the `callback` parameter to "
+                "`tune.run()`.")
 
         config = config or {}
         if callable(run) and detect_checkpoint_function(run):
