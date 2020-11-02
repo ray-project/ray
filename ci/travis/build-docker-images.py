@@ -313,4 +313,5 @@ if __name__ == "__main__":
             build_ray()
             build_ray_ml()
             push_and_tag_images(freshly_built)
-            push_readmes()
+            # TODO(ilr) Re-Enable Push READMEs by using a normal password (not auth token :/)
+            # push_readmes()
