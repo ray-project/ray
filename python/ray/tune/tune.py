@@ -360,7 +360,7 @@ def run(
             "from your scheduler or from your call to `tune.run()`")
 
     # Create syncer callbacks
-    callbacks = create_default_callbacks(callbacks, sync_config)
+    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
 
     runner = TrialRunner(
         search_alg=search_alg,

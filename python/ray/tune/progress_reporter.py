@@ -1,15 +1,19 @@
 from __future__ import print_function
 
 import collections
+import os
 import sys
+from typing import Dict, List, Optional
 
 import numpy as np
 import time
 
+from ray.tune.callback import Callback
+from ray.tune.logger import pretty_print
 from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
                              TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
                              AUTO_RESULT_KEYS)
-from ray.tune.trial import Trial
+from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 
@@ -234,7 +238,8 @@ class TuneReporterBase(ProgressReporter):
                     parameter_columns=self._parameter_columns,
                     total_samples=self._total_samples,
                     fmt=fmt,
-                    max_rows=max_progress))
+                    max_rows=max_progress,
+                    done=done))
             messages.append(
                 trial_errors_str(trials, fmt=fmt, max_rows=max_error))
 
@@ -415,7 +420,8 @@ def trial_progress_str(trials,
                        parameter_columns=None,
                        total_samples=0,
                        fmt="psql",
-                       max_rows=None):
+                       max_rows=None,
+                       done=False):
     """Returns a human readable message for printing to the console.
 
     This contains a table where each row represents a trial, its parameters
@@ -460,7 +466,9 @@ def trial_progress_str(trials,
         num_trials, f"/{total_samples}"
         if total_samples else "", ", ".join(num_trials_strs)))
 
-    if has_verbosity(Verbosity.TRIAL_DETAILS):
+    if has_verbosity(
+            Verbosity.TRIAL_DETAILS) or (has_verbosity(Verbosity.TRIAL_NORM)
+                                         and done):
         messages += trial_progress_table(trials, metric_columns,
                                          parameter_columns, fmt, max_rows)
 
@@ -547,6 +555,7 @@ def trial_progress_table(trials,
     if overflow:
         messages.append("... {} more trials not shown ({})".format(
             overflow, overflow_str))
+    return messages
 
 
 def trial_errors_str(trials, fmt="psql", max_rows=None):
@@ -645,3 +654,68 @@ def _get_trial_info(trial, parameters, metrics):
         unflattened_lookup(metric, result, default=None) for metric in metrics
     ]
     return trial_info
+
+
+class TrialProgressCallback(Callback):
+    def __init__(self, metric: Optional[str] = None):
+        self._last_print = collections.defaultdict(lambda: 0.)
+        self._metric = metric
+
+    def on_trial_result(self, iteration: int, trials: List["Trial"],
+                        trial: "Trial", result: Dict, **info):
+        self.log_result(trial, result, error=False)
+
+    def on_trial_error(self, iteration: int, trials: List["Trial"],
+                       trial: "Trial", **info):
+        self.log_result(trial, trial.last_result, error=True)
+
+    def log_result(self, trial: "Trial", result: Dict, error: bool = False):
+        done = result.get("done", False) is True
+        last_print = self._last_print[trial]
+        if has_verbosity(Verbosity.TRIAL_DETAILS) and \
+           (done or time.time() - last_print > DEBUG_PRINT_INTERVAL):
+            print("Result for {}:".format(self))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            self._last_print[trial] = time.time()
+        elif has_verbosity(Verbosity.TRIAL_NORM) and (
+                done or time.time() - last_print > DEBUG_PRINT_INTERVAL):
+            info = ""
+            if done:
+                info = " This trial completed."
+
+            metric_name = self._metric or "_metric"
+            metric_value = result.get(metric_name, -99.)
+            print_result = result.copy()
+            print_result.pop("config", None)
+            print_result.pop("trial_id", None)
+            print_result.pop("done", None)
+            for auto_result in AUTO_RESULT_KEYS:
+                print_result.pop(auto_result, None)
+
+            print_result_str = ",".join(
+                [f"{k}={v}" for k, v in print_result.items()])
+
+            error_file = os.path.join(trial.logdir, "error.txt")
+
+            if error:
+                message = "The trial {trial} errored with " \
+                          "parameters={trial.config}. " \
+                          "Error file: {error_file}"
+            elif self._metric:
+                message = "Trial {trial} reported " \
+                          "{metric_name}={metric_value:.2f} " \
+                          "with parameters={trial.config}.{info}"
+            else:
+                message = "Trial {trial} reported " \
+                          "{result} " \
+                          "with parameters={trial.config}.{info}"
+
+            print(
+                message.format(
+                    trial=trial,
+                    error_file=error_file,
+                    metric_name=metric_name,
+                    metric_value=metric_value,
+                    result=print_result_str,
+                    info=info))
+            self._last_print[trial] = time.time()
