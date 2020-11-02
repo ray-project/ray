@@ -57,6 +57,10 @@ DEFAULT_CONFIG = with_common_config({
     # set batchmode
     "batch_mode": "complete_episodes",
 
+    # === Deep Learning Framework Settings ===
+    # Currently, only PyTorch is supported
+    "framework": "torch",
+
     # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
