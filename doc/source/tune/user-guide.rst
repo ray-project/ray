@@ -649,11 +649,6 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_DISABLE_DATED_SUBDIR**: Ray Tune automatically adds a date string to experiment
   directories when the name is not specified explicitly or the trainable isn't passed
   as a string. Setting this environment variable to ``1`` disables adding these date strings.
-* **TUNE_DISABLE_REORDER_CALLBACK_SYNCER**: Ray Tune checks if the (automatically added)
-  `SyncerCallback` comes after all `ExperimentLogger` callbacks to make sure logs are
-  updated before they are sent to other nodes. If this is not the case, the
-  `SyncerCallback` will be moved after the last logger. Setting this environment variable
-  to ``1`` disables this reordering.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
   ``tune.report()`` and passed a ``metric`` parameter to ``tune.run()``, a scheduler,
   or a search algorithm, Tune will error

@@ -130,21 +130,22 @@ def _create_callbacks(callbacks: Optional[List[Callback]],
 
     # Todo(krfricke): Maybe check if syncer comes after all loggers
     if syncer_index is not None and last_logger_index is not None \
-        and syncer_index < last_logger_index and os.environ.get(
-            "TUNE_DISABLE_REORDER_CALLBACK_SYNCER", "0") != "1":
+        and syncer_index < last_logger_index:
         if (not has_csv_logger or not has_json_logger) and not loggers:
             # Only raise the warning if the loggers were passed by the user.
             # (I.e. don't warn if this was automatic behavior and they only
             # passed a customer SyncerCallback).
-            logger.warning(
+            raise ValueError(
                 "The `SyncerCallback` you passed to `tune.run()` came before "
                 "at least one `ExperimentLogger`. Syncing should be done "
-                "after writing logs - the SyncerCallback has thus been moved "
-                "to after the last logger. Disable this automatic reordering "
-                "by setting TUNE_DISABLE_REORDER_CALLBACK_SYNCER to `1`.")
-        syncer_obj = callbacks[syncer_index]
-        callbacks.pop(syncer_index)
-        callbacks.insert(last_logger_index, syncer_obj)
+                "after writing logs. Please re-order the callbacks so that "
+                "the `SyncerCallback` comes after any `ExperimentLogger`.")
+        else:
+            # If these loggers were automatically created. just re-order
+            # the callbacks
+            syncer_obj = callbacks[syncer_index]
+            callbacks.pop(syncer_index)
+            callbacks.insert(last_logger_index, syncer_obj)
 
     return callbacks
 

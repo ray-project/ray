@@ -381,30 +381,6 @@ class SyncerCallback(Callback):
             remote_dir=trial.logdir,
             sync_function=self._sync_function)
 
-    def _sync_results_to_new_location(self, trial: "Trial", worker_ip: str):
-        """Sends the current log directory to the remote node.
-
-        Syncing will not occur if the cluster is not started
-        with the Ray autoscaler.
-        """
-        # Todo(rliaw,krfricke): This function is never used. It was previously
-        # in UnifiedLogger, where it hasn't been used, either. Remove?
-        trial_syncer = self._get_trial_syncer(trial)
-        if worker_ip != trial_syncer.worker_ip:
-            logger.info("Trial %s: Syncing (blocking) results to %s", trial,
-                        worker_ip)
-            trial_syncer.reset()
-            trial_syncer.set_worker_ip(worker_ip)
-            if not trial_syncer.sync_up():
-                logger.error(
-                    "Trial %s: Sync up to new location skipped. "
-                    "This should not occur.", trial)
-            trial_syncer.wait()
-        else:
-            logger.error(
-                "Trial %s: Sync attempted to same IP %s. This "
-                "should not occur.", trial, worker_ip)
-
     def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: Checkpoint):
         if checkpoint.storage == Checkpoint.MEMORY:
             return

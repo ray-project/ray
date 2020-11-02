@@ -378,14 +378,26 @@ class ExperimentLogger(Callback):
 
     def on_trial_complete(self, iteration: int, trials: List[Trial],
                           trial: Trial, **info):
-        self.log_trial_end(trial, False)
+        self.log_trial_end(trial, failed=False)
 
-    def on_trial_fail(self, iteration: int, trials: List[Trial], trial: Trial,
-                      **info):
-        self.log_trial_end(trial, True)
+    def on_trial_error(self, iteration: int, trials: List[Trial], trial: Trial,
+                       **info):
+        self.log_trial_end(trial, failed=True)
 
 
 class LegacyExperimentLogger(ExperimentLogger):
+    """Supports logging to trial-specific `Logger` classes.
+
+    Previously, Ray Tune logging was handled via `Logger` classes that have
+    been instantiated per-trial. This callback is a fallback to these
+    `Logger`-classes, instantiating each `Logger` class for each trial
+    and logging to them.
+
+    Args:
+        logger_classes (Iterable[Type[Logger]]): Logger classes that should
+            be instantiated for each trial.
+
+    """
     def __init__(self, logger_classes: Iterable[Type[Logger]]):
         self.logger_classes = list(logger_classes)
         self._class_trial_loggers: Dict[Type[Logger], Dict[Trial, Logger]] = {}

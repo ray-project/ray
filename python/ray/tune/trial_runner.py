@@ -749,7 +749,7 @@ class TrialRunner:
             else:
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._callbacks.on_trial_fail(
+                self._callbacks.on_trial_error(
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial)
@@ -905,7 +905,7 @@ class TrialRunner:
                 logger.exception("Error processing event.")
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._callbacks.on_trial_fail(
+                self._callbacks.on_trial_error(
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial)

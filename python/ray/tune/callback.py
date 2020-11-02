@@ -129,8 +129,8 @@ class Callback:
         """
         pass
 
-    def on_trial_fail(self, iteration: int, trials: List[Trial], trial: Trial,
-                      **info):
+    def on_trial_error(self, iteration: int, trials: List[Trial], trial: Trial,
+                       **info):
         """Called after a trial instance failed (errored).
 
         The search algorithm and scheduler are notified before this
@@ -193,9 +193,9 @@ class CallbackList:
         for callback in self._callbacks:
             callback.on_trial_complete(**info)
 
-    def on_trial_fail(self, **info):
+    def on_trial_error(self, **info):
         for callback in self._callbacks:
-            callback.on_trial_fail(**info)
+            callback.on_trial_error(**info)
 
     def on_checkpoint(self, **info):
         for callback in self._callbacks:
