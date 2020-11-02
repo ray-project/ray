@@ -45,7 +45,7 @@ class TestCallback(Callback):
     def on_trial_complete(self, **info):
         self.state["trial_complete"] = info
 
-    def on_trial_fail(self, **info):
+    def on_trial_error(self, **info):
         self.state["trial_fail"] = info
 
 
