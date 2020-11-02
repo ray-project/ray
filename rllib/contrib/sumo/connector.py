@@ -156,8 +156,8 @@ class SUMOConnector(object):
             ) > self._config["end_of_sim"]:
                 # the simulatio reach the predefined (from parameters) end
                 return True
-        if current_step_counter == self._config[
-                "update_freq"] and not until_end:
+        if (current_step_counter == self._config["update_freq"]
+                and not until_end):
             return True
         return False
 
