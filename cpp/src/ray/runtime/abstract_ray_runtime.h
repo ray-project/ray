@@ -40,8 +40,6 @@ class AbstractRayRuntime : public RayRuntime {
   ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
                      std::vector<std::unique_ptr<::ray::TaskArg>> &args);
 
-  ActorID GetNextActorID();
-
   const TaskID &GetCurrentTaskId();
 
   const JobID &GetCurrentJobID();

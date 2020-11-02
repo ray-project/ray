@@ -25,7 +25,7 @@ class TaskExecutor {
   TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_);
 
   /// TODO(Guyang Song): support multiple tasks execution
-  std::unique_ptr<ObjectID> Execute(const InvocationSpec &invocation);
+  std::unique_ptr<ObjectID> Execute(InvocationSpec &invocation);
 
   static void Invoke(const TaskSpecification &task_spec,
                      std::shared_ptr<msgpack::sbuffer> actor, AbstractRayRuntime *runtime,

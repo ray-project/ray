@@ -97,7 +97,7 @@ ObjectID AbstractRayRuntime::Call(const RemoteFunctionPtrHolder &fptr,
 ActorID AbstractRayRuntime::CreateActor(const RemoteFunctionPtrHolder &fptr,
                                         std::vector<std::unique_ptr<::ray::TaskArg>> &args) {
   auto invocation_spec = BuildInvocationSpec(
-      TaskType::ACTOR_CREATION_TASK, this->config_->lib_name, fptr, args, GetNextActorID());
+      TaskType::ACTOR_CREATION_TASK, this->config_->lib_name, fptr, args, ActorID::Nil());
   return task_submitter_->CreateActor(invocation_spec);
 }
 
@@ -114,13 +114,6 @@ const TaskID &AbstractRayRuntime::GetCurrentTaskId() {
 }
 
 const JobID &AbstractRayRuntime::GetCurrentJobID() { return worker_->GetCurrentJobID(); }
-
-ActorID AbstractRayRuntime::GetNextActorID() {
-  const int next_task_index = worker_->GetNextTaskIndex();
-  const ActorID actor_id = ActorID::Of(worker_->GetCurrentJobID(),
-                                       worker_->GetCurrentTaskID(), next_task_index);
-  return actor_id;
-}
 
 const std::unique_ptr<WorkerContext> &AbstractRayRuntime::GetWorkerContext() {
   return worker_;

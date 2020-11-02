@@ -8,7 +8,7 @@
 namespace ray {
 namespace api {
 
-RayFunction BuildRayFunction(const InvocationSpec &invocation) {
+RayFunction BuildRayFunction(InvocationSpec &invocation) {
   auto base_addr =
       GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
   auto func_offset = (size_t)(invocation.fptr.function_pointer - base_addr);
@@ -18,7 +18,7 @@ RayFunction BuildRayFunction(const InvocationSpec &invocation) {
   return RayFunction(Language::CPP, function_descriptor);
 }
 
-// void BuildTaskArgs(const InvocationSpec &invocation,
+// void BuildTaskArgs(InvocationSpec &invocation,
 //                    std::vector<std::unique_ptr<::ray::TaskArg>> &args) {
 //   if (invocation.args.size() > 0) {
 //     auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
@@ -30,7 +30,7 @@ RayFunction BuildRayFunction(const InvocationSpec &invocation) {
 //   }
 // }
 
-ObjectID NativeTaskSubmitter::Submit(const InvocationSpec &invocation) {
+ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::vector<ObjectID> return_ids;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
@@ -43,11 +43,11 @@ ObjectID NativeTaskSubmitter::Submit(const InvocationSpec &invocation) {
   return return_ids[0];
 }
 
-ObjectID NativeTaskSubmitter::SubmitTask(const InvocationSpec &invocation) {
+ObjectID NativeTaskSubmitter::SubmitTask(InvocationSpec &invocation) {
   return Submit(invocation);
 }
 
-ActorID NativeTaskSubmitter::CreateActor(const InvocationSpec &invocation) {
+ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
 
   std::unordered_map<std::string, double> resources;
@@ -70,7 +70,7 @@ ActorID NativeTaskSubmitter::CreateActor(const InvocationSpec &invocation) {
   return actor_id;
 }
 
-ObjectID NativeTaskSubmitter::SubmitActorTask(const InvocationSpec &invocation) {
+ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
   return Submit(invocation);
 }
 

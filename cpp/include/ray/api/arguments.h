@@ -58,6 +58,7 @@ inline void Arguments::WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *ta
     // auto task_arg = new TaskArgByReference(
     //     ((ObjectRef<Arg1Type>)arg1).ID(), rpc::Address());
     // task_args->emplace_back(task_arg);
+    throw RayException("ObjectRef can not be wrapped");
   } else {
     /// Pass by value.
     auto task_arg = new TaskArgByValue(

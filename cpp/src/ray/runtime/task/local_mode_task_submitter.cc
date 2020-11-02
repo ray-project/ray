@@ -18,7 +18,7 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter(
   thread_pool_.reset(new boost::asio::thread_pool(10));
 }
 
-ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation) {
+ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   /// TODO(Guyang Song): Make the infomation of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
@@ -47,6 +47,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation) {
                             PlacementGroupID::Nil(), true);
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
+    invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
     builder.SetActorCreationTaskSpec(invocation.actor_id);
   } else if (invocation.task_type == TaskType::ACTOR_TASK) {
     const TaskID actor_creation_task_id =
@@ -93,11 +94,11 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation) {
   return return_object_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitTask(const InvocationSpec &invocation) {
+ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation) {
   return Submit(invocation);
 }
 
-ActorID LocalModeTaskSubmitter::CreateActor(const InvocationSpec &invocation) {
+ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
   // if (dynamic_library_base_addr == 0) {
   //   dynamic_library_base_addr =
   //       GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
@@ -116,11 +117,11 @@ ActorID LocalModeTaskSubmitter::CreateActor(const InvocationSpec &invocation) {
   // actorContext->current_actor = data;
   // absl::MutexLock lock(&actor_contexts_mutex_);
   // actor_contexts_.emplace(id, std::move(actorContext));
-  SubmitTask(invocation);
+  Submit(invocation);
   return invocation.actor_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitActorTask(const InvocationSpec &invocation) {
+ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
   return Submit(invocation);
 }
 

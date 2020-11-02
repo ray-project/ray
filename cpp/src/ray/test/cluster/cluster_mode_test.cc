@@ -63,6 +63,11 @@ TEST(RayClusterModeTest, FullTest) {
   int actor_task_result2 = *(Ray::Get(actor_object2));
   EXPECT_EQ(6, actor_task_result2);
 
+  /// actor task with args which pass by reference
+  ActorHandle<Counter> actor3 = Ray::Actor(Counter::FactoryCreate, 6).Remote();
+  auto actor_object3 = actor3.Task(&Counter::Add, actor_object2).Remote();
+  int actor_task_result3 = *(Ray::Get(actor_object3));
+  EXPECT_EQ(12, actor_task_result3);
   Ray::Shutdown();
 }
 
