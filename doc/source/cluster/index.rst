@@ -112,15 +112,14 @@ should look something like ``123.45.67.89:6379``).
   To terminate the Ray runtime, run
     ray stop
 
-If you see ``Ray runtime started.``, then the node successfully connected to
-the ``<address>``. If the ``<address>`` is inaccessible (because, for example,
-the head node is not actually running), you will get an error such as
-``Unable to connect to Redis. If the Redis instance is on a different machine, check that your firewall is configured properly.``
-
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
 with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configuration <configuring-ray>` page for more information.
 
-Now we've started the Ray runtime.
+If you see ``Ray runtime started.``, then the node successfully connected to
+the ``<address>``. If the ``<address>`` is inaccessible (because, for example,
+the head node is not actually running), you will get an error such as
+``Unable to connect to Redis. If the Redis instance is on a different machine,
+check that your firewall is configured properly.``
 
 Stopping Ray
 ~~~~~~~~~~~~
