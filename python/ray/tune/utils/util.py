@@ -13,7 +13,6 @@ from threading import Thread
 import numpy as np
 import ray
 import psutil
-import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -564,19 +563,6 @@ class SafeFallbackEncoder(json.JSONEncoder):
 
         except Exception:
             return str(value)  # give up, just stringify it (ok for logs)
-
-
-def pretty_print(result):
-    result = result.copy()
-    result.update(config=None)  # drop config from pretty print
-    result.update(hist_stats=None)  # drop hist_stats from pretty print
-    out = {}
-    for k, v in result.items():
-        if v is not None:
-            out[k] = v
-
-    cleaned = json.dumps(out, cls=SafeFallbackEncoder)
-    return yaml.safe_dump(json.loads(cleaned), default_flow_style=False)
 
 
 if __name__ == "__main__":
