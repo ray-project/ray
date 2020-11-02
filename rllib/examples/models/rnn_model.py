@@ -103,14 +103,6 @@ class TorchRNNModel(TorchRNN, nn.Module):
         # Holds the current "base" output (before logits layer).
         self._features = None
 
-        # Add state-ins to this model's view.
-        for i in range(2):
-            self.inference_view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=-1,
-                    space=Box(-1.0, 1.0, shape=(self.lstm_state_size,)))
-
     @override(ModelV2)
     def get_initial_state(self):
         # TODO: (sven): Get rid of `get_initial_state` once Trajectory

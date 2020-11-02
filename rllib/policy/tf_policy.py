@@ -137,11 +137,17 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+        # Disable env-info placeholder.
+        if SampleBatch.INFOS in self.view_requirements:
+            self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
         assert model is None or isinstance(model, ModelV2), \
             "Model classes for TFPolicy other than `ModelV2` not allowed! " \
             "You passed in {}.".format(model)
         self.model = model
+        # Auto-update model's inference view requirements, if recurrent.
+        if self.model is not None:
+            self.model.update_view_requirements_from_init_state()
 
         self.exploration = self._create_exploration()
         self._sess = sess
@@ -254,8 +260,7 @@ class TFPolicy(Policy):
             loss_inputs (List[Tuple[str, TensorType]]): The list of Tuples:
                 (name, tf1.placeholders) needed for calculating the loss.
         """
-        self._loss_inputs = loss_inputs
-        self._loss_input_dict = dict(self._loss_inputs)
+        self._loss_input_dict = dict(loss_inputs)
         for i, ph in enumerate(self._state_inputs):
             self._loss_input_dict["state_in_{}".format(i)] = ph
 
@@ -741,7 +746,6 @@ class TFPolicy(Policy):
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
-        builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
         fetches = builder.add_fetches(
@@ -763,7 +767,6 @@ class TFPolicy(Policy):
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
-        builder.add_feed_dict({self._is_training: True})
         fetches = builder.add_fetches([
             self._apply_op,
             self._get_grad_and_stats_fetches(),
@@ -799,18 +802,21 @@ class TFPolicy(Policy):
             shuffle=shuffle,
             max_seq_len=self._max_seq_len,
             batch_divisibility_req=self._batch_divisibility_req,
-            feature_keys=[k for k, v in self._loss_inputs])
+            feature_keys=[
+                k for k in self._loss_input_dict.keys() if k != "seq_lens"],
+        )
+        batch["is_training"] = True
 
         # Build the feed dict from the batch.
         feed_dict = {}
-        for k, ph in self._loss_inputs:
-            feed_dict[ph] = batch[k]
+        for key, placeholder in self._loss_input_dict.items():
+            feed_dict[placeholder] = batch[key]
 
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
         ]
-        for k in state_keys:
-            feed_dict[self._loss_input_dict[k]] = batch[k]
+        for key in state_keys:
+            feed_dict[self._loss_input_dict[key]] = batch[key]
         if state_keys:
             feed_dict[self._seq_lens] = batch["seq_lens"]
 

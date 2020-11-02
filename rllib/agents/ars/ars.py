@@ -47,6 +47,9 @@ DEFAULT_CONFIG = with_common_config({
         "num_envs_per_worker": 1,
         "observation_filter": "NoFilter"
     },
+    # Use the new "trajectory view API" to collect samples and produce
+    # model- and policy inputs.
+    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -327,7 +330,7 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        action, _, _ = self.policy.compute_actions(observation, update=True)
+        action, _, _ = self.policy.compute_actions([observation], update=True)
         if kwargs.get("full_fetch"):
             return action[0], [], {}
         return action[0]

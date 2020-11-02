@@ -1,9 +1,11 @@
+from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 
@@ -155,6 +157,14 @@ class LSTMWrapper(RecurrentNetwork):
             outputs=[logits, values, state_h, state_c])
         self.register_variables(self._rnn_model.variables)
         self._rnn_model.summary()
+
+        # Add prev-a/r to this model's view, if required.
+        if model_config["lstm_use_prev_action_reward"]:
+            self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
+                ViewRequirement(SampleBatch.REWARDS, shift=-1)
+            self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
+                ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
+                                shift=-1)
 
     @override(RecurrentNetwork)
     def forward(self, input_dict, state, seq_lens):

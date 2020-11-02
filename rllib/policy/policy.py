@@ -72,18 +72,18 @@ class Policy(metaclass=ABCMeta):
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
         self.dist_class = None
-        # View requirements dict for a `learn_on_batch()` call.
-        # Child classes need to add their specific requirements here (usually
-        # a combination of a Model's inference_view_- and the
-        # Policy's loss function-requirements.
-        self.view_requirements = {
-            SampleBatch.OBS: ViewRequirement(),
-            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
-            SampleBatch.REWARDS: ViewRequirement(),
-            SampleBatch.DONES: ViewRequirement(),
-            SampleBatch.EPS_ID: ViewRequirement(),
-            SampleBatch.AGENT_INDEX: ViewRequirement(),
-        }
+        # Maximal view requirements dict for `learn_on_batch()` and
+        # `compute_actions` calls.
+        # View requirements will be automatically filtered out later based
+        # on the postprocessing and loss functions to ensure optimal data
+        # collection and transfer performance.
+        # If child classes must override this behavior, they need to specify
+        # the `view_requirements_fn` arg.
+        view_reqs = self._get_default_view_requirements()
+        if not hasattr(self, "view_requirements"):
+            self.view_requirements = view_reqs
+        else:
+            self.view_requirements.update(view_reqs)
 
     @abstractmethod
     @DeveloperAPI
@@ -268,7 +268,8 @@ class Policy(metaclass=ABCMeta):
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
         state_batches = [
-            s.unsqueeze(0)
+            # TODO: (sven) remove unsqueezing code here for non-traj.view API.
+            s if self.config["_use_trajectory_view_api"] else s.unsqueeze(0)
             if torch and isinstance(s, torch.Tensor) else np.expand_dims(s, 0)
             for k, s in input_dict.items() if k[:9] == "state_in_"
         ]

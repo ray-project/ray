@@ -89,42 +89,6 @@ class ValueNetworkMixin:
         return self.model.value_function()[0]
 
 
-def view_requirements_fn(policy: Policy) -> Dict[str, ViewRequirement]:
-    """Function defining the view requirements for training/postprocessing.
-
-    These go on top of the Policy's Model's own view requirements used for
-    the action computing forward passes.
-
-    Args:
-        policy (Policy): The Policy that requires the returned
-            ViewRequirements.
-
-    Returns:
-        Dict[str, ViewRequirement]: The Policy's view requirements.
-    """
-    ret = {
-        # Next obs are needed for PPO postprocessing, but not in loss.
-        SampleBatch.NEXT_OBS: ViewRequirement(
-            SampleBatch.OBS, shift=1, used_for_training=False),
-        # Created during postprocessing.
-        Postprocessing.ADVANTAGES: ViewRequirement(shift=0),
-        Postprocessing.VALUE_TARGETS: ViewRequirement(shift=0),
-        # Needed for PPO's loss function.
-        SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
-        SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
-        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
-    }
-    # If policy is recurrent, have to add state_out for PPO postprocessing
-    # (calculating GAE from next-obs and last state-out).
-    if policy.is_recurrent():
-        init_state = policy.get_initial_state()
-        for i, s in enumerate(init_state):
-            ret["state_out_{}".format(i)] = ViewRequirement(
-                space=gym.spaces.Box(-1.0, 1.0, shape=(s.shape[0], )),
-                used_for_training=False)
-    return ret
-
-
 A3CTorchPolicy = build_torch_policy(
     name="A3CTorchPolicy",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
@@ -135,5 +99,4 @@ A3CTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=torch_optimizer,
     mixins=[ValueNetworkMixin],
-    view_requirements_fn=view_requirements_fn,
 )

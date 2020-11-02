@@ -174,8 +174,8 @@ def build_torch_policy(
         mixins (Optional[List[type]]): Optional list of any class mixins for
             the returned policy class. These mixins will be applied in order
             and will have higher precedence than the TorchPolicy class.
-        view_requirements_fn (Callable[[],
-            Dict[str, ViewRequirement]]): An optional callable to retrieve
+        view_requirements_fn (Optional[Callable[[Policy],
+            Dict[str, ViewRequirement]]]): An optional callable to retrieve
             additional train view requirements for this policy.
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
             Optional callable that returns the divisibility requirement for
@@ -242,11 +242,24 @@ def build_torch_policy(
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
 
+            # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
-                self.view_requirements.update(view_requirements_fn(self))
+                self.view_requirements = view_requirements_fn(self)
+                self.view_requirements.update(
+                    self.model.inference_view_requirements)
+
+            if before_loss_init:
+                before_loss_init(
+                    self, self.observation_space, self.action_space, config)
+
+            self.initialize_loss_with_dummy_batch(
+                self, auto=view_requirements_fn is None)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
+
+            # Got to reset global_timestep again after this fake run-through.
+            self.global_timestep = 0
 
         @override(Policy)
         def postprocess_trajectory(self,
@@ -258,8 +271,7 @@ def build_torch_policy(
             with torch.no_grad():
                 # Call super's postprocess_trajectory first.
                 sample_batch = super().postprocess_trajectory(
-                    convert_to_non_torch_type(sample_batch),
-                    convert_to_non_torch_type(other_agent_batches), episode)
+                    sample_batch, other_agent_batches, episode)
                 if postprocess_fn:
                     return postprocess_fn(self, sample_batch,
                                           other_agent_batches, episode)
