@@ -647,8 +647,8 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
-  std::shared_ptr<CoreWorkerMemoryStore> provider_ptr =
-      std::make_shared<CoreWorkerMemoryStore>();
+  auto ref_counter = std::make_shared<ReferenceCounter>(rpc::Address());
+  auto provider_ptr = std::make_shared<CoreWorkerMemoryStore>(nullptr, ref_counter);
 
   auto &provider = *provider_ptr;
 
@@ -666,6 +666,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
     ids[i] = ObjectID::FromRandom();
+    ref_counter->AddOwnedObject(ids[i], {}, {}, "", 0, false);
     RAY_CHECK(provider.Put(buffers[i], ids[i]));
   }
 
@@ -723,14 +724,16 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
     ready_ids[i] = ObjectID::FromRandom();
+    ref_counter->AddOwnedObject(ready_ids[i], {}, {}, "", 0, false);
     RAY_CHECK(provider.Put(buffers[i], ready_ids[i]));
     unready_ids[i] = ObjectID::FromRandom();
   }
 
-  auto thread_func = [&unready_ids, &provider, &buffers]() {
+  auto thread_func = [ref_counter, &unready_ids, &provider, &buffers]() {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     for (size_t i = 0; i < unready_ids.size(); i++) {
+      ref_counter->AddOwnedObject(unready_ids[i], {}, {}, "", 0, false);
       RAY_CHECK(provider.Put(buffers[i], unready_ids[i]));
     }
   };

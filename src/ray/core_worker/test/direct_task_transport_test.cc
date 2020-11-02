@@ -185,11 +185,13 @@ class MockActorCreator : public ActorCreatorInterface {
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {
   size_t num_plasma_puts = 0;
+  auto ref_counter = std::make_shared<ReferenceCounter>(rpc::Address());
   auto mem = std::make_shared<CoreWorkerMemoryStore>(
-      [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; });
+      [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; }, ref_counter);
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
+  ref_counter->AddOwnedObject(obj1, {}, {}, "", 0, false);
   ASSERT_TRUE(mem->Put(*data, obj1));
 
   // Test getting an already existing object.
@@ -199,6 +201,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   // Testing getting an object that doesn't exist yet causes promotion.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) == nullptr);
   ASSERT_TRUE(num_plasma_puts == 0);
+  ref_counter->AddOwnedObject(obj2, {}, {}, "", 0, false);
   ASSERT_FALSE(mem->Put(*data, obj2));
   ASSERT_TRUE(num_plasma_puts == 1);
 
@@ -219,7 +222,8 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto ref_counter = std::make_shared<ReferenceCounter>(rpc::Address());
+  auto store = std::make_shared<CoreWorkerMemoryStore>(nullptr, ref_counter);
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom();
@@ -227,6 +231,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+  ref_counter->AddOwnedObject(obj1, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(data, obj1));
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
@@ -240,14 +245,17 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto ref_counter = std::make_shared<ReferenceCounter>(rpc::Address());
+  auto store = std::make_shared<CoreWorkerMemoryStore>(nullptr, ref_counter);
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
+  ref_counter->AddOwnedObject(obj1, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(*data, obj1));
+  ref_counter->AddOwnedObject(obj2, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(*data, obj2));
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
@@ -265,7 +273,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto ref_counter = std::make_shared<ReferenceCounter>(rpc::Address());
+  auto store = std::make_shared<CoreWorkerMemoryStore>(nullptr, ref_counter);
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom();
@@ -278,7 +287,9 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
+  ref_counter->AddOwnedObject(obj1, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(*data, obj1));
+  ref_counter->AddOwnedObject(obj2, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(*data, obj2));
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
@@ -293,7 +304,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto ref_counter = std::make_shared<ReferenceCounter>(rpc::Address());
+  auto store = std::make_shared<CoreWorkerMemoryStore>(nullptr, ref_counter);
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom();
@@ -307,7 +319,9 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
+  ref_counter->AddOwnedObject(obj1, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(*data, obj1));
+  ref_counter->AddOwnedObject(obj2, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(*data, obj2));
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
@@ -920,7 +934,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 }
 
 TEST(DirectTaskTransportTest, TestSchedulingKeys) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto ref_counter = std::make_shared<ReferenceCounter>(rpc::Address());
+  auto store = std::make_shared<CoreWorkerMemoryStore>(nullptr, ref_counter);
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
@@ -947,7 +962,9 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   ObjectID plasma2 = ObjectID::FromRandom();
   // Ensure the data is already present in the local store for direct call objects.
   auto data = GenerateRandomObject();
+  ref_counter->AddOwnedObject(direct1, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(*data, direct1));
+  ref_counter->AddOwnedObject(direct2, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(*data, direct2));
 
   // Force plasma objects to be promoted.
@@ -955,7 +972,9 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+  ref_counter->AddOwnedObject(plasma1, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(plasma_data, plasma1));
+  ref_counter->AddOwnedObject(plasma2, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(plasma_data, plasma2));
 
   TaskSpecification same_deps_1 = BuildTaskSpec(resources1, descriptor1);
@@ -1136,7 +1155,8 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto ref_counter = std::make_shared<ReferenceCounter>(rpc::Address());
+  auto store = std::make_shared<CoreWorkerMemoryStore>(nullptr, ref_counter);
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1154,6 +1174,7 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
   ASSERT_TRUE(submitter.CancelTask(task, true).ok());
   auto data = GenerateRandomObject();
+  ref_counter->AddOwnedObject(obj1, {}, {}, "", 0, false);
   ASSERT_TRUE(store->Put(*data, obj1));
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
