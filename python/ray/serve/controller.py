@@ -379,6 +379,18 @@ class ActorStateReconciler:
 
         return actor_stopped
 
+    async def _remove_pending_endpoints(self) -> None:
+        """Removes the pending endpoints in self.actor_reconciler.endpoints_to_remove.
+
+        Clears self.endpoints_to_remove.
+        """
+        for endpoint_tag in self.endpoints_to_remove:
+            await asyncio.gather(*[
+                router.remove_endpoint.remote(endpoint_tag)
+                for router in self.router_handles()
+            ])
+        self.endpoints_to_remove.clear()
+
     def _recover_actor_handles(self) -> None:
         # Refresh the RouterCache
         for node_id in self.routers_cache.keys():
@@ -396,6 +408,52 @@ class ActorStateReconciler:
                                                  self.controller_name)
                 self.workers[backend_tag][replica_tag] = ray.get_actor(
                     replica_name)
+
+    async def _recover_from_checkpoint(self, config_store: ConfigurationStore,
+                                       controller: "ServeController") -> None:
+        self._recover_actor_handles()
+
+        # Push configuration state to the router.
+        # TODO(edoakes): should we make this a pull-only model for simplicity?
+        for endpoint, traffic_policy in config_store.traffic_policies.items():
+            await asyncio.gather(*[
+                router.set_traffic.remote(endpoint, traffic_policy)
+                for router in self.router_handles()
+            ])
+
+        for backend_tag, replica_dict in self.workers.items():
+            for replica_tag, worker in replica_dict.items():
+                await asyncio.gather(*[
+                    router.add_new_worker.remote(backend_tag, replica_tag,
+                                                 worker)
+                    for router in self.router_handles()
+                ])
+
+        for backend, info in config_store.backends.items():
+            await asyncio.gather(*[
+                router.set_backend_config.remote(backend, info.backend_config)
+                for router in self.router_handles()
+            ])
+            await controller.broadcast_backend_config(backend)
+            metadata = info.backend_config.internal_metadata
+            if metadata.autoscaling_config is not None:
+                controller.autoscaling_policies[
+                    backend] = BasicAutoscalingPolicy(
+                        backend, metadata.autoscaling_config)
+
+        # Push configuration state to the routers.
+        await asyncio.gather(*[
+            router.set_route_table.remote(config_store.routes)
+            for router in self.router_handles()
+        ])
+
+        # Start/stop any pending backend replicas.
+        await self._start_pending_replicas(self)
+        await self._stop_pending_replicas()
+
+        # Remove any pending backends and endpoints.
+        await self._remove_pending_backends()
+        await self._remove_pending_endpoints()
 
 
 @dataclass
@@ -533,49 +591,8 @@ class ServeController:
         # Restore ActorStateReconciler
         self.actor_reconciler = restored_checkpoint.nursery
 
-        self.actor_reconciler._recover_actor_handles()
-
-        # Push configuration state to the router.
-        # TODO(edoakes): should we make this a pull-only model for simplicity?
-        for endpoint, traffic_policy in self.configuration_store.\
-                traffic_policies.items():
-            await asyncio.gather(*[
-                router.set_traffic.remote(endpoint, traffic_policy)
-                for router in self.actor_reconciler.router_handles()
-            ])
-
-        for backend_tag, replica_dict in self.actor_reconciler.workers.items():
-            for replica_tag, worker in replica_dict.items():
-                await asyncio.gather(*[
-                    router.add_new_worker.remote(backend_tag, replica_tag,
-                                                 worker)
-                    for router in self.actor_reconciler.router_handles()
-                ])
-
-        for backend, info in self.configuration_store.backends.items():
-            await asyncio.gather(*[
-                router.set_backend_config.remote(backend, info.backend_config)
-                for router in self.actor_reconciler.router_handles()
-            ])
-            await self.broadcast_backend_config(backend)
-            metadata = info.backend_config.internal_metadata
-            if metadata.autoscaling_config is not None:
-                self.autoscaling_policies[backend] = BasicAutoscalingPolicy(
-                    backend, metadata.autoscaling_config)
-
-        # Push configuration state to the routers.
-        await asyncio.gather(*[
-            router.set_route_table.remote(self.configuration_store.routes)
-            for router in self.actor_reconciler.router_handles()
-        ])
-
-        # Start/stop any pending backend replicas.
-        await self.actor_reconciler._start_pending_replicas(self)
-        await self.actor_reconciler._stop_pending_replicas()
-
-        # Remove any pending backends and endpoints.
-        await self.actor_reconciler._remove_pending_backends()
-        await self._remove_pending_endpoints()
+        await self.actor_reconciler._recover_from_checkpoint(
+            self.configuration_store, self)
 
         logger.info(
             "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
@@ -620,18 +637,6 @@ class ServeController:
     def get_traffic_policy(self, endpoint: str) -> TrafficPolicy:
         """Fetched by serve handles."""
         return self.configuration_store.traffic_policies[endpoint]
-
-    async def _remove_pending_endpoints(self) -> None:
-        """Removes the pending endpoints in self.actor_reconciler.endpoints_to_remove.
-
-        Clears self.actor_reconciler.endpoints_to_remove.
-        """
-        for endpoint_tag in self.actor_reconciler.endpoints_to_remove:
-            await asyncio.gather(*[
-                router.remove_endpoint.remote(endpoint_tag)
-                for router in self.actor_reconciler.router_handles()
-            ])
-        self.actor_reconciler.endpoints_to_remove.clear()
 
     def get_all_worker_handles(self) -> Dict[str, Dict[str, ActorHandle]]:
         """Fetched by the router on startup."""
@@ -810,7 +815,7 @@ class ServeController:
                 router.set_route_table.remote(self.configuration_store.routes)
                 for router in self.actor_reconciler.router_handles()
             ])
-            await self._remove_pending_endpoints()
+            await self.actor_reconciler._remove_pending_endpoints()
 
     async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,
