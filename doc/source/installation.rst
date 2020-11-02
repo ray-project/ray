@@ -275,7 +275,7 @@ Start out by launching the deployment container.
 
 .. code-block:: bash
 
-  docker run --shm-size=<shm-size> -t -i ray-project/ray
+  docker run --shm-size=<shm-size> -t -i rayproject/ray
 
 Replace ``<shm-size>`` with a limit appropriate for your system, for example
 ``512M`` or ``2G``. The ``-t`` and ``-i`` options here are required to support

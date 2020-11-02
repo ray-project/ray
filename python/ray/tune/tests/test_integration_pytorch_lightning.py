@@ -155,4 +155,4 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(sys.argv[1:] + ["-v", __file__]))

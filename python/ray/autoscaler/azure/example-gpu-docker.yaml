@@ -23,13 +23,13 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "rayproject/ray:0.8.7-gpu"
-    container_name: "ray-nvidia-docker-test" # e.g. ray_docker
+    image: "rayproject/ray:latest-gpu"
+    container_name: "ray_nvidia_docker" # e.g. ray_docker
 
     # # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray:0.8.7-gpu"
+    # head_image: "rayproject/ray:latest-gpu"
 
-    # worker_image: "rayproject/ray:0.8.7"
+    # worker_image: "rayproject/ray:latest"
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
@@ -52,16 +52,17 @@ auth:
     # you must specify paths to matching private and public key pair files
     # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
     ssh_private_key: ~/.ssh/id_rsa
+    # changes to this should match what is specified in file_mounts
     ssh_public_key: ~/.ssh/id_rsa.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields using example-full.yaml
+# Ray will auto-configure unspecified fields using defaults.yaml
 head_node:
     azure_arm_parameters:
         vmSize: Standard_NC6s_v3
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields using example-full.yaml
+# Ray will auto-configure unspecified fields using defaults.yaml
 worker_nodes:
     azure_arm_parameters:
         vmSize: Standard_NC6s_v3
@@ -71,11 +72,12 @@ worker_nodes:
 file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
+     "/home/ubuntu/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
 }
 
 # List of shell commands to run to set up nodes.
-# NOTE: rayproject/ray:0.8.7 has ray 0.8.7 bundled
-# setup_commands:
+# NOTE: rayproject/ray:latest has ray latest bundled
+setup_commands: []
 #     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
  
 # Custom commands that will be run on the head node after common setup.

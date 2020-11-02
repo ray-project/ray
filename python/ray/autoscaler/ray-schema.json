@@ -140,6 +140,21 @@
                     "type": ["string", "null"],
                     "description": "GCP globally unique project id"
                 },
+                "security_group": {
+                    "type": "object",
+                    "description": "AWS security group",
+                    "additionalProperties": false,
+                    "properties": {
+                      "GroupName": {
+                        "type": "string",
+                        "description": "Security group name"
+                      },
+                      "IpPermissions": {
+                        "type": "array",
+                        "description": "Security group in bound rules"
+                      }
+                    }
+                },
                 "gcp_credentials": {
                     "type": "object",
                     "description": "Credentials for authenticating with the GCP client",
@@ -188,7 +203,7 @@
                 "image": {
                     "type": "string",
                     "description": "the docker image name",
-                    "default": "rayproject/ray:0.8.7"
+                    "default": "rayproject/ray:latest"
                 },
                 "container_name": {
                     "type": "string",
@@ -252,6 +267,14 @@
         "file_mounts_sync_continuously": {
             "type": "boolean",
             "description": "If enabled, file mounts will sync continously between the head node and the worker nodes. The nodes will not re-run setup commands if only the contents of the file mounts folders change."
+        },
+        "rsync_exclude": {
+            "type": "array",
+            "description": "File pattern to not sync up or down when using the rsync command. Matches the format of rsync's --exclude param."
+        },
+        "rsync_filter": {
+            "type": "array",
+            "description": "Pattern files to lookup patterns to exclude when using rsync up or rsync down. This file is checked for recursively in all directories. For example, if .gitignore is provided here, the behavior will match git's .gitignore behavior."
         },
         "metadata": {
             "type": "object",

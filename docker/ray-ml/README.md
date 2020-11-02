@@ -1,5 +1,5 @@
 ## About
-This image is an extension of the [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) image. It includes all extended requirements of `RLlib`, `Serve` and `RLLIB`. It is a well-provisioned starting point for trying out the Ray ecosystem. [Find the Dockerfile here.](https://github.com/ray-project/ray/blob/master/docker/ray-ml/Dockerfile)
+This image is an extension of the [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) image. It includes all extended requirements of `RLlib`, `Serve` and `Tune`. It is a well-provisioned starting point for trying out the Ray ecosystem. [Find the Dockerfile here.](https://github.com/ray-project/ray/blob/master/docker/ray-ml/Dockerfile)
 
 
 

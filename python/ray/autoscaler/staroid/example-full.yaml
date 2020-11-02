@@ -79,7 +79,7 @@ provider:
     #      4-2. Select your branch in 'Release' tab
     #      4-3. After build success, switch to 'Production'
     #      4-4. Switch Launch permission to 'Public' if required
-    #   5. Change 'project' field to point your 
+    #   5. Change 'project' field to point your
     #      repository and branch in this file
     project: "GITHUB/open-datastudio/ray-cluster:master"
 
@@ -150,7 +150,7 @@ head_node:
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
           # Image will be overridden when 'image_from_project' is true.
-          image: rayproject/autoscaler
+          image: rayproject/ray
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -303,6 +303,17 @@ initialization_commands: []
 
 # List of shell commands to run to set up nodes.
 setup_commands: []
+
+# Patterns for files to exclude when running rsync up or rsync down
+rsync_exclude:
+    - "**/.git"
+    - "**/.git/**"
+
+# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
+# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
+# as a value, the behavior will match git's behavior for finding and using .gitignore files.
+rsync_filter:
+    - ".gitignore"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
