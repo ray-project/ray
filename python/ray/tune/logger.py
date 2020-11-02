@@ -130,7 +130,8 @@ class JsonLogger(Logger):
         self.local_out.write(b)
 
     def flush(self):
-        self.local_out.flush()
+        if not self.local_out.closed:
+            self.local_out.flush()
 
     def close(self):
         self.local_out.close()
@@ -182,7 +183,8 @@ class CSVLogger(Logger):
         self._file.flush()
 
     def flush(self):
-        self._file.flush()
+        if not self._file.closed:
+            self._file.flush()
 
     def close(self):
         self._file.close()
