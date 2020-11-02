@@ -239,7 +239,7 @@ class RedisContext {
   Status SubscribeAsync(const NodeID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
 
-  /// Subscribes the client to the given pattern.
+  /// Subscribes the client to the given channel.
   ///
   /// \param channel The subscription channel.
   /// \param redisCallback The callback function that the notification calls.
