@@ -128,9 +128,18 @@ DEFAULT_CONFIG = with_common_config({
 
 def validate_config(config: TrainerConfigDict) -> None:
     """Checks the config based on settings"""
+    # Only supported for PyTorch so far.
+    if config["framework"] != "torch":
+        raise ValueError("SlateQ only runs on PyTorch")
+
     if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
         raise ValueError("Unknown slateq_strategy: "
                          f"{config['slateq_strategy']}.")
+
+    if config["slateq_strategy"] == "SARSA":
+        if config["batch_mode"] != "complete_episodes":
+            raise ValueError(
+                "For SARSA strategy, batch_mode must be 'complete_episodes'")
 
 
 def execution_plan(workers: WorkerSet,

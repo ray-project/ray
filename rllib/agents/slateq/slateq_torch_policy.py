@@ -220,7 +220,7 @@ def build_slateq_model_and_distribution(
         policy: Policy, obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
-    """Build q_model and target_q_model for SlateQ
+    """Build models for SlateQ
 
     Args:
         policy (Policy): The policy, which will use the model for optimization.
