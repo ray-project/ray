@@ -277,7 +277,12 @@ class Simulator:
             event = self.event_queue.get()
             self.process_event(event)
         self.schedule()
+        print(self.info_string())
         return self.virtual_time
+
+    def info_string(self):
+        return  f"[t={self.virtual_time}] Nodes: {len(self.ip_to_nodes)} "
+                f"Remaining requests: {len(self.work_queue)} "
 
 
 SAMPLE_CLUSTER_CONFIG = copy.deepcopy(MULTI_WORKER_CLUSTER)
