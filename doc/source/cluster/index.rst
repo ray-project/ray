@@ -87,18 +87,35 @@ random port.
 
 .. code-block:: bash
 
-  ray start --head --port=6379
+  $ ray start --head --port=6379
+  ...
+  Next steps
+    To connect to this Ray runtime from another node, run
+      ray start --address='<ip address>:6379' --redis-password='<password>'
+
+  If connection fails, check your firewall settings and network configuration.
 
 The command will print out the address of the Redis server that was started
-(and some other address information).
+(the local node IP address plus the port number you specified).
 
-**Then on all of the other nodes**, run the following. Make sure to replace
+**Then on each of the other nodes**, run the following. Make sure to replace
 ``<address>`` with the value printed by the command on the head node (it
 should look something like ``123.45.67.89:6379``).
 
 .. code-block:: bash
 
-  ray start --address=<address>
+  $ ray start --address=<address> --redis-password='<password>'
+  --------------------
+  Ray runtime started.
+  --------------------
+
+  To terminate the Ray runtime, run
+    ray stop
+
+If you see ``Ray runtime started.``, then the node successfully connected to
+the ``<address>``. If the ``<address>`` is inaccessible (because, for example,
+the head node is not actually running), you will get an error such as
+``Unable to connect to Redis. If the Redis instance is on a different machine, check that your firewall is configured properly.``
 
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
 with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configuration <configuring-ray>` page for more information.
