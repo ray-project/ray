@@ -16,7 +16,7 @@ public class PlacementGroupImpl implements PlacementGroup {
   private final PlacementStrategy strategy;
   private final PlacementGroupState state;
 
-  public PlacementGroupImpl(PlacementGroupId id, String name,
+  private PlacementGroupImpl(PlacementGroupId id, String name,
                             List<Map<String, Double>> bundles,
                             PlacementStrategy strategy,
                             PlacementGroupState state) {
