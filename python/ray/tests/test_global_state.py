@@ -9,6 +9,8 @@ import ray
 import ray.ray_constants
 import ray.test_utils
 
+from ray._raylet import GlobalStateAccessor
+
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
 @pytest.mark.skipif(
@@ -108,6 +110,14 @@ def test_global_state_actor_table(ray_start_regular):
     assert get_state() == dead_state
 
 
+def test_global_state_worker_table(ray_start_regular):
+
+    # Get worker table from gcs.
+    workers_data = ray.state.workers()
+
+    assert len(workers_data) == 1
+
+
 def test_global_state_actor_entry(ray_start_regular):
     @ray.remote
     class Actor:
@@ -142,11 +152,9 @@ def test_load_report(shutdown_only, max_shapes):
         _system_config={
             "max_resource_shapes_per_load_report": max_shapes,
         })
-    redis = ray._private.services.create_redis_client(
-        cluster["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    client = redis.pubsub(ignore_subscribe_messages=True)
-    client.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
 
     @ray.remote
     def sleep():
@@ -163,22 +171,12 @@ def test_load_report(shutdown_only, max_shapes):
             self.report = None
 
         def check_load_report(self):
-            try:
-                message = client.get_message()
-            except redis.exceptions.ConnectionError:
-                pass
+            message = global_state_accessor.get_all_heartbeat()
             if message is None:
                 return False
 
-            pattern = message["pattern"]
-            data = message["data"]
-            if pattern != ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
-                return False
-
-            pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
-            heartbeat_data = pub_message.data
             heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
-                heartbeat_data)
+                message)
             self.report = heartbeat.resource_load_by_shape.resource_demands
             if max_shapes == 0:
                 return True
@@ -212,7 +210,7 @@ def test_load_report(shutdown_only, max_shapes):
             else:
                 assert demand.num_ready_requests_queued > 0
                 assert demand.num_infeasible_requests_queued == 0
-    client.close()
+    global_state_accessor.disconnect()
 
 
 def test_placement_group_load_report(ray_start_cluster):
@@ -220,12 +218,9 @@ def test_placement_group_load_report(ray_start_cluster):
     # Add a head node that doesn't have gpu resource.
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
-    redis = ray._private.services.create_redis_client(
-        cluster.address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    redis = ray._private.services.create_redis_client(
-        cluster.address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    client = redis.pubsub(ignore_subscribe_messages=True)
-    client.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+    global_state_accessor = GlobalStateAccessor(
+        cluster.address, ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
 
     class PgLoadChecker:
         def nothing_is_ready(self):
@@ -256,21 +251,12 @@ def test_placement_group_load_report(ray_start_cluster):
             return False
 
         def _read_heartbeat(self):
-            try:
-                message = client.get_message()
-            except redis.exceptions.ConnectionError:
-                pass
+            message = global_state_accessor.get_all_heartbeat()
             if message is None:
-                return None
+                return False
 
-            pattern = message["pattern"]
-            data = message["data"]
-            if pattern != ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
-                return None
-            pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
-            heartbeat_data = pub_message.data
             heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
-                heartbeat_data)
+                message)
             return heartbeat
 
     checker = PgLoadChecker()
@@ -292,7 +278,7 @@ def test_placement_group_load_report(ray_start_cluster):
     _, unready = ray.wait([pg_infeasible_second.ready()], timeout=0)
     assert len(unready) == 1
     ray.test_utils.wait_for_condition(checker.two_infeasible_pg)
-    client.close()
+    global_state_accessor.disconnect()
 
 
 def test_backlog_report(shutdown_only):
@@ -300,11 +286,9 @@ def test_backlog_report(shutdown_only):
         num_cpus=1, _system_config={
             "report_worker_backlog": True,
         })
-    redis = ray._private.services.create_redis_client(
-        cluster["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    client = redis.pubsub(ignore_subscribe_messages=True)
-    client.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
 
     @ray.remote(num_cpus=1)
     def foo(x):
@@ -313,21 +297,13 @@ def test_backlog_report(shutdown_only):
         return None
 
     def backlog_size_set():
-        try:
-            raw_message = client.get_message()
-        except Exception:
-            return False
-        if raw_message is None:
+        message = global_state_accessor.get_all_heartbeat()
+        if message is None:
             return False
 
-        data = raw_message["data"]
-        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
-        heartbeat_data = pub_message.data
-
-        message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
-            heartbeat_data)
+        heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(message)
         aggregate_resource_load = \
-            message.resource_load_by_shape.resource_demands
+            heartbeat.resource_load_by_shape.resource_demands
         if len(aggregate_resource_load) == 1:
             backlog_size = aggregate_resource_load[0].backlog_size
             print(backlog_size)
@@ -349,6 +325,7 @@ def test_backlog_report(shutdown_only):
     # request is sent to the raylet with backlog=7
 
     ray.test_utils.wait_for_condition(backlog_size_set, timeout=2)
+    global_state_accessor.disconnect()
 
 
 if __name__ == "__main__":
