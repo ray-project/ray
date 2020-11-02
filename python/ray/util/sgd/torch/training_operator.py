@@ -125,7 +125,6 @@ class TrainingOperator:
                  use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False,
-                 apex_args=None,
                  wrap_ddp=False,
                  add_dist_sampler=False,
                  scheduler_step_freq=None):
@@ -142,7 +141,6 @@ class TrainingOperator:
             raise ValueError("tqdm must be installed to use tqdm in training.")
         self._use_tqdm = use_tqdm
         self.global_step = 0
-        self._apex_args = apex_args if apex_args else {}
         self._wrap_ddp = wrap_ddp
         self._add_dist_sampler = add_dist_sampler
         self._scheduler_step_freq = scheduler_step_freq
@@ -154,14 +152,13 @@ class TrainingOperator:
         """Passes in the timers from the Runner."""
         self.timers = timers
 
-    def _configure_amp(self, amp, models, optimizers):
-        models, optimizers = amp.initialize(models, optimizers,
-                                            **self._apex_args)
+    def _configure_amp(self, amp, models, optimizers, apex_args):
+        models, optimizers = amp.initialize(models, optimizers, **apex_args)
         return models, optimizers
 
-    def _configure_ddp(self, models, device_ids):
+    def _configure_ddp(self, models, device_ids, ddp_args):
         return [
-            DistributedDataParallel(model, device_ids=device_ids)
+            DistributedDataParallel(model, device_ids=device_ids, **ddp_args)
             for model in models
         ]
 
@@ -188,7 +185,8 @@ class TrainingOperator:
         """
         raise NotImplementedError
 
-    def register(self, *, models, optimizers, criterion=None, schedulers=None):
+    def register(self, *, models, optimizers, criterion=None,
+                 schedulers=None, ddp_args=None, apex_args=None):
         """Registers parameters with Ray SGD and sets up training components.
 
         By calling this method to register your models, optimizers,
@@ -199,6 +197,14 @@ class TrainingOperator:
 
         If more than one model, optimizer, or scheduler is passed in,
         you should implement your own custom training loop.
+
+        Calling register will perform the following steps in this order:
+            1. If using GPU, Move model(s) and criterion to the corresponding
+                Cuda device.
+            2. If using fp16, initializes amp with model(s), optimizer(s),
+                and apex_args.
+            3. If using distributed training and wrap_ddp is True,
+                wraps model(s) with DistributedDataParallel.
 
         .. code-block:: python
 
@@ -238,11 +244,30 @@ class TrainingOperator:
             schedulers (torch.optim.lr_scheduler or Iterable[
                 torch.optim.lr_scheduler], optional): A learning rate
                 scheduler or multiple learning rate schedulers.
+            ddp_args (dict|None): Dict containing keyword args for
+                DistributedDataParallel if distributed training is being
+                used. `module` and `device_ids` are automatically passed in,
+                but this dict is useful for passing in other args such as
+                `find_unused_parameters=True`.
+            apex_args (dict|None): Dict containing keyword args for
+                amp.initialize if fp16 is being used. See
+                https://nvidia.github.io/apex/amp.html#module-apex.amp.
+                By default, the models and optimizers are passed in.
+                Consider using "num_losses" if operating over multiple
+                models and optimizers.
 
         Returns:
             Tuple of model, optimizer, criterion if not None, and scheduler
             if not None.
         """
+        if ddp_args and not isinstance(ddp_args, dict):
+            raise ValueError("ddp_args needs to be a dict object.")
+        ddp_args = ddp_args if ddp_args else {}
+
+        if apex_args and not isinstance(apex_args, dict):
+            raise ValueError("apex_args needs to be a dict object.")
+        apex_args = apex_args if apex_args else {}
+
         return_vals = []
         logger.debug("Registering models.")
         self._original_models = models
@@ -285,12 +310,14 @@ class TrainingOperator:
             logger.debug("Setting up Apex.")
             self._amp = amp
             self._original_models, self._optimizers = self._configure_amp(
-                self._amp, self._original_models, self._optimizers)
+                self._amp, self._original_models, self._optimizers,
+                apex_args=apex_args)
 
         if self._wrap_ddp:
             logging.debug("Setting up DDP for models.")
             self._models = self._configure_ddp(
-                models=self._original_models, device_ids=self.device_ids)
+                models=self._original_models, device_ids=self.device_ids,
+                ddp_args=ddp_args)
         else:
             self._models = self._original_models
 

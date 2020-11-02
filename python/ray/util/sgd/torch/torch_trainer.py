@@ -113,10 +113,6 @@ class TorchTrainer:
             is installed. This is automatically done after the model and
             optimizers are constructed and will work for multi-model training.
             Please see https://github.com/NVIDIA/apex for more details.
-        apex_args (dict|None): Dict containing keyword args for amp.initialize.
-            See https://nvidia.github.io/apex/amp.html#module-apex.amp. By
-            default, the models and optimizers are passed in. Consider using
-            "num_losses" if operating over multiple models and optimizers.
         scheduler_step_freq: "batch", "epoch", "manual", or None. This will
             determine when ``scheduler.step`` is called. If "batch",
             ``step`` will be called after every optimizer step. If "epoch",
@@ -150,7 +146,6 @@ class TorchTrainer:
             timeout_s=NCCL_TIMEOUT_S,
             use_fp16=False,
             use_tqdm=False,
-            apex_args=None,
             add_dist_sampler=True,
             scheduler_step_freq=None,
             use_local=False,
@@ -242,10 +237,6 @@ class TorchTrainer:
         self.add_dist_sampler = add_dist_sampler
         self.use_local = use_local
 
-        if apex_args and not isinstance(apex_args, dict):
-            raise ValueError("apex_args needs to be a dict object.")
-
-        self.apex_args = apex_args
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
         self._last_resize = float("-inf")
@@ -294,7 +285,6 @@ class TorchTrainer:
             use_fp16=self.use_fp16,
             use_gpu=self.use_gpu,
             use_tqdm=self.use_tqdm,
-            apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
 
         dist_params = dict(

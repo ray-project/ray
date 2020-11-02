@@ -31,9 +31,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         assert len(models) == 1
         model = models[0]
         assert isinstance(model, ptl.LightningModule)
-        amp_level = self._apex_args.get("opt_level", "O2")
         model, optimizers = model.configure_apex(
-            amp, model, optimizers, amp_level=amp_level)
+            amp, model, optimizers, amp_level="O2")
         return [model], optimizers
 
     def _configure_ddp(self, models, device_ids):
