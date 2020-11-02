@@ -21,7 +21,6 @@ from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
-from ray.tune.utils.util import pretty_print
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -353,7 +352,6 @@ class Trial:
             trial_name_creator=self.trial_name_creator,
             loggers=self.loggers,
             log_to_file=self.log_to_file,
-            sync_to_driver_fn=self.sync_to_driver_fn,
             max_failures=self.max_failures,
         )
 
@@ -367,11 +365,7 @@ class Trial:
                 os.makedirs(self.logdir, exist_ok=True)
 
             self.result_logger = UnifiedLogger(
-                self.config,
-                self.logdir,
-                trial=self,
-                loggers=self.loggers,
-                sync_function=self.sync_to_driver_fn)
+                self.config, self.logdir, trial=self, loggers=self.loggers)
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.

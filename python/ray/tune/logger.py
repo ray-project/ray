@@ -1,9 +1,8 @@
 import csv
 import json
 import logging
-import numbers
 import os
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Type
 
 import numpy as np
 
@@ -11,11 +10,9 @@ import ray.cloudpickle as cloudpickle
 import yaml
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
-from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
-                             TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
-                             EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
-                             EXPR_RESULT_FILE)
-from ray.tune.syncer import get_node_syncer
+from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
+                             EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE,
+                             EXPR_PROGRESS_FILE, EXPR_RESULT_FILE)
 from ray.tune.utils import flatten_dict
 
 if TYPE_CHECKING:
@@ -317,16 +314,13 @@ class UnifiedLogger(Logger):
         logdir: Directory for all logger creators to log to.
         loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
             and JSON loggers.
-        sync_function (func|str): Optional function for syncer to run.
-            See ray/python/ray/tune/syncer.py
     """
 
     def __init__(self,
                  config: Dict,
                  logdir: str,
                  trial: Optional["Trial"] = None,
-                 loggers: Optional[List[Type[Logger]]] = None,
-                 sync_function: Union[None, Callable, str] = None):
+                 loggers: Optional[List[Type[Logger]]] = None):
         if loggers is None:
             self._logger_cls_list = DEFAULT_LOGGERS
         else:
@@ -336,8 +330,6 @@ class UnifiedLogger(Logger):
                 logger.warning(
                     "JsonLogger not provided. The ExperimentAnalysis tool is "
                     "disabled.")
-        self._sync_function = sync_function
-        self._log_syncer = None
 
         super(UnifiedLogger, self).__init__(config, logdir, trial)
 
@@ -350,16 +342,10 @@ class UnifiedLogger(Logger):
                 if log_once(f"instantiate:{cls.__name__}"):
                     logger.warning("Could not instantiate %s: %s.",
                                    cls.__name__, str(exc))
-        self._log_syncer = get_node_syncer(
-            self.logdir,
-            remote_dir=self.logdir,
-            sync_function=self._sync_function)
 
     def on_result(self, result):
         for _logger in self._loggers:
             _logger.on_result(result)
-        self._log_syncer.set_worker_ip(result.get(NODE_IP))
-        self._log_syncer.sync_down_if_needed()
 
     def update_config(self, config):
         for _logger in self._loggers:
@@ -369,68 +355,9 @@ class UnifiedLogger(Logger):
         for _logger in self._loggers:
             _logger.close()
 
-    def flush(self, sync_down=True):
+    def flush(self):
         for _logger in self._loggers:
             _logger.flush()
-        if sync_down:
-            if not self._log_syncer.sync_down():
-                logger.warning("Trial %s: Post-flush sync skipped.",
-                               self.trial)
-
-    def sync_up(self):
-        return self._log_syncer.sync_up()
-
-    def sync_down(self):
-        return self._log_syncer.sync_down()
-
-    def wait(self):
-        self._log_syncer.wait()
-
-    def sync_results_to_new_location(self, worker_ip):
-        """Sends the current log directory to the remote node.
-
-        Syncing will not occur if the cluster is not started
-        with the Ray autoscaler.
-        """
-        if worker_ip != self._log_syncer.worker_ip:
-            logger.info("Trial %s: Syncing (blocking) results to %s",
-                        self.trial, worker_ip)
-            self._log_syncer.reset()
-            self._log_syncer.set_worker_ip(worker_ip)
-            if not self._log_syncer.sync_up():
-                logger.error(
-                    "Trial %s: Sync up to new location skipped. "
-                    "This should not occur.", self.trial)
-            self._log_syncer.wait()
-        else:
-            logger.error(
-                "Trial %s: Sync attempted to same IP %s. This "
-                "should not occur.", self.trial, worker_ip)
-
-
-class _SafeFallbackEncoder(json.JSONEncoder):
-    def __init__(self, nan_str="null", **kwargs):
-        super(_SafeFallbackEncoder, self).__init__(**kwargs)
-        self.nan_str = nan_str
-
-    def default(self, value):
-        try:
-            if np.isnan(value):
-                return self.nan_str
-
-            if (type(value).__module__ == np.__name__
-                    and isinstance(value, np.ndarray)):
-                return value.tolist()
-
-            if issubclass(type(value), numbers.Integral):
-                return int(value)
-            if issubclass(type(value), numbers.Number):
-                return float(value)
-
-            return super(_SafeFallbackEncoder, self).default(value)
-
-        except Exception:
-            return str(value)  # give up, just stringify it (ok for logs)
 
 
 def pretty_print(result):
@@ -442,5 +369,5 @@ def pretty_print(result):
         if v is not None:
             out[k] = v
 
-    cleaned = json.dumps(out, cls=_SafeFallbackEncoder)
+    cleaned = json.dumps(out, cls=SafeFallbackEncoder)
     return yaml.safe_dump(json.loads(cleaned), default_flow_style=False)
