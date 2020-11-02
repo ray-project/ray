@@ -1147,7 +1147,7 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
       actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
 }
 
-void GcsActorManager::DumpDebugMetrics() const {
+std::string GcsActorManager::DumpDebugMetrics() const {
   std::ostringstream stream;
   stream << "GcsActorManager metrics: "
          << "\n{"
@@ -1166,7 +1166,7 @@ void GcsActorManager::DumpDebugMetrics() const {
          << "\nUnresolved actors count: " << unresolved_actors_.size()
          << "\nPending actors count: " << pending_actors_.size()
          << "\nCreated actors count: " << created_actors_.size() << "\n}";
-  RAY_LOG(INFO) << stream.str();
+  return stream.str();
 }
 
 }  // namespace gcs

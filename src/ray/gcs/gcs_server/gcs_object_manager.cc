@@ -308,7 +308,7 @@ void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
   RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
 }
 
-void GcsObjectManager::DumpDebugMetrics() const {
+std::string GcsObjectManager::DumpDebugMetrics() const {
   absl::MutexLock lock(&mutex_);
   std::ostringstream stream;
   stream << "GcsObjectManager metrics: "
@@ -320,7 +320,7 @@ void GcsObjectManager::DumpDebugMetrics() const {
          << "\nRemoveObjectLocation count: "
          << metrics_[MetricsType::REMOVE_OBJECT_LOCATION]
          << "\nObject count: " << object_to_locations_.size() << "\n}";
-  RAY_LOG(INFO) << stream.str();
+  return stream.str();
 }
 
 }  // namespace gcs

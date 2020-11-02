@@ -306,10 +306,15 @@ void GcsServer::PrintDebugInfo() {
   print_debug_info_timer_.expires_from_now(std::chrono::minutes(dump_interval_minutes));
   print_debug_info_timer_.async_wait([this](const boost::system::error_code &error) {
     RAY_CHECK(!error);
-    gcs_node_manager_->DumpDebugMetrics();
-    gcs_actor_manager_->DumpDebugMetrics();
-    gcs_object_manager_->DumpDebugMetrics();
-    ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DumpDebugMetrics();
+    std::ostringstream stream;
+    stream
+        << gcs_node_manager_->DumpDebugMetrics() << "\n"
+        << gcs_actor_manager_->DumpDebugMetrics() << "\n"
+        << gcs_object_manager_->DumpDebugMetrics() << "\n"
+        << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DumpDebugMetrics();
+    // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
+    // gcs_debug_state.txt.
+    RAY_LOG(INFO) << stream.str();
     PrintDebugInfo();
   });
 }

@@ -178,7 +178,7 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
   ++metrics_[MetricsType::ATTEMPT_TASK_RECONSTRUCTION];
 }
 
-void DefaultTaskInfoHandler::DumpDebugMetrics() const {
+std::string DefaultTaskInfoHandler::DumpDebugMetrics() const {
   std::ostringstream stream;
   stream << "DefaultTaskInfoHandler metrics: "
          << "\n{"
@@ -189,7 +189,7 @@ void DefaultTaskInfoHandler::DumpDebugMetrics() const {
          << "\nGetTaskLease count: " << metrics_[MetricsType::GET_TASK_LEASE]
          << "\nAttemptTaskReconstruction count: "
          << metrics_[MetricsType::ATTEMPT_TASK_RECONSTRUCTION] << "\n}";
-  RAY_LOG(INFO) << stream.str();
+  return stream.str();
 }
 
 }  // namespace rpc

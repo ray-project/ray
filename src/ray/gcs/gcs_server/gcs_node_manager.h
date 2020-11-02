@@ -176,7 +176,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
-  void DumpDebugMetrics() const;
+  std::string DumpDebugMetrics() const;
 
  protected:
   class NodeFailureDetector {

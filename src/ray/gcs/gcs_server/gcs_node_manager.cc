@@ -593,7 +593,7 @@ void GcsNodeManager::SendBatchedHeartbeat() {
   });
 }
 
-void GcsNodeManager::DumpDebugMetrics() const {
+std::string GcsNodeManager::DumpDebugMetrics() const {
   std::ostringstream stream;
   stream << "GcsNodeManager metrics: "
          << "\n{"
@@ -609,7 +609,7 @@ void GcsNodeManager::DumpDebugMetrics() const {
          << "\nSetInternalConfig count: " << metrics_[MetricsType::SET_INTERNAL_CONFIG]
          << "\nGetInternalConfig count: " << metrics_[MetricsType::GET_INTERNAL_CONFIG]
          << "\n}";
-  RAY_LOG(INFO) << stream.str();
+  return stream.str();
 }
 
 }  // namespace gcs
