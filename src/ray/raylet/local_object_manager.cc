@@ -20,6 +20,7 @@ namespace raylet {
 
 void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
                                     std::vector<std::unique_ptr<RayObject>> &&objects) {
+  absl::MutexLock lock(&mutex_);
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];
@@ -56,8 +57,11 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-  pinned_objects_.erase(object_id);
+  {
+    absl::MutexLock lock(&mutex_);
+    RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+    pinned_objects_.erase(object_id);
+  }
 
   // Try to evict all copies of the object from the cluster.
   if (free_objects_period_ms_ >= 0) {
@@ -91,6 +95,8 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
     return num_bytes_required;
   }
 
+  absl::MutexLock lock(&mutex_);
+
   RAY_LOG(INFO) << "Choosing objects to spill of total size " << num_bytes_required;
   int64_t num_bytes_to_spill = 0;
   auto it = pinned_objects_.begin();
@@ -103,15 +109,15 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
   if (!objects_to_spill.empty()) {
     RAY_LOG(ERROR) << "Spilling objects of total size " << num_bytes_to_spill;
     auto start_time = current_time_ms();
-    SpillObjects(objects_to_spill,
-                 [num_bytes_to_spill, start_time](const Status &status) {
-                   if (!status.ok()) {
-                     RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
-                   } else {
-                     RAY_LOG(INFO) << "Spilled " << num_bytes_to_spill << " in "
-                                   << (current_time_ms() - start_time) << "ms";
-                   }
-                 });
+    SpillObjectsInternal(
+        objects_to_spill, [num_bytes_to_spill, start_time](const Status &status) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
+          } else {
+            RAY_LOG(INFO) << "Spilled " << num_bytes_to_spill << " in "
+                          << (current_time_ms() - start_time) << "ms";
+          }
+        });
   }
   //  We do not track a mapping between objects that need to be created to
   //  objects that are being spilled, so we just subtract the total number of
@@ -124,6 +130,13 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
                                       std::function<void(const ray::Status &)> callback) {
+  absl::MutexLock lock(&mutex_);
+  SpillObjectsInternal(object_ids, callback);
+}
+
+void LocalObjectManager::SpillObjectsInternal(
+    const std::vector<ObjectID> &object_ids,
+    std::function<void(const ray::Status &)> callback) {
   std::vector<ObjectID> objects_to_spill;
   // Filter for the objects that can be spilled.
   for (const auto &id : object_ids) {
@@ -168,6 +181,7 @@ void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
             request, [this, objects_to_spill, callback, io_worker](
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
               io_worker_pool_.PushIOWorker(io_worker);
+              absl::MutexLock lock(&mutex_);
               if (!status.ok()) {
                 for (const auto &object_id : objects_to_spill) {
                   auto it = objects_pending_spill_.find(object_id);
@@ -202,6 +216,7 @@ void LocalObjectManager::AddSpilledUrls(
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
         object_id, object_url, [this, object_id, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
+          absl::MutexLock lock(&mutex_);
           // Unpin the object.
           auto it = objects_pending_spill_.find(object_id);
           RAY_CHECK(it != objects_pending_spill_.end());

@@ -130,8 +130,18 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
   Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
                             const gcs::StatusCallback &callback) {
     object_urls[object_id] = spilled_url;
-    callback(Status());
+    callbacks.push_back(callback);
     return Status();
+  }
+
+  bool ReplyAsyncAddSpilledUrl() {
+    if (callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = callbacks.front();
+    callback(Status::OK());
+    callbacks.pop_front();
+    return true;
   }
 
   MOCK_METHOD3(AsyncRemoveLocation,
@@ -151,6 +161,7 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
   MOCK_METHOD1(IsObjectUnsubscribed, bool(const ObjectID &object_id));
 
   std::unordered_map<ObjectID, std::string> object_urls;
+  std::list<gcs::StatusCallback> callbacks;
 };
 
 class MockObjectBuffer : public Buffer {
@@ -273,6 +284,9 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     urls.push_back("url" + std::to_string(i));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
+  }
   ASSERT_EQ(num_times_fired, 1);
   for (size_t i = 0; i < object_ids.size(); i++) {
     ASSERT_EQ(object_table.object_urls[object_ids[i]], urls[i]);
@@ -320,6 +334,9 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   }
   EXPECT_CALL(worker_pool, PushIOWorker(_));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
+  }
   ASSERT_EQ(num_times_fired, 1);
   for (size_t i = 0; i < object_ids.size(); i++) {
     ASSERT_EQ(object_table.object_urls[object_ids[i]], urls[i]);
@@ -370,6 +387,9 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   // Objects should get freed even though we didn't wait for the owner's notice
   // to evict.
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < urls.size(); i++) {
+    ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
+  }
   ASSERT_EQ(object_table.object_urls.size(), object_ids.size() / 2 + 1);
   for (auto &object_url : object_table.object_urls) {
     auto it = std::find(urls.begin(), urls.end(), object_url.second);
@@ -407,6 +427,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   EXPECT_CALL(worker_pool, PushIOWorker(_));
   ASSERT_TRUE(
       worker_pool.io_worker_client->ReplySpillObjects({}, Status::IOError("error")));
+  ASSERT_FALSE(object_table.ReplyAsyncAddSpilledUrl());
   ASSERT_EQ(num_times_fired, 1);
   ASSERT_EQ((*unpins)[object_id], 0);
 
@@ -418,6 +439,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   std::string url = "url";
   EXPECT_CALL(worker_pool, PushIOWorker(_));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
+  ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
   ASSERT_EQ(num_times_fired, 2);
   ASSERT_EQ(object_table.object_urls[object_id], url);
   ASSERT_EQ((*unpins)[object_id], 1);
