@@ -22,6 +22,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
+from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -233,7 +234,6 @@ class Trial:
             self.log_to_file = (None, None)
 
         self.sync_to_driver_fn = sync_to_driver_fn
-        self.verbose = True
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
@@ -518,11 +518,21 @@ class Trial:
         result.update(trial_id=self.trial_id, done=terminate)
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
-        if self.verbose and (terminate or time.time() - self.last_debug >
-                             DEBUG_PRINT_INTERVAL):
+        if has_verbosity(Verbosity.TRIAL_DETAILS) and \
+           (terminate or time.time() - self.last_debug > DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
+        elif has_verbosity(Verbosity.TRIAL_NORM) and (
+                terminate
+                or time.time() - self.last_debug > DEBUG_PRINT_INTERVAL):
+            print("Trial {trial} reported {metric_name}={metric_value:.2f} "
+                  "with parameters={config}".format(
+                      trial=self,
+                      metric_name="x",
+                      metric_value=0.3,
+                      config=result.get("config", {})))
+
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
         self.last_result = result
         self.last_update_time = time.time()
@@ -564,9 +574,6 @@ class Trial:
 
     def get_trainable_cls(self):
         return get_trainable_cls(self.trainable_name)
-
-    def set_verbose(self, verbose):
-        self.verbose = verbose
 
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]

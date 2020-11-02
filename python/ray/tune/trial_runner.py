@@ -608,8 +608,6 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
-        # trial.verbose determines if trial results should be printed
-        trial.set_verbose(has_verbosity(Verbosity.TRIAL_DETAILS))
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)

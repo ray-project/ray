@@ -16,7 +16,8 @@ from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import FIFOScheduler
-from ray.tune.utils.log import Verbosity, has_verbosity, verbose_log
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity, \
+    verbose_log
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +281,8 @@ def run(
         raise ValueError(
             "The `mode` parameter passed to `tune.run()` has to be one of "
             "['min', 'max']")
+
+    set_verbosity(verbose)
 
     config = config or {}
     sync_config = sync_config or SyncConfig()

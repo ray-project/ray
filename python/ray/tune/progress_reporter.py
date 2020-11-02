@@ -225,7 +225,8 @@ class TuneReporterBase(ProgressReporter):
                 best_trial_str(current_best_trial, metric,
                                self._parameter_columns))
 
-        if has_verbosity(Verbosity.TRIAL_DETAILS):
+        if has_verbosity(Verbosity.EXPERIMENT):
+            # Will filter the table in `trial_progress_str`
             messages.append(
                 trial_progress_str(
                     trials,
@@ -234,7 +235,6 @@ class TuneReporterBase(ProgressReporter):
                     total_samples=self._total_samples,
                     fmt=fmt,
                     max_rows=max_progress))
-        if has_verbosity(Verbosity.EXPERIMENT):
             messages.append(
                 trial_errors_str(trials, fmt=fmt, max_rows=max_error))
 
@@ -403,6 +403,13 @@ def memory_debug_str():
                 "(or ray[debug]) to resolve)")
 
 
+def _get_trials_by_state(trials):
+    trials_by_state = collections.defaultdict(list)
+    for t in trials:
+        trials_by_state[t.status].append(t)
+    return trials_by_state
+
+
 def trial_progress_str(trials,
                        metric_columns,
                        parameter_columns=None,
@@ -436,9 +443,7 @@ def trial_progress_str(trials,
         return delim.join(messages)
 
     num_trials = len(trials)
-    trials_by_state = collections.defaultdict(list)
-    for t in trials:
-        trials_by_state[t.status].append(t)
+    trials_by_state = _get_trials_by_state(trials)
 
     for local_dir in sorted({t.local_dir for t in trials}):
         messages.append("Result logdir: {}".format(local_dir))
@@ -447,6 +452,29 @@ def trial_progress_str(trials,
         "{} {}".format(len(trials_by_state[state]), state)
         for state in sorted(trials_by_state)
     ]
+
+    if total_samples and total_samples >= sys.maxsize:
+        total_samples = "infinite"
+
+    messages.append("Number of trials: {}{} ({})".format(
+        num_trials, f"/{total_samples}"
+        if total_samples else "", ", ".join(num_trials_strs)))
+
+    if has_verbosity(Verbosity.TRIAL_DETAILS):
+        messages += trial_progress_table(trials, metric_columns,
+                                         parameter_columns, fmt, max_rows)
+
+    return delim.join(messages)
+
+
+def trial_progress_table(trials,
+                         metric_columns,
+                         parameter_columns=None,
+                         fmt="psql",
+                         max_rows=None):
+    messages = []
+    num_trials = len(trials)
+    trials_by_state = _get_trials_by_state(trials)
 
     state_tbl_order = [
         Trial.RUNNING, Trial.PAUSED, Trial.PENDING, Trial.TERMINATED,
@@ -477,13 +505,6 @@ def trial_progress_str(trials,
             if state not in trials_by_state:
                 continue
             trials += trials_by_state[state]
-
-    if total_samples and total_samples >= sys.maxsize:
-        total_samples = "infinite"
-
-    messages.append("Number of trials: {}{} ({})".format(
-        num_trials, f"/{total_samples}"
-        if total_samples else "", ", ".join(num_trials_strs)))
 
     # Pre-process trials to figure out what columns to show.
     if isinstance(metric_columns, Mapping):
@@ -526,7 +547,6 @@ def trial_progress_str(trials,
     if overflow:
         messages.append("... {} more trials not shown ({})".format(
             overflow, overflow_str))
-    return delim.join(messages)
 
 
 def trial_errors_str(trials, fmt="psql", max_rows=None):

@@ -15,6 +15,15 @@ class Verbosity(Enum):
 verbosity: Union[int, Verbosity] = Verbosity.TRIAL_DETAILS
 
 
+def set_verbosity(level: Union[int, Verbosity]):
+    global verbosity
+
+    if isinstance(level, int):
+        verbosity = Verbosity(level)
+    else:
+        verbosity = verbosity
+
+
 def verbose_log(logger: Callable[[str], Any], level: Union[int, Verbosity],
                 message: str):
     """Log `message` if specified level exceeds global verbosity level.
@@ -34,4 +43,4 @@ def has_verbosity(level: Union[int, Verbosity]) -> bool:
     log_level = int(level)
     verbosity_level = int(verbosity)
 
-    return log_level >= verbosity_level
+    return verbosity_level >= log_level
