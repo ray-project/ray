@@ -1,7 +1,9 @@
-from typing import Dict, List
+from typing import TYPE_CHECKING, Dict, List
 
 from ray.tune.checkpoint_manager import Checkpoint
-from ray.tune.trial import Trial
+
+if TYPE_CHECKING:
+    from ray.tune.trial import Trial
 
 
 class Callback:
@@ -39,7 +41,7 @@ class Callback:
 
     """
 
-    def on_step_begin(self, iteration: int, trials: List[Trial], **info):
+    def on_step_begin(self, iteration: int, trials: List["Trial"], **info):
         """Called at the start of each tuning loop step.
 
         Arguments:
@@ -49,7 +51,7 @@ class Callback:
         """
         pass
 
-    def on_step_end(self, iteration: int, trials: List[Trial], **info):
+    def on_step_end(self, iteration: int, trials: List["Trial"], **info):
         """Called at the end of each tuning loop step.
 
         The iteration counter is increased before this hook is called.
@@ -61,8 +63,8 @@ class Callback:
         """
         pass
 
-    def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial,
-                       **info):
+    def on_trial_start(self, iteration: int, trials: List["Trial"],
+                       trial: "Trial", **info):
         """Called after starting a trial instance.
 
         Arguments:
@@ -74,8 +76,8 @@ class Callback:
         """
         pass
 
-    def on_trial_restore(self, iteration: int, trials: List[Trial],
-                         trial: Trial, **info):
+    def on_trial_restore(self, iteration: int, trials: List["Trial"],
+                         trial: "Trial", **info):
         """Called after restoring a trial instance.
 
         Arguments:
@@ -86,8 +88,8 @@ class Callback:
         """
         pass
 
-    def on_trial_save(self, iteration: int, trials: List[Trial], trial: Trial,
-                      **info):
+    def on_trial_save(self, iteration: int, trials: List["Trial"],
+                      trial: "Trial", **info):
         """Called after receiving a checkpoint from a trial.
 
         Arguments:
@@ -98,8 +100,8 @@ class Callback:
         """
         pass
 
-    def on_trial_result(self, iteration: int, trials: List[Trial],
-                        trial: Trial, result: Dict, **info):
+    def on_trial_result(self, iteration: int, trials: List["Trial"],
+                        trial: "Trial", result: Dict, **info):
         """Called after receiving a result from a trial.
 
         The search algorithm and scheduler are notified before this
@@ -114,8 +116,8 @@ class Callback:
         """
         pass
 
-    def on_trial_complete(self, iteration: int, trials: List[Trial],
-                          trial: Trial, **info):
+    def on_trial_complete(self, iteration: int, trials: List["Trial"],
+                          trial: "Trial", **info):
         """Called after a trial instance completed.
 
         The search algorithm and scheduler are notified before this
@@ -129,8 +131,8 @@ class Callback:
         """
         pass
 
-    def on_trial_error(self, iteration: int, trials: List[Trial], trial: Trial,
-                       **info):
+    def on_trial_error(self, iteration: int, trials: List["Trial"],
+                       trial: "Trial", **info):
         """Called after a trial instance failed (errored).
 
         The search algorithm and scheduler are notified before this
@@ -144,8 +146,8 @@ class Callback:
         """
         pass
 
-    def on_checkpoint(self, iteration: int, trials: List[Trial], trial: Trial,
-                      checkpoint: Checkpoint, **info):
+    def on_checkpoint(self, iteration: int, trials: List["Trial"],
+                      trial: "Trial", checkpoint: Checkpoint, **info):
         """Called after a trial saved a checkpoint with Tune.
 
         Arguments:
