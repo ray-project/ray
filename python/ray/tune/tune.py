@@ -190,8 +190,9 @@ def run(
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
             This has no effect when using the Functional Training API.
-        verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
-            1 = only status updates, 2 = status and trial results.
+        verbose (int): 0, 1, 2, or 3. Verbosity mode. 0 = silent,
+            1 = only status updates, 2 = status and brief trial results,
+            3 = status and detailed trial results.
         progress_reporter (ProgressReporter): Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
@@ -461,7 +462,7 @@ def run(
 def run_experiments(experiments,
                     scheduler=None,
                     server_port=None,
-                    verbose=3,
+                    verbose=Verbosity.TRIAL_DETAILS,
                     progress_reporter=None,
                     resume=False,
                     queue_trials=False,
