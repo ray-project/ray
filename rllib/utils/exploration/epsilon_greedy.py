@@ -167,8 +167,7 @@ class EpsilonGreedy(Exploration):
                             exploit_action[j][i] = torch.tensor(
                                 random_action[j])
                 exploit_action = tree.unflatten_as(
-                    action_distribution.action_space_struct,
-                    exploit_action)
+                    action_distribution.action_space_struct, exploit_action)
 
                 return exploit_action, action_logp
 
