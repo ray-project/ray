@@ -428,6 +428,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
             shutdown_after_run=False,
+            silent=False
     ):
         if shutdown_after_run:
             cmd += "; sudo shutdown -h now"
@@ -485,9 +486,11 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
-                return self._run_helper(final_cmd, with_output, exit_on_fail)
+                return self._run_helper(final_cmd, with_output, exit_on_fail,
+                                        silent=silent)
         else:
-            return self._run_helper(final_cmd, with_output, exit_on_fail)
+            return self._run_helper(final_cmd, with_output, exit_on_fail,
+                                    silent=silent)
 
     def _create_rsync_filter_args(self, options):
         rsync_excludes = options.get("rsync_exclude") or []
@@ -576,11 +579,12 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
-            cmd = " ".join(_with_interactive(cmd))
+            if is_using_login_shells():
+                cmd = " ".join(_with_interactive(cmd))
             cmd = with_docker_exec(
                 [cmd],
                 container_name=self.container_name,
-                with_interactive=True)[0]
+                with_interactive=is_using_login_shells())[0]
 
         if shutdown_after_run:
             # sudo shutdown should run after `with_docker_exec` command above
@@ -602,7 +606,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.ssh_command_runner.cluster_name), target.lstrip("/"))
 
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
+            f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}",
+            silent=is_rsync_silent())
 
         self.ssh_command_runner.run_rsync_up(
             source, host_destination, options=options)
@@ -614,7 +619,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 host_destination += "/."
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
                 host_destination, self.container_name,
-                self._docker_expand_user(target)))
+                self._docker_expand_user(target)),
+                silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
@@ -622,7 +628,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name), source.lstrip("/"))
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
+            f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}",
+            silent=is_rsync_silent())
         if source[-1] == "/":
             source += "."
             # Adding a "." means that docker copies the *contents*
@@ -630,7 +637,8 @@ class DockerCommandRunner(CommandRunnerInterface):
         if not options.get("docker_mount_if_possible", False):
             self.ssh_command_runner.run("docker cp {}:{} {}".format(
                 self.container_name, self._docker_expand_user(source),
-                host_source))
+                host_source),
+                silent=is_rsync_silent())
         self.ssh_command_runner.run_rsync_down(
             host_source, target, options=options)
 
