@@ -132,7 +132,6 @@ DEFAULT_CONFIG = with_common_config({
 
 def validate_config(config: TrainerConfigDict) -> None:
     """Checks the config based on settings"""
-    # Only supported for PyTorch so far.
     if config["framework"] != "torch":
         raise ValueError("SlateQ only runs on PyTorch")
 
