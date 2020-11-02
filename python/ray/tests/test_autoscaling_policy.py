@@ -179,8 +179,8 @@ class Simulator:
         else:
             self.work_queue.append(work)
 
-    def _schedule_task(self, task):
-        for ip, node in self.ip_to_nodes.items():
+    def _schedule_task(self, task, nodes):
+        for node in nodes:
             if node.bundle_fits(task.resources):
                 node.allocate(task.resources)
                 task.node = node
@@ -199,7 +199,7 @@ class Simulator:
         new_work_queue = []
         for work in self.work_queue:
             if isinstance(work, Task):
-                scheduled = self._schedule_task(work)
+                scheduled = self._schedule_task(work, self.ip_to_nodes.values())
 
             if scheduled is False:
                 new_work_queue.append(work)
