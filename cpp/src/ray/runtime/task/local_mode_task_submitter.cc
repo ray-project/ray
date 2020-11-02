@@ -58,13 +58,9 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation) {
   } else {
     throw RayException("unknown task type");
   }
-  auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-      reinterpret_cast<uint8_t *>(invocation.args->data()), invocation.args->size(),
-      true);
-  /// TODO(Guyang Song): Use both 'AddByRefArg' and 'AddByValueArg' to distinguish
-  auto arg = TaskArgByValue(
-      std::make_shared<::ray::RayObject>(buffer, nullptr, std::vector<ObjectID>()));
-  builder.AddArg(arg);
+  for (size_t i = 0; i < invocation.args.size(); i++) {
+    builder.AddArg(*invocation.args[i]);
+  }
   auto task_specification = builder.Build();
   ObjectID return_object_id = task_specification.ReturnId(0);
 
@@ -81,16 +77,16 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation) {
     /// TODO(Guyang Song): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
-    TaskExecutor::Invoke(task_specification, actor, runtime, dynamic_library_base_addr);
+    TaskExecutor::Invoke(task_specification, actor, runtime, dynamic_library_base_addr, actor_contexts_, actor_contexts_mutex_);
   } else {
     boost::asio::post(*thread_pool_.get(),
                       std::bind(
-                          [actor, mutex, runtime](TaskSpecification &ts) {
+                          [actor, mutex, runtime, this](TaskSpecification &ts) {
                             if (mutex) {
                               absl::MutexLock lock(mutex.get());
                             }
                             TaskExecutor::Invoke(ts, actor, runtime,
-                                                 dynamic_library_base_addr);
+                                                 dynamic_library_base_addr, this->actor_contexts_, this->actor_contexts_mutex_);
                           },
                           std::move(task_specification)));
   }
@@ -102,23 +98,26 @@ ObjectID LocalModeTaskSubmitter::SubmitTask(const InvocationSpec &invocation) {
 }
 
 ActorID LocalModeTaskSubmitter::CreateActor(const InvocationSpec &invocation) {
-  if (dynamic_library_base_addr == 0) {
-    dynamic_library_base_addr =
-        GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
-  }
-  ActorID id = local_mode_ray_tuntime_.GetNextActorID();
-  typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-      uintptr_t base_addr, size_t func_offset, std::shared_ptr<msgpack::sbuffer> args);
-  ExecFunction exec_function = (ExecFunction)(invocation.fptr.exec_function_pointer);
-  auto data = (*exec_function)(
-      dynamic_library_base_addr,
-      (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr),
-      invocation.args);
-  std::unique_ptr<ActorContext> actorContext(new ActorContext());
-  actorContext->current_actor = data;
-  absl::MutexLock lock(&actor_contexts_mutex_);
-  actor_contexts_.emplace(id, std::move(actorContext));
-  return id;
+  // if (dynamic_library_base_addr == 0) {
+  //   dynamic_library_base_addr =
+  //       GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
+  // }
+  //ActorID id = local_mode_ray_tuntime_.GetNextActorID();
+
+
+  // typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
+  //     uintptr_t base_addr, size_t func_offset, std::shared_ptr<msgpack::sbuffer> args);
+  // ExecFunction exec_function = (ExecFunction)(invocation.fptr.exec_function_pointer);
+  // auto data = (*exec_function)(
+  //     dynamic_library_base_addr,
+  //     (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr),
+  //     invocation.args);
+  // std::unique_ptr<ActorContext> actorContext(new ActorContext());
+  // actorContext->current_actor = data;
+  // absl::MutexLock lock(&actor_contexts_mutex_);
+  // actor_contexts_.emplace(id, std::move(actorContext));
+  SubmitTask(invocation);
+  return invocation.actor_id;
 }
 
 ObjectID LocalModeTaskSubmitter::SubmitActorTask(const InvocationSpec &invocation) {

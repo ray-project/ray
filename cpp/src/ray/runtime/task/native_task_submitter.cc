@@ -18,28 +18,26 @@ RayFunction BuildRayFunction(const InvocationSpec &invocation) {
   return RayFunction(Language::CPP, function_descriptor);
 }
 
-void BuildTaskArgs(const InvocationSpec &invocation,
-                   std::vector<std::unique_ptr<ray::TaskArg>> &args) {
-  if (invocation.args->size() > 0) {
-    auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-        reinterpret_cast<uint8_t *>(invocation.args->data()), invocation.args->size(),
-        true);
-    auto task_arg = new TaskArgByValue(
-        std::make_shared<::ray::RayObject>(buffer, nullptr, std::vector<ObjectID>()));
-    args.emplace_back(task_arg);
-  }
-}
+// void BuildTaskArgs(const InvocationSpec &invocation,
+//                    std::vector<std::unique_ptr<::ray::TaskArg>> &args) {
+//   if (invocation.args.size() > 0) {
+//     auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
+//         reinterpret_cast<uint8_t *>(invocation.args.data()), invocation.args.size(),
+//         true);
+//     auto task_arg = new TaskArgByValue(
+//         std::make_shared<::ray::RayObject>(buffer, nullptr, std::vector<ObjectID>()));
+//     args.emplace_back(task_arg);
+//   }
+// }
 
 ObjectID NativeTaskSubmitter::Submit(const InvocationSpec &invocation) {
-  std::vector<std::unique_ptr<ray::TaskArg>> args;
-  BuildTaskArgs(invocation, args);
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::vector<ObjectID> return_ids;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
-    core_worker.SubmitActorTask(invocation.actor_id, BuildRayFunction(invocation), args,
+    core_worker.SubmitActorTask(invocation.actor_id, BuildRayFunction(invocation), invocation.args,
                                 TaskOptions(), &return_ids);
   } else {
-    core_worker.SubmitTask(BuildRayFunction(invocation), args, TaskOptions(), &return_ids,
+    core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args, TaskOptions(), &return_ids,
                            1, std::make_pair(PlacementGroupID::Nil(), -1), true);
   }
   return return_ids[0];
@@ -50,9 +48,6 @@ ObjectID NativeTaskSubmitter::SubmitTask(const InvocationSpec &invocation) {
 }
 
 ActorID NativeTaskSubmitter::CreateActor(const InvocationSpec &invocation) {
-  std::vector<std::unique_ptr<ray::TaskArg>> args;
-  BuildTaskArgs(invocation, args);
-
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
 
   std::unordered_map<std::string, double> resources;
@@ -67,7 +62,7 @@ ActorID NativeTaskSubmitter::CreateActor(const InvocationSpec &invocation) {
                                      name,
                                      /*is_asyncio=*/false};
   ActorID actor_id;
-  auto status = core_worker.CreateActor(BuildRayFunction(invocation), args, actor_options,
+  auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args, actor_options,
                                         "", &actor_id);
   if (!status.ok()) {
     throw RayException("Create actor error");

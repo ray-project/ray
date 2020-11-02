@@ -4,7 +4,7 @@
 #include <ray/api/ray_config.h>
 #include <ray/experimental/default_worker.h>
 
-using namespace ray::api;
+using namespace ::ray::api;
 
 /// general function of user code
 int Return1() { return 1; }
