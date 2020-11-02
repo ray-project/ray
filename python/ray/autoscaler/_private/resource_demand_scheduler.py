@@ -12,12 +12,13 @@ import numpy as np
 import logging
 import collections
 from numbers import Number
-from typing import List, Dict
+from typing import List, Dict, Any
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import PlacementStrategy
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED
+from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED,
+                                 TAG_RAY_LEGACY_NODE_TYPE)
 
 logger = logging.getLogger(__name__)
 
@@ -38,19 +39,21 @@ NodeIP = str
 
 
 class ResourceDemandScheduler:
-    def __init__(self, provider: NodeProvider,
-                 node_types: Dict[NodeType, NodeTypeConfigDict],
-                 max_workers: int):
+    def __init__(self, provider: NodeProvider, cluster_config: Dict[str, Any]):
         self.provider = provider
-        self.node_types = node_types
-        self.max_workers = max_workers
+        self.cluster_config = copy.deepcopy(cluster_config)
+        self.node_types = self.cluster_config.get("available_node_types")
+        if "available_node_types" in self.cluster_config:
+            self.is_legacy_yaml = False
+        else:
+            self.is_legacy_yaml = True
 
     def get_nodes_to_launch(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeType, int],
             resource_demands: List[ResourceDict],
             usage_by_ip: Dict[NodeIP, ResourceDict],
-            pending_placement_groups: List[PlacementGroupTableData]
-    ) -> Dict[NodeType, int]:
+            pending_placement_groups: List[PlacementGroupTableData],
+            static_node_resources: List[ResourceDict]) -> Dict[NodeType, int]:
         """Given resource demands, return node types to add to the cluster.
 
         This method:
@@ -68,7 +71,14 @@ class ResourceDemandScheduler:
             pending_nodes: Summary of node types currently being launched.
             resource_demands: Vector of resource demands from the scheduler.
             usage_by_ip: Mapping from ip to available resources.
+            pending_placement_groups: Placement group demands.
+            static_node_resources: List of static node resources.
         """
+        if self.is_legacy_yaml:
+            return_immediately, legacy_nodes_to_add = self._handle_legacy_yaml(
+                nodes, pending_nodes, static_node_resources)
+            if return_immediately:
+                return legacy_nodes_to_add
 
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
@@ -97,7 +107,8 @@ class ResourceDemandScheduler:
                                                resource_demands)
         logger.info("Resource demands: {}".format(resource_demands))
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
-        max_to_add = self.max_workers - sum(node_type_counts.values())
+        max_to_add = self.cluster_config["max_workers"] - sum(
+            node_type_counts.values())
         nodes_to_add_based_on_demand = get_nodes_for(
             self.node_types, node_type_counts, max_to_add, unfulfilled)
         # Merge nodes to add based on demand and nodes to add based on
@@ -115,8 +126,58 @@ class ResourceDemandScheduler:
         total_nodes_to_add = self._get_concurrent_resource_demand_to_launch(
             total_nodes_to_add, usage_by_ip.keys(), nodes, pending_nodes)
 
+        if self.is_legacy_yaml:
+            assert len(total_nodes_to_add.keys()) <= 1
         logger.info("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add
+
+    def _handle_legacy_yaml(self, nodes: List[NodeID],
+                            pending_nodes: Dict[NodeType, int],
+                            static_node_resources: List[ResourceDict]
+                            ) -> (bool, Dict[NodeType, int]):
+        """Handles legacy config files without available_node_types.
+
+        Launches a single node from which it calculates the resources and fills
+        the available self.node_types.
+        Args:
+            nodes: List of existing nodes in the cluster.
+            pending_nodes: Summary of node types currently being launched.
+            static_node_resources: List of static node resources.
+        Returns:
+            legacy_nodes_to_add: A dict that is either empty or includes
+                max(1, min_workers) nodes to add from which we later calculate
+                the resources.
+            return_immediately: Whether to return legacy_nodes_to_add or to
+                continue running the resource demand scheduler.
+        """
+        return_immediately, legacy_nodes_to_add = False, {}
+        if not self.node_types:
+            if self.cluster_config["max_workers"] == 0:
+                # Do not add any workers if max_workers is 0.
+                return_immediately, legacy_nodes_to_add = True, {}
+            elif static_node_resources:
+                # Set the node_types here since we already launched a node
+                # from which we directly get the node_resources.
+                self.node_types = {
+                    TAG_RAY_LEGACY_NODE_TYPE: {
+                        "resources": static_node_resources[0],
+                        "max_workers": self.cluster_config["max_workers"],
+                        "min_workers": self.cluster_config["min_workers"]
+                    }
+                }
+                return_immediately, legacy_nodes_to_add = False, {}
+            elif pending_nodes or nodes:
+                # If we are already launching a node or one failed already.
+                # If first node fails this will never launch more nodes.
+                return_immediately, legacy_nodes_to_add = True, {}
+            else:
+                # Launch max(1, min_workers) nodes from which we later
+                # calculate the node resources.
+                return_immediately, legacy_nodes_to_add = True, {
+                    TAG_RAY_LEGACY_NODE_TYPE: max(
+                        1, self.cluster_config["min_workers"])
+                }
+        return return_immediately, legacy_nodes_to_add
 
     def _get_concurrent_resource_demand_to_launch(
             self, to_launch: Dict[NodeType, int],
@@ -184,11 +245,11 @@ class ResourceDemandScheduler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                node_ip = self.provider.internal_ip(node_id)
-                if node_ip in connected_nodes:
-                    running_nodes[node_type] += 1
-                else:
-                    pending_nodes[node_type] += 1
+            node_ip = self.provider.internal_ip(node_id)
+            if node_ip in connected_nodes:
+                running_nodes[node_type] += 1
+            else:
+                pending_nodes[node_type] += 1
         return running_nodes, pending_nodes
 
     def calculate_node_resources(
@@ -235,9 +296,9 @@ class ResourceDemandScheduler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                ip = self.provider.internal_ip(node_id)
-                available_resources = usage_by_ip.get(ip)
-                add_node(node_type, available_resources)
+            ip = self.provider.internal_ip(node_id)
+            available_resources = usage_by_ip.get(ip)
+            add_node(node_type, available_resources)
 
         for node_type, count in pending_nodes.items():
             for _ in range(count):
@@ -272,7 +333,8 @@ class ResourceDemandScheduler:
             # nodes. The remaining will be allocated on new nodes.
             unfulfilled, node_resources = get_bin_pack_residual(
                 node_resources, bundles, strict_spread=True)
-            max_to_add = self.max_workers - sum(node_type_counts.values())
+            max_to_add = self.cluster_config["max_workers"] - sum(
+                node_type_counts.values())
             # Allocate new nodes for the remaining bundles that don't fit.
             to_launch = get_nodes_for(
                 self.node_types,

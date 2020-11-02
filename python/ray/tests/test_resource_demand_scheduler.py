@@ -21,7 +21,8 @@ from ray.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
-                                STATUS_UP_TO_DATE, STATUS_UNINITIALIZED
+                                STATUS_UP_TO_DATE, STATUS_UNINITIALIZED, \
+                                TAG_RAY_LEGACY_NODE_TYPE
 from ray.test_utils import same_elements
 
 from time import sleep
@@ -280,7 +281,10 @@ def test_get_nodes_to_launch_with_min_workers():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["min_workers"] = 2
-    scheduler = ResourceDemandScheduler(provider, new_types, 3)
+    cluster_config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+    cluster_config["max_workers"] = 3
+    cluster_config["available_node_types"] = new_types
+    scheduler = ResourceDemandScheduler(provider, cluster_config)
 
     provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
 
@@ -291,7 +295,7 @@ def test_get_nodes_to_launch_with_min_workers():
 
     to_launch = scheduler.get_nodes_to_launch(nodes, {}, [{
         "GPU": 8
-    }], utilizations, [])
+    }], utilizations, [], [])
     assert to_launch == {"p2.8xlarge": 1}
 
 
@@ -299,7 +303,10 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["min_workers"] = 2
-    scheduler = ResourceDemandScheduler(provider, new_types, 10)
+    cluster_config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+    cluster_config["max_workers"] = 10
+    cluster_config["available_node_types"] = new_types
+    scheduler = ResourceDemandScheduler(provider, cluster_config)
 
     provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
 
@@ -313,23 +320,25 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     # requires 2 p2.8xls (only 2 are in cluster/pending) and 1 p2.xlarge
     demands = [{"GPU": 8}] * (len(utilizations) + 1) + [{"GPU": 1}]
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
-                                              utilizations, [])
+                                              utilizations, [], [])
     assert to_launch == {"p2.xlarge": 1}
 
     # 3 min_workers of p2.8xlarge covers the 2 p2.8xlarge + 1 p2.xlarge demand.
     # 2 p2.8xlarge are running/pending. So we need 1 more p2.8xlarge only to
     # meet the min_workers constraint and the demand.
     new_types["p2.8xlarge"]["min_workers"] = 3
-    scheduler = ResourceDemandScheduler(provider, new_types, 10)
+    scheduler = ResourceDemandScheduler(provider, cluster_config)
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
-                                              utilizations, [])
+                                              utilizations, [], [])
     # Make sure it does not return [("p2.8xlarge", 1), ("p2.xlarge", 1)]
     assert to_launch == {"p2.8xlarge": 1}
 
 
 def test_get_nodes_to_launch_limits():
     provider = MockProvider()
-    scheduler = ResourceDemandScheduler(provider, TYPES_A, 3)
+    cluster_config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+    cluster_config["max_workers"] = 3
+    scheduler = ResourceDemandScheduler(provider, cluster_config)
 
     provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
 
@@ -340,13 +349,15 @@ def test_get_nodes_to_launch_limits():
 
     to_launch = scheduler.get_nodes_to_launch(nodes, {"p2.8xlarge": 1}, [{
         "GPU": 8
-    }] * 2, utilizations, [])
+    }] * 2, utilizations, [], [])
     assert to_launch == {}
 
 
 def test_calculate_node_resources():
     provider = MockProvider()
-    scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
+    cluster_config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+    cluster_config["max_workers"] = 10
+    scheduler = ResourceDemandScheduler(provider, cluster_config)
 
     provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
 
@@ -360,7 +371,7 @@ def test_calculate_node_resources():
     # requires 4 p2.8xls (only 3 are in cluster/pending)
     demands = [{"GPU": 8}] * (len(utilizations) + 2)
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
-                                              utilizations, [])
+                                              utilizations, [], [])
 
     assert to_launch == {"p2.8xlarge": 1}
 
@@ -368,8 +379,9 @@ def test_calculate_node_resources():
 class TestPlacementGroupScaling:
     def test_strategies(self):
         provider = MockProvider()
-        scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
-
+        cluster_config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        cluster_config["max_workers"] = 10
+        scheduler = ResourceDemandScheduler(provider, cluster_config)
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
         # At this point our cluster has 2 p2.8xlarge instances (16 GPUs) and is
         # fully idle.
@@ -404,13 +416,15 @@ class TestPlacementGroupScaling:
                 strategy=PlacementStrategy.SPREAD,
                 bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
         ]
-        to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands,
-                                                  {}, pending_placement_groups)
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, {}, resource_demands, {}, pending_placement_groups, [])
         assert to_launch == {"p2.8xlarge": 2}
 
     def test_many_strict_spreads(self):
         provider = MockProvider()
-        scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
+        cluster_config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        cluster_config["max_workers"] = 10
+        scheduler = ResourceDemandScheduler(provider, cluster_config)
 
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
         # At this point our cluster has 2 p2.8xlarge instances (16 GPUs) and is
@@ -428,13 +442,15 @@ class TestPlacementGroupScaling:
         # Each placement group will take up 2 GPUs per node, but the distinct
         # placement groups should still reuse the same nodes.
         pending_placement_groups = pending_placement_groups * 3
-        to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands,
-                                                  {}, pending_placement_groups)
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, {}, resource_demands, {}, pending_placement_groups, [])
         assert to_launch == {"p2.8xlarge": 1}
 
     def test_packing(self):
         provider = MockProvider()
-        scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
+        cluster_config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        cluster_config["max_workers"] = 10
+        scheduler = ResourceDemandScheduler(provider, cluster_config)
 
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
         # At this point our cluster has 1 p2.8xlarge instances (8 GPUs) and is
@@ -450,8 +466,8 @@ class TestPlacementGroupScaling:
         ]
         # The 2 resource demand gpus should still be packed onto the same node
         # as the 6 GPU placement group.
-        to_launch = scheduler.get_nodes_to_launch(nodes, {}, resource_demands,
-                                                  {}, pending_placement_groups)
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, {}, resource_demands, {}, pending_placement_groups, [])
         assert to_launch == {}
 
 
@@ -462,7 +478,10 @@ def test_get_concurrent_resource_demand_to_launch():
     node_types["m4.large"]["min_workers"] = 2
     node_types["m4.large"]["max_workers"] = 100
     provider = MockProvider()
-    scheduler = ResourceDemandScheduler(provider, node_types, 200)
+    cluster_config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+    cluster_config["max_workers"] = 200
+    cluster_config["available_node_types"] = node_types
+    scheduler = ResourceDemandScheduler(provider, cluster_config)
     # Sanity check.
     assert len(provider.non_terminated_nodes({})) == 0
 
@@ -569,10 +588,12 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["min_workers"] = 4
     new_types["p2.8xlarge"]["max_workers"] = 40
+    cluster_config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+    cluster_config["max_workers"] = 30
+    cluster_config["available_node_types"] = new_types
+    scheduler = ResourceDemandScheduler(provider, cluster_config)
 
-    scheduler = ResourceDemandScheduler(provider, new_types, 30)
-
-    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [])
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [], [])
     # Respects min_workers despite concurrency limitation.
     assert to_launch == {"p2.8xlarge": 4}
 
@@ -591,7 +612,7 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     # requires 41 p2.8xls (currently 1 pending, 1 launching, 0 running}
     demands = [{"GPU": 8}] * (len(utilizations) + 40)
     to_launch = scheduler.get_nodes_to_launch(nodes, launching_nodes, demands,
-                                              utilizations, [])
+                                              utilizations, [], [])
     # Enforces max launch to 5 when < 5 running. 2 are pending/launching.
     assert to_launch == {"p2.8xlarge": 3}
 
@@ -608,10 +629,64 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     # Requires additional 17 p2.8xls (now 1 pending, 1 launching, 8 running}
     demands = [{"GPU": 8}] * (len(utilizations) + 15)
     to_launch = scheduler.get_nodes_to_launch(nodes, launching_nodes, demands,
-                                              utilizations, [])
+                                              utilizations, [], [])
     # We are allowed to launch up to 8 more since 8 are running.
     # We already have 2 pending/launching, so only 6 remain.
     assert to_launch == {"p2.8xlarge": 6}
+
+
+def test_handle_legacy_cluster_config_yaml():
+    provider = MockProvider()
+    cluster_config = copy.deepcopy(SMALL_CLUSTER)  # Legacy cluster_config.
+    cluster_config["max_workers"] = 0
+    cluster_config["min_workers"] = 0
+    scheduler = ResourceDemandScheduler(provider, cluster_config)
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [], [])
+    assert to_launch == {}  # Should always be empty with max_workers = 0.
+    cluster_config["max_workers"] = 30
+    scheduler.cluster_config = cluster_config
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [], [])
+    # Returns 1 node when min_workers is 0.
+    assert to_launch == {TAG_RAY_LEGACY_NODE_TYPE: 1}
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [], [])
+    cluster_config["min_workers"] = 4
+    scheduler.cluster_config = cluster_config
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [], [])
+    # Returns min_workers when min_workers>0.
+    assert to_launch == {TAG_RAY_LEGACY_NODE_TYPE: 4}
+    provider.create_node({}, {
+        TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+        TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
+        TAG_RAY_USER_NODE_TYPE: TAG_RAY_LEGACY_NODE_TYPE
+    }, 4)
+    nodes = provider.non_terminated_nodes({})
+    to_launch = scheduler.get_nodes_to_launch(nodes, {}, [], {}, [], [])
+    assert to_launch == {}  # A node is running, at some point it'll connect.
+    pending_launches = {TAG_RAY_LEGACY_NODE_TYPE: 4}
+    to_launch = scheduler.get_nodes_to_launch([], pending_launches, [], {}, [],
+                                              [])
+    assert to_launch == {}  # A node is launching, at some point it'll connect.
+
+    # Now assume that we already launched/connected the nodes.
+    ips = provider.non_terminated_node_ips({})
+    lm = LoadMetrics()
+    for ip in ips:
+        lm.update(ip, {"CPU": 32, "GPU": 8}, {"CPU": 32, "GPU": 8}, {})
+
+    to_launch = scheduler.get_nodes_to_launch([], pending_launches, [], {}, [],
+                                              lm.get_node_resources())
+    assert to_launch == {}
+    utilizations = {ip: {"CPU": 32, "GPU": 8} for ip in ips}
+    demands = [{"CPU": 32, "GPU": 8}] * (len(utilizations) + 2)
+    to_launch = scheduler.get_nodes_to_launch(nodes, {}, demands, utilizations,
+                                              [], [])
+    # 2 nodes are necessary to meet resource demand.
+    assert to_launch == {TAG_RAY_LEGACY_NODE_TYPE: 2}
+    to_launch = scheduler.get_nodes_to_launch([], pending_launches, demands,
+                                              utilizations, [],
+                                              lm.get_node_resources())
+    # 1 because there are 4 pending launches and we allow a max of 5.
+    assert to_launch == {TAG_RAY_LEGACY_NODE_TYPE: 1}
 
 
 class LoadMetricsTest(unittest.TestCase):

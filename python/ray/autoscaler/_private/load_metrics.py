@@ -110,7 +110,7 @@ class LoadMetrics:
             >>> metrics.get_node_resources()
             [{"CPU": 1}, {"CPU": 4, "GPU": 8}]  # for two different nodes
         """
-        return self.static_resources_by_ip.values()
+        return list(self.static_resources_by_ip.values())
 
     def get_resource_utilization(self):
         return self.dynamic_resources_by_ip
