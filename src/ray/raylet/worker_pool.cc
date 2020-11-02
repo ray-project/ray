@@ -1048,7 +1048,7 @@ std::string WorkerPool::DebugString() const {
     result << "\n- num " << Language_Name(entry.first)
            << " drivers: " << entry.second.registered_drivers.size();
   }
-  result << "- num idle workers: " << idle_of_all_languages_.size();
+  result << "\n- num idle workers: " << idle_of_all_languages_.size();
   return result.str();
 }
 

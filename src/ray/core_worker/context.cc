@@ -182,6 +182,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
+    is_detached_actor_ = task_spec.IsDetachedActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupId();
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
     override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
@@ -234,6 +235,8 @@ int WorkerContext::CurrentActorMaxConcurrency() const {
 }
 
 bool WorkerContext::CurrentActorIsAsync() const { return current_actor_is_asyncio_; }
+
+bool WorkerContext::CurrentActorDetached() const { return is_detached_actor_; }
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {
