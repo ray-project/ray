@@ -587,7 +587,7 @@ class Trial:
         state["resuming_from"] = None
         state["saving_to"] = None
         if self.result_logger:
-            self.result_logger.flush(sync_down=False)
+            self.result_logger.flush()
             state["__logger_started__"] = True
         else:
             state["__logger_started__"] = False
