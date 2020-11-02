@@ -37,11 +37,10 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest(bool lineage_pinning_enabled = false)
-      : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
-            rpc::Address(),
-            /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
-        manager_(store_, reference_counter_,
+      : reference_counter_(std::make_shared<ReferenceCounter>(rpc::Address(),
+            /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled)),
+        store_(std::make_shared<CoreWorkerMemoryStore>(nullptr, reference_counter_)),
+          manager_(store_, reference_counter_,
                  [this](TaskSpecification &spec, bool delay) {
                    num_retries_++;
                    return Status::OK();
@@ -51,8 +50,8 @@ class TaskManagerTest : public ::testing::Test {
                    objects_to_recover_.push_back(object_id);
                  }) {}
 
-  std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;
   std::vector<ObjectID> objects_to_recover_;
   TaskManager manager_;
@@ -87,7 +86,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_FALSE(results[0]->IsException());
   ASSERT_EQ(std::memcmp(results[0]->GetData()->Data(), return_object->data().data(),
@@ -122,7 +121,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -157,7 +156,7 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+  ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, &results).ok());
   ASSERT_EQ(objects_to_recover_.size(), 1);
   ASSERT_EQ(objects_to_recover_[0], return_id);
 }
@@ -183,7 +182,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
     std::vector<std::shared_ptr<RayObject>> results;
-    ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+    ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, &results).ok());
     ASSERT_EQ(num_retries_, i + 1);
   }
 
@@ -193,7 +192,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -223,7 +222,7 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   manager_.PendingTaskFailed(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
