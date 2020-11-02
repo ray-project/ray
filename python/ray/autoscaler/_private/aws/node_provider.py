@@ -52,9 +52,10 @@ def make_ec2_client(region, max_retries, aws_credentials=None):
         "ec2", region_name=region, config=config, **aws_credentials)
 
 
-def list_ec2_instances() -> List[Dict[str, Any]]:
+def list_ec2_instances(region: str) -> List[Dict[str, Any]]:
     """Get all instance-types/resources available in the user's AWS region.
-
+    Args:
+        region (str): the region of the AWS provider. e.g., "us-west-2".
     Returns:
         final_instance_types: a list of instances. An example of one element in
         the list:
@@ -67,11 +68,13 @@ def list_ec2_instances() -> List[Dict[str, Any]]:
 
     """
     final_instance_types = []
-    instance_types = boto3.client("ec2").describe_instance_types()
+    instance_types = boto3.client(
+        "ec2", region_name=region).describe_instance_types()
     final_instance_types.extend(copy.deepcopy(instance_types["InstanceTypes"]))
     while "NextToken" in instance_types:
-        instance_types = boto3.client("ec2").describe_instance_types(
-            NextToken=instance_types["NextToken"])
+        instance_types = boto3.client(
+            "ec2", region_name=region).describe_instance_types(
+                NextToken=instance_types["NextToken"])
         final_instance_types.extend(
             copy.deepcopy(instance_types["InstanceTypes"]))
 
@@ -524,7 +527,8 @@ class AWSNodeProvider(NodeProvider):
             return cluster_config
         cluster_config = copy.deepcopy(cluster_config)
 
-        instances_list = list_ec2_instances()
+        instances_list = list_ec2_instances(
+            cluster_config["provider"]["region"])
         instances_dict = {
             instance["InstanceType"]: instance
             for instance in instances_list
@@ -557,5 +561,6 @@ class AWSNodeProvider(NodeProvider):
                                      node_type, autodetected_resources)
             else:
                 raise ValueError("Instance type " + instance_type +
-                                 " is not available in your AWS region.")
+                                 " is not available in AWS region: " +
+                                 cluster_config["provider"]["region"] + ".")
         return cluster_config
