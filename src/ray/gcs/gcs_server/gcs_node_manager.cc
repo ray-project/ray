@@ -555,11 +555,11 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
 void GcsNodeManager::SendBatchedHeartbeat() {
   if (!heartbeat_buffer_.empty()) {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
-    std::unordered_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
     for (auto &heartbeat : heartbeat_buffer_) {
       batch->add_batch()->Swap(&heartbeat.second);
     }
 
+    RAY_LOG(INFO) << "wangtaoo publish heartbeat batch " << batch->DebugString();
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
     heartbeat_buffer_.clear();
