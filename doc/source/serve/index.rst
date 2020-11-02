@@ -25,7 +25,7 @@ As a library, Ray Serve enables:
 
 - :ref:`serve-split-traffic` with zero downtime, by decoupling routing logic from response handling logic.
 - :ref:`serve-batching` is built in to help you meet your performance objectives. You can also use your model for batch and online processing.
-- Because Serve is a library, it's esay to integrate it with other tools in your environment, such as CI/CD.
+- Because Serve is a library, it's easy to integrate it with other tools in your environment, such as CI/CD.
 
 Since Serve is built on Ray, it also allows you to scale to many machines, in your datacenter or in cloud environments, and it allows you to leverage all of the other Ray frameworks.
 
@@ -37,7 +37,7 @@ Since Serve is built on Ray, it also allows you to scale to many machines, in yo
 Installation
 ============
 
-Ray Serve supports Python versions 3.5 and higher. To install Ray Serve:
+Ray Serve supports Python versions 3.6 and higher. To install Ray Serve:
 
 .. code-block:: bash
 

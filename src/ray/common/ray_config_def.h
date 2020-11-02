@@ -108,9 +108,11 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
 /// Whether to enable the new scheduler. The new scheduler is designed
-/// only to work with  direct calls. Once direct calls afre becoming
+/// only to work with direct calls. Once direct calls are becoming
 /// the default, this scheduler will also become the default.
-RAY_CONFIG(bool, new_scheduler_enabled, false)
+RAY_CONFIG(bool, new_scheduler_enabled,
+           getenv("RAY_ENABLE_NEW_SCHEDULER") != nullptr &&
+               getenv("RAY_ENABLE_NEW_SCHEDULER") == std::string("1"))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -233,7 +235,9 @@ RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 /// Duration to wait between retries for creating placement group in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 /// Maximum number of destroyed actors in GCS server memory cache.
-RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 10000)
+RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead nodes in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -287,7 +291,7 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
 /// If true, the worker's queue backlog size will be propagated to the heartbeat batch
 /// data.
-RAY_CONFIG(bool, report_worker_backlog, true)
+RAY_CONFIG(bool, report_worker_backlog, false)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)

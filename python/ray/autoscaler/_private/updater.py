@@ -41,6 +41,7 @@ class NodeUpdater:
         runtime_hash: Used to check for config changes
         file_mounts_contents_hash: Used to check for changes to file mounts
         is_head_node: Whether to use head start/setup commands
+        rsync_options: Extra options related to the rsync command.
         process_runner: the module to use to run the commands
             in the CommandRunner. E.g., subprocess.
         use_internal_ip: Wwhether the node_id belongs to an internal ip
@@ -63,6 +64,7 @@ class NodeUpdater:
                  is_head_node,
                  node_resources=None,
                  cluster_synced_files=None,
+                 rsync_options=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None):
@@ -75,7 +77,6 @@ class NodeUpdater:
             process_runner, use_internal_ip, docker_config)
 
         self.daemon = True
-        self.process_runner = process_runner
         self.node_id = node_id
         self.provider = provider
         # Some node providers don't specify empty structures as
@@ -100,6 +101,7 @@ class NodeUpdater:
         self.cluster_synced_files = [
             os.path.expanduser(path) for path in cluster_synced_files
         ]
+        self.rsync_options = rsync_options or {}
         self.auth_config = auth_config
         self.is_head_node = is_head_node
         self.docker_config = docker_config
@@ -202,7 +204,8 @@ class NodeUpdater:
                     self.cmd_runner.run(
                         "mkdir -p {}".format(os.path.dirname(remote_path)),
                         run_env="host")
-                sync_cmd(local_path, remote_path, file_mount=True)
+                sync_cmd(
+                    local_path, remote_path, docker_mount_if_possible=True)
 
                 if remote_path not in nolog_paths:
                     # todo: timed here?
@@ -248,7 +251,8 @@ class NodeUpdater:
                                              self.log_prefix)
 
                         # Run outside of the container
-                        self.cmd_runner.run("uptime", run_env="host")
+                        self.cmd_runner.run(
+                            "uptime", timeout=5, run_env="host")
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
@@ -442,22 +446,26 @@ class NodeUpdater:
             global_event_system.execute_callback(
                 CreateClusterEvent.start_ray_runtime_completed, {})
 
-    def rsync_up(self, source, target, file_mount=False):
+    def rsync_up(self, source, target, docker_mount_if_possible=False):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
                             source, target)
 
         options = {}
-        options["file_mount"] = file_mount
+        options["docker_mount_if_possible"] = docker_mount_if_possible
+        options["rsync_exclude"] = self.rsync_options.get("rsync_exclude")
+        options["rsync_filter"] = self.rsync_options.get("rsync_filter")
         self.cmd_runner.run_rsync_up(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (local) to {} (remote)",
                            cf.bold(source), cf.bold(target))
 
-    def rsync_down(self, source, target, file_mount=False):
+    def rsync_down(self, source, target, docker_mount_if_possible=False):
         cli_logger.old_info(logger, "{}Syncing {} from {}...", self.log_prefix,
                             source, target)
 
         options = {}
-        options["file_mount"] = file_mount
+        options["docker_mount_if_possible"] = docker_mount_if_possible
+        options["rsync_exclude"] = self.rsync_options.get("rsync_exclude")
+        options["rsync_filter"] = self.rsync_options.get("rsync_filter")
         self.cmd_runner.run_rsync_down(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (remote) to {} (local)",
                            cf.bold(source), cf.bold(target))

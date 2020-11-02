@@ -39,13 +39,14 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id,
-    bool placement_group_capture_child_tasks) {
+    bool placement_group_capture_child_tasks,
+    const std::unordered_map<std::string, std::string> &override_environment_variables) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(task_id, name, function.GetLanguage(),
-                            function.GetFunctionDescriptor(), job_id, current_task_id,
-                            task_index, caller_id, address, num_returns,
-                            required_resources, required_placement_resources,
-                            placement_group_id, placement_group_capture_child_tasks);
+  builder.SetCommonTaskSpec(
+      task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
+      current_task_id, task_index, caller_id, address, num_returns, required_resources,
+      required_placement_resources, placement_group_id,
+      placement_group_capture_child_tasks, override_environment_variables);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -399,10 +400,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
-    if (!node) {
-      return false;
-    }
-    return node->state() == rpc::GcsNodeInfo::ALIVE;
+    return node.has_value();
   };
   auto reconstruct_object_callback = [this](const ObjectID &object_id) {
     io_service_.post([this, object_id]() {
@@ -505,13 +503,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             const auto &node_id = NodeID::FromBinary(loc.manager());
             auto node = gcs_client_->Nodes().Get(node_id);
             RAY_CHECK(node.has_value());
-            if (node->state() == rpc::GcsNodeInfo::ALIVE) {
-              rpc::Address address;
-              address.set_raylet_id(node->node_id());
-              address.set_ip_address(node->node_manager_address());
-              address.set_port(node->node_manager_port());
-              locations.push_back(address);
-            }
+            rpc::Address address;
+            address.set_raylet_id(node->node_id());
+            address.set_ip_address(node->node_manager_address());
+            address.set_port(node->node_manager_port());
+            locations.push_back(address);
           }
           callback(object_id, locations);
         });
@@ -540,6 +536,9 @@ void CoreWorker::Shutdown() {
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {
     task_execution_service_.stop();
+  }
+  if (options_.on_worker_shutdown) {
+    options_.on_worker_shutdown(GetWorkerID());
   }
 }
 
@@ -692,6 +691,7 @@ void CoreWorker::RegisterToGcs() {
   worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
   worker_data->set_worker_type(options_.worker_type);
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+  worker_data->set_is_alive(true);
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
@@ -1284,19 +1284,27 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
-
   auto constrained_resources = AddPlacementGroupConstraint(
       task_options.resources, placement_options.first, placement_options.second);
   const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
+  // Propagate existing environment variable overrides, but override them with any new
+  // ones
+  std::unordered_map<std::string, std::string> current_override_environment_variables =
+      worker_context_.GetCurrentOverrideEnvironmentVariables();
+  std::unordered_map<std::string, std::string> override_environment_variables =
+      task_options.override_environment_variables;
+  override_environment_variables.insert(current_override_environment_variables.begin(),
+                                        current_override_environment_variables.end());
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
-                      placement_options.first, placement_group_capture_child_tasks);
+                      placement_options.first, placement_group_capture_child_tasks,
+                      override_environment_variables);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1324,6 +1332,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                   next_task_index);
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
   const JobID job_id = worker_context_.GetCurrentJobID();
+  // Propagate existing environment variable overrides, but override them with any new
+  // ones
+  std::unordered_map<std::string, std::string> current_override_environment_variables =
+      worker_context_.GetCurrentOverrideEnvironmentVariables();
+  std::unordered_map<std::string, std::string> override_environment_variables =
+      actor_creation_options.override_environment_variables;
+  override_environment_variables.insert(current_override_environment_variables.begin(),
+                                        current_override_environment_variables.end());
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
@@ -1343,7 +1359,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, &return_ids,
                       actor_creation_options.placement_options.first,
-                      actor_creation_options.placement_group_capture_child_tasks);
+                      actor_creation_options.placement_group_capture_child_tasks,
+                      override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.max_concurrency,
@@ -1392,9 +1409,11 @@ Status CoreWorker::CreatePlacementGroup(
     PlacementGroupID *return_placement_group_id) {
   const PlacementGroupID placement_group_id = PlacementGroupID::FromRandom();
   PlacementGroupSpecBuilder builder;
-  builder.SetPlacementGroupSpec(placement_group_id, placement_group_creation_options.name,
-                                placement_group_creation_options.bundles,
-                                placement_group_creation_options.strategy);
+  builder.SetPlacementGroupSpec(
+      placement_group_id, placement_group_creation_options.name,
+      placement_group_creation_options.bundles, placement_group_creation_options.strategy,
+      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentActorID(),
+      worker_context_.CurrentActorDetached());
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
@@ -1444,13 +1463,15 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
+  const std::unordered_map<std::string, std::string> override_environment_variables = {};
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, return_ids, PlacementGroupID::Nil(),
-                      true /* placement_group_capture_child_tasks */);
-  // NOTE: placement_group_capture_child_tasks will be ignored in the actor because
-  // we should always follow actor's option.
+                      true, /* placement_group_capture_child_tasks */
+                      override_environment_variables);
+  // NOTE: placement_group_capture_child_tasks and override_environment_variables will be
+  // ignored in the actor because we should always follow the actor's option.
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, new_cursor);
@@ -1586,9 +1607,10 @@ std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
 
   if (actor_id.IsNil()) {
     std::ostringstream stream;
-    stream << "Failed to look up actor with name '" << name
-           << "'. It is either you look up the named actor you didn't create or the named"
-              "actor hasn't been created because named actor creation is asynchronous.";
+    stream << "Failed to look up actor with name '" << name << "'. You are "
+           << "either trying to look up a named actor you didn't create, "
+           << "the named actor died, or the actor hasn't been created "
+           << "because named actor creation is asynchronous.";
     return std::make_pair(nullptr, Status::NotFound(stream.str()));
   }
 
@@ -2183,8 +2205,12 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
+  stats->set_pid(getpid());
+  stats->set_language(options_.language);
   stats->set_job_id(worker_context_.GetCurrentJobID().Binary());
+  stats->set_worker_id(worker_context_.GetWorkerID().Binary());
   stats->set_actor_id(actor_id_.Binary());
+  stats->set_worker_type(worker_context_.GetWorkerType());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
     rpc::ResourceAllocations allocations;
@@ -2275,48 +2301,6 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   event.Wait();
 }
 
-void CoreWorker::PlasmaCallback(SetResultCallback success,
-                                std::shared_ptr<RayObject> ray_object, ObjectID object_id,
-                                void *py_future) {
-  std::vector<std::shared_ptr<RayObject>> vec;
-  // Check if object is available before subscribing to plasma.
-  if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
-    return success(vec.front(), object_id, py_future);
-  }
-  {
-    absl::MutexLock lock(&plasma_mutex_);
-    auto it = async_plasma_callbacks_.find(object_id);
-    auto plasma_arrived_callback = [this, success, object_id, py_future]() {
-      GetAsync(object_id, success, py_future);
-    };
-
-    if (it == async_plasma_callbacks_.end()) {
-      async_plasma_callbacks_.emplace(
-          object_id, std::vector<std::function<void(void)>>{plasma_arrived_callback});
-    } else {
-      it->second.push_back({plasma_arrived_callback});
-    }
-  }
-  SubscribeToPlasmaAdd(object_id);
-
-  // Check in-memory store in case object became ready *before* SubscribeToPlasmaAdd.
-  if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok() && vec.size() > 0) {
-    std::vector<std::function<void(void)>> callbacks;
-    {
-      absl::MutexLock lock(&plasma_mutex_);
-      auto after_iter = async_plasma_callbacks_.extract(object_id);
-      callbacks = after_iter.mapped();
-    }
-    for (auto callback : callbacks) {
-      // This callback needs to be asynchronous because it runs on the io_service_, so no
-      // RPCs can be processed while it's running. This can easily lead to deadlock (for
-      // example if the callback calls ray.get() on an object that is dependent on an RPC
-      // to be ready).
-      callback();
-    }
-  }
-}
-
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                           void *python_future) {
   auto fallback_callback =
@@ -2333,8 +2317,40 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
-void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
-  RAY_CHECK_OK(local_raylet_client_->SubscribeToPlasma(object_id));
+void CoreWorker::PlasmaCallback(SetResultCallback success,
+                                std::shared_ptr<RayObject> ray_object, ObjectID object_id,
+                                void *py_future) {
+  RAY_CHECK(ray_object->IsInPlasmaError());
+
+  // First check if the object is available in local plasma store.
+  // Note that we are using Contains instead of Get so it won't trigger pull request
+  // to remote nodes.
+  bool object_is_local = false;
+  if (Contains(object_id, &object_is_local).ok() && object_is_local) {
+    std::vector<std::shared_ptr<RayObject>> vec;
+    RAY_CHECK_OK(Get(std::vector<ObjectID>{object_id}, 0, &vec));
+    RAY_CHECK(vec.size() > 0)
+        << "Failed to get local object but Raylet notified object is local.";
+    return success(vec.front(), object_id, py_future);
+  }
+
+  // Object is not available locally. We now add the callback to listener queue.
+  {
+    absl::MutexLock lock(&plasma_mutex_);
+    auto plasma_arrived_callback = [this, success, object_id, py_future]() {
+      // This callback is invoked on the io_service_ event loop, so it cannot call
+      // blocking call like Get(). We used GetAsync here, which should immediate call
+      // PlasmaCallback again with object available locally.
+      GetAsync(object_id, success, py_future);
+    };
+
+    async_plasma_callbacks_[object_id].push_back(plasma_arrived_callback);
+  }
+
+  // Ask raylet to subscribe to object notification. Raylet will call this core worker
+  // when the object is local (and it will fire the callback immediately if the object
+  // exists). CoreWorker::HandlePlasmaObjectReady handles such request.
+  local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id));
 }
 
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,

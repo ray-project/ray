@@ -12,6 +12,7 @@ from ray.test_utils import (get_other_nodes, wait_for_condition,
                             get_error_message)
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
+from ray.test_utils import run_string_as_driver
 from ray.util.placement_group import (PlacementGroup,
                                       get_current_placement_group)
 
@@ -32,11 +33,17 @@ def test_placement_group_pack(ray_start_cluster):
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
-        name="name", strategy="PACK", bundles=[{
-            "CPU": 2
-        }, {
-            "CPU": 2
-        }])
+        name="name",
+        strategy="PACK",
+        bundles=[
+            {
+                "CPU": 2,
+                "GPU": 0  # Test 0 resource spec doesn't break tests.
+            },
+            {
+                "CPU": 2
+            }
+        ])
     ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
@@ -400,6 +407,7 @@ def test_placement_group_table(ray_start_cluster):
 
     # Now the placement group should be scheduled.
     cluster.add_node(num_cpus=5, num_gpus=1)
+
     cluster.wait_for_nodes()
     actor_1 = Actor.options(
         placement_group=placement_group,
@@ -408,6 +416,28 @@ def test_placement_group_table(ray_start_cluster):
 
     result = ray.util.placement_group_table(placement_group)
     assert result["state"] == "CREATED"
+
+    # Add tow more placement group for placement group table test.
+    second_strategy = "SPREAD"
+    ray.util.placement_group(
+        name="second_placement_group",
+        strategy=second_strategy,
+        bundles=bundles)
+    ray.util.placement_group(
+        name="third_placement_group",
+        strategy=second_strategy,
+        bundles=bundles)
+
+    placement_group_table = ray.util.placement_group_table()
+    assert len(placement_group_table) == 3
+
+    true_name_set = {"name", "second_placement_group", "third_placement_group"}
+    get_name_set = set()
+
+    for _, placement_group_data in placement_group_table.items():
+        get_name_set.add(placement_group_data["name"])
+
+    assert true_name_set == get_name_set
 
 
 def test_cuda_visible_devices(ray_start_cluster):
@@ -964,6 +994,166 @@ def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
     errors = get_error_message(
         p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1)
     assert len(errors) == 0
+
+
+def test_automatic_cleanup_job(ray_start_cluster):
+    # Make sure the placement groups created by a
+    # job, actor, and task are cleaned when the job is done.
+    cluster = ray_start_cluster
+    num_nodes = 3
+    num_cpu_per_node = 4
+    # Create 3 nodes cluster.
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=num_cpu_per_node)
+
+    info = ray.init(address=cluster.address)
+    available_cpus = ray.available_resources()["CPU"]
+    assert available_cpus == num_nodes * num_cpu_per_node
+
+    driver_code = f"""
+import ray
+
+ray.init(address="{info["redis_address"]}")
+
+def create_pg():
+    pg = ray.util.placement_group(
+            [{{"CPU": 1}} for _ in range(3)],
+            strategy="STRICT_SPREAD")
+    ray.get(pg.ready())
+    return pg
+
+@ray.remote(num_cpus=0)
+def f():
+    create_pg()
+
+@ray.remote(num_cpus=0)
+class A:
+    def create_pg(self):
+        create_pg()
+
+ray.get(f.remote())
+a = A.remote()
+ray.get(a.create_pg.remote())
+# Create 2 pgs to make sure multiple placement groups that belong
+# to a single job will be properly cleaned.
+create_pg()
+create_pg()
+
+ray.shutdown()
+    """
+
+    run_string_as_driver(driver_code)
+
+    # Wait until the driver is reported as dead by GCS.
+    def is_job_done():
+        jobs = ray.jobs()
+        for job in jobs:
+            if "StopTime" in job:
+                return True
+        return False
+
+    def assert_num_cpus(expected_num_cpus):
+        if expected_num_cpus == 0:
+            return "CPU" not in ray.available_resources()
+        return ray.available_resources()["CPU"] == expected_num_cpus
+
+    wait_for_condition(is_job_done)
+    available_cpus = ray.available_resources()["CPU"]
+    wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
+
+
+def test_automatic_cleanup_detached_actors(ray_start_cluster):
+    # Make sure the placement groups created by a
+    # detached actors are cleaned properly.
+    cluster = ray_start_cluster
+    num_nodes = 3
+    num_cpu_per_node = 2
+    # Create 3 nodes cluster.
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=num_cpu_per_node)
+
+    info = ray.init(address=cluster.address)
+    available_cpus = ray.available_resources()["CPU"]
+    assert available_cpus == num_nodes * num_cpu_per_node
+
+    driver_code = f"""
+import ray
+
+ray.init(address="{info["redis_address"]}")
+
+def create_pg():
+    pg = ray.util.placement_group(
+            [{{"CPU": 1}} for _ in range(3)],
+            strategy="STRICT_SPREAD")
+    ray.get(pg.ready())
+    return pg
+
+# TODO(sang): Placement groups created by tasks launched by detached actor
+# is not cleaned with the current protocol.
+# @ray.remote(num_cpus=0)
+# def f():
+#     create_pg()
+
+@ray.remote(num_cpus=0, max_restarts=1)
+class A:
+    def create_pg(self):
+        create_pg()
+    def create_child_pg(self):
+        self.a = A.options(name="B").remote()
+        ray.get(self.a.create_pg.remote())
+    def kill_child_actor(self):
+        ray.kill(self.a)
+        try:
+            ray.get(self.a.create_pg.remote())
+        except Exception:
+            pass
+
+a = A.options(lifetime="detached", name="A").remote()
+ray.get(a.create_pg.remote())
+# TODO(sang): Currently, child tasks are cleaned when a detached actor
+# is dead. We cannot test this scenario until it is fixed.
+# ray.get(a.create_child_pg.remote())
+
+ray.shutdown()
+    """
+
+    run_string_as_driver(driver_code)
+
+    # Wait until the driver is reported as dead by GCS.
+    def is_job_done():
+        jobs = ray.jobs()
+        for job in jobs:
+            if "StopTime" in job:
+                return True
+        return False
+
+    def assert_num_cpus(expected_num_cpus):
+        if expected_num_cpus == 0:
+            return "CPU" not in ray.available_resources()
+        return ray.available_resources()["CPU"] == expected_num_cpus
+
+    wait_for_condition(is_job_done)
+    assert assert_num_cpus(num_nodes)
+    # Make sure when a child actor spawned by a detached actor
+    # is killed, the placement group is removed.
+    a = ray.get_actor("A")
+    # TODO(sang): child of detached actors
+    # seem to be killed when jobs are done. We should fix this before
+    # testing this scenario.
+    # ray.get(a.kill_child_actor.remote())
+    # assert assert_num_cpus(num_nodes)
+
+    # Make sure placement groups are cleaned when detached actors are killed.
+    ray.kill(a, no_restart=False)
+    wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
+    # The detached actor a should've been restarted.
+    # Recreate a placement group.
+    ray.get(a.create_pg.remote())
+    wait_for_condition(lambda: assert_num_cpus(num_nodes))
+    # Kill it again and make sure the placement group
+    # that is created is deleted again.
+    ray.kill(a, no_restart=False)
+    wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
 if __name__ == "__main__":

@@ -56,6 +56,17 @@ ActorStats GetActorStatisticalData(
   return item;
 }
 
+inline ray::rpc::ObjectReference FlatbufferToSingleObjectReference(
+    const flatbuffers::String &object_id, const ray::protocol::Address &address) {
+  ray::rpc::ObjectReference ref;
+  ref.set_object_id(object_id.str());
+  ref.mutable_owner_address()->set_raylet_id(address.raylet_id()->str());
+  ref.mutable_owner_address()->set_ip_address(address.ip_address()->str());
+  ref.mutable_owner_address()->set_port(address.port());
+  ref.mutable_owner_address()->set_worker_id(address.worker_id()->str());
+  return ref;
+}
+
 std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
     const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
@@ -130,7 +141,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
-      free_objects_period_(config.free_objects_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
       object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
@@ -142,8 +152,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           io_service, config.num_initial_workers, config.num_workers_soft_limit,
           config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
-          config.max_worker_port, gcs_client_, config.worker_commands,
-          config.raylet_config,
+          config.max_worker_port, config.worker_ports, gcs_client_,
+          config.worker_commands, config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
@@ -162,6 +172,14 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           new DefaultAgentManagerServiceHandler(agent_manager_)),
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
+      worker_rpc_pool_(client_call_manager_),
+      local_object_manager_(RayConfig::instance().free_objects_batch_size(),
+                            RayConfig::instance().free_objects_period_milliseconds(),
+                            worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
+                            [this](const std::vector<ObjectID> &object_ids) {
+                              object_manager_.FreeObjects(object_ids,
+                                                          /*local_only=*/false);
+                            }),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -302,7 +320,6 @@ ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
   last_debug_dump_at_ms_ = current_time_ms();
-  last_free_objects_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -495,10 +512,7 @@ void NodeManager::Heartbeat() {
   }
 
   // Evict all copies of freed objects from the cluster.
-  if (free_objects_period_ > 0 &&
-      static_cast<int64_t>(now_ms - last_free_objects_at_ms_) > free_objects_period_) {
-    FlushObjectsToFree();
-  }
+  local_object_manager_.FlushFreeObjectsIfNeeded(now_ms);
 
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
@@ -529,95 +543,14 @@ void NodeManager::DoLocalGC() {
 void NodeManager::HandleRequestObjectSpillage(
     const rpc::RequestObjectSpillageRequest &request,
     rpc::RequestObjectSpillageReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  SpillObjects({ObjectID::FromBinary(request.object_id())},
-               [reply, send_reply_callback](const ray::Status &status) {
-                 if (status.ok()) {
-                   reply->set_success(true);
-                 }
-                 send_reply_callback(Status::OK(), nullptr, nullptr);
-               });
-}
-
-void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids,
-                               std::function<void(const ray::Status &)> callback) {
-  for (const auto &id : objects_ids) {
-    // We should not spill an object that we are not the primary copy for.
-    // TODO(swang): We should really return an error here but right now there
-    // is a race condition where the raylet receives the owner's request to
-    // spill an object before it receives the message to pin the objects from
-    // the local worker.
-    if (pinned_objects_.count(id) == 0) {
-      RAY_LOG(WARNING) << "Requested spill for object that has not yet been marked as "
-                          "the primary copy.";
-    }
-  }
-  worker_pool_.PopIOWorker([this, objects_ids,
-                            callback](std::shared_ptr<WorkerInterface> io_worker) {
-    rpc::SpillObjectsRequest request;
-    for (const auto &object_id : objects_ids) {
-      RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
-      request.add_object_ids_to_spill(object_id.Binary());
-    }
-    io_worker->rpc_client()->SpillObjects(
-        request, [this, objects_ids, callback, io_worker](
-                     const ray::Status &status, const rpc::SpillObjectsReply &r) {
-          worker_pool_.PushIOWorker(io_worker);
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send object spilling request: "
-                           << status.ToString();
-            if (callback) {
-              callback(status);
-            }
-          } else {
-            for (size_t i = 0; i < objects_ids.size(); ++i) {
-              const ObjectID &object_id = objects_ids[i];
-              const std::string &object_url = r.spilled_objects_url(i);
-              RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
-              // Write to object directory. Wait for the write to finish before
-              // releasing the object to make sure that the spilled object can
-              // be retrieved by other raylets.
-              RAY_CHECK_OK(gcs_client_->Objects().AsyncAddSpilledUrl(
-                  object_id, object_url, [this, object_id, callback](Status status) {
-                    RAY_CHECK_OK(status);
-                    // Unpin the object.
-                    // NOTE(swang): Due to a race condition, the object may not be in
-                    // the map yet. In that case, the owner will respond to the
-                    // WaitForObjectEvictionRequest and we will unpin the object
-                    // then.
-                    pinned_objects_.erase(object_id);
-                    if (callback) {
-                      callback(status);
-                    }
-                  }));
-            }
-          }
-        });
-  });
-}
-
-void NodeManager::AsyncRestoreSpilledObject(
-    const ObjectID &object_id, const std::string &object_url,
-    std::function<void(const ray::Status &)> callback) {
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
-                 << object_url;
-  worker_pool_.PopIOWorker([this, object_url,
-                            callback](std::shared_ptr<WorkerInterface> io_worker) {
-    RAY_LOG(DEBUG) << "Sending restore spilled object request";
-    rpc::RestoreSpilledObjectsRequest request;
-    request.add_spilled_objects_url(std::move(object_url));
-    io_worker->rpc_client()->RestoreSpilledObjects(
-        request, [this, callback, io_worker](const ray::Status &status,
-                                             const rpc::RestoreSpilledObjectsReply &r) {
-          worker_pool_.PushIOWorker(io_worker);
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
-                           << status.ToString();
-          }
-          if (callback) {
-            callback(status);
-          }
-        });
-  });
+  local_object_manager_.SpillObjects(
+      {ObjectID::FromBinary(request.object_id())},
+      [reply, send_reply_callback](const ray::Status &status) {
+        if (status.ok()) {
+          reply->set_success(true);
+        }
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
 }
 
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
@@ -1435,8 +1368,6 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Return the resources that were being used by this worker.
     if (new_scheduler_enabled_) {
-      new_resource_scheduler_->SubtractCPUResourceInstances(
-          worker->GetBorrowedCPUInstances());
       new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
       worker->ClearAllocatedInstances();
       new_resource_scheduler_->FreeLocalTaskResources(
@@ -1842,11 +1773,10 @@ void NodeManager::HandleCancelResourceReserve(
   }
 
   // Return bundle resources.
-  if (ReturnBundleResources(bundle_spec)) {
-    // Call task dispatch to assign work to the released resources.
-    TryLocalInfeasibleTaskScheduling();
-    DispatchTasks(local_queues_.GetReadyTasksByClass());
-  }
+  ReturnBundleResources(bundle_spec);
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2158,10 +2088,10 @@ void NodeManager::ScheduleTasks(
           << task.GetTaskSpecification().GetRequiredResources().ToString()
           << " for execution and "
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-          << " for placement, however there are no nodes in the cluster that can "
-          << "provide the requested resources. To resolve this issue, consider "
-          << "reducing the resource requests of this task or add nodes that "
-          << "can fit the task.";
+          << " for placement, however the cluster currently cannot provide the requested "
+             "resources. The required resources may be added as autoscaling takes place "
+             "or placement groups are scheduled. Otherwise, consider reducing the "
+             "resource requirements of the task.";
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
                                     task.GetTaskSpecification().JobId());
@@ -2285,7 +2215,7 @@ void NodeManager::SubmitTask(const Task &task) {
 void NodeManager::HandleDirectCallTaskBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
-    if (!worker) {
+    if (!worker || worker->IsBlocked()) {
       return;
     }
     std::vector<double> cpu_instances;
@@ -2315,7 +2245,8 @@ void NodeManager::HandleDirectCallTaskBlocked(
 void NodeManager::HandleDirectCallTaskUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
-    if (!worker) {
+    // Important: avoid double unblocking if the unblock RPC finishes after task end.
+    if (!worker || !worker->IsBlocked()) {
       return;
     }
     std::vector<double> cpu_instances;
@@ -2325,6 +2256,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
     if (cpu_instances.size() > 0) {
       new_resource_scheduler_->SubtractCPUResourceInstances(cpu_instances);
       new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());
+      worker->ClearBorrowedCPUInstances();
       worker->MarkUnblocked();
     }
     ScheduleAndDispatch();
@@ -2574,8 +2506,6 @@ bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
     task = worker.GetAssignedTask();
     // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ?
     if (worker.GetAllocatedInstances() != nullptr) {
-      new_resource_scheduler_->SubtractCPUResourceInstances(
-          worker.GetBorrowedCPUInstances());
       new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
       worker.ClearAllocatedInstances();
     }
@@ -2785,7 +2715,9 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
       // Filter out direct call actors. These are not tracked by the raylet and
       // their assigned task ID is the actor ID.
       for (const auto &id : ready_task_id_set_copy) {
-        RAY_CHECK(actor_registry_.count(id.ActorId()) > 0);
+        if (actor_registry_.count(id.ActorId()) == 0) {
+          RAY_LOG(WARNING) << "Actor not found in registry " << id.Hex();
+        }
         ready_task_id_set.erase(id);
       }
 
@@ -2956,15 +2888,40 @@ void NodeManager::ProcessSubscribePlasmaReady(
 
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
-  {
-    absl::MutexLock guard(&plasma_object_notification_lock_);
-    if (!async_plasma_objects_notification_.contains(id)) {
-      async_plasma_objects_notification_.emplace(
-          id, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>());
-    }
 
-    // Only insert a worker once
-    if (!async_plasma_objects_notification_[id].contains(associated_worker)) {
+  if (task_dependency_manager_.CheckObjectLocal(id)) {
+    // Object is already local, so we directly fire the callback to tell the core worker
+    // that the plasma object is ready.
+    rpc::PlasmaObjectReadyRequest request;
+    request.set_object_id(id.Binary());
+
+    RAY_LOG(DEBUG) << "Object " << id << " is already local, firing callback directly.";
+    associated_worker->rpc_client()->PlasmaObjectReady(
+        request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Problem with telling worker that plasma object is ready"
+                          << status.ToString();
+          }
+        });
+  } else {
+    // The object is not local, so we are subscribing to pull and wait for the objects.
+    std::vector<rpc::ObjectReference> refs = {FlatbufferToSingleObjectReference(
+        *message->object_id(), *message->owner_address())};
+
+    // NOTE(simon): This call will issue a pull request to remote workers and make sure
+    // the object will be local.
+    // 1. We currently do not allow user to cancel this call. The object will be pulled
+    //    even if the `await object_ref` is cancelled.
+    // 2. We currently do not handle edge cases with object eviction where the object
+    //    is local at this time but when the core worker was notified, the object is
+    //    is evicted. The core worker should be able to handle evicted object in this
+    //    case.
+    task_dependency_manager_.SubscribeWaitDependencies(associated_worker->WorkerId(),
+                                                       refs);
+
+    // Add this worker to the listeners for the object ID.
+    {
+      absl::MutexLock guard(&plasma_object_notification_lock_);
       async_plasma_objects_notification_[id].insert(associated_worker);
     }
   }
@@ -2984,8 +2941,6 @@ ray::Status NodeManager::SetupPlasmaSubscription() {
         }
         rpc::PlasmaObjectReadyRequest request;
         request.set_object_id(object_id.Binary());
-        request.set_metadata_size(object_info.metadata_size);
-        request.set_data_size(object_info.data_size);
 
         for (auto worker : waiting_workers) {
           worker->rpc_client()->PlasmaObjectReady(
@@ -3015,6 +2970,10 @@ std::string NodeManager::DebugString() const {
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
   result << "\nInitialConfigResources: " << initial_config_.resource_config.ToString();
+  if (cluster_task_manager_ != nullptr) {
+    result << "\nClusterTaskManager:\n";
+    result << cluster_task_manager_->DebugString();
+  }
   result << "\nClusterResources:";
   for (auto &pair : cluster_resource_map_) {
     result << "\n" << pair.first.Hex() << ": " << pair.second.DebugString();
@@ -3064,28 +3023,16 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::PinObjectIDsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  WorkerID worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
-  auto it = worker_rpc_clients_.find(worker_id);
-  if (it == worker_rpc_clients_.end()) {
-    auto client = std::unique_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(request.owner_address(), client_call_manager_));
-    it = worker_rpc_clients_
-             .emplace(worker_id,
-                      std::make_pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>(
-                          std::move(client), 0))
-             .first;
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.object_ids_size());
+  for (const auto &object_id_binary : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
-
   if (object_pinning_enabled_) {
     // Pin the objects in plasma by getting them and holding a reference to
     // the returned buffer.
     // NOTE: the caller must ensure that the objects already exist in plasma before
     // sending a PinObjectIDs request.
-    std::vector<ObjectID> object_ids;
-    object_ids.reserve(request.object_ids_size());
-    for (const auto &object_id_binary : request.object_ids()) {
-      object_ids.push_back(ObjectID::FromBinary(object_id_binary));
-    }
     std::vector<plasma::ObjectBuffer> plasma_results;
     // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
     // block when serving the request. However, if the plasma store is under
@@ -3099,81 +3046,26 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
       return;
     }
 
-    // Pin the requested objects until the owner notifies us that the objects can be
-    // unpinned by responding to the WaitForObjectEviction message.
-    // TODO(edoakes): we should be batching these requests instead of sending one per
-    // pinned object.
+    std::vector<std::unique_ptr<RayObject>> objects;
     for (int64_t i = 0; i < request.object_ids().size(); i++) {
-      ObjectID object_id = ObjectID::FromBinary(request.object_ids(i));
-
       if (plasma_results[i].data == nullptr) {
-        RAY_LOG(ERROR) << "Plasma object " << object_id
-                       << " was evicted before the raylet could pin it.";
-        continue;
+        objects.push_back(nullptr);
+      } else {
+        objects.emplace_back(std::unique_ptr<RayObject>(new RayObject(
+            std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+            std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
       }
-
-      RAY_LOG(DEBUG) << "Pinning object " << object_id;
-      RAY_CHECK(
-          pinned_objects_
-              .emplace(
-                  object_id,
-                  std::unique_ptr<RayObject>(new RayObject(
-                      std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                      std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})))
-              .second);
     }
+    local_object_manager_.PinObjects(object_ids, std::move(objects));
   }
-
-  for (const auto &object_id_binary : request.object_ids()) {
-    ObjectID object_id = ObjectID::FromBinary(object_id_binary);
-    // Send a long-running RPC request to the owner for each object. When we get a
-    // response or the RPC fails (due to the owner crashing), unpin the object.
-    rpc::WaitForObjectEvictionRequest wait_request;
-    wait_request.set_object_id(object_id_binary);
-    wait_request.set_intended_worker_id(request.owner_address().worker_id());
-    worker_rpc_clients_[worker_id].second++;
-    it->second.first->WaitForObjectEviction(
-        wait_request, [this, worker_id, object_id](
-                          Status status, const rpc::WaitForObjectEvictionReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(WARNING) << "Worker " << worker_id << " failed. Unpinning object "
-                             << object_id;
-          }
-          RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-          pinned_objects_.erase(object_id);
-
-          // Try to evict all copies of the object from the cluster.
-          if (free_objects_period_ >= 0) {
-            objects_to_free_.push_back(object_id);
-          }
-          if (objects_to_free_.size() ==
-                  RayConfig::instance().free_objects_batch_size() ||
-              free_objects_period_ == 0) {
-            FlushObjectsToFree();
-          }
-
-          // Remove the cached worker client if there are no more pending requests.
-          if (--worker_rpc_clients_[worker_id].second == 0) {
-            worker_rpc_clients_.erase(worker_id);
-          }
-        });
-  }
+  // Wait for the object to be freed by the owner, which keeps the ref count.
+  local_object_manager_.WaitForObjectFree(request.owner_address(), object_ids);
   send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void NodeManager::FlushObjectsToFree() {
-  if (!objects_to_free_.empty()) {
-    RAY_LOG(DEBUG) << "Freeing " << objects_to_free_.size() << " out-of-scope objects";
-    object_manager_.FreeObjects(objects_to_free_, /*local_only=*/false);
-    objects_to_free_.clear();
-  }
-  last_free_objects_at_ms_ = current_time_ms();
 }
 
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  reply->set_pid(getpid());
   for (const auto &task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
@@ -3232,9 +3124,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   // and return the information from HandleNodesStatsRequest. The caller of
   // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers();
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
   absl::flat_hash_set<WorkerID> driver_ids;
-  for (auto driver : worker_pool_.GetAllRegisteredDrivers()) {
+  for (auto driver :
+       worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
   }
@@ -3243,25 +3136,17 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     return;
   }
   for (const auto &worker : all_workers) {
+    if (worker->IsDead()) {
+      continue;
+    }
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(node_stats_request.include_memory_info());
     worker->rpc_client()->GetCoreWorkerStats(
         request, [reply, worker, all_workers, driver_ids, send_reply_callback](
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
-          auto worker_stats = reply->add_workers_stats();
-          worker_stats->set_pid(worker->GetProcess().GetId());
-          worker_stats->set_worker_id(worker->WorkerId().Binary());
-          worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
-          worker_stats->set_language(worker->GetLanguage());
+          reply->add_core_workers_stats()->MergeFrom(r.core_worker_stats());
           reply->set_num_workers(reply->num_workers() + 1);
-          if (status.ok()) {
-            worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
-          } else {
-            RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
-                           << status.ToString();
-            worker_stats->set_fetch_error(status.ToString());
-          }
           if (reply->num_workers() == all_workers.size()) {
             send_reply_callback(Status::OK(), nullptr, nullptr);
           }
@@ -3273,8 +3158,8 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   // First pass to compute object sizes.
   absl::flat_hash_map<ObjectID, int64_t> object_sizes;
   for (const auto &reply : node_stats) {
-    for (const auto &worker_stats : reply.workers_stats()) {
-      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+    for (const auto &core_worker_stats : reply.core_workers_stats()) {
+      for (const auto &object_ref : core_worker_stats.object_refs()) {
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         if (object_ref.object_size() > 0) {
           object_sizes[obj_id] = object_ref.object_size();
@@ -3296,9 +3181,9 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
-    for (const auto &worker_stats : reply.workers_stats()) {
+    for (const auto &core_worker_stats : reply.core_workers_stats()) {
       bool pid_printed = false;
-      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+      for (const auto &object_ref : core_worker_stats.object_refs()) {
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         if (!object_ref.pinned_in_memory() && object_ref.local_ref_count() == 0 &&
             object_ref.submitted_task_ref_count() == 0 &&
@@ -3309,10 +3194,10 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
           continue;
         }
         if (!pid_printed) {
-          if (worker_stats.is_driver()) {
-            builder << "; driver pid=" << worker_stats.pid() << "\n";
+          if (core_worker_stats.worker_type() == rpc::WorkerType::DRIVER) {
+            builder << "; driver pid=" << core_worker_stats.pid() << "\n";
           } else {
-            builder << "; worker pid=" << worker_stats.pid() << "\n";
+            builder << "; worker pid=" << core_worker_stats.pid() << "\n";
           }
           pid_printed = true;
         }

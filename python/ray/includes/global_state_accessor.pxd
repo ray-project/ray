@@ -23,6 +23,7 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_vector[c_string] GetAllProfileInfo()
         c_vector[c_string] GetAllObjectInfo()
         unique_ptr[c_string] GetObjectInfo(const CObjectID &object_id)
+        unique_ptr[c_string] GetAllHeartbeat()
         c_vector[c_string] GetAllActorInfo()
         unique_ptr[c_string] GetActorInfo(const CActorID &actor_id)
         c_string GetNodeResourceInfo(const CNodeID &node_id)
@@ -31,3 +32,4 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_bool AddWorkerInfo(const c_string &serialized_string)
         unique_ptr[c_string] GetPlacementGroupInfo(
             const CPlacementGroupID &placement_group_id)
+        c_vector[c_string] GetAllPlacementGroupInfo()

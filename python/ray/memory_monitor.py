@@ -52,9 +52,7 @@ class RayOutOfMemoryError(Exception):
                 f"The top 10 memory consumers are:\n\n{proc_str}" +
                 "\n\nIn addition, up to {} GiB of shared memory is ".format(
                     round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
-                + "currently being used by the Ray object store. You can set "
-                "the object store size with the `object_store_memory` "
-                "parameter when starting Ray.\n---\n"
+                + "currently being used by the Ray object store.\n---\n"
                 "--- Tip: Use the `ray memory` command to list active "
                 "objects in the cluster.\n---\n")
 
@@ -78,8 +76,6 @@ class MemoryMonitor:
         # throttle this check at most once a second or so.
         self.check_interval = check_interval
         self.last_checked = 0
-        self.heap_limit = None
-        self.worker_name = None
         try:
             self.error_threshold = float(
                 os.getenv("RAY_MEMORY_MONITOR_ERROR_THRESHOLD"))
@@ -97,10 +93,6 @@ class MemoryMonitor:
                         "is not installed. Install this with "
                         "`pip install psutil` (or ray[debug]) to enable "
                         "debugging of memory-related crashes.")
-
-    def set_heap_limit(self, worker_name, limit_bytes):
-        self.heap_limit = limit_bytes
-        self.worker_name = worker_name
 
     def get_memory_usage(self):
         psutil_mem = psutil.virtual_memory()
@@ -140,17 +132,3 @@ class MemoryMonitor:
                                                     self.error_threshold))
             else:
                 logger.debug(f"Memory usage is {used_gb} / {total_gb}")
-
-            if self.heap_limit:
-                mem_info = psutil.Process(os.getpid()).memory_info()
-                heap_size = get_rss(mem_info)
-                if heap_size > self.heap_limit:
-                    raise RayOutOfMemoryError(
-                        "Heap memory usage for {} is {} / {} GiB limit".format(
-                            self.worker_name, round(heap_size / (1024**3), 4),
-                            round(self.heap_limit / (1024**3), 4)))
-                elif heap_size > 0.8 * self.heap_limit:
-                    logger.warning(
-                        "Heap memory usage for {} is {} / {} GiB limit".format(
-                            self.worker_name, round(heap_size / (1024**3), 4),
-                            round(self.heap_limit / (1024**3), 4)))

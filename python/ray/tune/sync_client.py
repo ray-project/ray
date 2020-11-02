@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 S3_PREFIX = "s3://"
 GS_PREFIX = "gs://"
-ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
+HDFS_PREFIX = "hdfs://"
+ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 noop_template = ": {target}"  # noop in bash
 
@@ -53,7 +54,7 @@ def get_cloud_sync_client(remote_path):
     """Returns a CommandBasedClient that can sync to/from remote storage.
 
     Args:
-        remote_path (str): Path to remote storage (S3 or GS).
+        remote_path (str): Path to remote storage (S3, GS or HDFS).
 
     Raises:
         ValueError if malformed remote_dir.
@@ -63,19 +64,29 @@ def get_cloud_sync_client(remote_path):
             raise ValueError(
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX))
-        template = "aws s3 sync {source} {target} --only-show-errors"
+        sync_up_template = "aws s3 sync {source} {target} --only-show-errors"
+        sync_down_template = sync_up_template
         delete_template = "aws s3 rm {target} --recursive --only-show-errors"
     elif remote_path.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
             raise ValueError(
                 "Upload uri starting with '{}' requires gsutil tool"
                 " to be installed".format(GS_PREFIX))
-        template = "gsutil rsync -r {source} {target}"
+        sync_up_template = "gsutil rsync -r {source} {target}"
+        sync_down_template = sync_up_template
         delete_template = "gsutil rm -r {target}"
+    elif remote_path.startswith(HDFS_PREFIX):
+        if not distutils.spawn.find_executable("hdfs"):
+            raise ValueError("Upload uri starting with '{}' requires hdfs tool"
+                             " to be installed".format(HDFS_PREFIX))
+        sync_up_template = "hdfs dfs -put -f {source} {target}"
+        sync_down_template = "hdfs dfs -get -f {target} {source}"
+        delete_template = "hdfs dfs -rm -r {target}"
     else:
         raise ValueError("Upload uri must start with one of: {}"
                          "".format(ALLOWED_REMOTE_PREFIXES))
-    return CommandBasedClient(template, template, delete_template)
+    return CommandBasedClient(sync_up_template, sync_down_template,
+                              delete_template)
 
 
 class SyncClient:
