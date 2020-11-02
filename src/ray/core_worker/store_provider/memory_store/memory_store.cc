@@ -262,9 +262,8 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     size_t required_objects = num_objects - (object_ids.size() - remaining_ids.size());
 
     // Otherwise, create a GetRequest to track remaining objects.
-    get_request =
-        std::make_shared<GetRequest>(std::move(remaining_ids), required_objects,
-                                     abort_if_any_object_is_exception);
+    get_request = std::make_shared<GetRequest>(std::move(remaining_ids), required_objects,
+                                               abort_if_any_object_is_exception);
     for (const auto &object_id : get_request->ObjectIds()) {
       object_get_requests_[object_id].push_back(get_request);
     }

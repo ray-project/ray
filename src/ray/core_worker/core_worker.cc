@@ -395,8 +395,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         PutObjectIntoPlasma(object, object_id);
         return Status::OK();
       },
-      reference_counter_, local_raylet_client_,
-      options_.check_signals));
+      reference_counter_, local_raylet_client_, options_.check_signals));
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);

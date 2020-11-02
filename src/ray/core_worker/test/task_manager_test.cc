@@ -37,10 +37,11 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest(bool lineage_pinning_enabled = false)
-      : reference_counter_(std::make_shared<ReferenceCounter>(rpc::Address(),
+      : reference_counter_(std::make_shared<ReferenceCounter>(
+            rpc::Address(),
             /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled)),
         store_(std::make_shared<CoreWorkerMemoryStore>(nullptr, reference_counter_)),
-          manager_(store_, reference_counter_,
+        manager_(store_, reference_counter_,
                  [this](TaskSpecification &spec, bool delay) {
                    num_retries_++;
                    return Status::OK();

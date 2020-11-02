@@ -28,7 +28,8 @@ class CoreWorkerMemoryStore {
   /// Create a memory store.
   ///
   /// \param[in] store_in_plasma If not null, this is used to spill to plasma.
-  /// \param[in] counter This enables ref counting for local objects. Nullptr is used here for
+  /// \param[in] counter This enables ref counting for local objects. Nullptr is used here
+  /// for
   ///            testing purpose only.
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   CoreWorkerMemoryStore(
@@ -55,8 +56,7 @@ class CoreWorkerMemoryStore {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-             const WorkerContext &ctx,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             const WorkerContext &ctx, std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Convenience wrapper around Get() that stores results in a given result map.
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
