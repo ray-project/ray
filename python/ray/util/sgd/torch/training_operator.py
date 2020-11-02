@@ -185,8 +185,14 @@ class TrainingOperator:
         """
         raise NotImplementedError
 
-    def register(self, *, models, optimizers, criterion=None,
-                 schedulers=None, ddp_args=None, apex_args=None):
+    def register(self,
+                 *,
+                 models,
+                 optimizers,
+                 criterion=None,
+                 schedulers=None,
+                 ddp_args=None,
+                 apex_args=None):
         """Registers parameters with Ray SGD and sets up training components.
 
         By calling this method to register your models, optimizers,
@@ -310,13 +316,16 @@ class TrainingOperator:
             logger.debug("Setting up Apex.")
             self._amp = amp
             self._original_models, self._optimizers = self._configure_amp(
-                self._amp, self._original_models, self._optimizers,
+                self._amp,
+                self._original_models,
+                self._optimizers,
                 apex_args=apex_args)
 
         if self._wrap_ddp:
             logging.debug("Setting up DDP for models.")
             self._models = self._configure_ddp(
-                models=self._original_models, device_ids=self.device_ids,
+                models=self._original_models,
+                device_ids=self.device_ids,
                 ddp_args=ddp_args)
         else:
             self._models = self._original_models

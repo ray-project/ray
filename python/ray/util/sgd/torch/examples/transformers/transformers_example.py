@@ -160,8 +160,7 @@ class TransformerOperator(TrainingOperator):
         self.model, self.optimizer = self.register(
             models=model,
             optimizers=optimizer,
-            apex_args={"opt_level": args.fp16_opt_level}
-            )
+            apex_args={"opt_level": args.fp16_opt_level})
 
         self.register_data(train_loader=train_loader, validation_loader=None)
 
