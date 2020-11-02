@@ -252,8 +252,8 @@ def build_torch_policy(
                 before_loss_init(
                     self, self.observation_space, self.action_space, config)
 
-            self.initialize_loss_with_dummy_batch(
-                self, auto=view_requirements_fn is None)
+            self._initialize_loss_dynamically(
+                auto_remove_unneeded_view_reqs=view_requirements_fn is None)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)

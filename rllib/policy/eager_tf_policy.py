@@ -272,8 +272,8 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self.initialize_loss_with_dummy_batch(
-                auto=view_requirements_fn is None)
+            self._initialize_loss_dynamically(
+                auto_remove_unneeded_view_reqs=view_requirements_fn is None)
             self._loss_initialized = True
 
             if optimizer_fn:
