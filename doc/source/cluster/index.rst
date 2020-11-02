@@ -117,7 +117,7 @@ with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configurati
 
 If you see ``Ray runtime started.``, then the node successfully connected to
 the ``<address>``. If the ``<address>`` is inaccessible (because, for example,
-the head node is not actually running), you will get an error such as
+the head node is not actually running), then you will get an error such as
 ``Unable to connect to Redis. If the Redis instance is on a different machine,
 check that your firewall is configured properly.``
 
