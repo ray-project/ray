@@ -218,10 +218,10 @@ class DynamicTFPolicy(TFPolicy):
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
         else:
+            action_ph = ModelCatalog.get_action_placeholder(action_space)
             prev_action_ph = ModelCatalog.get_action_placeholder(
                 action_space, "prev_action")
             if self.config["_use_trajectory_view_api"]:
-                action_ph = ModelCatalog.get_action_placeholder(action_space)
                 self._input_dict, self._dummy_batch = \
                     self._get_input_dict_and_dummy_batch(
                         self.view_requirements,
@@ -234,6 +234,7 @@ class DynamicTFPolicy(TFPolicy):
                         shape=[None] + list(obs_space.shape),
                         name="observation")
                 }
+                self._input_dict[SampleBatch.ACTIONS] = action_ph
                 if self._obs_include_prev_action_reward:
                     self._input_dict.update({
                         SampleBatch.PREV_ACTIONS: prev_action_ph,
@@ -343,7 +344,8 @@ class DynamicTFPolicy(TFPolicy):
             before_loss_init(self, obs_space, action_space, config)
 
         if not existing_inputs:
-            self._initialize_loss_dynamically(auto=view_requirements_fn is None)
+            self._initialize_loss_dynamically(
+                auto=view_requirements_fn is None)
 
     @override(TFPolicy)
     @DeveloperAPI
@@ -509,18 +511,10 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.PREV_REWARDS: self._prev_reward_input,
                     SampleBatch.CUR_OBS: self._obs_input,
                 })
-                #loss_inputs = [
-                #    (SampleBatch.PREV_ACTIONS, self._prev_action_input),
-                #    (SampleBatch.PREV_REWARDS, self._prev_reward_input),
-                #    (SampleBatch.CUR_OBS, self._obs_input),
-                #]
             else:
                 train_batch = UsageTrackingDict({
                     SampleBatch.CUR_OBS: self._obs_input,
                 })
-                #loss_inputs = [
-                #    (SampleBatch.CUR_OBS, self._obs_input),
-                #]
 
             for k, v in postprocessed_batch.items():
                 if k in train_batch:
@@ -537,9 +531,6 @@ class DynamicTFPolicy(TFPolicy):
             for i, si in enumerate(self._state_inputs):
                 train_batch["state_in_{}".format(i)] = si
         else:
-            #loss_inputs = [(k, v) for k, v in self._input_dict.items()
-            #               if k in self.view_requirements
-            #               and self.view_requirements[k].used_for_training]
             train_batch = UsageTrackingDict(self._input_dict)
 
         if self._state_inputs:
@@ -554,7 +545,8 @@ class DynamicTFPolicy(TFPolicy):
         loss = self._do_loss_init(train_batch)
 
         TFPolicy._initialize_loss(self, loss, [(k, v) for k, v in train_batch.items()]) #loss_inputs
-        del self._loss_input_dict["is_training"]
+        if "is_training" in self._loss_input_dict:
+            del self._loss_input_dict["is_training"]
         if self._grad_stats_fn:
             self._stats_fetches.update(
                 self._grad_stats_fn(self, train_batch, self._grads))
