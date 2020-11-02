@@ -1,4 +1,3 @@
-
 import logging
 from concurrent import futures
 import grpc
@@ -35,21 +34,22 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.TaskTicket()
 
 
-def serve():
-    ray.init()
+def serve(connection_str):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer()
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
-    server.add_insecure_port('0.0.0.0:50051')
+    server.add_insecure_port(connection_str)
     server.start()
+    return server
+
+
+if __name__ == "__main__":
+    logging.basicConfig()
+    ray.init()
+    server = serve("0.0.0.0:50051")
     try:
         while True:
             time.sleep(1000)
     except KeyboardInterrupt:
         server.stop(0)
-
-
-if __name__ == '__main__':
-    logging.basicConfig()
-    serve()

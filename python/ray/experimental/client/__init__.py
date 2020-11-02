@@ -6,15 +6,6 @@ _client_worker: Optional[Worker] = None
 _in_cluster: bool = True
 
 
-def _fallback_to_cluster(in_cluster, client_worker_method):
-    def fallback_func(*args, **kwargs):
-        if _in_cluster:
-            in_cluster(*args, **kwargs)
-        else:
-            _client_worker.__getattr__(client_worker_method)(*args, **kwargs)
-    return fallback_func
-
-
 def get(*args, **kwargs):
     global _client_worker
     global _in_cluster
@@ -42,3 +33,12 @@ def connect(conn_str):
     global _client_worker
     _in_cluster = False
     _client_worker = Worker(conn_str)
+
+
+def disconnect():
+    global _in_cluster
+    global _client_worker
+    if _client_worker is not None:
+        _client_worker.close()
+    _in_cluster = True
+    _client_worker = None
