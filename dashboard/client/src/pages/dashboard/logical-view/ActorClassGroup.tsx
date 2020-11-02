@@ -63,56 +63,64 @@ const ActorClassGroup: React.FC<ActorClassGroupProps> = ({
       <Box display="block" className={classes.title}>
         <Typography variant="h5">{title}</Typography>
       </Box>
-      <Grid container className={classes.title}>
-        <LabeledDatum
-          label={
-            <ActorStateRepr state={Alive} variant="body1" showTooltip={true} />
-          }
-          datum={
-            Alive in summary.stateToCount ? summary.stateToCount[Alive] : 0
-          }
-        />
-        <LabeledDatum
-          label={
-            <ActorStateRepr
-              state={Infeasible}
-              variant="body1"
-              showTooltip={true}
+      <Grid container xs={12} spacing={2}>
+        <Grid container item xs={5} className={classes.title}>
+          {Infeasible in summary.stateToCount && (
+            <LabeledDatum
+              label={
+                <ActorStateRepr
+                  state={Infeasible}
+                  variant="body1"
+                  showTooltip={true}
+                />
+              }
+              datum={summary.stateToCount[Infeasible]}
             />
-          }
-          datum={
-            Infeasible in summary.stateToCount
-              ? summary.stateToCount[Infeasible]
-              : 0
-          }
-        />
-        <LabeledDatum
-          label={
-            <ActorStateRepr
-              state={PendingResources}
-              variant="body1"
-              showTooltip={true}
-            />
-          }
-          datum={
-            PendingResources in summary.stateToCount
-              ? summary.stateToCount[PendingResources]
-              : 0
-          }
-        />
-        <LabeledDatum
-          label={"Mean Lifetime"}
-          datum={asSeconds(summary.avgLifetime)}
-        />
-        <LabeledDatum
-          label={"Max Lifetime"}
-          datum={asSeconds(summary.maxLifetime)}
-        />
-        <LabeledDatum
-          label={"Executed Tasks"}
-          datum={summary.numExecutedTasks}
-        />
+          )}
+          <LabeledDatum
+            label={
+              <ActorStateRepr
+                state={Alive}
+                variant="body1"
+                showTooltip={true}
+              />
+            }
+            datum={
+              Alive in summary.stateToCount ? summary.stateToCount[Alive] : 0
+            }
+          />
+
+          <LabeledDatum
+            label={
+              <ActorStateRepr
+                state={PendingResources}
+                variant="body1"
+                showTooltip={true}
+              />
+            }
+            datum={
+              PendingResources in summary.stateToCount
+                ? summary.stateToCount[PendingResources]
+                : 0
+            }
+          />
+        </Grid>
+        <Grid container item xs={5} className={classes.title}>
+          <LabeledDatum
+            label={"Mean Lifetime"}
+            datum={asSeconds(summary.avgLifetime)}
+          />
+          <LabeledDatum
+            label={"Max Lifetime"}
+            datum={asSeconds(summary.maxLifetime)}
+          />
+          <LabeledDatum
+            label={"Executed Tasks"}
+            datum={summary.numExecutedTasks}
+          />
+        </Grid>
       </Grid>
+
       {expanded ? (
         <React.Fragment>
           <Box>{entries}</Box>

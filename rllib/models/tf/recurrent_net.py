@@ -115,7 +115,10 @@ class LSTMWrapper(RecurrentNetwork):
 
         self.use_prev_action_reward = model_config[
             "lstm_use_prev_action_reward"]
-        self.action_dim = int(np.product(action_space.shape))
+        if action_space.shape is not None:
+            self.action_dim = int(np.product(action_space.shape))
+        else:
+            self.action_dim = int(len(action_space))
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action_reward:
             self.num_outputs += 1 + self.action_dim

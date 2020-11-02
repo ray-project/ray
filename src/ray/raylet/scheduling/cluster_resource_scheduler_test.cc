@@ -331,7 +331,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
                     EmptyIntVector);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations > 0);
 
@@ -428,7 +429,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
                     EmptyFixedPointVector, EmptyBoolVector, EmptyIntVector);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_EQ(node_id, -1);
   }
   // Predefined resources, soft constraint violation
@@ -439,7 +441,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
                     EmptyFixedPointVector, EmptyBoolVector, EmptyIntVector);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations > 0);
   }
@@ -452,7 +455,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
                     EmptyFixedPointVector, EmptyBoolVector, EmptyIntVector);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations == 0);
   }
@@ -467,7 +471,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
                     EmptyIntVector);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id == -1);
   }
   // Custom resources, soft constraint violation.
@@ -481,7 +486,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
                     EmptyIntVector);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations > 0);
   }
@@ -496,7 +502,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
                     EmptyIntVector);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations == 0);
   }
@@ -511,7 +518,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
                     EmptyIntVector);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id == -1);
   }
   // Custom resource missing, soft constraint violation.
@@ -525,7 +533,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
                     EmptyIntVector);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations > 0);
   }
@@ -541,7 +550,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
                     placement_hints);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations > 0);
   }
@@ -557,7 +567,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
     initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
                     placement_hints);
     int64_t violations;
-    int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
+    int64_t node_id =
+        cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations == 0);
   }
