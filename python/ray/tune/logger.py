@@ -362,6 +362,12 @@ class ExperimentLogger(Callback):
     def log_trial_start(self, trial: Trial):
         raise NotImplementedError
 
+    def log_trial_restore(self, trial: Trial):
+        raise NotImplementedError
+
+    def log_trial_save(self, trial: Trial):
+        raise NotImplementedError
+
     def log_trial_result(self, iteration: int, trial: Trial, result: Dict):
         raise NotImplementedError
 
@@ -375,6 +381,14 @@ class ExperimentLogger(Callback):
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial,
                        **info):
         self.log_trial_start(trial)
+
+    def on_trial_restore(self, iteration: int, trials: List[Trial],
+                         trial: Trial, **info):
+        self.log_trial_restore(trial)
+
+    def on_trial_save(self, iteration: int, trials: List[Trial], trial: Trial,
+                      **info):
+        self.log_trial_save(trial)
 
     def on_trial_complete(self, iteration: int, trials: List[Trial],
                           trial: Trial, **info):
@@ -416,6 +430,16 @@ class LegacyExperimentLogger(ExperimentLogger):
                 logger = logger_class(trial.config, trial.logdir, trial)
                 trial_loggers[trial] = logger
             self._class_trial_loggers[logger_class] = trial_loggers
+
+    def log_trial_restore(self, trial: Trial):
+        for logger_class, trial_loggers in self._class_trial_loggers.items():
+            if trial in trial_loggers:
+                trial_loggers[trial].flush()
+
+    def log_trial_save(self, trial: Trial):
+        for logger_class, trial_loggers in self._class_trial_loggers.items():
+            if trial in trial_loggers:
+                trial_loggers[trial].flush()
 
     def log_trial_result(self, iteration: int, trial: Trial, result: Dict):
         for logger_class, trial_loggers in self._class_trial_loggers.items():

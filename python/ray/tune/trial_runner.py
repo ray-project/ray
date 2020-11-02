@@ -805,6 +805,10 @@ class TrialRunner:
                     trial)
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                self._callbacks.on_trial_error(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
             else:
                 logger.debug("Trial %s: Restore dispatched correctly.", trial)
         else:
