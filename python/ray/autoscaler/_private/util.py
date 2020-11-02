@@ -107,8 +107,8 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         # We don't want to introduce new errors with filling available node
         # types resources feature.
-        logger.exception("Failed to autodetect node resources")
-
+        logger.exception("Failed to autodetect node resources.")
+        raise
     return defaults
 
 

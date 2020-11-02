@@ -4,7 +4,7 @@ import threading
 from collections import defaultdict
 import logging
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import boto3
 import botocore
@@ -50,6 +50,32 @@ def make_ec2_client(region, max_retries, aws_credentials=None):
     aws_credentials = aws_credentials or {}
     return boto3.resource(
         "ec2", region_name=region, config=config, **aws_credentials)
+
+
+def list_ec2_instances() -> List[Dict[str, Any]]:
+    """Get all instance-types/resources available in the user's AWS region.
+
+    Returns:
+        final_instance_types: a list of instances. An example of one element in
+        the list:
+            {'InstanceType': 'm5a.xlarge', 'ProcessorInfo':
+            {'SupportedArchitectures': ['x86_64'], 'SustainedClockSpeedInGhz':
+            2.5},'VCpuInfo': {'DefaultVCpus': 4, 'DefaultCores': 2,
+            'DefaultThreadsPerCore': 2, 'ValidCores': [2],
+            'ValidThreadsPerCore': [1, 2]}, 'MemoryInfo': {'SizeInMiB': 16384},
+            ...}
+
+    """
+    final_instance_types = []
+    instance_types = boto3.client("ec2").describe_instance_types()
+    final_instance_types.extend(copy.deepcopy(instance_types["InstanceTypes"]))
+    while "NextToken" in instance_types:
+        instance_types = boto3.client("ec2").describe_instance_types(
+            NextToken=instance_types["NextToken"])
+        final_instance_types.extend(
+            copy.deepcopy(instance_types["InstanceTypes"]))
+
+    return final_instance_types
 
 
 class AWSNodeProvider(NodeProvider):
@@ -498,8 +524,7 @@ class AWSNodeProvider(NodeProvider):
             return cluster_config
         cluster_config = copy.deepcopy(cluster_config)
 
-        instances_list = boto3.client("ec2").describe_instance_types()[
-            "InstanceTypes"]
+        instances_list = list_ec2_instances()
         instances_dict = {
             instance["InstanceType"]: instance
             for instance in instances_list
@@ -530,5 +555,7 @@ class AWSNodeProvider(NodeProvider):
                         "resources"] = autodetected_resources
                     cli_logger.print("Updating the resources of {} to {}.",
                                      node_type, autodetected_resources)
-
+            else:
+                raise ValueError("Instance type " + instance_type +
+                                 " is not available in your AWS region.")
         return cluster_config
