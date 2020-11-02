@@ -428,8 +428,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
             shutdown_after_run=False,
-            silent=False
-    ):
+            silent=False):
         if shutdown_after_run:
             cmd += "; sudo shutdown -h now"
         if ssh_options_override_ssh_key:
@@ -486,11 +485,11 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
-                return self._run_helper(final_cmd, with_output, exit_on_fail,
-                                        silent=silent)
+                return self._run_helper(
+                    final_cmd, with_output, exit_on_fail, silent=silent)
         else:
-            return self._run_helper(final_cmd, with_output, exit_on_fail,
-                                    silent=silent)
+            return self._run_helper(
+                final_cmd, with_output, exit_on_fail, silent=silent)
 
     def _create_rsync_filter_args(self, options):
         rsync_excludes = options.get("rsync_exclude") or []
@@ -617,9 +616,10 @@ class DockerCommandRunner(CommandRunnerInterface):
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
                 host_destination += "/."
-            self.ssh_command_runner.run("docker cp {} {}:{}".format(
-                host_destination, self.container_name,
-                self._docker_expand_user(target)),
+            self.ssh_command_runner.run(
+                "docker cp {} {}:{}".format(host_destination,
+                                            self.container_name,
+                                            self._docker_expand_user(target)),
                 silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):
@@ -635,9 +635,10 @@ class DockerCommandRunner(CommandRunnerInterface):
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
         if not options.get("docker_mount_if_possible", False):
-            self.ssh_command_runner.run("docker cp {}:{} {}".format(
-                self.container_name, self._docker_expand_user(source),
-                host_source),
+            self.ssh_command_runner.run(
+                "docker cp {}:{} {}".format(self.container_name,
+                                            self._docker_expand_user(source),
+                                            host_source),
                 silent=is_rsync_silent())
         self.ssh_command_runner.run_rsync_down(
             host_source, target, options=options)

@@ -271,7 +271,7 @@ class NodeUpdater:
                         # however threading this configuration state
                         # is a pain and I'm leaving it for later
 
-                        retry_str = "("+str(e)+")"
+                        retry_str = "(" + str(e) + ")"
                         if hasattr(e, "cmd"):
                             retry_str = "(Exit Status {}): {}".format(
                                 e.returncode, " ".join(e.cmd))
@@ -329,7 +329,8 @@ class NodeUpdater:
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
             cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
-            self.sync_file_mounts(self.rsync_up, step_numbers=(1, NUM_SETUP_STEPS))
+            self.sync_file_mounts(
+                self.rsync_up, step_numbers=(1, NUM_SETUP_STEPS))
 
             # Only run setup commands if runtime_hash has changed because
             # we don't want to run setup_commands every time the head node
@@ -373,9 +374,9 @@ class NodeUpdater:
                         "No initialization commands to run.",
                         _numbered=("[]", 4, NUM_SETUP_STEPS))
                 with cli_logger.group(
-                            "Initalizing command runner",
-                            # todo: fix command numbering
-                            _numbered=("[]", 5, NUM_SETUP_STEPS)):
+                        "Initalizing command runner",
+                        # todo: fix command numbering
+                        _numbered=("[]", 5, NUM_SETUP_STEPS)):
                     self.cmd_runner.run_init(
                         as_head=self.is_head_node,
                         file_mounts=self.file_mounts)
@@ -413,10 +414,12 @@ class NodeUpdater:
                                         "Setup command failed.")
                 else:
                     cli_logger.print(
-                        "No setup commands to run.", _numbered=("[]", 6, NUM_SETUP_STEPS))
+                        "No setup commands to run.",
+                        _numbered=("[]", 6, NUM_SETUP_STEPS))
 
         with cli_logger.group(
-                "Starting the Ray runtime", _numbered=("[]", 7, NUM_SETUP_STEPS)):
+                "Starting the Ray runtime", _numbered=("[]", 7,
+                                                       NUM_SETUP_STEPS)):
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:

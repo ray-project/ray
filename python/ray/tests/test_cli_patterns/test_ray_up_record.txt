@@ -19,7 +19,7 @@
 .+\.py.*<1/1> Setting up head node
 .+\.py.*Prepared bootstrap config
 .+\.py.*New status: waiting-for-ssh
-.+\.py.*\[1/6\] Waiting for SSH to become available
+.+\.py.*\[1/7\] Waiting for SSH to become available
 .+\.py.*Running `uptime` as a test\.
 .+\.py.*Fetched IP: .+
 .+\.py.*Running `uptime`
@@ -27,7 +27,7 @@
 .+\.py.*Success\.
 .+\.py.*Updating cluster configuration\. \[hash=.+\]
 .+\.py.*New status: syncing-files
-.+\.py.*\[3/6\] Processing file mounts
+.+\.py.*\[2/7\] Processing file mounts
 .+\.py.*Running `mkdir -p ~/tests`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*Running `rsync.+`
@@ -43,12 +43,13 @@
 .+\.py.*Running `rsync.+`
 .+\.py.*`rsync`ed .+__test-cli_key-1\.pem \(local\) to ~/ray_bootstrap_key\.pem \(remote\)
 .+\.py.*~/ray_bootstrap_key\.pem from .+__test-cli_key-1\.pem
-.+\.py.*\[4/6\] No worker file mounts to sync
+.+\.py.*\[3/7\] No worker file mounts to sync
 .+\.py.*New status: setting-up
-.+\.py.*\[3/5\] Running initialization commands
+.+\.py.*\[4/7\] Running initialization commands
 .+\.py.*Running `echo init`
 .+\.py.*Full command is `ssh.+`
-.+\.py.*\[4/6\] Running setup commands
+.+\.py.*\[5/7\] Initalizing command runner
+.+\.py.*\[6/7\] Running setup commands
 .+\.py.*\(0/4\) echo a
 .+\.py.*Running `echo a`
 .+\.py.*Full command is `ssh.+`
@@ -61,7 +62,7 @@
 .+\.py.*\(3/4\) echo head
 .+\.py.*Running `echo head`
 .+\.py.*Full command is `ssh.+`
-.+\.py.*\[6/6\] Starting the Ray runtime
+.+\.py.*\[7/7\] Starting the Ray runtime
 .+\.py.*Running `ray stop`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*Running `ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
