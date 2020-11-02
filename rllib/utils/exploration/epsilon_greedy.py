@@ -159,7 +159,7 @@ class EpsilonGreedy(Exploration):
                 exploit_action = tree.flatten(exploit_action)
                 for i in range(batch_size):
                     if random.random() < epsilon:
-                        # TODO Mask out actions
+                        # TODO: (bcahlit) Mask out actions
                         random_action = tree.flatten(
                             self.action_space.sample())
                         for j in range(len(exploit_action)):
