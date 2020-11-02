@@ -8,7 +8,8 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger, get_node_id_for_actor, get_conda_env_dir)
+                             get_random_letters, logger, get_node_id_for_actor,
+                             get_conda_env_dir)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
 from ray.serve.env import CondaEnv
