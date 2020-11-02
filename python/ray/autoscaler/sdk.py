@@ -1,13 +1,14 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, Optional, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 import json
 import os
 import tempfile
 
 from ray.autoscaler._private import commands
-from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
+from ray.autoscaler._private.event_system import (CreateClusterEvent,
+                                                  global_event_system)
 
 
 def create_or_update_cluster(cluster_config: Union[dict, str],
@@ -28,7 +29,8 @@ def create_or_update_cluster(cluster_config: Union[dict, str],
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
     """
-    global_event_system.execute_callback(CreateClusterEvent.up_started, {"cluster_config": cluster_config})
+    global_event_system.execute_callback(CreateClusterEvent.up_started,
+                                         {"cluster_config": cluster_config})
     with _as_config_file(cluster_config) as config_file:
         return commands.create_or_update_cluster(
             config_file=config_file,
@@ -211,6 +213,7 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     return fillout_defaults(config)
 
 
-def register_callback_handler(event_name: str, callback: Callable[[Dict], None]) -> None:
+def register_callback_handler(event_name: str,
+                              callback: Callable[[Dict], None]) -> None:
     """Registers a callback handler for autoscaler events."""
     global_event_system.add_callback_handler(event_name, callback)

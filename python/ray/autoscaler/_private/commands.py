@@ -32,7 +32,8 @@ from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
-from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
+from ray.autoscaler._private.event_system import (CreateClusterEvent,
+                                                  global_event_system)
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.worker import global_worker
 from ray.util.debug import log_once
@@ -508,7 +509,8 @@ def get_or_create_head_node(config,
                             _provider=None,
                             _runner=subprocess):
     """Create the cluster head node, which in turn creates the workers."""
-    global_event_system.execute_callback(CreateClusterEvent.cluster_booting_started, {})
+    global_event_system.execute_callback(
+        CreateClusterEvent.cluster_booting_started, {})
     provider = (_provider or _get_node_provider(config["provider"],
                                                 config["cluster_name"]))
 
@@ -572,7 +574,8 @@ def get_or_create_head_node(config,
         if head_node is None or provider.node_tags(head_node).get(
                 TAG_RAY_LAUNCH_CONFIG) != launch_hash:
             with cli_logger.group("Acquiring an up-to-date head node"):
-                global_event_system.execute_callback(CreateClusterEvent.acquiring_new_head_node, {})
+                global_event_system.execute_callback(
+                    CreateClusterEvent.acquiring_new_head_node, {})
                 if head_node is not None:
                     cli_logger.print(
                         "Currently running head node is out-of-date with "
@@ -619,7 +622,8 @@ def get_or_create_head_node(config,
                         time.sleep(POLL_INTERVAL)
                 cli_logger.newline()
 
-        global_event_system.execute_callback(CreateClusterEvent.head_node_acquired, {})
+        global_event_system.execute_callback(
+            CreateClusterEvent.head_node_acquired, {})
 
         with cli_logger.group(
                 "Setting up head node",
@@ -762,7 +766,11 @@ def get_or_create_head_node(config,
             cli_logger.print("  {}", remote_shell_str.strip())
     finally:
         provider.cleanup()
-        global_event_system.execute_callback(CreateClusterEvent.cluster_booting_completed, {"head_node_id": head_node, "head_node_ip": head_node_ip})
+        global_event_system.execute_callback(
+            CreateClusterEvent.cluster_booting_completed, {
+                "head_node_id": head_node,
+                "head_node_ip": head_node_ip
+            })
 
 
 def attach_cluster(config_file: str,
