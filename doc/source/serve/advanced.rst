@@ -280,3 +280,9 @@ by setting the `user_config` field of :mod:`BackendConfig <ray.serve.BackendConf
 The following simple example will make the usage clear:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_reconfigure.py
+
+The `reconfigure` method is called when the class is created if `user_config`
+is set.  In particular, it's also called when new replicas are created in the
+future, in case you decide to scale up your backend later.  The
+`reconfigure` method is also called each time `user_config` is updated via 
+:mod:`client.update_backend_config <ray.serve.api.Client.update_backend_config>`.
