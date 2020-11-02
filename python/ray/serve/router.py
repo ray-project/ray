@@ -123,20 +123,6 @@ class Router:
         # from failure.
         self.controller = ray.get_actor(controller_name)
 
-        traffic_policies = ray.get(
-            self.controller.get_traffic_policies.remote())
-        for endpoint, traffic_policy in traffic_policies.items():
-            await self.set_traffic(endpoint, traffic_policy)
-
-        backend_dict = ray.get(self.controller.get_all_worker_handles.remote())
-        for backend_tag, replica_dict in backend_dict.items():
-            for replica_tag, worker in replica_dict.items():
-                await self.add_new_worker(backend_tag, replica_tag, worker)
-
-        backend_configs = ray.get(self.controller.get_backend_configs.remote())
-        for backend, backend_config in backend_configs.items():
-            await self.set_backend_config(backend, backend_config)
-
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Count(
             "num_router_requests",
@@ -161,6 +147,23 @@ class Router:
             tag_keys=("backend", ))
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
+
+        await self.update_state()
+
+    async def update_state(self):
+        traffic_policies = ray.get(
+            self.controller.get_traffic_policies.remote())
+        for endpoint, traffic_policy in traffic_policies.items():
+            await self.set_traffic(endpoint, traffic_policy)
+
+        backend_dict = ray.get(self.controller.get_all_worker_handles.remote())
+        for backend_tag, replica_dict in backend_dict.items():
+            for replica_tag, worker in replica_dict.items():
+                await self.add_new_worker(backend_tag, replica_tag, worker)
+
+        backend_configs = ray.get(self.controller.get_backend_configs.remote())
+        for backend, backend_config in backend_configs.items():
+            await self.set_backend_config(backend, backend_config)
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):

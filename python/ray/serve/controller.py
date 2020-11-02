@@ -177,9 +177,9 @@ class ServeController:
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
-        self.epoch_id = random.randint(0, 99999)
         # Map observer-key to list of asyncio events
         self.notifier_events = defaultdict(list)
+        self.epoch_ids = defaultdict(lambda: random.randint(0, 99999))
 
     def _start_routers_if_needed(self) -> None:
         """Start a router on every node if it doesn't already exist."""
@@ -876,8 +876,8 @@ class ServeController:
             await self.broadcast_backend_config(backend_tag)
 
         # workers updated
-        self.epoch_id += 1
-        [event.set() for event in self.notifier_events["workers"]]
+        self.notify_event("workers")
+        self.notifier_events("backend_configs")
 
     async def broadcast_backend_config(self, backend_tag: str) -> None:
         backend_config = self.backends[backend_tag].backend_config
@@ -915,15 +915,21 @@ class ServeController:
         for backend, queue_length in queue_lengths.items():
             self.backend_stats[backend][router_name] = queue_length
 
+    # Long pull
     async def long_pull_state(self, state_key, epoch_id: int = None):
-        assert state_key == "workers"
+        assert state_key in {"workers", "traffic_policies", "backend_configs"}
 
-        if epoch_id == self.epoch_id:
+        if epoch_id == self.epoch_ids[state_key]:
             event = asyncio.Event()
             self.notifier_events[state_key].append(event)
-
             await event.wait()
+            assert epoch_id != self.epoch_ids[state_key]
 
-            assert epoch_id != self.epoch_id
+        return self.workers, self.epoch_ids[state_key]
 
-        return self.workers, self.epoch_id
+    def notify_event(self, state_key):
+        self.epoch_ids[state_key] += 1
+        print(
+            f"pushing update to {len(self.notifier_events[state_key])} clients listen to {state_key}, new epoch id is {self.epoch_ids[state_key]}"
+        )
+        [event.set() for event in self.notifier_events[state_key]]
