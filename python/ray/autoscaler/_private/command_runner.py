@@ -193,9 +193,10 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             target = "/root" + target[1:]
 
         try:
+            flags = "-aqz" if is_rsync_silent() else "-avz"
             self.process_runner.check_call([
                 KUBECTL_RSYNC,
-                "-avz",
+                flags,
                 source,
                 "{}@{}:{}".format(self.node_id, self.namespace, target),
             ])
@@ -217,9 +218,10 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             target = "/root" + target[1:]
 
         try:
+            flags = "-aqz" if is_rsync_silent() else "-avz"
             self.process_runner.check_call([
                 KUBECTL_RSYNC,
-                "-avz",
+                flags,
                 "{}@{}:{}".format(self.node_id, self.namespace, source),
                 target,
             ])

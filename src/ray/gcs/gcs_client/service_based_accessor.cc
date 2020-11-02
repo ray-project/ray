@@ -558,10 +558,13 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
-    const NodeID &node_id) const {
+    const NodeID &node_id, bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
+    if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
+      return boost::none;
+    }
     return entry->second;
   }
   return boost::none;
@@ -704,6 +707,17 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
         cached_heartbeat_,
         [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
   }
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncGetAllHeartbeat(
+    const ItemCallback<rpc::HeartbeatBatchTableData> &callback) {
+  rpc::GetAllHeartbeatRequest request;
+  client_impl_->GetGcsRpcClient().GetAllHeartbeat(
+      request, [callback](const Status &status, const rpc::GetAllHeartbeatReply &reply) {
+        callback(reply.heartbeat_data());
+        RAY_LOG(DEBUG) << "Finished getting heartbeat of all nodes, status = " << status;
+      });
+  return Status::OK();
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
