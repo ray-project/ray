@@ -27,20 +27,21 @@ logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger("ppotrain")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--sumo-connect-lib",
-                    type=str,
-                    default="libsumo",
-                    choices=["libsumo", "traci"],
-                    help="The SUMO connector to import. "
-                    "Requires the env variable SUMO_HOME set.")
+parser.add_argument(
+    "--sumo-connect-lib",
+    type=str,
+    default="libsumo",
+    choices=["libsumo", "traci"],
+    help="The SUMO connector to import. Requires the env variable SUMO_HOME set.")
 parser.add_argument(
     "--sumo-gui",
     action="store_true",
     help="Enables the SUMO GUI. Possible only with TraCI connector.")
-parser.add_argument("--sumo-config-file",
-                    type=str,
-                    default=None,
-                    help="The SUMO configuration file for the scenario.")
+parser.add_argument(
+    "--sumo-config-file",
+    type=str,
+    default=None,
+    help="The SUMO configuration file for the scenario.")
 parser.add_argument(
     "--from-checkpoint",
     type=str,
@@ -138,12 +139,13 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    results = tune.run("PPO",
-                       config=config,
-                       stop=stop,
-                       verbose=1,
-                       checkpoint_freq=10,
-                       restore=args.from_checkpoint)
+    results = tune.run(
+        "PPO",
+        config=config,
+        stop=stop,
+        verbose=1,
+        checkpoint_freq=10,
+        restore=args.from_checkpoint)
 
     # And check the results.
     if args.as_test:

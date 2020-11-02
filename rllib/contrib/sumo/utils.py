@@ -48,6 +48,7 @@ class SUMOUtils(SUMOConnector):
         A wrapper for the interaction with the SUMO simulation that adds
         functionalities.
     """
+
     def _initialize_metrics(self):
         """ Specific metrics initialization """
         # Default TripInfo file metrics

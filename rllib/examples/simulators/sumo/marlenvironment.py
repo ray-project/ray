@@ -49,6 +49,7 @@ MS_TO_KMH = 3.6
 
 class SUMOSimulationWrapper(SUMOUtils):
     """ A wrapper for the interaction with the SUMO simulation """
+
     def _initialize_simulation(self):
         """ Specific simulation initialization. """
         try:
@@ -94,8 +95,9 @@ class SUMOSimulationWrapper(SUMOUtils):
 ###############################################################################
 
 
-class SUMOAgent(object):
+class SUMOAgent:
     """ Agent implementation. """
+
     def __init__(self, agent, config):
         self.agent_id = agent
         self.config = config
@@ -132,15 +134,11 @@ class SUMOAgent(object):
         #   depart=None, departLane="first", departPos="base", departSpeed="0",
         #   arrivalLane="current", arrivalPos="max", arrivalSpeed="current",
         #   fromTaz="", toTaz="", line="", personCapacity=0, personNumber=0)
-        sumo_handler.traci_handler.vehicle.add(self.agent_id,
-                                               route,
-                                               departLane="best",
-                                               departSpeed="max")
+        sumo_handler.traci_handler.vehicle.add(
+            self.agent_id, route, departLane="best", departSpeed="max")
         sumo_handler.traci_handler.vehicle.subscribeLeader(self.agent_id)
-        sumo_handler.traci_handler.vehicle.subscribe(self.agent_id,
-                                                     varIDs=[
-                                                         tc.VAR_SPEED,
-                                                     ])
+        sumo_handler.traci_handler.vehicle.subscribe(
+            self.agent_id, varIDs=[tc.VAR_SPEED])
         logger.info("Agent %s reset done.", self.agent_id)
         return self.agent_id, self.config["start"]
 
@@ -174,6 +172,7 @@ class SUMOTestMultiAgentEnv(MultiAgentEnv):
     """
     A RLLIB environment for testing MARL environments with SUMO simulations.
     """
+
     def __init__(self, config):
         """ Initialize the environment. """
         super(SUMOTestMultiAgentEnv, self).__init__()
@@ -342,9 +341,8 @@ class SUMOTestMultiAgentEnv(MultiAgentEnv):
             self.agents[agent].step(action_dict[agent], self.simulation)
 
         logger.debug("Before SUMO")
-        ongoing_simulation = self.simulation.step(until_end=False,
-                                                  agents=set(
-                                                      action_dict.keys()))
+        ongoing_simulation = self.simulation.step(
+            until_end=False, agents=set(action_dict.keys()))
         logger.debug("After SUMO")
 
         # end of the episode

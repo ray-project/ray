@@ -63,6 +63,7 @@ DEFAULT_CONFIG = {
 
 class SUMOConnector(object):
     """ Handler of a SUMO simulation. """
+
     def __init__(self, config):
         """
         Initialize SUMO and sets the beginning of the simulation.
@@ -102,9 +103,9 @@ class SUMOConnector(object):
             ["--output-prefix", self._sumo_output_prefix])
         logger.debug("SUMO command line: %s", str(self._sumo_parameters))
         if config["trace_file"]:
-            traci.start(self._sumo_parameters,
-                        traceFile="{}.tracefile.log".format(
-                            self._sumo_output_prefix))
+            traci.start(
+                self._sumo_parameters,
+                traceFile="{}.tracefile.log".format(self._sumo_output_prefix))
         else:
             traci.start(self._sumo_parameters)
         self.traci_handler = traci
