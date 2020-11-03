@@ -557,12 +557,12 @@ class TrialRunner:
             flat_result = flatten_dict(result)
             if self._stopper(trial.trial_id,
                              result) or trial.should_stop(flat_result):
+                result.update(done=True)
+
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, flat_result)
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=flat_result)
-
-                result.update(done=True)
 
                 # If this is not a duplicate result, the callbacks should
                 # be informed about the result.

@@ -11,15 +11,11 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
                              sync_config: SyncConfig,
                              metric: Optional[str] = None):
     callbacks = callbacks or []
-    has_syncer_callback = False
-    has_trial_progress_callback = False
 
-    # Check if we have a CSV and JSON logger
-    for i, callback in enumerate(callbacks):
-        if isinstance(callback, SyncerCallback):
-            has_syncer_callback = True
-        elif isinstance(callback, TrialProgressCallback):
-            has_trial_progress_callback = True
+    # Check if we have a Syncer and a TrialProgress callback
+    has_syncer_callback = any(isinstance(c, SyncerCallback) for c in callbacks)
+    has_trial_progress_callback = any(
+        isinstance(c, TrialProgressCallback) for c in callbacks)
 
     if not has_trial_progress_callback:
         trial_progress_callback = TrialProgressCallback(metric=metric)
