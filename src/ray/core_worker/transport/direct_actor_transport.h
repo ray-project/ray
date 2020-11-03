@@ -527,7 +527,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
  private:
   /// Protects access to the dequeue below.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
   /// Queue with (accept, rej) callbacks for non-actor tasks
   std::deque<InboundRequest> pending_normal_tasks_ GUARDED_BY(mu_);
   friend class SchedulingQueueTest;
