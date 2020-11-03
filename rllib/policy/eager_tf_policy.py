@@ -275,7 +275,7 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_dynamically()
+            self._initialize_loss_from_dummy_batch()
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -638,7 +638,7 @@ def build_eager_tf_policy(name,
             return fetches
 
         @override(Policy)
-        def _initialize_loss_dynamically(self):
+        def _initialize_loss_from_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
             dummy_batch = {
                 SampleBatch.CUR_OBS: np.array(
