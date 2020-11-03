@@ -440,7 +440,7 @@ class ActorStateReconciler:
         ])
 
         # Start/stop any pending backend replicas.
-        await self._start_pending_replicas(self)
+        await self._start_pending_replicas(controller)
         await self._stop_pending_replicas()
 
         # Remove any pending backends and endpoints.
@@ -580,7 +580,7 @@ class ServeController:
         self.configuration_store = restored_checkpoint.config
 
         # Restore ActorStateReconciler
-        self.actor_reconciler = restored_checkpoint.nursery
+        self.actor_reconciler = restored_checkpoint.reconciler
 
         await self.actor_reconciler._recover_from_checkpoint(
             self.configuration_store, self)
