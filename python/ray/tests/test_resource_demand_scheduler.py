@@ -327,7 +327,6 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     # meet the min_workers constraint and the demand.
     new_types["p2.8xlarge"]["min_workers"] = 3
     scheduler = ResourceDemandScheduler(provider, new_types, 10)
-
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
                                               utilizations, [], {})
     # Make sure it does not return [("p2.8xlarge", 1), ("p2.xlarge", 1)]
@@ -481,6 +480,7 @@ class TestPlacementGroupScaling:
     def test_strategies(self):
         provider = MockProvider()
         scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
+
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
         # At this point our cluster has 2 p2.8xlarge instances (16 GPUs) and is
         # fully idle.
@@ -574,7 +574,6 @@ def test_get_concurrent_resource_demand_to_launch():
     node_types["m4.large"]["max_workers"] = 100
     provider = MockProvider()
     scheduler = ResourceDemandScheduler(provider, node_types, 200)
-
     # Sanity check.
     assert len(provider.non_terminated_nodes({})) == 0
 
@@ -681,6 +680,7 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["min_workers"] = 4
     new_types["p2.8xlarge"]["max_workers"] = 40
+
     scheduler = ResourceDemandScheduler(provider, new_types, 30)
 
     to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [], {})
