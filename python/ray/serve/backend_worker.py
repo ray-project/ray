@@ -350,8 +350,9 @@ class RayServeWorker:
         if user_config:
             if self.is_function:
                 raise ValueError(
-                    "argument func_or_class must be a class to use user_config")
-            else if not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
+                    "argument func_or_class must be a class to use user_config"
+                )
+            elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
                 raise RayServeException("user_config specified but backend " +
                                         self.backend_tag + " missing " +
                                         BACKEND_RECONFIGURE_METHOD + " method")

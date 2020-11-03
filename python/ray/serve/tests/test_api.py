@@ -50,6 +50,7 @@ def test_e2e(serve_instance):
 
 def test_backend_user_config(serve_instance):
     client = serve_instance
+
     class Counter:
         def __init__(self):
             self.count = 10
