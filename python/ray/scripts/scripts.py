@@ -174,7 +174,7 @@ def debug(address):
                 str(i) + ": " + data["proctitle"] + " | " + data["filename"] +
                 ":" + str(data["lineno"]))
             print(data["traceback"])
-        inp = input("Enter breakpoing index or press enter to refresh: ")
+        inp = input("Enter breakpoint index or press enter to refresh: ")
         if inp == "":
             print()
             continue
