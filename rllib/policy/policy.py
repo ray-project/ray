@@ -679,7 +679,7 @@ class Policy(metaclass=ABCMeta):
                     [view_req.space.sample() for _ in range(batch_size)])
         return SampleBatch(ret)
 
-    def _update_view_requirements_from_model_init_state(self):
+    def _update_model_inference_view_requirements_from_init_state(self):
         """Uses this Model's initial state to auto-add necessary ViewReqs.
 
         Can be called from within a Policy to make sure RNNs automatically
