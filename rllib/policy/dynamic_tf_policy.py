@@ -576,8 +576,11 @@ class DynamicTFPolicy(TFPolicy):
         self._loss_input_dict = {k: v for k, v in train_batch.items()}
         loss = self._do_loss_init(train_batch)
 
-        TFPolicy._initialize_loss(self, loss,
-                                  [(k, v) for k, v in train_batch.items()])
+        TFPolicy._initialize_loss(
+            self,
+            loss,
+            [(k, v) for k, v in train_batch.items() if
+             k in train_batch.accessed_keys])
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]
         # Call the grads stats fn.
