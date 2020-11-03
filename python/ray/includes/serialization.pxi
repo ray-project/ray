@@ -1,6 +1,5 @@
 from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
-from libcpp cimport nullptr
 import cython
 
 DEF MEMCOPY_THREADS = 6
@@ -116,6 +115,9 @@ cdef class SubBuffer:
             <const char*> self.buf, self.len)
 
     def __getbuffer__(self, Py_buffer* buffer, int flags):
+        if flags & cpython.PyBUF_WRITABLE:
+            # Ray ensures all buffers are immutable.
+            raise BufferError
         buffer.readonly = self.readonly
         buffer.buf = self.buf
         buffer.format = <char *>self._format.c_str()

@@ -1,5 +1,7 @@
 import copy
+import json
 import logging
+import numbers
 import os
 import inspect
 import threading
@@ -536,6 +538,31 @@ def detect_config_single(func):
         logger.debug(str(e))
         use_config_single = False
     return use_config_single
+
+
+class SafeFallbackEncoder(json.JSONEncoder):
+    def __init__(self, nan_str="null", **kwargs):
+        super(SafeFallbackEncoder, self).__init__(**kwargs)
+        self.nan_str = nan_str
+
+    def default(self, value):
+        try:
+            if np.isnan(value):
+                return self.nan_str
+
+            if (type(value).__module__ == np.__name__
+                    and isinstance(value, np.ndarray)):
+                return value.tolist()
+
+            if issubclass(type(value), numbers.Integral):
+                return int(value)
+            if issubclass(type(value), numbers.Number):
+                return float(value)
+
+            return super(SafeFallbackEncoder, self).default(value)
+
+        except Exception:
+            return str(value)  # give up, just stringify it (ok for logs)
 
 
 if __name__ == "__main__":

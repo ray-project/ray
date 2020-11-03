@@ -1,12 +1,15 @@
 import csv
 import json
 import logging
-import os
-import yaml
 import numbers
 import numpy as np
+import os
+import yaml
+
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
 
 import ray.cloudpickle as cloudpickle
+from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
@@ -14,6 +17,9 @@ from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              EXPR_RESULT_FILE)
 from ray.tune.syncer import get_node_syncer
 from ray.tune.utils import flatten_dict
+
+if TYPE_CHECKING:
+    from ray.tune.trial import Trial  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +40,10 @@ class Logger:
         trial (Trial): Trial object for the logger to access.
     """
 
-    def __init__(self, config, logdir, trial=None):
+    def __init__(self,
+                 config: Dict,
+                 logdir: str,
+                 trial: Optional["Trial"] = None):
         self.config = config
         self.logdir = logdir
         self.trial = trial
@@ -89,7 +98,7 @@ class MLFLowLogger(Logger):
             client.log_param(self._run_id, key, value)
         self.client = client
 
-    def on_result(self, result):
+    def on_result(self, result: Dict):
         for key, value in result.items():
             if not isinstance(value, float):
                 continue
@@ -113,8 +122,8 @@ class JsonLogger(Logger):
         local_file = os.path.join(self.logdir, EXPR_RESULT_FILE)
         self.local_out = open(local_file, "a")
 
-    def on_result(self, result):
-        json.dump(result, self, cls=_SafeFallbackEncoder)
+    def on_result(self, result: Dict):
+        json.dump(result, self, cls=SafeFallbackEncoder)
         self.write("\n")
         self.local_out.flush()
 
@@ -127,7 +136,7 @@ class JsonLogger(Logger):
     def close(self):
         self.local_out.close()
 
-    def update_config(self, config):
+    def update_config(self, config: Dict):
         self.config = config
         config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
@@ -136,7 +145,7 @@ class JsonLogger(Logger):
                 f,
                 indent=2,
                 sort_keys=True,
-                cls=_SafeFallbackEncoder)
+                cls=SafeFallbackEncoder)
         config_pkl = os.path.join(self.logdir, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
             cloudpickle.dump(self.config, f)
@@ -159,7 +168,7 @@ class CSVLogger(Logger):
         self._file = open(progress_file, "a")
         self._csv_out = None
 
-    def on_result(self, result):
+    def on_result(self, result: Dict):
         tmp = result.copy()
         if "config" in tmp:
             del tmp["config"]
@@ -203,7 +212,7 @@ class TBXLogger(Logger):
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None
 
-    def on_result(self, result):
+    def on_result(self, result: Dict):
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
         tmp = result.copy()
@@ -219,17 +228,17 @@ class TBXLogger(Logger):
 
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
-            if type(value) in VALID_SUMMARY_TYPES and not np.isnan(value):
+            if (isinstance(value, tuple(VALID_SUMMARY_TYPES))
+                    and not np.isnan(value)):
                 valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)
-            elif (type(value) == list
-                  and len(value) > 0) or (type(value) == np.ndarray
-                                          and value.size > 0):
+            elif ((isinstance(value, list) and len(value) > 0)
+                  or (isinstance(value, np.ndarray) and value.size > 0)):
                 valid_result[full_attr] = value
 
                 # Must be video
-                if type(value) == np.ndarray and value.ndim == 5:
+                if isinstance(value, np.ndarray) and value.ndim == 5:
                     self._file_writer.add_video(
                         full_attr, value, global_step=step, fps=20)
                     continue
@@ -260,7 +269,7 @@ class TBXLogger(Logger):
                 scrubbed_result = {
                     k: value
                     for k, value in flat_result.items()
-                    if type(value) in VALID_SUMMARY_TYPES
+                    if isinstance(value, tuple(VALID_SUMMARY_TYPES))
                 }
                 self._try_log_hparams(scrubbed_result)
             self._file_writer.close()
@@ -313,11 +322,11 @@ class UnifiedLogger(Logger):
     """
 
     def __init__(self,
-                 config,
-                 logdir,
-                 trial=None,
-                 loggers=None,
-                 sync_function=None):
+                 config: Dict,
+                 logdir: str,
+                 trial: Optional["Trial"] = None,
+                 loggers: Optional[List[Type[Logger]]] = None,
+                 sync_function: Union[None, Callable, str] = None):
         if loggers is None:
             self._logger_cls_list = DEFAULT_LOGGERS
         else:

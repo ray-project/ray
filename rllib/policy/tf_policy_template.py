@@ -63,7 +63,7 @@ def build_tf_policy(
         ], Tuple[TensorType, type, List[TensorType]]]] = None,
         mixins: Optional[List[type]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
-        obs_include_prev_action_reward: bool = True) -> Type[TFPolicy]:
+        obs_include_prev_action_reward: bool = True) -> Type[DynamicTFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
     Functions will be run in this order to initialize the policy:

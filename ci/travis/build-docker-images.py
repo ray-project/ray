@@ -203,9 +203,19 @@ def push_and_tag_images(push_base_images: bool):
 
     def docker_push(image, tag):
         if _merge_build():
-            result = DOCKER_CLIENT.api.push(image, tag=tag)
             print(f"PUSHING: {image}:{tag}, result:")
-            print(result)
+            # This docker API is janky. Without "stream=True" it returns a
+            # massive string filled with every progress bar update, which can
+            # cause CI to back up.
+            #
+            # With stream=True, it's a line-at-a-time generator of the same
+            # info. So we can slow it down by printing every couple hundred
+            # lines
+            i = 0
+            for progress_line in DOCKER_CLIENT.api.push(
+                    image, tag=tag, stream=True):
+                if i % 100 == 0:
+                    print(progress_line)
         else:
             print(
                 "This is a PR Build! On a merge build, we would normally push "
@@ -218,7 +228,7 @@ def push_and_tag_images(push_base_images: bool):
     sha_tag = os.environ.get("TRAVIS_COMMIT")[:6]
     if _release_build():
         release_name = re.search("[0-9]\.[0-9]\.[0-9]",
-                                 os.environ.get("TRAVIS_BRANCH"))
+                                 os.environ.get("TRAVIS_BRANCH")).group(0)
         date_tag = release_name
         sha_tag = release_name
 
@@ -237,9 +247,13 @@ def push_and_tag_images(push_base_images: bool):
 
         for arch_tag in ["-cpu", "-gpu", ""]:
             full_arch_tag = f"nightly{arch_tag}"
-            # Tag and push rayproject/<image>:nightly<arch_tag>
-            docker_push(full_image, full_arch_tag)
+            # Do not tag release builds because they are no longer up to date
+            # after the branch cut.
+            if not _release_build():
+                # Tag and push rayproject/<image>:nightly<arch_tag>
+                docker_push(full_image, full_arch_tag)
 
+            # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
             specific_tag = get_new_tag(
                 full_arch_tag, date_tag if "-deps" in image else sha_tag)
             # Tag and push rayproject/<image>:<sha/date><arch_tag>
@@ -248,15 +262,6 @@ def push_and_tag_images(push_base_images: bool):
                 repository=full_image,
                 tag=specific_tag)
             docker_push(full_image, specific_tag)
-
-            if _release_build():
-                latest_tag = get_new_tag(full_arch_tag, "latest")
-                # Tag and push rayproject/<image>:latest<arch_tag>
-                DOCKER_CLIENT.api.tag(
-                    image=f"{full_image}:{full_arch_tag}",
-                    repository=full_image,
-                    tag=latest_tag)
-                docker_push(full_image, latest_tag)
 
 
 # Push infra here:
@@ -308,4 +313,6 @@ if __name__ == "__main__":
             build_ray()
             build_ray_ml()
             push_and_tag_images(freshly_built)
-            push_readmes()
+            # TODO(ilr) Re-Enable Push READMEs by using a normal password
+            # (not auth token :/)
+            # push_readmes()

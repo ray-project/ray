@@ -226,7 +226,7 @@ class Client:
                 will be sent to a replica of this backend without receiving a
                 response.
         """
-        if backend_tag in self.list_backends():
+        if backend_tag in self.list_backends().keys():
             raise ValueError(
                 "Cannot create backend. "
                 "Backend '{}' is already registered.".format(backend_tag))
@@ -255,10 +255,10 @@ class Client:
                                                    replica_config))
 
     @_ensure_connected
-    def list_backends(self) -> Dict[str, Dict[str, Any]]:
+    def list_backends(self) -> Dict[str, BackendConfig]:
         """Returns a dictionary of all registered backends.
 
-        Dictionary maps backend tags to backend configs.
+        Dictionary maps backend tags to backend config objects.
         """
         return ray.get(self._controller.get_all_backends.remote())
 

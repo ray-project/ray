@@ -439,3 +439,7 @@ def format_web_url(url):
     if not url.startswith("http://"):
         return "http://" + url
     return url
+
+
+def new_scheduler_enabled():
+    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER") == "1"

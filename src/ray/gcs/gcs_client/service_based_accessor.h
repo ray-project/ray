@@ -166,7 +166,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  boost::optional<GcsNodeInfo> Get(const NodeID &node_id) const override;
+  boost::optional<GcsNodeInfo> Get(const NodeID &node_id,
+                                   bool filter_dead_nodes = false) const override;
 
   const std::unordered_map<NodeID, GcsNodeInfo> &GetAll() const override;
 
@@ -193,13 +194,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncReReportHeartbeat() override;
 
-  Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-      const StatusCallback &done) override;
-
-  Status AsyncReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-      const StatusCallback &callback) override;
+  Status AsyncGetAllHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override;
 
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,

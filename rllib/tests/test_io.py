@@ -35,10 +35,12 @@ def make_sample_batch(i):
 
 class AgentIOTest(unittest.TestCase):
     def setUp(self):
+        ray.init(num_cpus=1, ignore_reinit_error=True)
         self.test_dir = tempfile.mkdtemp()
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
+        ray.shutdown()
 
     def writeOutputs(self, output, fw):
         agent = PGTrainer(
@@ -225,7 +227,7 @@ class AgentIOTest(unittest.TestCase):
 
 class JsonIOTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=1)
+        ray.init(num_cpus=1, ignore_reinit_error=True)
         self.test_dir = tempfile.mkdtemp()
 
     def tearDown(self):
