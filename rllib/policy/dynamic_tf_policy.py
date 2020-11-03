@@ -475,7 +475,7 @@ class DynamicTFPolicy(TFPolicy):
                 self._dummy_batch[key] = np.zeros_like(value)
                 self._input_dict[key] = get_placeholder(value=value, name=key)
                 if key not in self.view_requirements:
-                    logger.info("Adding extra-action-fetch {} to "
+                    logger.info("Adding extra-action-fetch `{}` to "
                                 "view-reqs.".format(key))
                     self.view_requirements[key] = \
                         ViewRequirement(space=gym.spaces.Box(
@@ -577,10 +577,15 @@ class DynamicTFPolicy(TFPolicy):
         self._loss_input_dict = {k: v for k, v in train_batch.items()}
         loss = self._do_loss_init(train_batch)
 
+        all_accessed_keys = train_batch.accessed_keys | \
+                            batch_for_postproc.accessed_keys | batch_for_postproc.added_keys
+        #TEST
+        all_accessed_keys = all_accessed_keys | set(
+            self.model.inference_view_requirements.keys())
         TFPolicy._initialize_loss(
             self,
             loss,
-            [(k, v) for k, v in train_batch.items()])
+            [(k, v) for k, v in train_batch.items() if k in all_accessed_keys])
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]
         # Call the grads stats fn.

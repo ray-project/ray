@@ -239,14 +239,15 @@ class ModelV2:
         right input dict, state, and seq len arguments.
         """
 
-        input_dict = train_batch.copy()
-        input_dict["is_training"] = is_training
+        train_batch["is_training"] = is_training
         states = []
         i = 0
-        while "state_in_{}".format(i) in input_dict:
-            states.append(input_dict["state_in_{}".format(i)])
+        while "state_in_{}".format(i) in train_batch:
+            states.append(train_batch["state_in_{}".format(i)])
             i += 1
-        return self.__call__(input_dict, states, input_dict.get("seq_lens"))
+        ret = self.__call__(train_batch, states, train_batch.get("seq_lens"))
+        del train_batch["is_training"]
+        return ret
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
