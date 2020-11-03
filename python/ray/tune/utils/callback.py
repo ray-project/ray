@@ -10,12 +10,9 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
                              sync_config: SyncConfig):
 
     callbacks = callbacks or []
-    has_syncer_callback = False
 
-    # Check if we have a CSV and JSON logger
-    for i, callback in enumerate(callbacks):
-        if isinstance(callback, SyncerCallback):
-            has_syncer_callback = True
+    # Check if there is a SyncerCallback
+    has_syncer_callback = any(isinstance(c, SyncerCallback) for c in callbacks)
 
     # If no SyncerCallback was found, add
     if not has_syncer_callback and os.environ.get(
