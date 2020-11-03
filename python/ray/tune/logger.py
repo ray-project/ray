@@ -1,14 +1,14 @@
 import csv
 import json
 import logging
+import numpy as np
 import os
 import yaml
 
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Type
-
-import numpy as np
+from typing import Iterable, TYPE_CHECKING, Dict, List, Optional, Type
 
 import ray.cloudpickle as cloudpickle
+
 from ray.tune.callback import Callback
 from ray.tune.utils.util import SafeFallbackEncoder, create_logdir
 from ray.util.debug import log_once
