@@ -72,7 +72,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_multinode_failures.py",
-    "test_multi_node.py",
     "test_object_manager.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
@@ -142,6 +141,7 @@ py_test_module_list(
   files = [
     "test_failure.py",
     "test_placement_group.py",
+    "test_multi_node.py",
   ],
   size = "large",
   extra_srcs = SRCS,
