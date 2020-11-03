@@ -358,9 +358,6 @@ def postprocess_trajectory(
             use_critic=policy.config["use_critic"])
     else:
         batch = sample_batch
-    # TODO: (sven) remove this del once we have trajectory view API fully in
-    #  place.
-    del batch.data["new_obs"]  # not used, so save some bandwidth
 
     return batch
 
