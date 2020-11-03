@@ -11,7 +11,7 @@ def test_ray_debugger_breakpoint(shutdown_only):
 
     @ray.remote
     def f():
-        ray.pdb.set_trace()
+        ray.util.pdb.set_trace()
         return 1
 
     result = f.remote()

@@ -246,7 +246,7 @@ class RayServeWorker:
         except Exception as e:
             import os
             if "RAY_PDB" in os.environ:
-                ray.pdb.post_mortem()
+                ray.util.pdb.post_mortem()
             result = wrap_to_ray_error(e)
             self.error_counter.record(1)
 

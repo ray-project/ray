@@ -97,7 +97,6 @@ import ray.internal  # noqa: E402
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
-from ray import rpdb as pdb  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import util  # noqa: E402
 
@@ -134,7 +133,6 @@ __all__ = [
     "nodes",
     "objects",
     "object_transfer_timeline",
-    "pdb",
     "profile",
     "put",
     "remote",
