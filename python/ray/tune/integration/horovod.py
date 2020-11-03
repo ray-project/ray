@@ -7,7 +7,7 @@ from filelock import FileLock
 import ray
 from ray import tune
 from ray.tune.resources import Resources
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 
