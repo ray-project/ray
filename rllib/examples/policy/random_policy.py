@@ -1,9 +1,11 @@
-from gym.spaces import Box
-import numpy as np
 import random
+
+import numpy as np
+from gym.spaces import Box
 
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import ModelWeights
 
 
 class RandomPolicy(Policy):
@@ -50,3 +52,13 @@ class RandomPolicy(Policy):
                                 prev_action_batch=None,
                                 prev_reward_batch=None):
         return np.array([random.random()] * len(obs_batch))
+
+    @override(Policy)
+    def get_weights(self) -> ModelWeights:
+        """No weights to save."""
+        return {}
+
+    @override(Policy)
+    def set_weights(self, weights: ModelWeights) -> None:
+        """No weights to set."""
+        pass
