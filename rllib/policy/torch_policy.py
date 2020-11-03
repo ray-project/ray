@@ -111,7 +111,7 @@ class TorchPolicy(Policy):
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
         # Auto-update model's inference view requirements, if recurrent.
-        self.model.update_view_requirements_from_init_state()
+        self._update_model_inference_view_requirements_from_init_state()
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.inference_view_requirements)
 

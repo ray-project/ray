@@ -244,16 +244,16 @@ def build_torch_policy(
 
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
-                self.view_requirements = view_requirements_fn(self)
-                self.view_requirements.update(
-                    self.model.inference_view_requirements)
+                self.view_requirements.update(view_requirements_fn(self))
+            self.view_requirements.update(
+                self.model.inference_view_requirements)
 
             _before_loss_init = before_loss_init or after_init
             if _before_loss_init:
                 _before_loss_init(self, self.observation_space,
                                   self.action_space, config)
 
-            self._initialize_loss_dynamically(
+            self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=view_requirements_fn is None,
                 stats_fn=stats_fn,
             )

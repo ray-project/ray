@@ -251,7 +251,7 @@ def build_eager_tf_policy(name,
                     framework=self.framework,
                 )
             # Auto-update model's inference view requirements, if recurrent.
-            self.model.update_view_requirements_from_init_state()
+            self._update_model_inference_view_requirements_from_init_state()
 
             self.exploration = self._create_exploration()
             self._state_in = [
@@ -261,7 +261,7 @@ def build_eager_tf_policy(name,
 
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
-                self.view_requirements = view_requirements_fn(self)
+                self.view_requirements.update(view_requirements_fn(self))
             # Combine view_requirements for Model and Policy.
             self.view_requirements.update(
                 self.model.inference_view_requirements)
@@ -269,7 +269,7 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_dynamically(
+            self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=view_requirements_fn is None,
                 stats_fn=stats_fn,
             )
