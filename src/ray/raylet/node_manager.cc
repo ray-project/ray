@@ -502,7 +502,6 @@ void NodeManager::Heartbeat() {
     should_local_gc_ = false;
   }
 
-  RAY_LOG(INFO) << "wangtaoo Heartbeat " << heartbeat_data->DebugString() <<  "with client id " << self_node_id_;
   RAY_CHECK_OK(
       gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, /*done*/ nullptr));
 
@@ -941,7 +940,6 @@ void NodeManager::HeartbeatAdded(const NodeID &client_id,
 }
 
 void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_batch) {
-  RAY_LOG(INFO) << "wangtaoo Heartbeat batch added " << heartbeat_batch.DebugString();
   // Update load information provided by each heartbeat.
   for (const auto &heartbeat_data : heartbeat_batch.batch()) {
     const NodeID &client_id = NodeID::FromBinary(heartbeat_data.client_id());

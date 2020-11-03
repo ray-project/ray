@@ -559,7 +559,6 @@ void GcsNodeManager::SendBatchedHeartbeat() {
       batch->add_batch()->Swap(&heartbeat.second);
     }
 
-    RAY_LOG(INFO) << "wangtaoo publish heartbeat batch " << batch->DebugString();
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
     heartbeat_buffer_.clear();
