@@ -152,6 +152,44 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 
 @cli.command()
 @click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def debug(address):
+    """Debug Ray program."""
+    from telnetlib import Telnet
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info(f"Connecting to Ray instance at {address}.")
+    ray.init(address=address)
+    while True:
+        active_sessions = ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_")
+        print("Active breakpoints:")
+        for i, active_session in enumerate(active_sessions):
+            data = json.loads(
+                ray.experimental.internal_kv._internal_kv_get(active_session))
+            print(
+                str(i) + ": " + data["proctitle"] + " | " + data["filename"] +
+                ":" + str(data["lineno"]))
+            print(data["traceback"])
+        inp = input("Enter breakpoint index or press enter to refresh: ")
+        if inp == "":
+            print()
+            continue
+        else:
+            index = int(inp)
+            session = json.loads(
+                ray.experimental.internal_kv._internal_kv_get(
+                    active_sessions[index]))
+            host, port = session["pdb_address"].split(":")
+            with Telnet(host, int(port)) as tn:
+                tn.interact()
+
+
+@cli.command()
+@click.option(
     "--node-ip-address",
     required=False,
     type=str,
@@ -1397,6 +1435,7 @@ def add_command_alias(command, name, hidden):
 
 
 cli.add_command(dashboard)
+cli.add_command(debug)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(up)

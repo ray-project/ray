@@ -107,6 +107,7 @@ py_test_module_list(
     "test_node_manager.py",
     "test_numba.py",
     "test_queue.py",
+    "test_ray_debugger.py",
     "test_ray_init.py",
     "test_tempfile.py",
   ],
