@@ -427,7 +427,7 @@ class SyncerCallback(Callback):
 
     def on_trial_start(self, iteration: int, trials: List["Trial"],
                        trial: "Trial", **info):
-        self._create_trial_syncer(trial)
+        self._get_trial_syncer(trial)
 
     def on_trial_result(self, iteration: int, trials: List["Trial"],
                         trial: "Trial", result: Dict, **info):
