@@ -44,7 +44,7 @@ class ResourceDemandScheduler:
                  node_types: Dict[NodeType, NodeTypeConfigDict],
                  max_workers: int):
         self.provider = provider
-        self.node_types = node_types
+        self.node_types = copy.deepcopy(node_types)
         self.max_workers = max_workers
         # is_legacy_yaml tracks if the cluster configs was originally without
         # available_node_types and was autofilled with available_node_types.
