@@ -1,9 +1,10 @@
 import asyncio
 from collections import defaultdict
+from itertools import chain
 import os
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Union, Dict, Any, List, Optional, Tuple
 from pydantic import BaseModel
 
@@ -86,16 +87,16 @@ class BackendInfo(BaseModel):
 @dataclass
 class ConfigurationStore:
     backends: Dict[BackendTag, BackendInfo] = field(default_factory=dict)
-    traffic_policies: Dict[EndpointTag, TrafficPolicy] = field(default_factory=dict)
-    routes: Dict[BackendTag, Tuple[EndpointTag, Any]]= field(default_factory=dict)
-
-    def __init__(self):
-        self.backends = dict()
-        self.traffic_policies = dict()
-        self.routes = dict()
+    traffic_policies: Dict[EndpointTag, TrafficPolicy] = field(
+        default_factory=dict)
+    routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = field(
+        default_factory=dict)
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
-        return {tag: info.backend_config for tag,info in self.backends.items()}
+        return {
+            tag: info.backend_config
+            for tag, info in self.backends.items()
+        }
 
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
         return self.backends.get(backend_tag)
@@ -107,33 +108,31 @@ class ConfigurationStore:
 
 @dataclass
 class ActorStateReconciler:
-    routers_cache: Dict[NodeId, ActorHandle]
-    replicas: Dict[BackendTag, List[ReplicaTag]]
-    replicas_to_start: Dict[BackendTag, List[ReplicaTag]]
-    replicas_to_stop: Dict[BackendTag, List[ReplicaTag]]
-    backends_to_remove: List[BackendTag]
-    endpoints_to_remove: List[EndpointTag]
-    # TODO(edoakes): consider removing this and just using the names.
-    workers: Dict[BackendTag, Dict[ReplicaConfig, ActorHandle]]
-    controller_name: str
-    detached: bool
+    controller_name: str = field(init=True)
+    detached: bool = field(init=True)
 
-    def __init__(self, controller_name: str, detached: bool):
-        self.routers_cache = dict()
-        self.replicas = defaultdict(list)
-        self.replicas_to_start = defaultdict(list)
-        self.replicas_to_stop = defaultdict(list)
-        self.backends_to_remove = list()
-        self.endpoints_to_remove = list()
-        self.workers = defaultdict(dict)
-        controller_name = controller_name
-        detached = detached
+    routers_cache: Dict[NodeId, ActorHandle] = field(default_factory=dict)
+    replicas: Dict[BackendTag, List[ReplicaTag]] = field(
+        default_factory=lambda: defaultdict(list))
+    replicas_to_start: Dict[BackendTag, List[ReplicaTag]] = field(
+        default_factory=lambda: defaultdict(list))
+    replicas_to_stop: Dict[BackendTag, List[ReplicaTag]] = field(
+        default_factory=lambda: defaultdict(list))
+    backends_to_remove: List[BackendTag] = field(default_factory=list)
+    endpoints_to_remove: List[EndpointTag] = field(default_factory=list)
+    # TODO(edoakes): consider removing this and just using the names.
+    workers: Dict[BackendTag, Dict[ReplicaConfig, ActorHandle]] = field(
+        default_factory=lambda: defaultdict(dict))
 
     def router_handles(self) -> List[ActorHandle]:
-        return self.routers_cache.values()
+        return list(self.routers_cache.values())
 
     def worker_handles(self) -> List[ActorHandle]:
-        return list(itertools.chain.from_iterable([replica_dict.values() for replica_dict in self.workers.values()])
+        return list(
+            chain.from_iterable([
+                replica_dict.values()
+                for replica_dict in self.workers.values()
+            ]))
 
     def get_replica_actors(self, backend_tag: BackendTag) -> List[ActorHandle]:
         return_list = []
@@ -451,7 +450,6 @@ class ActorStateReconciler:
 
 @dataclass
 class Checkpoint:
-
     config: ConfigurationStore
     reconciler: ActorStateReconciler
 
