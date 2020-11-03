@@ -855,7 +855,8 @@ class ServeController:
             # or pushing the updated config to avoid inconsistent state if we
             # crash while making the change.
             self._checkpoint()
-            await self.actor_reconciler._start_pending_replicas(self)
+            await self.actor_reconciler._start_pending_replicas(
+                self.configuration_store)
 
             # Set the backend config inside the router
             # (particularly for max-batch-size).
@@ -942,7 +943,8 @@ class ServeController:
                 for router in self.actor_reconciler.router_handles()
             ])
 
-            await self.actor_reconciler._start_pending_replicas(self)
+            await self.actor_reconciler._start_pending_replicas(
+                self.configuration_store)
             await self.actor_reconciler._stop_pending_replicas()
 
             await self.broadcast_backend_config(backend_tag)
