@@ -7,6 +7,7 @@ from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
 from ray.util.iter_metrics import MetricsContext, SharedMetrics
+from ray.util.sgd.data.pandas_dataset import PandasDataset
 
 # The type of an iterator element.
 T = TypeVar("T")
@@ -674,6 +675,13 @@ class ParallelIterator(Generic[T]):
 
         name = self.name + f".shard[{shard_index}]"
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
+
+    def to_pandas_dataset(
+        self, convert_fn: Callable[[Iterable[T]], Iterable["pandas.DataFrame"]]
+    ) -> PandasDataset:
+        it = self._with_transform(lambda local_it: local_it.transform(convert_fn),
+                                  ".to_pandas_dataset()")
+        return PandasDataset(it)
 
 
 class LocalIterator(Generic[T]):
