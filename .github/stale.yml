@@ -58,6 +58,8 @@ closeComment: >
 
   Again, you can always ask for help to our `discussion forum <https://discuss.ray.io/>`_ or `Ray's public slack channel <https://github.com/ray-project/ray#getting-involved>`_. 
 
+  Thanks again for opening the issue! 
+
 # Limit the number of actions per hour, from 1-30. Default is 30
 # It will check 120 issues per day.
 limitPerRun: 5
