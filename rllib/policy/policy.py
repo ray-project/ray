@@ -550,8 +550,6 @@ class Policy(metaclass=ABCMeta):
             ViewReqDict: The default view requirements dict.
         """
 
-        from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
-
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
