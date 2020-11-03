@@ -20,6 +20,7 @@ namespace raylet {
 
 void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
                                     std::vector<std::unique_ptr<RayObject>> &&objects) {
+  absl::MutexLock lock(&mutex_);
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];
@@ -56,8 +57,11 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-  pinned_objects_.erase(object_id);
+  {
+    absl::MutexLock lock(&mutex_);
+    RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+    pinned_objects_.erase(object_id);
+  }
 
   // Try to evict all copies of the object from the cluster.
   if (free_objects_period_ms_ >= 0) {
@@ -85,36 +89,114 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
   }
 }
 
+int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
+  if (RayConfig::instance().object_spilling_config().empty() ||
+      !RayConfig::instance().automatic_object_spilling_enabled()) {
+    return num_bytes_required;
+  }
+
+  absl::MutexLock lock(&mutex_);
+
+  RAY_LOG(INFO) << "Choosing objects to spill of total size " << num_bytes_required;
+  int64_t num_bytes_to_spill = 0;
+  auto it = pinned_objects_.begin();
+  std::vector<ObjectID> objects_to_spill;
+  while (num_bytes_to_spill < num_bytes_required && it != pinned_objects_.end()) {
+    num_bytes_to_spill += it->second->GetSize();
+    objects_to_spill.push_back(it->first);
+    it++;
+  }
+  if (!objects_to_spill.empty()) {
+    RAY_LOG(ERROR) << "Spilling objects of total size " << num_bytes_to_spill;
+    auto start_time = current_time_ms();
+    SpillObjectsInternal(
+        objects_to_spill, [num_bytes_to_spill, start_time](const Status &status) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
+          } else {
+            RAY_LOG(INFO) << "Spilled " << num_bytes_to_spill << " in "
+                          << (current_time_ms() - start_time) << "ms";
+          }
+        });
+  }
+  //  We do not track a mapping between objects that need to be created to
+  //  objects that are being spilled, so we just subtract the total number of
+  //  bytes that are currently being spilled from the amount of space
+  //  requested. If the space is claimed by another client, this client may
+  //  need to request space again.
+  num_bytes_required -= num_bytes_pending_spill_;
+  return num_bytes_required;
+}
+
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
                                       std::function<void(const ray::Status &)> callback) {
+  absl::MutexLock lock(&mutex_);
+  SpillObjectsInternal(object_ids, callback);
+}
+
+void LocalObjectManager::SpillObjectsInternal(
+    const std::vector<ObjectID> &object_ids,
+    std::function<void(const ray::Status &)> callback) {
+  std::vector<ObjectID> objects_to_spill;
+  // Filter for the objects that can be spilled.
   for (const auto &id : object_ids) {
-    // We should not spill an object that we are not the primary copy for.
-    if (pinned_objects_.count(id) == 0) {
-      callback(
-          Status::Invalid("Requested spill for object that is not marked as "
-                          "the primary copy."));
+    // We should not spill an object that we are not the primary copy for, or
+    // objects that are already being spilled.
+    if (pinned_objects_.count(id) == 0 && objects_pending_spill_.count(id) == 0) {
+      if (callback) {
+        callback(
+            Status::Invalid("Requested spill for object that is not marked as "
+                            "the primary copy."));
+      }
+      return;
+    }
+
+    // Add objects that we are the primary copy for, and that we are not
+    // already spilling.
+    auto it = pinned_objects_.find(id);
+    if (it != pinned_objects_.end()) {
+      RAY_LOG(DEBUG) << "Spilling object " << id;
+      objects_to_spill.push_back(id);
+      num_bytes_pending_spill_ += it->second->GetSize();
+      objects_pending_spill_[id] = std::move(it->second);
+      pinned_objects_.erase(it);
     }
   }
 
+  if (objects_to_spill.empty()) {
+    if (callback) {
+      callback(Status::Invalid("All objects are already being spilled."));
+    }
+    return;
+  }
+
   io_worker_pool_.PopIOWorker(
-      [this, object_ids, callback](std::shared_ptr<WorkerInterface> io_worker) {
+      [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
-        for (const auto &object_id : object_ids) {
+        for (const auto &object_id : objects_to_spill) {
           RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
           request.add_object_ids_to_spill(object_id.Binary());
         }
         io_worker->rpc_client()->SpillObjects(
-            request, [this, object_ids, callback, io_worker](
+            request, [this, objects_to_spill, callback, io_worker](
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
               io_worker_pool_.PushIOWorker(io_worker);
+              absl::MutexLock lock(&mutex_);
               if (!status.ok()) {
+                for (const auto &object_id : objects_to_spill) {
+                  auto it = objects_pending_spill_.find(object_id);
+                  RAY_CHECK(it != objects_pending_spill_.end());
+                  pinned_objects_.emplace(object_id, std::move(it->second));
+                  objects_pending_spill_.erase(it);
+                }
+
                 RAY_LOG(ERROR) << "Failed to send object spilling request: "
                                << status.ToString();
                 if (callback) {
                   callback(status);
                 }
               } else {
-                AddSpilledUrls(object_ids, r, callback);
+                AddSpilledUrls(objects_to_spill, r, callback);
               }
             });
       });
@@ -134,12 +216,13 @@ void LocalObjectManager::AddSpilledUrls(
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
         object_id, object_url, [this, object_id, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
+          absl::MutexLock lock(&mutex_);
           // Unpin the object.
-          // NOTE(swang): Due to a race condition, the object may not be in
-          // the map yet. In that case, the owner will respond to the
-          // WaitForObjectEvictionRequest and we will unpin the object
-          // then.
-          pinned_objects_.erase(object_id);
+          auto it = objects_pending_spill_.find(object_id);
+          RAY_CHECK(it != objects_pending_spill_.end());
+          num_bytes_pending_spill_ -= it->second->GetSize();
+          objects_pending_spill_.erase(it);
+
           (*num_remaining)--;
           if (*num_remaining == 0 && callback) {
             callback(status);
@@ -153,18 +236,21 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     std::function<void(const ray::Status &)> callback) {
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
-  io_worker_pool_.PopIOWorker([this, object_url,
+  io_worker_pool_.PopIOWorker([this, object_id, object_url,
                                callback](std::shared_ptr<WorkerInterface> io_worker) {
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
     io_worker->rpc_client()->RestoreSpilledObjects(
-        request, [this, callback, io_worker](const ray::Status &status,
-                                             const rpc::RestoreSpilledObjectsReply &r) {
+        request,
+        [this, object_id, callback, io_worker](const ray::Status &status,
+                                               const rpc::RestoreSpilledObjectsReply &r) {
           io_worker_pool_.PushIOWorker(io_worker);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
+          } else {
+            RAY_LOG(DEBUG) << "Restored object " << object_id;
           }
           if (callback) {
             callback(status);

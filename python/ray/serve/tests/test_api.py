@@ -774,7 +774,11 @@ def test_serve_metrics(serve_instance):
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
 
     def verify_metrics(do_assert=False):
-        resp = requests.get("http://127.0.0.1:9999").text
+        try:
+            resp = requests.get("http://127.0.0.1:9999").text
+        # Requests will fail if we are crashing the controller
+        except requests.ConnectionError:
+            return False
 
         expected_metrics = [
             # counter

@@ -1,13 +1,14 @@
 import inspect
 import time
 import os
-from typing import Callable, Union
 
 import pytest
 import shutil
 import subprocess
 import sys
 from unittest.mock import MagicMock, patch
+
+from typing import Callable, Union
 
 import ray
 from ray import tune
