@@ -289,6 +289,7 @@ cc_library(
         "src/ray/object_manager/plasma/store_runner.cc",
     ],
     hdrs = [
+        "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/eviction_policy.h",
         "src/ray/object_manager/plasma/external_store.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",

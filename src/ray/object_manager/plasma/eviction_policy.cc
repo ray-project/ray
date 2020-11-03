@@ -120,7 +120,7 @@ bool EvictionPolicy::EnforcePerClientQuota(Client* client, int64_t size, bool is
 
 void EvictionPolicy::ClientDisconnected(Client* client) {}
 
-bool EvictionPolicy::RequireSpace(int64_t size, std::vector<ObjectID>* objects_to_evict) {
+int64_t EvictionPolicy::RequireSpace(int64_t size, std::vector<ObjectID>* objects_to_evict) {
   // Check if there is enough space to create the object.
   int64_t required_space =
       PlasmaAllocator::Allocated() + size - PlasmaAllocator::GetFootprintLimit();
@@ -135,7 +135,7 @@ bool EvictionPolicy::RequireSpace(int64_t size, std::vector<ObjectID>* objects_t
                   << objects_to_evict->size() << " objects to free up "
                   << num_bytes_evicted << " bytes. The number of bytes in use (before "
                   << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
-  return num_bytes_evicted >= required_space && num_bytes_evicted > 0;
+  return required_space - num_bytes_evicted;
 }
 
 void EvictionPolicy::BeginObjectAccess(const ObjectID& object_id) {

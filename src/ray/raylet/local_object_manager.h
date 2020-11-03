@@ -62,6 +62,14 @@ class LocalObjectManager {
   void WaitForObjectFree(const rpc::Address &owner_address,
                          const std::vector<ObjectID> &object_ids);
 
+  /// Asynchronously spill objects whose total size adds up to at least the
+  /// specified number of bytes.
+  ///
+  /// \param num_bytes_to_spill The total number of bytes to spill.
+  /// \return The number of bytes of space still required after the spill is
+  /// complete.
+  int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill);
+
   /// Spill objects to external storage.
   ///
   /// \param objects_ids_to_spill The objects to be spilled.
@@ -83,6 +91,11 @@ class LocalObjectManager {
   void FlushFreeObjectsIfNeeded(int64_t now_ms);
 
  private:
+  /// Internal helper method for spilling objects.
+  void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
+                            std::function<void(const ray::Status &)> callback)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
 
@@ -116,7 +129,14 @@ class LocalObjectManager {
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
   // Objects that are pinned on this node.
-  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_
+      GUARDED_BY(mutex_);
+
+  // Objects that were pinned on this node but that are being spilled.
+  // These objects will be released once spilling is complete and the URL is
+  // written to the object directory.
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_
+      GUARDED_BY(mutex_);
 
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.
@@ -127,6 +147,14 @@ class LocalObjectManager {
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
   std::vector<ObjectID> objects_to_free_;
+
+  /// The total size of the objects that are currently being
+  /// spilled from this node, in bytes.
+  size_t num_bytes_pending_spill_ GUARDED_BY(mutex_) = 0;
+
+  /// This class is accessed by both the raylet and plasma store threads. The
+  /// mutex protects private members that relate to object spilling.
+  mutable absl::Mutex mutex_;
 };
 
 };  // namespace raylet

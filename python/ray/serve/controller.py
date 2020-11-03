@@ -254,7 +254,8 @@ class ServeController:
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
 
-        if random.random() < _CRASH_AFTER_CHECKPOINT_PROBABILITY:
+        if random.random(
+        ) < _CRASH_AFTER_CHECKPOINT_PROBABILITY and self.detached:
             logger.warning("Intentionally crashing after checkpoint")
             os._exit(0)
 
