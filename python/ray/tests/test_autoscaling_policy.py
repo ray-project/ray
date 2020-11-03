@@ -1,8 +1,9 @@
+import collections
 import copy
 import logging
 import yaml
 import tempfile
-from typing import Dict, Callable
+from typing import Dict, Callable, List
 import shutil
 from queue import PriorityQueue
 import unittest
@@ -10,14 +11,18 @@ import unittest
 import ray
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
-from ray.autoscaler._private.providers import _NODE_PROVIDERS, \
-    _clear_provider_cache
+from ray.autoscaler._private.providers import (
+    _NODE_PROVIDERS,
+    _clear_provider_cache,
+)
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.node_launcher import NodeLauncher
-from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND)
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
+from ray.gcs_utils import PlacementGroupTableData
 
 
 class Task:
@@ -27,7 +32,6 @@ class Task:
             resources: Dict[str, float],
             start_callback: Callable[[None], None] = None,
             done_callback: Callable[[None], None] = None,
-            submission_time: float = None,
     ):
         self.duration = duration
         self.resources = resources
@@ -40,6 +44,25 @@ class Task:
 
 class Actor(Task):
     pass
+
+
+class PlacementGroup:
+    def __init__(
+            self,
+            duration: float,
+            bundles: List[Dict[str, float]],
+            strategy: int,
+            start_callback: Callable[[None], None] = None,
+            done_callback: Callable[[None], None] = None,
+    ):
+        self.duration = duration
+        self.bundles = bundles
+        self.strategy = strategy
+        self.start_callback = start_callback
+        self.done_callback = done_callback
+        self.start_time = None
+        self.end_time = None
+        self.node = None
 
 
 class Node:
@@ -91,10 +114,34 @@ class Event:
 
 SIMULATOR_EVENT_AUTOSCALER_UPDATE = 0
 SIMULATOR_EVENT_TASK_DONE = 1
-SIMULATOR_EVEN_NODE_JOINED = 2
+SIMULATOR_EVENT_NODE_JOINED = 2
+SIMULATOR_EVENT_PG_DONE = 3
 
 
 class Simulator:
+    """This autoscaler simulator consists of a few components.
+
+    State is stored in 3 main data structures:
+        * Resource management state is stored in self.ip_to_nodes
+        * The scheduler's work queue is stored in self.work_queue
+        * An event queue which acts as the simulation's "timeline" in self.event_queue
+
+
+    The logic is organized into 3 functions (and their helpers):
+        * self.run_autoscaler plays the role of `monitor.py` and translates
+          resource management state for load_metrics to consume.
+        * self.schedule is the only consumer of the work queue. It dispatches
+          work to the appropriate schedulers, which mutate cluster state and
+          produce events for the event queue.
+        * self.process_event is the sole consumer of the event queue. It
+          dispatches work to the appropriate event handlers.
+
+    There are 3 main ways of interacting with the simulator:
+        * simulator.submit: To submit tasks
+        * simulator.step: To go to the next "event"
+        * task/actor/placement group start/done callbacks
+    """
+
     def __init__(
             self,
             config_path,
@@ -171,7 +218,7 @@ class Simulator:
                 if not join_immediately:
                     join_time = self.virtual_time + self.node_startup_delay_s
                     self.event_queue.put(
-                        Event(join_time, SIMULATOR_EVEN_NODE_JOINED, node))
+                        Event(join_time, SIMULATOR_EVENT_NODE_JOINED, node))
 
     def submit(self, work):
         if isinstance(work, list):
@@ -179,23 +226,59 @@ class Simulator:
         else:
             self.work_queue.append(work)
 
-    def _get_node_to_run(self, nodes, bundle):
-        for node in nodes:
+    def _get_node_to_run(self, bundle, nodes):
+        for ip, node in nodes.items():
             if node.bundle_fits(bundle):
-                return node
-        return None
+                return ip, node
+        return None, None
+
+    def _schedule_placement_group(self, pg, nodes):
+        # This scheduling algorithm is bad, but it is approximately as bad as
+        # the real placement group scheduler.
+        to_allocate = []
+        if (pg.strategy == PlacementStrategy.STRICT_PACK
+                or pg.strategy == PlacementStrategy.PACK):
+            combined = collections.defaultdict(float)
+            for bundle in pg.bundles:
+                for k, v in bundle.items():
+                    combined[k] += v
+            ip, node_to_run = self._get_node_to_run(combined, nodes)
+            if node_to_run is None:
+                return False
+            to_allocate.append((combined, ip))
+        elif (pg.strategy == PlacementStrategy.STRICT_SPREAD
+              or pg.strategy == PlacementStrategy.SPREAD):
+            # TODO (Alex): More accurate handling of non-STRICT_PACK groups.
+            remaining_nodes = nodes.copy()
+            for bundle in pg.bundles:
+                ip, node_to_run = self._get_node_to_run(
+                    bundle, remaining_nodes)
+                if node_to_run is None:
+                    return False
+                del remaining_nodes[ip]
+                to_allocate.append((bundle, ip))
+
+        for bundle, ip in to_allocate:
+            node = self.ip_to_nodes[ip]
+            node.allocate(bundle)
+        pg.start_time = self.virtual_time
+        end_time = self.virtual_time + pg.duration
+        self.event_queue.put(
+            Event(end_time, SIMULATOR_EVENT_PG_DONE, (pg, to_allocate)))
+        if pg.start_callback:
+            pg.start_callback()
+        return True
 
     def _schedule_task(self, task, nodes):
-        node_to_run = self._get_node_to_run(task.resources, nodes)
-        if node_to_run is None:
+        ip, node = self._get_node_to_run(task.resources, nodes)
+        if node is None:
             return False
 
         node.allocate(task.resources)
         task.node = node
         task.start_time = self.virtual_time
         end_time = self.virtual_time + task.duration
-        self.event_queue.put(
-            Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
+        self.event_queue.put(Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
         if task.start_callback:
             task.start_callback()
         return True
@@ -205,7 +288,12 @@ class Simulator:
         new_work_queue = []
         for work in self.work_queue:
             if isinstance(work, Task):
-                scheduled = self._schedule_task(work, self.ip_to_nodes.values())
+                scheduled = self._schedule_task(work, self.ip_to_nodes)
+            elif isinstance(work, PlacementGroup):
+                scheduled = self._schedule_placement_group(
+                    work, self.ip_to_nodes)
+            else:
+                assert False, "Unknown work object!"
 
             if scheduled is False:
                 new_work_queue.append(work)
@@ -232,9 +320,9 @@ class Simulator:
         return True
 
     def run_autoscaler(self):
-
         waiting_bundles = []
         infeasible_bundles = []
+        placement_groups = []
         for work in self.work_queue:
             if isinstance(work, Task):
                 shape = work.resources
@@ -242,6 +330,16 @@ class Simulator:
                     infeasible_bundles.append(shape)
                 else:
                     waiting_bundles.append(shape)
+            if isinstance(work, PlacementGroup):
+                placement_groups.append(
+                    PlacementGroupTableData(
+                        state=PlacementGroupTableData.PENDING,
+                        strategy=work.strategy,
+                        bundles=[
+                            Bundle(unit_resources=bundle)
+                            for bundle in work.bundles
+                        ],
+                    ))
 
         for ip, node in self.ip_to_nodes.items():
             if not node.in_cluster:
@@ -255,7 +353,7 @@ class Simulator:
                 resource_load={},
                 waiting_bundles=waiting_bundles,
                 infeasible_bundles=infeasible_bundles,
-                pending_placement_groups=[],
+                pending_placement_groups=placement_groups,
             )
 
         self.autoscaler.update()
@@ -273,9 +371,17 @@ class Simulator:
             task.node.free(task.resources)
             if task.done_callback:
                 task.done_callback()
-        elif event.event_type == SIMULATOR_EVEN_NODE_JOINED:
+        elif event.event_type == SIMULATOR_EVENT_NODE_JOINED:
             node = event.data
             node.in_cluster = True
+        elif event.event_type == SIMULATOR_EVENT_PG_DONE:
+            pg, allocated = event.data
+            for bundle, ip in allocated:
+                self.ip_to_nodes[ip].free(bundle)
+            if pg.done_callback:
+                pg.done_callback()
+        else:
+            assert False, "Unknown event!"
 
     def step(self):
         self.virtual_time = self.event_queue.queue[0].time
@@ -283,7 +389,18 @@ class Simulator:
             event = self.event_queue.get()
             self.process_event(event)
         self.schedule()
+        print(self.info_string())
         return self.virtual_time
+
+    def info_string(self):
+        num_connected_nodes = len(
+            [node for node in self.ip_to_nodes.values() if node.in_cluster])
+        num_pending_nodes = len(self.ip_to_nodes) - num_connected_nodes
+        return f"""[t={self.virtual_time}]
+    Connected nodes: {num_connected_nodes}
+    Pending nodes: {num_pending_nodes}
+    Remaining requests: {len(self.work_queue)}
+        """
 
 
 SAMPLE_CLUSTER_CONFIG = copy.deepcopy(MULTI_WORKER_CLUSTER)
@@ -329,7 +446,6 @@ class AutoscalingPolicyTest(unittest.TestCase):
         return path
 
     def testManyTasks(self):
-        cli_logger.configure(log_style="record", verbosity=-1)
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -356,7 +472,6 @@ class AutoscalingPolicyTest(unittest.TestCase):
         assert time < 400
 
     def testManyActors(self):
-        # cli_logger.configure(log_style="record", verbosity=-1)
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -380,5 +495,74 @@ class AutoscalingPolicyTest(unittest.TestCase):
         time = 0
         while start_count < len(tasks):
             time = simulator.step()
+
+        assert time < 200
+
+    def testManyPlacementGroups(self):
+        config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        simulator = Simulator(config_path, self.provider)
+
+        start_count = 0
+
+        def start_callback():
+            nonlocal start_count
+            start_count += 1
+
+        placement_group_requests = []
+
+        for _ in range(500):
+            placement_group_requests.append(
+                PlacementGroup(
+                    duration=float("inf"),
+                    bundles=[{
+                        "CPU": 1
+                    }, {
+                        "CPU": 2
+                    }],
+                    strategy=PlacementStrategy.STRICT_PACK,
+                    start_callback=start_callback,
+                ))
+
+        for _ in range(500):
+            placement_group_requests.append(
+                PlacementGroup(
+                    duration=float("inf"),
+                    bundles=[{
+                        "CPU": 1
+                    }, {
+                        "CPU": 2
+                    }],
+                    strategy=PlacementStrategy.STRICT_SPREAD,
+                    start_callback=start_callback,
+                ))
+
+        # SPREAD and PACK tests fail, but under the real GCS placement group
+        # scheduling algorithm we could also be left in a situation in which
+        # the autoscaler thinks the placement group is placeable, but the
+        # placement group scheduler doesn't know how to schedule it.
+
+        # for _ in range(500):
+        #     placement_group_requests.append(PlacementGroup(
+        #         duration=float("inf"), bundles=[{"CPU": 1}, {"CPU": 2}],
+        #         strategy=PlacementStrategy.PACK,
+        #         start_callback=start_callback))
+
+        # for _ in range(500):
+        #     placement_group_requests.append(PlacementGroup(
+        #         duration=float("inf"), bundles=[{"CPU": 2}, {"CPU": 1}],
+        #         strategy=PlacementStrategy.SPREAD,
+        #         start_callback=start_callback))
+
+        simulator.submit(placement_group_requests)
+
+        time = 0
+        while start_count < len(placement_group_requests) and time < 500:
+            time = simulator.step()
+
+        # for ip, node in simulator.ip_to_nodes.items():
+        #     print(f"{ip}: {node.available_resources}, {node.total_resources}")
+        #     pass
 
         assert time < 200
