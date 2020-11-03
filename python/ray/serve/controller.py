@@ -863,7 +863,7 @@ class ServeController:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified backend exists on the client.
-            if self.configuration_store.get_backend(backend_tag) is not None:
+            if self.configuration_store.get_backend(backend_tag) is None:
                 return
 
             # Check that the specified backend isn't used by any endpoints.
@@ -945,8 +945,8 @@ class ServeController:
         backend_config = self.configuration_store.get_backend(
             backend_tag).backend_config
         broadcast_futures = [
-            replica.update_config.remote(backend_config).as_future()
-            for replica in self.actor_reconciler.get_replica_actors()
+            replica.update_config.remote(backend_config).as_future() for
+            replica in self.actor_reconciler.get_replica_actors(backend_tag)
         ]
         await asyncio.gather(*broadcast_futures)
 
