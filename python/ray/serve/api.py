@@ -5,7 +5,8 @@ import inspect
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
+                                 SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT, 
+                                 BACKEND_RECONFIGURE_METHOD)
 from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
@@ -257,9 +258,6 @@ class Client:
                 update={"internal_metadata": metadata})
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
-        if backend_config.user_config and not inspect.isclass(func_or_class):
-            raise ValueError(
-                "argument func_or_class must be a class to use user_config")
 
         backend_config._validate_complete()
         ray.get(
