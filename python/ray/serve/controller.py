@@ -85,9 +85,9 @@ class BackendInfo(BaseModel):
 
 @dataclass
 class ConfigurationStore:
-    backends: Dict[BackendTag, BackendInfo]
-    traffic_policies: Dict[EndpointTag, TrafficPolicy]
-    routes: Dict[BackendTag, Tuple[EndpointTag, Any]]
+    backends: Dict[BackendTag, BackendInfo] = field(default_factory=dict)
+    traffic_policies: Dict[EndpointTag, TrafficPolicy] = field(default_factory=dict)
+    routes: Dict[BackendTag, Tuple[EndpointTag, Any]]= field(default_factory=dict)
 
     def __init__(self):
         self.backends = dict()
@@ -95,14 +95,10 @@ class ConfigurationStore:
         self.routes = dict()
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
-        result = {}
-        for tag, info in self.backends.items():
-            config = info.backend_config
-            result[tag] = config
-        return result
+        return {tag: info.backend_config for tag,info in self.backends.items()}
 
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
-        return self.backends.get(backend_tag, None)
+        return self.backends.get(backend_tag)
 
     def add_backend(self, backend_tag: BackendTag,
                     backend_info: BackendInfo) -> None:
@@ -137,10 +133,7 @@ class ActorStateReconciler:
         return self.routers_cache.values()
 
     def worker_handles(self) -> List[ActorHandle]:
-        lst = []
-        for replica_dict in self.workers.values():
-            lst.extend(replica_dict.values())
-        return lst
+        return list(itertools.chain.from_iterable([replica_dict.values() for replica_dict in self.workers.values()])
 
     def get_replica_actors(self, backend_tag: BackendTag) -> List[ActorHandle]:
         return_list = []
