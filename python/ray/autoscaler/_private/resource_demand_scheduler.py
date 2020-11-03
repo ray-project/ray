@@ -131,7 +131,6 @@ class ResourceDemandScheduler:
                                                resource_demands)
         logger.info("Resource demands: {}".format(resource_demands))
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
-
         max_to_add = self.max_workers - sum(node_type_counts.values())
         nodes_to_add_based_on_demand = get_nodes_for(
             self.node_types, node_type_counts, max_to_add, unfulfilled)

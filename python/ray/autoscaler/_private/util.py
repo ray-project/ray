@@ -129,7 +129,6 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
-    # We rewrite first to benefit from autofilling of available_node_types.
     defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
     try:
         defaults = _fillout_available_node_types_resources(defaults)
