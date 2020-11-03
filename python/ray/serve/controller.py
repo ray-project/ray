@@ -143,8 +143,8 @@ class ActorStateReconciler:
                 pass
         return return_list
 
-    async def _start_pending_replicas(self,
-                                      controller: "ServeController") -> None:
+    async def _start_pending_replicas(
+            self, config_store: ConfigurationStore) -> None:
         """Starts the pending backend replicas in self.replicas_to_start.
 
         Starts the worker, then pushes an update to the router to add it to
@@ -157,14 +157,15 @@ class ActorStateReconciler:
         for backend_tag, replicas_to_create in self.replicas_to_start.items():
             for replica_tag in replicas_to_create:
                 replica_started_futures.append(
-                    self._start_replica(controller, backend_tag, replica_tag))
+                    self._start_replica(config_store, backend_tag,
+                                        replica_tag))
 
         # Wait on all creation task futures together.
         await asyncio.gather(*replica_started_futures)
 
         self.replicas_to_start.clear()
 
-    async def _start_replica(self, controller: "ServeController",
+    async def _start_replica(self, config_store: ConfigurationStore,
                              backend_tag: BackendTag,
                              replica_tag: ReplicaTag) -> None:
         # NOTE(edoakes): the replicas may already be created if we
@@ -175,7 +176,7 @@ class ActorStateReconciler:
             worker_handle = ray.get_actor(replica_name)
         except ValueError:
             worker_handle = await self._start_backend_worker(
-                controller, backend_tag, replica_tag, replica_name)
+                config_store, backend_tag, replica_tag, replica_name)
 
         self.replicas[backend_tag].append(replica_tag)
         self.workers[backend_tag][replica_tag] = worker_handle
@@ -292,7 +293,7 @@ class ActorStateReconciler:
         self.backends_to_remove.clear()
 
     async def _start_backend_worker(
-            self, controller: "ServeController", backend_tag: BackendTag,
+            self, config_store: ConfigurationStore, backend_tag: BackendTag,
             replica_tag: ReplicaTag, replica_name: str) -> ActorHandle:
         """Creates a backend worker and waits for it to start up.
 
@@ -301,7 +302,7 @@ class ActorStateReconciler:
         """
         logger.debug("Starting worker '{}' for backend '{}'.".format(
             replica_tag, backend_tag))
-        backend_info = controller.configuration_store.get_backend(backend_tag)
+        backend_info = config_store.get_backend(backend_tag)
 
         worker_handle = ray.remote(backend_info.worker_class).options(
             name=replica_name,
@@ -316,7 +317,8 @@ class ActorStateReconciler:
         await worker_handle.ready.remote()
         return worker_handle
 
-    def _start_routers_if_needed(self, controller: "ServeController") -> None:
+    def _start_routers_if_needed(self, http_host: str, http_port: str,
+                                 http_middlewares: List[Any]) -> None:
         """Start a router on every node if it doesn't already exist."""
         for node_id, node_resource in get_all_node_ids():
             if node_id in self.routers_cache:
@@ -329,8 +331,7 @@ class ActorStateReconciler:
             except ValueError:
                 logger.info("Starting router with name '{}' on node '{}' "
                             "listening on '{}:{}'".format(
-                                router_name, node_id, controller.http_host,
-                                controller.http_port))
+                                router_name, node_id, http_host, http_port))
                 router = HTTPProxyActor.options(
                     name=router_name,
                     lifetime="detached" if self.detached else None,
@@ -342,10 +343,10 @@ class ActorStateReconciler:
                     },
                 ).remote(
                     node_id,
-                    controller.http_host,
-                    controller.http_port,
+                    http_host,
+                    http_port,
                     controller_name=self.controller_name,
-                    http_middlewares=controller.http_middlewares)
+                    http_middlewares=http_middlewares)
 
             self.routers_cache[node_id] = router
 
@@ -401,10 +402,12 @@ class ActorStateReconciler:
                 self.workers[backend_tag][replica_tag] = ray.get_actor(
                     replica_name)
 
-    async def _recover_from_checkpoint(self, config_store: ConfigurationStore,
-                                       controller: "ServeController") -> None:
+    async def _recover_from_checkpoint(
+            self, config_store: ConfigurationStore,
+            controller: "ServeController"
+    ) -> Dict[BackendTag, BasicAutoscalingPolicy]:
         self._recover_actor_handles()
-
+        autoscaling_policies = dict()
         # Push configuration state to the router.
         # TODO(edoakes): should we make this a pull-only model for simplicity?
         for endpoint, traffic_policy in config_store.traffic_policies.items():
@@ -429,9 +432,8 @@ class ActorStateReconciler:
             await controller.broadcast_backend_config(backend)
             metadata = info.backend_config.internal_metadata
             if metadata.autoscaling_config is not None:
-                controller.autoscaling_policies[
-                    backend] = BasicAutoscalingPolicy(
-                        backend, metadata.autoscaling_config)
+                autoscaling_policies[backend] = BasicAutoscalingPolicy(
+                    backend, metadata.autoscaling_config)
 
         # Push configuration state to the routers.
         await asyncio.gather(*[
@@ -440,12 +442,14 @@ class ActorStateReconciler:
         ])
 
         # Start/stop any pending backend replicas.
-        await self._start_pending_replicas(controller)
+        await self._start_pending_replicas(config_store)
         await self._stop_pending_replicas()
 
         # Remove any pending backends and endpoints.
         await self._remove_pending_backends()
         await self._remove_pending_endpoints()
+
+        return autoscaling_policies
 
 
 @dataclass
@@ -509,7 +513,8 @@ class ServeController:
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
-        self.actor_reconciler._start_routers_if_needed(self)
+        self.actor_reconciler._start_routers_if_needed(
+            self.http_host, self.http_port, self.http_middlewares)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -582,8 +587,8 @@ class ServeController:
         # Restore ActorStateReconciler
         self.actor_reconciler = restored_checkpoint.reconciler
 
-        await self.actor_reconciler._recover_from_checkpoint(
-            self.configuration_store, self)
+        self.autoscaling_policies = await self.actor_reconciler.\
+            _recover_from_checkpoint(self.configuration_store, self)
 
         logger.info(
             "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
@@ -605,7 +610,8 @@ class ServeController:
         while True:
             await self.do_autoscale()
             async with self.write_lock:
-                self.actor_reconciler._start_routers_if_needed(self)
+                self.actor_reconciler._start_routers_if_needed(
+                    self.http_host, self.http_port, self.http_middlewares)
                 checkpoint_required = self.actor_reconciler.\
                     _stop_routers_if_needed()
                 if checkpoint_required:
