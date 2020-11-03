@@ -498,7 +498,8 @@ class NormalSchedulingQueue : public SchedulingQueue {
  public:
   NormalSchedulingQueue(){};
 
-  bool TaskQueueEmpty() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool TaskQueueEmpty() const {
+    absl::MutexLock lock(&mu_);
     return pending_normal_tasks_.empty();
   }
 
@@ -517,7 +518,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
     absl::MutexLock lock(&mu_);
-    while (!TaskQueueEmpty()) {
+    while (!pending_normal_tasks_.empty()) {
       auto &head = pending_normal_tasks_.front();
       head.Accept();
       pending_normal_tasks_.pop_front();
