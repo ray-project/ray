@@ -159,6 +159,7 @@ class TorchTrainer:
             loss_creator=None,
             serialize_data_creation=None,
             data_loader_args=None,
+            apex_args=None,
     ):
         if (model_creator or data_creator or optimizer_creator
                 or scheduler_creator or loss_creator):
@@ -195,6 +196,13 @@ class TorchTrainer:
                 "specify a batch size for each worker or "
                 "config={ray.util.sgd.utils.BATCH_SIZE: N} to specify a "
                 "batch size to be used across all workers.")
+
+        if apex_args is not None:
+            raise DeprecationWarning(
+                "apex_args is deprecated. Pass in apex_args when calling "
+                "`register` in the `setup` method of your `TrainingOperator` "
+                "instead."
+            )
 
         if serialize_data_creation is True:
             if log_once("serialize_data_creation"):
