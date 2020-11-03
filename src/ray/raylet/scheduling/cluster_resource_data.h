@@ -79,6 +79,8 @@ class TaskRequest {
   /// the task will run on a different node in the cluster, if none of the
   /// nodes in this list can schedule this task.
   absl::flat_hash_set<int64_t> placement_hints;
+  /// Check whether the request contains no resources.
+  bool IsEmpty() const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
 };

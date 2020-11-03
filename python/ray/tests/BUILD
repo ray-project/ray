@@ -11,7 +11,13 @@ SRCS = [] + select({
 py_test_module_list(
   files = [
     "test_async.py",
+    "test_actor.py",
+    "test_actor_failures.py",
+    "test_actor_advanced.py",
+    "test_advanced.py",
+    "test_advanced_2.py",
     "test_basic.py",
+    "test_basic_2.py",
     "test_cli.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
@@ -27,15 +33,9 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_actor_advanced.py",
-    "test_actor_failures.py",
-    "test_actor.py",
     "test_actor_resources.py",
-    "test_advanced_2.py",
     "test_advanced_3.py",
-    "test_advanced.py",
     "test_array.py",
-    "test_basic_2.py",
     "test_cancel.py",
     "test_component_failures_2.py",
     "test_dynres.py",
@@ -91,6 +91,7 @@ py_test_module_list(
   files = [
     "test_args.py",
     "test_asyncio.py",
+    "test_asyncio_cluster.py",
     "test_autoscaler.py",
     "test_autoscaler_yaml.py",
     "test_component_failures.py",

@@ -24,7 +24,7 @@ const LabeledDatum: React.FC<LabeledDatumProps> = ({
 }) => {
   const classes = useLabeledDatumStyles();
   const innerHtml = (
-    <Grid container item xs={6}>
+    <Grid container item xs={12}>
       <Grid item xs={6}>
         <Box className={tooltip && classes.tooltipLabel}>{label}</Box>
       </Grid>

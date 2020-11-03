@@ -159,6 +159,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
 }
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
+                                                         bool actor_creation,
                                                          int64_t *total_violations) {
   // Minimum number of soft violations across all nodes that can schedule the request.
   // We will pick the node with the smallest number of soft violations.
@@ -166,6 +167,25 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // Node associated to min_violations.
   int64_t best_node = -1;
   *total_violations = 0;
+
+  if (actor_creation && task_req.IsEmpty()) {
+    // This an actor which requires no resources.
+    // Pick a random node to to avoid all scheduling all actors on the local node.
+    if (nodes_.size() > 0) {
+      int idx = std::rand() % nodes_.size();
+      for (auto &node : nodes_) {
+        if (idx == 0) {
+          best_node = node.first;
+          break;
+        }
+        idx--;
+      }
+    }
+    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
+                   << ", # nodes = " << nodes_.size()
+                   << ", task_req = " << task_req.DebugString();
+    return best_node;
+  }
 
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
@@ -211,10 +231,11 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
-    const std::unordered_map<std::string, double> &task_resources,
+    const std::unordered_map<std::string, double> &task_resources, bool actor_creation,
     int64_t *total_violations) {
   TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
-  int64_t node_id = GetBestSchedulableNode(task_request, total_violations);
+  int64_t node_id =
+      GetBestSchedulableNode(task_request, actor_creation, total_violations);
 
   std::string id_string;
   if (node_id == -1) {
