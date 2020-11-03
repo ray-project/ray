@@ -6,6 +6,8 @@ import numpy as np
 import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES
 from ray.gcs_utils import PlacementGroupTableData
+from ray.autoscaler._private.resource_demand_scheduler import \
+    NodeIP, ResourceDict
 
 logger = logging.getLogger(__name__)
 
@@ -104,13 +106,22 @@ class LoadMetrics:
         return self._info()["NumNodesConnected"]
 
     def get_node_resources(self):
-        """Return a list of node resources (static resource sizes.
+        """Return a list of node resources (static resource sizes).
 
         Example:
             >>> metrics.get_node_resources()
             [{"CPU": 1}, {"CPU": 4, "GPU": 8}]  # for two different nodes
         """
-        return list(self.static_resources_by_ip.values())
+        return self.static_resources_by_ip.values()
+
+    def get_static_node_resources_by_ip(self) -> Dict[NodeIP, ResourceDict]:
+        """Return a dict of node resources for every node ip.
+
+        Example:
+            >>> lm.get_static_node_resources_by_ip()
+            {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "GPU": 8}}
+        """
+        return self.static_resources_by_ip
 
     def get_resource_utilization(self):
         return self.dynamic_resources_by_ip
