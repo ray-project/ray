@@ -80,8 +80,9 @@ class RemotePdb(Pdb):
 
     def listen(self):
         if not self._quiet:
-            cry("RemotePdb session open at %s:%s, use 'ray debug' to connect..." %
-                self._listen_socket.getsockname())
+            cry("RemotePdb session open at %s:%s, "
+                "use 'ray debug' to connect..."
+                % self._listen_socket.getsockname())
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()
         if not self._quiet:
