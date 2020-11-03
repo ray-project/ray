@@ -103,8 +103,10 @@ def _debug_check_line_by_line(result, expected_lines):
         exp = expected_lines[i]
         matched = re.fullmatch(exp + r" *", out) is not None
         if not matched:
-            print(f"!!! ERROR: Expected (regex): {repr(exp)}")
-            print(f"Got: {out}")
+            print(f"{i:>3}: {out}")
+            print(f"!!! ^ ERROR: Expected (regex): {repr(exp)}")
+        else:
+            print(f"{i:>3}: {out}")
         i += 1
     if i < len(expected_lines):
         print("!!! ERROR: Expected extra lines (regex):")
@@ -134,9 +136,6 @@ def _load_output_pattern(name):
 
 def _check_output_via_pattern(name, result):
     expected_lines = _load_output_pattern(name)
-    print("---")
-    print(result.output)
-    print("---")
 
     if result.exception is not None:
         print(result.output)
