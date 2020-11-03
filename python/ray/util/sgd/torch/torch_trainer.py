@@ -201,8 +201,7 @@ class TorchTrainer:
             raise DeprecationWarning(
                 "apex_args is deprecated. Pass in apex_args when calling "
                 "`register` in the `setup` method of your `TrainingOperator` "
-                "instead."
-            )
+                "instead.")
 
         if serialize_data_creation is True:
             if log_once("serialize_data_creation"):
