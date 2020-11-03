@@ -79,13 +79,9 @@ class ResourceDemandScheduler:
             static_node_resources: Mapping from ip to static node resources.
         """
         if self.is_legacy_yaml:
-            # When using legacy yaml files and after launching worker nodes we
-            # do not want to launch any other nodes before at least one worker
-            # node is connected and its resources show up in LoadMetrics.
-            return_immediately = self._handle_legacy_yaml(
-                nodes, pending_nodes, static_node_resources)
-            if return_immediately:
-                return {}
+            # When using legacy yaml files we need to infer the head & worker
+            # node resources from the static node resources from LoadMetrics.
+            self._infer_legacy_node_resources_if_needed(static_node_resources)
 
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
@@ -105,22 +101,12 @@ class ResourceDemandScheduler:
             placement_groups_to_resource_demands(pending_placement_groups)
         resource_demands.extend(placement_group_demand_vector)
 
-        # Launch max(1, min_workers) nodes from which we later calculate the
-        # node resources if there is unfulfilled demand and we don't know the
-        # resources of the workers.
         if self.is_legacy_yaml and \
                 not self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]:
-            unfulfilled, _ = get_bin_pack_residual(node_resources,
-                                                   resource_demands)
-            if self.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"] > 0 or \
-                    unfulfilled:
-                return {
-                    NODE_TYPE_LEGACY_WORKER: max(
-                        1, self.node_types[NODE_TYPE_LEGACY_WORKER][
-                            "min_workers"])
-                }
-            else:
-                return {}
+            # Need to launch worker nodes to later infer their
+            # resources.
+            return self._legacy_worker_node_to_launch(
+                nodes, pending_nodes, node_resources, resource_demands)
         placement_group_nodes_to_add, node_resources, node_type_counts = \
             self.reserve_and_allocate_spread(
                 strict_spreads, node_resources, node_type_counts)
@@ -152,22 +138,45 @@ class ResourceDemandScheduler:
         logger.info("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add
 
-    def _handle_legacy_yaml(self, nodes: List[NodeID],
-                            pending_nodes: Dict[NodeType, int],
-                            static_node_resources: Dict[NodeIP, ResourceDict]
-                            ) -> (bool, Dict[NodeType, int]):
-        """Handles legacy config files with autofilled available_node_types.
+    def _legacy_worker_node_to_launch(
+            self, nodes: List[NodeID], pending_nodes: Dict[NodeType, int],
+            node_resources: List[ResourceDict],
+            resource_demands: List[ResourceDict]) -> Dict[NodeType, int]:
+        """Get worker nodes to launch when resources missing in legacy yamls.
 
-        Updates the resources of the head and worker node types.
-        Args:
-            nodes: List of existing nodes in the cluster.
-            pending_nodes: Summary of node types currently being launched.
-            static_node_resources: Mapping from ip to static node resources.
-        Returns:
-            return_immediately: Whether to return immediately or to
-                continue running the resource demand scheduler.
+        If there is unfulfilled demand and we don't know the resources of the
+        workers, it returns max(1, min_workers) worker nodes from which we
+        later calculate the node resources.
         """
-        return_immediately = False
+        if self.max_workers == 0:
+            return {}
+        elif pending_nodes or len(nodes) > 1:
+            # If we are already launching a worker node.
+            # If first worker node fails this will never launch more nodes.
+            return {}
+        else:
+            unfulfilled, _ = get_bin_pack_residual(node_resources,
+                                                   resource_demands)
+            if self.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"] > 0 or \
+                    unfulfilled:
+                return {
+                    NODE_TYPE_LEGACY_WORKER: max(
+                        1, self.node_types[NODE_TYPE_LEGACY_WORKER][
+                            "min_workers"])
+                }
+            else:
+                return {}
+
+    def _infer_legacy_node_resources_if_needed(
+            self, static_node_resources: Dict[NodeIP, ResourceDict]
+    ) -> (bool, Dict[NodeType, int]):
+        """Infers node resources for legacy config files.
+
+        Updates the resources of the head and worker node types in
+        self.node_types.
+        Args:
+            static_node_resources: Mapping from ip to static node resources.
+        """
         # We fill the head node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"]:
             assert len(static_node_resources) == 1  # Only the head node.
@@ -175,10 +184,7 @@ class ResourceDemandScheduler:
                 iter(static_node_resources.values()))
         # We fill the worker node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]:
-            if self.max_workers == 0:
-                # Do not add any workers if max_workers is 0.
-                return_immediately = True
-            elif len(static_node_resources) > 1:
+            if len(static_node_resources) > 1:
                 # Set the node_types here as we already launched a worker node
                 # from which we directly get the node_resources.
                 worker_nodes = self.provider.non_terminated_nodes(
@@ -192,13 +198,6 @@ class ResourceDemandScheduler:
                         self.node_types[NODE_TYPE_LEGACY_WORKER][
                             "resources"] = static_node_resources[ip]
                 assert self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
-                return_immediately = False
-            elif pending_nodes or len(nodes) > 1:
-                # If we are already launching a worker node.
-                # If first worker node fails this will never launch more nodes.
-                return_immediately = True
-
-        return return_immediately
 
     def _get_concurrent_resource_demand_to_launch(
             self, to_launch: Dict[NodeType, int],
