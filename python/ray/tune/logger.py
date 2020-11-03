@@ -2,13 +2,13 @@ import csv
 import json
 import logging
 import numbers
+import numpy as np
 import os
+import yaml
+
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
 
-import numpy as np
-
 import ray.cloudpickle as cloudpickle
-import yaml
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
