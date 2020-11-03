@@ -297,7 +297,8 @@ class LocalDistributedRunner(DistributedTorchRunner):
             logger.error("Failed to set local CUDA device.")
             raise
 
-    def get_device_ids(self):
+    def get_device(self):
+        return torch.device("")
         return [int(self.local_cuda_device)]
 
     def shutdown(self, cleanup=True):

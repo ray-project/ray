@@ -256,6 +256,7 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+    logger.error("Tune test")
     all_start = time.time()
     if global_checkpoint_period:
         raise ValueError("global_checkpoint_period is deprecated. Set env var "
