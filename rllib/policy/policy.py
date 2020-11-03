@@ -1,9 +1,11 @@
 from abc import ABCMeta, abstractmethod
 import gym
+from gym.spaces import Box
 import numpy as np
 import tree
 from typing import Dict, List, Optional
 
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -227,11 +229,13 @@ class Policy(metaclass=ABCMeta):
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
+    @DeveloperAPI
     def compute_actions_from_input_dict(
             self,
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -278,6 +282,7 @@ class Policy(metaclass=ABCMeta):
             info_batch=None,
             explore=explore,
             timestep=timestep,
+            episodes=episodes,
             **kwargs,
         )
 
@@ -533,6 +538,162 @@ class Policy(metaclass=ABCMeta):
             worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))
         return exploration
+
+    def _get_default_view_requirements(self):
+        """Returns a default ViewRequirements dict.
+
+        Note: This is the base/maximum requirement dict, from which later
+        some requirements will be subtracted again automatically to streamline
+        data collection, batch creation, and data transfer.
+
+        Returns:
+            ViewReqDict: The default view requirements dict.
+        """
+
+        # Default view requirements (equal to those that we would use before
+        # the trajectory view API was introduced).
+        return {
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+            SampleBatch.NEXT_OBS: ViewRequirement(
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=self.observation_space),
+            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+            SampleBatch.REWARDS: ViewRequirement(),
+            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.EPS_ID: ViewRequirement(),
+            SampleBatch.AGENT_INDEX: ViewRequirement(),
+            "t": ViewRequirement(),
+        }
+
+    def _initialize_loss_from_dummy_batch(
+            self, auto_remove_unneeded_view_reqs: bool = True) -> None:
+        """Performs test calls through policy's model and loss.
+
+        NOTE: This base method should work for define-by-run Policies such as
+        torch and tf-eager policies.
+
+        If required, will thereby detect automatically, which data views are
+        required by a) the forward pass, b) the postprocessing, and c) the loss
+        functions, and remove those from self.view_requirements that are not
+        necessary for these computations (to save data storage and transfer).
+
+        Args:
+            auto_remove_unneeded_view_reqs (bool): Whether to automatically
+                remove those ViewRequirements records from
+                self.view_requirements that are not needed.
+        """
+        sample_batch_size = max(self.batch_divisibility_req, 2)
+        B = 2  # For RNNs, have B=2, T=[depends on sample_batch_size]
+        self._dummy_batch = self._get_dummy_batch_from_view_requirements(
+            sample_batch_size)
+        input_dict = self._lazy_tensor_dict(self._dummy_batch)
+        actions, state_outs, extra_outs = \
+            self.compute_actions_from_input_dict(input_dict)
+        # Add extra outs to view reqs.
+        for key, value in extra_outs.items():
+            self._dummy_batch[key] = np.zeros_like(value)
+            if key not in self.view_requirements:
+                self.view_requirements[key] = \
+                    ViewRequirement(space=gym.spaces.Box(
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
+        sb = SampleBatch(self._dummy_batch)
+        if state_outs:
+            # TODO: (sven) This hack will not work for attention net traj.
+            #  view setup.
+            i = 0
+            while "state_in_{}".format(i) in sb:
+                sb["state_in_{}".format(i)] = sb["state_in_{}".format(i)][:B]
+                if "state_out_{}".format(i) in sb:
+                    sb["state_out_{}".format(i)] = \
+                        sb["state_out_{}".format(i)][:B]
+                i += 1
+        batch_for_postproc = self._lazy_numpy_dict(sb)
+        batch_for_postproc.count = sb.count
+        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+        if state_outs:
+            seq_len = (self.batch_divisibility_req // B) or 1
+            postprocessed_batch["seq_lens"] = \
+                np.array([seq_len for _ in range(B)], dtype=np.int32)
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        if self._loss is not None:
+            self._loss(self, self.model, self.dist_class, train_batch)
+
+        # Add new columns automatically to view-reqs.
+        if self.config["_use_trajectory_view_api"] and \
+                auto_remove_unneeded_view_reqs:
+            # Add those needed for postprocessing and training.
+            all_accessed_keys = train_batch.accessed_keys | \
+                                batch_for_postproc.accessed_keys | \
+                                batch_for_postproc.added_keys
+            for key in all_accessed_keys:
+                if key not in self.view_requirements:
+                    self.view_requirements[key] = ViewRequirement()
+            if self._loss:
+                # Tag those only needed for post-processing.
+                for key in batch_for_postproc.accessed_keys:
+                    if key not in train_batch.accessed_keys:
+                        self.view_requirements[key].used_for_training = False
+                # Remove those not needed at all (leave those that are needed
+                # by Sampler to properly execute sample collection).
+                for key in list(self.view_requirements.keys()):
+                    if key not in all_accessed_keys and key not in [
+                        SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                        SampleBatch.UNROLL_ID, SampleBatch.DONES] and \
+                            key not in self.model.inference_view_requirements:
+                        del self.view_requirements[key]
+            # Add those data_cols (again) that are missing and have
+            # dependencies by view_cols.
+            for key in list(self.view_requirements.keys()):
+                vr = self.view_requirements[key]
+                if vr.data_col is not None and \
+                        vr.data_col not in self.view_requirements:
+                    used_for_training = \
+                        vr.data_col in train_batch.accessed_keys
+                    self.view_requirements[vr.data_col] = \
+                        ViewRequirement(
+                            space=vr.space,
+                            used_for_training=used_for_training)
+
+    def _get_dummy_batch_from_view_requirements(
+            self, batch_size: int = 1) -> SampleBatch:
+        """Creates a numpy dummy batch based on the Policy's view requirements.
+
+        Args:
+            batch_size (int): The size of the batch to create.
+
+        Returns:
+            Dict[str, TensorType]: The dummy batch containing all zero values.
+        """
+        ret = {}
+        for view_col, view_req in self.view_requirements.items():
+            if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
+                _, shape = ModelCatalog.get_action_shape(view_req.space)
+                ret[view_col] = \
+                    np.zeros((batch_size, ) + shape[1:], np.float32)
+            else:
+                ret[view_col] = np.zeros_like(
+                    [view_req.space.sample() for _ in range(batch_size)])
+        return SampleBatch(ret)
+
+    def _update_model_inference_view_requirements_from_init_state(self):
+        """Uses this Model's initial state to auto-add necessary ViewReqs.
+
+        Can be called from within a Policy to make sure RNNs automatically
+        update their internal state-related view requirements.
+        Changes the `self.inference_view_requirements` dict.
+        """
+        model = self.model
+        # Add state-ins to this model's view.
+        for i, state in enumerate(model.get_initial_state()):
+            model.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=state.shape))
+            model.inference_view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))
 
 
 def clip_action(action, action_space):
