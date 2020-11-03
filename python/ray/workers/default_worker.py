@@ -1,4 +1,5 @@
 import argparse
+import base64
 import json
 import time
 import sys
@@ -125,19 +126,12 @@ if __name__ == "__main__":
     if mode == ray.IO_WORKER_MODE:
         from ray import external_storage
         if args.object_spilling_config:
-            object_spilling_config = json.loads(args.object_spilling_config)
+            object_spilling_config = base64.b64decode(
+                args.object_spilling_config)
+            object_spilling_config = json.loads(object_spilling_config)
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(object_spilling_config)
-
-    system_config = {}
-    if args.config_list is not None:
-        config_list = args.config_list.split(",")
-        if len(config_list) > 1:
-            i = 0
-            while i < len(config_list):
-                system_config[config_list[i]] = config_list[i + 1]
-                i += 2
 
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
@@ -161,7 +155,6 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         load_code_from_local=args.load_code_from_local,
         metrics_agent_port=args.metrics_agent_port,
-        _system_config=system_config,
     )
 
     node = ray.node.Node(
