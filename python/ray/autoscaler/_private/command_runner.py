@@ -718,8 +718,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options",
                         []) + self._configure_runtime(),
-                self.ssh_command_runner.cluster_name,
-		home_directory)
+                self.ssh_command_runner.cluster_name, home_directory)
             self.run(start_command, run_env="host")
         else:
             running_image = self.run(
