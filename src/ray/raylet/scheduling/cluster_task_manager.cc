@@ -36,7 +36,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // TODO (Alex): We should distinguish between infeasible tasks and a fully
       // utilized cluster.
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          request_resources, &_unused);
+          request_resources, task.GetTaskSpecification().IsActorCreationTask(), &_unused);
       if (node_id_string.empty()) {
         // There is no node that has available resources to run the request.
         // Move on to the next shape.
@@ -178,12 +178,20 @@ void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> wor
   worker->ClearAllocatedInstances();
 }
 
+void ReplyCancelled(Work &work) {
+  auto reply = std::get<1>(work);
+  auto callback = std::get<2>(work);
+  reply->set_canceled(true);
+  callback();
+}
+
 bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
        shapes_it++) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
+        ReplyCancelled(*work_it);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_schedule_.erase(shapes_it);
@@ -197,6 +205,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
+        ReplyCancelled(*work_it);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_dispatch_.erase(shapes_it);
@@ -208,6 +217,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
 
   auto iter = waiting_tasks_.find(task_id);
   if (iter != waiting_tasks_.end()) {
+    ReplyCancelled(iter->second);
     waiting_tasks_.erase(iter);
     return true;
   }

@@ -67,13 +67,14 @@ if __name__ == "__main__":
         assert len(experiments) == 1,\
             "Error, can only run a single experiment per yaml file!"
 
-        print("== Test config ==")
-        print(yaml.dump(experiments))
-
         # Add torch option to exp configs.
         for exp in experiments.values():
             if args.torch:
                 exp["config"]["framework"] = "torch"
+
+        # Print out the actual config.
+        print("== Test config ==")
+        print(yaml.dump(experiments))
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.

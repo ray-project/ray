@@ -110,6 +110,14 @@ def test_global_state_actor_table(ray_start_regular):
     assert get_state() == dead_state
 
 
+def test_global_state_worker_table(ray_start_regular):
+
+    # Get worker table from gcs.
+    workers_data = ray.state.workers()
+
+    assert len(workers_data) == 1
+
+
 def test_global_state_actor_entry(ray_start_regular):
     @ray.remote
     class Actor:

@@ -14,6 +14,7 @@ from ray.test_utils import (
     wait_for_pid_to_exit,
     generate_system_config_map,
     get_other_nodes,
+    new_scheduler_enabled,
     SignalActor,
 )
 
@@ -265,6 +266,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     assert result == 1 or result == results[-1] + 1
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic resources todo")
 def test_actor_restart_without_task(ray_start_regular):
     """Test a dead actor can be restarted without sending task to it."""
 
@@ -483,6 +485,7 @@ def test_decorated_method(ray_start_regular):
         "num_cpus": 1,
         "num_nodes": 3,
     }], indirect=True)
+@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic resources todo")
 def test_ray_wait_dead_actor(ray_start_cluster):
     """Tests that methods completed by dead actors are returned as ready"""
     cluster = ray_start_cluster

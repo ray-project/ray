@@ -266,10 +266,13 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.QueueTask(task, &reply, callback);
 
   // Task is now queued so cancellation works.
+  callback_called = false;
+  reply.Clear();
   ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
   // Task will not execute.
-  ASSERT_FALSE(callback_called);
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -277,9 +280,12 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.SchedulePendingTasks();
 
   // We can still cancel the task if it's on the dispatch queue.
+  callback_called = false;
+  reply.Clear();
   ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   // Task will not execute.
-  ASSERT_FALSE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_TRUE(callback_called);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -288,9 +294,12 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   // Task is now running so we can't cancel it.
+  callback_called = false;
+  reply.Clear();
   ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   // Task will not execute.
-  ASSERT_TRUE(callback_called);
+  ASSERT_FALSE(reply.canceled());
+  ASSERT_FALSE(callback_called);
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(leased_workers_.size(), 1);
 }
@@ -364,35 +373,43 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
     auto data = std::make_shared<rpc::HeartbeatTableData>();
     task_manager_.Heartbeat(false, data);
 
-    auto load = data->mutable_resource_load();
-    ASSERT_EQ(load->size(), 2);
-    ASSERT_EQ((*load)["CPU"], 20);  // 9 + 1 + 10 = 20
-    ASSERT_EQ((*load)["GPU"], 6);   // 5 + 1 = 6
-
     auto load_by_shape =
         data->mutable_resource_load_by_shape()->mutable_resource_demands();
     ASSERT_EQ(load_by_shape->size(), 3);
 
-    auto load1 = (*load_by_shape)[0];
-    auto load2 = (*load_by_shape)[1];
-    auto load3 = (*load_by_shape)[2];
+    std::vector<std::vector<unsigned int>> expected = {
+        // infeasible, ready, CPU, GPU, size
+        {1, 0, 10, 1, 2},
+        {1, 0, 9, 5, 2},
+        {0, 1, 1, 0, 1}};
 
-    ASSERT_EQ(load1.num_infeasible_requests_queued(), 1);
-    ASSERT_EQ(load1.num_ready_requests_queued(), 0);
-    ASSERT_EQ((*load1.mutable_shape())["CPU"], 10);
-    ASSERT_EQ((*load1.mutable_shape())["GPU"], 1);
-    ASSERT_EQ((*load1.mutable_shape()).size(), 2);
-
-    ASSERT_EQ(load2.num_infeasible_requests_queued(), 1);
-    ASSERT_EQ(load2.num_ready_requests_queued(), 0);
-    ASSERT_EQ((*load2.mutable_shape())["CPU"], 9);
-    ASSERT_EQ((*load2.mutable_shape())["GPU"], 5);
-    ASSERT_EQ((*load2.mutable_shape()).size(), 2);
-
-    ASSERT_EQ(load3.num_infeasible_requests_queued(), 0);
-    ASSERT_EQ(load3.num_ready_requests_queued(), 1);
-    ASSERT_EQ((*load3.mutable_shape())["CPU"], 1);
-    ASSERT_EQ((*load3.mutable_shape()).size(), 1);
+    for (auto &load : *load_by_shape) {
+      bool found = false;
+      for (unsigned int i = 0; i < expected.size(); i++) {
+        auto expected_load = expected[i];
+        auto shape = *load.mutable_shape();
+        bool match =
+            (expected_load[0] == load.num_infeasible_requests_queued() &&
+             expected_load[1] == load.num_ready_requests_queued() &&
+             expected_load[2] == shape["CPU"] && expected_load[4] == shape.size());
+        if (expected_load[3]) {
+          match = match && shape["GPU"];
+        }
+        /* These logs are very useful for debugging.
+        RAY_LOG(ERROR) << "==========================";
+        RAY_LOG(ERROR) << expected_load[0] << "\t" <<
+        load.num_infeasible_requests_queued(); RAY_LOG(ERROR) << expected_load[1] << "\t"
+        << load.num_ready_requests_queued(); RAY_LOG(ERROR) << expected_load[2] << "\t" <<
+        shape["CPU"]; RAY_LOG(ERROR) << expected_load[3] << "\t" << shape["GPU"];
+        RAY_LOG(ERROR) << expected_load[4] << "\t" << shape.size();
+        RAY_LOG(ERROR) << "==========================";
+        RAY_LOG(ERROR) << load.DebugString();
+        RAY_LOG(ERROR) << "-----------------------------------";
+        */
+        found = found || match;
+      }
+      ASSERT_TRUE(found);
+    }
   }
 }
 
