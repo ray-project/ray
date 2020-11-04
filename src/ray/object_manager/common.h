@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include <functional>
+
 namespace ray {
 
 /// A callback to asynchronously spill objects when space is needed. The

@@ -457,7 +457,8 @@ def run_experiments(experiments,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
-                    concurrent=True):
+                    concurrent=True,
+                    callbacks=None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -487,7 +488,8 @@ def run_experiments(experiments,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
-            scheduler=scheduler).trials
+            scheduler=scheduler,
+            callbacks=callbacks).trials
     else:
         trials = []
         for exp in experiments:
@@ -501,5 +503,6 @@ def run_experiments(experiments,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,
-                scheduler=scheduler).trials
+                scheduler=scheduler,
+                callbacks=callbacks).trials
         return trials

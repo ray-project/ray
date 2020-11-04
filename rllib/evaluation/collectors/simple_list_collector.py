@@ -136,10 +136,11 @@ class _AgentCollector:
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
             if shift == 0:
-                batch_data[view_col] = np_data[data_col][self.shift_before:]
+                data = np_data[data_col][self.shift_before:]
             else:
-                batch_data[view_col] = np_data[data_col][self.shift_before +
-                                                         shift:shift]
+                data = np_data[data_col][self.shift_before + shift:shift]
+            if len(data) > 0:
+                batch_data[view_col] = data
         batch = SampleBatch(batch_data)
 
         if SampleBatch.UNROLL_ID not in batch.data:
@@ -340,7 +341,7 @@ class _SimpleListCollector(_SampleCollector):
             assert self.agent_key_to_policy[agent_key] == policy_id
         policy = self.policy_map[policy_id]
         view_reqs = policy.model.inference_view_requirements if \
-            hasattr(policy, "model") else policy.view_requirements
+            getattr(policy, "model", None) else policy.view_requirements
 
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
@@ -388,7 +389,7 @@ class _SimpleListCollector(_SampleCollector):
         keys = self.forward_pass_agent_keys[policy_id]
         buffers = {k: self.agent_collectors[k].buffers for k in keys}
         view_reqs = policy.model.inference_view_requirements if \
-            hasattr(policy, "model") else policy.view_requirements
+            getattr(policy, "model", None) else policy.view_requirements
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():
@@ -447,19 +448,19 @@ class _SimpleListCollector(_SampleCollector):
 
         for agent_id, (_, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
-            if is_done:
-                # Error if no DONE at end of this agent's trajectory.
-                if check_dones and not pre_batch[SampleBatch.DONES][-1]:
-                    raise ValueError(
-                        "Episode {} terminated for all agents, but we still "
-                        "don't have a last observation for agent {} (policy "
-                        "{}). ".format(
-                            episode_id, agent_id, self.agent_key_to_policy[(
-                                episode_id, agent_id)]) +
-                        "Please ensure that you include the last observations "
-                        "of all live agents when setting done[__all__] to "
-                        "True. Alternatively, set no_done_at_end=True to "
-                        "allow this.")
+            # Error if no DONE at end of this agent's trajectory.
+            if is_done and check_dones and \
+                    not pre_batch[SampleBatch.DONES][-1]:
+                raise ValueError(
+                    "Episode {} terminated for all agents, but we still don't "
+                    "don't have a last observation for agent {} (policy "
+                    "{}). ".format(
+                        episode_id, agent_id, self.agent_key_to_policy[(
+                            episode_id, agent_id)]) +
+                    "Please ensure that you include the last observations "
+                    "of all live agents when setting done[__all__] to "
+                    "True. Alternatively, set no_done_at_end=True to "
+                    "allow this.")
             # If (only this?) agent is done, erase its buffer entirely.
             if pre_batch[SampleBatch.DONES][-1]:
                 del self.agent_collectors[(episode_id, agent_id)]
