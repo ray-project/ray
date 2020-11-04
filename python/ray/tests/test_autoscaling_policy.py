@@ -24,12 +24,12 @@ from ray.autoscaler._private.cli_logger import cli_logger
 
 class Task:
     def __init__(
-        self,
-        duration: float,
-        resources: Dict[str, float],
-        start_callback: Callable[[None], None] = None,
-        done_callback: Callable[[None], None] = None,
-        submission_time: float = None,
+            self,
+            duration: float,
+            resources: Dict[str, float],
+            start_callback: Callable[[None], None] = None,
+            done_callback: Callable[[None], None] = None,
+            submission_time: float = None,
     ):
         self.duration = duration
         self.resources = resources
@@ -98,11 +98,11 @@ SIMULATOR_EVEN_NODE_JOINED = 2
 
 class Simulator:
     def __init__(
-        self,
-        config_path,
-        provider,
-        autoscaler_update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
-        node_startup_delay_s=120,
+            self,
+            config_path,
+            provider,
+            autoscaler_update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
+            node_startup_delay_s=120,
     ):
         self.config_path = config_path
         self.provider = provider
@@ -167,15 +167,13 @@ class Simulator:
             if TAG_RAY_USER_NODE_TYPE in node_tags:
                 node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
                 resources = self.config["available_node_types"][node_type].get(
-                    "resources", {}
-                )
+                    "resources", {})
                 node = Node(resources, join_immediately)
                 self.ip_to_nodes[ip] = node
                 if not join_immediately:
                     join_time = self.virtual_time + self.node_startup_delay_s
                     self.event_queue.put(
-                        Event(join_time, SIMULATOR_EVEN_NODE_JOINED, node)
-                    )
+                        Event(join_time, SIMULATOR_EVEN_NODE_JOINED, node))
 
     def submit(self, work):
         if isinstance(work, list):
@@ -191,8 +189,7 @@ class Simulator:
                 task.start_time = self.virtual_time
                 end_time = self.virtual_time + task.duration
                 self.event_queue.put(
-                    Event(end_time, SIMULATOR_EVENT_TASK_DONE, task)
-                )
+                    Event(end_time, SIMULATOR_EVENT_TASK_DONE, task))
                 if task.start_callback:
                     task.start_callback()
                 return True
@@ -266,8 +263,7 @@ class Simulator:
             self.run_autoscaler()
             next_update = self.virtual_time + self.autoscaler_update_interval_s
             self.event_queue.put(
-                Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE)
-            )
+                Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE))
         elif event.event_type == SIMULATOR_EVENT_TASK_DONE:
             task = event.data
             task.node.free(task.resources)
@@ -287,10 +283,8 @@ class Simulator:
         return self.virtual_time
 
     def info_string(self):
-        return (
-            f"[t={self.virtual_time}] Nodes: {len(self.ip_to_nodes)} "
-            + f"Remaining requests: {len(self.work_queue)} "
-        )
+        return (f"[t={self.virtual_time}] Nodes: {len(self.ip_to_nodes)} " +
+                f"Remaining requests: {len(self.work_queue)} ")
 
 
 SAMPLE_CLUSTER_CONFIG = copy.deepcopy(MULTI_WORKER_CLUSTER)
@@ -298,11 +292,9 @@ SAMPLE_CLUSTER_CONFIG["min_workers"] = 0
 SAMPLE_CLUSTER_CONFIG["max_workers"] = 9999
 SAMPLE_CLUSTER_CONFIG["target_utilization_fraction"] = 1.0
 SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"][
-    "max_workers"
-] = 100
+    "max_workers"] = 100
 SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"][
-    "max_workers"
-] = 10000
+    "max_workers"] = 10000
 
 
 class AutoscalingPolicyTest(unittest.TestCase):
@@ -317,9 +309,8 @@ class AutoscalingPolicyTest(unittest.TestCase):
         def do_nothing(*args, **kwargs):
             pass
 
-        cli_logger._print = type(cli_logger._print)(
-            do_nothing, type(cli_logger)
-        )
+        cli_logger._print = type(cli_logger._print)(do_nothing,
+                                                    type(cli_logger))
 
     def tearDown(self):
         self.provider = None
@@ -353,9 +344,9 @@ class AutoscalingPolicyTest(unittest.TestCase):
 
         tasks = [
             Task(
-                duration=200, resources={"CPU": 1}, done_callback=done_callback
-            )
-            for _ in range(5000)
+                duration=200,
+                resources={"CPU": 1},
+                done_callback=done_callback) for _ in range(5000)
         ]
         simulator.submit(tasks)
 
@@ -383,8 +374,7 @@ class AutoscalingPolicyTest(unittest.TestCase):
                 duration=float("inf"),
                 resources={"CPU": 1},
                 start_callback=start_callback,
-            )
-            for _ in range(5000)
+            ) for _ in range(5000)
         ]
         simulator.submit(tasks)
 
