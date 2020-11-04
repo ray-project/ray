@@ -193,6 +193,5 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         loggers=spec.get("loggers"),
         log_to_file=spec.get("log_to_file"),
         # str(None) doesn't create None
-        sync_to_driver_fn=spec.get("sync_to_driver"),
         max_failures=args.max_failures,
         **trial_kwargs)
