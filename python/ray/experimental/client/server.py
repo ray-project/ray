@@ -1,7 +1,7 @@
 import logging
 from concurrent import futures
 import grpc
-import cloudpickle
+from ray import cloudpickle
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
