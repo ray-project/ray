@@ -10,7 +10,8 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, SelectExperiences
-from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
+from ray.rllib.examples.env.parametric_actions_cartpole import \
+    ParametricActionsCartPole
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.utils import override
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -23,8 +24,8 @@ DEFAULT_CONFIG = with_common_config({})
 class RandomParametriclPolicy(Policy, ABC):
     """
     Just pick a random legal action
-    The outputted state of the environment needs to be a dictionary with an 'action_mask' key
-    containing the legal actions for the agent
+    The outputted state of the environment needs to be a dictionary with an
+    'action_mask' key containing the legal actions for the agent.
     """
 
     def __init__(self, *args, **kwargs):
@@ -50,7 +51,7 @@ class RandomParametriclPolicy(Policy, ABC):
             return np.random.choice(
                 len(legal_action), 1, p=(legal_action / legal_action.sum()))[0]
 
-        return [pick_legal_action(x) for x in obs_batch['action_mask']], [], {}
+        return [pick_legal_action(x) for x in obs_batch["action_mask"]], [], {}
 
     def learn_on_batch(self, samples):
         pass
