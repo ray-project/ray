@@ -398,6 +398,9 @@ def kill_node(config_file: str, yes: bool, hard: bool,
     nodes = provider.non_terminated_nodes({
         TAG_RAY_NODE_KIND: NODE_KIND_WORKER
     })
+    if not nodes:
+        cli_logger.print("No worker nodes detected.")
+        return
     node = random.choice(nodes)
     cli_logger.print("Shutdown " + cf.bold("{}"), node)
     if hard:
