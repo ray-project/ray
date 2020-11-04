@@ -606,21 +606,21 @@ class Policy(metaclass=ABCMeta):
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
         sb = SampleBatch(self._dummy_batch)
-        if state_outs:
-            # TODO: (sven) This hack will not work for attention net traj.
-            #  view setup.
-            i = 0
-            while "state_in_{}".format(i) in sb:
-                sb["state_in_{}".format(i)] = sb["state_in_{}".format(i)][:B]
-                if "state_out_{}".format(i) in sb:
-                    sb["state_out_{}".format(i)] = \
-                        sb["state_out_{}".format(i)][:B]
-                i += 1
         batch_for_postproc = self._lazy_numpy_dict(sb)
         batch_for_postproc.count = sb.count
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
-            seq_len = (self.batch_divisibility_req // B) or 1
+            # TODO: (sven) This hack will not work for attention net traj.
+            #  view setup.
+            i = 0
+            while "state_in_{}".format(i) in postprocessed_batch:
+                postprocessed_batch["state_in_{}".format(i)] = \
+                    postprocessed_batch["state_in_{}".format(i)][:B]
+                if "state_out_{}".format(i) in postprocessed_batch:
+                    postprocessed_batch["state_out_{}".format(i)] = \
+                        postprocessed_batch["state_out_{}".format(i)][:B]
+                i += 1
+            seq_len = (self.batch_divisibility_req // B) or 2
             postprocessed_batch["seq_lens"] = \
                 np.array([seq_len for _ in range(B)], dtype=np.int32)
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
