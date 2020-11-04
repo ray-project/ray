@@ -51,6 +51,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
   public static final String PYTHON_INIT_METHOD_NAME = "__init__";
+  public static final String DEFAULT_PLACEMENT_GROUP_NAME = "unnamed_group";
   protected RayConfig rayConfig;
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
@@ -168,6 +169,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public PlacementGroup createPlacementGroup(String name,
       List<Map<String, Double>> bundles, PlacementStrategy strategy) {
     return taskSubmitter.createPlacementGroup(name, bundles, strategy);
+  }
+
+  @Override
+  public PlacementGroup createPlacementGroup(
+      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    return createPlacementGroup(DEFAULT_PLACEMENT_GROUP_NAME, bundles, strategy);
   }
 
   @SuppressWarnings("unchecked")

@@ -17,7 +17,6 @@ import java.util.concurrent.Callable;
 public final class Ray extends RayCall {
 
   private static RayRuntime runtime = null;
-  public static final String DEFAULT_PLACEMENT_GROUP_NAME = "unnamed_group";
 
   /**
    * Initialize Ray runtime with the default runtime implementation.
@@ -258,7 +257,7 @@ public final class Ray extends RayCall {
 
   public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return createPlacementGroup(DEFAULT_PLACEMENT_GROUP_NAME, bundles, strategy);
+    return internal().createPlacementGroup(bundles, strategy);
   }
 
   /**

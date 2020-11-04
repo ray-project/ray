@@ -172,6 +172,9 @@ public interface RayRuntime {
   PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
       PlacementStrategy strategy);
 
+  PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy);
+
   RuntimeContext getRuntimeContext();
 
   Object getAsyncContext();
@@ -198,4 +201,5 @@ public interface RayRuntime {
    * Intentionally exit the current actor.
    */
   void exitActor();
+
 }
