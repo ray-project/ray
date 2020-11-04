@@ -127,6 +127,23 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                           "in the cluster."
                        << "\n---\n";
       }
+    } else if (plasma_status.IsTransientObjectStoreFull()) {
+      std::ostringstream message;
+      message << "Failed to put object " << object_id << " in object store because it "
+              << "is currently full, but space is being made through object spilling. "
+                 "Object size is "
+              << data_size << " bytes.";
+      // The object store is full, but space is being made. Try again soon.
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      delay = RayConfig::instance().object_store_full_initial_delay_ms();
+      // Don't count these retries towards the total count. Also, reset the
+      // retry count since there may be space soon so we are not out of memory
+      // yet.
+      // NOTE(swang): We do this because the plasma store cannot guarantee that
+      // there will be enough space for the object on a future retry when there
+      // are concurrent clients trying to create objects.
+      retries = 0;
+      should_retry = true;
     } else if (plasma_status.IsObjectExists()) {
       RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
                        << object_id << ".";
