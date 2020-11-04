@@ -950,7 +950,10 @@ class AutoscalingTest(unittest.TestCase):
             "empty_node")
 
     def testScaleUpMinSanity(self):
-        config_path = self.write_config(MULTI_WORKER_CLUSTER)
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["m4.large"]["min_workers"] = \
+            config["min_workers"]
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
@@ -1034,11 +1037,9 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinWorkers(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["min_workers"] = 2
         config["max_workers"] = 50
         config["idle_timeout_minutes"] = 1
-        # Since config["min_workers"] > 1, the remaining worker is started
-        # with the default worker node type.
+        config["available_node_types"]["m4.large"]["min_workers"] = 1
         config["available_node_types"]["p2.8xlarge"]["min_workers"] = 1
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -1392,7 +1393,9 @@ class AutoscalingTest(unittest.TestCase):
                                    "p2x_image:nightly")
 
     def testUpdateConfig(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["m4.large"]["min_workers"] = \
+            config["min_workers"]
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -1405,7 +1408,7 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(2)
-        config["min_workers"] = 0
+        config["available_node_types"]["m4.large"]["min_workers"] = 0
         config["available_node_types"]["m4.large"]["node_config"][
             "field_changed"] = 1
         config_path = self.write_config(config)

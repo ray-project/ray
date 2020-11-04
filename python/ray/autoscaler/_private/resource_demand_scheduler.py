@@ -17,9 +17,9 @@ from typing import List, Dict
 from ray.autoscaler.node_provider import NodeProvider
 from ray.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import PlacementStrategy
-from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED,
-                                 NODE_TYPE_LEGACY_WORKER, NODE_KIND_WORKER,
-                                 NODE_TYPE_LEGACY_HEAD, TAG_RAY_NODE_KIND)
+from ray.autoscaler.tags import (
+    TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED, NODE_TYPE_LEGACY_WORKER,
+    NODE_KIND_WORKER, NODE_TYPE_LEGACY_HEAD, TAG_RAY_NODE_KIND, NODE_KIND_HEAD)
 
 logger = logging.getLogger(__name__)
 
@@ -184,9 +184,12 @@ class ResourceDemandScheduler:
         """
         # We fill the head node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"]:
-            assert len(static_node_resources) == 1  # Only the head node.
-            self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"] = next(
-                iter(static_node_resources.values()))
+            head_ip = self.provider.internal_ip(
+                self.provider.non_terminated_nodes({
+                    TAG_RAY_NODE_KIND: NODE_KIND_HEAD
+                })[0])
+            self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"] = \
+                static_node_resources[head_ip]
         # We fill the worker node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]:
             if len(static_node_resources) > 1:

@@ -18,8 +18,8 @@ from ray.autoscaler._private import commands
 from ray.autoscaler.sdk import get_docker_host_mount_location
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
-from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
-                                               _clear_provider_cache)
+from ray.autoscaler._private.providers import (
+    _NODE_PROVIDERS, _clear_provider_cache, _DEFAULT_CONFIGS)
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.node_provider import NodeProvider
@@ -254,60 +254,6 @@ SMALL_CLUSTER = {
 
 
 class LoadMetricsTest(unittest.TestCase):
-    def testUpdate(self):
-        lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
-        assert lm.approx_workers_used() == 0.5
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
-        assert lm.approx_workers_used() == 1.0
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
-        assert lm.approx_workers_used() == 2.0
-
-    def testLoadMessages(self):
-        lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
-        self.assertEqual(lm.approx_workers_used(), 0.5)
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {"CPU": 1})
-        self.assertEqual(lm.approx_workers_used(), 1.0)
-
-        # Both nodes count as busy since there is a queue on one.
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 2}, {})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-
-        # No queue anymore, so we're back to exact accounting.
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
-        self.assertEqual(lm.approx_workers_used(), 1.5)
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {"GPU": 1})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-
-        lm.update("3.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("4.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("5.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("6.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("7.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("8.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        self.assertEqual(lm.approx_workers_used(), 8.0)
-
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})  # no queue anymore
-        self.assertEqual(lm.approx_workers_used(), 4.5)
-
-    def testPruneByNodeIp(self):
-        lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 1}, {"CPU": 0}, {})
-        lm.update("2.2.2.2", {"CPU": 1}, {"CPU": 0}, {})
-        lm.prune_active_ips({"1.1.1.1", "4.4.4.4"})
-        assert lm.approx_workers_used() == 1.0
-
-    def testBottleneckResource(self):
-        lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
-        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
-        assert lm.approx_workers_used() == 1.88
-
     def testHeartbeat(self):
         lm = LoadMetrics()
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
@@ -339,6 +285,7 @@ class AutoscalingTest(unittest.TestCase):
     def setUp(self):
         _NODE_PROVIDERS["mock"] = \
             lambda config: self.create_provider
+        _DEFAULT_CONFIGS["mock"] = _DEFAULT_CONFIGS["local"]
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
 
@@ -376,9 +323,10 @@ class AutoscalingTest(unittest.TestCase):
         return self.provider
 
     def write_config(self, config):
+        new_config = copy.deepcopy(config)
         path = os.path.join(self.tmpdir, "simple.yaml")
         with open(path, "w") as f:
-            f.write(yaml.dump(config))
+            f.write(yaml.dump(prepare_config(new_config)))
         return path
 
     def testAutoscalerConfigValidationFailNotFatal(self):
@@ -386,7 +334,6 @@ class AutoscalingTest(unittest.TestCase):
         # First check that this config is actually invalid
         with pytest.raises(ValidationError):
             validate_config(invalid_config)
-
         config_path = self.write_config(invalid_config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
