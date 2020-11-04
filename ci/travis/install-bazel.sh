@@ -44,6 +44,7 @@ esac
   fi
 )
 
+export PATH=/opt/python/cp36-cp36m/bin:$PATH
 python="$(command -v python3 || command -v python || echo python)"
 version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
 if [ "${OSTYPE}" = "msys" ]; then

@@ -306,6 +306,10 @@ class TorchPolicy(Policy):
             if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
+            state_batches = [
+                convert_to_torch_tensor(s, self.device)
+                for s in (state_batches or [])
+            ]
 
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
@@ -589,6 +593,12 @@ class TorchPolicy(Policy):
         train_batch = UsageTrackingDict(postprocessed_batch)
         train_batch.set_get_interceptor(
             functools.partial(convert_to_torch_tensor, device=self.device))
+        return train_batch
+
+    def _lazy_numpy_dict(self, postprocessed_batch):
+        train_batch = UsageTrackingDict(postprocessed_batch)
+        train_batch.set_get_interceptor(
+            functools.partial(convert_to_non_torch_type))
         return train_batch
 
 
