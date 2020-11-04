@@ -623,7 +623,7 @@ class Policy(metaclass=ABCMeta):
             seq_len = (self.batch_divisibility_req // B) or 2
             postprocessed_batch["seq_lens"] = \
                 np.array([seq_len for _ in range(B)], dtype=np.int32)
-        train_batch = postprocessed_batch #self._lazy_tensor_dict(postprocessed_batch)
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
         # Call the loss function, if it exists.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
