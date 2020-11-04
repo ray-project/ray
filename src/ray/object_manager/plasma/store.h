@@ -291,6 +291,10 @@ class PlasmaStore {
   /// spilled, we will attempt to process these requests again and respond to
   /// the client if successful or out of memory. If more objects must be
   /// spilled, the request will be replaced at the head of the queue.
+  /// TODO(swang): We should also queue objects here even if there is no room
+  /// in the object store. Then, the client does not need to poll on an
+  /// OutOfMemory error and we can just respond to them once there is enough
+  /// space made, or after a timeout.
   std::list<std::pair<const std::shared_ptr<Client>,
     const std::vector<uint8_t>>> create_request_queue_;
 };
