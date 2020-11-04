@@ -1,4 +1,4 @@
-cluster_name: ray-release-microbenchmark
+cluster_name: ray-release-microbenchmark-alex
 min_workers: 0
 max_workers: 0
 target_utilization_fraction: 0.8
@@ -7,14 +7,14 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: aws
-    region: us-west-2
-    availability_zone: us-west-2a
+    region: us-west-1
+    availability_zone: us-west-1a
 auth:
     ssh_user: ubuntu
 
 head_node:
     InstanceType: m4.16xlarge
-    ImageId: ami-06d51e91cea0dac8d  # Ubuntu 18.04
+    ImageId: ami-03fac5402e10ea93b  # Ubuntu 18.04
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
@@ -22,7 +22,7 @@ head_node:
 
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-06d51e91cea0dac8d  # Ubuntu 18.04
+    ImageId: ami-03fac5402e10ea93b  # Ubuntu 18.04
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:

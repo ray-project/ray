@@ -1,4 +1,4 @@
-cluster_name: long-running-release-tests-alex
+cluster_name: long-running-actor-tasks-alex
 min_workers: 0
 max_workers: 0
 target_utilization_fraction: 0.8
@@ -46,3 +46,7 @@ head_start_ray_commands: []
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands: []
+
+file_mounts:
+    "$HOME/run.sh": "run.sh"
+    "$HOME/workloads": "workloads"

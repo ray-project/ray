@@ -53,7 +53,7 @@ wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ra
 echo set-window-option -g mouse on > ~/.tmux.conf
 echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc
 # Serve load testing tool
-rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && sudo cp wrk /usr/local/bin
+rm -rf wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && sudo cp wrk /usr/local/bin
 pip install -U pip
 unset RAY_ADDRESS
 source activate tensorflow_p36 
@@ -62,5 +62,7 @@ pip install --upgrade pip
 pip install -U tensorflow==1.14
 pip install -q -U "$wheel" Click
 pip install -q "ray[all]" "gym[atari]"
-python "workloads/$workload.py"
+ray stop
+sleep 5
+python "$HOME/workloads/$workload.py"
 
