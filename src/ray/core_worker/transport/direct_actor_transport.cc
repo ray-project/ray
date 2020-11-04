@@ -421,7 +421,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     if (it == actor_scheduling_queues_.end()) {
       auto result = actor_scheduling_queues_.emplace(
           task_spec.CallerWorkerId(),
-          std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(task_main_io_service_, *waiter_, worker_context_)));
+          std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
+              task_main_io_service_, *waiter_, worker_context_)));
       it = result.first;
     }
 
