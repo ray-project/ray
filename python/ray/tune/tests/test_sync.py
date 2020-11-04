@@ -11,7 +11,6 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import TuneError
 from ray.tune.syncer import CommandBasedClient
 
 
@@ -87,8 +86,8 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testClusterProperString(self):
         """Tests that invalid commands throw.."""
-        with self.assertRaises(TuneError):
-            # This raises TuneError because logger is init in safe zone.
+        with self.assertRaises(ValueError):
+            # This raises ValueError because logger is init in safe zone.
             sync_config = tune.SyncConfig(sync_to_driver="ls {target}")
             [trial] = tune.run(
                 "__fake",
@@ -100,8 +99,8 @@ class TestSyncFunctionality(unittest.TestCase):
                 sync_config=sync_config,
             ).trials
 
-        with self.assertRaises(TuneError):
-            # This raises TuneError because logger is init in safe zone.
+        with self.assertRaises(ValueError):
+            # This raises ValueError because logger is init in safe zone.
             sync_config = tune.SyncConfig(sync_to_driver="ls {source}")
             [trial] = tune.run(
                 "__fake",

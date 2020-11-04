@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/common.h"
@@ -52,7 +53,8 @@ class PlasmaStore {
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
               const std::string& socket_name,
-              std::shared_ptr<ExternalStore> external_store);
+              std::shared_ptr<ExternalStore> external_store,
+              ray::SpillObjectsCallback spill_objects_callback);
 
   ~PlasmaStore();
 
@@ -94,6 +96,9 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
+  ///  - PlasmaError::TransientOutOfMemory, if the store is temporarily out of
+  ///    memory but there may be space soon to create the object.  In this
+  ///    case, the client should not call plasma_release.
   PlasmaError CreateObject(const ObjectID& object_id, const NodeID& owner_raylet_id,
                            const std::string& owner_ip_address, int owner_port,
                            const WorkerID& owner_worker_id, bool evict_if_full,
@@ -222,7 +227,8 @@ class PlasmaStore {
   void EraseFromObjectTable(const ObjectID& object_id);
 
   uint8_t* AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE* fd, int64_t* map_size,
-                          ptrdiff_t* offset, const std::shared_ptr<Client> &client, bool is_create);
+                          ptrdiff_t* offset, const std::shared_ptr<Client> &client, bool is_create,
+                          PlasmaError *error);
 #ifdef PLASMA_CUDA
   Status AllocateCudaMemory(int device_num, int64_t size, uint8_t** out_pointer,
                             std::shared_ptr<CudaIpcMemHandle>* out_ipc_handle);
@@ -262,6 +268,11 @@ class PlasmaStore {
   arrow::cuda::CudaDeviceManager* manager_;
 #endif
   std::shared_ptr<ray::ObjectStoreNotificationManager> notification_listener_;
+  /// A callback to asynchronously spill objects when space is needed. The
+  /// callback returns the amount of space still needed after the spilling is
+  /// complete.
+  ray::SpillObjectsCallback spill_objects_callback_;
+
 };
 
 }  // namespace plasma

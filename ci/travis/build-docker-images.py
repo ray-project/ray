@@ -105,7 +105,6 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
                 start = datetime.datetime.now()
                 current_iter = start
                 for line in output:
-                    # print(line)
                     if datetime.datetime.now(
                     ) - current_iter >= datetime.timedelta(minutes=5):
                         current_iter = datetime.datetime.now()
@@ -228,7 +227,7 @@ def push_and_tag_images(push_base_images: bool):
     sha_tag = os.environ.get("TRAVIS_COMMIT")[:6]
     if _release_build():
         release_name = re.search("[0-9]\.[0-9]\.[0-9]",
-                                 os.environ.get("TRAVIS_BRANCH"))
+                                 os.environ.get("TRAVIS_BRANCH")).group(0)
         date_tag = release_name
         sha_tag = release_name
 
@@ -313,4 +312,6 @@ if __name__ == "__main__":
             build_ray()
             build_ray_ml()
             push_and_tag_images(freshly_built)
-            push_readmes()
+            # TODO(ilr) Re-Enable Push READMEs by using a normal password
+            # (not auth token :/)
+            # push_readmes()
