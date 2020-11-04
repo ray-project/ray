@@ -766,6 +766,22 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
     trainer2.shutdown()
 
 
+def test_custom_ddp_args(ray_start_2_cpus):
+    class TestTrainingOperator(TrainingOperator):
+        def setup(self, config):
+            model = model_creator(config)
+            optimizer = optimizer_creator(model, config)
+            train_loader, val_loader = data_creator(config)
+
+            self.model, self.optimizer, = \
+                self.register(
+                    models=model, optimizers=optimizer, ddp_args={
+                        "find_unused_parameters": True})
+            assert self.model.find_unused_parameters
+
+    TorchTrainer(training_operator_cls=TestTrainingOperator, num_workers=2)
+
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_multi_input_model(ray_start_2_cpus, use_local):
     def model_creator(config):
