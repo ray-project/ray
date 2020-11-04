@@ -345,6 +345,10 @@ def maml_loss(policy, model, dist_class, train_batch):
     else:
         policy.var_list = model.named_parameters()
 
+        # `split` may not exist yet (during test-loss call), use a dummy value.
+        # Cannot use get here due to train_batch being a TrackingDict.
+        split = train_batch["split"] if "split" in train_batch else \
+            torch.tensor([[1, 1], [1, 1]])
         policy.loss_obj = MAMLLoss(
             model=model,
             dist_class=dist_class,
@@ -357,7 +361,7 @@ def maml_loss(policy, model, dist_class, train_batch):
             policy_vars=policy.var_list,
             obs=train_batch[SampleBatch.CUR_OBS],
             num_tasks=policy.config["num_workers"],
-            split=train_batch.get("split", torch.tensor([[1, 1], [1, 1]])),
+            split=split,
             config=policy.config,
             inner_adaptation_steps=policy.config["inner_adaptation_steps"],
             entropy_coeff=policy.config["entropy_coeff"],
