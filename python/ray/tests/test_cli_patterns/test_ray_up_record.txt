@@ -1,4 +1,6 @@
 .+\.py.*Cluster: test-cli
+.+\.py.*Updating the resources of ray-legacy-head-node-type to {'CPU': 1}.
+.+\.py.*Updating the resources of ray-legacy-worker-node-type to {'CPU': 1}.
 .+\.py.*Checking AWS environment settings
 .+\.py.*Creating new IAM instance profile ray-autoscaler-v1 for use as the default\.
 .+\.py.*Creating new IAM role ray-autoscaler-v1 for use as the default instance role\.
