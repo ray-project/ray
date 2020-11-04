@@ -227,10 +227,9 @@ class StandardAutoscaler:
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
-        if num_workers < target_workers:
-            max_allowed = min(self.max_launch_batch,
-                              self.max_concurrent_launches - num_pending)
-
+        max_allowed = min(self.max_launch_batch,
+                          self.max_concurrent_launches - num_pending)
+        if num_workers < target_workers and max_allowed > 0:
             num_launches = min(max_allowed, target_workers - num_workers)
             self.launch_new_node(num_launches,
                                  self.config.get("worker_default_node_type"))
