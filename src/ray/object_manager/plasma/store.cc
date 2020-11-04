@@ -253,6 +253,45 @@ Status PlasmaStore::FreeCudaMemory(int device_num, int64_t size, uint8_t* pointe
 }
 #endif
 
+Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message) {
+  uint8_t* input = (uint8_t*)message.data();
+  size_t input_size = message.size();
+  ObjectID object_id;
+  PlasmaObject object = {};
+
+  NodeID owner_raylet_id;
+  std::string owner_ip_address;
+  int owner_port;
+  WorkerID owner_worker_id;
+  bool evict_if_full;
+  int64_t data_size;
+  int64_t metadata_size;
+  int device_num;
+  RAY_RETURN_NOT_OK(ReadCreateRequest(
+    input, input_size, &object_id, &owner_raylet_id, &owner_ip_address, &owner_port,
+    &owner_worker_id, &evict_if_full, &data_size, &metadata_size, &device_num));
+  PlasmaError error_code = CreateObject(object_id, owner_raylet_id, owner_ip_address,
+                                        owner_port, owner_worker_id, evict_if_full,
+                                        data_size, metadata_size, device_num, client,
+                                        &object);
+  Status status;
+  if (error_code == PlasmaError::TransientOutOfMemory) {
+    RAY_LOG(DEBUG) << "Create object " << object_id << " failed, waiting for object spill";
+    status = Status::TransientObjectStoreFull("Object store full, queueing creation request");
+  } else {
+    int64_t mmap_size = 0;
+    if (error_code == PlasmaError::OK && device_num == 0) {
+      mmap_size = GetMmapSize(object.store_fd);
+    }
+    RAY_RETURN_NOT_OK(SendCreateReply(client, object_id, &object, error_code, mmap_size));
+    if (error_code == PlasmaError::OK && device_num == 0) {
+      RAY_RETURN_NOT_OK(client->SendFd(object.store_fd));
+    }
+  }
+
+  return status;
+}
+
 // Create a new object buffer in the hash table.
 PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id,
                                       const NodeID& owner_raylet_id,
@@ -912,33 +951,15 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   uint8_t* input = (uint8_t*)message.data();
   size_t input_size = message.size();
   ObjectID object_id;
-  PlasmaObject object = {};
 
   // Process the different types of requests.
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
-      NodeID owner_raylet_id;
-      std::string owner_ip_address;
-      int owner_port;
-      WorkerID owner_worker_id;
-      bool evict_if_full;
-      int64_t data_size;
-      int64_t metadata_size;
-      int device_num;
-      RAY_RETURN_NOT_OK(ReadCreateRequest(
-        input, input_size, &object_id, &owner_raylet_id, &owner_ip_address, &owner_port,
-        &owner_worker_id, &evict_if_full, &data_size, &metadata_size, &device_num));
-      PlasmaError error_code = CreateObject(object_id, owner_raylet_id, owner_ip_address,
-                                            owner_port, owner_worker_id, evict_if_full,
-                                            data_size, metadata_size, device_num, client,
-                                            &object);
-      int64_t mmap_size = 0;
-      if (error_code == PlasmaError::OK && device_num == 0) {
-        mmap_size = GetMmapSize(object.store_fd);
-      }
-      RAY_RETURN_NOT_OK(SendCreateReply(client, object_id, &object, error_code, mmap_size));
-      if (error_code == PlasmaError::OK && device_num == 0) {
-        RAY_RETURN_NOT_OK(client->SendFd(object.store_fd));
+      auto status = HandleCreateObjectRequest(client, message);
+      if (status.IsTransientObjectStoreFull()) {
+        create_request_queue_.push_back({client, message});
+      } else {
+        RAY_RETURN_NOT_OK(status);
       }
     } break;
     case fb::MessageType::PlasmaAbortRequest: {
@@ -1031,6 +1052,23 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
 void PlasmaStore::DoAccept() {
   acceptor_.async_accept(socket_, boost::bind(&PlasmaStore::ConnectClient, this,
                                               boost::asio::placeholders::error));
+}
+
+void PlasmaStore::ProcessCreateRequests(size_t num_bytes_space) {
+  for (auto request = create_request_queue_.begin();
+      request != create_request_queue_.end(); ) {
+    RAY_LOG(DEBUG) << "Reprocessing queued create request";
+    auto status = HandleCreateObjectRequest(request->first, request->second);
+    if (status.IsTransientObjectStoreFull()) {
+      // The object store is still full.
+      // NOTE(swang): There could be other requests behind this one that are
+      // actually serviceable. This may be inefficient, but eventually this
+      // request will get served and unblock the following requests, once
+      // enough objects have been spilled.
+      break;
+    }
+    request = create_request_queue_.erase(request);
+  }
 }
 
 }  // namespace plasma

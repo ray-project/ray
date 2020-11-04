@@ -132,7 +132,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              std::function<void(size_t num_bytes_spilled)> on_objects_spilled);
 
   /// Process a new client connection.
   ///

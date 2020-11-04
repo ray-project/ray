@@ -10,4 +10,7 @@ namespace ray {
 /// complete.
 using SpillObjectsCallback = std::function<int64_t(int64_t num_bytes_required)>;
 
+/// A callback to call when space has been released.
+using SpaceReleasedCallback = std::function<void(size_t num_bytes_spilled)>;
+
 }  // namespace ray

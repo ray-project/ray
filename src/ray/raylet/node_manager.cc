@@ -132,7 +132,8 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
 NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory)
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                         std::function<void(size_t num_bytes_spilled)> on_objects_spilled)
     : self_node_id_(self_node_id),
       io_service_(io_service),
       object_manager_(object_manager),
@@ -179,7 +180,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                             [this](const std::vector<ObjectID> &object_ids) {
                               object_manager_.FreeObjects(object_ids,
                                                           /*local_only=*/false);
-                            }),
+                            },
+                            on_objects_spilled),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
