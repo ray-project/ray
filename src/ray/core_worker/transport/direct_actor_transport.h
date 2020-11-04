@@ -589,7 +589,7 @@ class CoreWorkerDirectTaskReceiver {
   std::unordered_map<WorkerID, std::unique_ptr<SchedulingQueue>> actor_scheduling_queues_;
   // Queue of pending normal (non-actor) tasks.
   std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ = 
-      std::make_unique<NormalSchedulingQueue>();
+      std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
 };
 
 }  // namespace ray
