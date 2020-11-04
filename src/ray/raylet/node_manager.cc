@@ -3311,9 +3311,7 @@ void NodeManager::RecordMetrics() {
   }
 
   object_manager_.RecordMetrics();
-  worker_pool_.RecordMetrics();
   local_queues_.RecordMetrics();
-  task_dependency_manager_.RecordMetrics();
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   stats::LiveActors().Record(statistical_data.live_actors);

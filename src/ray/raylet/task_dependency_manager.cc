@@ -447,9 +447,6 @@ std::string TaskDependencyManager::DebugString() const {
   return result.str();
 }
 
-void TaskDependencyManager::RecordMetrics() const { /* No metrics collected yet. */
-}
-
 bool TaskDependencyManager::GetOwnerAddress(const ObjectID &object_id,
                                             rpc::Address *owner_address) const {
   const auto creating_task_entry = required_tasks_.find(object_id.TaskId());

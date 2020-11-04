@@ -1053,9 +1053,6 @@ std::string WorkerPool::DebugString() const {
   return result.str();
 }
 
-void WorkerPool::RecordMetrics() const { /* No metrics collected yet. */
-}
-
 }  // namespace raylet
 
 }  // namespace ray

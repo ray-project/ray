@@ -84,17 +84,17 @@ static Count UnintentionalWorkerFailures(
     "due to system related errors.",
     "worker_failures");
 
-static Count NodeFailureTotal("node_failure_total",
-                              "Number of node failures happened in the cluster.",
-                              "node_failures.");
+static Count NodeFailureTotal(
+    "node_failure_total", "Number of node failures that have happened in the cluster.",
+    "node_failures.");
 
 static Gauge PendingActors("pending_actors", "Number of pending actors in GCS server.",
                            "actors");
 
-static Gauge PendingPlacementGroups("pending_placement_groups",
-                                    "Number of pending placement groups in GCS server.",
-                                    "placement_groups");
+static Gauge PendingPlacementGroups(
+    "pending_placement_groups", "Number of pending placement groups in the GCS server.",
+    "placement_groups");
 
-static Histogram OutboundHeartbeatSizeKB("outboud_heartbeat_size_kb",
-                                         "Outboud heartbeat payload size", "kb",
+static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
+                                         "Outbound heartbeat payload size", "kb",
                                          {10, 50, 100, 1000, 10000, 100000});
