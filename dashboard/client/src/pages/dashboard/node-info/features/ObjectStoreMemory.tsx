@@ -31,7 +31,7 @@ export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({ nodes }) => {
 export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ node }) => {
   const total = node.raylet.objectStoreAvailableMemory;
   const used = node.raylet.objectStoreUsedMemory;
-  if (!used || !total) {
+  if (used === undefined || total === undefined || total === 0) {
     return (
       <Typography color="textSecondary" component="span" variant="inherit">
         N/A

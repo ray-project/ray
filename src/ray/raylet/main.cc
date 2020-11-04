@@ -127,7 +127,7 @@ int main(int argc, char *argv[]) {
     std::string config_value;
 
     while (std::getline(config_string, config_name, ',')) {
-      RAY_CHECK(std::getline(config_string, config_value, ','));
+      RAY_CHECK(std::getline(config_string, config_value, ';'));
       // TODO(rkn): The line below could throw an exception. What should we do about this?
       raylet_config[config_name] = config_value;
     }

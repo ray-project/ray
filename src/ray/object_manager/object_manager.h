@@ -81,7 +81,8 @@ struct LocalObjectInfo {
 
 class ObjectStoreRunner {
  public:
-  ObjectStoreRunner(const ObjectManagerConfig &config);
+  ObjectStoreRunner(const ObjectManagerConfig &config,
+                    SpillObjectsCallback spill_objects_callback);
   ~ObjectStoreRunner();
 
  private:
@@ -190,7 +191,8 @@ class ObjectManager : public ObjectManagerInterface,
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const NodeID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         RestoreSpilledObjectCallback restore_spilled_object);
+                         RestoreSpilledObjectCallback restore_spilled_object,
+                         SpillObjectsCallback spill_objects_callback = nullptr);
 
   ~ObjectManager();
 
