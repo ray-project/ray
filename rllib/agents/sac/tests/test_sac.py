@@ -48,7 +48,7 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -394,7 +394,8 @@ class TestSAC(unittest.TestCase):
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
             SampleBatch.DONES: np.random.choice(
                 [True, False], size=(batch_size, )),
-            SampleBatch.NEXT_OBS: np.random.random(size=obs_size)
+            SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
+            "weights": np.random.random(size=(batch_size, )),
         }
 
     def _sac_loss_helper(self, train_batch, weights, ks, log_alpha, fw, gamma,

@@ -466,11 +466,12 @@ class DynamicTFPolicy(TFPolicy):
         if self.config["_use_trajectory_view_api"]:
             logger.info("Testing `compute_actions` w/ dummy batch.")
             actions, state_outs, extra_fetches = \
-                self.compute_actions_from_input_dict(self._dummy_batch)
-            if not self.action_space.contains(actions[0]):
-                raise ValueError(
-                    "Returned actions ({}) not in action_space "
-                    "({})!".format(actions[0], self.action_space))
+                self.compute_actions_from_input_dict(
+                    self._dummy_batch, explore=True, timestep=0)
+            #if not self.action_space.contains(actions[0]):
+            #    raise ValueError(
+            #        "Returned actions ({}) not in action_space "
+            #        "({})!".format(actions[0], self.action_space))
             for key, value in extra_fetches.items():
                 self._dummy_batch[key] = np.zeros_like(value)
                 self._input_dict[key] = get_placeholder(value=value, name=key)

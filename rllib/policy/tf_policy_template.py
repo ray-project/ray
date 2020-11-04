@@ -233,6 +233,9 @@ def build_tf_policy(
             if after_init:
                 after_init(self, obs_space, action_space, config)
 
+            # Got to reset global_timestep again after this fake run-through.
+            self.global_timestep = 0
+
         @override(Policy)
         def postprocess_trajectory(self,
                                    sample_batch,

@@ -338,6 +338,9 @@ class NestedSpacesTest(unittest.TestCase):
                 },
                 "framework": "tf",
             })
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        DictSpyModel.capture_index = 0
         pg.train()
 
         # Check that the model sees the correct reconstructed observations
@@ -367,6 +370,9 @@ class NestedSpacesTest(unittest.TestCase):
                 },
                 "framework": "tf",
             })
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        TupleSpyModel.capture_index = 0
         pg.train()
 
         # Check that the model sees the correct reconstructed observations
@@ -438,6 +444,9 @@ class NestedSpacesTest(unittest.TestCase):
                 },
                 "framework": "tf",
             })
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        TupleSpyModel.capture_index = DictSpyModel.capture_index = 0
         pg.train()
 
         for i in range(4):

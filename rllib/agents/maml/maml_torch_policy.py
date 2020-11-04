@@ -357,7 +357,7 @@ def maml_loss(policy, model, dist_class, train_batch):
             policy_vars=policy.var_list,
             obs=train_batch[SampleBatch.CUR_OBS],
             num_tasks=policy.config["num_workers"],
-            split=train_batch["split"],
+            split=train_batch.get("split", torch.tensor([[1, 1], [1, 1]])),
             config=policy.config,
             inner_adaptation_steps=policy.config["inner_adaptation_steps"],
             entropy_coeff=policy.config["entropy_coeff"],

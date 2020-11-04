@@ -284,7 +284,7 @@ def build_eager_tf_policy(name,
             if after_init:
                 after_init(self, observation_space, action_space, config)
 
-            # Got to reset global_timestep again after fake run-throughs.
+            # Got to reset global_timestep again after this fake run-through.
             self.global_timestep = 0
 
         @override(Policy)
