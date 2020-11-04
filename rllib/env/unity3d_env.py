@@ -223,6 +223,11 @@ class Unity3DEnv(MultiAgentEnv):
             "VisualHallway": Box(float("-inf"), float("inf"), (84, 84, 3)),
             # Walker.
             "Walker": Box(float("-inf"), float("inf"), (212, )),
+            # FoodCollector.
+            "FoodCollector": TupleSpace([
+                Box(float("-inf"), float("inf"), (49, )),
+                Box(float("-inf"), float("inf"), (4, )),
+            ]),
         }
         action_spaces = {
             # 3DBall.
@@ -242,6 +247,8 @@ class Unity3DEnv(MultiAgentEnv):
             "VisualHallway": MultiDiscrete([5]),
             # Walker.
             "Walker": Box(float("-inf"), float("inf"), (39, )),
+            # FoodCollector.
+            "FoodCollector": MultiDiscrete([3, 3, 3, 2]),
         }
 
         # Policies (Unity: "behaviors") and agent-to-policy mapping fns.
