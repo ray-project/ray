@@ -35,9 +35,9 @@ staleLabel: stale
 
 # Comment to post when marking as stale. Set to `false` to disable
 markComment: >
-  Hi, it is a bot from the Ray team :). Thanks for opening the issue again. 
+  Hi, I'm a bot from the Ray team :)
   
-  To help human contributors to focus on more relevant issues, the bot will automatically mark the stale label to issues that have had no activity for more than 4 months.
+  To help human contributors to focus on more relevant issues, I will automatically mark the stale label to issues that have had no activity for more than 4 months.
 
   If there is no more further activity for next 14 days, the issue will be closed!
   
@@ -52,7 +52,7 @@ markComment: >
 
 # Comment to post when closing a stale Issue or Pull Request.
 closeComment: >
-  Hi, I am a bot from the Ray team again! The issue will be closed because there has been no more acitivy for 14 days after the last message.
+  Hi again! The issue will be closed because there has been no more activity for 14 days after the last message.
   
   Please feel free to reopen or open a new issue if you'd still like it to be addressed.
 
