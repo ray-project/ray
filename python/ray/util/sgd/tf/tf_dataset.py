@@ -11,15 +11,6 @@ class TFDataset:
                  feature_shapes: List[tf.TensorShape],
                  feature_types: List[tf.DType], label_column: str,
                  label_shape: tf.TensorShape, label_type: tf.DType):
-        """
-        :param pandas_ds:
-        :param feature_columns: the feature columns, also it is the Model input name
-        :param feature_types: the type requirements for the given Model input
-        :param feature_shapes: the shape requirements for the given Model input
-        :param label_column: the label column
-        :param label_type: the label type
-        :param label_shape: the label shape
-        """
 
         self._feature_columns = feature_columns
         self._feature_shapes = feature_shapes
@@ -51,7 +42,8 @@ class TFDataset:
             assert len(self._feature_columns) == len(self._feature_types), \
                 "The feature_types size must match the feature_columns"
             for i in range(len(self._feature_types)):
-                assert all(isinstance(dtype, tf.DType) for dtype in self._feature_types), \
+                assert (all(isinstance(dtype, tf.DType)
+                            for dtype in self._feature_types)), \
                     "All value in feature_types should be tf.DType instance"
 
         if not self._feature_shapes:

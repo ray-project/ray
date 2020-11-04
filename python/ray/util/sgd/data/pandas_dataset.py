@@ -68,16 +68,16 @@ class PandasDataset:
                             cur_index = 0
                             cur_size = cur_df.shape[0]
                         if return_df:
-                            rindex = cur_index + batch_size - return_df.shape[0]
-                            rindex = min(rindex, cur_size)
-                            tmp = cur_df.iloc[cur_index, rindex]
+                            ri = cur_index + batch_size - return_df.shape[0]
+                            ri = min(ri, cur_size)
+                            tmp = cur_df.iloc[cur_index, ri]
                             return_df = pd.concat([return_df, tmp])
-                            cur_index = rindex
+                            cur_index = ri
                         else:
-                            rindex = cur_index + batch_size
-                            rindex = min(rindex, cur_size)
-                            return_df = cur_df.iloc[cur_index:rindex]
-                            cur_index = rindex
+                            ri = cur_index + batch_size
+                            ri = min(ri, cur_size)
+                            return_df = cur_df.iloc[cur_index:ri]
+                            cur_index = ri
                         if return_df.shape[0] == batch_size:
                             yield return_df
                             return_df = None

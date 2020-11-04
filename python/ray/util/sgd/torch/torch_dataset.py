@@ -1,4 +1,6 @@
+import functools
 import logging
+from collections import Iterator
 from collections.abc import Iterable
 from typing import Any, Callable, List, Optional
 
@@ -7,12 +9,7 @@ import torch
 from pandas import DataFrame
 from torch.utils.data import IterableDataset
 
-from ray.util.iter import LocalIterator
 from ray.util.sgd.data.pandas_dataset import PandasDataset
-
-from collections import Iterator
-
-import functools
 
 
 def convert_to_tensor(df, feature_columns: List[str],
@@ -30,9 +27,9 @@ def convert_to_tensor(df, feature_columns: List[str],
                 column = list(column)
             else:
                 raise Exception(
-                    f"Column {col}'s type: {type(column[0])} is not supported. It must "
-                    "be numpy built in type or numpy object of (ndarray, list, tuple)"
-                )
+                    f"Column {col}'s type: {type(column[0])} is not supported."
+                    " It must be numpy built in type or numpy object of "
+                    "(ndarray, list, tuple)")
 
         t = torch.as_tensor(column, dtype=dtype)
         if shape is not None:
@@ -91,7 +88,8 @@ class TorchDataset:
             assert len(self._feature_columns) == len(self._feature_types), \
                 "The feature_types size must match the feature_columns"
             for i in range(len(self._feature_types)):
-                assert all(isinstance(dtype, torch.dtype) for dtype in self._feature_types), \
+                assert (all(isinstance(dtype, torch.dtype)
+                            for dtype in self._feature_types)), \
                     "All value in feature_types should be torch.dtype instance"
         else:
             self._feature_types = [torch.float] * len(self._feature_columns)
