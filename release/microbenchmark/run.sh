@@ -47,7 +47,7 @@ echo "commit: $commit"
 echo "branch: $ray_branch"
 echo "workload: $workload"
 
-wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp38-cp38-manylinux1_x86_64.whl"
+wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp38-cp38-manylinux2014_x86_64.whl"
 
 
 echo set-window-option -g mouse on > ~/.tmux.conf

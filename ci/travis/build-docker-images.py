@@ -105,7 +105,6 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
                 start = datetime.datetime.now()
                 current_iter = start
                 for line in output:
-                    # print(line)
                     if datetime.datetime.now(
                     ) - current_iter >= datetime.timedelta(minutes=5):
                         current_iter = datetime.datetime.now()

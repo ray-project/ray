@@ -4,7 +4,6 @@ ConfigSpace==0.4.10
 dragonfly-opt
 gluoncv
 gym[atari]
-GPy
 h5py
 hpbandster
 hyperopt==0.1.2
@@ -20,7 +19,6 @@ optuna
 pytest-remotedata>=0.3.1
 pytorch-lightning==1.0.3
 pytorch-lightning-bolts
-scikit-learn
 scikit-optimize
 sigopt
 smart_open

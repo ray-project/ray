@@ -124,11 +124,7 @@ class TuneExampleTest(unittest.TestCase):
 class AutoInitTest(unittest.TestCase):
     def testTuneRestore(self):
         self.assertFalse(ray.is_initialized())
-        tune.run(
-            "__fake",
-            name="TestAutoInit",
-            stop={"training_iteration": 1},
-            ray_auto_init=True)
+        tune.run("__fake", name="TestAutoInit", stop={"training_iteration": 1})
         self.assertTrue(ray.is_initialized())
 
     def tearDown(self):

@@ -567,7 +567,7 @@ def test_list_backends(serve_instance, use_legacy_config):
     backends = client.list_backends()
     assert len(backends) == 1
     assert "backend" in backends
-    assert backends["backend"]["max_batch_size"] == 10
+    assert backends["backend"].max_batch_size == 10
 
     config2 = {
         "num_replicas": 10
@@ -575,7 +575,7 @@ def test_list_backends(serve_instance, use_legacy_config):
     client.create_backend("backend2", f, config=config2)
     backends = client.list_backends()
     assert len(backends) == 2
-    assert backends["backend2"]["num_replicas"] == 10
+    assert backends["backend2"].num_replicas == 10
 
     client.delete_backend("backend")
     backends = client.list_backends()
@@ -751,13 +751,13 @@ def test_connect(serve_instance):
     client.create_endpoint("endpoint", backend="connect_in_backend")
     handle = client.get_handle("endpoint")
     assert ray.get(handle.remote()) == client._controller_name
-    assert "backend-ception" in client.list_backends()
+    assert "backend-ception" in client.list_backends().keys()
 
     client3.create_backend("connect_in_backend", connect_in_backend)
     client3.create_endpoint("endpoint", backend="connect_in_backend")
     handle = client3.get_handle("endpoint")
     assert ray.get(handle.remote()) == client3._controller_name
-    assert "backend-ception" in client3.list_backends()
+    assert "backend-ception" in client3.list_backends().keys()
 
 
 def test_serve_metrics(serve_instance):

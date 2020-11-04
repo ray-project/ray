@@ -31,5 +31,5 @@ def serve_instance(_shared_serve_instance):
     # Clear all state between tests to avoid naming collisions.
     for endpoint in ray.get(controller.get_all_endpoints.remote()):
         _shared_serve_instance.delete_endpoint(endpoint)
-    for backend in ray.get(controller.get_all_backends.remote()):
+    for backend in ray.get(controller.get_all_backends.remote()).keys():
         _shared_serve_instance.delete_backend(backend)

@@ -16,6 +16,8 @@ from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
+from ray.rllib.utils.tf_ops import convert_to_non_tf_type
+from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -273,7 +275,7 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_with_dummy_batch()
+            self._initialize_loss_from_dummy_batch()
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -363,8 +365,8 @@ def build_eager_tf_policy(name,
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
-            n = input_dict[SampleBatch.CUR_OBS].shape[0]
-            seq_lens = tf.ones(n, dtype=tf.int32)
+            batch_size = input_dict[SampleBatch.CUR_OBS].shape[0]
+            seq_lens = tf.ones(batch_size, dtype=tf.int32)
             if obs_include_prev_action_reward:
                 if prev_action_batch is not None:
                     input_dict[SampleBatch.PREV_ACTIONS] = \
@@ -425,8 +427,7 @@ def build_eager_tf_policy(name,
                 extra_fetches.update(extra_action_fetches_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += len(obs_batch) if \
-                isinstance(obs_batch, (tuple, list)) else obs_batch.shape[0]
+            self.global_timestep += int(batch_size)
 
             return actions, state_out, extra_fetches
 
@@ -636,7 +637,8 @@ def build_eager_tf_policy(name,
                 })
             return fetches
 
-        def _initialize_loss_with_dummy_batch(self):
+        @override(Policy)
+        def _initialize_loss_from_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
             dummy_batch = {
                 SampleBatch.CUR_OBS: np.array(
@@ -710,6 +712,16 @@ def build_eager_tf_policy(name,
             loss_fn(self, self.model, self.dist_class, postprocessed_batch)
             if stats_fn:
                 stats_fn(self, postprocessed_batch)
+
+        def _lazy_tensor_dict(self, postprocessed_batch):
+            train_batch = UsageTrackingDict(postprocessed_batch)
+            train_batch.set_get_interceptor(tf.convert_to_tensor)
+            return train_batch
+
+        def _lazy_numpy_dict(self, postprocessed_batch):
+            train_batch = UsageTrackingDict(postprocessed_batch)
+            train_batch.set_get_interceptor(convert_to_non_tf_type)
+            return train_batch
 
         @classmethod
         def with_tracing(cls):
