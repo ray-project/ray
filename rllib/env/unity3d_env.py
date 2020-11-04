@@ -224,7 +224,7 @@ class Unity3DEnv(MultiAgentEnv):
             # Walker.
             "Walker": Box(float("-inf"), float("inf"), (212, )),
             # FoodCollector.
-             "FoodCollector": TupleSpace([
+            "FoodCollector": TupleSpace([
                 Box(float("-inf"), float("inf"), (49, )),
                 Box(float("-inf"), float("inf"), (4, )),
             ]),
