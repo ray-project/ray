@@ -129,10 +129,12 @@ example, the head node is not actually running, or you have the wrong IP
 address).
 
 If you see ``Ray runtime started.``, then the node successfully connected to
-the IP address at the ``--port``. However, this does not necessarily mean that
-``ray.init(address='auto')`` will work. You can still get
-``Failed to connect to Redis, retrying.`` if there is a problem connecting to
-other ports.
+the IP address at the ``--port``. You should now be able to connect to the
+cluster with ``ray.init(address='auto')``.
+
+If ``ray.init(address='auto')`` keeps repeating
+``Failed to connect to Redis, retrying.``, then the node is failing to connect
+to some other port(s) besides the main port.
 
 .. code-block:: bash
 
