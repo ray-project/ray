@@ -425,8 +425,9 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                     prep.shape[0], obs.shape))
         offset = 0
         if tensorlib == tf:
-            batch_dims = [v if isinstance(v, int) else v.value
-                          for v in obs.shape[:-1]]
+            batch_dims = [
+                v if isinstance(v, int) else v.value for v in obs.shape[:-1]
+            ]
             batch_dims = [-1 if v is None else v for v in batch_dims]
         else:
             batch_dims = list(obs.shape[:-1])

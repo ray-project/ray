@@ -456,9 +456,8 @@ class DynamicTFPolicy(TFPolicy):
         return input_dict, dummy_batch
 
     def _initialize_loss_from_dummy_batch(
-            self,
-            auto_remove_unneeded_view_reqs: bool = True,
-            stats_fn = None) -> None:
+            self, auto_remove_unneeded_view_reqs: bool = True,
+            stats_fn=None) -> None:
 
         # Test calls depend on variable init, so initialize model first.
         self._sess.run(tf1.global_variables_initializer())
@@ -468,10 +467,6 @@ class DynamicTFPolicy(TFPolicy):
             actions, state_outs, extra_fetches = \
                 self.compute_actions_from_input_dict(
                     self._dummy_batch, explore=True, timestep=0)
-            #if not self.action_space.contains(actions[0]):
-            #    raise ValueError(
-            #        "Returned actions ({}) not in action_space "
-            #        "({})!".format(actions[0], self.action_space))
             for key, value in extra_fetches.items():
                 self._dummy_batch[key] = np.zeros_like(value)
                 self._input_dict[key] = get_placeholder(value=value, name=key)
@@ -533,11 +528,6 @@ class DynamicTFPolicy(TFPolicy):
                             -1.0, 1.0, shape=batch_for_postproc[key].shape[1:],
                             dtype=batch_for_postproc[key].dtype))
 
-        # Model forward pass for the loss (needed after postprocess to
-        # overwrite any tensor state from that call).
-        # TODO: replace with `compute_actions_from_input_dict`
-        #self.model(self._input_dict, self._state_inputs, self._seq_lens)
-
         if not self.config["_use_trajectory_view_api"]:
             if self._obs_include_prev_action_reward:
                 train_batch = UsageTrackingDict({
@@ -578,17 +568,18 @@ class DynamicTFPolicy(TFPolicy):
         self._loss_input_dict = {k: v for k, v in train_batch.items()}
         loss = self._do_loss_init(train_batch)
 
-        all_accessed_keys = train_batch.accessed_keys | \
-                            batch_for_postproc.accessed_keys | batch_for_postproc.added_keys
-        #TEST
-        all_accessed_keys = all_accessed_keys | set(
-            self.model.inference_view_requirements.keys())
-        TFPolicy._initialize_loss(
-            self,
-            loss,
-            [(k, v) for k, v in train_batch.items() if k in all_accessed_keys])
+        all_accessed_keys = \
+            train_batch.accessed_keys | batch_for_postproc.accessed_keys | \
+            batch_for_postproc.added_keys | set(
+                self.model.inference_view_requirements.keys())
+
+        TFPolicy._initialize_loss(self, loss, [(k, v)
+                                               for k, v in train_batch.items()
+                                               if k in all_accessed_keys])
+
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]
+
         # Call the grads stats fn.
         # TODO: (sven) rename to simply stats_fn to match eager and torch.
         if self._grad_stats_fn:

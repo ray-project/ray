@@ -98,8 +98,9 @@ class TFMultiGPULearner(LearnerThread):
                             LocalSyncParallelOptimizer(
                                 adam,
                                 self.devices,
-                                list(self.policy._loss_input_dict_no_rnn.
-                                     values()),
+                                list(
+                                    self.policy._loss_input_dict_no_rnn.values(
+                                    )),
                                 rnn_inputs,
                                 999999,  # it will get rounded down
                                 self.policy.copy))
