@@ -168,6 +168,13 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public PlacementGroup createPlacementGroup(String name,
       List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    boolean bundleResourceValid = bundles.stream().allMatch(
+        bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
+
+    if (bundles.isEmpty() || !bundleResourceValid) {
+      throw new IllegalArgumentException(
+        "Bundles cannot be empty or bundle's resource must be positive.");
+    }
     return taskSubmitter.createPlacementGroup(name, bundles, strategy);
   }
 
