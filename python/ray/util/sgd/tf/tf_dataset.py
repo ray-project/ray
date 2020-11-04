@@ -7,14 +7,10 @@ from ray.util.sgd.data.pandas_dataset import PandasDataset
 
 
 class TFDataset:
-    def __init__(self,
-                 pandas_ds: PandasDataset,
-                 feature_columns: List[str],
+    def __init__(self, pandas_ds: PandasDataset, feature_columns: List[str],
                  feature_shapes: List[tf.TensorShape],
-                 feature_types: List[tf.DType],
-                 label_column: str,
-                 label_shape: tf.TensorShape,
-                 label_type: tf.DType):
+                 feature_types: List[tf.DType], label_column: str,
+                 label_shape: tf.TensorShape, label_type: tf.DType):
         """
         :param pandas_ds:
         :param feature_columns: the feature columns, also it is the Model input name
@@ -59,7 +55,8 @@ class TFDataset:
                     "All value in feature_types should be tf.DType instance"
 
         if not self._feature_shapes:
-            self._feature_shapes = [tf.TensorShape(([]))] * len(self._feature_columns)
+            self._feature_shapes = [tf.TensorShape(
+                ([]))] * len(self._feature_columns)
 
         if not self._feature_types:
             self._feature_types = [tf.float32] * len(self._feature_columns)
@@ -87,10 +84,13 @@ class TFDataset:
                   shuffle_buffer_size: int = 1,
                   seed: int = None) -> "tensorflow.data.Dataset":
         def make_generator():
-            it = self._ds.get_shard(shard_index, batch_ms, num_async, shuffle, shuffle_buffer_size, seed)
+            it = self._ds.get_shard(shard_index, batch_ms, num_async, shuffle,
+                                    shuffle_buffer_size, seed)
             for df in iter(it):
                 num_rows = df.shape[0]
-                feature_columns = [df[col].values for col in self._feature_columns]
+                feature_columns = [
+                    df[col].values for col in self._feature_columns
+                ]
                 label_column = df[self._label_column].values
                 for i in range(num_rows):
                     features = [f[i] for f in feature_columns]
@@ -100,10 +100,11 @@ class TFDataset:
         output_shapes = (tuple(output_shapes), self._label_shape)
 
         output_types = self._feature_types.copy()
-        output_types = (tuple(output_types),  self._label_type)
-        ds = tf.data.Dataset.from_generator(make_generator,
-                                            output_types=output_types,
-                                            output_shapes=output_shapes)
+        output_types = (tuple(output_types), self._label_type)
+        ds = tf.data.Dataset.from_generator(
+            make_generator,
+            output_types=output_types,
+            output_shapes=output_shapes)
         if repeat:
             ds = ds.repeat()
         return ds

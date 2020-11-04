@@ -677,10 +677,12 @@ class ParallelIterator(Generic[T]):
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
     def to_pandas_dataset(
-        self, convert_fn: Callable[[Iterable[T]], Iterable["pandas.DataFrame"]]
+            self,
+            convert_fn: Callable[[Iterable[T]], Iterable["pandas.DataFrame"]]
     ) -> PandasDataset:
-        it = self._with_transform(lambda local_it: local_it.transform(convert_fn),
-                                  ".to_pandas_dataset()")
+        it = self._with_transform(
+            lambda local_it: local_it.transform(convert_fn),
+            ".to_pandas_dataset()")
         return PandasDataset(it)
 
 

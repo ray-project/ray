@@ -15,15 +15,13 @@ from collections import Iterator
 import functools
 
 
-def convert_to_tensor(df,
-                      feature_columns: List[str],
+def convert_to_tensor(df, feature_columns: List[str],
                       feature_shapes: List[Any],
-                      feature_types: List[torch.dtype],
-                      label_column: str,
-                      label_shape: Optional[int],
-                      label_type: torch.dtype):
+                      feature_types: List[torch.dtype], label_column: str,
+                      label_shape: Optional[int], label_type: torch.dtype):
     feature_tensor = []
-    for col, shape, dtype in zip(feature_columns, feature_shapes, feature_types):
+    for col, shape, dtype in zip(feature_columns, feature_shapes,
+                                 feature_types):
         column = df[col].values
         if column.dtype == np.object:
             if isinstance(column[0], np.ndarray):
@@ -33,7 +31,8 @@ def convert_to_tensor(df,
             else:
                 raise Exception(
                     f"Column {col}'s type: {type(column[0])} is not supported. It must "
-                    "be numpy built in type or numpy object of (ndarray, list, tuple)")
+                    "be numpy built in type or numpy object of (ndarray, list, tuple)"
+                )
 
         t = torch.as_tensor(column, dtype=dtype)
         if shape is not None:
@@ -116,14 +115,16 @@ class TorchDataset:
                   shuffle_buffer_size: int = 1,
                   seed: int = None) -> torch.utils.data.IterableDataset:
 
-        it = self._ds.get_shard(shard_index, batch_ms, num_async, shuffle, shuffle_buffer_size, seed)
-        convert_fn = functools.partial(convert_to_tensor,
-                                       feature_columns=self._feature_columns,
-                                       feature_shapes=self._feature_shapes,
-                                       feature_types=self._feature_types,
-                                       label_column=self._label_column,
-                                       label_shape=self._label_shape,
-                                       label_type=self._label_type)
+        it = self._ds.get_shard(shard_index, batch_ms, num_async, shuffle,
+                                shuffle_buffer_size, seed)
+        convert_fn = functools.partial(
+            convert_to_tensor,
+            feature_columns=self._feature_columns,
+            feature_shapes=self._feature_shapes,
+            feature_types=self._feature_types,
+            label_column=self._label_column,
+            label_shape=self._label_shape,
+            label_type=self._label_type)
         return TorchIterableDataset(it, convert_fn)
 
 
