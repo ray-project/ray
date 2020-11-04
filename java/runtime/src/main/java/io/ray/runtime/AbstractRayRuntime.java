@@ -51,7 +51,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
   public static final String PYTHON_INIT_METHOD_NAME = "__init__";
-  public static final String DEFAULT_PLACEMENT_GROUP_NAME = "unnamed_group";
+  private static final String DEFAULT_PLACEMENT_GROUP_NAME = "unnamed_group";
   protected RayConfig rayConfig;
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
