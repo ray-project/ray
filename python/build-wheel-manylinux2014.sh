@@ -3,7 +3,7 @@
 set -x
 
 # Cause the script to exit if a single command fails.
-set -e
+set -euo pipefail
 
 cat << EOF > "/usr/bin/nproc"
 #!/bin/bash
