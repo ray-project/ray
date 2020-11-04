@@ -111,7 +111,8 @@ py_test(
     size = "large",
     srcs = glob(["tests/test_controller_crashes.py",
                 "tests/test_api.py",
-                "tests/test_failure.py"],
+                "tests/test_failure.py",
+                "**/conftest.py"],
                 exclude=["tests/test_serve.py"]),
 )
 
