@@ -3,11 +3,14 @@ from typing import Any, Callable, List, Iterable, Optional
 import pandas as pd
 from pandas import DataFrame
 
-from ray.util.iter import ParallelIterator
+from ray.util.iter import _NextValueNotReady, LocalIterator, ParallelIterator
+import random
+
+from collections import Iterator
 
 
 class PandasDataset:
-    def __init__(self, it: ParallelIterator):
+    def __init__(self, it: ParallelIterator[DataFrame]):
         super(PandasDataset, self).__init__(it.actor_sets, it.name, it.parent_iterators)
         self._base_it: ParallelIterator[DataFrame] = it
 
@@ -72,7 +75,6 @@ class PandasDataset:
                             return_df = cur_df.iloc[cur_index: rindex]
                             cur_index = rindex
                         if return_df.shape[0] == batch_size:
-                            return_df.index = range(batch_size)
                             yield return_df
                             return_df = None
                 except StopIteration:
@@ -102,8 +104,12 @@ class PandasDataset:
     def get_shard(self,
                   shard_index: int,
                   batch_ms: int = 0,
-                  num_async: int = 1) -> "LocalIterator[DataFrame]":
-        return self._base_it.get_shard(shard_index, batch_ms, num_async)
+                  num_async: int = 1,
+                  shuffle: bool = False,
+                  shuffle_buffer_size: int = 1,
+                  seed: int = None) -> Iterator[DataFrame]:
+        return _ShuffledIterator(
+            self, shard_index, batch_ms, num_async, shuffle, shuffle_buffer_size, seed)
 
     def to_torch(self,
                  feature_columns: List[str] = None,
@@ -127,3 +133,62 @@ class PandasDataset:
         from ray.util.sgd.tf.tf_dataset import TFDataset
         return TFDataset(self, feature_columns, feature_shapes, feature_types,
                          label_column, label_shape, label_type)
+
+
+class _ShuffledIterator(Iterator[DataFrame]):
+    def __init__(self,
+                 it: ParallelIterator[DataFrame],
+                 shard_index: int,
+                 batch_ms: int = 0,
+                 num_async: int = 1,
+                 shuffle: bool = False,
+                 shuffle_buffer_size: int = 1,
+                 seed: int = None):
+        super(_ShuffledIterator, self).__init__()
+        self._it = it
+        self._shard_index = shard_index
+        self._batch_ms = batch_ms
+        self._num_async = num_async
+        self._shuffle = shuffle
+        self._shuffle_buffer_size = shuffle_buffer_size
+        self._seed = seed
+
+        self._local_it: LocalIterator[DataFrame] = None
+
+    def __next__(self) -> DataFrame:
+        assert self._local_it is not None
+        return next(self._local_it)
+
+    def __iter__(self) -> Iterator[DataFrame]:
+        it = self._it.get_shard(self._shard_index, self._batch_ms, self._num_async)
+        if self._shuffle:
+            it = self.shuffle(it)
+
+        self._local_it = it
+        return self
+
+    def shuffle(self, local_it: LocalIterator[DataFrame]) -> LocalIterator[DataFrame]:
+        shuffle_random = random.Random(self._seed)
+
+        def apply_shuffle(it):
+            buffer = []
+            for item in it:
+                if isinstance(item, _NextValueNotReady):
+                    yield item
+                else:
+                    buffer.append(item)
+                    if len(buffer) >= self._shuffle_buffer_size:
+                        df = buffer.pop(
+                            shuffle_random.randint(0, len(buffer) - 1))
+                        df = df.sample(frac=1, random_state=self._seed)
+                        yield df
+            while len(buffer) > 0:
+                yield buffer.pop(shuffle_random.randint(0, len(buffer) - 1))
+
+        return LocalIterator(
+            local_it.base_iterator,
+            local_it.shared_metrics,
+            local_it.local_transforms + [apply_shuffle],
+            name=local_it.name + ".shuffle(shuffle_buffer_size={}, seed={})".format(
+                     self._shuffle_buffer_size,
+                     str(self._seedseed) if self._seed is not None else "None"))

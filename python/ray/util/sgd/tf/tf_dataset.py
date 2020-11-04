@@ -83,9 +83,11 @@ class TFDataset:
                   batch_ms: int = 0,
                   num_async: int = 1,
                   repeat: bool = True,
-                  batch_size: int = 32) -> "tensorflow.data.Dataset":
+                  shuffle: bool = False,
+                  shuffle_buffer_size: int = 1,
+                  seed: int = None) -> "tensorflow.data.Dataset":
         def make_generator():
-            it = self._ds.get_shard(shard_index, batch_ms, num_async)
+            it = self._ds.get_shard(shard_index, batch_ms, num_async, shuffle, shuffle_buffer_size, seed)
             for df in iter(it):
                 num_rows = df.shape[0]
                 feature_columns = [df[col].values for col in self._feature_columns]
@@ -104,5 +106,4 @@ class TFDataset:
                                             output_shapes=output_shapes)
         if repeat:
             ds = ds.repeat()
-        ds = ds.batch(batch_size)
         return ds
