@@ -132,9 +132,12 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
     try:
         defaults = _fillout_available_node_types_resources(defaults)
-    except Exception:
-        logger.exception("Failed to autodetect node resources.")
+    except ValueError:
+        # When the user uses a wrong instance type.
         raise
+    except Exception:
+        # When the user is using e.g., staroid, but it is not installed.
+        logger.exception("Failed to autodetect node resources.")
     return defaults
 
 
