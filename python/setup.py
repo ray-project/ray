@@ -178,7 +178,8 @@ def is_invalid_windows_platform():
 # (~/.bazel/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
-    candidates = ["bazel"]
+    first_candidate = os.getenv("BAZEL_PATH", "bazel")
+    candidates = [first_candidate]
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:
@@ -191,6 +192,7 @@ def bazel_invoke(invoker, cmdline, *args, **kwargs):
             result = invoker([cmd] + cmdline, *args, **kwargs)
             break
         except IOError:
+            raise
             if i >= len(candidates) - 1:
                 raise
     return result
