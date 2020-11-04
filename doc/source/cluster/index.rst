@@ -125,7 +125,7 @@ with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configurati
 If you see ``Unable to connect to Redis. If the Redis instance is on a
 different machine, check that your firewall is configured properly.``,
 this means the ``--port`` is inaccessible at the given IP address (because, for
-example, the head node is not actually running, or you have the wrong IP
+example, the head node is not actually running Ray, or you have the wrong IP
 address).
 
 If you see ``Ray runtime started.``, then the node successfully connected to
@@ -133,8 +133,8 @@ the IP address at the ``--port``. You should now be able to connect to the
 cluster with ``ray.init(address='auto')``.
 
 If ``ray.init(address='auto')`` keeps repeating
-``Failed to connect to Redis, retrying.``, then the node is failing to connect
-to some other port(s) besides the main port.
+``redis_context.cc:303: Failed to connect to Redis, retrying.``, then the node
+is failing to connect to some other port(s) besides the main port.
 
 .. code-block:: bash
 
