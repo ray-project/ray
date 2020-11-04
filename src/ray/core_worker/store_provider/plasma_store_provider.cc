@@ -25,8 +25,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
     const std::shared_ptr<ReferenceCounter> reference_counter,
-    std::function<Status()> check_signals, bool evict_if_full,
-    bool warmup,
+    std::function<Status()> check_signals, bool evict_if_full, bool warmup,
     std::function<void()> on_store_full,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),

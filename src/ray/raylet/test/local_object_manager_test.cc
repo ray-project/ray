@@ -190,13 +190,15 @@ class LocalObjectManagerTest : public ::testing::Test {
   LocalObjectManagerTest()
       : owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
-        manager(free_objects_batch_size,
-                /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
-                [&](const std::vector<ObjectID> &object_ids) {
-                  for (const auto &object_id : object_ids) {
-                    freed.insert(object_id);
-                  }
-                }),
+        manager(
+            free_objects_batch_size,
+            /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
+            [&](const std::vector<ObjectID> &object_ids) {
+              for (const auto &object_id : object_ids) {
+                freed.insert(object_id);
+              }
+            },
+            [&](size_t num_bytes_spilled) { total_bytes_spilled += num_bytes_spilled; }),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
     RayConfig::instance().initialize({{"object_spilling_config", "mock_config"}});
   }
@@ -212,6 +214,7 @@ class LocalObjectManagerTest : public ::testing::Test {
   // This hashmap is incremented when objects are unpinned by destroying their
   // unique_ptr.
   std::shared_ptr<std::unordered_map<ObjectID, int>> unpins;
+  size_t total_bytes_spilled = 0;
 };
 
 TEST_F(LocalObjectManagerTest, TestPin) {
@@ -240,6 +243,7 @@ TEST_F(LocalObjectManagerTest, TestPin) {
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
+  ASSERT_EQ(total_bytes_spilled, 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
@@ -252,11 +256,13 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
     num_times_fired++;
   });
   ASSERT_EQ(num_times_fired, 1);
+  ASSERT_EQ(total_bytes_spilled, 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
+  size_t total_bytes_expected = 0;
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ObjectID object_id = ObjectID::FromRandom();
@@ -264,6 +270,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
     std::unique_ptr<RayObject> object(
         new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    total_bytes_expected += object->GetSize();
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects));
@@ -294,6 +301,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 1);
   }
+  ASSERT_EQ(total_bytes_spilled, total_bytes_expected);
 }
 
 TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
@@ -302,6 +310,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
 
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
+  size_t total_bytes_expected = 0;
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ObjectID object_id = ObjectID::FromRandom();
@@ -309,6 +318,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
     std::unique_ptr<RayObject> object(
         new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    total_bytes_expected += object->GetSize();
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects));
@@ -345,6 +355,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 1);
   }
+  ASSERT_EQ(total_bytes_spilled, total_bytes_expected);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
@@ -355,6 +366,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   std::vector<std::unique_ptr<RayObject>> objects;
   int64_t total_size = 0;
   int64_t object_size = 1000;
+  size_t total_bytes_expected = 2 * object_size;
 
   for (size_t i = 0; i < 3; i++) {
     ObjectID object_id = ObjectID::FromRandom();
@@ -400,6 +412,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   // Check that this returns the total number of bytes currently being spilled.
   num_bytes_required = manager.SpillObjectsOfSize(0);
   ASSERT_EQ(num_bytes_required, 0);
+  ASSERT_EQ(total_bytes_spilled, total_bytes_expected);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillError) {
@@ -412,6 +425,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
   std::unique_ptr<RayObject> object(
       new RayObject(std::move(data_buffer), nullptr, std::vector<ObjectID>()));
+  size_t total_bytes_expected = object->GetSize();
 
   std::vector<std::unique_ptr<RayObject>> objects;
   objects.push_back(std::move(object));
@@ -430,6 +444,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   ASSERT_FALSE(object_table.ReplyAsyncAddSpilledUrl());
   ASSERT_EQ(num_times_fired, 1);
   ASSERT_EQ((*unpins)[object_id], 0);
+  ASSERT_EQ(total_bytes_spilled, 0);
 
   // Try to spill the same object again.
   manager.SpillObjects({object_id}, [&](const Status &status) mutable {
@@ -443,6 +458,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   ASSERT_EQ(num_times_fired, 2);
   ASSERT_EQ(object_table.object_urls[object_id], url);
   ASSERT_EQ((*unpins)[object_id], 1);
+  ASSERT_EQ(total_bytes_spilled, total_bytes_expected);
 }
 
 }  // namespace raylet
