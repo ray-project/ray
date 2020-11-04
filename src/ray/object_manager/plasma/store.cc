@@ -301,7 +301,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id,
                                       int64_t metadata_size, int device_num,
                                       const std::shared_ptr<Client> &client,
                                       PlasmaObject* result) {
-  RAY_LOG(DEBUG) << "creating object " << object_id.Hex();
+  RAY_LOG(DEBUG) << "creating object " << object_id.Hex() << " size " << data_size;
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   if (entry != nullptr) {
@@ -963,12 +963,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   // Process the different types of requests.
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
-      auto status = HandleCreateObjectRequest(client, message);
-      if (status.IsTransientObjectStoreFull()) {
-        create_request_queue_.push_back({client, message});
-      } else {
-        RAY_RETURN_NOT_OK(status);
-      }
+      create_request_queue_.push_back({client, message});
+      ProcessCreateRequests(/*num_bytes_space=*/0);
     } break;
     case fb::MessageType::PlasmaAbortRequest: {
       RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
@@ -1065,7 +1061,6 @@ void PlasmaStore::DoAccept() {
 void PlasmaStore::ProcessCreateRequests(size_t num_bytes_space) {
   for (auto request = create_request_queue_.begin();
       request != create_request_queue_.end(); ) {
-    RAY_LOG(DEBUG) << "Reprocessing queued create request";
     auto status = HandleCreateObjectRequest(request->first, request->second);
     if (status.IsTransientObjectStoreFull()) {
       // The object store is still full.
