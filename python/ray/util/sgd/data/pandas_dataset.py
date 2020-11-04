@@ -3,10 +3,16 @@ from typing import Any, Callable, List, Iterable, Optional
 import pandas as pd
 from pandas import DataFrame
 
-from ray.util.iter import _NextValueNotReady, LocalIterator, ParallelIterator
+from ray.util.iter import _NextValueNotReady, LocalIterator, ParallelIterator, T
+import ray.util.iter as parallel_iter
+
 import random
 
 from collections import Iterator
+
+
+def is_list_like(item) -> bool:
+    return isinstance(item, (list, tuple)) or hasattr(item, "__iter__")
 
 
 class PandasDataset:
@@ -14,6 +20,51 @@ class PandasDataset:
         super(PandasDataset, self).__init__(it.actor_sets, it.name,
                                             it.parent_iterators)
         self._base_it: ParallelIterator[DataFrame] = it
+
+    @staticmethod
+    def from_items(items: List[T], num_shards: int = 2,
+                   repeat: bool = False) -> "PandasDataset":
+        return PandasDataset.from_it(
+            parallel_iter.from_items(items, num_shards, repeat))
+
+    @staticmethod
+    def from_range(n: int, num_shards: int = 2,
+                   repeat: bool = False) -> "PandasDataset":
+        return PandasDataset.from_it(
+            parallel_iter.from_range(n, num_shards, repeat))
+
+    @staticmethod
+    def from_iterators(generators: List[Iterable[T]],
+                       repeat: bool = False,
+                       name=None) -> "PandasDataset":
+        return PandasDataset.from_iterators(generators, repeat, name)
+
+    @staticmethod
+    def from_it(it: ParallelIterator,
+                batch_size: int = 32) -> "PandasDataset":
+        def fn(items: Iterable):
+            try:
+                items = iter(items)
+                item = next(items)
+                if is_list_like(item):
+                    yield item
+                    for item in items:
+                        yield item
+                else:
+                    yield [item]
+                    for item in items:
+                        yield [item]
+            except StopIteration:
+                pass
+
+        it = it.transform(fn)
+        it = it.batch(batch_size)
+
+        def to_pandas(items: Iterable) -> Iterable[DataFrame]:
+            for item in items:
+                yield pd.DataFrame(item)
+        it = it.transform(to_pandas)
+        return PandasDataset(it)
 
     def __iter__(self):
         raise Exception("Unsupported operation")
