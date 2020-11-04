@@ -5,7 +5,7 @@ file_mounts:
     ~/tests: .
 head_node:
     ImageId: latest_dlami
-    InstanceType: t3a.small
+    InstanceType: t1.micro 
 head_setup_commands:
     - echo head
 head_start_ray_commands:
@@ -30,7 +30,7 @@ setup_commands:
 target_utilization_fraction: 0.9
 worker_nodes:
     ImageId: latest_dlami
-    InstanceType: t3a.small
+    InstanceType: t1.micro
 worker_setup_commands:
     - echo worker
 worker_start_ray_commands:
