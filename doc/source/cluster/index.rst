@@ -134,6 +134,39 @@ the IP address at the ``--port``. However, this does not necessarily mean that
 ``Failed to connect to Redis, retrying.`` if there is a problem connecting to
 other ports.
 
+.. code-block:: bash
+
+  If connection fails, check your firewall settings and network configuration.
+
+If the connection fails, to check whether each port can be reached from a node,
+you can use a tool such as ``nmap`` or ``nc``.
+
+.. code-block:: bash
+
+  $ nmap -sV --reason -p $PORT $HEAD_ADDRESS
+  Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+  Host is up, received echo-reply ttl 60 (0.00087s latency).
+  rDNS record for 123.456.78.910: compute04.berkeley.edu
+  PORT     STATE SERVICE REASON         VERSION
+  6379/tcp open  redis   syn-ack ttl 60 Redis key-value store
+  Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+  $ nc -vv -z $HEAD_ADDRESS $PORT
+  Connection to compute04.berkeley.edu 6379 port [tcp/*] succeeded!
+
+If the node cannot access that port at that IP address, you might see
+
+.. code-block:: bash
+
+  $ nmap -sV --reason -p $PORT $HEAD_ADDRESS
+  Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+  Host is up (0.0011s latency).
+  rDNS record for 123.456.78.910: compute04.berkeley.edu
+  PORT     STATE  SERVICE REASON       VERSION
+  6379/tcp closed redis   reset ttl 60
+  Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+  $ nc -vv -z $HEAD_ADDRESS $PORT
+  nc: connect to compute04.berkeley.edu port 6379 (tcp) failed: Connection refused
+
 
 Stopping Ray
 ~~~~~~~~~~~~
