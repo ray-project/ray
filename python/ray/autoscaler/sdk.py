@@ -219,8 +219,10 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     return fillout_defaults(config)
 
 
-def register_callback_handler(event_name: str,
-                              callback: Callable[[Dict], None]) -> None:
+def register_callback_handler(
+        event_name: str,
+        callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
+) -> None:
     """Registers a callback handler for autoscaler events.
 
     Args:

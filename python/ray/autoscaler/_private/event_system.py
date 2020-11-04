@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List, Union
 
 
 class CreateClusterEvent(Enum):
@@ -8,18 +8,18 @@ class CreateClusterEvent(Enum):
     Attributes:
         up_started : Invoked at the beginning of create_or_update_cluster.
         ssh_keypair_downloaded : Invoked when the ssh keypair is downloaded.
-        cluster_booting_started : Callback called when cluster booting starts.
-        acquiring_new_head_node : Callback called before head node acquired.
-        head_node_acquired : Callback called after head node acquired.
-        ssh_control_acquired : Callback called when node is being updated.
-        run_initialization_cmd : Callback called before all initialization
+        cluster_booting_started : Invoked when when the cluster booting starts.
+        acquiring_new_head_node : Invoked before the head node is acquired.
+        head_node_acquired : Invoked after the head node is acquired.
+        ssh_control_acquired : Invoked when the node is being updated.
+        run_initialization_cmd : Invoked before all initialization
             commands are called and again before each initialization command.
-        run_setup_cmd : Callback called before all setup
-            commands are called and again before each setup command.
-        start_ray_runtime : Callback called before ray start commands are run.
-        start_ray_runtime_completed : Callback called after ray start commands
+        run_setup_cmd : Invoked before all setup commands are
+            called and again before each setup command.
+        start_ray_runtime : Invoked before ray start commands are run.
+        start_ray_runtime_completed : Invoked after ray start commands
             are run.
-        cluster_booting_completed : Callback called after cluster booting
+        cluster_booting_completed : Invoked after cluster booting
             is completed.
     """
 
@@ -47,17 +47,51 @@ class _EventSystem:
     def __init__(self):
         self.callback_map = {}
 
-    def add_callback_handler(self, event, callback: Callable[[Dict], None]):
-        if event in self.callback_map:
-            self.callback_map[event].append(callback)
-        else:
-            self.callback_map[event] = [callback]
+    def add_callback_handler(
+            self,
+            event: str,
+            callback: Union[Callable[[Dict], None], List[Callable[[Dict],
+                                                                  None]]],
+    ):
+        """Stores callback handler for event.
 
-    def execute_callback(self, event, event_data: Dict[str, Any] = {}):
+        Args:
+            event (str): Event that callback should be called on. See
+                CreateClusterEvent for details on the events available to be
+                registered against.
+            callback (Callable[[Dict], None]): Callable object that is invoked
+                when specified event occurs.
+        """
+        if type(callback) is not list:
+            callback = [callback]
+        if event in self.callback_map:
+            self.callback_map[event].extend(callback)
+        else:
+            self.callback_map[event] = callback
+
+    def execute_callback(self, event: str, event_data: Dict[str, Any] = {}):
+        """Executes all callbacks for event.
+
+        Args:
+            event (str): Event that is invoked. See CreateClusterEvent
+                for details on the available events.
+            event_data (Dict[str, Any]): Argument that is passed to each
+                callable object stored for this particular event.
+        """
         event_data["event_name"] = event
         if event in self.callback_map:
             for callback in self.callback_map[event]:
                 callback(event_data)
+
+    def clear_callbacks_for_event(self, event: str):
+        """Clears stored callable objects for event.
+
+        Args:
+            event (str): Event that has callable objects stored in map.
+                See CreateClusterEvent for details on the available events.
+        """
+        if event in self.callback_map:
+            del self.callback_map[event]
 
 
 global_event_system = _EventSystem()

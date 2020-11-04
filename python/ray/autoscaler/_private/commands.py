@@ -672,7 +672,6 @@ def get_or_create_head_node(config: Dict[str, Any],
     global_event_system.execute_callback(
         CreateClusterEvent.cluster_booting_completed, {
             "head_node_id": head_node,
-            "head_node_ip": head_node_ip
         })
 
     monitor_str = "tail -n 100 -f /tmp/ray/session_latest/logs/monitor*"
