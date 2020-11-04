@@ -295,7 +295,7 @@ class NodeUpdater:
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
         global_event_system.execute_callback(
-            CreateClusterEvent.ssh_control_acquired, {})
+            CreateClusterEvent.ssh_control_acquired)
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
@@ -346,11 +346,14 @@ class NodeUpdater:
                             "Running initialization commands",
                             _numbered=("[]", 3, 5)):
                         global_event_system.execute_callback(
-                            CreateClusterEvent.run_initialization_cmd, {})
+                            CreateClusterEvent.run_initialization_cmd)
                         with LogTimer(
                                 self.log_prefix + "Initialization commands",
                                 show_status=True):
                             for cmd in self.initialization_commands:
+                                global_event_system.execute_callback(
+                                    CreateClusterEvent.run_initialization_cmd,
+                                    {"command": cmd})
                                 try:
                                     # Overriding the existing SSHOptions class
                                     # with a new SSHOptions class that uses
@@ -383,13 +386,16 @@ class NodeUpdater:
                             # todo: fix command numbering
                             _numbered=("[]", 4, 6)):
                         global_event_system.execute_callback(
-                            CreateClusterEvent.run_setup_cmd, {})
+                            CreateClusterEvent.run_setup_cmd)
                         with LogTimer(
                                 self.log_prefix + "Setup commands",
                                 show_status=True):
 
                             total = len(self.setup_commands)
                             for i, cmd in enumerate(self.setup_commands):
+                                global_event_system.execute_callback(
+                                    CreateClusterEvent.run_setup_cmd,
+                                    {"command": cmd})
                                 if cli_logger.verbosity == 0 and len(cmd) > 30:
                                     cmd_to_print = cf.bold(cmd[:30]) + "..."
                                 else:
@@ -418,7 +424,7 @@ class NodeUpdater:
         with cli_logger.group(
                 "Starting the Ray runtime", _numbered=("[]", 6, 6)):
             global_event_system.execute_callback(
-                CreateClusterEvent.start_ray_runtime, {})
+                CreateClusterEvent.start_ray_runtime)
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
@@ -444,7 +450,7 @@ class NodeUpdater:
 
                         raise click.ClickException("Start command failed.")
             global_event_system.execute_callback(
-                CreateClusterEvent.start_ray_runtime_completed, {})
+                CreateClusterEvent.start_ray_runtime_completed)
 
     def rsync_up(self, source, target, docker_mount_if_possible=False):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,

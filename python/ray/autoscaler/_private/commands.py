@@ -167,6 +167,8 @@ def create_or_update_cluster(config_file: str,
     except yaml.scanner.ScannerError as e:
         handle_yaml_error(e)
         raise
+    global_event_system.execute_callback(CreateClusterEvent.up_started,
+                                         {"cluster_config": config})
 
     # todo: validate file_mounts, ssh keys, etc.
 
@@ -503,7 +505,7 @@ def get_or_create_head_node(config: Dict[str, Any],
                             _runner: ModuleType = subprocess) -> None:
     """Create the cluster head node, which in turn creates the workers."""
     global_event_system.execute_callback(
-        CreateClusterEvent.cluster_booting_started, {})
+        CreateClusterEvent.cluster_booting_started)
     provider = (_provider or _get_node_provider(config["provider"],
                                                 config["cluster_name"]))
 
@@ -567,7 +569,7 @@ def get_or_create_head_node(config: Dict[str, Any],
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
         with cli_logger.group("Acquiring an up-to-date head node"):
             global_event_system.execute_callback(
-                CreateClusterEvent.acquiring_new_head_node, {})
+                CreateClusterEvent.acquiring_new_head_node)
             if head_node is not None:
                 cli_logger.print(
                     "Currently running head node is out-of-date with "
@@ -612,8 +614,7 @@ def get_or_create_head_node(config: Dict[str, Any],
                     time.sleep(POLL_INTERVAL)
             cli_logger.newline()
 
-    global_event_system.execute_callback(CreateClusterEvent.head_node_acquired,
-                                         {})
+    global_event_system.execute_callback(CreateClusterEvent.head_node_acquired)
 
     with cli_logger.group(
             "Setting up head node",

@@ -29,8 +29,6 @@ def create_or_update_cluster(cluster_config: Union[dict, str],
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
     """
-    global_event_system.execute_callback(CreateClusterEvent.up_started,
-                                         {"cluster_config": cluster_config})
     with _as_config_file(cluster_config) as config_file:
         return commands.create_or_update_cluster(
             config_file=config_file,
