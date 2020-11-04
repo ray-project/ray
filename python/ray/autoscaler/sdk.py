@@ -220,7 +220,12 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def register_callback_handler(event_name: str,
                               callback: Callable[[Dict], None]) -> None:
-    """Registers a callback handler for autoscaler events."""
+    """Registers a callback handler for autoscaler events.
+
+    Args:
+        event_name: str -- event that callback should be called on.
+        callback: Callable -- callback to call when specified event occurs.
+    """
     global_event_system.add_callback_handler(event_name, callback)
 
 
