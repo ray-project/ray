@@ -136,8 +136,25 @@ In addition to ports specified above, the head node needs to open several more p
 
 - ``--port``: Port of GCS. Default: 6379.
 - ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
-- ``--dashboard-port``: Port for accessing the dashboard. Default: 8265
 - ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
+
+- If ``--include-dashboard`` is true (the default), then the head node must open ``--dashboard-port``. Default: 8265.
+
+If ``--include-dashboard`` is true but the ``--dashboard-port`` is not open on
+the head node, you will repeatedly get
+
+.. code-block:: bash
+
+  WARNING worker.py:1114 -- The agent on node runner-psehzuf-project-12345-concurrent-0 failed with the following error:
+  Traceback (most recent call last):
+    File "/usr/local/lib/python3.8/dist-packages/grpc/aio/_call.py", line 285, in __await__
+      raise _create_rpc_error(self._cython_call._initial_metadata,
+  grpc.aio._call.AioRpcError: <AioRpcError of RPC that terminated with:
+    status = StatusCode.UNAVAILABLE
+    details = "failed to connect to all addresses"
+    debug_error_string = "{"description":"Failed to pick subchannel","file":"src/core/ext/filters/client_channel/client_channel.cc","file_line":4165,"referenced_errors":[{"description":"failed to connect to all addresses","file":"src/core/ext/filters/client_channel/lb_policy/pick_first/pick_first.cc","file_line":397,"grpc_status":14}]}"
+
+(Also, you will not be able to access the dashboard.)
 
 Redis Port Authentication
 -------------------------
