@@ -858,6 +858,14 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
     // Remove notification for this client from global map.
     notification_clients_.erase(client);
   }
+
+  for (auto it = create_request_queue_.begin(); it != create_request_queue_.end(); ) {
+    if (it->first == client) {
+      it = create_request_queue_.erase(it);
+    } else {
+      it++;
+    }
+  }
 }
 
 /// Send notifications about sealed objects to the subscribers. This is called
