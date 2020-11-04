@@ -101,11 +101,11 @@ def prepare_config(config):
 
 def rewrite_legacy_yaml_to_available_node_types(
         config: Dict[str, Any]) -> Dict[str, Any]:
-    if "available_node_types" in config:
-        return config
-    else:
+
+    if "available_node_types" not in config:
         # TODO(ameer/ekl/alex): we can also rewrite here many other fields
         # that include initialization/setup/start commands and ImageId.
+        logger.info("Converting legacy cluster config to multi node types.")
         config["available_node_types"] = {
             NODE_TYPE_LEGACY_HEAD: {
                 "node_config": config["head_node"],
@@ -122,7 +122,8 @@ def rewrite_legacy_yaml_to_available_node_types(
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
         config["worker_default_node_type"] = NODE_TYPE_LEGACY_WORKER
-        return config
+
+    return config
 
 
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:

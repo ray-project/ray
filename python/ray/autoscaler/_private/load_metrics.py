@@ -99,12 +99,6 @@ class LoadMetrics:
         prune(self.resource_load_by_ip)
         prune(self.last_heartbeat_time_by_ip)
 
-    def approx_workers_used(self):
-        return self._info()["NumNodesUsed"]
-
-    def num_workers_connected(self):
-        return self._info()["NumNodesConnected"]
-
     def get_node_resources(self):
         """Return a list of node resources (static resource sizes).
 

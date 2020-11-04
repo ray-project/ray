@@ -40,12 +40,17 @@ NodeIP = str
 
 
 class ResourceDemandScheduler:
-    def __init__(self, provider: NodeProvider,
+    def __init__(self,
+                 provider: NodeProvider,
                  node_types: Dict[NodeType, NodeTypeConfigDict],
-                 max_workers: int):
+                 max_workers: int,
+                 aggressive: bool = False,
+                 target_utilization_fraction: float = 1):
         self.provider = provider
         self.node_types = copy.deepcopy(node_types)
         self.max_workers = max_workers
+        self.aggressive = aggressive
+        self.target_utilization_fraction = target_utilization_fraction
         # is_legacy_yaml tracks if the cluster configs was originally without
         # available_node_types and was autofilled with available_node_types.
         self.is_legacy_yaml = (NODE_TYPE_LEGACY_HEAD in node_types
@@ -225,8 +230,15 @@ class ResourceDemandScheduler:
             Dict[NodeType, int]: Maximum number of nodes to launch for each
                 node type.
         """
-        # TODO(ameer): Consider making frac configurable.
-        frac = 1
+        if self.aggressive:
+            # TODO(ameer): The concern here is that we might launch a lot of
+            # nodes that end up failing in aggressive mode. This is the case
+            # if target_utilization_fraction is very low too.
+            # The function calculate_node_resources() might be resolving this
+            # issue since it counts failed node's resources as unutilized.
+            return to_launch
+
+        frac = 1 / max(self.target_utilization_fraction, 0.01)
         updated_nodes_to_launch = {}
         running_nodes, pending_nodes = \
             self._separate_running_and_pending_nodes(
