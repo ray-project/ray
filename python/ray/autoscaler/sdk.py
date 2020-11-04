@@ -7,8 +7,9 @@ import os
 import tempfile
 
 from ray.autoscaler._private import commands
-from ray.autoscaler._private.event_system import (CreateClusterEvent,
-                                                  global_event_system)
+from ray.autoscaler._private.event_system import (  # noqa: F401
+    CreateClusterEvent,  # noqa: F401
+    global_event_system)
 
 
 def create_or_update_cluster(cluster_config: Union[dict, str],
@@ -223,8 +224,11 @@ def register_callback_handler(event_name: str,
     """Registers a callback handler for autoscaler events.
 
     Args:
-        event_name: str -- event that callback should be called on.
-        callback: Callable -- callback to call when specified event occurs.
+        event_name (str): Event that callback should be called on. See
+            CreateClusterEvent for details on the events available to be
+            registered against.
+        callback (Callable): Callable object that is invoked
+            when specified event occurs.
     """
     global_event_system.add_callback_handler(event_name, callback)
 

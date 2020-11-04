@@ -6,8 +6,8 @@ class CreateClusterEvent(Enum):
     """Events to track in ray.autoscaler.sdk.create_or_update_cluster.
 
     Attributes:
-        up_started : Callback called at beginning of create_or_update_cluster.
-        ssh_keypair_downloaded : Callback called when ssh keypair downloaded.
+        up_started : Invoked at the beginning of create_or_update_cluster.
+        ssh_keypair_downloaded : Invoked when the ssh keypair is downloaded.
         cluster_booting_started : Callback called when cluster booting starts.
         acquiring_new_head_node : Callback called before head node acquired.
         head_node_acquired : Callback called after head node acquired.
