@@ -102,6 +102,13 @@ The command will print out the address of the Redis server that was started
 ``<address>`` with the value printed by the command on the head node (it
 should look something like ``123.45.67.89:6379``).
 
+Note that if your compute nodes are on their own subnetwork with Network
+Address Translation, to connect from a regular machine outside that subnetwork,
+the command printed by the head node will not work. You need to find the
+address that will reach the head node from the second machine. If the head node
+has a domain address like compute04.berkeley.edu, you can simply use that in
+place of an IP address and rely on the DNS.
+
 .. code-block:: bash
 
   $ ray start --address=<address> --redis-password='<password>'
@@ -115,11 +122,18 @@ should look something like ``123.45.67.89:6379``).
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
 with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configuration <configuring-ray>` page for more information.
 
+If you see ``Unable to connect to Redis. If the Redis instance is on a
+different machine, check that your firewall is configured properly.``,
+this means the ``--port`` is inaccessible at the given IP address (because, for
+example, the head node is not actually running, or you have the wrong IP
+address).
+
 If you see ``Ray runtime started.``, then the node successfully connected to
-the ``<address>``. If the ``<address>`` is inaccessible (because, for example,
-the head node is not actually running), then you will get an error such as
-``Unable to connect to Redis. If the Redis instance is on a different machine,
-check that your firewall is configured properly.``
+the IP address at the ``--port``. However, this does not necessarily mean that
+``ray.init(address='auto')`` will work. You can still get
+``Failed to connect to Redis, retrying.`` if there is a problem connecting to
+other ports.
+
 
 Stopping Ray
 ~~~~~~~~~~~~
