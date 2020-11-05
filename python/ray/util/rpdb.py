@@ -171,8 +171,7 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
 
 
 def set_trace():
-    """
-    Interrupt the flow of the program and drop into the Ray debugger.
+    """Interrupt the flow of the program and drop into the Ray debugger.
 
     Can be used within a Ray task or actor.
     """
