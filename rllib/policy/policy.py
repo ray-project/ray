@@ -597,7 +597,7 @@ class Policy(metaclass=ABCMeta):
             sample_batch_size)
         input_dict = self._lazy_tensor_dict(self._dummy_batch)
         actions, state_outs, extra_outs = \
-            self.compute_actions_from_input_dict(input_dict)
+            self.compute_actions_from_input_dict(input_dict, explore=False)
         # Add extra outs to view reqs.
         for key, value in extra_outs.items():
             self._dummy_batch[key] = np.zeros_like(value)
