@@ -1,0 +1,51 @@
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+  # name: ray-op-test
+# ---
+#operator_role:
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: operator
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/exec", ]
+  verbs: ["get", "watch", "list", "create", "delete", "patch"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ray-operator-1
+spec:
+  containers:
+    - name: ray-operator
+      imagePullPolicy: Always
+      image: rayproject/ray-deps:nightly
+      command: ["/bin/bash", "-c", "--"]
+      args: ["echo hello > hello.txt; trap : TERM INT; sleep infinity & wait;"]
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          memory: 2Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ray-operator-2
+spec:
+  containers:
+    - name: ray-operator
+      imagePullPolicy: Always
+      image: rayproject/ray-deps:nightly
+      command: ["/bin/bash", "-c", "--"]
+      args: ["echo hello > hello.txt; trap : TERM INT; sleep infinity & wait;"]
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          memory: 2Gi
+
