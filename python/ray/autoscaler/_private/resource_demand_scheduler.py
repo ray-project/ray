@@ -52,11 +52,14 @@ class ResourceDemandScheduler:
                                and NODE_TYPE_LEGACY_WORKER in node_types)
 
     def get_nodes_to_launch(
-            self, nodes: List[NodeID], pending_nodes: Dict[NodeType, int],
+            self,
+            nodes: List[NodeID],
+            pending_nodes: Dict[NodeType, int],
             resource_demands: List[ResourceDict],
-            usage_by_ip: Dict[NodeIP, ResourceDict],
+            unused_resources_by_ip: Dict[NodeIP, ResourceDict],
             pending_placement_groups: List[PlacementGroupTableData],
-            static_node_resources: Dict[NodeIP, ResourceDict]
+            max_resources_by_ip: Dict[NodeIP, ResourceDict],
+            ensure_min_cluster_size: List[ResourceDict] = None,
     ) -> Dict[NodeType, int]:
         """Given resource demands, return node types to add to the cluster.
 
@@ -74,19 +77,35 @@ class ResourceDemandScheduler:
             nodes: List of existing nodes in the cluster.
             pending_nodes: Summary of node types currently being launched.
             resource_demands: Vector of resource demands from the scheduler.
-            usage_by_ip: Mapping from ip to available resources.
+            unused_resources_by_ip: Mapping from ip to available resources.
             pending_placement_groups: Placement group demands.
-            static_node_resources: Mapping from ip to static node resources.
+            max_resources_by_ip: Mapping from ip to static node resources.
+            ensure_min_cluster_size: Try to ensure the cluster can fit at least
+                this set of resources. This differs from resources_demands in
+                that we don't take into account existing usage.
         """
+
+        # Calculate any extra requests we need to make that don't already fit
+        # into the cluster.
+        if ensure_min_cluster_size is not None:
+            used_resources = []
+            for ip, max_res in max_resources_by_ip.items():
+                res = copy.deepcopy(max_res)
+                _inplace_subtract(res, unused_resources_by_ip.get(ip, {}))
+                used_resources.append(res)
+            remaining_shapes, _ = get_bin_pack_residual(
+                used_resources, ensure_min_cluster_size)
+            resource_demands += remaining_shapes
+
         if self.is_legacy_yaml:
             # When using legacy yaml files we need to infer the head & worker
             # node resources from the static node resources from LoadMetrics.
-            self._infer_legacy_node_resources_if_needed(static_node_resources)
+            self._infer_legacy_node_resources_if_needed(max_resources_by_ip)
 
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
-        node_resources, node_type_counts = \
-            self.calculate_node_resources(nodes, pending_nodes, usage_by_ip)
+        node_resources, node_type_counts = self.calculate_node_resources(
+            nodes, pending_nodes, unused_resources_by_ip)
 
         logger.info("Cluster resources: {}".format(node_resources))
         logger.info("Node counts: {}".format(node_type_counts))
@@ -133,7 +152,8 @@ class ResourceDemandScheduler:
 
         # Limit the number of concurrent launches
         total_nodes_to_add = self._get_concurrent_resource_demand_to_launch(
-            total_nodes_to_add, usage_by_ip.keys(), nodes, pending_nodes)
+            total_nodes_to_add, unused_resources_by_ip.keys(), nodes,
+            pending_nodes)
 
         logger.info("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add
@@ -168,23 +188,23 @@ class ResourceDemandScheduler:
                 return {}
 
     def _infer_legacy_node_resources_if_needed(
-            self, static_node_resources: Dict[NodeIP, ResourceDict]
+            self, max_resources_by_ip: Dict[NodeIP, ResourceDict]
     ) -> (bool, Dict[NodeType, int]):
         """Infers node resources for legacy config files.
 
         Updates the resources of the head and worker node types in
         self.node_types.
         Args:
-            static_node_resources: Mapping from ip to static node resources.
+            max_resources_by_ip: Mapping from ip to static node resources.
         """
         # We fill the head node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"]:
-            assert len(static_node_resources) == 1  # Only the head node.
+            assert len(max_resources_by_ip) == 1  # Only the head node.
             self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"] = next(
-                iter(static_node_resources.values()))
+                iter(max_resources_by_ip.values()))
         # We fill the worker node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]:
-            if len(static_node_resources) > 1:
+            if len(max_resources_by_ip) > 1:
                 # Set the node_types here as we already launched a worker node
                 # from which we directly get the node_resources.
                 worker_nodes = self.provider.non_terminated_nodes(
@@ -194,9 +214,9 @@ class ResourceDemandScheduler:
                     for node_id in worker_nodes
                 ]
                 for ip in worker_node_ips:
-                    if ip in static_node_resources:
+                    if ip in max_resources_by_ip:
                         self.node_types[NODE_TYPE_LEGACY_WORKER][
-                            "resources"] = static_node_resources[ip]
+                            "resources"] = max_resources_by_ip[ip]
                 assert self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
 
     def _get_concurrent_resource_demand_to_launch(
@@ -274,7 +294,7 @@ class ResourceDemandScheduler:
 
     def calculate_node_resources(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeID, int],
-            usage_by_ip: Dict[str, ResourceDict]
+            unused_resources_by_ip: Dict[str, ResourceDict]
     ) -> (List[ResourceDict], Dict[NodeType, int]):
         """Returns node resource list and node type counts.
 
@@ -317,7 +337,7 @@ class ResourceDemandScheduler:
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 ip = self.provider.internal_ip(node_id)
-                available_resources = usage_by_ip.get(ip)
+                available_resources = unused_resources_by_ip.get(ip)
                 add_node(node_type, available_resources)
 
         for node_type, count in pending_nodes.items():
@@ -375,9 +395,9 @@ class ResourceDemandScheduler:
 
     def debug_string(self, nodes: List[NodeID],
                      pending_nodes: Dict[NodeID, int],
-                     usage_by_ip: Dict[str, ResourceDict]) -> str:
+                     unused_resources_by_ip: Dict[str, ResourceDict]) -> str:
         node_resources, node_type_counts = self.calculate_node_resources(
-            nodes, pending_nodes, usage_by_ip)
+            nodes, pending_nodes, unused_resources_by_ip)
 
         out = "Worker node types:"
         for node_type, count in node_type_counts.items():
@@ -537,13 +557,14 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
 
     Returns:
         List[ResourceDict] the residual list resources that do not fit.
-
+        List[ResourceDict]: The updated node_resources after the method.
     """
 
     unfulfilled = []
 
     # A most naive bin packing algorithm.
     nodes = copy.deepcopy(node_resources)
+    # List of nodes that cannot be used again due to strict spread.
     used = []
     for demand in resource_demands:
         found = False

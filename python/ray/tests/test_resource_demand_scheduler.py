@@ -371,6 +371,63 @@ def test_calculate_node_resources():
     assert to_launch == {"p2.8xlarge": 1}
 
 
+def test_request_resources_existing_usage():
+    provider = MockProvider()
+    scheduler = ResourceDemandScheduler(provider, TYPES_A, max_workers=100)
+
+    # 5 nodes with 32 CPU and 8 GPU each
+    provider.create_node({}, {
+        TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+    }, 2)
+    all_nodes = provider.non_terminated_nodes({})
+    node_ips = provider.non_terminated_node_ips({})
+    assert len(node_ips) == 2, node_ips
+
+    # Fully utilized, no requests.
+    avail_by_ip = {ip: {} for ip in node_ips}
+    max_by_ip = {ip: {"GPU": 8, "CPU": 32} for ip in node_ips}
+    demands = []
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert len(to_launch) == 0, to_launch
+
+    # Fully utilized, resource requests exactly equal.
+    avail_by_ip = {ip: {} for ip in node_ips}
+    demands = [{"GPU": 4}] * 4
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert len(to_launch) == 0, to_launch
+
+    # Fully utilized, resource requests in excess.
+    avail_by_ip = {ip: {} for ip in node_ips}
+    demands = [{"GPU": 4}] * 7
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert to_launch.get("p2.8xlarge") == 2, to_launch
+
+    # Not utilized, no requests.
+    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
+    demands = []
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert len(to_launch) == 0, to_launch
+
+    # Not utilized, resource requests exactly equal.
+    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
+    demands = [{"GPU": 4}] * 4
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert len(to_launch) == 0, to_launch
+
+    # Not utilized, resource requests in excess.
+    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
+    demands = [{"GPU": 4}] * 7
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert to_launch.get("p2.8xlarge") == 2, to_launch
+
+
 def test_backlog_queue_impact_on_binpacking_time():
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["max_workers"] = 1000
