@@ -75,7 +75,7 @@ class TFDataset:
                   repeat: bool = True,
                   shuffle: bool = False,
                   shuffle_buffer_size: int = 1,
-                  seed: int = None) -> "tensorflow.data.Dataset":
+                  seed: int = None) -> "tf.data.Dataset":
         def make_generator():
             it = self._ds.get_shard(shard_index, batch_ms, num_async, shuffle,
                                     shuffle_buffer_size, seed)

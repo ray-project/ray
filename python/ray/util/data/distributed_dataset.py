@@ -2,7 +2,7 @@ import random
 from collections import defaultdict
 from dataclasses import is_dataclass
 from functools import wraps
-from typing import Callable, List, Optional, Union, Iterable, Iterator
+from typing import Callable, List, Union, Iterable, Iterator
 
 import pandas as pd
 from pandas import DataFrame
@@ -40,6 +40,7 @@ def type_check(func, is_batch: bool, check_fn: Callable[[T], bool]):
                     raise ValueError(
                         "DistributedDataset only support list like "
                         "item or dataclass instance")
+
     return wrapper
 
 
@@ -151,9 +152,13 @@ class DistributedDataset(Dataset[T]):
             The given shard iterator. If the shuffle is True, each call iter
             will return a different ordered iterator.
         """
-        if shuffle and self._batch_size > 0:
+        if shuffle and self._batch_size > 0 and inner_shuffle_fn is None:
             shuffle_random = random.Random(seed)
-            inner_shuffle_fn = lambda x: shuffle_random.shuffle(x)
+
+            def fn(x):
+                return shuffle_random.shuffle(x)
+
+            inner_shuffle_fn = fn
         return _RepeatableIterator(self._para_it, index, batch_ms, num_async,
                                    shuffle, shuffle_buffer_size, seed,
                                    inner_shuffle_fn)
@@ -190,9 +195,11 @@ class DistributedDataset(Dataset[T]):
         all_equals = all([isinstance(col, typ) for col in column_names])
         assert all_equals, "The column names should all be int or str"
         if isinstance(column_names[0], str):
+
             def get_column_fn(item, col):
                 return getattr(item, col)
         elif isinstance(column_names[0], int):
+
             def get_column_fn(item, col):
                 return item[col]
         else:
@@ -220,8 +227,12 @@ class DistributedDataset(Dataset[T]):
         ds = ds.transform(convert_fn, ".to_pandas()")
         return PandasDistributedDataset.from_distributed_ds(ds)
 
-    def to_torch(self, feature_columns=None, feature_shapes=None,
-                 feature_types=None, label_column=None, label_shape=None,
+    def to_torch(self,
+                 feature_columns=None,
+                 feature_shapes=None,
+                 feature_types=None,
+                 label_column=None,
+                 label_shape=None,
                  label_type=None):
         """
         Create a TorchDataset from the current DistributedDataset. This will
@@ -254,8 +265,12 @@ class DistributedDataset(Dataset[T]):
                                   feature_types, label_column, label_shape,
                                   label_type)
 
-    def to_tf(self, feature_columns=None, feature_shapes=None,
-              feature_types=None, label_column=None, label_shape=None,
+    def to_tf(self,
+              feature_columns=None,
+              feature_shapes=None,
+              feature_types=None,
+              label_column=None,
+              label_shape=None,
               label_type=None):
         """
         Create a TFDataset from the current DistributedDataset. This will
@@ -300,6 +315,7 @@ class PandasDistributedDataset(Dataset[DataFrame]):
             with type check.
         item_check_fn (Callable[[T], bool]): A check function for each item.
     """
+
     def __init__(self,
                  para_it: ParallelIterator[DataFrame],
                  batch_size: int = 0,
@@ -413,7 +429,11 @@ class PandasDistributedDataset(Dataset[DataFrame]):
             seed: int = None,
             inner_shuffle_fn: Callable[[T], T] = None) -> Iterator[DataFrame]:
         if shuffle and inner_shuffle_fn is None:
-            inner_shuffle_fn = lambda df: df.sample(frac=1, random_state=seed)
+
+            def fn(df):
+                return df.sample(frac=1, random_state=seed)
+
+            inner_shuffle_fn = fn
         return _RepeatableIterator(self._para_it, shard_index, batch_ms,
                                    num_async, shuffle, shuffle_buffer_size,
                                    seed, inner_shuffle_fn)
@@ -421,8 +441,12 @@ class PandasDistributedDataset(Dataset[DataFrame]):
     def to_pandas(self, batch_size: int = 32) -> "PandasDistributedDataset":
         return self.batch(batch_size)
 
-    def to_torch(self, feature_columns=None, feature_shapes=None,
-                 feature_types=None, label_column=None, label_shape=None,
+    def to_torch(self,
+                 feature_columns=None,
+                 feature_shapes=None,
+                 feature_types=None,
+                 label_column=None,
+                 label_shape=None,
                  label_type=None):
         """
         Create a TorchDataset from the current DistributedDataset.
@@ -451,8 +475,12 @@ class PandasDistributedDataset(Dataset[DataFrame]):
                             feature_types, label_column, label_shape,
                             label_type)
 
-    def to_tf(self, feature_columns=None, feature_shapes=None,
-              feature_types=None, label_column=None, label_shape=None,
+    def to_tf(self,
+              feature_columns=None,
+              feature_shapes=None,
+              feature_types=None,
+              label_column=None,
+              label_shape=None,
               label_type=None):
         """
         Create a TFDataset from the current DistributedDataset. This will
@@ -506,6 +534,7 @@ class _RepeatableIterator(Iterator[T]):
             current dataset is batched, this function will apply to the
             batched records.
     """
+
     def __init__(self,
                  it: ParallelIterator[T],
                  shard_index: int,
