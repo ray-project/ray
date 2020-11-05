@@ -1,4 +1,4 @@
-Ray Debugging
+Ray Debugger
 =============
 
 Ray has a built in debugger that allows you to debug your distributed applications.
