@@ -81,6 +81,13 @@ the other break point and hit ``c`` again to continue the execution.
 The Ray program ``debugging.py`` now finished and should have printed ``[0, 1]``. Congratulations, you
 have finished your first Ray debugging session!
 
+Debugger Commands
+-----------------
+
+The Ray debugger supports the
+`same commands as PDB
+<https://docs.python.org/3/library/pdb.html#debugger-commands>`_.
+
 Post Mortem Debugging
 ---------------------
 
