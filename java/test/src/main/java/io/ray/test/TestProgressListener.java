@@ -22,7 +22,6 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
 
   @Override
   public void beforeInvocation(IInvokedMethod method, ITestResult testResult) {
-    printInfo("INVOKE METHOD", getFullTestName(testResult));
   }
 
   @Override

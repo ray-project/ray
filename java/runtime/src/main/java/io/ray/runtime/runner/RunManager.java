@@ -109,7 +109,7 @@ public class RunManager {
     Process p = builder.start();
     String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
     p.waitFor();
-    LOGGER.info("Output of command {}: {}", Joiner.on(" ").join(command), output);
+    LOGGER.info("Output of command {}: ", Joiner.on(" ").join(command), output);
     if (p.exitValue() != 0) {
       String sb = "The exit value of the process is " + p.exitValue()
           + ". Command: " + Joiner.on(" ").join(command) + "\n"
