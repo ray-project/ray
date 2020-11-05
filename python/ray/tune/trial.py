@@ -12,10 +12,10 @@ import os
 from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
-from ray.tune.logger import UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
+from ray.tune.logger import pretty_print
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
@@ -189,7 +189,6 @@ class Trial:
                  restore_path=None,
                  trial_name_creator=None,
                  trial_dirname_creator=None,
-                 loggers=None,
                  log_to_file=None,
                  max_failures=0):
         """Initialize a new trial.
@@ -222,7 +221,6 @@ class Trial:
         self.location = Location()
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
-        self.loggers = loggers
 
         self.log_to_file = log_to_file
         # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
@@ -249,7 +247,6 @@ class Trial:
         self.start_time = None
         self.logdir = None
         self.runner = None
-        self.result_logger = None
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
@@ -284,7 +281,6 @@ class Trial:
         self.extra_arg = None
 
         self._nonjson_fields = [
-            "loggers",
             "results",
             "best_result",
             "param_config",
@@ -349,22 +345,17 @@ class Trial:
             export_formats=self.export_formats,
             restore_path=self.restore_path,
             trial_name_creator=self.trial_name_creator,
-            loggers=self.loggers,
             log_to_file=self.log_to_file,
             max_failures=self.max_failures,
         )
 
-    def init_logger(self):
-        """Init logger."""
-        if not self.result_logger:
-            if not self.logdir:
-                self.logdir = create_logdir(self._generate_dirname(),
-                                            self.local_dir)
-            else:
-                os.makedirs(self.logdir, exist_ok=True)
-
-            self.result_logger = UnifiedLogger(
-                self.config, self.logdir, trial=self, loggers=self.loggers)
+    def init_logdir(self):
+        """Init logdir."""
+        if not self.logdir:
+            self.logdir = create_logdir(self._generate_dirname(),
+                                        self.local_dir)
+        else:
+            os.makedirs(self.logdir, exist_ok=True)
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
@@ -393,12 +384,6 @@ class Trial:
         if status == Trial.RUNNING:
             if self.start_time is None:
                 self.start_time = time.time()
-
-    def close_logger(self):
-        """Closes logger."""
-        if self.result_logger:
-            self.result_logger.close()
-            self.result_logger = None
 
     def write_error_log(self, error_msg):
         if error_msg and self.logdir:
@@ -474,7 +459,6 @@ class Trial:
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
         self.last_result = result
         self.last_update_time = time.time()
-        self.result_logger.on_result(self.last_result)
 
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
@@ -561,7 +545,7 @@ class Trial:
     def __getstate__(self):
         """Memento generator for Trial.
 
-        Sets RUNNING trials to PENDING, and flushes the result logger.
+        Sets RUNNING trials to PENDING.
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
         assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
@@ -574,19 +558,13 @@ class Trial:
 
         state["runner"] = None
         state["location"] = Location()
-        state["result_logger"] = None
         # Avoid waiting for events that will never occur on resume.
         state["resuming_from"] = None
         state["saving_to"] = None
-        if self.result_logger:
-            self.result_logger.flush()
-            state["__logger_started__"] = True
-        else:
-            state["__logger_started__"] = False
+
         return copy.deepcopy(state)
 
     def __setstate__(self, state):
-        logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
 
         if state["status"] == Trial.RUNNING:
@@ -596,5 +574,4 @@ class Trial:
 
         self.__dict__.update(state)
         validate_trainable(self.trainable_name)
-        if logger_started:
-            self.init_logger()
+        self.init_logdir()  # Create logdir if it does not exist

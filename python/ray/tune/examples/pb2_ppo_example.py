@@ -6,7 +6,8 @@ from datetime import datetime
 
 import ray
 from ray.tune import run, sample_from
-from ray.tune.schedulers import PB2, PopulationBasedTraining
+from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.schedulers.pb2 import PB2
 
 
 # Postprocess the perturbed config to ensure it's still valid used if PBT.

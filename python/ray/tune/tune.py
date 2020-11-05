@@ -316,7 +316,6 @@ def run(
                 sync_to_driver=sync_config.sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
-                loggers=loggers,
                 log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
@@ -361,7 +360,7 @@ def run(
             "from your scheduler or from your call to `tune.run()`")
 
     # Create syncer callbacks
-    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
+    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric, loggers=loggers)
 
     runner = TrialRunner(
         search_alg=search_alg,

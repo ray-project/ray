@@ -789,11 +789,7 @@ class TrialRunner:
             # Restore was unsuccessful, try again without checkpoint.
             trial.clear_checkpoint()
         self.trial_executor.stop_trial(
-            trial,
-            error=error_msg is not None,
-            error_msg=error_msg,
-            stop_logger=False)
-        trial.result_logger.flush()
+            trial, error=error_msg is not None, error_msg=error_msg)
         if self.trial_executor.has_resources(trial.resources):
             logger.info(
                 "Trial %s: Attempting to restore "
