@@ -445,7 +445,7 @@ class DynamicTFPolicy(TFPolicy):
                         1 if s is None else s
                         for s in existing_inputs[view_col].shape.as_list()
                     ],
-                    dtype=np.float32)
+                    dtype=existing_inputs[view_col].dtype.as_numpy_dtype)
             # All others.
             else:
                 if view_req.used_for_training:
