@@ -400,7 +400,7 @@ def kill_node(config_file: str, yes: bool, hard: bool,
     })
     if not nodes:
         cli_logger.print("No worker nodes detected.")
-        return
+        return None
     node = random.choice(nodes)
     cli_logger.print("Shutdown " + cf.bold("{}"), node)
     if hard:
