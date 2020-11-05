@@ -152,6 +152,44 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 
 @cli.command()
 @click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def debug(address):
+    """Debug Ray program."""
+    from telnetlib import Telnet
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info(f"Connecting to Ray instance at {address}.")
+    ray.init(address=address)
+    while True:
+        active_sessions = ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_")
+        print("Active breakpoints:")
+        for i, active_session in enumerate(active_sessions):
+            data = json.loads(
+                ray.experimental.internal_kv._internal_kv_get(active_session))
+            print(
+                str(i) + ": " + data["proctitle"] + " | " + data["filename"] +
+                ":" + str(data["lineno"]))
+            print(data["traceback"])
+        inp = input("Enter breakpoint index or press enter to refresh: ")
+        if inp == "":
+            print()
+            continue
+        else:
+            index = int(inp)
+            session = json.loads(
+                ray.experimental.internal_kv._internal_kv_get(
+                    active_sessions[index]))
+            host, port = session["pdb_address"].split(":")
+            with Telnet(host, int(port)) as tn:
+                tn.interact()
+
+
+@cli.command()
+@click.option(
     "--node-ip-address",
     required=False,
     type=str,
@@ -207,6 +245,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     default=10999,
     help="the highest port number that workers will bind on. If set, "
     "'--min-worker-port' must also be set.")
+@click.option(
+    "--worker-port-list",
+    required=False,
+    help="a comma-separated list of open ports for workers to bind on. "
+    "Overrides '--min-worker-port' and '--max-worker-port'.")
 @click.option(
     "--memory",
     required=False,
@@ -357,9 +400,9 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
-          min_worker_port, max_worker_port, memory, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head,
-          include_dashboard, dashboard_host, dashboard_port, block,
+          min_worker_port, max_worker_port, worker_port_list, memory,
+          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
+          head, include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, java_worker_options, load_code_from_local,
@@ -401,6 +444,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         node_ip_address=node_ip_address,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
+        worker_port_list=worker_port_list,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         gcs_server_port=gcs_server_port,
@@ -459,8 +503,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(node_ip_address=node_ip_address)
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
-        cli_logger.old_info(logger, "Using IP address {} for this node.",
-                            ray_params.node_ip_address)
         ray_params.update_if_absent(
             redis_port=port,
             redis_shard_ports=redis_shard_ports,
@@ -519,24 +561,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
-
-        cli_logger.old_info(
-            logger,
-            "\nStarted Ray on this node. You can add additional nodes to "
-            "the cluster by calling\n\n"
-            "    ray start --address='{}'{}\n\n"
-            "from the node you wish to add. You can connect a driver to the "
-            "cluster from Python by running\n\n"
-            "    import ray\n"
-            "    ray.init(address='auto'{})\n\n"
-            "If you have trouble connecting from a different machine, check "
-            "that your firewall is configured properly. If you wish to "
-            "terminate the processes that have been started, run\n\n"
-            "    ray stop".format(
-                redis_address, " --redis-password='" + redis_password + "'"
-                if redis_password else "",
-                ", _redis_password='" + redis_password + "'"
-                if redis_password else ""))
     else:
         # Start Ray on a non-head node.
         if not (port is None):
@@ -583,8 +607,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             node_ip_address=services.get_node_ip_address(redis_address))
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
-        cli_logger.old_info(logger, "Using IP address {} for this node.",
-                            ray_params.node_ip_address)
 
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
@@ -604,11 +626,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         cli_logger.print("To terminate the Ray runtime, run")
         cli_logger.print(cf.bold("  ray stop"))
 
-        cli_logger.old_info(
-            logger, "\nStarted Ray on this node. If you wish to terminate the "
-            "processes that have been started, run\n\n"
-            "    ray stop")
-
     if block:
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
@@ -624,8 +641,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             if len(deceased) > 0:
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprcesses exited unexpectedly:")
-                cli_logger.old_error(logger,
-                                     "Ray processes died unexpectedly:")
 
                 with cli_logger.indented():
                     for process_type, process in deceased:
@@ -633,15 +648,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                             "{}",
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)})
-                        cli_logger.old_error(
-                            logger, "\t{} died with exit code {}".format(
-                                process_type, process.returncode))
 
                 # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
-                cli_logger.old_error(
-                    logger, "Killing remaining processes and exiting...")
                 sys.exit(1)
 
 
@@ -713,10 +723,6 @@ def stop(force, verbose, log_style, log_color):
             total_found += 1
 
             proc_string = str(subprocess.list2cmdline(proc_args))
-            if verbose:
-                operation = "Terminating" if force else "Killing"
-                cli_logger.old_info(logger, "%s process %s: %s", operation,
-                                    proc.pid, proc_string)
             try:
                 if force:
                     proc.kill()
@@ -743,7 +749,6 @@ def stop(force, verbose, log_style, log_color):
             except (psutil.Error, OSError) as ex:
                 cli_logger.error("Could not terminate `{}` due to {}",
                                  cf.bold(proc_string), str(ex))
-                cli_logger.old_error(logger, "Error: %s", ex)
 
     if total_found == 0:
         cli_logger.print("Did not find any active Ray processes.")
@@ -841,7 +846,6 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
             cli_logger.warning("{}", str(e))
             cli_logger.warning(
                 "Could not download remote cluster configuration file.")
-            cli_logger.old_info(logger, "Error downloading file: ", e)
     create_or_update_cluster(
         config_file=cluster_config_file,
         override_min_workers=min_workers,
@@ -1028,6 +1032,14 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
     """Upload specific files to a Ray cluster."""
     cli_logger.configure(log_style, log_color, verbose)
 
+    if all_nodes:
+        cli_logger.warning(
+            "WARNING: the `all_nodes` option is deprecated and will be "
+            "removed in the future. "
+            "Rsync to worker nodes is not reliable since workers may be "
+            "added during autoscaling. Please use the `file_mounts` "
+            "feature instead for consistent file sync in autoscaling clusters")
+
     rsync(
         cluster_config_file,
         source,
@@ -1116,11 +1128,6 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
                            cf.bold("-- <args ...>"),
                            cf.bold("ray submit script.py -- --arg=123 --flag"))
         cli_logger.newline()
-        cli_logger.old_warning(
-            logger,
-            "ray submit [yaml] [script.py] --args=... is deprecated and "
-            "will be removed in a future version of Ray. Use "
-            "`ray submit [yaml] script.py -- --arg1 --arg2` instead.")
 
     if start:
         create_or_update_cluster(
@@ -1428,6 +1435,7 @@ def add_command_alias(command, name, hidden):
 
 
 cli.add_command(dashboard)
+cli.add_command(debug)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(up)

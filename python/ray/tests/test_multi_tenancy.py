@@ -8,6 +8,7 @@ import pytest
 
 import ray
 import ray.test_utils
+from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 from ray.test_utils import (wait_for_condition, wait_for_pid_to_exit,
                             run_string_as_driver,
@@ -22,8 +23,8 @@ def get_workers():
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     return [
         worker for worker in stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest()).workers_stats
-        if not worker.is_driver
+            node_manager_pb2.GetNodeStatsRequest()).core_workers_stats
+        if worker.worker_type != common_pb2.DRIVER
     ]
 
 

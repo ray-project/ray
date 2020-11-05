@@ -8,7 +8,7 @@ import shutil
 import sys
 from contextlib import redirect_stdout
 from io import StringIO
-from typing import List
+from typing import List, Tuple
 
 import docker
 
@@ -16,6 +16,18 @@ print = functools.partial(print, file=sys.stderr, flush=True)
 DOCKER_USERNAME = "raytravisbot"
 DOCKER_CLIENT = None
 PYTHON_WHL_VERSION = "cp37m"
+
+DOCKER_HUB_DESCRIPTION = {
+    "base-deps": ("Internal Image, refer to "
+                  "https://hub.docker.com/r/rayproject/ray"),
+    "ray-deps": ("Internal Image, refer to "
+                 "https://hub.docker.com/r/rayproject/ray"),
+    "ray": "Official Docker Images for Ray, the distributed computing API.",
+    "ray-ml": "Developer ready Docker Image for Ray.",
+    "autoscaler": (
+        "Deprecated image, please use: "
+        "https://hub.docker.com/repository/docker/rayproject/ray-ml")
+}
 
 
 def _merge_build():
@@ -93,7 +105,6 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
                 start = datetime.datetime.now()
                 current_iter = start
                 for line in output:
-                    # print(line)
                     if datetime.datetime.now(
                     ) - current_iter >= datetime.timedelta(minutes=5):
                         current_iter = datetime.datetime.now()
@@ -176,21 +187,34 @@ def build_ray_ml():
             image=img, repository="rayproject/autoscaler", tag=tag)
 
 
+def _get_docker_creds() -> Tuple[str, str]:
+    docker_password = os.environ.get("DOCKER_PASSWORD")
+    assert docker_password, "DOCKER_PASSWORD not set."
+    return DOCKER_USERNAME, docker_password
+
+
 # For non-release builds, push "nightly" & "sha"
 # For release builds, push "nightly" & "latest" & "x.x.x"
 def push_and_tag_images(push_base_images: bool):
     if _merge_build():
-        docker_password = os.environ.get("DOCKER_PASSWORD")
-        assert docker_password, "DOCKER_PASSWORD not set."
-        DOCKER_CLIENT.api.login(
-            username=DOCKER_USERNAME,
-            password=os.environ.get("DOCKER_PASSWORD"))
+        username, password = _get_docker_creds()
+        DOCKER_CLIENT.api.login(username=username, password=password)
 
     def docker_push(image, tag):
         if _merge_build():
-            result = DOCKER_CLIENT.api.push(image, tag=tag)
             print(f"PUSHING: {image}:{tag}, result:")
-            print(result)
+            # This docker API is janky. Without "stream=True" it returns a
+            # massive string filled with every progress bar update, which can
+            # cause CI to back up.
+            #
+            # With stream=True, it's a line-at-a-time generator of the same
+            # info. So we can slow it down by printing every couple hundred
+            # lines
+            i = 0
+            for progress_line in DOCKER_CLIENT.api.push(
+                    image, tag=tag, stream=True):
+                if i % 100 == 0:
+                    print(progress_line)
         else:
             print(
                 "This is a PR Build! On a merge build, we would normally push "
@@ -203,7 +227,7 @@ def push_and_tag_images(push_base_images: bool):
     sha_tag = os.environ.get("TRAVIS_COMMIT")[:6]
     if _release_build():
         release_name = re.search("[0-9]\.[0-9]\.[0-9]",
-                                 os.environ.get("TRAVIS_BRANCH"))
+                                 os.environ.get("TRAVIS_BRANCH")).group(0)
         date_tag = release_name
         sha_tag = release_name
 
@@ -222,9 +246,13 @@ def push_and_tag_images(push_base_images: bool):
 
         for arch_tag in ["-cpu", "-gpu", ""]:
             full_arch_tag = f"nightly{arch_tag}"
-            # Tag and push rayproject/<image>:nightly<arch_tag>
-            docker_push(full_image, full_arch_tag)
+            # Do not tag release builds because they are no longer up to date
+            # after the branch cut.
+            if not _release_build():
+                # Tag and push rayproject/<image>:nightly<arch_tag>
+                docker_push(full_image, full_arch_tag)
 
+            # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
             specific_tag = get_new_tag(
                 full_arch_tag, date_tag if "-deps" in image else sha_tag)
             # Tag and push rayproject/<image>:<sha/date><arch_tag>
@@ -234,14 +262,40 @@ def push_and_tag_images(push_base_images: bool):
                 tag=specific_tag)
             docker_push(full_image, specific_tag)
 
-            if _release_build():
-                latest_tag = get_new_tag(full_arch_tag, "latest")
-                # Tag and push rayproject/<image>:latest<arch_tag>
-                DOCKER_CLIENT.api.tag(
-                    image=f"{full_image}:{full_arch_tag}",
-                    repository=full_image,
-                    tag=latest_tag)
-                docker_push(full_image, latest_tag)
+
+# Push infra here:
+# https://github.com/christian-korneck/docker-pushrm/blob/master/README-containers.md#push-a-readme-file-to-dockerhub # noqa
+def push_readmes():
+    if not _merge_build():
+        print("Not pushing README because this is a PR build.")
+        return
+    username, password = _get_docker_creds()
+    for image, tag_line in DOCKER_HUB_DESCRIPTION.items():
+        environment = {
+            "DOCKER_USER": username,
+            "DOCKER_PASS": password,
+            "PUSHRM_FILE": f"/myvol/docker/{image}/README.md",
+            "PUSHRM_DEBUG": 1,
+            "PUSHRM_SHORT": tag_line
+        }
+        cmd_string = (f"rayproject/{image}")
+
+        print(
+            DOCKER_CLIENT.containers.run(
+                "chko/docker-pushrm:1",
+                command=cmd_string,
+                volumes={
+                    os.path.abspath(_get_root_dir()): {
+                        "bind": "/myvol",
+                        "mode": "rw",
+                    }
+                },
+                environment=environment,
+                remove=True,
+                detach=False,
+                stderr=True,
+                stdout=True,
+                tty=False))
 
 
 # Build base-deps/ray-deps only on file change, 2 weeks, per release
@@ -258,3 +312,6 @@ if __name__ == "__main__":
             build_ray()
             build_ray_ml()
             push_and_tag_images(freshly_built)
+            # TODO(ilr) Re-Enable Push READMEs by using a normal password
+            # (not auth token :/)
+            # push_readmes()

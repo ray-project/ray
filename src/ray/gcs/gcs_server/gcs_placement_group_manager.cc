@@ -79,6 +79,27 @@ rpc::Bundle *GcsPlacementGroup::GetMutableBundle(int bundle_index) {
   return placement_group_table_data_.mutable_bundles(bundle_index);
 }
 
+const ActorID GcsPlacementGroup::GetCreatorActorId() const {
+  return ActorID::FromBinary(placement_group_table_data_.creator_actor_id());
+}
+
+const JobID GcsPlacementGroup::GetCreatorJobId() const {
+  return JobID::FromBinary(placement_group_table_data_.creator_job_id());
+}
+
+void GcsPlacementGroup::MarkCreatorJobDead() {
+  placement_group_table_data_.set_creator_job_dead(true);
+}
+
+void GcsPlacementGroup::MarkCreatorActorDead() {
+  placement_group_table_data_.set_creator_actor_dead(true);
+}
+
+bool GcsPlacementGroup::IsPlacementGroupRemovable() const {
+  return placement_group_table_data_.creator_job_dead() &&
+         placement_group_table_data_.creator_actor_dead();
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
@@ -177,8 +198,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   const auto placement_group = pending_placement_groups_.front();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   // Do not reschedule if the placement group has removed already.
-  if (registered_placement_groups_.find(placement_group_id) !=
-      registered_placement_groups_.end()) {
+  if (registered_placement_groups_.contains(placement_group_id)) {
     MarkSchedulingStarted(placement_group_id);
     gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
         placement_group,
@@ -210,8 +230,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
       [this, request, reply, send_reply_callback, placement_group_id,
        placement_group](Status status) {
         RAY_CHECK_OK(status);
-        if (registered_placement_groups_.find(placement_group_id) ==
-            registered_placement_groups_.end()) {
+        if (!registered_placement_groups_.contains(placement_group_id)) {
           std::stringstream stream;
           stream << "Placement group of id " << placement_group_id
                  << " has been removed before registration.";
@@ -328,6 +347,25 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
   }
 }
 
+void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
+    const rpc::GetAllPlacementGroupRequest &request,
+    rpc::GetAllPlacementGroupReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all placement group info.";
+  auto on_done =
+      [reply, send_reply_callback](
+          const std::unordered_map<PlacementGroupID, PlacementGroupTableData> &result) {
+        for (auto &data : result) {
+          reply->add_placement_group_table_data()->CopyFrom(data.second);
+        }
+        RAY_LOG(DEBUG) << "Finished getting all placement group info.";
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      };
+  Status status = gcs_table_storage_->PlacementGroupTable().GetAll(on_done);
+  if (!status.ok()) {
+    on_done(std::unordered_map<PlacementGroupID, PlacementGroupTableData>());
+  }
+}
+
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
   execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
                 RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
@@ -356,12 +394,40 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   SchedulePendingPlacementGroups();
 }
 
-void GcsPlacementGroupManager::Tick() const {
+void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
+    const JobID &job_id) {
+  for (const auto &it : registered_placement_groups_) {
+    auto &placement_group = it.second;
+    if (placement_group->GetCreatorJobId() != job_id) {
+      continue;
+    }
+    placement_group->MarkCreatorJobDead();
+    if (placement_group->IsPlacementGroupRemovable()) {
+      RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+    }
+  }
+}
+
+void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
+    const ActorID &actor_id) {
+  for (const auto &it : registered_placement_groups_) {
+    auto &placement_group = it.second;
+    if (placement_group->GetCreatorActorId() != actor_id) {
+      continue;
+    }
+    placement_group->MarkCreatorActorDead();
+    if (placement_group->IsPlacementGroupRemovable()) {
+      RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+    }
+  }
+}
+
+void GcsPlacementGroupManager::Tick() {
   UpdatePlacementGroupLoad();
   execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
-void GcsPlacementGroupManager::UpdatePlacementGroupLoad() const {
+void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
   int total_cnt = 0;

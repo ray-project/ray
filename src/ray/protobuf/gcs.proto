@@ -181,6 +181,16 @@ message PlacementGroupTableData {
   PlacementStrategy strategy = 4;
   // Current state of this placement group.
   PlacementGroupState state = 5;
+  // Fields to detect the owner of the placement group
+  // for automatic lifecycle management.
+  // The job id that created this placement group.
+  bytes creator_job_id = 6;
+  // The actor id that created this placement group.
+  bytes creator_actor_id = 7;
+  // Whether or not if the creator job is dead.
+  bool creator_job_dead = 8;
+  // Whether or not if the creator actor is dead.
+  bool creator_actor_dead = 9;
 }
 
 message ScheduleData {
@@ -308,10 +318,8 @@ message HeartbeatTableData {
   bool resource_load_changed = 6;
   // The resource load on this node, sorted by resource shape.
   ResourceLoad resource_load_by_shape = 7;
-  // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 8;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 9;
+  bool should_global_gc = 8;
 }
 
 message HeartbeatBatchTableData {

@@ -60,7 +60,7 @@ type ProcessStats = {
     iowait: number;
   };
   cpuPercent: number;
-}
+};
 
 export type Worker = {
   pid: number;
@@ -96,7 +96,7 @@ export type GPUStats = {
   name: string;
   temperatureGpu: number;
   fanSpeed: number;
-  utilizationGpu: number;
+  utilizationGpu?: number;
   powerDraw: number;
   enforcedPowerLimit: number;
   memoryUsed: number;

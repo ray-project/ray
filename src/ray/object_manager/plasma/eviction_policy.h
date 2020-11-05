@@ -152,8 +152,9 @@ class EvictionPolicy {
   ///        metadata.
   /// \param objects_to_evict The object IDs that were chosen for eviction will
   ///        be stored into this vector.
-  /// \return True if enough space can be freed and false otherwise.
-  virtual bool RequireSpace(int64_t size, std::vector<ObjectID>* objects_to_evict);
+  /// \return The number of bytes of space that is still needed, if
+  /// any. If negative, then the required space has been made.
+  virtual int64_t RequireSpace(int64_t size, std::vector<ObjectID>* objects_to_evict);
 
   /// This method will be called whenever an unused object in the Plasma store
   /// starts to be used. When this method is called, the eviction policy will

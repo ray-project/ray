@@ -87,7 +87,6 @@ class DistributedTorchRunner(TorchRunner):
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
-            apex_args=self.apex_args,
             wrap_ddp=self.wrap_ddp,
             add_dist_sampler=self.add_dist_sampler,
             scheduler_step_freq=self.scheduler_step_freq)
@@ -168,7 +167,7 @@ def clear_dummy_actor():
 
 
 def reserve_resources(num_cpus, num_gpus, retries=20):
-    ip = ray._private.services.get_node_ip_address()
+    ip = ray.services.get_node_ip_address()
 
     reserved_cuda_device = None
 

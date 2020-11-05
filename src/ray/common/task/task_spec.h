@@ -131,6 +131,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The recomputed dependencies for the task.
   std::vector<rpc::ObjectReference> GetDependencies() const;
 
+  std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
+
   bool IsDriverTask() const;
 
   Language GetLanguage() const;

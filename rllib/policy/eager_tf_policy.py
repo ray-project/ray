@@ -10,11 +10,14 @@ from gym.spaces import Tuple, Dict
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
+from ray.rllib.utils.tf_ops import convert_to_non_tf_type
+from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -96,15 +99,16 @@ def traced_eager_policy(eager_policy_cls):
             self._traced_apply_gradients = None
             super(TracedEagerPolicy, self).__init__(*args, **kwargs)
 
-        @override(Policy)
+        @override(eager_policy_cls)
         @convert_eager_inputs
         @convert_eager_outputs
-        def learn_on_batch(self, samples):
+        def _learn_on_batch_eager(self, samples):
 
             if self._traced_learn_on_batch is None:
                 self._traced_learn_on_batch = tf.function(
-                    super(TracedEagerPolicy, self).learn_on_batch,
-                    autograph=False)
+                    super(TracedEagerPolicy, self)._learn_on_batch_eager,
+                    autograph=False,
+                    experimental_relax_shapes=True)
 
             return self._traced_learn_on_batch(samples)
 
@@ -130,21 +134,23 @@ def traced_eager_policy(eager_policy_cls):
             if self._traced_compute_actions is None:
                 self._traced_compute_actions = tf.function(
                     super(TracedEagerPolicy, self).compute_actions,
-                    autograph=False)
+                    autograph=False,
+                    experimental_relax_shapes=True)
 
             return self._traced_compute_actions(
                 obs_batch, state_batches, prev_action_batch, prev_reward_batch,
                 info_batch, episodes, explore, timestep, **kwargs)
 
-        @override(Policy)
+        @override(eager_policy_cls)
         @convert_eager_inputs
         @convert_eager_outputs
-        def compute_gradients(self, samples):
+        def _compute_gradients_eager(self, samples):
 
             if self._traced_compute_gradients is None:
                 self._traced_compute_gradients = tf.function(
                     super(TracedEagerPolicy, self).compute_gradients,
-                    autograph=False)
+                    autograph=False,
+                    experimental_relax_shapes=True)
 
             return self._traced_compute_gradients(samples)
 
@@ -156,7 +162,8 @@ def traced_eager_policy(eager_policy_cls):
             if self._traced_apply_gradients is None:
                 self._traced_apply_gradients = tf.function(
                     super(TracedEagerPolicy, self).apply_gradients,
-                    autograph=False)
+                    autograph=False,
+                    experimental_relax_shapes=True)
 
             return self._traced_apply_gradients(grads)
 
@@ -207,6 +214,12 @@ def build_eager_tf_policy(name,
             self._is_training = False
             self._loss_initialized = False
             self._sess = None
+
+            self._loss = loss_fn
+            self.batch_divisibility_req = get_batch_divisibility_req(self) if \
+                callable(get_batch_divisibility_req) else \
+                (get_batch_divisibility_req or 1)
+            self._max_seq_len = config["model"]["max_seq_len"]
 
             if get_default_config:
                 config = dict(get_default_config(), **config)
@@ -262,7 +275,7 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_with_dummy_batch()
+            self._initialize_loss_from_dummy_batch()
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -287,18 +300,36 @@ def build_eager_tf_policy(name,
             return sample_batch
 
         @override(Policy)
+        def learn_on_batch(self, samples):
+            # Get batch ready for RNNs, if applicable.
+            pad_batch_to_sequences_of_same_size(
+                samples,
+                shuffle=False,
+                max_seq_len=self._max_seq_len,
+                batch_divisibility_req=self.batch_divisibility_req)
+            return self._learn_on_batch_eager(samples)
+
         @convert_eager_inputs
         @convert_eager_outputs
-        def learn_on_batch(self, samples):
+        def _learn_on_batch_eager(self, samples):
             with tf.variable_creator_scope(_disallow_var_creation):
                 grads_and_vars, stats = self._compute_gradients(samples)
             self._apply_gradients(grads_and_vars)
             return stats
 
         @override(Policy)
+        def compute_gradients(self, samples):
+            # Get batch ready for RNNs, if applicable.
+            pad_batch_to_sequences_of_same_size(
+                samples,
+                shuffle=False,
+                max_seq_len=self._max_seq_len,
+                batch_divisibility_req=self.batch_divisibility_req)
+            return self._compute_gradients_eager(samples)
+
         @convert_eager_inputs
         @convert_eager_outputs
-        def compute_gradients(self, samples):
+        def _compute_gradients_eager(self, samples):
             with tf.variable_creator_scope(_disallow_var_creation):
                 grads_and_vars, stats = self._compute_gradients(samples)
             grads = [g for g, v in grads_and_vars]
@@ -334,8 +365,8 @@ def build_eager_tf_policy(name,
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
-            n = input_dict[SampleBatch.CUR_OBS].shape[0]
-            seq_lens = tf.ones(n, dtype=tf.int32)
+            batch_size = input_dict[SampleBatch.CUR_OBS].shape[0]
+            seq_lens = tf.ones(batch_size, dtype=tf.int32)
             if obs_include_prev_action_reward:
                 if prev_action_batch is not None:
                     input_dict[SampleBatch.PREV_ACTIONS] = \
@@ -396,7 +427,7 @@ def build_eager_tf_policy(name,
                 extra_fetches.update(extra_action_fetches_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += len(obs_batch)
+            self.global_timestep += int(batch_size)
 
             return actions, state_out, extra_fetches
 
@@ -554,14 +585,8 @@ def build_eager_tf_policy(name,
                     state_in.append(samples["state_in_{}".format(i)])
                 self._state_in = state_in
 
-                self._seq_lens = None
-                if len(state_in) > 0:
-                    self._seq_lens = tf.ones(
-                        samples[SampleBatch.CUR_OBS].shape[0], dtype=tf.int32)
-                    samples["seq_lens"] = self._seq_lens
-
                 model_out, _ = self.model(samples, self._state_in,
-                                          self._seq_lens)
+                                          samples.get("seq_lens"))
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
             variables = self.model.trainable_variables()
@@ -612,7 +637,8 @@ def build_eager_tf_policy(name,
                 })
             return fetches
 
-        def _initialize_loss_with_dummy_batch(self):
+        @override(Policy)
+        def _initialize_loss_from_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
             dummy_batch = {
                 SampleBatch.CUR_OBS: np.array(
@@ -686,6 +712,16 @@ def build_eager_tf_policy(name,
             loss_fn(self, self.model, self.dist_class, postprocessed_batch)
             if stats_fn:
                 stats_fn(self, postprocessed_batch)
+
+        def _lazy_tensor_dict(self, postprocessed_batch):
+            train_batch = UsageTrackingDict(postprocessed_batch)
+            train_batch.set_get_interceptor(tf.convert_to_tensor)
+            return train_batch
+
+        def _lazy_numpy_dict(self, postprocessed_batch):
+            train_batch = UsageTrackingDict(postprocessed_batch)
+            train_batch.set_get_interceptor(convert_to_non_tf_type)
+            return train_batch
 
         @classmethod
         def with_tracing(cls):

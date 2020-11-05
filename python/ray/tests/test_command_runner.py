@@ -7,7 +7,7 @@ from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.command_runner import SSHCommandRunner, \
     DockerCommandRunner, KubernetesCommandRunner, _with_environment_variables
-from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler.sdk import get_docker_host_mount_location
 from getpass import getuser
 import hashlib
 
@@ -242,15 +242,16 @@ def test_docker_rsync():
 
     local_mount = "/home/ubuntu/base/mount/"
     remote_mount = "/root/protected_mount/"
-    remote_host_mount = f"{DOCKER_MOUNT_PREFIX}{remote_mount}"
+    docker_mount_prefix = get_docker_host_mount_location(cluster_name)
+    remote_host_mount = f"{docker_mount_prefix}{remote_mount}"
 
     local_file = "/home/ubuntu/base-file"
     remote_file = "/root/protected-file"
-    remote_host_file = f"{DOCKER_MOUNT_PREFIX}{remote_file}"
+    remote_host_file = f"{docker_mount_prefix}{remote_file}"
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
-        local_mount, remote_mount, options={"file_mount": True})
+        local_mount, remote_mount, options={"docker_mount_if_possible": True})
 
     # Make sure we do not copy directly to raw destination
     process_runner.assert_not_has_call(
@@ -267,7 +268,7 @@ def test_docker_rsync():
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
-        local_file, remote_file, options={"file_mount": False})
+        local_file, remote_file, options={"docker_mount_if_possible": False})
 
     # Make sure we do not copy directly to raw destination
     process_runner.assert_not_has_call(
@@ -282,7 +283,7 @@ def test_docker_rsync():
     ##############################
 
     cmd_runner.run_rsync_down(
-        remote_mount, local_mount, options={"file_mount": True})
+        remote_mount, local_mount, options={"docker_mount_if_possible": True})
 
     process_runner.assert_not_has_call("1.2.3.4", pattern=f"docker cp")
     process_runner.assert_not_has_call(
@@ -295,13 +296,78 @@ def test_docker_rsync():
     ##############################
 
     cmd_runner.run_rsync_down(
-        remote_file, local_file, options={"file_mount": False})
+        remote_file, local_file, options={"docker_mount_if_possible": False})
 
     process_runner.assert_has_call("1.2.3.4", pattern=f"docker cp")
     process_runner.assert_not_has_call(
         "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_file} {local_file}")
     process_runner.assert_has_call(
         "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_host_file} {local_file}")
+
+
+def test_rsync_exclude_and_filter():
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    provider.create_node({}, {}, 1)
+    cluster_name = "cluster"
+    args = {
+        "log_prefix": "prefix",
+        "node_id": 0,
+        "provider": provider,
+        "auth_config": auth_config,
+        "cluster_name": cluster_name,
+        "process_runner": process_runner,
+        "use_internal_ip": False,
+    }
+    cmd_runner = SSHCommandRunner(**args)
+
+    local_mount = "/home/ubuntu/base/mount/"
+    remote_mount = "/root/protected_mount/"
+
+    process_runner.respond_to_call("docker inspect -f", ["true"])
+    cmd_runner.run_rsync_up(
+        local_mount,
+        remote_mount,
+        options={
+            "docker_mount_if_possible": True,
+            "rsync_exclude": ["test"],
+            "rsync_filter": [".ignore"]
+        })
+
+    process_runner.assert_has_call(
+        "1.2.3.4", pattern=f"--exclude test --filter dir-merge,- .ignore")
+
+
+def test_rsync_without_exclude_and_filter():
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    provider.create_node({}, {}, 1)
+    cluster_name = "cluster"
+    args = {
+        "log_prefix": "prefix",
+        "node_id": 0,
+        "provider": provider,
+        "auth_config": auth_config,
+        "cluster_name": cluster_name,
+        "process_runner": process_runner,
+        "use_internal_ip": False,
+    }
+    cmd_runner = SSHCommandRunner(**args)
+
+    local_mount = "/home/ubuntu/base/mount/"
+    remote_mount = "/root/protected_mount/"
+
+    process_runner.respond_to_call("docker inspect -f", ["true"])
+    cmd_runner.run_rsync_up(
+        local_mount,
+        remote_mount,
+        options={
+            "docker_mount_if_possible": True,
+        })
+
+    process_runner.assert_not_has_call("1.2.3.4", pattern=f"--exclude test")
+    process_runner.assert_not_has_call(
+        "1.2.3.4", pattern=f"--filter dir-merge,- .ignore")
 
 
 if __name__ == "__main__":

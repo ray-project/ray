@@ -10,6 +10,8 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Normal, \
     Quantized, \
     Uniform
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
 
 try:
@@ -168,7 +170,13 @@ class HyperOptSearch(Searcher):
             self.rstate = np.random.RandomState(random_state_seed)
 
         self.domain = None
-        if space:
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
             self.domain = hpo.Domain(lambda spc: spc, space)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
@@ -193,10 +201,15 @@ class HyperOptSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self.domain:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
+
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None

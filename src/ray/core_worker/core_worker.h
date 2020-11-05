@@ -903,7 +903,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   using SetResultCallback =
       std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
 
-  /// Perform async get from in-memory store.
+  /// Perform async get from the object store.
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
@@ -911,12 +911,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
-
-  /// Subscribe to receive notification of an object entering the plasma store.
-  ///
-  /// \param[in] object_id The object to wait for.
-  /// \return void
-  void SubscribeToPlasmaAdd(const ObjectID &object_id);
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);
