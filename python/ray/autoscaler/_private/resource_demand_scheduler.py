@@ -86,7 +86,8 @@ class ResourceDemandScheduler:
         """
 
         # Calculate any extra requests we need to make that don't already fit
-        # into the cluster.
+        # into the cluster. TODO(ekl) consider bypassing the instance launch
+        # rate limits when using request_resources.
         if ensure_min_cluster_size is not None:
             used_resources = []
             for ip, max_res in max_resources_by_ip.items():
