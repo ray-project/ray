@@ -2,6 +2,7 @@ from typing import Optional, Dict, Any, Union
 
 from ray.serve.context import TaskContext
 from ray.serve.router import RequestMetadata
+from ray.serve.utils import get_random_letters
 
 
 class RayServeHandle:
@@ -60,6 +61,7 @@ class RayServeHandle:
                 ``request.args``.
         """
         request_metadata = RequestMetadata(
+            get_random_letters(10), # Used for debugging.
             self.endpoint_name,
             TaskContext.Python,
             call_method=self.method_name or "__call__",

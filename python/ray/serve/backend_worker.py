@@ -236,6 +236,8 @@ class RayServeWorker:
         return getattr(self.callable, method_name)
 
     async def invoke_single(self, request_item: Query) -> Any:
+        logger.debug("Replica {} started executing request {}".format(
+            self.replica_tag, request_item.metadata.request_id))
         method_to_call = ensure_async(self.get_runner_method(request_item))
         arg = parse_request_item(request_item)
 
@@ -250,8 +252,9 @@ class RayServeWorker:
             result = wrap_to_ray_error(e)
             self.error_counter.record(1)
 
+        latency_ms = (time.time() - start) * 1000
         self.processing_latency_tracker.record(
-            (time.time() - start) * 1000, tags={"batch_size": "1"})
+            latency_ms, tags={"batch_size": "1"})
 
         return result
 
@@ -262,6 +265,8 @@ class RayServeWorker:
 
         # Construct the batch of requests
         for item in request_item_list:
+            logger.debug("Replica {} started executing request {}".format(
+                self.replica_tag, item.metadata.request_id))
             args.append(parse_request_item(item))
             call_methods.add(self.get_runner_method(item))
 
@@ -301,9 +306,9 @@ class RayServeWorker:
             self.error_counter.record(1)
             result_list = [wrapped_exception for _ in range(batch_size)]
 
+        latency_ms = (time.time() - timing_start) * 1000
         self.processing_latency_tracker.record(
-            (time.time() - timing_start) * 1000,
-            tags={"batch_size": str(batch_size)})
+            latency_ms, tags={"batch_size": str(batch_size)})
 
         return result_list
 
@@ -358,13 +363,16 @@ class RayServeWorker:
             request = Query.ray_deserialize(request)
 
         request.tick_enter_replica = time.time()
-        logger.debug("Worker {} got request {}".format(self.replica_tag,
-                                                       request))
+        logger.debug("Replica {} received request {}".format(
+            self.replica_tag, request.metadata.request_id))
         request.async_future = asyncio.get_event_loop().create_future()
         self.num_ongoing_requests += 1
 
         self.batch_queue.put(request)
         result = await request.async_future
+        request_time_ms = (time.time() - request.tick_enter_replica) * 1000
+        logger.debug("Replica {} finished request {} in {:.2f}ms".format(
+            self.replica_tag, request.metadata.request_id, request_time_ms))
 
         self.num_ongoing_requests -= 1
         return result
