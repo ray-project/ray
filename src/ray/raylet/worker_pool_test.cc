@@ -119,8 +119,8 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
         ClientConnection::Create(client_handler, message_handler, std::move(socket),
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
-        job_id, WorkerID::FromRandom(), language, rpc::WorkerType::WORKER, "127.0.0.1", client,
-        client_call_manager_);
+        job_id, WorkerID::FromRandom(), language, rpc::WorkerType::WORKER, "127.0.0.1",
+        client, client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
     if (!proc.IsNull()) {
@@ -134,8 +134,7 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
       const rpc::JobConfig &job_config = rpc::JobConfig()) {
     auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
     driver->AssignTaskId(TaskID::ForDriverTask(job_id));
-    RAY_CHECK_OK(
-        worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {}));
+    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {}));
     return driver;
   }
 
