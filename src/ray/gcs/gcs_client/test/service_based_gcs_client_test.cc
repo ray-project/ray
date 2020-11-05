@@ -1041,8 +1041,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // didn't restart, it will fetch data again from the GCS server. The GCS will destroy
   // the actor because it finds that the actor is out of scope, so we'll receive another
   // notification of DEAD state.
-  //
   WaitForExpectedCount(num_subscribe_one_notifications, 3);
+  
   // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
   // client will register the actor again. When an actor is registered, the status in GCS
   // is `DEPENDENCIES_UNREADY`. When GCS finds that the owner of an actor is nil, it will
