@@ -186,3 +186,8 @@ We now press ``0`` and then Enter to enter the debugger. With ``ll`` we can see 
 instead of a number as the last element.
 
 In a similar manner as above, you can also debug Ray actors. Happy debugging!
+
+Debugging APIs
+--------------
+
+See :ref:`package-ref-debugging-apis`.
