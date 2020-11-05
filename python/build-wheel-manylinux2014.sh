@@ -11,22 +11,6 @@ echo 10
 EOF
 chmod +x /usr/bin/nproc
 
-install_java() {
-  sudo apt-get install -y software-properties-common
-  sudo add-apt-repository -y ppa:openjdk-r/ppa
-  sudo apt-get update
-  sudo apt-get install -y openjdk-8-jdk
-  echo "Update certs"
-  sudo update-ca-certificates -f
-  java -version
-  java_bin=$(readlink -f "$(command -v java)")
-  echo "java_bin path $java_bin"
-  java_home=${java_bin%jre/bin/java}
-  export JAVA_HOME="$java_home"
-}
-
-install_java > /dev/null 2>&1
-
 NODE_VERSION="14"
 PYTHONS=("cp36-cp36m"
          "cp37-cp37m"
@@ -41,6 +25,12 @@ NUMPY_VERSIONS=("1.14.5"
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
+
+java -version
+java_bin=$(readlink -f "$(command -v java)")
+echo "java_bin path $java_bin"
+java_home=${java_bin%jre/bin/java}
+export JAVA_HOME="$java_home"
 
 /ray/ci/travis/install-bazel.sh
 # Put bazel into the PATH if building Bazel from source
