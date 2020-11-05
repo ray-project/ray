@@ -133,7 +133,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         std::function<void(size_t num_bytes_spilled)> on_objects_spilled)
+                         SpaceReleasedCallback on_objects_spilled)
     : self_node_id_(self_node_id),
       io_service_(io_service),
       object_manager_(object_manager),

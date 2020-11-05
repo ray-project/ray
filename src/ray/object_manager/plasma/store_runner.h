@@ -23,9 +23,9 @@ class PlasmaStoreRunner {
   }
 
   ray::SpaceReleasedCallback OnSpaceReleased() {
-    return [this](size_t num_bytes_required) {
-      main_service_.post([this, num_bytes_required]() {
-          store_->ProcessCreateRequests(num_bytes_required);
+    return [this]() {
+      main_service_.post([this]() {
+          store_->ProcessCreateRequests();
         });
     };
   }

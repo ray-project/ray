@@ -206,7 +206,7 @@ class PlasmaStore {
   /// \param num_bytes_space A lower bound on the number of bytes of space that
   /// have been made newly available, since the last time this method was
   /// called.
-  void ProcessCreateRequests(size_t num_bytes_space);
+  void ProcessCreateRequests();
 
  private:
   Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message);

@@ -964,7 +964,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
       create_request_queue_.push_back({client, message});
-      ProcessCreateRequests(/*num_bytes_space=*/0);
+      ProcessCreateRequests();
     } break;
     case fb::MessageType::PlasmaAbortRequest: {
       RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
@@ -1058,10 +1058,10 @@ void PlasmaStore::DoAccept() {
                                               boost::asio::placeholders::error));
 }
 
-void PlasmaStore::ProcessCreateRequests(size_t num_bytes_space) {
-  for (auto request = create_request_queue_.begin();
-      request != create_request_queue_.end(); ) {
-    auto status = HandleCreateObjectRequest(request->first, request->second);
+void PlasmaStore::ProcessCreateRequests() {
+  for (auto request_it = create_request_queue_.begin();
+      request_it != create_request_queue_.end(); ) {
+    auto status = HandleCreateObjectRequest(request_it->first, request_it->second);
     if (status.IsTransientObjectStoreFull()) {
       // The object store is still full.
       // NOTE(swang): There could be other requests behind this one that are
@@ -1070,7 +1070,7 @@ void PlasmaStore::ProcessCreateRequests(size_t num_bytes_space) {
       // enough objects have been spilled.
       break;
     }
-    request = create_request_queue_.erase(request);
+    request_it = create_request_queue_.erase(request_it);
   }
 }
 
