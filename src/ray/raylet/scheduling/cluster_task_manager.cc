@@ -31,7 +31,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       Work work = *work_it;
       Task task = std::get<0>(work);
       auto request_resources =
-          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+          task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
       int64_t _unused;
       // TODO (Alex): We should distinguish between infeasible tasks and a fully
       // utilized cluster.
@@ -120,7 +120,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       std::shared_ptr<TaskResourceInstances> allocated_instances(
           new TaskResourceInstances());
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
-          spec.GetRequiredResources().GetResourceMap(), allocated_instances);
+          spec.GetRequiredPlacementResources().GetResourceMap(), allocated_instances);
       if (!schedulable) {
         // Not enough resources to schedule this task.
         worker_pool.PushWorker(worker);
