@@ -3,11 +3,12 @@ from typing import List
 
 import tensorflow as tf
 
-from ray.util.sgd.data.pandas_dataset import PandasDataset
+from ray.util.data.distributed_dataset import PandasDistributedDataset
 
 
 class TFDataset:
-    def __init__(self, pandas_ds: PandasDataset, feature_columns: List[str],
+    def __init__(self, pandas_ds: PandasDistributedDataset,
+                 feature_columns: List[str],
                  feature_shapes: List[tf.TensorShape],
                  feature_types: List[tf.DType], label_column: str,
                  label_shape: tf.TensorShape, label_type: tf.DType):

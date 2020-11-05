@@ -9,7 +9,7 @@ import torch
 from pandas import DataFrame
 from torch.utils.data import IterableDataset
 
-from ray.util.sgd.data.pandas_dataset import PandasDataset
+from ray.util.data.distributed_dataset import PandasDistributedDataset
 
 
 def convert_to_tensor(df, feature_columns: List[str],
@@ -45,7 +45,7 @@ def convert_to_tensor(df, feature_columns: List[str],
 
 class TorchDataset:
     def __init__(self,
-                 pandas_ds: PandasDataset = None,
+                 pandas_ds: PandasDistributedDataset = None,
                  feature_columns: List[str] = None,
                  feature_shapes: Optional[List[Any]] = None,
                  feature_types: Optional[List[torch.dtype]] = None,
