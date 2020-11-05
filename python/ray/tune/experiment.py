@@ -123,6 +123,17 @@ class Experiment:
                  max_failures=0,
                  restore=None):
 
+        if loggers is not None:
+            # Most users won't run into this as `tune.run()` does not pass
+            # the argument anymore. However, we will want to inform users
+            # if they instantiate their `Experiment` objects themselves.
+            raise ValueError(
+                "Passing `loggers` to an `Experiment` is deprecated. Use "
+                "an `ExperimentLogger` callback instead, e.g. by passing the "
+                "`Logger` classes to `tune.logger.LegacyExperimentLogger` and "
+                "passing this as part of the `callback` parameter to "
+                "`tune.run()`.")
+
         config = config or {}
         if callable(run) and detect_checkpoint_function(run):
             if checkpoint_at_end:
