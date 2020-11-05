@@ -329,6 +329,7 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   ProcessEnvironment env;
+  env.emplace("RAY_JOB_ID", job_id.Hex());
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
