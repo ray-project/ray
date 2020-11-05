@@ -1,0 +1,74 @@
+From 3b634ca40c7876d58d571a6d99780558c791d5e3 Mon Sep 17 00:00:00 2001
+From: Vasily Litvinov <vasilij.n.litvinov@intel.com>
+Date: Thu, 11 Mar 2021 13:09:26 +0300
+Subject: [PATCH] Enable overriding AR and RANLIB
+
+Signed-off-by: Vasily Litvinov <vasilij.n.litvinov@intel.com>
+---
+ deps/Makefile | 9 +++++----
+ src/Makefile  | 5 ++++-
+ 2 files changed, 9 insertions(+), 5 deletions(-)
+
+diff --git deps/Makefile deps/Makefile
+index 9952b80d8..b8dea748f 100644
+--- deps/Makefile
++++ deps/Makefile
+@@ -8,6 +8,9 @@ SRCCOLOR="\033[33m"
+ BINCOLOR="\033[37;1m"
+ MAKECOLOR="\033[32;1m"
+ ENDCOLOR="\033[0m"
++AR=ar
++ARFLAGS=rcu
++RANLIB=ranlib
+ 
+ default:
+ 	@echo "Explicit target required"
+@@ -47,7 +50,7 @@ endif
+ 
+ hiredis: .make-prerequisites
+ 	#@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
+-	cd hiredis && $(MAKE) static $(HIREDIS_MAKE_FLAGS)
++	cd hiredis && $(MAKE) static $(HIREDIS_MAKE_FLAGS) AR="$(AR)"
+ 
+ .PHONY: hiredis
+ 
+@@ -67,12 +70,10 @@ LUA_LDFLAGS+= $(LDFLAGS)
+ # lua's Makefile defines AR="ar rcu", which is unusual, and makes it more
+ # challenging to cross-compile lua (and redis).  These defines make it easier
+ # to fit redis into cross-compilation environments, which typically set AR.
+-AR=ar
+-ARFLAGS=rcu
+ 
+ lua: .make-prerequisites
+ 	#@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
+-	cd lua/src && $(MAKE) all CFLAGS="$(LUA_CFLAGS)" MYLDFLAGS="$(LUA_LDFLAGS)" AR="$(AR) $(ARFLAGS)"
++	cd lua/src && $(MAKE) all CFLAGS="$(LUA_CFLAGS)" MYLDFLAGS="$(LUA_LDFLAGS)" AR="$(AR) $(ARFLAGS)" RANLIB="$(RANLIB)"
+ 
+ .PHONY: lua
+ 
+diff --git src/Makefile src/Makefile
+index c06214105..1e0158b56 100644
+--- src/Makefile
++++ src/Makefile
+@@ -237,6 +237,9 @@ BINCOLOR="\033[37;1m"
+ MAKECOLOR="\033[32;1m"
+ ENDCOLOR="\033[0m"
+ 
++AR=ar
++RANLIB=ranlib
++
+ ifndef V
+ QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CC$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLOR) 1>&2;
+ QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR) 1>&2;
+@@ -280,7 +283,7 @@ persist-settings: distclean
+ 	echo REDIS_LDFLAGS=$(REDIS_LDFLAGS) >> .make-settings
+ 	echo PREV_FINAL_CFLAGS=$(FINAL_CFLAGS) >> .make-settings
+ 	echo PREV_FINAL_LDFLAGS=$(FINAL_LDFLAGS) >> .make-settings
+-	-(cd ../deps && $(MAKE) $(DEPENDENCY_TARGETS))
++	-(cd ../deps && $(MAKE) $(DEPENDENCY_TARGETS) AR="$(AR)" RANLIB="$(RANLIB)")
+ 
+ .PHONY: persist-settings
+ 
+-- 
+2.11.0
+

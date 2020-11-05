@@ -91,6 +91,7 @@ def ray_deps_setup():
         sha256 = "900cb82227bac58242c9b7668e7113cd952253b256fe04bbdab1b78979cf255a",
         patches = [
             "//thirdparty/patches:redis-quiet.patch",
+            "//thirdparty/patches:redis-deps-ar.patch",
         ],
     )
 
