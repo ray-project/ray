@@ -17,7 +17,7 @@ from ray.tune.error import TuneError
 from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
     CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
 
 logger = logging.getLogger(__name__)
 

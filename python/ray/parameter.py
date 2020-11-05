@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -148,7 +149,6 @@ class RayParams:
                  metrics_agent_port=None,
                  metrics_export_port=None,
                  lru_evict=False,
-                 object_spilling_config=None,
                  code_search_path=None):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
@@ -191,10 +191,9 @@ class RayParams:
         self.metrics_export_port = metrics_export_port
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
-        self._system_config = _system_config
+        self._system_config = _system_config or {}
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
-        self.object_spilling_config = object_spilling_config
         self._check_usage()
         self.code_search_path = code_search_path
         if code_search_path is None:
@@ -320,3 +319,13 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
+
+        # Make sure object spilling configuration is applicable.
+        object_spilling_config = self._system_config.get(
+            "object_spilling_config", {})
+        if object_spilling_config:
+            object_spilling_config = json.loads(object_spilling_config)
+            from ray import external_storage
+            # Validate external storage usage.
+            external_storage.setup_external_storage(object_spilling_config)
+            external_storage.reset_external_storage()

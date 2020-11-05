@@ -105,13 +105,15 @@ GetRequest::GetRequest(boost::asio::io_service& io_context, const std::shared_pt
 
 PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
                          const std::string& socket_name,
-                         std::shared_ptr<ExternalStore> external_store)
+                         std::shared_ptr<ExternalStore> external_store,
+                         ray::SpillObjectsCallback spill_objects_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service),
       eviction_policy_(&store_info_, PlasmaAllocator::GetFootprintLimit()),
-      external_store_(external_store) {
+      external_store_(external_store),
+      spill_objects_callback_(spill_objects_callback) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
 #ifdef PLASMA_CUDA
@@ -159,13 +161,14 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID& object_id, ObjectTableEnt
 // Allocate memory
 uint8_t* PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE* fd,
                                      int64_t* map_size, ptrdiff_t* offset, const std::shared_ptr<Client> &client,
-                                     bool is_create) {
+                                     bool is_create, PlasmaError *error) {
   // First free up space from the client's LRU queue if quota enforcement is on.
   if (evict_if_full) {
     std::vector<ObjectID> client_objects_to_evict;
     bool quota_ok = eviction_policy_.EnforcePerClientQuota(client.get(), size, is_create,
                                                            &client_objects_to_evict);
     if (!quota_ok) {
+      *error = PlasmaError::OutOfMemory;
       return nullptr;
     }
     EvictObjects(client_objects_to_evict);
@@ -186,15 +189,39 @@ uint8_t* PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
       // If we manage to allocate the memory, return the pointer. If we cannot
       // allocate the space, but we are also not allowed to evict anything to
       // make more space, return an error to the client.
+      *error = PlasmaError::OutOfMemory;
       break;
     }
     // Tell the eviction policy how much space we need to create this object.
     std::vector<ObjectID> objects_to_evict;
-    bool success = eviction_policy_.RequireSpace(size, &objects_to_evict);
+    int64_t space_needed = eviction_policy_.RequireSpace(size, &objects_to_evict);
     EvictObjects(objects_to_evict);
-    // Return an error to the client if not enough space could be freed to
-    // create the object.
-    if (!success) {
+    // More space is still needed. Try to spill objects to external storage to
+    // make room.
+    if (space_needed > 0) {
+      if (spill_objects_callback_) {
+        // Object spilling is asynchronous so that we do not block the plasma
+        // store thread. Therefore the client must try again, even if enough
+        // space will be made after the spill is complete.
+        // TODO(swang): Only respond to the client with OutOfMemory if we could not
+        // make enough space through spilling. If we could make enough space,
+        // respond to the plasma client once spilling is complete.
+        space_needed = spill_objects_callback_(space_needed);
+      }
+      if (space_needed > 0) {
+        // There is still not enough space, even once all evictable objects
+        // were evicted and all pending object spills have finished.  The
+        // client may choose to try again, or throw an OutOfMemory error to
+        // the application immediately.
+        *error = PlasmaError::OutOfMemory;
+      } else {
+        // Once all pending object spills have finished, there should be
+        // enough space for this allocation. Return a transient error to the
+        // client so that they try again soon.
+        *error = PlasmaError::TransientOutOfMemory;
+      }
+      // Return an error to the client if not enough space could be freed to
+      // create the object.
       break;
     }
   }
@@ -202,6 +229,7 @@ uint8_t* PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
   if (pointer != nullptr) {
     GetMallocMapinfo(pointer, fd, map_size, offset);
     RAY_CHECK(*fd != INVALID_FD);
+    *error = PlasmaError::OK;
   }
   return pointer;
 }
@@ -250,14 +278,17 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id,
   auto total_size = data_size + metadata_size;
 
   if (device_num == 0) {
+    PlasmaError error = PlasmaError::OK;
     pointer =
-        AllocateMemory(total_size, evict_if_full, &fd, &map_size, &offset, client, true);
+        AllocateMemory(total_size, evict_if_full, &fd, &map_size, &offset, client, true, &error);
     if (!pointer) {
-      RAY_LOG(ERROR) << "Not enough memory to create the object " << object_id.Hex()
-                       << ", data_size=" << data_size
-                       << ", metadata_size=" << metadata_size
-                       << ", will send a reply of PlasmaError::OutOfMemory";
-      return PlasmaError::OutOfMemory;
+      if (error == PlasmaError::OutOfMemory) {
+        RAY_LOG(ERROR) << "Not enough memory to create the object " << object_id.Hex()
+                         << ", data_size=" << data_size
+                         << ", metadata_size=" << metadata_size
+                         << ", will send a reply of PlasmaError::OutOfMemory";
+      }
+      return error;
     }
   } else {
 #ifdef PLASMA_CUDA
@@ -474,9 +505,11 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       // Make sure the object pointer is not already allocated
       RAY_CHECK(!entry->pointer);
 
+      PlasmaError error = PlasmaError::OK;
       entry->pointer =
           AllocateMemory(entry->data_size + entry->metadata_size, /*evict=*/true,
-                         &entry->fd, &entry->map_size, &entry->offset, client, false);
+                         &entry->fd, &entry->map_size, &entry->offset, client,
+                         false, &error);
       if (entry->pointer) {
         entry->state = ObjectState::PLASMA_CREATED;
         entry->create_time = std::time(nullptr);
@@ -602,8 +635,8 @@ ObjectStatus PlasmaStore::ContainsObject(const ObjectID& object_id) {
 void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
   std::vector<ObjectInfoT> infos;
 
-  RAY_LOG(DEBUG) << "sealing " << object_ids.size() << " objects";
   for (size_t i = 0; i < object_ids.size(); ++i) {
+    RAY_LOG(DEBUG) << "sealing object " << object_ids[i];
     ObjectInfoT object_info;
     auto entry = GetObjectTableEntry(&store_info_, object_ids[i]);
     RAY_CHECK(entry != nullptr);

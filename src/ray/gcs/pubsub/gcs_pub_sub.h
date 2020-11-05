@@ -99,12 +99,14 @@ class GcsPubSub {
   /// channel.
   struct Command {
     /// SUBSCRIBE constructor.
-    Command(const Callback &subscribe_callback, const StatusCallback &done_callback)
+    Command(const Callback &subscribe_callback, const StatusCallback &done_callback,
+            bool is_sub_or_unsub_all)
         : is_subscribe(true),
           subscribe_callback(subscribe_callback),
-          done_callback(done_callback) {}
+          done_callback(done_callback),
+          is_sub_or_unsub_all(is_sub_or_unsub_all) {}
     /// UNSUBSCRIBE constructor.
-    Command() : is_subscribe(false) {}
+    Command() : is_subscribe(false), is_sub_or_unsub_all(false) {}
     /// True if this is a SUBSCRIBE command and false if UNSUBSCRIBE.
     const bool is_subscribe;
     /// Callback that is called whenever a new pubsub message is received from
@@ -113,6 +115,8 @@ class GcsPubSub {
     /// Callback that is called once we have successfully subscribed to a
     /// channel. This should only be set if is_subscribe is true.
     const StatusCallback done_callback;
+    /// True if this is a SUBSCRIBE all or UNSUBSCRIBE all command else false.
+    const bool is_sub_or_unsub_all;
   };
 
   struct Channel {
@@ -147,7 +151,7 @@ class GcsPubSub {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
-                           const StatusCallback &done,
+                           const StatusCallback &done, bool is_sub_or_unsub_all,
                            const boost::optional<std::string> &id = boost::none);
 
   std::string GenChannelPattern(const std::string &channel,
