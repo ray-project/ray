@@ -79,7 +79,7 @@ Post Mortem Debugging
 ---------------------
 
 Often we do not know in advance where an error happens, so we cannot set a breakpoint. In these cases,
-we can automatically drop into the debugger when an exception happens.
+we can automatically drop into the debugger when an error occurs or an exception is thrown. This is called *post-mortem debugging*.
 
 We will show how this works using a Ray serve application. Copy the following code into a file called
 ``serve_debugging.py``:
