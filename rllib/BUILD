@@ -499,12 +499,13 @@ py_test(
 )
 
 # MBMPOTrainer
-py_test(
-    name = "test_mbmpo",
-    tags = ["agents_dir"],
-    size = "medium",
-    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
-)
+# MBMPO depends on MAML, MAML Pytorch not tested
+#py_test(
+#    name = "test_mbmpo",
+#    tags = ["agents_dir"],
+#    size = "medium",
+#    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+#)
 
 # PGTrainer
 py_test(
