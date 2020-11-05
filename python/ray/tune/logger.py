@@ -10,7 +10,7 @@ from typing import Iterable, TYPE_CHECKING, Dict, List, Optional, Type
 import ray.cloudpickle as cloudpickle
 
 from ray.tune.callback import Callback
-from ray.tune.utils.util import SafeFallbackEncoder, create_logdir
+from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
 from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
                              EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE,
@@ -425,11 +425,7 @@ class LegacyExperimentLogger(ExperimentLogger):
                                                            Logger]] = {}
 
     def log_trial_start(self, trial: "Trial"):
-        if not trial.logdir:
-            trial.logdir = create_logdir(trial._generate_dirname(),
-                                         trial.local_dir)
-        else:
-            os.makedirs(trial.logdir, exist_ok=True)
+        trial.init_logdir()
 
         for logger_class in self.logger_classes:
             trial_loggers = self._class_trial_loggers.get(logger_class, {})
