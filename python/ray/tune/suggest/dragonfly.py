@@ -11,7 +11,7 @@ from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict
+from ray.tune.utils.util import flatten_dict, is_nan_or_inf
 
 try:  # Python 3 only -- needed for lint test.
     import dragonfly
@@ -131,7 +131,7 @@ class DragonflySearch(Searcher):
     """
 
     def __init__(self,
-                 optimizer: Optional[BlackboxOptimiser] = None,
+                 optimizer: Optional[Union[str, BlackboxOptimiser]] = None,
                  domain: Optional[str] = None,
                  space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
@@ -304,7 +304,7 @@ class DragonflySearch(Searcher):
                           error: bool = False):
         """Passes result to Dragonfly unless early terminated or errored."""
         trial_info = self._live_trial_mapping.pop(trial_id)
-        if result:
+        if result and not is_nan_or_inf(result[self._metric]):
             self._opt.tell([(trial_info,
                              self._metric_op * result[self._metric])])
 
@@ -357,5 +357,4 @@ class DragonflySearch(Searcher):
             resolve_value("/".join(path), domain)
             for path, domain in domain_vars
         ]
-
         return space

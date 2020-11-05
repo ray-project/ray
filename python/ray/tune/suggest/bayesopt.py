@@ -9,7 +9,7 @@ from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
     import bayes_opt as byo
@@ -352,6 +352,8 @@ class BayesOptSearch(Searcher):
 
     def _register_result(self, params: Tuple[str], result: Dict):
         """Register given tuple of params and results."""
+        if is_nan_or_inf(result[self.metric]):
+            return
         self.optimizer.register(params, self._metric_op * result[self.metric])
 
     def save(self, checkpoint_path: str):
