@@ -18,7 +18,7 @@ from ray.rllib.models.torch.modules import GRUGate, \
 from ray.rllib.models.torch.recurrent_net import RecurrentNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.types import ModelConfigDict, TensorType, List
+from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
 
 torch, nn = try_import_torch()
 
