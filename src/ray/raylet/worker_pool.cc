@@ -534,6 +534,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   driver->SetAssignedPort(port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
+  const auto job_id = driver->GetAssignedJobId();
   all_jobs_[job_id] = job_config;
 
   // This is a workaround to start initial workers on this node if and only if Raylet is

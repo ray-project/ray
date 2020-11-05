@@ -32,6 +32,9 @@ class MockWorker : public WorkerInterface {
 
   void AssignTaskId(const TaskID &task_id) {}
 
+  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
+  void AssignJobId(const JobID &job_id) {}
+
   void SetAssignedTask(Task &assigned_task) {}
 
   const std::string IpAddress() const { return address_.ip_address(); }

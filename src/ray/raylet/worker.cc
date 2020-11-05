@@ -37,8 +37,8 @@ Worker::Worker(const JobID &job_id, const WorkerID &worker_id, const Language &l
       assigned_port_(-1),
       port_(-1),
       connection_(connection),
-      placement_group_id_(PlacementGroupID::Nil()),
       assigned_job_id_(job_id),
+      placement_group_id_(PlacementGroupID::Nil()),
       dead_(false),
       blocked_(false),
       client_call_manager_(client_call_manager),
@@ -109,6 +109,11 @@ bool Worker::RemoveBlockedTaskId(const TaskID &task_id) {
 
 const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
   return blocked_task_ids_;
+}
+
+void Worker::AssignJobId(const JobID &job_id) {
+  RAY_CHECK(!RayConfig::instance().enable_multi_tenancy());
+  assigned_job_id_ = job_id;
 }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
