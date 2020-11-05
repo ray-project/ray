@@ -180,18 +180,25 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
 
 
 def get_conda_env_dir(env_name):
+    """Given a environment name like `tf1`, find and validate the corresponding conda directory"""
     conda_prefix = os.environ.get("CONDA_PREFIX")
-    if not conda_prefix:
-        raise ValueError("conda must be activated to use CondaEnv.")
+    if conda_prefix is None:
+        raise ValueError("Serve cannot find environment variables installed by conda. Are you sure you are in a conda env?")
+    
+    # There are two case:
+    # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and CONDA_PREFIX=$HOME/anaconda3
+    # 2. We are in user created conda env: CONDA_DEFAULT_ENV=$env_name and CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
     if os.environ.get("CONDA_DEFAULT_ENV") == "base":
         # Caller is running in base conda env.
         # Not recommended by conda, but we can still try to support it.
         env_dir = os.path.join(conda_prefix, "envs", env_name)
     else:
-        env_dir = os.path.join(
-            os.path.split(os.environ.get("CONDA_PREFIX"))[0], env_name)
+        # Now `conda_prefix` should be something like $HOME/anaconda3/envs/$env_name
+        # We want to strip the $env_name component
+        conda_envs_dir = os.path.split(conda_prefix)[0]
+        env_dir = os.path.join(conda_envs_dir, env_name)
     if not os.path.isdir(env_dir):
-        raise ValueError("conda env " + env_name + " not found.")
+        raise ValueError("conda env " + env_name + " not found in conda envs directory. Run `conda env list` to verify the name is correct.")
     return env_dir
 
 
