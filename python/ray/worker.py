@@ -1184,7 +1184,7 @@ def connect(node,
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
 
-    if mode is not SCRIPT_MODE and setproctitle:
+    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
         if mode is IO_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_IO_WORKER
@@ -1368,11 +1368,13 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    setproctitle.setproctitle(title)
+    if _mode() is not LOCAL_MODE:
+        setproctitle.setproctitle(title)
     try:
         yield
     finally:
-        setproctitle.setproctitle(next_title)
+        if _mode() is not LOCAL_MODE:
+            setproctitle.setproctitle(next_title)
 
 
 def show_in_dashboard(message, key="", dtype="text"):
