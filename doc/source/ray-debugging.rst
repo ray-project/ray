@@ -40,6 +40,7 @@ Put the program into a file named ``debugging.py`` and execute it using:
 
 Each of the 4 executed tasks will drop into a breakpoint when the line
 ``ray.util.pdb.set_trace()`` is executed. You can attach to the debugger by running
+the following command on the head node of the cluster:
 
 .. code-block:: bash
 
