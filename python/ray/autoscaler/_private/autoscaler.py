@@ -560,7 +560,11 @@ class StandardAutoscaler:
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count, node_type))
+        # Split into individual launch requests of the max batch size.
+        while count > 0:
+            self.launch_queue.put((config, min(count, self.max_launch_batch),
+                                   node_type))
+            count -= self.max_launch_batch
 
     def all_workers(self):
         return self.workers() + self.unmanaged_workers()
