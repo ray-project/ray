@@ -95,18 +95,17 @@ void TaskExecutor::Invoke(
     absl::Mutex &actor_contexts_mutex) {
   std::vector<std::shared_ptr<RayObject>> args_buffer;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    std::shared_ptr<::ray::LocalMemoryBuffer> memory_buffer = nullptr;
     if (task_spec.ArgByRef(i)) {
       auto arg = runtime->Get(task_spec.ArgId(i));
-      auto memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
+      memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
           reinterpret_cast<uint8_t *>(arg->data()), arg->size(), true);
-      args_buffer.emplace_back(
-          std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
     } else {
-      auto memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
+      memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
           const_cast<uint8_t *>(task_spec.ArgData(i)), task_spec.ArgDataSize(i), true);
-      args_buffer.emplace_back(
-          std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
     }
+    args_buffer.emplace_back(
+        std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
   }
 
   auto function_descriptor = task_spec.FunctionDescriptor();

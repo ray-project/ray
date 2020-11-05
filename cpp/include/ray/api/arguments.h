@@ -54,17 +54,15 @@ inline void Arguments::WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *ta
   /// Notice ObjectRefClassPrefix should be modified by ObjectRef class name or namespace.
   static const std::string ObjectRefClassPrefix = "N3ray3api9ObjectRef";
   std::string type_name = typeid(arg1).name();
+  RAY_CHECK(type_name.rfind(ObjectRefClassPrefix, 0) != 0)
+      << "ObjectRef can not be wrapped";
   Serializer::Serialize(packer, arg1);
   auto memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
-  if (type_name.rfind(ObjectRefClassPrefix, 0) == 0) {
-    throw RayException("ObjectRef can not be wrapped");
-  } else {
-    /// Pass by value.
-    auto task_arg = new TaskArgByValue(std::make_shared<::ray::RayObject>(
-        memory_buffer, nullptr, std::vector<ObjectID>()));
-    task_args->emplace_back(task_arg);
-  }
+  /// Pass by value.
+  auto task_arg = new TaskArgByValue(std::make_shared<::ray::RayObject>(
+      memory_buffer, nullptr, std::vector<ObjectID>()));
+  task_args->emplace_back(task_arg);
 }
 
 template <typename Arg1Type>

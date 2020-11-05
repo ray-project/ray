@@ -12,7 +12,7 @@ class ActorTaskCaller {
   ActorTaskCaller();
 
   ActorTaskCaller(RayRuntime *runtime, ActorID id, RemoteFunctionPtrHolder ptr,
-                  std::vector<std::unique_ptr<::ray::TaskArg>> args);
+                  std::vector<std::unique_ptr<::ray::TaskArg>> &&args);
 
   ObjectRef<ReturnType> Remote();
 
@@ -31,7 +31,7 @@ ActorTaskCaller<ReturnType>::ActorTaskCaller() {}
 template <typename ReturnType>
 ActorTaskCaller<ReturnType>::ActorTaskCaller(
     RayRuntime *runtime, ActorID id, RemoteFunctionPtrHolder ptr,
-    std::vector<std::unique_ptr<::ray::TaskArg>> args)
+    std::vector<std::unique_ptr<::ray::TaskArg>> &&args)
     : runtime_(runtime), id_(id), ptr_(ptr), args_(std::move(args)) {}
 
 template <typename ReturnType>
