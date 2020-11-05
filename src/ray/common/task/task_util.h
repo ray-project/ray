@@ -89,7 +89,7 @@ class TaskSpecBuilder {
       const PlacementGroupID &placement_group_id,
       bool placement_group_capture_child_tasks,
       const std::unordered_map<std::string, std::string> &override_environment_variables =
-          {}) {
+          std::unordered_map<std::string, std::string>()) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
