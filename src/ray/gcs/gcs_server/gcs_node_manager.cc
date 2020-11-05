@@ -343,7 +343,7 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
   if (!node_heartbeats_.empty()) {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
     absl::flat_hash_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
-    for (auto &heartbeat : node_heartbeats_) {
+    for (const auto &heartbeat : node_heartbeats_) {
       // Aggregate the load reported by each raylet.
       auto load = heartbeat.second.resource_load_by_shape();
       for (const auto &demand : load.resource_demands()) {
@@ -360,14 +360,13 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
                                             demand.backlog_size());
         }
       }
-      heartbeat.second.clear_resource_load_by_shape();
 
-      batch->add_batch()->Swap(&heartbeat.second);
+      batch->add_batch()->CopyFrom(heartbeat.second);
     }
 
-    for (auto &demand : aggregate_load) {
+    for (const auto &demand : aggregate_load) {
       auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
-      demand_proto->Swap(&demand.second);
+      demand_proto->CopyFrom(demand.second);
       for (const auto &resource_pair : demand.first.GetResourceMap()) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
       }
@@ -405,6 +404,8 @@ void GcsNodeManager::UpdateNodeHeartbeat(const NodeID node_id,
     if (request.heartbeat().resource_load_changed()) {
       (*iter->second.mutable_resource_load()) = request.heartbeat().resource_load();
     }
+    (*iter->second.mutable_resource_load_by_shape()) =
+        request.heartbeat().resource_load_by_shape();
   }
 }
 
@@ -521,6 +522,7 @@ void GcsNodeManager::StartNodeFailureDetector() {
 void GcsNodeManager::UpdateNodeRealtimeResources(
     const NodeID &node_id, const rpc::HeartbeatTableData &heartbeat) {
   if (!RayConfig::instance().light_heartbeat_enabled() ||
+      cluster_realtime_resources_.count(node_id) == 0 ||
       heartbeat.resources_available_changed()) {
     auto resources_available = MapFromProtobuf(heartbeat.resources_available());
     cluster_realtime_resources_[node_id] =
@@ -553,7 +555,6 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
 void GcsNodeManager::SendBatchedHeartbeat() {
   if (!heartbeat_buffer_.empty()) {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
-    std::unordered_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
     for (auto &heartbeat : heartbeat_buffer_) {
       batch->add_batch()->Swap(&heartbeat.second);
     }

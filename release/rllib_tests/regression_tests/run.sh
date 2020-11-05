@@ -41,7 +41,7 @@ echo "commit: $commit"
 echo "branch: $ray_branch"
 echo "workload: ignored"
 
-wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux1_x86_64.whl"
+wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux2014_x86_64.whl"
 
 conda uninstall -y terminado
 source activate tensorflow_p36 && pip install -U pip

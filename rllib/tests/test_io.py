@@ -35,7 +35,7 @@ def make_sample_batch(i):
 
 class AgentIOTest(unittest.TestCase):
     def setUp(self):
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=1, ignore_reinit_error=True)
         self.test_dir = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -99,11 +99,6 @@ class AgentIOTest(unittest.TestCase):
                 with open(path) as f:
                     for line in f.readlines():
                         data = json.loads(line)
-                        # Data won't contain rewards as these are not included
-                        # in the writeOutputs run (not needed in the
-                        # SampleBatch). Flip out "rewards" for "advantages"
-                        # just for testing.
-                        data["rewards"] = data["advantages"]
                         del data["advantages"]
                         out.append(data)
                 with open(path, "w") as f:

@@ -295,6 +295,10 @@ class TorchPolicy(Policy):
             if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
+            state_batches = [
+                convert_to_torch_tensor(s, self.device)
+                for s in (state_batches or [])
+            ]
 
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
@@ -369,7 +373,7 @@ class TorchPolicy(Policy):
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
 
-        grads = []
+        all_grads = []
         for i, opt in enumerate(self._optimizers):
             # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
@@ -377,16 +381,18 @@ class TorchPolicy(Policy):
             loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
             grad_info.update(self.extra_grad_process(opt, loss_out[i]))
 
-            if self.distributed_world_size:
-                # Note that return values are just references;
-                # Calling zero_grad would modify the values.
-                for param_group in opt.param_groups:
-                    for p in param_group["params"]:
-                        if p.grad is not None:
-                            grads.append(p.grad.data.cpu().numpy())
-                        else:
-                            grads.append(None)
+            grads = []
+            # Note that return values are just references;
+            # Calling zero_grad would modify the values.
+            for param_group in opt.param_groups:
+                for p in param_group["params"]:
+                    if p.grad is not None:
+                        grads.append(p.grad)
+                        all_grads.append(p.grad.data.cpu().numpy())
+                    else:
+                        all_grads.append(None)
 
+            if self.distributed_world_size:
                 start = time.time()
                 if torch.cuda.is_available():
                     # Sadly, allreduce_coalesced does not work with CUDA yet.
@@ -407,7 +413,7 @@ class TorchPolicy(Policy):
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
 
-        return grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
+        return all_grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
     @DeveloperAPI

@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 import gym
+from gym.spaces import Box
 import numpy as np
 import tree
 from typing import Dict, List, Optional
@@ -228,6 +229,7 @@ class Policy(metaclass=ABCMeta):
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
+    @DeveloperAPI
     def compute_actions_from_input_dict(
             self,
             input_dict: Dict[str, TensorType],
@@ -549,32 +551,25 @@ class Policy(metaclass=ABCMeta):
             ViewReqDict: The default view requirements dict.
         """
 
-        from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
-
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
-                data_col=SampleBatch.OBS, shift=1, space=self.observation_space),
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=self.observation_space),
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
-            SampleBatch.PREV_ACTIONS: ViewRequirement(data_col=SampleBatch.ACTIONS, shift=-1, space=self.action_space),
             SampleBatch.REWARDS: ViewRequirement(),
-            SampleBatch.PREV_REWARDS: ViewRequirement(data_col=SampleBatch.REWARDS, shift=-1),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(),
-            SampleBatch.ACTION_LOGP: ViewRequirement(),
-            SampleBatch.VF_PREDS: ViewRequirement(),
-            PRIO_WEIGHTS: ViewRequirement(),
             "t": ViewRequirement(),
         }
 
-    def _initialize_loss_dynamically(
-            self,
-            auto_remove_unneeded_view_reqs: bool = True) -> None:
+    def _initialize_loss_from_dummy_batch(
+            self, auto_remove_unneeded_view_reqs: bool = True) -> None:
         """Performs test calls through policy's model and loss.
 
         NOTE: This base method should work for define-by-run Policies such as
@@ -600,6 +595,10 @@ class Policy(metaclass=ABCMeta):
         # Add extra outs to view reqs.
         for key, value in extra_outs.items():
             self._dummy_batch[key] = np.zeros_like(value)
+            if key not in self.view_requirements:
+                self.view_requirements[key] = \
+                    ViewRequirement(space=gym.spaces.Box(
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
         sb = SampleBatch(self._dummy_batch)
         if state_outs:
             # TODO: (sven) This hack will not work for attention net traj.
@@ -659,8 +658,7 @@ class Policy(metaclass=ABCMeta):
                             used_for_training=used_for_training)
 
     def _get_dummy_batch_from_view_requirements(
-            self,
-            batch_size: int = 1) -> Dict[str, TensorType]:
+            self, batch_size: int = 1) -> SampleBatch:
         """Creates a numpy dummy batch based on the Policy's view requirements.
 
         Args:
@@ -688,7 +686,25 @@ class Policy(metaclass=ABCMeta):
                 else:
                     ret[view_col] = np.zeros_like(
                         [view_req.space.sample() for _ in range(batch_size)])
-        return ret
+        return SampleBatch(ret)
+
+    def _update_model_inference_view_requirements_from_init_state(self):
+        """Uses this Model's initial state to auto-add necessary ViewReqs.
+
+        Can be called from within a Policy to make sure RNNs automatically
+        update their internal state-related view requirements.
+        Changes the `self.inference_view_requirements` dict.
+        """
+        model = self.model
+        # Add state-ins to this model's view.
+        for i, state in enumerate(model.get_initial_state()):
+            model.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=state.shape))
+            model.inference_view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))
 
 
 def clip_action(action, action_space):

@@ -8,6 +8,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Type
 from ray.util.debug import log_once
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -343,7 +344,7 @@ class DynamicTFPolicy(TFPolicy):
             before_loss_init(self, obs_space, action_space, config)
 
         if not existing_inputs:
-            self._initialize_loss_dynamically(auto=view_requirements_fn is None)
+            self._initialize_loss_from_dummy_batch(auto=view_requirements_fn is None)
 
     @override(TFPolicy)
     @DeveloperAPI
@@ -398,6 +399,21 @@ class DynamicTFPolicy(TFPolicy):
 
     def _get_input_dict_and_dummy_batch(self, view_requirements,
                                         existing_inputs):
+        """Creates input_dict and dummy_batch for loss initialization.
+
+        Used for managing the Policy's input placeholders and for loss
+        initialization.
+        Input_dict: Str -> tf.placeholders, dummy_batch: str -> np.arrays.
+
+        Args:
+            view_requirements (ViewReqs): The view requirements dict.
+            existing_inputs (Dict[str, tf.placeholder]): A dict of already
+                existing placeholders.
+
+        Returns:
+            Tuple[Dict[str, tf.placeholder], Dict[str, np.ndarray]]: The
+                input_dict/dummy_batch tuple.
+        """
         input_dict = {}
         dummy_batch = {}
         for view_col, view_req in view_requirements.items():
@@ -436,7 +452,7 @@ class DynamicTFPolicy(TFPolicy):
                     [sample] if not time_axis else [[sample]])
         return input_dict, dummy_batch
 
-    def _initialize_loss_dynamically(self, auto=True):
+    def _initialize_loss_from_dummy_batch(self, auto=True):
         if self.config["_use_trajectory_view_api"]:
             dummy_batch = self._dummy_batch
         else:

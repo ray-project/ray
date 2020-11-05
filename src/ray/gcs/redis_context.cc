@@ -93,7 +93,8 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
       is_subscribe_callback_ = true;
       // If the message is for the initial subscription call, return the empty
       // string as a response to signify that subscription was successful.
-    } else if (strcmp(message_type->str, "punsubscribe") == 0) {
+    } else if (strcmp(message_type->str, "punsubscribe") == 0 ||
+               strcmp(message_type->str, "unsubscribe") == 0) {
       is_unsubscribe_callback_ = true;
     } else if (strcmp(message_type->str, "message") == 0) {
       // If the message is from a PUBLISH, make sure the data is nonempty.
@@ -410,6 +411,30 @@ Status RedisContext::SubscribeAsync(const NodeID &client_id,
   }
 
   return status;
+}
+
+Status RedisContext::SubscribeAsync(const std::string &channel,
+                                    const RedisCallback &redisCallback,
+                                    int64_t callback_index) {
+  RAY_CHECK(async_redis_subscribe_context_);
+
+  RAY_UNUSED(RedisCallbackManager::instance().AddCallback(redisCallback, true,
+                                                          io_service_, callback_index));
+  std::string redis_command = "SUBSCRIBE %b";
+  return async_redis_subscribe_context_->RedisAsyncCommand(
+      reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+      reinterpret_cast<void *>(callback_index), redis_command.c_str(), channel.c_str(),
+      channel.size());
+}
+
+Status RedisContext::UnsubscribeAsync(const std::string &channel) {
+  RAY_CHECK(async_redis_subscribe_context_);
+
+  std::string redis_command = "UNSUBSCRIBE %b";
+  return async_redis_subscribe_context_->RedisAsyncCommand(
+      reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+      reinterpret_cast<void *>(-1), redis_command.c_str(), channel.c_str(),
+      channel.size());
 }
 
 Status RedisContext::PSubscribeAsync(const std::string &pattern,

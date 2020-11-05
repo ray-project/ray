@@ -151,6 +151,17 @@ py_test(
     args = ["--torch", "--yaml-dir=tuned_examples/ddpg"]
 )
 
+# DDPPO
+py_test(
+    name = "run_regression_tests_cartpole_ddppo_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/ppo/cartpole-ddppo.yaml"]),
+    args = ["--yaml-dir=tuned_examples/ppo", "--torch"]
+)
+
 # DQN/Simple-Q
 py_test(
     name = "run_regression_tests_cartpole_dqn_tf",
@@ -1555,7 +1566,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--as-test", "--framework=torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
 
 py_test(

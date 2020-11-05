@@ -49,11 +49,14 @@ def build_torch_policy(
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
         before_init: Optional[Callable[
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        before_loss_init: Optional[Callable[
-            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict],
-            None]] = None,
+        before_loss_init: Optional[Callable[[
+            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+        ], None]] = None,
         after_init: Optional[Callable[
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+        _after_loss_init: Optional[Callable[[
+            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+        ], None]] = None,
         action_sampler_fn: Optional[Callable[[TensorType, List[
             TensorType]], Tuple[TensorType, TensorType]]] = None,
         action_distribution_fn: Optional[Callable[[
@@ -125,9 +128,13 @@ def build_torch_policy(
             gym.spaces.Space, TrainerConfigDict], None]]): Optional callable to
             run prior to loss init. If None, this step will be skipped.
         after_init (Optional[Callable[[Policy, gym.Space, gym.Space,
-            TrainerConfigDict], None]]): Optional callable to run at the end of
-            policy init that takes the same arguments as the policy
-            constructor. If None, this step will be skipped.
+            TrainerConfigDict], None]]): DEPRECATED: Use `before_loss_init`
+            instead.
+        _after_loss_init (Optional[Callable[[Policy, gym.spaces.Space,
+            gym.spaces.Space, TrainerConfigDict], None]]): Optional callable to
+            run after the loss init. If None, this step will be skipped.
+            This will be deprecated at some point and renamed into `after_init`
+            to match `build_tf_policy()` behavior.
         action_sampler_fn (Optional[Callable[[TensorType, List[TensorType]],
             Tuple[TensorType, TensorType]]]): Optional callable returning a
             sampled action and its log-likelihood given some (obs and state)
@@ -135,13 +142,13 @@ def build_torch_policy(
             compute actions by calling self.model, then sampling from the
             so parameterized action distribution.
         action_distribution_fn (Optional[Callable[[Policy, ModelV2, TensorType,
-            TensorType, TensorType], Tuple[TensorType, type,
-            List[TensorType]]]]): A callable that takes
-            the Policy, Model, the observation batch, an explore-flag, a
-            timestep, and an is_training flag and returns a tuple of
-            a) distribution inputs (parameters), b) a dist-class to generate
-            an action distribution object from, and c) internal-state outputs
-            (empty list if not applicable). If None, will either use
+            TensorType, TensorType], Tuple[TensorType,
+            Type[TorchDistributionWrapper], List[TensorType]]]]): A callable
+            that takes the Policy, Model, the observation batch, an
+            explore-flag, a timestep, and an is_training flag and returns a
+            tuple of a) distribution inputs (parameters), b) a dist-class to
+            generate an action distribution object from, and c) internal-state
+            outputs (empty list if not applicable). If None, will either use
             `action_sampler_fn` or compute actions by calling self.model,
             then sampling from the parameterized action distribution.
         make_model (Optional[Callable[[Policy, gym.spaces.Space,
@@ -233,7 +240,6 @@ def build_torch_policy(
                 action_sampler_fn=action_sampler_fn,
                 action_distribution_fn=action_distribution_fn,
                 max_seq_len=config["model"]["max_seq_len"],
-                #view_requirements_fn=view_requirements_fn,
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
 

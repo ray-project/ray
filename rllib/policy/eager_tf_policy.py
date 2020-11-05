@@ -272,7 +272,7 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_dynamically(
+            self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=view_requirements_fn is None)
             self._loss_initialized = True
 
@@ -638,7 +638,7 @@ def build_eager_tf_policy(name,
                 })
             return fetches
 
-        def _initialize_loss_with_dummy_batch(self):
+        def _OBSOLETE_initialize_loss_from_dummy_batch(self):
             self._dummy_batch = self._get_dummy_batch(self.view_requirements, batch_size=4)
             input_dict = self._lazy_tensor_dict(self._dummy_batch)
 

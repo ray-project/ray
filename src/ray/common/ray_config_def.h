@@ -39,7 +39,7 @@ RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
 /// Whether to send heartbeat lightly. When it is enalbed, only changed part,
 /// like should_global_gc or changed resources, will be included in the heartbeat,
 /// and gcs only broadcast the changed heartbeat.
-RAY_CONFIG(bool, light_heartbeat_enabled, false)
+RAY_CONFIG(bool, light_heartbeat_enabled, true)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -291,7 +291,7 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
 /// If true, the worker's queue backlog size will be propagated to the heartbeat batch
 /// data.
-RAY_CONFIG(bool, report_worker_backlog, false)
+RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
@@ -314,9 +314,6 @@ RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
-/// The maximum number of I/O worker that raylet starts.
-RAY_CONFIG(int, max_io_workers, 1)
-
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
 RAY_CONFIG(bool, enable_timeline, true)
@@ -324,3 +321,15 @@ RAY_CONFIG(bool, enable_timeline, true)
 /// The maximum number of pending placement group entries that are reported to monitor to
 /// autoscale the cluster.
 RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+
+/* Configuration parameters for object spilling. */
+/// JSON configuration that describes the external storage. This is passed to
+/// Python IO workers to determine how to store/restore an object to/from
+/// external storage.
+RAY_CONFIG(std::string, object_spilling_config, "")
+/// Whether to enable automatic object spilling. If enabled, then
+/// Ray will choose objects to spill when the object store is out of
+/// memory.
+RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
+/// The maximum number of I/O worker that raylet starts.
+RAY_CONFIG(int, max_io_workers, 1)

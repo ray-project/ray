@@ -203,10 +203,6 @@ def create_or_update_cluster(config_file: str,
 
     cli_logger.labeled_value("Cluster", config["cluster_name"])
 
-    # disable the cli_logger here if needed
-    # because it only supports aws
-    if config["provider"]["type"] != "aws":
-        cli_logger.old_style = True
     cli_logger.newline()
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
@@ -228,8 +224,6 @@ def _bootstrap_config(config: Dict[str, Any],
                              "ray-config-{}".format(hasher.hexdigest()))
 
     if os.path.exists(cache_key) and not no_config_cache:
-        cli_logger.old_info(logger, "Using cached config at {}", cache_key)
-
         config_cache = json.loads(open(cache_key).read())
         if config_cache.get("_version", -1) == CONFIG_CACHE_VERSION:
             # todo: is it fine to re-resolve? afaik it should be.
@@ -294,7 +288,6 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
     validate_config(config)
 
     cli_logger.confirm(yes, "Destroying cluster.", _abort=True)
-    cli_logger.old_confirm("This will destroy your cluster", yes)
 
     if not workers_only:
         try:
@@ -319,9 +312,6 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 "Ignoring the exception and "
                 "attempting to shut down the cluster nodes anyway.")
 
-            cli_logger.old_exception(
-                logger, "Ignoring error attempting a clean shutdown.")
-
     provider = _get_node_provider(config["provider"], config["cluster_name"])
 
     def remaining_nodes():
@@ -331,13 +321,10 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
         if keep_min_workers:
             min_workers = config.get("min_workers", 0)
-
             cli_logger.print(
                 "{} random worker nodes will not be shut down. " +
                 cf.dimmed("(due to {})"), cf.bold(min_workers),
                 cf.bold("--keep-min-workers"))
-            cli_logger.old_info(
-                logger, "teardown_cluster: Keeping {} nodes...", min_workers)
 
             workers = random.sample(workers, len(workers) - min_workers)
 
@@ -370,7 +357,6 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 with_output=False)
         except Exception:
             cli_logger.warning(f"Docker stop failed on {node}")
-            cli_logger.old_warning(logger, f"Docker stop failed on {node}")
 
     # Loop here to check that both the head and worker nodes are actually
     #   really gone
@@ -383,10 +369,6 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
     with LogTimer("teardown_cluster: done."):
         while A:
-            cli_logger.old_info(
-                logger, "teardown_cluster: "
-                "Shutting down {} nodes...", len(A))
-
             provider.terminate_nodes(A)
 
             cli_logger.print(
@@ -402,7 +384,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
 
 def kill_node(config_file: str, yes: bool, hard: bool,
-              override_cluster_name: Optional[str]) -> str:
+              override_cluster_name: Optional[str]) -> Optional[str]:
     """Kills a random Raylet worker."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -411,15 +393,16 @@ def kill_node(config_file: str, yes: bool, hard: bool,
     config = _bootstrap_config(config)
 
     cli_logger.confirm(yes, "A random node will be killed.")
-    cli_logger.old_confirm("This will kill a node in your cluster", yes)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     nodes = provider.non_terminated_nodes({
         TAG_RAY_NODE_KIND: NODE_KIND_WORKER
     })
+    if not nodes:
+        cli_logger.print("No worker nodes detected.")
+        return None
     node = random.choice(nodes)
     cli_logger.print("Shutdown " + cf.bold("{}"), node)
-    cli_logger.old_info(logger, "kill_node: Shutdown worker {}", node)
     if hard:
         provider.terminate_node(node)
     else:
@@ -472,10 +455,6 @@ def warn_about_bad_start_command(start_commands: List[str]) -> None:
         cli_logger.warning(
             "Ray runtime will not be started because `{}` is not in `{}`.",
             cf.bold("ray start"), cf.bold("head_start_ray_commands"))
-        cli_logger.old_warning(
-            logger,
-            "Ray start is not included in the head_start_ray_commands section."
-        )
     if not any("autoscaling-config" in x for x in ray_start_cmd):
         cli_logger.warning(
             "The head node will not launch any workers because "
@@ -484,11 +463,6 @@ def warn_about_bad_start_command(start_commands: List[str]) -> None:
             cf.bold("ray start"), cf.bold("--autoscaling-config"),
             cf.bold("--autoscaling-config=~/ray_bootstrap_config.yaml"),
             cf.bold("ray start"), cf.bold("head_start_ray_commands"))
-        cli_logger.old_warning(
-            logger, "Ray start on the head node does not have the flag"
-            "--autoscaling-config set. The head node will not launch"
-            "workers. Add --autoscaling-config=~/ray_bootstrap_config.yaml"
-            "to ray start in the head_start_ray_commands section.")
 
 
 def get_or_create_head_node(config: Dict[str, Any],
@@ -520,9 +494,6 @@ def get_or_create_head_node(config: Dict[str, Any],
             "No head node found. "
             "Launching a new cluster.",
             _abort=True)
-        cli_logger.old_confirm("This will create a new cluster", yes)
-    elif not no_restart:
-        cli_logger.old_confirm("This will restart cluster services", yes)
 
     if head_node:
         if restart_only:
@@ -549,6 +520,7 @@ def get_or_create_head_node(config: Dict[str, Any],
                 yes,
                 cf.bold("Cluster Ray runtime will be restarted."),
                 _abort=True)
+
     cli_logger.newline()
 
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
@@ -572,18 +544,9 @@ def get_or_create_head_node(config: Dict[str, Any],
                         provider.node_tags(head_node)
                         .get(TAG_RAY_LAUNCH_CONFIG)), cf.bold(launch_hash))
                 cli_logger.confirm(yes, "Relaunching it.", _abort=True)
-                cli_logger.old_confirm(
-                    "Head node config out-of-date. It will be terminated", yes)
-
-                cli_logger.old_info(
-                    logger, "get_or_create_head_node: "
-                    "Shutting down outdated head node {}", head_node)
 
                 provider.terminate_node(head_node)
                 cli_logger.print("Terminated head node {}", head_node)
-
-            cli_logger.old_info(
-                logger, "get_or_create_head_node: Launching new head node...")
 
             head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
             head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
@@ -619,9 +582,6 @@ def get_or_create_head_node(config: Dict[str, Any],
         # hash to set up the head node
         (runtime_hash, file_mounts_contents_hash) = hash_runtime_conf(
             config["file_mounts"], None, config)
-
-        cli_logger.old_info(
-            logger, "get_or_create_head_node: Updating files on head node...")
 
         # Rewrite the auth config so that the head
         # node can update the workers
@@ -697,39 +657,16 @@ def get_or_create_head_node(config: Dict[str, Any],
         # Refresh the node cache so we see the external ip if available
         provider.non_terminated_nodes(head_node_tags)
 
-        if config.get("provider", {}).get("use_internal_ips", False) is True:
-            head_node_ip = provider.internal_ip(head_node)
-        else:
-            head_node_ip = provider.external_ip(head_node)
-
         if updater.exitcode != 0:
             # todo: this does not follow the mockup and is not good enough
             cli_logger.abort("Failed to setup head node.")
-
-            cli_logger.old_error(
-                logger, "get_or_create_head_node: "
-                "Updating {} failed", head_node_ip)
             sys.exit(1)
-
-        cli_logger.old_info(
-            logger, "get_or_create_head_node: "
-            "Head node up-to-date, IP address is: {}", head_node_ip)
 
     monitor_str = "tail -n 100 -f /tmp/ray/session_latest/logs/monitor*"
     if override_cluster_name:
         modifiers = " --cluster-name={}".format(quote(override_cluster_name))
     else:
         modifiers = ""
-
-    if cli_logger.old_style:
-        print("To monitor autoscaling activity, you can run:\n\n"
-              "  ray exec {} {}{}\n".format(config_file, quote(monitor_str),
-                                            modifiers))
-        print("To open a console on the cluster:\n\n"
-              "  ray attach {}{}\n".format(config_file, modifiers))
-
-        print("To get a remote shell to the cluster manually, run:\n\n"
-              "  {}\n".format(updater.cmd_runner.remote_shell_command_str()))
 
     cli_logger.newline()
     with cli_logger.group("Useful commands"):
@@ -887,10 +824,6 @@ def exec_cluster(config_file: str,
         attach_command = " ".join(attach_command_parts)
         cli_logger.print("Run `{}` to check command status.",
                          cf.bold(attach_command))
-
-        attach_info = "Use `{}` to check on command status.".format(
-            attach_command)
-        cli_logger.old_info(logger, attach_info)
     return result
 
 
