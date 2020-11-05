@@ -5,6 +5,7 @@ cartpole-maml:
     stop:
         training_iteration: 100   
     config:
+        # Works with both frameworks, "tf" and "torch".
         framework: torch
         horizon: 200
         rollout_fragment_length: 200
