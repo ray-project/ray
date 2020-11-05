@@ -384,7 +384,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
 
 def kill_node(config_file: str, yes: bool, hard: bool,
-              override_cluster_name: Optional[str]) -> str:
+              override_cluster_name: Optional[str]) -> Optional[str]:
     """Kills a random Raylet worker."""
 
     config = yaml.safe_load(open(config_file).read())
