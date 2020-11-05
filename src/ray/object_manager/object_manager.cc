@@ -927,10 +927,7 @@ void ObjectManager::RecordMetrics() const {
   stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
   stats::ObjectStoreUsedMemory().Record(used_memory_);
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
-  stats::ObjectManagerWaitRequests().Record(active_wait_requests_.size());
   stats::ObjectManagerPullRequests().Record(pull_requests_.size());
-  stats::ObjectManagerUnfulfilledPushRequests().Record(unfulfilled_push_requests_.size());
-  stats::ObjectManagerProfileEvents().Record(profile_events_.size());
 }
 
 }  // namespace ray

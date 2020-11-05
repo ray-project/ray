@@ -16,6 +16,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/stats.h"
 #include "ray/util/asio_util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -401,6 +402,10 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
   }
+}
+
+void GcsPlacementGroupManager::CollectStats() const {
+  stats::PendingPlacementGroups.Record(pending_placement_groups_.size());
 }
 
 void GcsPlacementGroupManager::Tick() {

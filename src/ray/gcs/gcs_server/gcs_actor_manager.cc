@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 namespace gcs {
@@ -687,6 +688,10 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
     }
   }
   return actor_ids;
+}
+
+void GcsActorManager::CollectStats() const {
+  stats::PendingActors.Record(pending_actors_.size());
 }
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,

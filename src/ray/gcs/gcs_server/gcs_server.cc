@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
+#include "ray/util/asio_util.h"
 
 namespace ray {
 namespace gcs {
@@ -285,6 +286,14 @@ std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
 std::unique_ptr<GcsWorkerManager> GcsServer::InitGcsWorkerManager() {
   return std::unique_ptr<GcsWorkerManager>(
       new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
+}
+
+void GcsServer::CollectStats() {
+  gcs_actor_manager_->CollectStats();
+  gcs_placement_group_manager_->CollectStats();
+  execute_after(
+      main_service_, [this] { CollectStats(); },
+      (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 
 }  // namespace gcs

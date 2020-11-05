@@ -224,6 +224,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// to.
   void CleanPlacementGroupIfNeededWhenActorDead(const ActorID &actor_id);
 
+  /// Collect stats from gcs placement group manager in-memory data structures.
+  void CollectStats() const;
+
  private:
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();

@@ -873,10 +873,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
 
-  stats::CurrentWorker().Record(
-      0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
-
   MarkPortAsFree(worker->AssignedPort());
   return RemoveWorker(state.idle, worker);
 }
@@ -884,9 +880,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
-  stats::CurrentDriver().Record(
-      0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
   MarkPortAsFree(driver->AssignedPort());
 }
 
@@ -1038,26 +1031,6 @@ std::string WorkerPool::DebugString() const {
   }
   result << "- num idle workers: " << idle_of_all_languages_.size();
   return result.str();
-}
-
-void WorkerPool::RecordMetrics() const {
-  for (const auto &entry : states_by_lang_) {
-    // Record worker.
-    for (auto worker : entry.second.registered_workers) {
-      stats::CurrentWorker().Record(
-          worker->GetProcess().GetId(),
-          {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
-    }
-
-    // Record driver.
-    for (auto driver : entry.second.registered_drivers) {
-      stats::CurrentDriver().Record(
-          driver->GetProcess().GetId(),
-          {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
-    }
-  }
 }
 
 }  // namespace raylet
