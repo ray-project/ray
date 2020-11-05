@@ -19,6 +19,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
+import ray
 from ray.experimental.internal_kv import _internal_kv_get
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
@@ -120,6 +121,8 @@ def request_resources(num_cpus: Optional[int] = None,
         >>> # Same as requesting 3 CPUs.
         >>> request_resources(bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
+    if not ray.is_initialized():
+        raise RuntimeError("Ray is not initialized yet")
     r = _redis()
     to_request = []
     if num_cpus:
