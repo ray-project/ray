@@ -7,6 +7,7 @@ import logging
 
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -24,8 +25,13 @@ def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
         x = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
         return tf.nest.map_structure(_convert_to_tf, x)
-    if isinstance(x, Policy):
+    elif isinstance(x, Policy):
         return x
+    # Special handling of "Repeated" values.
+    elif isinstance(x, RepeatedValues):
+        return RepeatedValues(
+            tf.nest.map_structure(_convert_to_tf, x.values), x.lengths,
+            x.max_len)
 
     if x is not None:
         d = dtype
@@ -639,7 +645,7 @@ def build_eager_tf_policy(name,
 
         def _lazy_tensor_dict(self, postprocessed_batch):
             train_batch = UsageTrackingDict(postprocessed_batch)
-            train_batch.set_get_interceptor(tf.convert_to_tensor)
+            train_batch.set_get_interceptor(_convert_to_tf)
             return train_batch
 
         def _lazy_numpy_dict(self, postprocessed_batch):

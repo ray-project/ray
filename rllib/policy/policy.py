@@ -14,6 +14,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
+from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -598,16 +599,16 @@ class Policy(metaclass=ABCMeta):
         input_dict = self._lazy_tensor_dict(self._dummy_batch)
         actions, state_outs, extra_outs = \
             self.compute_actions_from_input_dict(input_dict, explore=False)
-        # Add extra outs to view reqs.
+        # Add all extra action outputs to view reqirements (these may be
+        # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
             self._dummy_batch[key] = np.zeros_like(value)
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
-        sb = SampleBatch(self._dummy_batch)
-        batch_for_postproc = self._lazy_numpy_dict(sb)
-        batch_for_postproc.count = sb.count
+        batch_for_postproc = UsageTrackingDict(self._dummy_batch)  #self._lazy_numpy_dict(self._dummy_batch)
+        batch_for_postproc.count = self._dummy_batch.count
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
             # TODO: (sven) This hack will not work for attention net traj.
@@ -623,7 +624,10 @@ class Policy(metaclass=ABCMeta):
             seq_len = (self.batch_divisibility_req // B) or 2
             postprocessed_batch["seq_lens"] = \
                 np.array([seq_len for _ in range(B)], dtype=np.int32)
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Remove the UsageTrackingDict wrap to prep for wrapping the
+        # train batch with a to-tensor UsageTrackingDict.
+        train_batch = {k: v for k, v in postprocessed_batch.items()}
+        train_batch = self._lazy_tensor_dict(train_batch)
         # Call the loss function, if it exists.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
