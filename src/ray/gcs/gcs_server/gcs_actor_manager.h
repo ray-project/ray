@@ -302,7 +302,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Collect stats from gcs actor manager in-memory data structures.
   void CollectStats() const;
 
-  std::string DumpDebugMetrics() const;
+  std::string DebugString() const;
 
  private:
   /// A data structure representing an actor's owner.

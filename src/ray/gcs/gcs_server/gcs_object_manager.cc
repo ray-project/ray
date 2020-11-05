@@ -308,7 +308,7 @@ void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
   RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
 }
 
-std::string GcsObjectManager::DumpDebugMetrics() const {
+std::string GcsObjectManager::DebugString() const {
   absl::MutexLock lock(&mutex_);
   std::ostringstream stream;
   stream << "GcsObjectManager metrics: "

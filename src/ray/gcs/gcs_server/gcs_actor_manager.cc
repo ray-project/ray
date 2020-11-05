@@ -1147,25 +1147,24 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
       actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
 }
 
-std::string GcsActorManager::DumpDebugMetrics() const {
+std::string GcsActorManager::DebugString() const {
   std::ostringstream stream;
-  stream << "GcsActorManager metrics: "
-         << "\n{"
-         << "\nRegisterActor count: " << metrics_[MetricsType::REGISTER_ACTOR]
-         << "\nCreateActor count: " << metrics_[MetricsType::CREATE_ACTOR]
-         << "\nGetActorInfo count: " << metrics_[MetricsType::GET_ACTOR_INFO]
-         << "\nGetNamedActorInfo count: " << metrics_[MetricsType::GET_NAMED_ACTOR_INFO]
-         << "\nRegisterActorInfo count: " << metrics_[MetricsType::REGISTER_ACTOR_INFO]
-         << "\nUpdateActorInfo count: " << metrics_[MetricsType::UPDATE_ACTOR_INFO]
-         << "\nAddActorCheckpoint: " << metrics_[MetricsType::ADD_ACTOR_CHECKPOINT]
-         << "\nGetActorCheckpoint: " << metrics_[MetricsType::GET_ACTOR_CHECKPOINT]
-         << "\nGetActorCheckpointID: " << metrics_[MetricsType::GET_ACTOR_CHECKPOINT_ID]
-         << "\nRegistered actors count: " << registered_actors_.size()
-         << "\nDestroyed actors count: " << destroyed_actors_.size()
-         << "\nNamed actors count: " << named_actors_.size()
-         << "\nUnresolved actors count: " << unresolved_actors_.size()
-         << "\nPending actors count: " << pending_actors_.size()
-         << "\nCreated actors count: " << created_actors_.size() << "\n}";
+  stream << "GcsActorManager metrics: {RegisterActor count: "
+         << metrics_[MetricsType::REGISTER_ACTOR]
+         << ", CreateActor count: " << metrics_[MetricsType::CREATE_ACTOR]
+         << ", GetActorInfo count: " << metrics_[MetricsType::GET_ACTOR_INFO]
+         << ", GetNamedActorInfo count: " << metrics_[MetricsType::GET_NAMED_ACTOR_INFO]
+         << ", RegisterActorInfo count: " << metrics_[MetricsType::REGISTER_ACTOR_INFO]
+         << ", UpdateActorInfo count: " << metrics_[MetricsType::UPDATE_ACTOR_INFO]
+         << ", AddActorCheckpoint: " << metrics_[MetricsType::ADD_ACTOR_CHECKPOINT]
+         << ", GetActorCheckpoint: " << metrics_[MetricsType::GET_ACTOR_CHECKPOINT]
+         << ", GetActorCheckpointID: " << metrics_[MetricsType::GET_ACTOR_CHECKPOINT_ID]
+         << ", Registered actors count: " << registered_actors_.size()
+         << ", Destroyed actors count: " << destroyed_actors_.size()
+         << ", Named actors count: " << named_actors_.size()
+         << ", Unresolved actors count: " << unresolved_actors_.size()
+         << ", Pending actors count: " << pending_actors_.size()
+         << ", Created actors count: " << created_actors_.size() << "}";
   return stream.str();
 }
 

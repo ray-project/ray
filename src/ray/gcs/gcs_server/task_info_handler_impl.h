@@ -48,7 +48,7 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
                                        AttemptTaskReconstructionReply *reply,
                                        SendReplyCallback send_reply_callback) override;
 
-  std::string DumpDebugMetrics() const;
+  std::string DebugString() const;
 
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;

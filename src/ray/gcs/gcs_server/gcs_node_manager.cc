@@ -593,7 +593,7 @@ void GcsNodeManager::SendBatchedHeartbeat() {
   });
 }
 
-std::string GcsNodeManager::DumpDebugMetrics() const {
+std::string GcsNodeManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsNodeManager metrics: "
          << "\n{"

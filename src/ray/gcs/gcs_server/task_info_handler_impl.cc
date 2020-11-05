@@ -178,7 +178,7 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
   ++metrics_[MetricsType::ATTEMPT_TASK_RECONSTRUCTION];
 }
 
-std::string DefaultTaskInfoHandler::DumpDebugMetrics() const {
+std::string DefaultTaskInfoHandler::DebugString() const {
   std::ostringstream stream;
   stream << "DefaultTaskInfoHandler metrics: "
          << "\n{"

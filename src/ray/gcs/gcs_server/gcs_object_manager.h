@@ -59,7 +59,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
-  std::string DumpDebugMetrics() const;
+  std::string DebugString() const;
 
  protected:
   struct LocationSet {
