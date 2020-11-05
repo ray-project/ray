@@ -1041,15 +1041,22 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // didn't restart, it will fetch data again from the GCS server. The GCS will destroy
   // the actor because it finds that the actor is out of scope, so we'll receive another
   // notification of DEAD state.
-  WaitForExpectedCount(num_subscribe_all_notifications, 3);
+  //
   WaitForExpectedCount(num_subscribe_one_notifications, 3);
-  /// NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
-  /// client will register the actor again. When an actor is registered, the status in GCS
-  /// is `DEPENDENCIES_UNREADY`. When GCS finds that the owner of an actor is nil, it will
-  /// destroy the actor and the status of the actor will change to `DEAD`. The GCS client
-  /// fetch actor info from the GCS server, and the status of the actor may be
-  /// `DEPENDENCIES_UNREADY` or `DEAD`, so we do not assert the actor status here any
-  /// more.
+  // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
+  // client will register the actor again. When an actor is registered, the status in GCS
+  // is `DEPENDENCIES_UNREADY`. When GCS finds that the owner of an actor is nil, it will
+  // destroy the actor and the status of the actor will change to `DEAD`. The GCS client
+  // fetch actor info from the GCS server, and the status of the actor may be
+  // `DEPENDENCIES_UNREADY` or `DEAD`, so we do not assert the actor status here any
+  // more.
+  // If the status of the actor is `DEPENDENCIES_UNREADY`, we will fetch two records, so
+  // `num_subscribe_all_notifications` will be 4. If the status of the actor is `DEAD`, we
+  // will fetch one record, so `num_subscribe_all_notifications` will be 3.
+  auto condition = [&num_subscribe_all_notifications]() {
+    return num_subscribe_all_notifications == 3 || num_subscribe_all_notifications == 4;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
