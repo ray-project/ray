@@ -32,6 +32,11 @@ AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
 AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
                                              30)
 
+# The maximum allowed resource demand vector size to guarantee the resource
+# demand scheduler bin packing algorithm takes a reasonable amount of time
+# to run.
+AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = 1000
+
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 # Max number of retries to create an EC2 node (retry different subnet)

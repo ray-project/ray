@@ -492,6 +492,10 @@ cdef execute_task(
                 core_worker.store_task_outputs(
                     worker, outputs, c_return_ids, returns)
         except Exception as error:
+            # If the debugger is enabled, drop into the remote pdb here.
+            if "RAY_PDB" in os.environ:
+                ray.util.pdb.post_mortem()
+
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 worker.mark_actor_init_failed(error)
 

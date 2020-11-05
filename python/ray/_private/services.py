@@ -1,3 +1,4 @@
+import base64
 import collections
 import errno
 import io
@@ -69,6 +70,21 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
 ])
 
 
+def serialize_config(config):
+    config_pairs = []
+    for key, value in config.items():
+        if isinstance(value, str):
+            value = value.encode("utf-8")
+        if isinstance(value, bytes):
+            value = base64.b64encode(value).decode("utf-8")
+        config_pairs.append((key, value))
+    config_str = ";".join(["{},{}".format(*kv) for kv in config_pairs])
+    assert " " not in config_str, (
+        "Config parameters currently do not support "
+        "spaces:", config_str)
+    return config_str
+
+
 class ConsolePopen(subprocess.Popen):
     if sys.platform == "win32":
 
@@ -118,16 +134,20 @@ def find_redis_address(address=None):
             # the first argument.
             # Explanation: https://unix.stackexchange.com/a/432681
             # More info: https://github.com/giampaolo/psutil/issues/1179
-            for arglist in proc.cmdline():
-                # Given we're merely seeking --redis-address, we just split
-                # every argument on spaces for now.
-                for arg in arglist.split(" "):
-                    # TODO(ekl): Find a robust solution for locating Redis.
-                    if arg.startswith("--redis-address="):
-                        proc_addr = arg.split("=")[1]
-                        if address is not None and address != proc_addr:
-                            continue
-                        redis_addresses.add(proc_addr)
+            cmdline = proc.cmdline()
+            # NOTE(kfstorm): To support Windows, we can't use
+            # `os.path.basename(cmdline[0]) == "raylet"` here.
+            if len(cmdline) > 0 and "raylet" in os.path.basename(cmdline[0]):
+                for arglist in cmdline:
+                    # Given we're merely seeking --redis-address, we just split
+                    # every argument on spaces for now.
+                    for arg in arglist.split(" "):
+                        # TODO(ekl): Find a robust solution for locating Redis.
+                        if arg.startswith("--redis-address="):
+                            proc_addr = arg.split("=")[1]
+                            if address is not None and address != proc_addr:
+                                continue
+                            redis_addresses.add(proc_addr)
         except psutil.AccessDenied:
             pass
         except psutil.NoSuchProcess:
@@ -1123,7 +1143,7 @@ def start_gcs_server(redis_address,
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
-    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    config_str = serialize_config(config)
     if gcs_server_port is None:
         gcs_server_port = 0
 
@@ -1178,7 +1198,6 @@ def start_raylet(redis_address,
                  socket_to_use=None,
                  head_node=False,
                  start_initial_python_workers_for_first_job=False,
-                 object_spilling_config=None,
                  code_search_path=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1225,7 +1244,7 @@ def start_raylet(redis_address,
     # The caller must provide a node manager port so that we can correctly
     # populate the command to start a worker.
     assert node_manager_port is not None and node_manager_port != 0
-    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    config_str = serialize_config(config)
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
@@ -1316,10 +1335,6 @@ def start_raylet(redis_address,
 
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
-
-    if object_spilling_config:
-        start_worker_command.append(
-            f"--object-spilling-config={json.dumps(object_spilling_config)}")
 
     # Create agent command
     agent_command = [

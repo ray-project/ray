@@ -643,7 +643,7 @@ class Node:
                 process_info,
             ]
             redis_client = self.create_redis_client()
-            redis_client.hmset("webui", {"url": self._webui_url})
+            redis_client.hset("webui", mapping={"url": self._webui_url})
 
     def start_plasma_store(self, plasma_directory, object_store_memory):
         """Start the plasma store."""
@@ -734,7 +734,6 @@ class Node:
             head_node=self.head,
             start_initial_python_workers_for_first_job=self._ray_params.
             start_initial_python_workers_for_first_job,
-            object_spilling_config=self._ray_params.object_spilling_config,
             code_search_path=self._ray_params.code_search_path)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
