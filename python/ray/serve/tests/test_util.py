@@ -1,7 +1,8 @@
 import asyncio
+import os
 import json
 from copy import deepcopy
-import os
+
 import numpy as np
 import pytest
 

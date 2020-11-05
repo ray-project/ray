@@ -1,6 +1,7 @@
 import atexit
 from functools import wraps
 import random
+import os
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -15,7 +16,6 @@ from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
 from ray.serve.env import CondaEnv
 from ray.actor import ActorHandle
 from typing import Any, Callable, Dict, List, Optional, Type, Union
-import os
 
 _INTERNAL_CONTROLLER_NAME = None
 
