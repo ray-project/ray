@@ -203,7 +203,7 @@ class TFPolicy(Policy):
         # The loss tf-op.
         self._loss = None
         # A batch dict passed into loss function as input.
-        self._loss_input_dict = None
+        self._loss_input_dict = {}
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
 
@@ -239,8 +239,9 @@ class TFPolicy(Policy):
         elif name == SampleBatch.PREV_REWARDS:
             return self._prev_reward_input
 
-        assert self._loss_input_dict is not None, \
-            "Should have set this before get_placeholder can be called"
+        assert self._loss_input_dict, \
+            "You need to populate `self._loss_input_dict` before " \
+            "`get_placeholder()` can be called"
         return self._loss_input_dict[name]
 
     def get_session(self) -> "tf1.Session":

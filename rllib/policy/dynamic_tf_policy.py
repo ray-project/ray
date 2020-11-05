@@ -529,16 +529,16 @@ class DynamicTFPolicy(TFPolicy):
                             dtype=batch_for_postproc[key].dtype))
 
         if not self.config["_use_trajectory_view_api"]:
+            train_batch = UsageTrackingDict(dict({
+                SampleBatch.CUR_OBS: self._obs_input,
+            }, **self._loss_input_dict))
             if self._obs_include_prev_action_reward:
-                train_batch = UsageTrackingDict({
+                train_batch.update({
                     SampleBatch.PREV_ACTIONS: self._prev_action_input,
                     SampleBatch.PREV_REWARDS: self._prev_reward_input,
-                    SampleBatch.CUR_OBS: self._obs_input,
+                    #SampleBatch.CUR_OBS: self._obs_input,
                 })
-            else:
-                train_batch = UsageTrackingDict({
-                    SampleBatch.CUR_OBS: self._obs_input,
-                })
+            #else:
 
             for k, v in postprocessed_batch.items():
                 if k in train_batch:
@@ -565,7 +565,7 @@ class DynamicTFPolicy(TFPolicy):
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(train_batch)))
 
-        self._loss_input_dict = {k: v for k, v in train_batch.items()}
+        self._loss_input_dict.update({k: v for k, v in train_batch.items()})
         loss = self._do_loss_init(train_batch)
 
         all_accessed_keys = \

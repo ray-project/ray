@@ -310,12 +310,6 @@ class MAMLLoss(object):
 
 def maml_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
-
-    policy._loss_input_dict["split"] = tf1.placeholder(
-        tf.int32,
-        name="Meta-Update-Splitting",
-        shape=(policy.config["inner_adaptation_steps"] + 1,
-               policy.config["num_workers"]))
     policy.cur_lr = policy.config["lr"]
 
     if policy.config["worker_index"]:
@@ -339,8 +333,8 @@ def maml_loss(policy, model, dist_class, train_batch):
                                              tf1.get_variable_scope().name)
         # `split` may not exist yet (during test-loss call), use a dummy value.
         # Cannot use get here due to train_batch being a TrackingDict.
-        split = train_batch["split"] if "split" in train_batch else \
-            np.array([[1, 1], [1, 1]])
+        #split = train_batch["split"] if "split" in train_batch else \
+        #    np.array([[1, 1], [1, 1]])
         policy.loss_obj = MAMLLoss(
             model=model,
             dist_class=dist_class,
@@ -353,7 +347,7 @@ def maml_loss(policy, model, dist_class, train_batch):
             policy_vars=policy.var_list,
             obs=train_batch[SampleBatch.CUR_OBS],
             num_tasks=policy.config["num_workers"],
-            split=split,
+            split=train_batch["split"],
             config=policy.config,
             inner_adaptation_steps=policy.config["inner_adaptation_steps"],
             entropy_coeff=policy.config["entropy_coeff"],
@@ -417,6 +411,13 @@ def maml_optimizer_fn(policy, config):
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     KLCoeffMixin.__init__(policy, config)
+
+    # Create the `split` placeholder.
+    policy._loss_input_dict["split"] = tf1.placeholder(
+        tf.int32,
+        name="Meta-Update-Splitting",
+        shape=(policy.config["inner_adaptation_steps"] + 1,
+               policy.config["num_workers"]))
 
 
 MAMLTFPolicy = build_tf_policy(
