@@ -16,9 +16,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
-enum Type {
-  DEFAULT = 0;
-}
+enum Type { DEFAULT = 0; }
 
 message Arg {
   enum Locality {
@@ -32,10 +30,10 @@ message Arg {
 }
 
 message ClientTask {
-    // Optionally Provided Task Name
-    string name = 1;
-    bytes payload_id = 2;
-    repeated Arg args = 3;
+  // Optionally Provided Task Name
+  string name = 1;
+  bytes payload_id = 2;
+  repeated Arg args = 3;
 }
 
 message ClientTaskTicket {
@@ -60,7 +58,10 @@ message GetResponse {
 }
 
 service RayletDriver {
-  rpc GetObject(GetRequest) returns (GetResponse) {}
-  rpc PutObject(PutRequest) returns (PutResponse) {}
-  rpc Schedule(ClientTask) returns (ClientTaskTicket) {}
+  rpc GetObject(GetRequest) returns (GetResponse) {
+  }
+  rpc PutObject(PutRequest) returns (PutResponse) {
+  }
+  rpc Schedule(ClientTask) returns (ClientTaskTicket) {
+  }
 }
