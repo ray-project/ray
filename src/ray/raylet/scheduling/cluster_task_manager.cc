@@ -227,60 +227,59 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
 
 void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
                                    std::shared_ptr<HeartbeatTableData> data) const {
+  // TODO (WangTao): Find a way to check if load changed and combine it with light
+  // heartbeat. Now we just report it every time.
+  data->set_resource_load_changed(true);
   auto resource_loads = data->mutable_resource_load();
   auto resource_load_by_shape =
       data->mutable_resource_load_by_shape()->mutable_resource_demands();
 
-  if (light_heartbeat_enabled) {
-    RAY_CHECK(false) << "TODO";
-  } else {
-    // TODO (Alex): Implement the 1-CPU task optimization.
-    for (const auto &pair : tasks_to_schedule_) {
-      const auto &scheduling_class = pair.first;
-      const auto &resources =
-          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-              .GetResourceMap();
-      const auto &queue = pair.second;
-      const auto &count = queue.size();
+  // TODO (Alex): Implement the 1-CPU task optimization.
+  for (const auto &pair : tasks_to_schedule_) {
+    const auto &scheduling_class = pair.first;
+    const auto &resources =
+        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+            .GetResourceMap();
+    const auto &queue = pair.second;
+    const auto &count = queue.size();
 
-      auto by_shape_entry = resource_load_by_shape->Add();
+    auto by_shape_entry = resource_load_by_shape->Add();
 
-      for (const auto &resource : resources) {
-        // Add to `resource_loads`.
-        const auto &label = resource.first;
-        const auto &quantity = resource.second;
-        (*resource_loads)[label] += quantity * count;
+    for (const auto &resource : resources) {
+      // Add to `resource_loads`.
+      const auto &label = resource.first;
+      const auto &quantity = resource.second;
+      (*resource_loads)[label] += quantity * count;
 
-        // Add to `resource_load_by_shape`.
-        (*by_shape_entry->mutable_shape())[label] = quantity;
-        // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
-        // that the entire cluster is utilized.
-        by_shape_entry->set_num_infeasible_requests_queued(count);
-      }
+      // Add to `resource_load_by_shape`.
+      (*by_shape_entry->mutable_shape())[label] = quantity;
+      // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
+      // that the entire cluster is utilized.
+      by_shape_entry->set_num_infeasible_requests_queued(count);
     }
+  }
 
-    for (const auto &pair : tasks_to_dispatch_) {
-      const auto &scheduling_class = pair.first;
-      const auto &resources =
-          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-              .GetResourceMap();
-      const auto &queue = pair.second;
-      const auto &count = queue.size();
+  for (const auto &pair : tasks_to_dispatch_) {
+    const auto &scheduling_class = pair.first;
+    const auto &resources =
+        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+            .GetResourceMap();
+    const auto &queue = pair.second;
+    const auto &count = queue.size();
 
-      auto by_shape_entry = resource_load_by_shape->Add();
+    auto by_shape_entry = resource_load_by_shape->Add();
 
-      for (const auto &resource : resources) {
-        // Add to `resource_loads`.
-        const auto &label = resource.first;
-        const auto &quantity = resource.second;
-        (*resource_loads)[label] += quantity * count;
+    for (const auto &resource : resources) {
+      // Add to `resource_loads`.
+      const auto &label = resource.first;
+      const auto &quantity = resource.second;
+      (*resource_loads)[label] += quantity * count;
 
-        // Add to `resource_load_by_shape`.
-        (*by_shape_entry->mutable_shape())[label] = quantity;
-        // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
-        // that the entire cluster is utilized.
-        by_shape_entry->set_num_ready_requests_queued(count);
-      }
+      // Add to `resource_load_by_shape`.
+      (*by_shape_entry->mutable_shape())[label] = quantity;
+      // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
+      // that the entire cluster is utilized.
+      by_shape_entry->set_num_ready_requests_queued(count);
     }
   }
 }
