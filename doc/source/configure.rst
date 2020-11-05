@@ -156,6 +156,10 @@ the head node, you will repeatedly get
 
 (Also, you will not be able to access the dashboard.)
 
+If you see that error, check whether the ``--dashboard-port`` is accessible
+with ``nc`` or ``nmap`` (or your browser). If you don't want the dashboard, set
+``--include-dashboard=false``.
+
 Redis Port Authentication
 -------------------------
 
