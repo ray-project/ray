@@ -145,7 +145,7 @@ the head node, you will repeatedly get
 
 .. code-block:: bash
 
-  WARNING worker.py:1114 -- The agent on node runner-psehzuf-project-12345-concurrent-0 failed with the following error:
+  WARNING worker.py:1114 -- The agent on node <hostname of node that tried to run a task> failed with the following error:
   Traceback (most recent call last):
     File "/usr/local/lib/python3.8/dist-packages/grpc/aio/_call.py", line 285, in __await__
       raise _create_rpc_error(self._cython_call._initial_metadata,
