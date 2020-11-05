@@ -123,6 +123,8 @@ struct CoreWorkerOptions {
   std::string stderr_file;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
+  /// The callback to be called when shutting down a `CoreWorker` instance.
+  std::function<void(const WorkerID &)> on_worker_shutdown;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
@@ -350,12 +352,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
-  ClientID GetCurrentNodeId() const {
-    return ClientID::FromBinary(rpc_address_.raylet_id());
-  }
+  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
+  }
+
+  bool ShouldCaptureChildTasksInPlacementGroup() const {
+    return worker_context_.ShouldCaptureChildTasksInPlacementGroup();
   }
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
@@ -617,10 +621,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Sets a resource with the specified capacity and client id
   /// \param[in] resource_name Name of the resource to be set.
   /// \param[in] capacity Capacity of the resource.
-  /// \param[in] client_Id ClientID where the resource is to be set.
+  /// \param[in] client_Id NodeID where the resource is to be set.
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
-                     const ClientID &client_id);
+                     const NodeID &client_id);
 
   /// Request an object to be spilled to external storage.
   /// \param[in] object_ids The objects to be spilled.
@@ -630,21 +634,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// to spill the object.
   Status SpillObjects(const std::vector<ObjectID> &object_ids);
 
-  /// Restore objects from external storage.
-  /// \param[in] object_ids The objects to be restored.
-  /// \return Status
-  Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
-
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
+  /// \param[in] max_retires max number of retry when the task fails.
+  /// \param[in] placement_options placement group options.
+  /// \param[in] placement_group_capture_child_tasks whether or not the submitted task
+  /// should capture parent's placement group implicilty.
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries, PlacementOptions placement_options);
+                  int max_retries, PlacementOptions placement_options,
+                  bool placement_group_capture_child_tasks);
 
   /// Create an actor.
   ///
@@ -883,6 +887,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                    rpc::RestoreSpilledObjectsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  // Make the this worker exit.
+  void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
+                  rpc::SendReplyCallback send_reply_callback) override;
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -895,7 +903,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   using SetResultCallback =
       std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
 
-  /// Perform async get from in-memory store.
+  /// Perform async get from the object store.
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
@@ -903,12 +911,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
-
-  /// Subscribe to receive notification of an object entering the plasma store.
-  ///
-  /// \param[in] object_id The object to wait for.
-  /// \return void
-  void SubscribeToPlasmaAdd(const ObjectID &object_id);
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);

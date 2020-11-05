@@ -17,7 +17,7 @@ from ray.tune.error import TuneError
 from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
     CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +91,11 @@ class Analysis:
         Returns:
             pd.DataFrame: Constructed from a result dict of each trial.
         """
-        metric = self._validate_metric(metric)
-        mode = self._validate_mode(mode)
+        # Allow None values here.
+        if metric or self.default_metric:
+            metric = self._validate_metric(metric)
+        if mode or self.default_mode:
+            mode = self._validate_mode(mode)
 
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs(prefix=True)

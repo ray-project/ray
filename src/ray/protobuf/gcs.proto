@@ -79,10 +79,8 @@ message GcsEntry {
 }
 
 message ObjectTableData {
-  // The size of the object.
-  uint64 object_size = 1;
   // The node manager ID that this object appeared on or was evicted by.
-  bytes manager = 2;
+  bytes manager = 1;
 }
 
 message TaskReconstructionData {
@@ -140,7 +138,7 @@ message ActorTableData {
   bool is_detached = 11;
   // Name of the actor. Only populated if is_detached is true.
   string name = 12;
-  // Timestamp that the actor is created or reconstructed.
+  // Last timestamp that the actor state was updated.
   double timestamp = 13;
   // The task specification of this actor's creation task.
   TaskSpec task_spec = 14;
@@ -183,6 +181,16 @@ message PlacementGroupTableData {
   PlacementStrategy strategy = 4;
   // Current state of this placement group.
   PlacementGroupState state = 5;
+  // Fields to detect the owner of the placement group
+  // for automatic lifecycle management.
+  // The job id that created this placement group.
+  bytes creator_job_id = 6;
+  // The actor id that created this placement group.
+  bytes creator_actor_id = 7;
+  // Whether or not if the creator job is dead.
+  bool creator_job_dead = 8;
+  // Whether or not if the creator actor is dead.
+  bool creator_actor_dead = 9;
 }
 
 message ScheduleData {
@@ -222,6 +230,13 @@ message ResourceTableData {
   double resource_capacity = 1;
 }
 
+message AvailableResources {
+  // Node manager client id.
+  bytes node_id = 1;
+  // Resource capacity currently available on this node manager.
+  map<string, double> resources_available = 2;
+}
+
 message GcsNodeInfo {
   // State of a node.
   enum GcsNodeState {
@@ -254,6 +269,8 @@ message GcsNodeInfo {
 
   // The port at which the node will expose metrics to.
   int32 metrics_export_port = 9;
+  // Timestamp that the node is dead.
+  int64 timestamp = 10;
 }
 
 // Represents the demand for a particular resource shape.
@@ -267,6 +284,9 @@ message ResourceDemand {
   // The number of requests for which there is no node that is a superset of
   // the requested resource shape.
   uint64 num_infeasible_requests_queued = 3;
+  // The number of requests of this shape still queued in CoreWorkers that this
+  // raylet knows about.
+  int64 backlog_size = 4;
 }
 
 // Represents the demand sorted by resource shape.
@@ -276,21 +296,30 @@ message ResourceLoad {
   repeated ResourceDemand resource_demands = 1;
 }
 
+message PlacementGroupLoad {
+  // The list of pending placement group specifications.
+  repeated PlacementGroupTableData placement_group_data = 1;
+}
+
 message HeartbeatTableData {
   // Node manager client id
   bytes client_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
+  // Indicates whether avaialbe resources is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_available_changed = 3;
   // Total resource capacity configured for this node manager.
-  map<string, double> resources_total = 3;
+  map<string, double> resources_total = 4;
   // Aggregate outstanding resource load on this node manager.
-  map<string, double> resource_load = 4;
+  map<string, double> resource_load = 5;
+  // Indicates whether resource load is changed. Only used when
+  // light heartbeat enabled.
+  bool resource_load_changed = 6;
   // The resource load on this node, sorted by resource shape.
-  ResourceLoad resource_load_by_shape = 5;
-  // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 6;
+  ResourceLoad resource_load_by_shape = 7;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 7;
+  bool should_global_gc = 8;
 }
 
 message HeartbeatBatchTableData {
@@ -298,6 +327,8 @@ message HeartbeatBatchTableData {
   // The total resource demand on all nodes included in the batch, sorted by
   // resource shape.
   ResourceLoad resource_load_by_shape = 2;
+  // The pending list of placement groups.
+  PlacementGroupLoad placement_group_load = 3;
 }
 
 // Data for a lease on task execution.
@@ -397,19 +428,22 @@ message StoredConfig {
   map<string, string> config = 1;
 }
 
-message ObjectTableDataList {
-  repeated ObjectTableData items = 1;
-}
-
 message ObjectLocationInfo {
   bytes object_id = 1;
   repeated ObjectTableData locations = 2;
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 3;
 }
 
 // A notification message about one object's locations being changed.
 message ObjectLocationChange {
   bool is_add = 1;
-  ObjectTableData data = 2;
+  // The node manager ID that this object appeared on or was evicted by.
+  bytes node_id = 2;
+  // The object has been spilled to this URL. This should be set xor the above
+  // fields are set.
+  string spilled_url = 3;
 }
 
 // A notification message about one node's resources being changed.

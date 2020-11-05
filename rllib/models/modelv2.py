@@ -60,9 +60,11 @@ class ModelV2:
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
         self.inference_view_requirements = {
-            SampleBatch.OBS: ViewRequirement(shift=0),
+            SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
+    # TODO: (sven): Get rid of `get_initial_state` once Trajectory
+    #  View API is supported across all of RLlib.
     @PublicAPI
     def get_initial_state(self) -> List[np.ndarray]:
         """Get the initial recurrent state values for the model.

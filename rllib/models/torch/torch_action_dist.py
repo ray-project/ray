@@ -5,7 +5,7 @@ import tree
 import gym
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
@@ -22,9 +22,13 @@ class TorchDistributionWrapper(ActionDistribution):
     """Wrapper class for torch.distributions."""
 
     @override(ActionDistribution)
-    def __init__(self, inputs: List[TensorType], model: ModelV2):
+    def __init__(self, inputs: List[TensorType], model: TorchModelV2):
+        # If inputs are not a torch Tensor, make them one and make sure they
+        # are on the correct device.
         if not isinstance(inputs, torch.Tensor):
-            inputs = torch.Tensor(inputs)
+            inputs = torch.from_numpy(inputs)
+            if isinstance(model, TorchModelV2):
+                inputs = inputs.to(next(model.parameters()).device)
         super().__init__(inputs, model)
         # Store the last sample here.
         self.last_sample = None
@@ -58,7 +62,7 @@ class TorchCategorical(TorchDistributionWrapper):
     @override(ActionDistribution)
     def __init__(self,
                  inputs: List[TensorType],
-                 model: ModelV2 = None,
+                 model: TorchModelV2 = None,
                  temperature: float = 1.0):
         if temperature != 1.0:
             assert temperature > 0.0, \
@@ -85,7 +89,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
     @override(TorchDistributionWrapper)
-    def __init__(self, inputs: List[TensorType], model: ModelV2,
+    def __init__(self, inputs: List[TensorType], model: TorchModelV2,
                  input_lens: Union[List[int], np.ndarray, Tuple[int, ...]]):
         super().__init__(inputs, model)
         # If input_lens is np.ndarray or list, force-make it a tuple.
@@ -150,7 +154,7 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     """Wrapper class for PyTorch Normal distribution."""
 
     @override(ActionDistribution)
-    def __init__(self, inputs: List[TensorType], model: ModelV2):
+    def __init__(self, inputs: List[TensorType], model: TorchModelV2):
         super().__init__(inputs, model)
         mean, log_std = torch.chunk(self.inputs, 2, dim=1)
         self.dist = torch.distributions.normal.Normal(mean, torch.exp(log_std))
@@ -189,7 +193,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     def __init__(self,
                  inputs: List[TensorType],
-                 model: ModelV2,
+                 model: TorchModelV2,
                  low: float = -1.0,
                  high: float = 1.0):
         """Parameterizes the distribution via `inputs`.
@@ -274,7 +278,7 @@ class TorchBeta(TorchDistributionWrapper):
 
     def __init__(self,
                  inputs: List[TensorType],
-                 model: ModelV2,
+                 model: TorchModelV2,
                  low: float = 0.0,
                  high: float = 1.0):
         super().__init__(inputs, model)
@@ -358,8 +362,8 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
         Args:
             inputs (torch.Tensor): A single tensor of shape [BATCH, size].
-            model (ModelV2): The ModelV2 object used to produce inputs for this
-                distribution.
+            model (TorchModelV2): The TorchModelV2 object used to produce
+                inputs for this distribution.
             child_distributions (any[torch.Tensor]): Any struct
                 that contains the child distribution classes to use to
                 instantiate the child distributions from `inputs`. This could
@@ -371,14 +375,16 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
                 and possibly nested action space.
         """
         if not isinstance(inputs, torch.Tensor):
-            inputs = torch.Tensor(inputs)
+            inputs = torch.from_numpy(inputs)
+            if isinstance(model, TorchModelV2):
+                inputs = inputs.to(next(model.parameters()).device)
         super().__init__(inputs, model)
 
         self.action_space_struct = get_base_struct_from_space(action_space)
 
-        input_lens = tree.flatten(input_lens)
+        self.input_lens = tree.flatten(input_lens)
         flat_child_distributions = tree.flatten(child_distributions)
-        split_inputs = torch.split(inputs, input_lens, dim=1)
+        split_inputs = torch.split(inputs, self.input_lens, dim=1)
         self.flat_child_distributions = tree.map_structure(
             lambda dist, input_: dist(input_, model), flat_child_distributions,
             list(split_inputs))
@@ -445,3 +451,7 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         for c in self.flat_child_distributions[1:]:
             p += c.sampled_action_logp()
         return p
+
+    @override(ActionDistribution)
+    def required_model_output_shape(self, action_space, model_config):
+        return np.sum(self.input_lens)

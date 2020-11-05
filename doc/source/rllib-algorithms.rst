@@ -45,17 +45,24 @@ Algorithm                     Frameworks Discrete Actions        Continuous Acti
 `Shared Critic Methods`_       Depends on bootstrapped algorithm
 ============================= =======================================================================================
 
+Exploration-based plug-ins (can be combined with any algo)
 
-.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
-.. _`+RNN`: rllib-models.html#recurrent-models
-.. _`+Transformer`: rllib-models.html#attention-networks
+============================= ========== ======================= ================== =========== =====================
+Algorithm                     Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
+============================= ========== ======================= ================== =========== =====================
+`Curiosity`_                  torch      **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
+============================= ========== ======================= ================== =========== =====================
+
 .. _`A2C, A3C`: rllib-algorithms.html#a3c
 .. _`APEX-DQN`: rllib-algorithms.html#apex
 .. _`APEX-DDPG`: rllib-algorithms.html#apex
-.. _`Rainbow`: rllib-algorithms.html#dqn
-.. _`TD3`: rllib-algorithms.html#ddpg
 .. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
 .. _`+LSTM auto-wrapping`: rllib-models.html#built-in-models
+.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
+.. _`Rainbow`: rllib-algorithms.html#dqn
+.. _`+RNN`: rllib-models.html#recurrent-models
+.. _`TD3`: rllib-algorithms.html#ddpg
+.. _`+Transformer`: rllib-models.html#attention-networks
 
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -487,7 +494,7 @@ Hopper         620           ~650
 Dreamer
 -------
 |pytorch|
-`[paper] <https://arxiv.org/abs/1912.016030>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dreamer/dreamer.py>`__
+`[paper] <https://arxiv.org/abs/1912.01603>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dreamer/dreamer.py>`__
 
 Dreamer is an image-only model-based RL method that learns by imagining trajectories in the future and is evaluated on the DeepMind Control Suite `environments <https://github.com/ray-project/ray/blob/master/rllib/examples/env/dm_control_suite.py>`__. RLlib's Dreamer is adapted from the `official Google research repo <https://github.com/google-research/dreamer>`__.
 
@@ -647,8 +654,8 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 Linear Thompson Sampling (contrib/LinTS)
 ----------------------------------------
 |pytorch|
-`[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__ `[implementation]
-<https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ts.py>`__
+`[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ts.py>`__
 Like LinUCB, LinTS also assumes a linear dependency between the expected
 reward of an action and its context and uses online ridge regression to
 estimate the Q values of actions given the context. It assumes a Gaussian
@@ -693,7 +700,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 
 Multi-Agent Methods
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 .. _qmix:
 
@@ -741,8 +748,78 @@ Fully Independent Learning
 Tuned examples: `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__, `multiagent-cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
 Shared Critic Methods
---------------------------
+---------------------
 
 `[instructions] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic>`__ Shared critic methods are when all agents use a single parameter shared critic network (in some cases with access to more of the observation space than agents can see). Note that many specialized multi-agent algorithms such as MADDPG are mostly shared critic forms of their single-agent algorithm (DDPG in the case of MADDPG).
 
 Tuned examples: `TwoStepGame <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__
+
+
+Exploration-based plug-ins (can be combined with any algo)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _Curiosity:
+
+Curiosity (ICM: Intrinsic Curiosity Module)
+-------------------------------------------
+
+|pytorch|
+`[paper] <https://arxiv.org/pdf/1705.05363.pdf>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/curiosity.py>`__
+
+Tuned examples:
+`Pyramids (Unity3D) <https://github.com/ray-project/ray/blob/master/rllib/examples/unity3d_env_local.py>`__ (use ``--env Pyramids`` command line option)
+`Test case with MiniGrid example <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/tests/test_curiosity.py#L184>`__ (UnitTest case: ``test_curiosity_on_partially_observable_domain``)
+
+**Activating Curiosity**
+The curiosity plugin can be easily activated by specifying it as the Exploration class to-be-used
+in the main Trainer config. Most of its parameters usually do not have to be specified
+as the module uses the values from the paper by default. For example:
+
+.. code-block:: python
+
+    config = ppo.DEFAULT_CONFIG.copy()
+    config["num_workers"] = 0
+    config["exploration_config"] = {
+        "type": "Curiosity",  # <- Use the Curiosity module for exploring.
+        "eta": 1.0,  # Weight for intrinsic rewards before being added to extrinsic ones.
+        "lr": 0.001,  # Learning rate of the curiosity (ICM) module.
+        "feature_dim": 288,  # Dimensionality of the generated feature vectors.
+        # Setup of the feature net (used to encode observations into feature (latent) vectors).
+        "feature_net_config": {
+            "fcnet_hiddens": [],
+            "fcnet_activation": "relu",
+        },
+        "inverse_net_hiddens": [256],  # Hidden layers of the "inverse" model.
+        "inverse_net_activation": "relu",  # Activation of the "inverse" model.
+        "forward_net_hiddens": [256],  # Hidden layers of the "forward" model.
+        "forward_net_activation": "relu",  # Activation of the "forward" model.
+        "beta": 0.2,  # Weight for the "forward" loss (beta) over the "inverse" loss (1.0 - beta).
+        # Specify, which exploration sub-type to use (usually, the algo's "default"
+        # exploration, e.g. EpsilonGreedy for DQN, StochasticSampling for PG/SAC).
+        "sub_exploration": {
+            "type": "StochasticSampling",
+        }
+    }
+
+**Functionality**
+RLlib's Curiosity is based on `"ICM" (intrinsic curiosity module) described in this paper here <https://https://arxiv.org/pdf/1705.05363.pdf>`__.
+It allows agents to learn in sparse-reward- or even no-reward environments by
+calculating so-called "intrinsic rewards", purely based on the information content that is incoming via the observation channel.
+Sparse-reward environments are envs where almost all reward signals are 0.0, such as these `[MiniGrid env examples here] <https://github.com/maximecb/gym-minigrid>`__.
+In such environments, agents have to navigate (and change the underlying state of the environment) over long periods of time, without receiving much (or any) feedback.
+For example, the task could be to find a key in some room, pick it up, find a matching door (matching the color of the key), and eventually unlock this door with the key to reach a goal state,
+all the while not seeing any rewards.
+Such problems are impossible to solve with standard RL exploration methods like epsilon-greedy or stochastic sampling.
+The Curiosity module - when configured as the Exploration class to use via the Trainer's config (see above on how to do this) - automatically adds three simple models to the Policy's ``self.model``:
+a) a latent space learning ("feature") model, taking an environment observation and outputting a latent vector, which represents this observation and
+b) a "forward" model, predicting the next latent vector, given the current observation vector and an action to take next.
+c) a so-called "inverse" net, only used to train the "feature" net. The inverse net tries to predict the action taken between two latent vectors (obs and next obs).
+
+All the above extra Models are trained inside the ``postprocess_trajectory()`` call.
+
+Using the (ever changing) "forward" model, our Curiosity module calculates an artificial (intrinsic) reward signal, weights it via the ``eta`` parameter, and then adds it to the environment's (extrinsic) reward.
+Intrinsic rewards for each env-step are calculated by taking the euclidian distance between the latent-space encoded next observation ("feature" model) and the **predicted** latent-space encoding for the next observation
+("forward" model).
+This allows the agent to explore areas of the environment, where the "forward" model still performs poorly (are not "understood" yet), whereas exploration to these areas will taper down after the agent has visited them
+often: The "forward" model will eventually get better at predicting these next latent vectors, which in turn will diminish the intrinsic rewards (decrease the euclidian distance between predicted and actual vectors).

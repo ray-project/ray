@@ -81,7 +81,7 @@ class DashboardController(BaseDashboardController):
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
         workers_info_by_node = {
-            data["nodeId"]: data.get("workersStats")
+            data["nodeId"]: data.get("coreWorkersStats")
             for data in D.values()
         }
 
@@ -811,7 +811,7 @@ class TuneCollector(threading.Thread):
 
         # search through all the sub_directories in log directory
         analysis = Analysis(str(self._logdir))
-        df = analysis.dataframe(metric="episode_reward_mean", mode="max")
+        df = analysis.dataframe(metric=None, mode=None)
 
         if len(df) == 0 or "trial_id" not in df.columns:
             return

@@ -25,6 +25,12 @@
 using MessageType = ray::protocol::MessageType;
 
 namespace {
+inline flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
+    flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
+  return ray::protocol::CreateAddress(
+      fbb, fbb.CreateString(address.raylet_id()), fbb.CreateString(address.ip_address()),
+      address.port(), fbb.CreateString(address.worker_id()));
+}
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>>
 AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
@@ -32,10 +38,7 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
   std::vector<flatbuffers::Offset<ray::protocol::Address>> address_vec;
   address_vec.reserve(addresses.size());
   for (const auto &addr : addresses) {
-    auto fbb_addr = ray::protocol::CreateAddress(
-        fbb, fbb.CreateString(addr.raylet_id()), fbb.CreateString(addr.ip_address()),
-        addr.port(), fbb.CreateString(addr.worker_id()));
-    address_vec.push_back(fbb_addr);
+    address_vec.push_back(to_flatbuf(fbb, addr));
   }
   return fbb.CreateVector(address_vec);
 }
@@ -82,7 +85,7 @@ raylet::RayletClient::RayletClient(
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
-    const std::string &ip_address, Status *status, ClientID *raylet_id, int *port,
+    const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
     std::unordered_map<std::string, std::string> *system_config,
     const std::string &job_config)
     : grpc_client_(std::move(grpc_client)),
@@ -120,7 +123,7 @@ raylet::RayletClient::RayletClient(
     *status = Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
     return;
   }
-  *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
+  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
   RAY_CHECK(system_config);
@@ -306,8 +309,7 @@ Status raylet::RayletClient::NotifyActorResumedFromCheckpoint(
 }
 
 Status raylet::RayletClient::SetResource(const std::string &resource_name,
-                                         const double capacity,
-                                         const ClientID &client_Id) {
+                                         const double capacity, const NodeID &client_Id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
                                                     capacity, to_flatbuf(fbb, client_Id));
@@ -317,9 +319,11 @@ Status raylet::RayletClient::SetResource(const std::string &resource_name,
 
 void raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
-    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
+    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+    const int64_t backlog_size) {
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  request.set_backlog_size(backlog_size);
   grpc_client_->RequestWorkerLease(request, callback);
 }
 
@@ -330,23 +334,6 @@ void raylet::RayletClient::RequestObjectSpillage(
   rpc::RequestObjectSpillageRequest request;
   request.set_object_id(object_id.Binary());
   grpc_client_->RequestObjectSpillage(request, callback);
-}
-
-/// Restore spilled objects from external storage.
-/// \param object_ids The IDs of objects to be restored.
-Status raylet::RayletClient::ForceRestoreSpilledObjects(
-    const std::vector<ObjectID> &object_ids) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateForceRestoreSpilledObjectsRequest(fbb, to_flatbuf(fbb, object_ids));
-  fbb.Finish(message);
-  std::vector<uint8_t> reply;
-  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(
-      MessageType::ForceRestoreSpilledObjectsRequest,
-      MessageType::ForceRestoreSpilledObjectsReply, &reply, &fbb));
-  RAY_UNUSED(
-      flatbuffers::GetRoot<protocol::ForceRestoreSpilledObjectsReply>(reply.data()));
-  return Status::OK();
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
@@ -432,11 +419,14 @@ void raylet::RayletClient::GlobalGC(
   grpc_client_->GlobalGC(request, callback);
 }
 
-Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
+void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
+                                             const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
+  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id),
+                                                      to_flatbuf(fbb, owner_address));
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
+
+  RAY_CHECK_OK(conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb));
 }
 
 }  // namespace ray

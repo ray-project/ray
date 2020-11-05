@@ -27,6 +27,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
 
         activation = self.model_config.get("conv_activation")
         filters = self.model_config["conv_filters"]
+        assert len(filters) > 0,\
+            "Must provide at least 1 entry in `conv_filters`!"
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
 

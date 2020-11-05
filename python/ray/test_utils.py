@@ -207,10 +207,13 @@ def run_string_as_driver_nonblocking(driver_script):
     return proc
 
 
-def wait_for_num_actors(num_actors, timeout=10):
+def wait_for_num_actors(num_actors, state=None, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if len(ray.actors()) >= num_actors:
+        if len([
+                _ for _ in ray.actors().values()
+                if state is None or _["State"] == state
+        ]) >= num_actors:
             return
         time.sleep(0.1)
     raise RayTestTimeoutException("Timed out while waiting for global state.")
@@ -436,3 +439,7 @@ def format_web_url(url):
     if not url.startswith("http://"):
         return "http://" + url
     return url
+
+
+def new_scheduler_enabled():
+    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER") == "1"

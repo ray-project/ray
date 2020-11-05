@@ -13,11 +13,10 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
 from ray.autoscaler._private.command_runner import NODE_START_WAIT_S, \
     ProcessRunnerError
 from ray.autoscaler._private.log_timer import LogTimer
-from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
-
-from ray import ray_constants
-import colorful as cf
+from ray.autoscaler._private.constants import \
+     RESOURCES_ENVIRONMENT_VARIABLE
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +39,7 @@ class NodeUpdater:
         runtime_hash: Used to check for config changes
         file_mounts_contents_hash: Used to check for changes to file mounts
         is_head_node: Whether to use head start/setup commands
+        rsync_options: Extra options related to the rsync command.
         process_runner: the module to use to run the commands
             in the CommandRunner. E.g., subprocess.
         use_internal_ip: Wwhether the node_id belongs to an internal ip
@@ -62,6 +62,7 @@ class NodeUpdater:
                  is_head_node,
                  node_resources=None,
                  cluster_synced_files=None,
+                 rsync_options=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None):
@@ -74,7 +75,6 @@ class NodeUpdater:
             process_runner, use_internal_ip, docker_config)
 
         self.daemon = True
-        self.process_runner = process_runner
         self.node_id = node_id
         self.provider = provider
         # Some node providers don't specify empty structures as
@@ -99,14 +99,12 @@ class NodeUpdater:
         self.cluster_synced_files = [
             os.path.expanduser(path) for path in cluster_synced_files
         ]
+        self.rsync_options = rsync_options or {}
         self.auth_config = auth_config
         self.is_head_node = is_head_node
         self.docker_config = docker_config
 
     def run(self):
-        cli_logger.old_info(logger, "{}Updating to {}", self.log_prefix,
-                            self.runtime_hash)
-
         if cmd_output_util.does_allow_interactive(
         ) and cmd_output_util.is_output_redirected():
             # this is most probably a bug since the user has no control
@@ -122,17 +120,9 @@ class NodeUpdater:
                           "Applied config {}".format(self.runtime_hash)):
                 self.do_update()
         except Exception as e:
-            error_str = str(e)
-            if hasattr(e, "cmd"):
-                error_str = "(Exit Status {}) {}".format(
-                    e.returncode, " ".join(e.cmd))
-
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
             cli_logger.error("New status: {}", cf.bold(STATUS_UPDATE_FAILED))
-
-            cli_logger.old_error(logger, "{}Error executing: {}\n",
-                                 self.log_prefix, error_str)
 
             cli_logger.error("!!!")
             if hasattr(e, "cmd"):
@@ -201,7 +191,8 @@ class NodeUpdater:
                     self.cmd_runner.run(
                         "mkdir -p {}".format(os.path.dirname(remote_path)),
                         run_env="host")
-                sync_cmd(local_path, remote_path, file_mount=True)
+                sync_cmd(
+                    local_path, remote_path, docker_mount_if_possible=True)
 
                 if remote_path not in nolog_paths:
                     # todo: timed here?
@@ -234,21 +225,15 @@ class NodeUpdater:
         with cli_logger.group(
                 "Waiting for SSH to become available", _numbered=("[]", 1, 6)):
             with LogTimer(self.log_prefix + "Got remote shell"):
-                cli_logger.old_info(logger, "{}Waiting for remote shell...",
-                                    self.log_prefix)
 
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
                 first_conn_refused_time = None
                 while time.time() < deadline and \
                         not self.provider.is_terminated(self.node_id):
                     try:
-                        cli_logger.old_debug(logger,
-                                             "{}Waiting for remote shell...",
-                                             self.log_prefix)
-
                         # Run outside of the container
-                        self.cmd_runner.run("uptime", run_env="host")
-                        cli_logger.old_debug(logger, "Uptime succeeded.")
+                        self.cmd_runner.run(
+                            "uptime", timeout=5, run_env="host")
                         cli_logger.success("Success.")
                         return True
                     except ProcessRunnerError as e:
@@ -274,9 +259,6 @@ class NodeUpdater:
                             "SSH still not available {}, "
                             "retrying in {} seconds.", cf.dimmed(retry_str),
                             cf.bold(str(READY_CHECK_INTERVAL)))
-                        cli_logger.old_debug(logger,
-                                             "{}Node not up, retrying: {}",
-                                             self.log_prefix, retry_str)
 
                         time.sleep(READY_CHECK_INTERVAL)
 
@@ -311,9 +293,6 @@ class NodeUpdater:
                 "Configuration already up to date, "
                 "skipping file mounts, initalization and setup commands.",
                 _numbered=("[]", "2-5", 6))
-            cli_logger.old_info(logger,
-                                "{}{} already up-to-date, skip to ray start",
-                                self.log_prefix, self.node_id)
 
         else:
             cli_logger.print(
@@ -411,8 +390,7 @@ class NodeUpdater:
                 for cmd in self.ray_start_commands:
                     if self.node_resources:
                         env_vars = {
-                            ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: self.
-                            node_resources
+                            RESOURCES_ENVIRONMENT_VARIABLE: self.node_resources
                         }
                     else:
                         env_vars = {}
@@ -432,22 +410,20 @@ class NodeUpdater:
 
                         raise click.ClickException("Start command failed.")
 
-    def rsync_up(self, source, target, file_mount=False):
-        cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
-                            source, target)
-
+    def rsync_up(self, source, target, docker_mount_if_possible=False):
         options = {}
-        options["file_mount"] = file_mount
+        options["docker_mount_if_possible"] = docker_mount_if_possible
+        options["rsync_exclude"] = self.rsync_options.get("rsync_exclude")
+        options["rsync_filter"] = self.rsync_options.get("rsync_filter")
         self.cmd_runner.run_rsync_up(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (local) to {} (remote)",
                            cf.bold(source), cf.bold(target))
 
-    def rsync_down(self, source, target, file_mount=False):
-        cli_logger.old_info(logger, "{}Syncing {} from {}...", self.log_prefix,
-                            source, target)
-
+    def rsync_down(self, source, target, docker_mount_if_possible=False):
         options = {}
-        options["file_mount"] = file_mount
+        options["docker_mount_if_possible"] = docker_mount_if_possible
+        options["rsync_exclude"] = self.rsync_options.get("rsync_exclude")
+        options["rsync_filter"] = self.rsync_options.get("rsync_filter")
         self.cmd_runner.run_rsync_down(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (remote) to {} (local)",
                            cf.bold(source), cf.bold(target))

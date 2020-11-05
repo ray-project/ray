@@ -1,9 +1,13 @@
 import logging
 import time
+from typing import Dict, List
 
 import numpy as np
 import ray._private.services as services
-from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.gcs_utils import PlacementGroupTableData
+from ray.autoscaler._private.resource_demand_scheduler import \
+    NodeIP, ResourceDict
 
 logger = logging.getLogger(__name__)
 
@@ -26,34 +30,45 @@ class LoadMetrics:
         ) if local_ip is None else local_ip
         self.waiting_bundles = []
         self.infeasible_bundles = []
+        self.pending_placement_groups = []
 
     def update(self,
-               ip,
-               static_resources,
-               dynamic_resources,
-               resource_load,
-               waiting_bundles=[],
-               infeasible_bundles=[]):
+               ip: str,
+               static_resources: Dict[str, Dict],
+               dynamic_resources: Dict[str, Dict],
+               resource_load: Dict[str, Dict],
+               waiting_bundles: List[Dict[str, float]] = None,
+               infeasible_bundles: List[Dict[str, float]] = None,
+               pending_placement_groups: List[PlacementGroupTableData] = None):
         self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
 
-        # We are not guaranteed to have a corresponding dynamic resource for
-        # every static resource because dynamic resources are based on the
-        # available resources in the heartbeat, which does not exist if it is
-        # zero. Thus, we have to update dynamic resources here.
+        if not waiting_bundles:
+            waiting_bundles = []
+        if not infeasible_bundles:
+            infeasible_bundles = []
+        if not pending_placement_groups:
+            pending_placement_groups = []
+
+        # We are not guaranteed to have a corresponding dynamic resource
+        # for every static resource because dynamic resources are based on
+        # the available resources in the heartbeat, which does not exist
+        # if it is zero. Thus, we have to update dynamic resources here.
         dynamic_resources_update = dynamic_resources.copy()
-        for resource_name, capacity in static_resources.items():
+        for resource_name, capacity in self.static_resources_by_ip[ip].items():
             if resource_name not in dynamic_resources_update:
                 dynamic_resources_update[resource_name] = 0.0
         self.dynamic_resources_by_ip[ip] = dynamic_resources_update
 
         now = time.time()
         if ip not in self.last_used_time_by_ip or \
-                static_resources != dynamic_resources:
+                self.static_resources_by_ip[ip] != \
+                self.dynamic_resources_by_ip[ip]:
             self.last_used_time_by_ip[ip] = now
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
         self.infeasible_bundles = infeasible_bundles
+        self.pending_placement_groups = pending_placement_groups
 
     def mark_active(self, ip):
         assert ip is not None, "IP should be known at this time"
@@ -91,7 +106,7 @@ class LoadMetrics:
         return self._info()["NumNodesConnected"]
 
     def get_node_resources(self):
-        """Return a list of node resources (static resource sizes.
+        """Return a list of node resources (static resource sizes).
 
         Example:
             >>> metrics.get_node_resources()
@@ -99,17 +114,30 @@ class LoadMetrics:
         """
         return self.static_resources_by_ip.values()
 
+    def get_static_node_resources_by_ip(self) -> Dict[NodeIP, ResourceDict]:
+        """Return a dict of node resources for every node ip.
+
+        Example:
+            >>> lm.get_static_node_resources_by_ip()
+            {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "GPU": 8}}
+        """
+        return self.static_resources_by_ip
+
     def get_resource_utilization(self):
         return self.dynamic_resources_by_ip
 
     def _get_resource_usage(self):
-        num_nodes = len(self.static_resources_by_ip)
+        num_nodes = 0
         nodes_used = 0.0
         num_nonidle = 0
         has_saturated_node = False
         resources_used = {}
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
+            # Nodes without resources don't count as nodes (e.g. unmanaged
+            # nodes)
+            if any(max_resources.values()):
+                num_nodes += 1
             avail_resources = self.dynamic_resources_by_ip[ip]
             resource_load = self.resource_load_by_ip[ip]
             max_frac = 0.0
@@ -143,6 +171,9 @@ class LoadMetrics:
 
     def get_resource_demand_vector(self):
         return self.waiting_bundles + self.infeasible_bundles
+
+    def get_pending_placement_groups(self):
+        return self.pending_placement_groups
 
     def info_string(self):
         return " - " + "\n - ".join(

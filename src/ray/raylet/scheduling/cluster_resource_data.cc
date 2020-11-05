@@ -1,5 +1,18 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 
+const std::string resource_labels[] = {ray::kCPU_ResourceLabel,
+                                       ray::kMemory_ResourceLabel,
+                                       ray::kGPU_ResourceLabel, ray::kTPU_ResourceLabel};
+
+const std::string ResourceEnumToString(PredefinedResources resource) {
+  // TODO (Alex): We should replace this with a protobuf enum.
+  RAY_CHECK(resource < PredefinedResources_MAX)
+      << "Something went wrong. Please file a bug report with this stack "
+         "trace: https://github.com/ray-project/ray/issues/new.";
+  std::string label = resource_labels[resource];
+  return label;
+}
+
 std::string VectorToString(const std::vector<FixedPoint> &vector) {
   std::stringstream buffer;
 
@@ -297,6 +310,20 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
 
   return task_resources;
 };
+
+bool TaskRequest::IsEmpty() const {
+  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    if (this->predefined_resources[i].demand != 0) {
+      return false;
+    }
+  }
+  for (size_t i = 0; i < this->custom_resources.size(); i++) {
+    if (this->custom_resources[i].demand != 0) {
+      return false;
+    }
+  }
+  return true;
+}
 
 std::string TaskRequest::DebugString() const {
   std::stringstream buffer;

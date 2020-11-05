@@ -84,13 +84,28 @@ class GlobalStateAccessor {
   /// \return node resource map info. To support multi-language, we serialize each
   /// ResourceTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::string GetNodeResourceInfo(const ClientID &node_id);
+  std::string GetNodeResourceInfo(const NodeID &node_id);
+
+  /// Get available resources of all nodes.
+  ///
+  /// \return available resources of all nodes. To support multi-language, we serialize
+  /// each AvailableResources and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllAvailableResources();
 
   /// Get internal config from GCS Service.
   ///
   /// \return map of internal config keys and values. It is stored as a StoredConfig proto
   /// and serialized as a string to allow multi-language support.
   std::string GetInternalConfig();
+
+  /// Get newest heartbeat of all nodes from GCS Service. Only used when light
+  /// heartbeat enabled.
+  ///
+  /// \return node heartbeat info. To support multi-language, we serialize each
+  /// HeartbeatTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::unique_ptr<std::string> GetAllHeartbeat();
 
   /// Get information of all actors from GCS Service.
   ///
@@ -137,6 +152,13 @@ class GlobalStateAccessor {
   /// \return Is operation success.
   bool AddWorkerInfo(const std::string &serialized_string);
 
+  /// Get information of all placement group from GCS Service.
+  ///
+  /// \return All placement group info. To support multi-language, we serialize each
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllPlacementGroupInfo();
+
   /// Get information of a placement group from GCS Service.
   ///
   /// \param placement_group The ID of placement group to look up in the GCS Service.
@@ -172,6 +194,18 @@ class GlobalStateAccessor {
       if (result) {
         data.reset(new std::string(result->SerializeAsString()));
       }
+      promise.set_value(true);
+    };
+  }
+
+  /// Item transformation helper in template style.
+  ///
+  /// \return ItemCallback within in rpc type DATA.
+  template <class DATA>
+  ItemCallback<DATA> TransformForItemCallback(std::unique_ptr<std::string> &data,
+                                              std::promise<bool> &promise) {
+    return [&data, &promise](const DATA &result) {
+      data.reset(new std::string(result.SerializeAsString()));
       promise.set_value(true);
     };
   }

@@ -8,10 +8,10 @@ import traceback
 import types
 
 import ray.cloudpickle as cloudpickle
-from ray._private.services import get_node_ip_address
+from ray.services import get_node_ip_address
 from ray.tune import TuneError
+from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
-from ray.tune.progress_reporter import trial_progress_str
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
@@ -114,6 +114,9 @@ class TrialRunner:
         checkpoint_period (int): Trial runner checkpoint periodicity in
             seconds. Defaults to 10.
         trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
+        callbacks (list): List of callbacks that will be called at different
+            times in the training loop. Must be instances of the
+            ``ray.tune.trial_runner.Callback`` class.
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
@@ -133,6 +136,7 @@ class TrialRunner:
                  verbose=True,
                  checkpoint_period=None,
                  trial_executor=None,
+                 callbacks=None,
                  metric=None):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -213,6 +217,8 @@ class TrialRunner:
             self.checkpoint_file = os.path.join(
                 self._local_checkpoint_dir,
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+
+        self._callbacks = CallbackList(callbacks or [])
 
     @property
     def resumed(self):
@@ -367,10 +373,17 @@ class TrialRunner:
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
             self.trial_executor.on_step_begin(self)
+        with warn_if_slow("callbacks.on_step_begin"):
+            self._callbacks.on_step_begin(
+                iteration=self._iteration, trials=self._trials)
         next_trial = self._get_next_trial()  # blocking
         if next_trial is not None:
             with warn_if_slow("start_trial"):
                 self.trial_executor.start_trial(next_trial)
+                self._callbacks.on_trial_start(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()  # blocking
         else:
@@ -393,6 +406,9 @@ class TrialRunner:
                 self._server.shutdown()
         with warn_if_slow("on_step_end"):
             self.trial_executor.on_step_end(self)
+        with warn_if_slow("callbacks.on_step_end"):
+            self._callbacks.on_step_end(
+                iteration=self._iteration, trials=self._trials)
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -420,6 +436,8 @@ class TrialRunner:
         self.trial_executor.try_checkpoint_metadata(trial)
 
     def debug_string(self, delim="\n"):
+        from ray.tune.progress_reporter import trial_progress_str
+
         result_keys = [
             list(t.last_result) for t in self.get_trials() if t.last_result
         ]
@@ -479,9 +497,19 @@ class TrialRunner:
             if trial.is_restoring:
                 with warn_if_slow("process_trial_restore"):
                     self._process_trial_restore(trial)
+                with warn_if_slow("callbacks.on_trial_restore"):
+                    self._callbacks.on_trial_restore(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial)
             elif trial.is_saving:
                 with warn_if_slow("process_trial_save") as profile:
                     self._process_trial_save(trial)
+                with warn_if_slow("callbacks.on_trial_save"):
+                    self._callbacks.on_trial_save(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial)
                 if profile.too_slow and trial.sync_on_checkpoint:
                     # TODO(ujvl): Suggest using DurableTrainable once
                     #  API has converged.
@@ -516,7 +544,7 @@ class TrialRunner:
         """
         try:
             result = self.trial_executor.fetch_result(trial)
-
+            result.update(trial_id=trial.trial_id)
             is_duplicate = RESULT_DUPLICATE in result
             force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
             # TrialScheduler and SearchAlgorithm still receive a
@@ -533,10 +561,27 @@ class TrialRunner:
             flat_result = flatten_dict(result)
             if self._stopper(trial.trial_id,
                              result) or trial.should_stop(flat_result):
+                result.update(done=True)
+
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, flat_result)
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=flat_result)
+
+                # If this is not a duplicate result, the callbacks should
+                # be informed about the result.
+                if not is_duplicate:
+                    with warn_if_slow("callbacks.on_trial_result"):
+                        self._callbacks.on_trial_result(
+                            iteration=self._iteration,
+                            trials=self._trials,
+                            trial=trial,
+                            result=result.copy())
+
+                self._callbacks.on_trial_complete(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
                 decision = TrialScheduler.STOP
             else:
                 with warn_if_slow("scheduler.on_trial_result"):
@@ -545,10 +590,22 @@ class TrialRunner:
                 with warn_if_slow("search_alg.on_trial_result"):
                     self._search_alg.on_trial_result(trial.trial_id,
                                                      flat_result)
+                with warn_if_slow("callbacks.on_trial_result"):
+                    self._callbacks.on_trial_result(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial,
+                        result=result.copy())
                 if decision == TrialScheduler.STOP:
                     with warn_if_slow("search_alg.on_trial_complete"):
                         self._search_alg.on_trial_complete(
                             trial.trial_id, result=flat_result)
+                    with warn_if_slow("callbacks.on_trial_complete"):
+                        self._callbacks.on_trial_complete(
+                            iteration=self._iteration,
+                            trials=self._trials,
+                            trial=trial)
+                    result.update(done=True)
 
             if not is_duplicate:
                 trial.update_last_result(
@@ -585,7 +642,9 @@ class TrialRunner:
                                             or "done" not in result):
             base_metric = self._metric
             scheduler_metric = self._scheduler_alg.metric
-            search_metric = self._search_alg.metric
+            search_metrics = self._search_alg.metric
+            if isinstance(search_metrics, str):
+                search_metrics = [search_metrics]
 
             if base_metric and base_metric not in result:
                 report_metric = base_metric
@@ -593,8 +652,13 @@ class TrialRunner:
             elif scheduler_metric and scheduler_metric not in result:
                 report_metric = scheduler_metric
                 location = type(self._scheduler_alg).__name__
-            elif search_metric and search_metric not in result:
-                report_metric = search_metric
+            elif search_metrics and any(search_metric not in result
+                                        for search_metric in search_metrics):
+                report_metric = list(
+                    filter(lambda search_metric: search_metric not in result,
+                           search_metrics))
+                if len(report_metric) == 1:
+                    report_metric = report_metric[0]
                 location = type(self._search_alg).__name__
             else:
                 report_metric = None
@@ -603,7 +667,7 @@ class TrialRunner:
             if report_metric:
                 raise ValueError(
                     "Trial returned a result which did not include the "
-                    "specified metric `{}` that `{}` expects. "
+                    "specified metric(s) `{}` that `{}` expects. "
                     "Make sure your calls to `tune.report()` include the "
                     "metric, or set the "
                     "TUNE_DISABLE_STRICT_METRIC_CHECKING "
@@ -632,6 +696,11 @@ class TrialRunner:
         if checkpoint_value:
             try:
                 trial.saving_to.value = checkpoint_value
+                self._callbacks.on_checkpoint(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial,
+                    checkpoint=trial.saving_to)
                 trial.on_checkpoint(trial.saving_to)
                 self.trial_executor.try_checkpoint_metadata(trial)
             except Exception:
@@ -680,6 +749,10 @@ class TrialRunner:
             else:
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                self._callbacks.on_trial_error(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
                 self.trial_executor.stop_trial(
                     trial, error=True, error_msg=error_msg)
 
@@ -736,6 +809,10 @@ class TrialRunner:
                     trial)
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                self._callbacks.on_trial_error(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
             else:
                 logger.debug("Trial %s: Restore dispatched correctly.", trial)
         else:
@@ -818,6 +895,8 @@ class TrialRunner:
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
             self._search_alg.on_trial_complete(trial.trial_id)
+            self._callbacks.on_trial_complete(
+                iteration=self._iteration, trials=self._trials, trial=trial)
         elif trial.status is Trial.RUNNING:
             try:
                 result = self.trial_executor.fetch_result(trial)
@@ -825,11 +904,19 @@ class TrialRunner:
                 self._scheduler_alg.on_trial_complete(self, trial, result)
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=result)
+                self._callbacks.on_trial_complete(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
             except Exception:
                 error_msg = traceback.format_exc()
                 logger.exception("Error processing event.")
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                self._callbacks.on_trial_error(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
                 error = True
 
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
@@ -845,13 +932,8 @@ class TrialRunner:
         """
         state = self.__dict__.copy()
         for k in [
-                "_trials",
-                "_stop_queue",
-                "_server",
-                "_search_alg",
-                "_scheduler_alg",
-                "trial_executor",
-                "_syncer",
+                "_trials", "_stop_queue", "_server", "_search_alg",
+                "_scheduler_alg", "trial_executor", "_syncer", "_callbacks"
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)

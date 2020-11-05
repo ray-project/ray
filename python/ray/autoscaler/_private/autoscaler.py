@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 import copy
 import logging
 import math
@@ -9,25 +9,27 @@ import subprocess
 import threading
 import time
 import yaml
+import collections
 
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
-from ray.autoscaler.node_provider import _get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_FILE_MOUNTS_CONTENTS,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
                                  TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE,
                                  NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
+from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \
-    ResourceDemandScheduler
+    ResourceDemandScheduler, NodeType, NodeID
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
-from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
-    AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
-    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -167,7 +169,13 @@ class StandardAutoscaler:
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
         nodes_to_terminate = []
+        node_type_counts = collections.defaultdict(int)
         for node_id in nodes:
+            # Make sure to not kill idle node types if the number of workers
+            # of that type is lower/equal to the min_workers of that type.
+            if self._keep_min_worker_of_node_type(node_id, node_type_counts):
+                continue
+
             node_ip = self.provider.internal_ip(node_id)
             if (node_ip in last_used and last_used[node_ip] < horizon) and \
                     (len(nodes) - len(nodes_to_terminate)
@@ -203,26 +211,26 @@ class StandardAutoscaler:
         if self.resource_demand_scheduler:
             resource_demand_vector = self.resource_demand_vector + \
                 self.load_metrics.get_resource_demand_vector()
-            if resource_demand_vector:
-                to_launch = (
-                    self.resource_demand_scheduler.get_nodes_to_launch(
-                        self.provider.non_terminated_nodes(tag_filters={}),
-                        self.pending_launches.breakdown(),
-                        resource_demand_vector,
-                        self.load_metrics.get_resource_utilization()))
-                # TODO(ekl) also enforce max launch concurrency here?
-                for node_type, count in to_launch:
-                    self.launch_new_node(count, node_type=node_type)
+            pending_placement_groups = \
+                self.load_metrics.get_pending_placement_groups()
+            to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
+                self.provider.non_terminated_nodes(tag_filters={}),
+                self.pending_launches.breakdown(),
+                resource_demand_vector,
+                self.load_metrics.get_resource_utilization(),
+                pending_placement_groups,
+                self.load_metrics.get_static_node_resources_by_ip())
+            for node_type, count in to_launch.items():
+                self.launch_new_node(count, node_type=node_type)
 
             num_pending = self.pending_launches.value
             nodes = self.workers()
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
-        if num_workers < target_workers:
-            max_allowed = min(self.max_launch_batch,
-                              self.max_concurrent_launches - num_pending)
-
+        max_allowed = min(self.max_launch_batch,
+                          self.max_concurrent_launches - num_pending)
+        if num_workers < target_workers and max_allowed > 0:
             num_launches = min(max_allowed, target_workers - num_workers)
             self.launch_new_node(num_launches,
                                  self.config.get("worker_default_node_type"))
@@ -274,6 +282,32 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
+    def _keep_min_worker_of_node_type(self, node_id: NodeID,
+                                      node_type_counts: Dict[NodeType, int]):
+        """Returns if workers of node_type should be terminated.
+
+        Receives the counters of running nodes so far and determines if idle
+        node_id should be terminated or not. It also updates the counters
+        (node_type_counts), which is returned by reference.
+
+        Args:
+            node_type_counts(Dict[NodeType, int]): The non_terminated node
+                types counted so far.
+        Returns:
+            bool: if workers of node_types should be terminated or not.
+        """
+        if self.resource_demand_scheduler:
+            tags = self.provider.node_tags(node_id)
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                node_type_counts[node_type] += 1
+                min_workers = self.available_node_types[node_type].get(
+                    "min_workers", 0)
+                if node_type_counts[node_type] <= min_workers:
+                    return True
+
+        return False
+
     def _node_resources(self, node_id):
         node_type = self.provider.node_tags(node_id).get(
             TAG_RAY_USER_NODE_TYPE)
@@ -291,7 +325,17 @@ class StandardAutoscaler:
         try:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
-            validate_config(new_config)
+            if new_config != getattr(self, "config", None):
+                try:
+                    validate_config(new_config)
+                except Exception as e:
+                    logger.debug(
+                        "Cluster config validation failed. The version of "
+                        "the ray CLI you launched this cluster with may "
+                        "be higher than the version of ray being run on "
+                        "the cluster. Some new features may not be "
+                        "available until you upgrade ray on your cluster.",
+                        exc_info=e)
             (new_runtime_hash,
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],
@@ -492,6 +536,10 @@ class StandardAutoscaler:
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             is_head_node=False,
             cluster_synced_files=self.config["cluster_synced_files"],
+            rsync_options={
+                "rsync_exclude": self.config.get("rsync_exclude"),
+                "rsync_filter": self.config.get("rsync_filter")
+            },
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=docker_config,

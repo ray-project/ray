@@ -131,6 +131,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The recomputed dependencies for the task.
   std::vector<rpc::ObjectReference> GetDependencies() const;
 
+  std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
+
   bool IsDriverTask() const;
 
   Language GetLanguage() const;
@@ -194,6 +196,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   // Placement Group ID that this task or actor creation is associated with.
   const PlacementGroupID PlacementGroupId() const;
+
+  // Whether or not we should capture parent's placement group implicitly.
+  bool PlacementGroupCaptureChildTasks() const;
 
  private:
   void ComputeResources();

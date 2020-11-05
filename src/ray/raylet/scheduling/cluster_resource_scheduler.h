@@ -26,6 +26,12 @@
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 
+#include "src/ray/protobuf/gcs.pb.h"
+
+namespace ray {
+
+using rpc::HeartbeatTableData;
+
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
@@ -43,6 +49,8 @@ class ClusterResourceScheduler {
   /// Keep the mapping between node and resource IDs in string representation
   /// to integer representation. Used for improving map performance.
   StringIdMap string_to_int_map_;
+  /// Cached resources, used to compare with newest one in light heartbeat mode.
+  std::unique_ptr<NodeResources> last_report_resources_;
 
   /// Set predefined resources.
   ///
@@ -139,13 +147,15 @@ class ClusterResourceScheduler {
   ///  Finally, if no such node exists, return -1.
   ///
   ///  \param task_request: Task to be scheduled.
+  ///  \param actor_creation: True if this is an actor creation task.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule task_req is found).
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
-  int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations);
+  int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
+                                 int64_t *violations);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
@@ -155,7 +165,8 @@ class ClusterResourceScheduler {
   ///          return the ID in string format of a node that can schedule the
   //           task request.
   std::string GetBestSchedulableNode(
-      const std::unordered_map<std::string, double> &task_request, int64_t *violations);
+      const std::unordered_map<std::string, double> &task_request, bool actor_creation,
+      int64_t *violations);
 
   /// Decrease the available resources of a node when a task request is
   /// scheduled on the given node.
@@ -185,7 +196,7 @@ class ClusterResourceScheduler {
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources);
+  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
@@ -366,6 +377,17 @@ class ClusterResourceScheduler {
   // resources availabile at that node is 0.2 + 0.3 + 0.1 + 1. = 1.6
   void UpdateLocalAvailableResourcesFromResourceInstances();
 
+  /// Populate the relevant parts of the heartbeat table. This is intended for
+  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// resources_available and resources_total.
+  ///
+  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param Output parameter. `resources_available` and `resources_total` are the only
+  /// fields used.
+  void Heartbeat(bool light_heartbeat_enabled, std::shared_ptr<HeartbeatTableData> data);
+
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 };
+
+}  // end namespace ray

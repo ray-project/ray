@@ -11,7 +11,11 @@ import ray
 import ray.cluster_utils
 import ray.test_utils
 
-from ray.test_utils import RayTestTimeoutException
+from ray.test_utils import (
+    RayTestTimeoutException,
+    wait_for_condition,
+    new_scheduler_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +252,7 @@ def test_zero_cpus(shutdown_only):
     ray.get(x)
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="zero cpu handling")
 def test_zero_cpus_actor(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -504,6 +509,17 @@ def test_two_custom_resources(ray_start_cluster):
             "CustomResource2": 4
         })
     ray.init(address=cluster.address)
+
+    @ray.remote
+    def foo():
+        # Sleep a while to emulate a slow operation. This is needed to make
+        # sure tasks are scheduled to different nodes.
+        time.sleep(0.1)
+        return ray.worker.global_worker.node.unique_id
+
+    # Make sure each node has at least one idle worker.
+    wait_for_condition(
+        lambda: len(set(ray.get([foo.remote() for _ in range(6)]))) == 2)
 
     @ray.remote(resources={"CustomResource1": 1})
     def f():

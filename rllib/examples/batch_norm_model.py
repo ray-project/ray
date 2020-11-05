@@ -1,6 +1,7 @@
 """Example of using a custom model with batch norm."""
 
 import argparse
+import os
 
 import ray
 from ray import tune
@@ -22,7 +23,7 @@ parser.add_argument("--stop-reward", type=float, default=150)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(local_mode=True)
+    ray.init()
 
     ModelCatalog.register_custom_model(
         "bn_model", TorchBatchNormModel if args.torch else BatchNormModel)
@@ -32,6 +33,8 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "bn_model",
         },
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "framework": "torch" if args.torch else "tf",
     }
@@ -42,7 +45,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, stop=stop, config=config)
+    results = tune.run(args.run, stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

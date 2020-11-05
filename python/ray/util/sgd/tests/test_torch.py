@@ -4,6 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.distributed as dist
+from ray.tune.utils import merge_dicts
 from torch.utils.data import DataLoader
 
 import ray
@@ -371,6 +372,82 @@ def test_dataset(ray_start_4_cpus, use_local):
 
 
 @pytest.mark.parametrize("use_local", [True, False])
+def test_num_steps(ray_start_2_cpus, use_local):
+    """Tests if num_steps continues training from the subsampled dataset."""
+
+    def data_creator(config):
+        train_dataset = [0] * 5 + [1] * 5
+        val_dataset = [0] * 5 + [1] * 5
+        return DataLoader(train_dataset, batch_size=config["batch_size"]), \
+            DataLoader(val_dataset, batch_size=config["batch_size"])
+
+    batch_size = 1
+    Operator = TrainingOperator.from_creators(model_creator, optimizer_creator,
+                                              data_creator)
+
+    def train_func(self, iterator, info=None):
+        total_sum = 0
+        num_items = 0
+        for e in iterator:
+            total_sum += e
+            num_items += 1
+        return {"average": total_sum.item() / num_items}
+
+    TestOperator = get_test_operator(Operator)
+    trainer = TorchTrainer(
+        training_operator_cls=TestOperator,
+        num_workers=2,
+        use_local=use_local,
+        add_dist_sampler=False,
+        config={
+            "batch_size": batch_size,
+            "custom_func": train_func
+        })
+
+    # If num_steps not passed, should do one full epoch.
+    result = trainer.train()
+    # Average of 5 0s and 5 1s
+    assert result["average"] == 0.5
+    assert result["epoch"] == 1
+    val_result = trainer.validate()
+    assert val_result["average"] == 0.5
+
+    # Train again with num_steps.
+    result = trainer.train(num_steps=5)
+    # 5 zeros
+    assert result["average"] == 0
+    assert result["epoch"] == 2
+    val_result = trainer.validate(num_steps=5)
+    assert val_result["average"] == 0
+
+    # Should continue where last train run left off.
+    result = trainer.train(num_steps=3)
+    # 3 ones.
+    assert result["average"] == 1
+    assert result["epoch"] == 2
+    val_result = trainer.validate(num_steps=3)
+    assert val_result["average"] == 1
+
+    # Should continue from last train run, and cycle to beginning.
+    result = trainer.train(num_steps=5)
+    # 2 ones and 3 zeros.
+    assert result["average"] == 0.4
+    assert result["epoch"] == 3
+    val_result = trainer.validate(num_steps=5)
+    assert val_result["average"] == 0.4
+
+    # Should continue, and since num_steps not passed in, just finishes epoch.
+    result = trainer.train()
+    # 2 zeros and 5 ones.
+    assert result["average"] == 5 / 7
+    assert result["epoch"] == 3
+    val_result = trainer.validate()
+    assert val_result["average"] == 5 / 7
+
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("use_local", [True, False])
 def test_split_batch(ray_start_2_cpus, use_local):
     if not dist.is_available():
         return
@@ -467,7 +544,7 @@ def test_metrics(ray_start_2_cpus, num_workers, use_local):
             "val_size": val_size
         })
 
-    stats = trainer.train(num_steps=num_train_steps)
+    stats = trainer.train()
     # Test that we output mean and last of custom metrics in an epoch
     assert "score" in stats
     assert stats["last_score"] == 0
@@ -583,6 +660,47 @@ def test_tune_train(ray_start_4_cpus, num_workers, use_local):  # noqa: F811
         assert mean_val_loss2 <= mean_val_loss1
 
 
+@pytest.mark.parametrize("num_workers", [2] if dist.is_available() else [1])
+@pytest.mark.parametrize("use_local", [True, False])
+def test_tune_custom_train(ray_start_4_cpus, num_workers,
+                           use_local):  # noqa: F811
+    def custom_train_func(trainer, info):
+        train_stats = trainer.train(profile=True)
+        val_stats = trainer.validate(profile=True)
+        stats = merge_dicts(train_stats, val_stats)
+        return stats
+
+    TorchTrainable = TorchTrainer.as_trainable(
+        **{
+            "override_tune_step": custom_train_func,
+            "training_operator_cls": Operator,
+            "num_workers": num_workers,
+            "use_gpu": False,
+            "backend": "gloo",
+            "use_local": use_local,
+            "config": {
+                "batch_size": 512,
+                "lr": 0.001
+            }
+        })
+
+    analysis = tune.run(
+        TorchTrainable,
+        num_samples=2,
+        stop={"training_iteration": 2},
+        verbose=1)
+
+    # checks loss decreasing for every trials
+    for path, df in analysis.trial_dataframes.items():
+        mean_train_loss1 = df.loc[0, "train_loss"]
+        mean_train_loss2 = df.loc[1, "train_loss"]
+        mean_val_loss1 = df.loc[0, "val_loss"]
+        mean_val_loss2 = df.loc[1, "val_loss"]
+
+        assert mean_train_loss2 <= mean_train_loss1
+        assert mean_val_loss2 <= mean_val_loss1
+
+
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
 def test_save_and_restore(ray_start_2_cpus, num_workers, use_local,
@@ -646,6 +764,22 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
     for k in model1_state_dict:
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
     trainer2.shutdown()
+
+
+def test_custom_ddp_args(ray_start_2_cpus):
+    class TestTrainingOperator(TrainingOperator):
+        def setup(self, config):
+            model = model_creator(config)
+            optimizer = optimizer_creator(model, config)
+            train_loader, val_loader = data_creator(config)
+
+            self.model, self.optimizer, = \
+                self.register(
+                    models=model, optimizers=optimizer, ddp_args={
+                        "find_unused_parameters": True})
+            assert self.model.find_unused_parameters
+
+    TorchTrainer(training_operator_cls=TestTrainingOperator, num_workers=2)
 
 
 @pytest.mark.parametrize("use_local", [True, False])

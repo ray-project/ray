@@ -183,7 +183,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     reference_counter_->UpdateObjectSize(object_id, return_object.size());
 
     if (return_object.in_plasma()) {
-      const auto pinned_at_raylet_id = ClientID::FromBinary(worker_addr.raylet_id());
+      const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
         reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
         // Mark it as in plasma with a dummy object.

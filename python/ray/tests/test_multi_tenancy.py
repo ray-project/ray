@@ -8,6 +8,7 @@ import pytest
 
 import ray
 import ray.test_utils
+from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 from ray.test_utils import (wait_for_condition, wait_for_pid_to_exit,
                             run_string_as_driver,
@@ -22,8 +23,8 @@ def get_workers():
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     return [
         worker for worker in stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest()).workers_stats
-        if not worker.is_driver
+            node_manager_pb2.GetNodeStatsRequest()).core_workers_stats
+        if worker.worker_type != common_pb2.DRIVER
     ]
 
 
@@ -31,10 +32,7 @@ def get_workers():
 # `ray.init(...)`, Raylet will start `num_cpus` Python workers for the driver.
 def test_initial_workers(shutdown_only):
     # `num_cpus` should be <=2 because a Travis CI machine only has 2 CPU cores
-    ray.init(
-        num_cpus=1,
-        include_dashboard=True,
-        _system_config={"enable_multi_tenancy": True})
+    ray.init(num_cpus=1, include_dashboard=True)
     wait_for_condition(lambda: len(get_workers()) == 1)
 
 
@@ -46,7 +44,7 @@ def test_initial_workers(shutdown_only):
 # different drivers were scheduled to the same worker process, that is, tasks
 # of different jobs were not correctly isolated during execution.
 def test_multi_drivers(shutdown_only):
-    info = ray.init(num_cpus=10, _system_config={"enable_multi_tenancy": True})
+    info = ray.init(num_cpus=10)
 
     driver_code = """
 import os
@@ -118,8 +116,7 @@ def test_worker_env(shutdown_only):
         job_config=ray.job_config.JobConfig(worker_env={
             "foo1": "bar1",
             "foo2": "bar2"
-        }),
-        _system_config={"enable_multi_tenancy": True})
+        }))
 
     @ray.remote
     def get_env(key):
@@ -131,7 +128,7 @@ def test_worker_env(shutdown_only):
 
 def test_worker_capping_kill_idle_workers(shutdown_only):
     # Avoid starting initial workers by setting num_cpus to 0.
-    ray.init(num_cpus=0, _system_config={"enable_multi_tenancy": True})
+    ray.init(num_cpus=0)
     assert len(get_workers()) == 0
 
     @ray.remote(num_cpus=0)
@@ -157,16 +154,13 @@ def test_worker_capping_kill_idle_workers(shutdown_only):
     # Worker 3 runs a normal task
     wait_for_condition(lambda: len(get_workers()) == 3)
 
-    ray.get(obj1)
-    # Worker 2 now becomes idle and should be killed
-    wait_for_condition(lambda: len(get_workers()) == 2)
-    ray.get(obj2)
-    # Worker 3 now becomes idle and should be killed
+    ray.get([obj1, obj2])
+    # Worker 2 and 3 now become idle and should be killed
     wait_for_condition(lambda: len(get_workers()) == 1)
 
 
 def test_worker_capping_run_many_small_tasks(shutdown_only):
-    ray.init(num_cpus=2, _system_config={"enable_multi_tenancy": True})
+    ray.init(num_cpus=2)
 
     @ray.remote(num_cpus=0.5)
     def foo():
@@ -188,7 +182,7 @@ def test_worker_capping_run_many_small_tasks(shutdown_only):
 
 
 def test_worker_capping_run_chained_tasks(shutdown_only):
-    ray.init(num_cpus=2, _system_config={"enable_multi_tenancy": True})
+    ray.init(num_cpus=2)
 
     @ray.remote(num_cpus=0.5)
     def foo(x):
@@ -215,7 +209,7 @@ def test_worker_capping_run_chained_tasks(shutdown_only):
 
 def test_worker_capping_fifo(shutdown_only):
     # Start 2 initial workers by setting num_cpus to 2.
-    info = ray.init(num_cpus=2, _system_config={"enable_multi_tenancy": True})
+    info = ray.init(num_cpus=2)
     wait_for_condition(lambda: len(get_workers()) == 2)
 
     time.sleep(1)
@@ -233,6 +227,7 @@ def test_worker_capping_fifo(shutdown_only):
 
     driver_code = """
 import ray
+import time
 
 ray.init(address="{}")
 
@@ -241,6 +236,8 @@ def foo():
     pass
 
 ray.get(foo.remote())
+# Sleep a while to make sure an idle worker exits before this driver exits.
+time.sleep(2)
 ray.shutdown()
     """.format(info["redis_address"])
 
@@ -254,7 +251,7 @@ ray.shutdown()
 
 
 def test_worker_registration_failure_after_driver_exit(shutdown_only):
-    info = ray.init(num_cpus=1, _system_config={"enable_multi_tenancy": True})
+    info = ray.init(num_cpus=1)
 
     driver_code = """
 import ray

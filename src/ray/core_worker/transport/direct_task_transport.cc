@@ -233,9 +233,9 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
     const rpc::Address *raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
   if (raylet_address &&
-      ClientID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
+      NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
     // A remote raylet was specified. Connect to the raylet if needed.
-    ClientID raylet_id = ClientID::FromBinary(raylet_address->raylet_id());
+    NodeID raylet_id = NodeID::FromBinary(raylet_address->raylet_id());
     auto it = remote_lease_clients_.find(raylet_id);
     if (it == remote_lease_clients_.end()) {
       RAY_LOG(DEBUG) << "Connecting to raylet " << raylet_id;
@@ -278,16 +278,18 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_)) {
     // The pipelines to the current workers are not full yet, so we don't need more
     // workers.
-
     return;
   }
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = task_queue.front();
   TaskID task_id = resource_spec.TaskId();
+  // Subtract 1 so we don't double count the task we are requesting for.
+  int64_t queue_size = task_queue.size() - 1;
   lease_client->RequestWorkerLease(
-      resource_spec, [this, scheduling_key](const Status &status,
-                                            const rpc::RequestWorkerLeaseReply &reply) {
+      resource_spec,
+      [this, scheduling_key](const Status &status,
+                             const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
 
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -333,7 +335,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                             "likely because the local raylet has crahsed.";
           RAY_LOG(FATAL) << status.ToString();
         }
-      });
+      },
+      queue_size);
   pending_lease_request = std::make_pair(lease_client, task_id);
 }
 

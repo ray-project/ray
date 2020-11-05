@@ -51,6 +51,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
   public static final String PYTHON_INIT_METHOD_NAME = "__init__";
+  private static final String DEFAULT_PLACEMENT_GROUP_NAME = "unnamed_group";
   protected RayConfig rayConfig;
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
@@ -165,9 +166,22 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
-      PlacementStrategy strategy) {
-    return taskSubmitter.createPlacementGroup(bundles, strategy);
+  public PlacementGroup createPlacementGroup(String name,
+      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    boolean bundleResourceValid = bundles.stream().allMatch(
+        bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
+
+    if (bundles.isEmpty() || !bundleResourceValid) {
+      throw new IllegalArgumentException(
+        "Bundles cannot be empty or bundle's resource must be positive.");
+    }
+    return taskSubmitter.createPlacementGroup(name, bundles, strategy);
+  }
+
+  @Override
+  public PlacementGroup createPlacementGroup(
+      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    return createPlacementGroup(DEFAULT_PLACEMENT_GROUP_NAME, bundles, strategy);
   }
 
   @SuppressWarnings("unchecked")
@@ -280,6 +294,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public ObjectStore getObjectStore() {
     return objectStore;
+  }
+
+  @Override
+  public TaskExecutor getTaskExecutor() {
+    return taskExecutor;
   }
 
   @Override

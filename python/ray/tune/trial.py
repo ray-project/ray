@@ -3,7 +3,6 @@ from typing import Sequence
 import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
-from datetime import datetime
 import logging
 import platform
 import shutil
@@ -13,7 +12,6 @@ import os
 from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
-from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -21,8 +19,8 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
-from ray.tune.trainable import TrainableUtil
-from ray.tune.utils import flatten_dict
+from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils import date_str, flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -34,10 +32,6 @@ if "MAX_LEN_IDENTIFIER" in os.environ:
 MAX_LEN_IDENTIFIER = int(
     os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
                    os.environ.get("MAX_LEN_IDENTIFIER", 130)))
-
-
-def date_str():
-    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 class Location:
@@ -197,7 +191,6 @@ class Trial:
                  trial_dirname_creator=None,
                  loggers=None,
                  log_to_file=None,
-                 sync_to_driver_fn=None,
                  max_failures=0):
         """Initialize a new trial.
 
@@ -237,7 +230,6 @@ class Trial:
            or not len(self.log_to_file) == 2:
             self.log_to_file = (None, None)
 
-        self.sync_to_driver_fn = sync_to_driver_fn
         self.verbose = True
         self.max_failures = max_failures
 
@@ -294,7 +286,6 @@ class Trial:
 
         self._nonjson_fields = [
             "loggers",
-            "sync_to_driver_fn",
             "results",
             "best_result",
             "param_config",
@@ -361,7 +352,6 @@ class Trial:
             trial_name_creator=self.trial_name_creator,
             loggers=self.loggers,
             log_to_file=self.log_to_file,
-            sync_to_driver_fn=self.sync_to_driver_fn,
             max_failures=self.max_failures,
         )
 
@@ -375,11 +365,7 @@ class Trial:
                 os.makedirs(self.logdir, exist_ok=True)
 
             self.result_logger = UnifiedLogger(
-                self.config,
-                self.logdir,
-                trial=self,
-                loggers=self.loggers,
-                sync_function=self.sync_to_driver_fn)
+                self.config, self.logdir, trial=self, loggers=self.loggers)
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
@@ -464,43 +450,6 @@ class Trial:
         Args:
             checkpoint (Checkpoint): Checkpoint taken.
         """
-        if checkpoint.storage == Checkpoint.MEMORY:
-            self.checkpoint_manager.on_checkpoint(checkpoint)
-            return
-        if self.sync_on_checkpoint:
-            try:
-                # Wait for any other syncs to finish. We need to sync again
-                # after this to handle checkpoints taken mid-sync.
-                self.result_logger.wait()
-            except TuneError as e:
-                # Errors occurring during this wait are not fatal for this
-                # checkpoint, so it should just be logged.
-                logger.error(
-                    "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait - %s", self, str(e))
-            # Force sync down and wait before tracking the new checkpoint.
-            try:
-                if self.result_logger.sync_down():
-                    self.result_logger.wait()
-                else:
-                    logger.error(
-                        "Trial %s: Checkpoint sync skipped. "
-                        "This should not happen.", self)
-            except TuneError as e:
-                if issubclass(self.get_trainable_cls(), DurableTrainable):
-                    # Even though rsync failed the trainable can restore
-                    # from remote durable storage.
-                    logger.error("Trial %s: Sync error - %s", self, str(e))
-                else:
-                    # If the trainable didn't have remote storage to upload
-                    # to then this checkpoint may have been lost, so we
-                    # shouldn't track it with the checkpoint_manager.
-                    raise e
-            if not issubclass(self.get_trainable_cls(), DurableTrainable):
-                if not os.path.exists(checkpoint.value):
-                    raise TuneError("Trial {}: Checkpoint path {} not "
-                                    "found after successful sync down.".format(
-                                        self, checkpoint.value))
         self.checkpoint_manager.on_checkpoint(checkpoint)
 
     def on_restore(self):
@@ -520,7 +469,6 @@ class Trial:
         return self.num_failures < self.max_failures or self.max_failures < 0
 
     def update_last_result(self, result, terminate=False):
-        result.update(trial_id=self.trial_id, done=terminate)
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
         if self.verbose and (terminate or time.time() - self.last_debug >
@@ -639,7 +587,7 @@ class Trial:
         state["resuming_from"] = None
         state["saving_to"] = None
         if self.result_logger:
-            self.result_logger.flush(sync_down=False)
+            self.result_logger.flush()
             state["__logger_started__"] = True
         else:
             state["__logger_started__"] = False

@@ -28,6 +28,8 @@
 /// List of predefined resources.
 enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 
+const std::string ResourceEnumToString(PredefinedResources resource);
+
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
 
@@ -77,6 +79,8 @@ class TaskRequest {
   /// the task will run on a different node in the cluster, if none of the
   /// nodes in this list can schedule this task.
   absl::flat_hash_set<int64_t> placement_hints;
+  /// Check whether the request contains no resources.
+  bool IsEmpty() const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
 };
@@ -146,6 +150,10 @@ class TaskResourceInstances {
 /// Total and available capacities of each resource of a node.
 class NodeResources {
  public:
+  NodeResources() {}
+  NodeResources(const NodeResources &other)
+      : predefined_resources(other.predefined_resources),
+        custom_resources(other.custom_resources) {}
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the

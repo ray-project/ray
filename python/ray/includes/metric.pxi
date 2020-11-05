@@ -50,7 +50,8 @@ cdef class Metric:
         # Default tags will be exported if it's empty map.
         if tags:
             for tag_k, tag_v in tags.items():
-                c_tags[tag_k.encode("ascii")] = tag_v.encode("ascii")
+                if tag_v is not None:
+                    c_tags[tag_k.encode("ascii")] = tag_v.encode("ascii")
         c_value = value
         with nogil:
             self.metric.get().Record(c_value, c_tags)

@@ -1,4 +1,5 @@
 import collections
+import logging
 import hashlib
 import json
 import jsonschema
@@ -8,8 +9,10 @@ from typing import Any, Dict
 
 import ray
 import ray._private.services as services
-from ray.autoscaler.node_provider import _get_default_config
+from ray.autoscaler._private.providers import _get_default_config, \
+    _NODE_PROVIDERS
 from ray.autoscaler._private.docker import validate_docker_config
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
@@ -18,6 +21,8 @@ RAY_SCHEMA_PATH = os.path.join(
 # Internal kv keys for storing debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+
+logger = logging.getLogger(__name__)
 
 
 class ConcurrentCounter:
@@ -94,11 +99,58 @@ def prepare_config(config):
     return with_defaults
 
 
+def rewrite_legacy_yaml_to_available_node_types(
+        config: Dict[str, Any]) -> Dict[str, Any]:
+    if "available_node_types" in config:
+        return config
+    else:
+        # TODO(ameer/ekl/alex): we can also rewrite here many other fields
+        # that include initialization/setup/start commands and ImageId.
+        config["available_node_types"] = {
+            NODE_TYPE_LEGACY_HEAD: {
+                "node_config": config["head_node"],
+                "resources": {},
+                "min_workers": 0,
+                "max_workers": 0,
+            },
+            NODE_TYPE_LEGACY_WORKER: {
+                "node_config": config["worker_nodes"],
+                "resources": {},
+                "min_workers": config["min_workers"],
+                "max_workers": config["max_workers"],
+            },
+        }
+        config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
+        config["worker_default_node_type"] = NODE_TYPE_LEGACY_WORKER
+        return config
+
+
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
+    defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
+    try:
+        defaults = _fillout_available_node_types_resources(defaults)
+    except ValueError:
+        # When the user uses a wrong instance type.
+        raise
+    except Exception:
+        # When the user is using e.g., staroid, but it is not installed.
+        logger.exception("Failed to autodetect node resources.")
     return defaults
+
+
+def _fillout_available_node_types_resources(
+        cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Fills out missing "resources" field for available_node_types."""
+    if "available_node_types" in cluster_config:
+        importer = _NODE_PROVIDERS.get(cluster_config["provider"]["type"])
+        if importer is not None:
+            provider_cls = importer(cluster_config["provider"])
+            return provider_cls.fillout_available_node_types_resources(
+                cluster_config)
+    return cluster_config
 
 
 def merge_setup_commands(config):

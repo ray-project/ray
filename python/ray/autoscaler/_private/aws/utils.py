@@ -1,7 +1,6 @@
 from collections import defaultdict
 
-from ray.autoscaler._private.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 
 class LazyDefaultDict(defaultdict):
@@ -27,11 +26,6 @@ class LazyDefaultDict(defaultdict):
 
 
 def handle_boto_error(exc, msg, *args, **kwargs):
-    if cli_logger.old_style:
-        # old-style logging doesn't do anything here
-        # so we exit early
-        return
-
     error_code = None
     error_info = None
     # todo: not sure if these exceptions always have response

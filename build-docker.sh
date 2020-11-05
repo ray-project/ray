@@ -1,13 +1,13 @@
 #!/bin/bash
 # This script is for users to build docker images locally. It is most useful for users wishing to edit the
 # base-deps, ray-deps, or ray images. This script is *not* tested, so please look at the 
-# scripts/build-docker-images.sh if there are problems with using this script.
+# scripts/build-docker-images.py if there are problems with using this script.
 
 set -x
 
 GPU=""
 BASE_IMAGE="ubuntu:focal"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl"
+WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 PYTHON_VERSION=""
 
 while [[ $# -gt 0 ]]
@@ -16,7 +16,7 @@ key="$1"
 case $key in
     --gpu)
     GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"
+    BASE_IMAGE="nvidia/cuda:10.1-cudnn8-runtime-ubuntu18.04"
     ;;
     --no-cache-build)
     NO_CACHE="--no-cache"
@@ -59,10 +59,10 @@ for IMAGE in "base-deps" "ray-deps" "ray"
 do
     cp "$WHEEL" "docker/$IMAGE/$(basename "$WHEEL")"
     if [ $OUTPUT_SHA ]; then
-        IMAGE_SHA=$(docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" -q -t rayproject/$IMAGE:latest$GPU docker/$IMAGE)
-        echo "rayproject/$IMAGE:latest$GPU SHA:$IMAGE_SHA"
+        IMAGE_SHA=$(docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" -q -t rayproject/$IMAGE:nightly$GPU docker/$IMAGE)
+        echo "rayproject/$IMAGE:nightly$GPU SHA:$IMAGE_SHA"
     else
-        docker build $NO_CACHE  --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -t rayproject/$IMAGE:latest$GPU docker/$IMAGE
+        docker build $NO_CACHE  --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -t rayproject/$IMAGE:nightly$GPU docker/$IMAGE
     fi
     rm "docker/$IMAGE/$(basename "$WHEEL")"
 done 

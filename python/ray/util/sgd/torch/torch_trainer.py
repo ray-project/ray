@@ -1,3 +1,4 @@
+import inspect
 import time
 
 import numpy as np
@@ -112,10 +113,6 @@ class TorchTrainer:
             is installed. This is automatically done after the model and
             optimizers are constructed and will work for multi-model training.
             Please see https://github.com/NVIDIA/apex for more details.
-        apex_args (dict|None): Dict containing keyword args for amp.initialize.
-            See https://nvidia.github.io/apex/amp.html#module-apex.amp. By
-            default, the models and optimizers are passed in. Consider using
-            "num_losses" if operating over multiple models and optimizers.
         scheduler_step_freq: "batch", "epoch", "manual", or None. This will
             determine when ``scheduler.step`` is called. If "batch",
             ``step`` will be called after every optimizer step. If "epoch",
@@ -149,7 +146,6 @@ class TorchTrainer:
             timeout_s=NCCL_TIMEOUT_S,
             use_fp16=False,
             use_tqdm=False,
-            apex_args=None,
             add_dist_sampler=True,
             scheduler_step_freq=None,
             use_local=False,
@@ -163,6 +159,7 @@ class TorchTrainer:
             loss_creator=None,
             serialize_data_creation=None,
             data_loader_args=None,
+            apex_args=None,
     ):
         if (model_creator or data_creator or optimizer_creator
                 or scheduler_creator or loss_creator):
@@ -199,6 +196,12 @@ class TorchTrainer:
                 "specify a batch size for each worker or "
                 "config={ray.util.sgd.utils.BATCH_SIZE: N} to specify a "
                 "batch size to be used across all workers.")
+
+        if apex_args is not None:
+            raise DeprecationWarning(
+                "apex_args is deprecated. Pass in apex_args when calling "
+                "`register` in the `setup` method of your `TrainingOperator` "
+                "instead.")
 
         if serialize_data_creation is True:
             if log_once("serialize_data_creation"):
@@ -241,10 +244,6 @@ class TorchTrainer:
         self.add_dist_sampler = add_dist_sampler
         self.use_local = use_local
 
-        if apex_args and not isinstance(apex_args, dict):
-            raise ValueError("apex_args needs to be a dict object.")
-
-        self.apex_args = apex_args
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
         self._last_resize = float("-inf")
@@ -293,7 +292,6 @@ class TorchTrainer:
             use_fp16=self.use_fp16,
             use_gpu=self.use_gpu,
             use_tqdm=self.use_tqdm,
-            apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
 
         dist_params = dict(
@@ -375,9 +373,9 @@ class TorchTrainer:
         instance preemption.
 
         Args:
-            num_steps (int): Number of batches to compute update steps on.
-                This corresponds also to the number of times
-                ``TrainingOperator.train_batch`` is called.
+            num_steps (int): Number of batches to compute update steps on
+                per worker. This corresponds also to the number of times
+                ``TrainingOperator.train_batch`` is called per worker.
             profile (bool): Returns time stats for the training procedure.
             reduce_results (bool): Whether to average all metrics across
                 all workers into one dict. If a metric is a non-numerical
@@ -437,9 +435,8 @@ class TorchTrainer:
             NUM_SAMPLES: sum(
                 stats.pop(NUM_SAMPLES, np.nan) for stats in worker_stats)
         }
-
         for stat_key in worker_stats[0]:
-            if isinstance(worker_stats[0], numbers.Number):
+            if isinstance(worker_stats[0][stat_key], numbers.Number):
                 stats[stat_key] = np.nanmean(
                     [s.get(stat_key, np.nan) for s in worker_stats])
             else:
@@ -479,9 +476,9 @@ class TorchTrainer:
         """Evaluates the model on the validation data set.
 
         Args:
-            num_steps (int): Number of batches to compute update steps on.
-                This corresponds also to the number of times
-                ``TrainingOperator.validate_batch`` is called.
+            num_steps (int): Number of batches to compute update steps on
+                per worker. This corresponds also to the number of times
+                ``TrainingOperator.validate_batch`` is called per worker.
             profile (bool): Returns time stats for the evaluation procedure.
             reduce_results (bool): Whether to average all metrics across
                 all workers into one dict. If a metric is a non-numerical
@@ -572,25 +569,58 @@ class TorchTrainer:
         self.worker_group = DeactivatedWorkerGroup()
 
     @classmethod
-    def as_trainable(cls, *args, **kwargs):
+    def as_trainable(cls, *args, override_tune_step=None, **kwargs):
         """Creates a BaseTorchTrainable class compatible with Tune.
 
-        Any configuration parameters will be overriden by the Tune
-        Trial configuration. You can also subclass the provided Trainable
-        to implement your own iterative optimization routine.
+        Any configuration parameters will be overridden by the Tune
+        Trial configuration. You can also pass in a custom
+        ``override_tune_step`` to implement your own iterative optimization
+        routine and override the default implementation.
 
         .. code-block:: python
 
+            def step(trainer, info):
+                # Implement custom objective function here.
+                train_stats = trainer.train()
+                ...
+                # Return the metrics to report to tune.
+                # Do not call tune.report here.
+                return train_stats
+
             TorchTrainable = TorchTrainer.as_trainable(
                 training_operator_cls=MyTrainingOperator,
-                num_gpus=2
+                num_gpus=2,
+                override_tune_step=step
             )
             analysis = tune.run(
                 TorchTrainable,
                 config={"lr": tune.grid_search([0.01, 0.1])}
             )
 
+        Args:
+            override_tune_step (Callable[[TorchTrainer, Dict], Dict]): A
+                function to override the default training step to be used
+                for Ray Tune. It accepts two arguments: the first one is an
+                instance of your TorchTrainer, and the second one is a info
+                dictionary, containing information about the Trainer
+                state. If None is passed in, the default step
+                function will be
+                used: run 1 epoch of training, 1 epoch of validation,
+                and report both results to Tune. Passing in
+                ``override_tune_step`` is useful to define
+                custom step functions, for example if you need to
+                manually update the scheduler or want to run more than 1
+                training epoch for each tune iteration.
+
         """
+        if override_tune_step is not None:
+            callback_args = inspect.signature(override_tune_step)
+            if not len(callback_args.parameters) == 2:
+                raise ValueError("override_tune_step must take in exactly 2 "
+                                 "arguments. The passed in function "
+                                 "currently takes in {} "
+                                 "args".format(
+                                     str(len(callback_args.parameters))))
 
         class TorchTrainable(BaseTorchTrainable):
             @classmethod
@@ -619,6 +649,14 @@ class TorchTrainer:
                     extra_cpu=int(remote_worker_count * num_cpus_per_worker),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
 
+            def step(self):
+                if override_tune_step is not None:
+                    output = override_tune_step(
+                        self._trainer, {"iteration": self.training_iteration})
+                    return output
+                else:
+                    return super(TorchTrainable, self).step()
+
             def _create_trainer(self, tune_config):
                 """Overrides the provided config with Tune config."""
                 provided_config = kwargs.get("config", {}).copy()
@@ -635,27 +673,29 @@ class BaseTorchTrainable(Trainable):
 
     This class is produced when you call ``TorchTrainer.as_trainable(...)``.
 
-    You can override the produced Trainable to implement custom iterative
-    training procedures:
+    By default one step of training runs ``trainer.train()`` once and
+    ``trainer.validate()`` once. You can implement custom iterative
+    training procedures by passing in a ``override_tune_step`` function to
+    ``as_trainable``:
 
     .. code-block:: python
 
+        def custom_step(trainer, info):
+            for i in range(5):
+                train_stats = trainer.train()
+            validation_stats = trainer.validate()
+            train_stats.update(validation_stats)
+            return train_stats
+
+        # TorchTrainable is subclass of BaseTorchTrainable.
         TorchTrainable = TorchTrainer.as_trainable(
             training_operator_cls=MyTrainingOperator,
-            num_gpus=2
+            num_gpus=2,
+            override_tune_step=custom_step
         )
-        # TorchTrainable is subclass of BaseTorchTrainable.
-
-        class CustomTrainable(TorchTrainable):
-            def step(self):
-                for i in range(5):
-                    train_stats = self.trainer.train()
-                validation_stats = self.trainer.validate()
-                train_stats.update(validation_stats)
-                return train_stats
 
         analysis = tune.run(
-            CustomTrainable,
+            TorchTrainable,
             config={"lr": tune.grid_search([0.01, 0.1])}
         )
 
@@ -666,11 +706,8 @@ class BaseTorchTrainable(Trainable):
         self._trainer = self._create_trainer(config)
 
     def step(self):
-        """Calls `self.trainer.train()` and `self.trainer.validate()` once.
-
-        You may want to override this if using a custom LR scheduler.
-        """
-        if self._is_overriden("_train"):
+        """Calls `self.trainer.train()` and `self.trainer.validate()` once."""
+        if self._is_overridden("_train"):
             raise DeprecationWarning(
                 "Trainable._train is deprecated and will be "
                 "removed in "

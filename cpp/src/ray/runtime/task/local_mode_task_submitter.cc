@@ -44,7 +44,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation) {
                             local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
                             required_resources, required_placement_resources,
-                            PlacementGroupID::Nil());
+                            PlacementGroupID::Nil(), true);
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     builder.SetActorCreationTaskSpec(invocation.actor_id);

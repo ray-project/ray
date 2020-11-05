@@ -1,6 +1,6 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
 import numpy as np
-from typing import Union, Tuple, Any
+from typing import Union, Tuple, Any, List
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 from ray.rllib.utils.types import TensorType
@@ -168,3 +168,15 @@ class AppendBiasLayer(nn.Module):
         out = torch.cat(
             [x, self.log_std.unsqueeze(0).repeat([len(x), 1])], axis=1)
         return out
+
+
+class Reshape(nn.Module):
+    """Standard module that reshapes/views a tensor
+    """
+
+    def __init__(self, shape: List):
+        super().__init__()
+        self.shape = shape
+
+    def forward(self, x):
+        return x.view(*self.shape)

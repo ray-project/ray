@@ -1,4 +1,5 @@
 import logging
+import time
 from uuid import uuid4
 from kubernetes.client.rest import ApiException
 
@@ -10,6 +11,9 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 
 logger = logging.getLogger(__name__)
+
+MAX_TAG_RETRIES = 3
+DELAY_BEFORE_TAG_RETRY = .5
 
 
 def to_label_selector(tags):
@@ -48,26 +52,47 @@ class KubernetesNodeProvider(NodeProvider):
         return [pod.metadata.name for pod in pod_list.items]
 
     def is_running(self, node_id):
-        pod = core_api().read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api().read_namespaced_pod(node_id, self.namespace)
         return pod.status.phase == "Running"
 
     def is_terminated(self, node_id):
-        pod = core_api().read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api().read_namespaced_pod(node_id, self.namespace)
         return pod.status.phase not in ["Running", "Pending"]
 
     def node_tags(self, node_id):
-        pod = core_api().read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api().read_namespaced_pod(node_id, self.namespace)
         return pod.metadata.labels
 
     def external_ip(self, node_id):
         raise NotImplementedError("Must use internal IPs with Kubernetes.")
 
     def internal_ip(self, node_id):
-        pod = core_api().read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api().read_namespaced_pod(node_id, self.namespace)
         return pod.status.pod_ip
 
-    def set_node_tags(self, node_id, tags):
-        pod = core_api().read_namespaced_pod_status(node_id, self.namespace)
+    def get_node_id(self, ip_address, use_internal_ip=True) -> str:
+        if not use_internal_ip:
+            raise ValueError("Must use internal IPs with Kubernetes.")
+        return super().get_node_id(ip_address, use_internal_ip=use_internal_ip)
+
+    def set_node_tags(self, node_ids, tags):
+        for _ in range(MAX_TAG_RETRIES - 1):
+            try:
+                self._set_node_tags(node_ids, tags)
+                return
+            except ApiException as e:
+                if e.status == 409:
+                    logger.info(log_prefix + "Caught a 409 error while setting"
+                                " node tags. Retrying...")
+                    time.sleep(DELAY_BEFORE_TAG_RETRY)
+                    continue
+                else:
+                    raise
+        # One more try
+        self._set_node_tags(node_ids, tags)
+
+    def _set_node_tags(self, node_id, tags):
+        pod = core_api().read_namespaced_pod(node_id, self.namespace)
         pod.metadata.labels.update(tags)
         core_api().patch_namespaced_pod(node_id, self.namespace, pod)
 

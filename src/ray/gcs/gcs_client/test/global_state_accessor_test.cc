@@ -139,7 +139,7 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
   for (int index = 0; index < node_count; ++index) {
     auto node_table_data =
         Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));
-    auto node_id = ClientID::FromBinary(node_table_data->node_id());
+    auto node_id = NodeID::FromBinary(node_table_data->node_id());
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
         *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -158,7 +158,7 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
     rpc::GcsNodeInfo node_data;
     node_data.ParseFromString(node_table[index]);
     auto resource_map_str =
-        global_state_->GetNodeResourceInfo(ClientID::FromBinary(node_data.node_id()));
+        global_state_->GetNodeResourceInfo(NodeID::FromBinary(node_data.node_id()));
     rpc::ResourceMap resource_map;
     resource_map.ParseFromString(resource_map_str);
     ASSERT_EQ(
@@ -191,11 +191,39 @@ TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
   }
 }
 
+TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
+  std::unique_ptr<std::string> heartbeats = global_state_->GetAllHeartbeat();
+  rpc::HeartbeatBatchTableData heartbeat_batch_data;
+  heartbeat_batch_data.ParseFromString(*heartbeats.get());
+
+  ASSERT_EQ(heartbeat_batch_data.batch_size(), 0);
+
+  auto node_table_data = Mocker::GenNodeInfo();
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  WaitReady(promise.get_future(), timeout_ms_);
+  auto node_table = global_state_->GetAllNodeInfo();
+  ASSERT_EQ(node_table.size(), 1);
+
+  // Report heartbeat
+  std::promise<bool> promise1;
+  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat->set_client_id(node_table_data->node_id());
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
+      heartbeat, [&promise1](Status status) { promise1.set_value(status.ok()); }));
+  WaitReady(promise1.get_future(), timeout_ms_);
+
+  heartbeats = global_state_->GetAllHeartbeat();
+  heartbeat_batch_data.ParseFromString(*heartbeats.get());
+  ASSERT_EQ(heartbeat_batch_data.batch_size(), 1);
+}
+
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
   int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
-    auto client_id = ClientID::FromRandom();
+    auto client_id = NodeID::FromRandom();
     auto profile_table_data = Mocker::GenProfileTableData(client_id);
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
@@ -215,7 +243,7 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
   for (int index = 0; index < object_count; ++index) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.emplace_back(object_id);
-    ClientID node_id = ClientID::FromRandom();
+    NodeID node_id = NodeID::FromRandom();
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
         object_id, node_id,
@@ -226,27 +254,6 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
 
   for (auto &object_id : object_ids) {
     ASSERT_TRUE(global_state_->GetObjectInfo(object_id));
-  }
-}
-
-TEST_F(GlobalStateAccessorTest, TestActorTable) {
-  int actor_count = 1;
-  ASSERT_EQ(global_state_->GetAllActorInfo().size(), 0);
-  auto job_id = JobID::FromInt(1);
-  std::vector<ActorID> actor_ids;
-  actor_ids.reserve(actor_count);
-  for (int index = 0; index < actor_count; ++index) {
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
-    actor_ids.emplace_back(ActorID::FromBinary(actor_table_data->actor_id()));
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(
-        actor_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
-    WaitReady(promise.get_future(), timeout_ms_);
-  }
-  ASSERT_EQ(global_state_->GetAllActorInfo().size(), actor_count);
-
-  for (auto &actor_id : actor_ids) {
-    ASSERT_TRUE(global_state_->GetActorInfo(actor_id));
   }
 }
 
@@ -271,6 +278,9 @@ TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
 }
 
 // TODO(sang): Add tests after adding asyncAdd
+TEST_F(GlobalStateAccessorTest, TestPlacementGroupTable) {
+  ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
+}
 
 }  // namespace ray
 

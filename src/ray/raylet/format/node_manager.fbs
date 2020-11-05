@@ -80,11 +80,8 @@ enum MessageType:int {
   ConnectClient,
   // Set dynamic custom resource.
   SetResourceRequest,
-  // Subscribe to Plasma updates
+  // Subscribe to Plasma updates.
   SubscribePlasmaReady,
-  // Manually restore objects from external storage.
-  ForceRestoreSpilledObjectsRequest,
-  ForceRestoreSpilledObjectsReply,
 }
 
 table TaskExecutionSpecification {
@@ -154,7 +151,7 @@ table RegisterClientReply {
   success: bool;
   // The reason of registration failure.
   failure_reason: string;
-  // GCS ClientID of the local node manager.
+  // GCS NodeID of the local node manager.
   raylet_id: string;
   // Port that this worker should listen on.
   port: int;
@@ -299,6 +296,8 @@ table SetResourceRequest {
 table SubscribePlasmaReady {
   // ObjectID to wait for
   object_id: string;
+  // The owner address for the ObjectID
+  owner_address: Address;
 }
 
 table ForceSpillObjectsRequest {
@@ -307,12 +306,4 @@ table ForceSpillObjectsRequest {
 }
 
 table ForceSpillObjectsReply {
-}
-
-table ForceRestoreSpilledObjectsRequest {
-  // List of object IDs to be restored from external storage.
-  object_ids: [string];
-}
-
-table ForceRestoreSpilledObjectsReply {
 }
