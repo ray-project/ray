@@ -8,6 +8,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
@@ -225,7 +226,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return new PlacementGroupImpl.Builder()
+    return new PlacementGroupImpl.Builder().setId(PlacementGroupId.fromRandom())
       .setName(name).setBundles(bundles).setStrategy(strategy).build();
   }
 

@@ -1,6 +1,8 @@
 package io.ray.runtime.placementgroup;
 
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
 import java.util.List;
 import java.util.Map;

@@ -1,5 +1,6 @@
 package io.ray.api;
 
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementStrategy;
@@ -270,5 +271,22 @@ public final class Ray extends RayCall {
    */
   public static void exitActor() {
     runtime.exitActor();
+  }
+
+  /**
+   * Get a Placement Group by Placement Group Id.
+   * @param id Placement Group id.
+   * @return The Placement Group.
+   */
+  public static PlacementGroup getPlacementGroup(PlacementGroupId id) {
+    return internal().getPlacementGroup(id);
+  }
+
+  /**
+   * Get all Placement Groups in this cluster.
+   * @return All Placement Groups.
+   */
+  public static List<PlacementGroup> getAllPlacementGroup() {
+    return internal().getAllPlacementGroup();
   }
 }

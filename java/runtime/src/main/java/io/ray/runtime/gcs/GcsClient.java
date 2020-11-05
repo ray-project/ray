@@ -6,13 +6,17 @@ import io.ray.api.Checkpointable.Checkpoint;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.JobId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
+import io.ray.runtime.generated.Gcs.PlacementGroupTableData;
 import io.ray.runtime.generated.Gcs.TablePrefix;
+import io.ray.runtime.placementgroup.PlacementGroupUtils;
 import io.ray.runtime.util.IdUtil;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,6 +54,51 @@ public class GcsClient {
       return new RedisClient(new String(address), redisPassword);
     }).collect(Collectors.toList());
     globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
+  }
+
+  /**
+   * Get Placement Group by {@link PlacementGroupId}
+   * @param placementGroupId Id of Placement Group.
+   * @return The Placement Group.
+   */
+  public PlacementGroup getPlacementGroupInfo(PlacementGroupId placementGroupId) {
+    byte[] result = globalStateAccessor.getPlacementGroupInfo(placementGroupId);
+    Preconditions.checkNotNull(result,
+        "Get Placement Group table data from GlobalStateAccessor failed.");
+
+    PlacementGroupTableData placementGroupTableData;
+    try {
+      placementGroupTableData = PlacementGroupTableData.parseFrom(result);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid Placement Group table protobuf data from GCS.");
+    }
+
+    return PlacementGroupUtils.genPlacementGroupFromPbData(placementGroupTableData);
+  }
+
+  /**
+   * Get all Placement Groups in this cluster.
+   * @return All Placement Groups.
+   */
+  public List<PlacementGroup> getAllPlacementGroupInfo() {
+    List<byte[]> results = globalStateAccessor.getAllPlacementGroupInfo();
+
+    List<PlacementGroup> placementGroups = new ArrayList<>();
+    for (byte[] result : results) {
+      Preconditions.checkNotNull(result,
+          "Get Placement Group table data from GlobalStateAccessor failed.");
+
+      PlacementGroupTableData placementGroupTableData;
+      try {
+        placementGroupTableData = PlacementGroupTableData.parseFrom(result);
+      } catch (InvalidProtocolBufferException e) {
+        throw new RuntimeException(
+          "Received invalid Placement Group table protobuf data from GCS.");
+      }
+
+      placementGroups.add(PlacementGroupUtils.genPlacementGroupFromPbData(placementGroupTableData));
+    }
+    return placementGroups;
   }
 
   public List<NodeInfo> getAllNodeInfo() {

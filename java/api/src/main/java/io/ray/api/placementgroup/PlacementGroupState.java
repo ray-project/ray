@@ -1,4 +1,4 @@
-package io.ray.runtime.placementgroup;
+package io.ray.api.placementgroup;
 
 /**
  * State of Placement Group.
@@ -18,7 +18,17 @@ public enum PlacementGroupState {
   /**
    * The Placement Group has removed.
    */
-  REMOVED(2);
+  REMOVED(2),
+
+  /**
+   * The Placement Group are rescheduling.
+   */
+  RESCHEDULING(3),
+
+  /**
+   * Unrecognized State.
+   */
+  UNRECOGNIZED(-1);
 
   private int value = 0;
 

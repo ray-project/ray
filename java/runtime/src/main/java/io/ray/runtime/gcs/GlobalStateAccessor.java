@@ -2,6 +2,7 @@ package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.id.ActorId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
 import java.util.List;
 
@@ -78,6 +79,23 @@ public class GlobalStateAccessor {
     }
   }
 
+  public byte[] getPlacementGroupInfo(PlacementGroupId placementGroupId) {
+    synchronized (GlobalStateAccessor.class) {
+      Preconditions.checkNotNull(placementGroupId,
+          "PlacementGroupId can't be null when get Placement Group info.");
+      return nativeGetPlacementGroupInfo(globalStateAccessorNativePointer,
+        placementGroupId.getBytes());
+    }
+  }
+
+  public List<byte[]> getAllPlacementGroupInfo() {
+    synchronized (GlobalStateAccessor.class) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0,
+          "Get all Placement Group info when global state accessor have been destroyed.");
+      return this.nativeGetAllPlacementGroupInfo(globalStateAccessorNativePointer);
+    }
+  }
+
   public byte[] getInternalConfig() {
     synchronized (GlobalStateAccessor.class) {
       Preconditions.checkState(globalStateAccessorNativePointer != 0,
@@ -148,4 +166,9 @@ public class GlobalStateAccessor {
   private native byte[] nativeGetActorInfo(long nativePtr, byte[] actorId);
 
   private native byte[] nativeGetActorCheckpointId(long nativePtr, byte[] actorId);
+
+  private native byte[] nativeGetPlacementGroupInfo(long nativePtr,
+      byte[] placementGroupId);
+
+  private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 }
