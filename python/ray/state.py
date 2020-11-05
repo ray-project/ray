@@ -237,6 +237,7 @@ class GlobalState:
         """
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),
+            "Name": actor_table_data.name,
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
                 "IPAddress": actor_table_data.address.ip_address,
