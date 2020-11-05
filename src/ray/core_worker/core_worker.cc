@@ -59,6 +59,17 @@ void BuildCommonTaskSpec(
   }
 }
 
+JobID GetProcessJobID(const CoreWorkerOptions &options) {
+  if (options.worker_type == WorkerType::WORKER) {
+    // For workers, the job ID is assigned by Raylet via an environment variable.
+    const char *job_id_env = std::getenv("RAY_JOB_ID");
+    RAY_CHECK(job_id_env);
+    return JobID::FromHex(job_id_env);
+  } else {
+    return options.job_id;
+  }
+}
+
 }  // namespace
 
 namespace ray {

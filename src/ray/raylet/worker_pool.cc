@@ -480,27 +480,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   state.registered_workers.insert(worker);
 
-  if (RayConfig::instance().enable_multi_tenancy() &&
-      worker->GetWorkerType() != rpc::WorkerType::IO_WORKER) {
-    auto dedicated_workers_it = state.worker_pids_to_assigned_jobs.find(pid);
-    RAY_CHECK(dedicated_workers_it != state.worker_pids_to_assigned_jobs.end());
-    auto job_id = dedicated_workers_it->second;
-
-    // If the job is unknown to Raylet, we don't allow new registrations.
-    if (!all_jobs_.contains(job_id)) {
-      auto process = Process::FromPid(pid);
-      state.starting_worker_processes.erase(process);
-      Status status =
-          Status::Invalid("The provided job ID is unknown. Reject registration.");
-      send_reply_callback(status, /*port=*/0);
-      return status;
-    }
-
-    worker->AssignJobId(job_id);
-    // We don't call state.worker_pids_to_assigned_jobs.erase(job_id) here
-    // because we allow multi-workers per worker process.
-  }
-
   // Send the reply immediately for worker registrations.
   send_reply_callback(Status::OK(), port);
   return Status::OK();
