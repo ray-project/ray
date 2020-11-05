@@ -359,8 +359,9 @@ class Worker:
                                    "function", self)
 
             # Run the function on all workers.
-            self.redis_client.hmset(
-                key, {
+            self.redis_client.hset(
+                key,
+                mapping={
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
@@ -368,7 +369,7 @@ class Worker:
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
-            # successfully completes the hmset and rpush, then the program will
+            # successfully completes the hset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
             # operations into a transaction (or by implementing a custom
             # command that does all three things).

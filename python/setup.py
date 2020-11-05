@@ -154,7 +154,7 @@ install_requires = [
     "py-spy >= 0.2.0",
     "pyyaml",
     "requests",
-    "redis >= 3.3.2, < 3.5.0",
+    "redis >= 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",
 ]
@@ -192,7 +192,6 @@ def bazel_invoke(invoker, cmdline, *args, **kwargs):
             result = invoker([cmd] + cmdline, *args, **kwargs)
             break
         except IOError:
-            raise
             if i >= len(candidates) - 1:
                 raise
     return result
