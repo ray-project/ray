@@ -637,10 +637,15 @@ class CloudPickler(Pickler):
               https://github.com/cloudpipe/cloudpickle/issues/248
             """
             if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
-                return (
-                    _create_parametrized_type_hint,
-                    parametrized_type_hint_getinitargs(obj)
-                )
+                try:
+                    return (
+                        _create_parametrized_type_hint,
+                        parametrized_type_hint_getinitargs(obj)
+                    )
+                except Exception:
+                    # TODO(suquark): Cloudpickle would misclassify pydantic classes into type hints.
+                    # We temporarily ignores the exceptions here.
+                    pass
             t = type(obj)
             try:
                 is_anyclass = issubclass(t, type)
