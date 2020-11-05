@@ -24,6 +24,7 @@
 #include <unordered_map>
 
 #include "ray/common/id.h"
+#include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/compat.h"
 
 #ifdef PLASMA_CUDA
@@ -33,6 +34,8 @@
 namespace plasma {
 
 using ray::ObjectID;
+using ray::ClientID;
+using ray::WorkerID;
 
 enum class ObjectLocation : int32_t { Local, Remote, Nonexistent };
 
@@ -77,6 +80,14 @@ struct ObjectTableEntry {
   int64_t metadata_size;
   /// Number of clients currently using this object.
   int ref_count;
+  /// Owner's raylet ID.
+  ClientID owner_raylet_id;
+  /// Owner's IP address.
+  std::string owner_ip_address;
+  /// Owner's port.
+  int owner_port;
+  /// Owner's worker ID.
+  WorkerID owner_worker_id;
   /// Unix epoch of when this object was created.
   int64_t create_time;
   /// How long creation of this object took.

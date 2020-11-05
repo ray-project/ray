@@ -1,6 +1,5 @@
 package io.ray.runtime.functionmanager;
 
-import com.google.common.base.Strings;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.JobId;
 import io.ray.runtime.util.LambdaUtils;
@@ -12,6 +11,8 @@ import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -21,10 +22,11 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.DirectoryFileFilter;
 import org.apache.commons.io.filefilter.RegexFileFilter;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.objectweb.asm.Type;
@@ -57,16 +59,16 @@ public class FunctionManager {
   /**
    * The resource path which we can load the job's jar resources.
    */
-  private final String jobResourcePath;
+  private final List<String> codeSearchPath;
 
   /**
-   * Construct a FunctionManager with the specified job resource path.
+   * Construct a FunctionManager with the specified code search path.
    *
-   * @param jobResourcePath The specified job resource that can store the job's
+   * @param codeSearchPath The specified job resource that can store the job's
    *                        resources.
    */
-  public FunctionManager(String jobResourcePath) {
-    this.jobResourcePath = jobResourcePath;
+  public FunctionManager(List<String> codeSearchPath) {
+    this.codeSearchPath = codeSearchPath;
   }
 
   /**
@@ -115,23 +117,35 @@ public class FunctionManager {
 
   private JobFunctionTable createJobFunctionTable(JobId jobId) {
     ClassLoader classLoader;
-    if (Strings.isNullOrEmpty(jobResourcePath)) {
+    if (codeSearchPath == null || codeSearchPath.isEmpty()) {
       classLoader = getClass().getClassLoader();
     } else {
-      File resourceDir = new File(jobResourcePath + "/" + jobId.toString() + "/");
-      Collection<File> files = FileUtils.listFiles(resourceDir,
-          new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
-      files.add(resourceDir);
-      final List<URL> urlList = files.stream().map(file -> {
-        try {
-          return file.toURI().toURL();
-        } catch (MalformedURLException e) {
-          throw new RuntimeException(e);
-        }
-      }).collect(Collectors.toList());
-      classLoader = new URLClassLoader(urlList.toArray(new URL[urlList.size()]));
-      LOGGER.debug("Resource loaded for job {} from path {}.", jobId,
-          resourceDir.getAbsolutePath());
+      URL[] urls = codeSearchPath.stream()
+          .filter(p -> StringUtils.isNotBlank(p) && Files.exists(Paths.get(p)))
+          .flatMap(p -> {
+            try {
+              if (!Files.isDirectory(Paths.get(p))) {
+                if (!p.endsWith(".jar")) {
+                  return Stream.of(Paths.get(p).getParent().toAbsolutePath().toUri().toURL());
+                } else {
+                  return Stream.of(Paths.get(p).toAbsolutePath().toUri().toURL());
+                }
+              } else {
+                List<URL> subUrls = new ArrayList<>();
+                subUrls.add(Paths.get(p).toAbsolutePath().toUri().toURL());
+                Collection<File> jars = FileUtils.listFiles(new File(p),
+                    new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
+                for (File jar : jars) {
+                  subUrls.add(jar.toPath().toUri().toURL());
+                }
+                return subUrls.stream();
+              }
+            } catch (MalformedURLException e) {
+              throw new RuntimeException(String.format("Illegal %s resource path", p));
+            }
+          }).toArray(URL[]::new);
+      classLoader = new URLClassLoader(urls);
+      LOGGER.debug("Resource loaded for job {} from path {}.", jobId, urls);
     }
 
     return new JobFunctionTable(classLoader);

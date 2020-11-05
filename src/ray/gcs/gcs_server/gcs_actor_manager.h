@@ -92,7 +92,7 @@ class GcsActor {
   ActorID GetActorID() const;
   /// Returns whether or not this is a detached actor.
   bool IsDetached() const;
-  /// Get the name of this actor (only set if it's a detached actor).
+  /// Get the name of this actor.
   std::string GetName() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
@@ -110,8 +110,50 @@ class GcsActor {
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
+/// Actor State Transition Diagram:
+///                                                        3
+///  0                       1                   2        --->
+/// --->DEPENDENCIES_UNREADY--->PENDING_CREATION--->ALIVE      RESTARTING
+///             |                      |              |   <---      |
+///           8 |                    7 |            6 |     4       | 5
+///             |                      v              |             |
+///              ------------------> DEAD <-------------------------
+///
+/// 0: When GCS receives a `RegisterActor` request from core worker, it will add an actor
+/// to `registered_actors_` and `unresolved_actors_`.
+/// 1: When GCS receives a `CreateActor` request from core worker, it will remove the
+/// actor from `unresolved_actors_` and schedule the actor.
+/// 2: GCS selects a node to lease worker. If the worker is successfully leased,
+/// GCS will push actor creation task to the core worker, else GCS will select another
+/// node to lease worker. If the actor is created successfully, GCS will add the actor to
+/// `created_actors_`.
+/// 3: When GCS detects that the worker/node of an actor is dead, it
+/// will get actor from `registered_actors_` by actor id. If the actor's remaining
+/// restarts number is greater than 0, it will reconstruct the actor.
+/// 4: When the actor is successfully reconstructed, GCS will update its state to `ALIVE`.
+/// 5: If the actor is restarting, GCS detects that its worker or node is dead and its
+/// remaining restarts number is 0, it will update its state to `DEAD`. If the actor is
+/// detached, GCS will remove it from `registered_actors_` and `created_actors_`. If the
+/// actor is non-detached, when GCS detects that its owner is dead, GCS will remove it
+/// from `registered_actors_`.
+/// 6: When GCS detected that an actor is dead, GCS will
+/// reconstruct it. If its remaining restarts number is 0, it will update its state to
+/// `DEAD`. If the actor is detached, GCS will remove it from `registered_actors_` and
+/// `created_actors_`. If the actor is non-detached, when GCS detects that its owner is
+/// dead, it will destroy the actor and remove it from `registered_actors_` and
+/// `created_actors_`.
+/// 7: If the actor is non-detached, when GCS detects that its owner is
+/// dead, it will destroy the actor and remove it from `registered_actors_` and
+/// `created_actors_`.
+/// 8: For both detached and non-detached actors, when GCS detects that
+/// an actor's creator is dead, it will update its state to `DEAD` and remove it from
+/// `registered_actors_` and `created_actors_`. Because in this case, the actor can never
+/// be created. If the actor is non-detached, when GCS detects that its owner is dead, it
+/// will update its state to `DEAD` and remove it from `registered_actors_` and
+/// `created_actors_`.
 class GcsActorManager : public rpc::ActorInfoHandler {
  public:
   /// Create a GcsActorManager
@@ -169,13 +211,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
-  /// \param callback Will be invoked after the actor is created successfully or be
-  /// invoked immediately if the actor is already registered to `registered_actors_` and
-  /// its state is `ALIVE`.
-  /// \return Status::Invalid if this is a named actor and an actor with the specified
-  /// name already exists. The callback will not be called in this case.
+  /// \param success_callback Will be invoked after the actor is created successfully or
+  /// be invoked immediately if the actor is already registered to `registered_actors_`
+  /// and its state is `ALIVE`.
+  /// \return Status::Invalid if this is a named actor and an
+  /// actor with the specified name already exists. The callback will not be called in
+  /// this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
-                       RegisterActorCallback callback);
+                       RegisterActorCallback success_callback);
 
   /// Create actor asynchronously.
   ///
@@ -274,8 +317,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// state associated with the actor and marks the actor as dead. For owned
   /// actors, this should be called when all actor handles have gone out of
   /// scope or the owner has died.
-  /// TODO: For detached actors, this should be called when the application
-  /// deregisters the actor.
+  /// NOTE: This method can be called multiple times in out-of-order and should be
+  /// idempotent.
   void DestroyActor(const ActorID &actor_id);
 
   /// Get unresolved actors that were submitted from the specified node.
@@ -294,6 +337,21 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
   void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
+
+  /// Remove the specified actor from `unresolved_actors_`.
+  ///
+  /// \param actor The actor to be removed.
+  void RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &actor);
+
+  /// Remove the specified actor from owner.
+  ///
+  /// \param actor The actor to be removed.
+  void RemoveActorFromOwner(const std::shared_ptr<GcsActor> &actor);
+
+  /// Kill the specified actor.
+  ///
+  /// \param actor The actor to be killed.
+  void KillActor(const std::shared_ptr<GcsActor> &actor);
 
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated

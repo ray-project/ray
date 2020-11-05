@@ -1,11 +1,12 @@
 
 #include "abstract_ray_runtime.h"
 
-#include <cassert>
-
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_exception.h>
+
+#include <cassert>
+
 #include "../util/address_helper.h"
 #include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
@@ -13,28 +14,47 @@
 
 namespace ray {
 namespace api {
-AbstractRayRuntime *AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config) {
-  AbstractRayRuntime *runtime;
+std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
+
+std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit(
+    std::shared_ptr<RayConfig> config) {
+  std::shared_ptr<AbstractRayRuntime> runtime;
   if (config->run_mode == RunMode::SINGLE_PROCESS) {
-    GenerateBaseAddressOfCurrentLibrary();
-    runtime = new LocalModeRayRuntime(config);
+    runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime(config));
   } else {
-    ProcessHelper::RayStart();
-    runtime = new NativeRayRuntime(config);
+    ProcessHelper::GetInstance().RayStart(config, TaskExecutor::ExecuteTask);
+    runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime(config));
   }
+  runtime->config_ = config;
   RAY_CHECK(runtime);
+  abstract_ray_runtime_ = runtime;
   return runtime;
+}
+
+std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::GetInstance() {
+  return abstract_ray_runtime_;
+}
+
+void AbstractRayRuntime::DoShutdown(std::shared_ptr<RayConfig> config) {
+  if (config->run_mode == RunMode::CLUSTER) {
+    ProcessHelper::GetInstance().RayStop(config);
+  }
+}
+
+void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
+                             ObjectID *object_id) {
+  object_store_->Put(data, object_id);
 }
 
 void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
                              const ObjectID &object_id) {
-  object_store_->Put(object_id, data);
+  object_store_->Put(data, object_id);
 }
 
 ObjectID AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
   ObjectID object_id =
-      ObjectID::ForPut(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex());
-  Put(data, object_id);
+      ObjectID::FromIndex(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex());
+  Put(data, &object_id);
   return object_id;
 }
 
@@ -52,38 +72,41 @@ WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids, int num_ob
   return object_store_->Wait(ids, num_objects, timeout_ms);
 }
 
-ObjectID AbstractRayRuntime::Call(RemoteFunctionPtrHolder &fptr,
-                                  std::shared_ptr<msgpack::sbuffer> args) {
-  InvocationSpec invocationSpec;
-  invocationSpec.task_id =
+InvocationSpec BuildInvocationSpec(TaskType task_type, std::string lib_name,
+                                   const RemoteFunctionPtrHolder &fptr,
+                                   std::shared_ptr<msgpack::sbuffer> args,
+                                   const ActorID &actor) {
+  InvocationSpec invocation_spec;
+  invocation_spec.task_type = task_type;
+  invocation_spec.task_id =
       TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
-  invocationSpec.actor_id = ActorID::Nil();
-  invocationSpec.args = args;
-  invocationSpec.func_offset =
-      (size_t)(fptr.function_pointer - dynamic_library_base_addr);
-  invocationSpec.exec_func_offset =
-      (size_t)(fptr.exec_function_pointer - dynamic_library_base_addr);
-  return task_submitter_->SubmitTask(invocationSpec);
+  invocation_spec.lib_name = lib_name;
+  invocation_spec.fptr = fptr;
+  invocation_spec.actor_id = actor;
+  invocation_spec.args = args;
+  return invocation_spec;
 }
 
-ActorID AbstractRayRuntime::CreateActor(RemoteFunctionPtrHolder &fptr,
+ObjectID AbstractRayRuntime::Call(const RemoteFunctionPtrHolder &fptr,
+                                  std::shared_ptr<msgpack::sbuffer> args) {
+  auto invocation_spec = BuildInvocationSpec(
+      TaskType::NORMAL_TASK, this->config_->lib_name, fptr, args, ActorID::Nil());
+  return task_submitter_->SubmitTask(invocation_spec);
+}
+
+ActorID AbstractRayRuntime::CreateActor(const RemoteFunctionPtrHolder &fptr,
                                         std::shared_ptr<msgpack::sbuffer> args) {
-  return task_submitter_->CreateActor(fptr, args);
+  auto invocation_spec = BuildInvocationSpec(
+      TaskType::ACTOR_CREATION_TASK, this->config_->lib_name, fptr, args, ActorID::Nil());
+  return task_submitter_->CreateActor(invocation_spec);
 }
 
 ObjectID AbstractRayRuntime::CallActor(const RemoteFunctionPtrHolder &fptr,
                                        const ActorID &actor,
                                        std::shared_ptr<msgpack::sbuffer> args) {
-  InvocationSpec invocationSpec;
-  invocationSpec.task_id =
-      TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
-  invocationSpec.actor_id = actor;
-  invocationSpec.args = args;
-  invocationSpec.func_offset =
-      (size_t)(fptr.function_pointer - dynamic_library_base_addr);
-  invocationSpec.exec_func_offset =
-      (size_t)(fptr.exec_function_pointer - dynamic_library_base_addr);
-  return task_submitter_->SubmitActorTask(invocationSpec);
+  auto invocation_spec = BuildInvocationSpec(TaskType::ACTOR_TASK,
+                                             this->config_->lib_name, fptr, args, actor);
+  return task_submitter_->SubmitActorTask(invocation_spec);
 }
 
 const TaskID &AbstractRayRuntime::GetCurrentTaskId() {

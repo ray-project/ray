@@ -10,7 +10,7 @@ public class TagKey {
   private String tagKey;
 
   public TagKey(String key) {
-    tagKey =  key;
+    tagKey = key;
     NativeMetric.registerTagkeyNative(key);
   }
 
@@ -38,7 +38,7 @@ public class TagKey {
   @Override
   public String toString() {
     return "TagKey{" +
-      ", tagKey='" + tagKey + '\'' +
-      '}';
+        ", tagKey='" + tagKey + '\'' +
+        '}';
   }
 }

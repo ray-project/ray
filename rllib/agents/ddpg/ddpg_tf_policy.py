@@ -1,4 +1,5 @@
 from gym.spaces import Box
+from functools import partial
 import logging
 import numpy as np
 
@@ -126,9 +127,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         target_noise_clip = policy.config["target_noise_clip"]
         clipped_normal_sample = tf.clip_by_value(
             tf.random.normal(
-                tf.shape(policy_tp1),
-                stddev=policy.config["target_noise"]), -target_noise_clip,
-            target_noise_clip)
+                tf.shape(policy_tp1), stddev=policy.config["target_noise"]),
+            -target_noise_clip, target_noise_clip)
         policy_tp1_smoothed = tf.clip_by_value(
             policy_tp1 + clipped_normal_sample,
             policy.action_space.low * tf.ones_like(policy_tp1),
@@ -146,8 +146,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     q_t_det_policy = model.get_q_values(model_out_t, policy_t)
 
     if twin_q:
-        twin_q_t = model.get_twin_q_values(
-            model_out_t, train_batch[SampleBatch.ACTIONS])
+        twin_q_t = model.get_twin_q_values(model_out_t,
+                                           train_batch[SampleBatch.ACTIONS])
 
     # Target q-net(s) evaluation.
     q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
@@ -175,7 +175,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if twin_q:
         td_error = q_t_selected - q_t_selected_target
         twin_td_error = twin_q_t_selected - q_t_selected_target
-        td_error = td_error + twin_td_error
         if use_huber:
             errors = huber_loss(td_error, huber_threshold) + \
                 huber_loss(twin_td_error, huber_threshold)
@@ -278,11 +277,11 @@ def gradients_fn(policy, optimizer, loss):
     if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
-        actor_grads_and_vars = list(zip(tape.gradient(
-            policy.actor_loss, pol_weights), pol_weights))
+        actor_grads_and_vars = list(
+            zip(tape.gradient(policy.actor_loss, pol_weights), pol_weights))
         q_weights = policy.model.q_variables()
-        critic_grads_and_vars = list(zip(tape.gradient(
-            policy.critic_loss, q_weights), q_weights))
+        critic_grads_and_vars = list(
+            zip(tape.gradient(policy.critic_loss, q_weights), q_weights))
     else:
         actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
             policy.actor_loss, var_list=policy.model.policy_variables())
@@ -291,15 +290,18 @@ def gradients_fn(policy, optimizer, loss):
 
     # Clip if necessary.
     if policy.config["grad_clip"]:
-        clip_func = tf.clip_by_norm
+        clip_func = partial(
+            tf.clip_by_norm, clip_norm=policy.config["grad_clip"])
     else:
         clip_func = tf.identity
 
     # Save grads and vars for later use in `build_apply_op`.
-    policy._actor_grads_and_vars = [
-        (clip_func(g), v) for (g, v) in actor_grads_and_vars if g is not None]
-    policy._critic_grads_and_vars = [
-        (clip_func(g), v) for (g, v) in critic_grads_and_vars if g is not None]
+    policy._actor_grads_and_vars = [(clip_func(g), v)
+                                    for (g, v) in actor_grads_and_vars
+                                    if g is not None]
+    policy._critic_grads_and_vars = [(clip_func(g), v)
+                                     for (g, v) in critic_grads_and_vars
+                                     if g is not None]
 
     grads_and_vars = policy._actor_grads_and_vars + \
         policy._critic_grads_and_vars

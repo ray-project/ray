@@ -59,12 +59,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   const rpc::Address &Addr() const override { return addr; }
 
-  ray::Status PushActorTask(
-      std::unique_ptr<rpc::PushTaskRequest> request, bool skip_queue,
-      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+  void PushActorTask(std::unique_ptr<rpc::PushTaskRequest> request, bool skip_queue,
+                     const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     received_seq_nos.push_back(request->sequence_number());
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
   bool ReplyPushTask(Status status = Status::OK()) {
@@ -104,10 +102,10 @@ class DirectActorSubmitterTest : public ::testing::Test {
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
         submitter_(
-            [&](const rpc::Address &addr) {
+            std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
               num_clients_connected_++;
               return worker_client_;
-            },
+            }),
             store_, task_finisher_) {}
 
   int num_clients_connected_ = 0;
@@ -141,6 +139,12 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask());
   }
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
+
+  // Connect to the actor again.
+  // Because the IP and port of address are not modified, it will skip directly and will
+  // not reset `received_seq_nos`.
+  submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
 }
 
@@ -253,6 +257,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
   gcs::ActorTableData actor_data;
+  addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -279,6 +284,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Actor gets restarted.
+  addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
   ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
@@ -294,6 +300,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
   gcs::ActorTableData actor_data;
+  addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -323,6 +330,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Actor gets restarted.
+  addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
   // A new task is submitted.
   ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
@@ -344,6 +352,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
   gcs::ActorTableData actor_data;
+  addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
   ASSERT_EQ(num_clients_connected_, 1);
@@ -356,6 +365,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // Actor restarts, but we don't receive the disconnect message until later.
+  addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
@@ -365,7 +375,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // We receive the RESTART message late. Nothing happens.
-  submitter_.DisconnectActor(actor_id, 0, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 2);
@@ -374,7 +384,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // The actor dies twice. We receive the last RESTART message first.
-  submitter_.DisconnectActor(actor_id, 2, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 3, /*dead=*/false);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 3);
@@ -383,18 +393,20 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_FALSE(worker_client_->ReplyPushTask(Status::OK()));
 
   // We receive the late messages. Nothing happens.
+  addr.set_port(2);
   submitter_.ConnectActor(actor_id, addr, 2);
-  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 2, /*dead=*/false);
   ASSERT_EQ(num_clients_connected_, 2);
 
   // The actor dies permanently. All tasks are failed.
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task.TaskId(), _, _)).Times(1);
-  submitter_.DisconnectActor(actor_id, 2, /*dead=*/true);
+  submitter_.DisconnectActor(actor_id, 3, /*dead=*/true);
   ASSERT_EQ(num_clients_connected_, 2);
 
   // We receive more late messages. Nothing happens because the actor is dead.
-  submitter_.DisconnectActor(actor_id, 3, /*dead=*/false);
-  submitter_.ConnectActor(actor_id, addr, 3);
+  submitter_.DisconnectActor(actor_id, 4, /*dead=*/false);
+  addr.set_port(3);
+  submitter_.ConnectActor(actor_id, addr, 4);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 4);
@@ -430,7 +442,8 @@ class DirectActorReceiverTest : public ::testing::Test {
     receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
         new CoreWorkerDirectTaskReceiver(worker_context_, main_io_service_, execute_task,
                                          [] { return Status::OK(); }));
-    receiver_->Init([&](const rpc::Address &addr) { return worker_client_; },
+    receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
+                        [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_, dependency_waiter_);
   }
 

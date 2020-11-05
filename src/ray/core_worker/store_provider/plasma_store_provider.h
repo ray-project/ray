@@ -52,10 +52,12 @@ class CoreWorkerPlasmaStoreProvider {
   ///
   /// \param[in] object The object to create.
   /// \param[in] object_id The ID of the object.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] object_exists Optional. Returns whether an object with the
   /// same ID already exists. If this is true, then the Put does not write any
   /// object data.
-  Status Put(const RayObject &object, const ObjectID &object_id, bool *object_exists);
+  Status Put(const RayObject &object, const ObjectID &object_id,
+             const rpc::Address &owner_address, bool *object_exists);
 
   /// Create an object in plasma and return a mutable buffer to it. The buffer should be
   /// subsequently written to and then sealed using Seal().
@@ -63,9 +65,11 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] metadata The metadata of the object.
   /// \param[in] data_size The size of the object.
   /// \param[in] object_id The ID of the object.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
+                const ObjectID &object_id, const rpc::Address &owner_address,
+                std::shared_ptr<Buffer> *data);
 
   /// Seal an object buffer created with Create().
   ///

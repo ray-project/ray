@@ -9,7 +9,6 @@ start a MLFlow run inside the Trainable function/class.
 import mlflow
 from mlflow.tracking import MlflowClient
 import time
-import random
 
 from ray import tune
 from ray.tune.logger import MLFLowLogger, DEFAULT_LOGGERS
@@ -41,10 +40,11 @@ if __name__ == "__main__":
         num_samples=5,
         loggers=DEFAULT_LOGGERS + (MLFLowLogger, ),
         config={
-            "mlflow_experiment_id": experiment_id,
-            "width": tune.sample_from(
-                lambda spec: 10 + int(90 * random.random())),
-            "height": tune.sample_from(lambda spec: int(100 * random.random()))
+            "logger_config": {
+                "mlflow_experiment_id": experiment_id,
+            },
+            "width": tune.randint(10, 100),
+            "height": tune.randint(0, 100),
         })
 
     df = mlflow.search_runs([experiment_id])

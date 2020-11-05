@@ -17,7 +17,8 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import ModelGradients, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, TensorType, \
+    TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -239,8 +240,7 @@ class TFPolicy(Policy):
         """Returns whether the loss function has been initialized."""
         return self._loss is not None
 
-    def _initialize_loss(self,
-                         loss: TensorType,
+    def _initialize_loss(self, loss: TensorType,
                          loss_inputs: List[Tuple[str, TensorType]]) -> None:
         """Initializes the loss op from given loss tensor and placeholders.
 
@@ -264,8 +264,10 @@ class TFPolicy(Policy):
             self._loss = loss
 
         self._optimizer = self.optimizer()
-        self._grads_and_vars = [(g, v) for (g, v) in self.gradients(
-            self._optimizer, self._loss) if g is not None]
+        self._grads_and_vars = [
+            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
+            if g is not None
+        ]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
         # TODO(sven/ekl): Deprecate support for v1 models.
@@ -336,10 +338,10 @@ class TFPolicy(Policy):
             actions: Union[List[TensorType], TensorType],
             obs_batch: Union[List[TensorType], TensorType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[
-                Union[List[TensorType], TensorType]] = None,
-            prev_reward_batch: Optional[
-                Union[List[TensorType], TensorType]] = None) -> TensorType:
+            prev_action_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            prev_reward_batch: Optional[Union[List[
+                TensorType], TensorType]] = None) -> TensorType:
 
         if self._log_likelihood is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o a "
@@ -378,8 +380,8 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[
-            str, TensorType]:
+    def learn_on_batch(
+            self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "learn_on_batch")
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
@@ -457,7 +459,8 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def export_checkpoint(self, export_dir: str,
+    def export_checkpoint(self,
+                          export_dir: str,
                           filename_prefix: str = "model") -> None:
         """Export tensorflow checkpoint to export_dir."""
         try:
@@ -573,8 +576,7 @@ class TFPolicy(Policy):
             return tf1.train.AdamOptimizer()
 
     @DeveloperAPI
-    def gradients(self,
-                  optimizer: "tf.keras.optimizers.Optimizer",
+    def gradients(self, optimizer: "tf.keras.optimizers.Optimizer",
                   loss: TensorType) -> List[Tuple[TensorType, TensorType]]:
         """Override this for a custom gradient computation behavior.
 
@@ -816,8 +818,7 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = tf1.get_variable(
-            "lr", initializer=lr, trainable=False)
+        self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
         if lr_schedule is None:
             self.lr_schedule = ConstantSchedule(lr, framework=None)
         else:
@@ -843,7 +844,9 @@ class EntropyCoeffSchedule:
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self.entropy_coeff = get_variable(
-            entropy_coeff, framework="tf", tf_name="entropy_coeff",
+            entropy_coeff,
+            framework="tf",
+            tf_name="entropy_coeff",
             trainable=False)
 
         if entropy_coeff_schedule is None:

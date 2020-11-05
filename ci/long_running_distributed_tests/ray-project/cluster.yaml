@@ -60,8 +60,11 @@ worker_nodes:
 
 setup_commands:
   # Install ray.
+  - conda uninstall -y terminado || true
   - pip install -U pip
-  - ray || pip install -U {{ray-wheel}}
+  - pip install terminado
+  - wget --quiet https://s3-us-west-2.amazonaws.com/ray-wheels/{{ray_branch}}/{{commit}}/ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl
+  - ray || pip install -U ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl || true
   # Installing this without -U to make sure we don't replace the existing Ray installation
   - pip install ray[rllib]
   - pip install -U ipdb
@@ -77,7 +80,7 @@ setup_commands:
 head_start_ray_commands:
     - ray stop
     - export RAY_BACKEND_LOG_LEVEL=debug
-    - ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

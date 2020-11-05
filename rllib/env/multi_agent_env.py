@@ -2,7 +2,7 @@ from typing import Tuple, Dict, List
 import gym
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.types import MultiAgentDict, AgentID
+from ray.rllib.utils.typing import MultiAgentDict, AgentID
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -100,7 +100,7 @@ class MultiAgentEnv:
 
         This API is experimental.
 
-        Arguments:
+        Args:
             groups (dict): Mapping from group id to a list of the agent ids
                 of group members. If an agent id is not present in any group
                 value, it will be left ungrouped.

@@ -6,6 +6,7 @@ import time
 
 import ray
 from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
 
@@ -28,20 +29,12 @@ def easy_objective(config):
 
 if __name__ == "__main__":
     import argparse
-    from hyperopt import hp
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     ray.init(configure_logging=False)
-
-    space = {
-        "width": hp.uniform("width", 0, 20),
-        "height": hp.uniform("height", -100, 100),
-        # This is an ignored parameter.
-        "activation": hp.choice("activation", ["relu", "tanh"])
-    }
 
     current_best_params = [
         {
@@ -56,16 +49,24 @@ if __name__ == "__main__":
         }
     ]
 
-    config = {
+    tune_kwargs = {
         "num_samples": 10 if args.smoke_test else 1000,
         "config": {
             "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            # This is an ignored parameter.
+            "activation": tune.choice(["relu", "tanh"])
         }
     }
-    algo = HyperOptSearch(
-        space,
+    algo = HyperOptSearch(points_to_evaluate=current_best_params)
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+
+    scheduler = AsyncHyperBandScheduler()
+    tune.run(
+        easy_objective,
+        search_alg=algo,
+        scheduler=scheduler,
         metric="mean_loss",
         mode="min",
-        points_to_evaluate=current_best_params)
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    tune.run(easy_objective, search_alg=algo, scheduler=scheduler, **config)
+        **tune_kwargs)

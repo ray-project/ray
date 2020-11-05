@@ -1,9 +1,9 @@
 
 #pragma once
 
-#include <memory>
-
 #include <ray/api/wait_result.h>
+
+#include <memory>
 #include <msgpack.hpp>
 
 namespace ray {
@@ -18,9 +18,15 @@ class ObjectStore {
 
   /// Store an object in the object store.
   ///
+  /// \param[in] data The serialized object data buffer to store.
+  /// \param[out] The id which is allocated to the object.
+  void Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
+
+  /// Store an object in the object store.
+  ///
+  /// \param[in] data The serialized object data buffer to store.
   /// \param[in] object_id The object which should be stored.
-  /// \param[in] data The Serialized object buffer which should be stored.
-  void Put(const ObjectID &object_id, std::shared_ptr<msgpack::sbuffer> data);
+  void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 
   /// Get a single object from the object store.
   /// This method will be blocked until the object are ready or wait for timeout.
@@ -52,8 +58,10 @@ class ObjectStore {
                           int timeout_ms) = 0;
 
  private:
-  virtual void PutRaw(const ObjectID &object_id,
-                      std::shared_ptr<msgpack::sbuffer> data) = 0;
+  virtual void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id) = 0;
+
+  virtual void PutRaw(std::shared_ptr<msgpack::sbuffer> data,
+                      const ObjectID &object_id) = 0;
 
   virtual std::shared_ptr<msgpack::sbuffer> GetRaw(const ObjectID &object_id,
                                                    int timeout_ms) = 0;

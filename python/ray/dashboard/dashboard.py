@@ -31,11 +31,13 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.interface import BaseDashboardController
 from ray.dashboard.interface import BaseDashboardRouteHandler
-from ray.dashboard.memory import construct_memory_table, MemoryTable
+from ray.dashboard.memory import construct_memory_table, MemoryTable, \
+     GroupByType, SortingType
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
-from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
+from ray.dashboard.util import to_unix_time
+from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 
 try:
     from ray.tune import Analysis
@@ -90,55 +92,35 @@ class DashboardController(BaseDashboardController):
         # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
         ready_tasks = sum((data.get("readyTasks", []) for data in D.values()),
                           [])
-        actor_tree = self.node_stats.get_actor_tree(
+        actor_groups = self.node_stats.get_actors(
             workers_info_by_node, infeasible_tasks, ready_tasks)
-
+        plasma_stats = {}
+        # HTTP call to metrics port for each node in nodes/
+        used_views = ("object_store_num_local_objects",
+                      "object_store_available_memory",
+                      "object_store_used_memory")
         for address, data in D.items():
             # process view data
-            measures_dicts = {}
-            for view_data in data["viewData"]:
-                view_name = view_data["viewName"]
-                if view_name in ("local_available_resource",
-                                 "local_total_resource",
-                                 "object_manager_stats"):
-                    measures_dicts[view_name] = measures_to_dict(
-                        view_data["measures"])
-            # process resources info
-            extra_info_strings = []
-            prefix = "ResourceName:"
-            for resource_name, total_resource in measures_dicts[
-                    "local_total_resource"].items():
-                available_resource = measures_dicts[
-                    "local_available_resource"].get(resource_name, .0)
-                resource_name = resource_name[len(prefix):]
-                extra_info_strings.append("{}: {} / {}".format(
-                    resource_name,
-                    format_resource(resource_name,
-                                    total_resource - available_resource),
-                    format_resource(resource_name, total_resource)))
-            data["extraInfo"] = ", ".join(extra_info_strings) + "\n"
-            if os.environ.get("RAY_DASHBOARD_DEBUG"):
-                # process object store info
-                extra_info_strings = []
-                prefix = "ValueType:"
-                for stats_name in [
-                        "used_object_store_memory", "num_local_objects"
-                ]:
-                    stats_value = measures_dicts["object_manager_stats"].get(
-                        prefix + stats_name, .0)
-                    extra_info_strings.append("{}: {}".format(
-                        stats_name, stats_value))
-                data["extraInfo"] += ", ".join(extra_info_strings)
-                # process actor info
-                actor_tree_str = json.dumps(
-                    actor_tree, indent=2, sort_keys=True)
-                lines = actor_tree_str.split("\n")
-                max_line_length = max(map(len, lines))
-                to_print = []
-                for line in lines:
-                    to_print.append(line + (max_line_length - len(line)) * " ")
-                data["extraInfo"] += "\n" + "\n".join(to_print)
-        return {"nodes": D, "actors": actor_tree}
+            views = [
+                view for view in data.get("viewData", [])
+                if view.get("viewName") in used_views
+            ]
+            node_plasma_stats = {}
+            for view in views:
+                view_name = view["viewName"]
+                view_measures = view["measures"]
+                if view_measures:
+                    view_data = view_measures[0].get("doubleValue", .0)
+                else:
+                    view_data = .0
+                node_plasma_stats[view_name] = view_data
+            plasma_stats[address] = node_plasma_stats
+
+        return {
+            "nodes": D,
+            "actorGroups": actor_groups,
+            "plasmaStats": plasma_stats
+        }
 
     def get_ray_config(self):
         try:
@@ -175,7 +157,9 @@ class DashboardController(BaseDashboardController):
     def get_raylet_info(self):
         return self._construct_raylet_info()
 
-    def get_memory_table_info(self) -> MemoryTable:
+    def get_memory_table_info(self,
+                              group_by=GroupByType.NODE_ADDRESS,
+                              sort_by=SortingType.OBJECT_SIZE) -> MemoryTable:
         # Collecting memory info adds big overhead to the cluster.
         # This must be collected only when it is necessary.
         self.raylet_stats.include_memory_info = True
@@ -184,7 +168,8 @@ class DashboardController(BaseDashboardController):
             data["nodeId"]: data.get("workersStats")
             for data in D.values()
         }
-        self.memory_table = construct_memory_table(workers_info_by_node)
+        self.memory_table = construct_memory_table(
+            workers_info_by_node, group_by=group_by, sort_by=sort_by)
         return self.memory_table
 
     def stop_collecting_memory_table_info(self):
@@ -280,7 +265,19 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
         return await json_response(self.is_dev, result=result)
 
     async def memory_table_info(self, req) -> aiohttp.web.Response:
-        memory_table = self.dashboard_controller.get_memory_table_info()
+        group_by = req.query.get("group_by")
+        sort_by = req.query.get("sort_by")
+        kwargs = {}
+        try:
+            if group_by:
+                kwargs["group_by"] = GroupByType(group_by)
+            if sort_by:
+                kwargs["sort_by"] = SortingType(sort_by)
+        except ValueError as e:
+            return aiohttp.web.HTTPBadRequest(reason=str(e))
+
+        memory_table = self.dashboard_controller.get_memory_table_info(
+            **kwargs)
         return await json_response(self.is_dev, result=memory_table.__dict__())
 
     async def stop_collecting_memory_table_info(self,
@@ -487,12 +484,14 @@ class Dashboard:
                  metrics_export_address=None):
         self.host = host
         self.port = port
-        self.redis_client = ray.services.create_redis_client(
+        self.redis_client = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
         self.temp_dir = temp_dir
         self.dashboard_id = str(uuid.uuid4())
         self.dashboard_controller = DashboardController(
             redis_address, redis_password)
+        self.service_discovery = PrometheusServiceDiscoveryWriter(
+            redis_address, redis_password, temp_dir)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -554,14 +553,15 @@ class Dashboard:
     def _start_exporting_metrics(self):
         result, error = self.metrics_export_client.start_exporting_metrics()
         if not result and error:
-            url = ray.services.get_webui_url_from_redis(self.redis_client)
+            url = ray._private.services.get_webui_url_from_redis(
+                self.redis_client)
             error += (" Please reenable the metrics export by going to "
                       "the url: {}/api/metrics/enable".format(url))
             ray.utils.push_error_to_driver_through_redis(
                 self.redis_client, "metrics export failed", error)
 
     def log_dashboard_url(self):
-        url = ray.services.get_webui_url_from_redis(self.redis_client)
+        url = ray._private.services.get_webui_url_from_redis(self.redis_client)
         if url is None:
             raise ValueError("WebUI URL is not present in GCS.")
         with open(os.path.join(self.temp_dir, "dashboard_url"), "w") as f:
@@ -571,6 +571,7 @@ class Dashboard:
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
+        self.service_discovery.start()
         if self.metrics_export_address:
             self._start_exporting_metrics()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
@@ -582,7 +583,7 @@ class RayletStats(threading.Thread):
         self.nodes = []
         self.stubs = {}
         self.reporter_stubs = {}
-        self.redis_client = ray.services.create_redis_client(
+        self.redis_client = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
 
         self._raylet_stats_lock = threading.Lock()
@@ -810,7 +811,7 @@ class TuneCollector(threading.Thread):
 
         # search through all the sub_directories in log directory
         analysis = Analysis(str(self._logdir))
-        df = analysis.dataframe()
+        df = analysis.dataframe(metric="episode_reward_mean", mode="max")
 
         if len(df) == 0 or "trial_id" not in df.columns:
             return
@@ -961,7 +962,7 @@ if __name__ == "__main__":
         dashboard.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
+        redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The dashboard on node {} failed with the following "

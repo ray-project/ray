@@ -17,11 +17,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Based on Ray dynamic resource function, resource details(by ray gcs get) and
- * execution logic diagram, PipelineFirstStrategy provides a actor scheduling
- * strategies to make the cluster load balanced and controllable scheduling.
- * Assume that we have 2 containers and have a DAG graph composed of a source node with parallelism
- * of 2 and a sink node with parallelism of 2, the structure will be like:
+ * Based on Ray dynamic resource function, resource details(by ray gcs get) and execution logic
+ * diagram, PipelineFirstStrategy provides a actor scheduling strategies to make the cluster load
+ * balanced and controllable scheduling. Assume that we have 2 containers and have a DAG graph
+ * composed of a source node with parallelism of 2 and a sink node with parallelism of 2, the
+ * structure will be like:
  * <pre>
  *   container_0
  *             |- source_1
@@ -38,7 +38,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
   private int currentContainerIndex = 0;
 
   /**
-   *  Assign resource to each execution vertex in the given execution graph.
+   * Assign resource to each execution vertex in the given execution graph.
    *
    * @param containers registered containers
    * @param executionGraph execution graph
@@ -125,6 +125,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
 
   /**
    * Find a container which matches required resource
+   *
    * @param requiredResource required resource
    * @param containers registered containers
    * @return container that matches the required resource
@@ -151,6 +152,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
 
   /**
    * Check if current container has enough resource
+   *
    * @param requiredResource required resource
    * @param container container
    * @return true if matches, false else
@@ -198,6 +200,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
 
   /**
    * Get current container
+   *
    * @param containers registered container
    * @return current container to allocate actor
    */

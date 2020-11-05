@@ -32,6 +32,9 @@ cdef extern from *:
     #undef __OPTIMIZE__
     int __OPTIMIZE__ = 1;
     #define __OPTIMIZE__ 1
+    #elif defined(BAZEL_OPT)
+    // For compilers that don't define __OPTIMIZE__
+    int __OPTIMIZE__ = 1;
     #else
     int __OPTIMIZE__ = 0;
     #endif

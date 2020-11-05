@@ -8,16 +8,33 @@ import ray
 from ray.test_utils import (
     RayTestTimeoutException, check_call_ray, run_string_as_driver,
     run_string_as_driver_nonblocking, wait_for_children_of_pid,
-    wait_for_children_of_pid_to_exit, kill_process_by_name, Semaphore)
+    wait_for_children_of_pid_to_exit, wait_for_condition, kill_process_by_name,
+    Semaphore, init_error_pubsub, get_error_message)
+
+
+def test_remote_raylet_cleanup(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    def remote_raylets_dead():
+        return not cluster.remaining_processes_alive()
+
+    cluster.remove_node(cluster.head_node, allow_graceful=False)
+    wait_for_condition(remote_raylets_dead)
 
 
 def test_error_isolation(call_ray_start):
     address = call_ray_start
     # Connect a driver to the Ray cluster.
     ray.init(address=address)
+    p = init_error_pubsub()
 
     # There shouldn't be any errors yet.
-    assert len(ray.errors()) == 0
+    errors = get_error_message(p, 1, 2)
+    assert len(errors) == 0
 
     error_string1 = "error_string1"
     error_string2 = "error_string2"
@@ -31,13 +48,11 @@ def test_error_isolation(call_ray_start):
         ray.get(f.remote())
 
     # Wait for the error to appear in Redis.
-    while len(ray.errors()) != 1:
-        time.sleep(0.1)
-        print("Waiting for error to appear.")
+    errors = get_error_message(p, 1)
 
     # Make sure we got the error.
-    assert len(ray.errors()) == 1
-    assert error_string1 in ray.errors()[0]["message"]
+    assert len(errors) == 1
+    assert error_string1 in errors[0].error_message
 
     # Start another driver and make sure that it does not receive this
     # error. Make the other driver throw an error, and make sure it
@@ -45,11 +60,13 @@ def test_error_isolation(call_ray_start):
     driver_script = """
 import ray
 import time
+from ray.test_utils import (init_error_pubsub, get_error_message)
 
 ray.init(address="{}")
-
+p = init_error_pubsub()
 time.sleep(1)
-assert len(ray.errors()) == 0
+errors = get_error_message(p, 1, 2)
+assert len(errors) == 0
 
 @ray.remote
 def f():
@@ -60,12 +77,10 @@ try:
 except Exception as e:
     pass
 
-while len(ray.errors()) != 1:
-    print(len(ray.errors()))
-    time.sleep(0.1)
-assert len(ray.errors()) == 1
+errors = get_error_message(p, 1)
+assert len(errors) == 1
 
-assert "{}" in ray.errors()[0]["message"]
+assert "{}" in errors[0].error_message
 
 print("success")
 """.format(address, error_string2, error_string2)
@@ -76,8 +91,9 @@ print("success")
 
     # Make sure that the other error message doesn't show up for this
     # driver.
-    assert len(ray.errors()) == 1
-    assert error_string1 in ray.errors()[0]["message"]
+    errors = get_error_message(p, 1)
+    assert len(errors) == 1
+    p.close()
 
 
 def test_remote_function_isolation(call_ray_start):
@@ -285,7 +301,7 @@ ray.get([a.log.remote(), f.remote()])
 @pytest.mark.parametrize(
     "call_ray_start", [
         "ray start --head --num-cpus=1 --num-gpus=1 " +
-        "--min-worker-port=0 --max-worker-port=0"
+        "--min-worker-port=0 --max-worker-port=0 --port 0"
     ],
     indirect=True)
 def test_drivers_release_resources(call_ray_start):
@@ -353,70 +369,74 @@ print("success")
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
+
     # Test that we can call ray start with various command line
     # parameters. TODO(rkn): This test only tests the --head code path. We
     # should also test the non-head node code path.
 
-    # Test starting Ray with no arguments.
-    check_call_ray(["start", "--head"])
-    check_call_ray(["stop"])
-
     # Test starting Ray with a redis port specified.
-    check_call_ray(["start", "--head"])
+    check_call_ray(["start", "--head", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with a node IP address specified.
-    check_call_ray(["start", "--head", "--node-ip-address", "127.0.0.1"])
+    check_call_ray(
+        ["start", "--head", "--node-ip-address", "127.0.0.1", "--port", "0"])
+    check_call_ray(["stop"])
+
+    # Test starting Ray with a system config parameter set.
+    check_call_ray([
+        "start", "--head", "--system-config",
+        "{\"metrics_report_interval_ms\":100}", "--port", "0"
+    ])
     check_call_ray(["stop"])
 
     # Test starting Ray with the object manager and node manager ports
     # specified.
     check_call_ray([
         "start", "--head", "--object-manager-port", "12345",
-        "--node-manager-port", "54321"
+        "--node-manager-port", "54321", "--port", "0"
     ])
     check_call_ray(["stop"])
 
     # Test starting Ray with the worker port range specified.
     check_call_ray([
         "start", "--head", "--min-worker-port", "50000", "--max-worker-port",
-        "51000"
+        "51000", "--port", "0"
     ])
     check_call_ray(["stop"])
 
     # Test starting Ray with the number of CPUs specified.
-    check_call_ray(["start", "--head", "--num-cpus", "2"])
+    check_call_ray(["start", "--head", "--num-cpus", "2", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with the number of GPUs specified.
-    check_call_ray(["start", "--head", "--num-gpus", "100"])
+    check_call_ray(["start", "--head", "--num-gpus", "100", "--port", "0"])
     check_call_ray(["stop"])
 
-    # Test starting Ray with the max redis clients specified.
-    check_call_ray(["start", "--head", "--redis-max-clients", "100"])
+    # Test starting Ray with redis shard ports specified.
+    check_call_ray([
+        "start", "--head", "--redis-shard-ports", "6380,6381,6382", "--port",
+        "0"
+    ])
     check_call_ray(["stop"])
 
-    if "RAY_USE_NEW_GCS" not in os.environ:
-        # Test starting Ray with redis shard ports specified.
-        check_call_ray(
-            ["start", "--head", "--redis-shard-ports", "6380,6381,6382"])
-        check_call_ray(["stop"])
-
-        # Test starting Ray with all arguments specified.
-        check_call_ray([
-            "start", "--head", "--redis-shard-ports", "6380,6381,6382",
-            "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus",
-            "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
-        ])
-        check_call_ray(["stop"])
+    # Test starting Ray with all arguments specified.
+    check_call_ray([
+        "start", "--head", "--redis-shard-ports", "6380,6381,6382",
+        "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus", "0",
+        "--resources", "{\"Custom\": 1}", "--port", "0"
+    ])
+    check_call_ray(["stop"])
 
     # Test starting Ray with invalid arguments.
     with pytest.raises(subprocess.CalledProcessError):
-        check_call_ray(["start", "--head", "--address", "127.0.0.1:6379"])
+        check_call_ray(
+            ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test --block. Killing a child process should cause the command to exit.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--port", "0"])
 
     wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
 
@@ -429,7 +449,8 @@ def test_calling_start_ray_head(call_ray_stop_only):
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
     # Test --block. Killing the command should clean up all child processes.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--port", "0"])
     blocked.poll()
     assert blocked.returncode is None
 
@@ -446,7 +467,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost"],
     indirect=True)
 def test_using_hostnames(call_ray_start):
-    ray.init(node_ip_address="localhost", address="localhost:6379")
+    ray.init(_node_ip_address="localhost", address="localhost:6379")
 
     @ray.remote
     def f():

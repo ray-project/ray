@@ -177,7 +177,10 @@ if __name__ == "__main__":
         help="Finish quickly for testing. Assume False for users.")
 
     args, _ = parser.parse_known_args()
-    ray.init(address=args.address)
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address=args.address)
     data_size = 60000
     test_size = 10000
     batch_size = args.batch_size
@@ -208,7 +211,7 @@ if __name__ == "__main__":
         # Trains num epochs
         train_stats1 = trainer.train()
         train_stats1.update(trainer.validate())
-        print("iter {}:".format(i), train_stats1)
+        print(f"iter {i}:", train_stats1)
 
     dt = (time.time() - training_start) / 3
     print(f"Training on workers takes: {dt:.3f} seconds/epoch")

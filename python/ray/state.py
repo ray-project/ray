@@ -6,10 +6,9 @@ import time
 
 import ray
 
-from ray import (
-    gcs_utils,
-    services,
-)
+from ray import gcs_utils
+from google.protobuf.json_format import MessageToDict
+from ray._private import services
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -46,17 +45,11 @@ class GlobalState:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
         """
-        if self.redis_client is None:
-            raise RuntimeError("The ray global state API cannot be used "
-                               "before ray.init has been called.")
-
-        if self.redis_clients is None:
-            raise RuntimeError("The ray global state API cannot be used "
-                               "before ray.init has been called.")
-
-        if self.global_state_accessor is None:
-            raise RuntimeError("The ray global state API cannot be used "
-                               "before ray.init has been called.")
+        if (self.redis_client is None or self.redis_clients is None
+                or self.global_state_accessor is None):
+            raise ray.exceptions.RaySystemError(
+                "Ray has not been started yet. You can start Ray with "
+                "'ray.init()'.")
 
     def disconnect(self):
         """Disconnect global state from GCS."""
@@ -99,8 +92,8 @@ class GlobalState:
                 continue
             num_redis_shards = int(num_redis_shards)
             assert num_redis_shards >= 1, (
-                "Expected at least one Redis "
-                "shard, found {}.".format(num_redis_shards))
+                f"Expected at least one Redis shard, found {num_redis_shards}."
+            )
 
             # Attempt to get all of the Redis shards.
             redis_shard_addresses = self.redis_client.lrange(
@@ -116,9 +109,10 @@ class GlobalState:
         # Check to see if we timed out.
         if time.time() - start_time >= timeout:
             raise TimeoutError("Timed out while attempting to initialize the "
-                               "global state. num_redis_shards = {}, "
-                               "redis_shard_addresses = {}".format(
-                                   num_redis_shards, redis_shard_addresses))
+                               "global state. "
+                               f"num_redis_shards = {num_redis_shards}, "
+                               "redis_shard_addresses = "
+                               f"{redis_shard_addresses}")
 
         # Get the rest of the information.
         self.redis_clients = []
@@ -256,6 +250,7 @@ class GlobalState:
                     actor_table_data.owner_address.raylet_id),
             },
             "State": actor_table_data.state,
+            "NumRestarts": actor_table_data.num_restarts,
             "Timestamp": actor_table_data.timestamp,
         }
         return actor_info
@@ -306,7 +301,8 @@ class GlobalState:
                 "NodeManagerPort": item.node_manager_port,
                 "ObjectManagerPort": item.object_manager_port,
                 "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name
+                "RayletSocketName": item.raylet_socket_name,
+                "MetricsExportPort": item.metrics_export_port,
             }
             node_info["alive"] = node_info["Alive"]
             node_info["Resources"] = self.node_resource_table(
@@ -375,6 +371,66 @@ class GlobalState:
                 result[component_id].append(profile_event)
 
         return dict(result)
+
+    def placement_group_table(self, placement_group_id=None):
+        self._check_connected()
+
+        if placement_group_id is not None:
+            placement_group_id = ray.PlacementGroupID(
+                hex_to_binary(placement_group_id.hex()))
+            placement_group_info = (
+                self.global_state_accessor.get_placement_group_info(
+                    placement_group_id))
+            if placement_group_info is None:
+                return {}
+            else:
+                placement_group_info = (gcs_utils.PlacementGroupTableData.
+                                        FromString(placement_group_info))
+                return self._gen_placement_group_info(placement_group_info)
+        else:
+            raise NotImplementedError(
+                "Get all placement group is not implemented yet.")
+
+    def _gen_placement_group_info(self, placement_group_info):
+        # This should be imported here, otherwise, it will error doc build.
+        from ray.core.generated.common_pb2 import PlacementStrategy
+
+        def get_state(state):
+            if state == ray.gcs_utils.PlacementGroupTableData.PENDING:
+                return "PENDING"
+            elif state == ray.gcs_utils.PlacementGroupTableData.CREATED:
+                return "CREATED"
+            else:
+                return "REMOVED"
+
+        def get_strategy(strategy):
+            if strategy == PlacementStrategy.PACK:
+                return "PACK"
+            elif strategy == PlacementStrategy.STRICT_PACK:
+                return "STRICT_PACK"
+            elif strategy == PlacementStrategy.STRICT_SPREAD:
+                return "STRICT_SPREAD"
+            elif strategy == PlacementStrategy.SPREAD:
+                return "SPREAD"
+            else:
+                raise ValueError(
+                    f"Invalid strategy returned: {PlacementStrategy}")
+
+        assert placement_group_info is not None
+        return {
+            "placement_group_id": binary_to_hex(
+                placement_group_info.placement_group_id),
+            "name": placement_group_info.name,
+            "bundles": {
+                # The value here is needs to be dictionarified
+                # otherwise, the payload becomes unserializable.
+                bundle.bundle_id.bundle_index:
+                MessageToDict(bundle)["unitResources"]
+                for bundle in placement_group_info.bundles
+            },
+            "strategy": get_strategy(placement_group_info.strategy),
+            "state": get_state(placement_group_info.state),
+        }
 
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""
@@ -700,20 +756,8 @@ class GlobalState:
             for client in self.node_table() if (client["Alive"])
         }
 
-    def available_resources(self):
-        """Get the current available cluster resources.
-
-        This is different from `cluster_resources` in that this will return
-        idle (available) resources rather than total resources.
-
-        Note that this information can grow stale as tasks start and finish.
-
-        Returns:
-            A dictionary mapping resource name to the total quantity of that
-                resource in the cluster.
-        """
-        self._check_connected()
-
+    def _available_resources_per_node(self):
+        """Returns a dictionary mapping node id to avaiable resources."""
         available_resources_by_id = {}
 
         subscribe_client = self.redis_client.pubsub(
@@ -749,77 +793,34 @@ class GlobalState:
                 if client_id not in client_ids:
                     del available_resources_by_id[client_id]
 
+        # Close the pubsub clients to avoid leaking file descriptors.
+        subscribe_client.close()
+
+        return available_resources_by_id
+
+    def available_resources(self):
+        """Get the current available cluster resources.
+
+        This is different from `cluster_resources` in that this will return
+        idle (available) resources rather than total resources.
+
+        Note that this information can grow stale as tasks start and finish.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        self._check_connected()
+
+        available_resources_by_id = self._available_resources_per_node()
+
         # Calculate total available resources
         total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
                 total_available_resources[resource_id] += num_available
 
-        # Close the pubsub clients to avoid leaking file descriptors.
-        subscribe_client.close()
-
         return dict(total_available_resources)
-
-    def _error_messages(self, job_id):
-        """Get the error messages for a specific driver.
-
-        Args:
-            job_id: The ID of the job to get the errors for.
-
-        Returns:
-            A list of the error messages for this driver.
-        """
-        assert isinstance(job_id, ray.JobID)
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ERROR_INFO"), "",
-            job_id.binary())
-
-        # If there are no errors, return early.
-        if message is None:
-            return []
-
-        gcs_entries = gcs_utils.GcsEntry.FromString(message)
-        error_messages = []
-        for entry in gcs_entries.entries:
-            error_data = gcs_utils.ErrorTableData.FromString(entry)
-            assert job_id.binary() == error_data.job_id
-            error_message = {
-                "type": error_data.type,
-                "message": error_data.error_message,
-                "timestamp": error_data.timestamp,
-            }
-            error_messages.append(error_message)
-        return error_messages
-
-    def error_messages(self, job_id=None):
-        """Get the error messages for all drivers or a specific driver.
-
-        Args:
-            job_id: The specific job to get the errors for. If this is
-                None, then this method retrieves the errors for all jobs.
-
-        Returns:
-            A list of the error messages for the specified driver if one was
-                given, or a dictionary mapping from job ID to a list of error
-                messages for that driver otherwise.
-        """
-        self._check_connected()
-
-        if job_id is not None:
-            assert isinstance(job_id, ray.JobID)
-            return self._error_messages(job_id)
-
-        error_table_keys = self.redis_client.keys(
-            gcs_utils.TablePrefix_ERROR_INFO_string + "*")
-        job_ids = [
-            key[len(gcs_utils.TablePrefix_ERROR_INFO_string):]
-            for key in error_table_keys
-        ]
-
-        return {
-            binary_to_hex(job_id): self._error_messages(ray.JobID(job_id))
-            for job_id in job_ids
-        }
 
     def actor_checkpoint_info(self, actor_id):
         """Get checkpoint info for the given actor id.
@@ -858,7 +859,7 @@ state = GlobalState()
 
 
 def jobs():
-    """Get a list of the jobs in the cluster.
+    """Get a list of the jobs in the cluster (for debugging only).
 
     Returns:
         Information from the job table, namely a list of dicts with keys:
@@ -872,7 +873,7 @@ def jobs():
 
 
 def nodes():
-    """Get a list of the nodes in the cluster.
+    """Get a list of the nodes in the cluster (for debugging only).
 
     Returns:
         Information about the Ray clients in the cluster.
@@ -890,8 +891,8 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return ray.resource_spec.NODE_ID_PREFIX + ray.services.get_node_ip_address(
-    )
+    return (ray.resource_spec.NODE_ID_PREFIX +
+            ray._private.services.get_node_ip_address())
 
 
 def node_ids():
@@ -913,7 +914,7 @@ def node_ids():
 
 
 def actors(actor_id=None):
-    """Fetch and parse the actor info for one or more actor IDs.
+    """Fetch actor info for one or more actor IDs (for debugging only).
 
     Args:
         actor_id: A hex string of the actor ID to fetch information about. If
@@ -1001,24 +1002,3 @@ def available_resources():
             resource in the cluster.
     """
     return state.available_resources()
-
-
-def errors(all_jobs=False):
-    """Get error messages from the cluster.
-
-    Args:
-        all_jobs: False if we should only include error messages for this
-            specific job, or True if we should include error messages for all
-            jobs.
-
-    Returns:
-        Error messages pushed from the cluster. This will be a single list if
-            all_jobs is False, or a dictionary mapping from job ID to a list of
-            error messages for that job if all_jobs is True.
-    """
-    if not all_jobs:
-        worker = ray.worker.global_worker
-        error_messages = state.error_messages(job_id=worker.current_job_id)
-    else:
-        error_messages = state.error_messages(job_id=None)
-    return error_messages

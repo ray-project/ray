@@ -71,7 +71,8 @@ def PPOLoss(dist_class,
     entropy_loss = torch.mean(entropy_loss(pi_new_dist))
 
     total_loss = -surr_loss + cur_kl_coeff * kl_loss
-    total_loss += vf_loss_coeff * vf_loss - entropy_coeff * entropy_loss
+    total_loss += vf_loss_coeff * vf_loss
+    total_loss -= entropy_coeff * entropy_loss
     return total_loss, surr_loss, kl_loss, vf_loss, entropy_loss
 
 
@@ -108,7 +109,6 @@ class WorkerLoss(object):
             vf_clip_param=vf_clip_param,
             vf_loss_coeff=vf_loss_coeff,
             clip_loss=clip_loss)
-        print("Worker Loss: ", self.loss)
 
 
 # This is the Meta-Update computation graph for main (meta-update step)
@@ -199,10 +199,9 @@ class MAMLLoss(object):
                 current_policy_vars[i] = adapted_policy_vars
                 kls.append(kl_loss)
                 inner_ppo_loss.append(ppo_loss)
-            inner_kls.append(kls)
+            inner_kls.extend(kls)
 
-        mean_inner_kl = [torch.mean(torch.stack(kls)) for kls in inner_kls]
-        self.mean_inner_kl = mean_inner_kl
+        self.mean_inner_kl = inner_kls
 
         ppo_obj = []
         for i in range(self.num_tasks):
@@ -230,10 +229,10 @@ class MAMLLoss(object):
         self.mean_entropy = entropy_loss
 
         self.inner_kl_loss = torch.mean(
-            torch.stack(
-                [a * b for a, b in zip(self.cur_kl_coeff, mean_inner_kl)]))
+            torch.stack([
+                a * b for a, b in zip(self.cur_kl_coeff, self.mean_inner_kl)
+            ]))
         self.loss = torch.mean(torch.stack(ppo_obj)) + self.inner_kl_loss
-        print("Meta-Loss: ", self.loss, ", Inner KL:", self.inner_kl_loss)
 
     def feed_forward(self, obs, policy_vars, policy_config):
         # Hacky for now, reconstruct FC network with adapted weights
@@ -298,13 +297,11 @@ class MAMLLoss(object):
         return pi_new_logits, torch.squeeze(value_fn)
 
     def compute_updated_variables(self, loss, network_vars, model):
-
         grad = torch.autograd.grad(
             loss,
             inputs=model.parameters(),
             create_graph=True,
-            retain_graph=True,
-            only_inputs=True)
+            allow_unused=True)
         adapted_vars = {}
         for i, tup in enumerate(network_vars.items()):
             name, var = tup
@@ -390,8 +387,9 @@ def maml_stats(policy, train_batch):
 
 class KLCoeffMixin:
     def __init__(self, config):
-        self.kl_coeff_val = [config["kl_coeff"]
-                             ] * config["inner_adaptation_steps"]
+        self.kl_coeff_val = [
+            config["kl_coeff"]
+        ] * config["inner_adaptation_steps"] * config["num_workers"]
         self.kl_target = self.config["kl_target"]
 
     def update_kls(self, sampled_kls):

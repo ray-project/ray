@@ -5,7 +5,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.types import EnvType, MultiEnvDict, EnvID, \
+from ray.rllib.utils.typing import EnvType, MultiEnvDict, EnvID, \
     AgentID, MultiAgentDict
 
 if TYPE_CHECKING:
@@ -165,7 +165,7 @@ class BaseEnv:
         Actions should be sent for each ready agent that returned observations
         in the previous poll() call.
 
-        Arguments:
+        Args:
             action_dict (dict): Actions values keyed by env_id and agent_id.
         """
         raise NotImplementedError
@@ -364,7 +364,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
                  existing_envs: List[MultiAgentEnv], num_envs: int):
         """Wrap existing multi-agent envs.
 
-        Arguments:
+        Args:
             make_env (func|None): Factory that produces a new multiagent env.
                 Must be defined if the number of existing envs is less than
                 num_envs.

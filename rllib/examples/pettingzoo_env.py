@@ -6,15 +6,15 @@ except ImportError:
     from ray.rllib.agents.registry import get_agent_class
 from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
-from pettingzoo.gamma import prison_v0
-from supersuit.aec_wrappers import normalize_obs, dtype, color_reduction
+from pettingzoo.butterfly import pistonball_v0
+from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 
 from numpy import float32
 
 if __name__ == "__main__":
     """For this script, you need:
     1. Algorithm name and according module, e.g.: "PPo" + agents.ppo as agent
-    2. Name of the aec game you want to train on, e.g.: "prison".
+    2. Name of the aec game you want to train on, e.g.: "pistonball".
     3. num_cpus
     4. num_rollouts
 
@@ -24,10 +24,10 @@ if __name__ == "__main__":
 
     # function that outputs the environment you wish to register.
     def env_creator(config):
-        env = prison_v0.env(num_floors=config.get("num_floors", 4))
-        env = dtype(env, dtype=float32)
-        env = color_reduction(env, dtype=float32)
-        env = normalize_obs(env, mode="R")
+        env = pistonball_v0.env(local_ratio=config.get("local_ratio", 0.2))
+        env = dtype_v0(env, dtype=float32)
+        env = color_reduction_v0(env, mode="R")
+        env = normalize_obs_v0(env)
         return env
 
     num_cpus = 1
@@ -38,10 +38,11 @@ if __name__ == "__main__":
 
     # 2. Set environment config. This will be passed to
     # the env_creator function via the register env lambda below
-    config["env_config"] = {"num_floors": 5}
+    config["env_config"] = {"local_ratio": 0.5}
 
     # 3. Register env
-    register_env("prison", lambda config: PettingZooEnv(env_creator(config)))
+    register_env("pistonball",
+                 lambda config: PettingZooEnv(env_creator(config)))
 
     # 4. Extract space dimensions
     test_env = PettingZooEnv(env_creator({}))
@@ -60,7 +61,7 @@ if __name__ == "__main__":
     config["log_level"] = "DEBUG"
     config["num_workers"] = 1
     # Fragment length, collected at once from each worker and for each agent!
-    config["sample_batch_size"] = 30
+    config["rollout_fragment_length"] = 30
     # Training batch size -> Fragments are concatenated up to this point.
     config["train_batch_size"] = 200
     # After n steps, force reset simulation
@@ -74,7 +75,7 @@ if __name__ == "__main__":
 
     # 6. Initialize ray and trainer object
     ray.init(num_cpus=num_cpus + 1)
-    trainer = get_agent_class(alg_name)(env="prison", config=config)
+    trainer = get_agent_class(alg_name)(env="pistonball", config=config)
 
     # 7. Train once
     trainer.train()

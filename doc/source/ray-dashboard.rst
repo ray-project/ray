@@ -3,16 +3,16 @@ Ray Dashboard
 Ray's built-in dashboard provides metrics, charts, and other features that help
 Ray users to understand Ray clusters and libraries.
 
-Through the dashboard, you can
+The dashboard lets you:
 
 - View cluster metrics.
-- Visualize the actor relationships and statistics.
+- See errors and exceptions at a glance.
+- View logs across many machines in a single pane.
+- Understand Ray memory utilization and debug memory errors.
+- See per-actor resource usage, executed tasks, logs, and more.
 - Kill actors and profile your Ray jobs.
 - See Tune jobs and trial information.
 - Detect cluster anomalies and debug them.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Dashboard-overview.png
-    :align: center
 
 Getting Started
 ---------------
@@ -32,46 +32,62 @@ The dashboard is also available :ref:`when using the cluster launcher <monitor-c
 
 Views
 -----
-
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-component-view.png
     :align: center
 
 Machine View
 ~~~~~~~~~~~~
-The machine view shows you:
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/machine-view-overview.png
+   :align: center
 
-- System resource usage for each machine and worker such as RAM, CPU, disk, and network usage information.
-- Logs and error messages for each machine and worker.
-- Actors or tasks assigned to each worker process.
+The machine view lets you see resource utilization information on a per-node and per-worker basis. This also shows the assignment of GPU resources to specific actors or tasks.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Machine-view-basic.png
+In addition, the machine view lets you see **logs** and **error messages**. You can see messages for the whole cluster, or drill down into a specific node or worker.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/machine-view-logs.png
     :align: center
+
+Finally, you can see the task that each worker is currently performing.
+
 
 Logical View
 ~~~~~~~~~~~~
-The logical view shows you:
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-overview.png
+    :align: center
 
-- Created and killed actors.
-- Actor statistics such as actor status, number of executed tasks, pending tasks, and memory usage.
-- Actor hierarchy.
+The logical view lets you monitor the actors running on your Ray cluster. For each actor class defined in your program, the logical view allows you to see how many of that class are running, how many tasks they've executed, and more.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Logical-view-basic.png
+In addition, it will warn you if you have an actor that cannot be created because your cluster has insufficient resources to satisfy its requirements.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-warning.png
+    :align: center
+
+You can expand the panel for a class to see more detailed information about individual actors. You can profile these, view their logs, and see information about their arguments.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-expanded-actors.png
     :align: center
 
 Memory View
 ~~~~~~~~~~~~
-The memory view shows you:
+The memory view lets you see information about the data stored in the Ray Object store. It is very useful if you have encountered an ``ObjectStoreFullError``. A number of things are stored in the object store, including:
 
-- The state of Ray objects, including their size, reference type, and call site.
-- A summary of reference types and object sizes in use.
+1. Actor References
+2. Objects returned from a task or actor method
+3. Objects that are passed into an actor as an argument
 
-.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/Memory-view-basic.png
+You can group the memory view by node, or by the stack trace that created the memory being used. The latter is particularly helpful for tracking down the **line of code where a memory leak occurs**. See more below in `Debugging ObjectStoreFullError and Memory Leaks`_.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/memory-view-stack-trace.png
     :align: center
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/memory-view-expanded.png
+    :align: center
+
+.. note::
+    This view does **not** show information about **heap memory usage**. That means if your actor or task is allocating too much memory locally (not in the Ray object store a.k.a Plasma), this view will not help you find it.
 
 Ray Config
 ~~~~~~~~~~
-
-The ray config tab shows you the current autoscaler configuration.
+The ray config tab shows you the current cluster launcher configuration if you're using the ray cluster launcher. The cluster launcher was formerly known as the autoscaler.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Ray-config-basic.png
     :align: center
@@ -108,38 +124,19 @@ are shown in yellow.
 
 Below is an example.
 
-.. code-block:: python
-
-  import ray
-
-  ray.init(num_gpus=2)
-
-  @ray.remote(num_gpus=1)
-  class Actor1:
-      def __init__(self):
-          pass
-
-  @ray.remote(num_gpus=4)
-  class Actor2:
-      def __init__(self):
-          pass
-
-  actor1_list = [Actor1.remote() for _ in range(4)]
-  actor2 = Actor2.remote()
-
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-pending-infeasible-actors.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-overview.png
     :align: center
 
-This cluster has two GPUs, and so it only has room to create two copies of ``Actor1``.
-As a result, the rest of ``Actor1`` will be pending.
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-warning.png
+    :align: center
 
-You can also see it is infeasible to create ``Actor2`` because it requires 4 GPUs which
-is bigger than the total gpus available in this cluster (2 GPUs).
 
-Debugging ObjectStoreFullError and Memory Leak
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Debugging ObjectStoreFullError and Memory Leaks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 You can view information for Ray objects in the memory tab. It is useful to debug memory leaks, especially `ObjectStoreFullError`.
+
+One common cause of these memory errors is that there are objects which never go out of scope. In order to find these, you can go to the Memory View, then select to "Group By Stack Trace." This groups memory entries by their stack traces up to three frames deep. If you see a group which is growing without bound, you might want to examine that line of code to see if you intend to keep that reference around.
+
 Note that this is the same information as displayed in the `ray memory command <https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory>`_. For details about the information contained in the table, please see the `ray memory` documentation.
 
 Inspect Memory Usage
@@ -240,74 +237,37 @@ Note that number of workers can exceed number of cores.
 **Errors**: Error messages at each node and worker. You can see error messages by clicking it.
 
 
-Logical View (Experimental)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-**Actor Titles**: Name of an actor and its arguments.
+Logical View
+~~~~~~~~~~~~
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-expanded-actors.png
+    :align: center
+
+**Title**: Name of an actor and its arguments.
 
 **State**: State of an actor.
+- Alive
+- Restarting
+- Dead
+- Infeasible (cannot be created due to not enough available resources (e.g. CPUs, GPUs, memory) in the cluster, even at full capacity)
+- Pending Creation
+- Dependencies Unready (waiting for one or more of its arguments to be ready)
 
-- 0: Alive
-- 1: Restarting
-- 2: Dead
+**Number of Excuted Tasks**: A number of completed method calls for this actor.
 
-**Pending**: A number of pending tasks for this actor.
-
-**Excuted**: A number of executed tasks for this actor.
-
-**NumObjectRefsInScope**: Number of object refs in scope for this actor. object refs
+**Number of ObjectRefs In Scope**: The number of object refs in scope for this actor, which correspond to objects in the Ray object store. object refs
 in scope will not be evicted unless object stores are full.
 
-**NumLocalObjects**: Number of object refs that are in this actor's local memory.
-Only big objects (>100KB) are residing in plasma object stores, and other small
+**Number of Local Objects**: Number of object refs that are in this actor's local memory.
+Only big objects (>100KB) reside in plasma object stores, and other small
 objects are staying in local memory.
 
-**UsedLocalObjectMemory**: Used memory used by local objects.
+**Used Local Object Memory**: Used memory used by local objects.
 
-**kill actor**: A button to kill an actor in a cluster. It is corresponding to ``ray.kill``.
+**kill actor**: A button to kill an actor in a cluster. It has the same effect as calling ``ray.kill`` on an actor handle.
 
-**profile for**: A button to run profiling. We currently support profiling for 10s,
-30s and 60s. It requires passwordless ``sudo``.
+**profile**: A button to run profiling. We currently support profiling for 10s,
+30s and 60s. It requires passwordless ``sudo``. The result of profiling is a py-spy html output displaying how much CPU time the actor spent in various methods. 
 
-**Infeasible Actor Creation**: Actor creation is infeasible when an actor
-requires more resources than a Ray cluster can provide. This is depicted
-as a red colored actor.
-
-**Pending Actor Creation**: Actor creation is pending when there are no
-available resources for this actor because they are already taken by other
-tasks and actors. This is depicted as a yellow colored actor.
-
-**Actor Hierarchy**: The logical view renders actor information in a tree format.
-
-To illustrate this, in the code block below, the ``Parent`` actor creates
-two ``Child`` actors and each ``Child`` actor creates one ``GrandChild`` actor.
-This relationship is visible in the dashboard *Logical View* tab.
-
-.. code-block:: python
-
-  import ray
-  ray.init()
-
-  @ray.remote
-  class Grandchild:
-      def __init__(self):
-          pass
-
-  @ray.remote
-  class Child:
-      def __init__(self):
-          self.grandchild_handle = Grandchild.remote()
-
-  @ray.remote
-  class Parent:
-      def __init__(self):
-          self.children_handles = [Child.remote() for _ in range(2)]
-
-  parent_handle = Parent.remote()
-
-You can see that the dashboard shows the parent/child relationship as expected.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Logical-view-basic.png
-    :align: center
 
 Memory
 ~~~~~~
@@ -315,7 +275,7 @@ Memory
 
 **IP Address**: Node IP Address where a Ray object is pinned.
 
-**Pid**: ID of a process where a Ray object is being used.
+**PID**: ID of a process where a Ray object is being used.
 
 **Type**: Type of a process. It is either a driver or worker.
 
@@ -325,11 +285,10 @@ Memory
 
 **Reference Type**: Reference types of Ray objects. Checkout the `ray memory command <https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory>`_ to learn each reference type.
 
-**Call Site**: Call site where this Ray object is referenced.
+**Call Site**: Call site where this Ray object is referenced, up to three stack frames deep.
 
 Ray Config
 ~~~~~~~~~~~~
-
 If you are using the cluster launcher, this Configuration defined at ``cluster.yaml`` is shown.
 See `Cluster.yaml reference <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`_ for more details.
 

@@ -69,6 +69,10 @@ class PlasmaStore {
   /// the store when it is done with the object.
   ///
   /// \param object_id Object ID of the object to be created.
+  /// \param owner_raylet_id Raylet ID of the object's owner.
+  /// \param owner_ip_address IP address of the object's owner.
+  /// \param owner_port Port of the object's owner.
+  /// \param owner_worker_id Worker ID of the object's owner.
   /// \param evict_if_full If this is true, then when the object store is full,
   ///        try to evict objects that are not currently referenced before
   ///        creating the object. Else, do not evict any objects and
@@ -90,7 +94,9 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
-  PlasmaError CreateObject(const ObjectID& object_id, bool evict_if_full,
+  PlasmaError CreateObject(const ObjectID& object_id, const ClientID& owner_raylet_id,
+                           const std::string& owner_ip_address, int owner_port,
+                           const WorkerID& owner_worker_id, bool evict_if_full,
                            int64_t data_size, int64_t metadata_size, int device_num,
                            const std::shared_ptr<Client> &client, PlasmaObject* result);
 

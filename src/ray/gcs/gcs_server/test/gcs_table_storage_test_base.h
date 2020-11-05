@@ -52,29 +52,50 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
     // Delete.
     Delete(table, job1_id);
+    Delete(table, job2_id);
     ASSERT_EQ(Get(table, job1_id, values), 0);
-    ASSERT_EQ(Get(table, job2_id, values), 1);
+    ASSERT_EQ(Get(table, job2_id, values), 0);
   }
 
   void TestGcsTableWithJobIdApi() {
     auto table = gcs_table_storage_->ActorTable();
-    JobID job_id = JobID::FromInt(3);
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
-    ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
+    JobID job_id1 = JobID::FromInt(1);
+    JobID job_id2 = JobID::FromInt(2);
+    JobID job_id3 = JobID::FromInt(3);
+    auto actor_table_data1 = Mocker::GenActorTableData(job_id1);
+    auto actor_table_data2 = Mocker::GenActorTableData(job_id2);
+    auto actor_table_data3 = Mocker::GenActorTableData(job_id3);
+    ActorID actor_id1 = ActorID::FromBinary(actor_table_data1->actor_id());
+    ActorID actor_id2 = ActorID::FromBinary(actor_table_data2->actor_id());
+    ActorID actor_id3 = ActorID::FromBinary(actor_table_data3->actor_id());
 
     // Put.
-    Put(table, actor_id, *actor_table_data);
+    Put(table, actor_id1, *actor_table_data1);
+    Put(table, actor_id2, *actor_table_data2);
+    Put(table, actor_id3, *actor_table_data3);
 
     // Get.
     std::vector<rpc::ActorTableData> values;
-    ASSERT_EQ(Get(table, actor_id, values), 1);
+    ASSERT_EQ(Get(table, actor_id1, values), 1);
 
     // Get by job id.
-    ASSERT_EQ(GetByJobId(table, job_id, actor_id, values), 1);
+    ASSERT_EQ(GetByJobId(table, job_id1, actor_id1, values), 1);
 
     // Delete.
-    Delete(table, actor_id);
-    ASSERT_EQ(Get(table, actor_id, values), 0);
+    Delete(table, actor_id1);
+    ASSERT_EQ(Get(table, actor_id1, values), 0);
+    ASSERT_EQ(GetByJobId(table, job_id1, actor_id1, values), 0);
+
+    std::vector<ActorID> keys;
+    keys.push_back(actor_id2);
+    keys.push_back(actor_id3);
+    BatchDelete(table, keys);
+
+    ASSERT_EQ(Get(table, actor_id2, values), 0);
+    ASSERT_EQ(GetByJobId(table, job_id2, actor_id2, values), 0);
+
+    ASSERT_EQ(Get(table, actor_id3, values), 0);
+    ASSERT_EQ(GetByJobId(table, job_id3, actor_id3, values), 0);
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
@@ -134,6 +155,17 @@ class GcsTableStorageTestBase : public ::testing::Test {
     };
     ++pending_count_;
     RAY_CHECK_OK(table.Delete(key, on_done));
+    WaitPendingDone();
+  }
+
+  template <typename TABLE, typename KEY>
+  void BatchDelete(TABLE &table, const std::vector<KEY> &keys) {
+    auto on_done = [this](const Status &status) {
+      RAY_CHECK_OK(status);
+      --pending_count_;
+    };
+    ++pending_count_;
+    RAY_CHECK_OK(table.BatchDelete(keys, on_done));
     WaitPendingDone();
   }
 

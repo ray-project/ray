@@ -3,9 +3,9 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.Checkpointable;
 import io.ray.api.Ray;
-import io.ray.api.exception.RayActorException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
+import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
 import java.util.List;
@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class ActorRestartTest extends BaseTest {
 
   public static class Counter {
@@ -41,7 +41,6 @@ public class ActorRestartTest extends BaseTest {
   }
 
   public void testActorRestart() throws InterruptedException, IOException {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<Counter> actor = Ray.actor(Counter::new).setMaxRestarts(1).remote();
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
@@ -118,7 +117,6 @@ public class ActorRestartTest extends BaseTest {
   }
 
   public void testActorCheckpointing() throws IOException, InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<CheckpointableCounter> actor = Ray.actor(CheckpointableCounter::new)
         .setMaxRestarts(1).remote();
     // Call increase 3 times.

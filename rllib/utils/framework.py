@@ -3,7 +3,7 @@ import os
 import sys
 from typing import Any, Optional
 
-from ray.rllib.utils.types import TensorStructType, TensorShape, TensorType
+from ray.rllib.utils.typing import TensorStructType, TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +38,6 @@ def try_import_tf(error=False):
 
     if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
-    # TODO: (sven) Allow env var to force compat.v1 behavior even if tf2.x
-    #  installed.
 
     # Try to reuse already imported tf module. This will avoid going through
     # the initial import steps below and thereby switching off v2_behavior
@@ -200,9 +197,13 @@ def get_variable(value,
             if isinstance(value, float) else tf.int32
             if isinstance(value, int) else None)
         return tf.compat.v1.get_variable(
-            tf_name, initializer=value, dtype=dtype, trainable=trainable,
-            **({} if shape is None else {"shape": shape})
-        )
+            tf_name,
+            initializer=value,
+            dtype=dtype,
+            trainable=trainable,
+            **({} if shape is None else {
+                "shape": shape
+            }))
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
         var_ = torch.from_numpy(value)
@@ -235,6 +236,9 @@ def get_activation_fn(name, framework="tf"):
     if framework == "torch":
         if name in ["linear", None]:
             return None
+        if name == "swish":
+            from ray.rllib.utils.torch_ops import Swish
+            return Swish
         _, nn = try_import_torch()
         if name == "relu":
             return nn.ReLU

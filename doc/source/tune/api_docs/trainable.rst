@@ -27,7 +27,7 @@ Here is a simple example of using the function API. You can report intermediate 
         for x in range(20):
             intermediate_score = objective(x, config["a"], config["b"])
 
-            tune.report(value=intermediate_score)  # This sends the score to Tune.
+            tune.report(score=intermediate_score)  # This sends the score to Tune.
 
     analysis = tune.run(
         trainable,
@@ -40,37 +40,89 @@ Here is a simple example of using the function API. You can report intermediate 
 
 Tune will run this function on a separate thread in a Ray actor process.
 
+.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using parallel hyperparameter tuning, check out our :ref:`PyTorch <tune-pytorch-cifar>` user guide and Tune's :ref:`distributed pytorch integrations <tune-integration-torch>`.
+
+Function API return and yield values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Instead of using ``tune.report()``, you can also use Python's ``yield``
+statement to report metrics to Ray Tune:
+
+
+.. code-block:: python
+
+    def trainable(config):
+        # config (dict): A dict of hyperparameters.
+
+        for x in range(20):
+            intermediate_score = objective(x, config["a"], config["b"])
+
+            yield {"score": intermediate_score}  # This sends the score to Tune.
+
+    analysis = tune.run(
+        trainable,
+        config={"a": 2, "b": 4}
+    )
+
+    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
+
+If you yield a dictionary object, this will work just as ``tune.report()``.
+If you yield a number, if will be reported to Ray Tune with the key ``_metric``, i.e.
+as if you had called ``tune.report(_metric=value)``.
+
+Ray Tune supports the same functionality for return values if you only
+report metrics at the end of each run:
+
+.. code-block:: python
+
+    def trainable(config):
+        # config (dict): A dict of hyperparameters.
+
+        final_score = 0
+        for x in range(20):
+            final_score = objective(x, config["a"], config["b"])
+
+        return {"score": final_score}  # This sends the score to Tune.
+
+    analysis = tune.run(
+        trainable,
+        config={"a": 2, "b": 4}
+    )
+
+    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
+
+
+.. _tune-function-checkpointing:
 
 Function API Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance. To use Tune's checkpointing features, you must expose a ``checkpoint`` argument in the function signature, and call ``tune.make_checkpoint_dir`` and ``tune.save_checkpoint``:
+Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance. To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir`` :
 
 .. code-block:: python
 
         import time
         from ray import tune
 
-        def train_func(config, checkpoint=None):
+        def train_func(config, checkpoint_dir=None):
             start = 0
-            if checkpoint:
-                with open(checkpoint) as f:
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
                     state = json.loads(f.read())
                     start = state["step"] + 1
 
             for iter in range(start, 100):
                 time.sleep(1)
 
-                #
-                checkpoint_dir = tune.make_checkpoint_dir(step=step)
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(json.dumps({"step": start}))
-                tune.save_checkpoint(path)
+                with tune.checkpoint_dir(step=step):
+                    path = os.path.join(checkpoint_dir, "checkpoint")
+                    with open(path, "w") as f:
+                        f.write(json.dumps({"step": start}))
 
                 tune.report(hello="world", ray="tune")
 
         tune.run(train_func)
+
+.. note:: ``checkpoint_freq`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
 
 In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``:
 
@@ -263,9 +315,7 @@ tune.report / tune.checkpoint (Function API)
 
 .. autofunction:: ray.tune.report
 
-.. autofunction:: ray.tune.make_checkpoint_dir
-
-.. autofunction:: ray.tune.save_checkpoint
+.. autofunction:: ray.tune.checkpoint_dir
 
 .. autofunction:: ray.tune.get_trial_dir
 
@@ -281,6 +331,24 @@ tune.Trainable (Class API)
     :member-order: groupwise
     :private-members:
     :members:
+
+
+.. _tune-ddp-doc:
+
+Distributed Torch
+-----------------
+
+Ray also offers lightweight integrations to distribute your model training on Ray Tune.
+
+
+.. autofunction:: ray.tune.integration.torch.DistributedTrainableCreator
+   :noindex:
+
+.. autofunction:: ray.tune.integration.torch.distributed_checkpoint_dir
+   :noindex:
+
+.. autofunction:: ray.tune.integration.torch.is_distributed_trainable
+   :noindex:
 
 tune.DurableTrainable
 ---------------------

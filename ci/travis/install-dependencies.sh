@@ -58,7 +58,6 @@ install_miniconda() {
   fi
 
   local conda="${CONDA_EXE-}"  # Try to get the activated conda executable
-
   if [ -z "${conda}" ]; then  # If no conda is found, try to find it in PATH
     conda="$(command -v conda || true)"
   fi
@@ -137,8 +136,34 @@ install_miniconda() {
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
 
+install_shellcheck() {
+  local shellcheck_version="0.7.1"
+  if [ "${shellcheck_version}" != "$(command -v shellcheck > /dev/null && shellcheck --version | sed -n "s/version: //p")" ]; then
+    local osname=""
+    case "${OSTYPE}" in
+      linux*) osname="linux";;
+      darwin*) osname="darwin";;
+    esac
+    local name="shellcheck-v${shellcheck_version}"
+    if [ "${osname}" = linux ] || [ "${osname}" = darwin ]; then
+      sudo mkdir -p /usr/local/bin || true
+      curl -f -s -L "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
+        sudo tar -C /usr/local/bin -x -v -J --strip-components=1 "${name}/shellcheck"
+      }
+    else
+      mkdir -p /usr/local/bin
+      curl -f -s -L -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
+      unzip "${name}.zip" "${name}.exe"
+      mv -f "${name}.exe" "/usr/local/bin/shellcheck.exe"
+    fi
+    test "${shellcheck_version}" = "$(shellcheck --version | sed -n "s/version: //p")"
+  fi
+}
+
 install_linters() {
-  pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0 yapf==0.23.0
+  pip install -r "${WORKSPACE_DIR}"/python/requirements_linters.txt
+
+  install_shellcheck
 }
 
 install_nvm() {
@@ -230,28 +255,13 @@ install_dependencies() {
       *) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
     esac
 
-    local tf_version
-    case "${OSTYPE}" in
-      msys) tf_version="${TF_VERSION:-2.2.0}";;
-      *) tf_version="${TF_VERSION:-2.1.0}";;
-    esac
-    pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
-      opencv-python-headless pyyaml pandas==1.0.5 requests feather-format lxml openpyxl xlrd \
-      py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
-      kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
-      Pillow prometheus_client boto3 pettingzoo mypy)
-    if [ "${OSTYPE}" != msys ]; then
-      # These packages aren't Windows-compatible
-      pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
-    fi
-
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case
     # after n seconds.
     local status="0";
     local errmsg="";
     for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install "${pip_packages[@]}" 2>&1) && break;
+      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
@@ -275,34 +285,42 @@ install_dependencies() {
 
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
-    pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 \
-      torch=="${TORCH_VERSION-1.4}" torchvision atari_py "gym[atari]" lz4 smart_open
+    pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
   fi
 
   # Additional Tune test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ]; then
-    pip install tensorflow-probability=="${TFP_VERSION-0.8}" \
-      torch=="${TORCH_VERSION-1.4}"
-    pip install -r "${WORKSPACE_DIR}"/docker/tune_test/requirements.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+  fi
+
+  # Additional Tune dependency for Horovod.
+  if [ "${INSTALL_HOROVOD-}" = 1 ]; then
+    # TODO: eventually pin this to master.
+    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
   fi
 
   # Additional RaySGD test dependencies.
   if [ "${SGD_TESTING-}" = 1 ]; then
-    pip install tensorflow-probability=="${TFP_VERSION-0.8}" \
-      torch=="${TORCH_VERSION-1.4}"
-    pip install -r "${WORKSPACE_DIR}"/docker/tune_test/requirements.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
   fi
 
   # Additional Doc test dependencies.
   if [ "${DOC_TESTING-}" = 1 ]; then
-    pip install tensorflow-probability=="${TFP_VERSION-0.8}" \
-      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari] lz4 smart_open
-    pip install -r "${WORKSPACE_DIR}"/docker/tune_test/requirements.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
   fi
 
-  # Additional streaming dependencies.
-  if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED}" = 1 ]; then
-    pip install "msgpack>=1.0.0"
+
+  # If CI has deemed that a different version of Tensorflow or Torch
+  # should be installed, then upgrade/downgrade to that specific version.
+  if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
+    case "${TORCH_VERSION-1.6}" in
+      1.5) TORCHVISION_VERSION=0.6.0;;
+      *) TORCHVISION_VERSION=0.5.0;;
+    esac
+
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
+      torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
+      tensorflow=="${TF_VERSION-2.2.0}" gym
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then

@@ -15,10 +15,8 @@ public class DynamicResourceTest extends BaseTest {
     return "hi";
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void testSetResource() {
-    TestUtils.skipTestUnderSingleProcess();
-
     // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
     TestUtils.warmUpCluster();
 

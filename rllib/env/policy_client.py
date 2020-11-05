@@ -10,11 +10,10 @@ import time
 from typing import Union, Optional
 
 import ray.cloudpickle as pickle
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.types import MultiAgentDict, EnvInfoDict, EnvObsType, \
+from ray.rllib.utils.typing import MultiAgentDict, EnvInfoDict, EnvObsType, \
     EnvActionType
 
 logger = logging.getLogger(__name__)
@@ -103,7 +102,7 @@ class PolicyClient:
                    ) -> Union[EnvActionType, MultiAgentDict]:
         """Record an observation and get the on-policy action.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
 
@@ -134,7 +133,7 @@ class PolicyClient:
                    action: Union[EnvActionType, MultiAgentDict]) -> None:
         """Record an observation and (off-policy) action taken.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
             action (obj): Action for the observation.
@@ -164,7 +163,7 @@ class PolicyClient:
         episode. Rewards accumulate until the next action. If no reward is
         logged before the next action, a reward of 0.0 is assumed.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
             info (dict): Extra info dict.
@@ -192,7 +191,7 @@ class PolicyClient:
                     observation: Union[EnvObsType, MultiAgentDict]) -> None:
         """Record the end of an episode.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
         """
@@ -324,7 +323,7 @@ def _auto_wrap_external(real_env_creator):
 def _create_embedded_rollout_worker(kwargs, send_fn):
     """Create a local rollout worker and a thread that samples from it.
 
-    Arguments:
+    Args:
         kwargs (dict): args for the RolloutWorker constructor.
         send_fn (fn): function to send a JSON request to the server.
     """
@@ -337,6 +336,7 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     real_env_creator = kwargs["env_creator"]
     kwargs["env_creator"] = _auto_wrap_external(real_env_creator)
 
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
     rollout_worker = RolloutWorker(**kwargs)
     inference_thread = _LocalInferenceThread(rollout_worker, send_fn)
     inference_thread.start()

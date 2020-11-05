@@ -12,8 +12,7 @@ import java.util.List;
 public interface ResourceAssignStrategy {
 
   /**
-   * Assign {@link Container} for
-   * {@link ExecutionVertex}
+   * Assign {@link Container} for {@link ExecutionVertex}
    *
    * @param containers registered container
    * @param executionGraph execution graph

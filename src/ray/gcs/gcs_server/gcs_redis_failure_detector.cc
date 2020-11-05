@@ -16,10 +16,6 @@
 
 #include "ray/common/ray_config.h"
 
-extern "C" {
-#include "hiredis/hiredis.h"
-}
-
 namespace ray {
 namespace gcs {
 
@@ -36,13 +32,18 @@ void GcsRedisFailureDetector::Start() {
 }
 
 void GcsRedisFailureDetector::DetectRedis() {
-  auto *reply = reinterpret_cast<redisReply *>(
-      redisCommand(redis_context_->sync_context(), "PING"));
-  if (reply == nullptr || reply->type == REDIS_REPLY_NIL) {
-    RAY_LOG(ERROR) << "Redis is inactive.";
+  auto redis_callback = [this](const std::shared_ptr<CallbackReply> &reply) {
+    if (reply->IsNil()) {
+      RAY_LOG(ERROR) << "Redis is inactive.";
+      callback_();
+    }
+  };
+
+  Status status = redis_context_->RunArgvAsync({"PING"}, redis_callback);
+
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Redis is disconnected.";
     callback_();
-  } else {
-    freeReplyObject(reply);
   }
 }
 

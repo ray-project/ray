@@ -1,6 +1,7 @@
 import logging
 
 import ray
+from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
     get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
@@ -9,7 +10,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import huber_loss, minimize_and_clip, l2_loss
+from ray.rllib.utils.torch_ops import huber_loss, l2_loss
 
 torch, nn = try_import_torch()
 
@@ -63,11 +64,20 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         clipped_normal_sample = torch.clamp(
             torch.normal(
                 mean=torch.zeros(policy_tp1.size()),
-                std=policy.config["target_noise"]), -target_noise_clip,
-            target_noise_clip)
-        policy_tp1_smoothed = torch.clamp(policy_tp1 + clipped_normal_sample,
-                                          policy.action_space.low.item(0),
-                                          policy.action_space.high.item(0))
+                std=policy.config["target_noise"]).to(policy_tp1.device),
+            -target_noise_clip, target_noise_clip)
+
+        policy_tp1_smoothed = torch.min(
+            torch.max(
+                policy_tp1 + clipped_normal_sample,
+                torch.tensor(
+                    policy.action_space.low,
+                    dtype=torch.float32,
+                    device=policy_tp1.device)),
+            torch.tensor(
+                policy.action_space.high,
+                dtype=torch.float32,
+                device=policy_tp1.device))
     else:
         # No smoothing, just use deterministic actions.
         policy_tp1_smoothed = policy_tp1
@@ -114,7 +124,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if twin_q:
         td_error = q_t_selected - q_t_selected_target
         twin_td_error = twin_q_t_selected - q_t_selected_target
-        td_error = td_error + twin_td_error
         if use_huber:
             errors = huber_loss(td_error, huber_threshold) \
                 + huber_loss(twin_td_error, huber_threshold)
@@ -185,12 +194,6 @@ def apply_gradients_fn(policy):
 
     # Increment global step & apply ops.
     policy.global_step += 1
-
-
-def gradients_fn(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"] is not None:
-        minimize_and_clip(optimizer, policy.config["grad_norm_clipping"])
-    return {}
 
 
 def build_ddpg_stats(policy, batch):
@@ -267,7 +270,7 @@ DDPGTorchPolicy = build_torch_policy(
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     stats_fn=build_ddpg_stats,
     postprocess_fn=postprocess_nstep_and_prio,
-    extra_grad_process_fn=gradients_fn,
+    extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=make_ddpg_optimizers,
     validate_spaces=validate_spaces,
     before_init=before_init_fn,

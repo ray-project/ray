@@ -146,51 +146,80 @@ export type RayletWorkerStats = {
   coreWorkerStats: RayletCoreWorkerStats;
 };
 
-export type RayletActorInfo =
-  | {
-      actorId: string;
-      actorTitle: string;
-      averageTaskExecutionSpeed: number;
-      children: RayletInfoResponse["actors"];
-      // currentTaskFuncDesc: string[];
-      ipAddress: string;
-      jobId: string;
-      nodeId: string;
-      numExecutedTasks: number;
-      numLocalObjects: number;
-      numObjectRefsInScope: number;
-      pid: number;
-      port: number;
-      state:
-        | ActorState.Creating
-        | ActorState.Alive
-        | ActorState.Restarting
-        | ActorState.Dead;
-      taskQueueLength: number;
-      timestamp: number;
-      usedObjectStoreMemory: number;
-      usedResources: { [key: string]: ResourceAllocations };
-      currentTaskDesc?: string;
-      numPendingTasks?: number;
-      webuiDisplay?: Record<string, string>;
-    }
-  | {
-      actorId: string;
-      actorTitle: string;
-      requiredResources: { [key: string]: number };
-      state: ActorState.Invalid;
-      invalidStateType?: InvalidStateType;
-    };
-
-export type InvalidStateType = "infeasibleActor" | "pendingActor";
-
 export enum ActorState {
-  Invalid = -1,
-  Creating = 0,
-  Alive = 1,
-  Restarting = 2,
-  Dead = 3,
+  // These two are virtual states that we air because there is
+  // an existing task to create an actor
+  Infeasible = -2, // Actor task is waiting on resources (e.g. RAM, CPUs or GPUs) that the cluster does not have
+  PendingResources = -1, // Actor task is waiting on resources the cluster has but are in-use
+  // The rest below are "official" GCS actor states
+  DependenciesUnready = 0, // Actor is pending on an argument to be ready
+  PendingCreation = 1, // Actor creation is running
+  Alive = 2, // Actor is alive and handling tasks
+  Restarting = 3, // Actor died and is being restarted
+  Dead = 4, // Actor died and is not being restarted
 }
+
+export type ActorInfo = FullActorInfo | ActorTaskInfo;
+
+export type FullActorInfo = {
+  actorId: string;
+  actorTitle: string;
+  averageTaskExecutionSpeed: number;
+  children?: ActorInfo[];
+  ipAddress: string;
+  jobId: string;
+  nodeId: string;
+  numExecutedTasks: number;
+  numLocalObjects: number;
+  numObjectRefsInScope: number;
+  pid: number;
+  port: number;
+  state:
+    | ActorState.Alive
+    | ActorState.Restarting
+    | ActorState.Dead
+    | ActorState.DependenciesUnready
+    | ActorState.PendingCreation;
+  taskQueueLength: number;
+  timestamp: number;
+  usedObjectStoreMemory: number;
+  usedResources: { [key: string]: ResourceAllocations };
+  currentTaskDesc?: string;
+  numPendingTasks?: number;
+  webuiDisplay?: Record<string, string>;
+};
+
+export type ActorTaskInfo = {
+  actorId?: string;
+  actorTitle?: string;
+  requiredResources?: { [key: string]: number };
+  state: ActorState.Infeasible | ActorState.PendingResources;
+};
+
+// eslint-disable-next-line
+export function isFullActorInfo(
+  actorInfo: ActorInfo,
+): actorInfo is FullActorInfo {
+  // Lint disabled because arrow functions don't play well with type guards.
+  // This function is used to determine what kind of information we have about
+  // a given actor in a response based on its state.
+  return (
+    actorInfo.state !== ActorState.Infeasible &&
+    actorInfo.state !== ActorState.PendingResources
+  );
+}
+
+export type ActorGroupSummary = {
+  stateToCount: { [state in ActorState]: number };
+  avgLifetime: number;
+  maxLifetime: number;
+  numExecutedTasks: number;
+};
+
+export type ActorGroup = {
+  entries: ActorInfo[];
+  summary: ActorGroupSummary;
+};
 
 export type RayletInfoResponse = {
   nodes: {
@@ -199,9 +228,18 @@ export type RayletInfoResponse = {
       workersStats: Array<RayletWorkerStats>;
     };
   };
-  actors: {
-    [actorId: string]: RayletActorInfo;
+  actorGroups: {
+    [groupKey: string]: ActorGroup;
   };
+  plasmaStats: {
+    [ip: string]: PlasmaStats;
+  };
+};
+
+export type PlasmaStats = {
+  object_store_num_local_objects: number;
+  object_store_available_memory: number;
+  object_store_used_memory: number;
 };
 
 export const getRayletInfo = () =>
@@ -342,7 +380,7 @@ export type MemoryTableSummary = {
   total_object_size: number;
   total_pinned_in_memory: number;
   total_used_by_pending_task: number;
-} | null;
+};
 
 export type MemoryTableEntry = {
   node_ip_address: string;
@@ -371,12 +409,12 @@ export type MemoryTableResponse = {
 // This doesn't return anything.
 export type StopMemoryTableResponse = {};
 
-export const getMemoryTable = (shouldObtainMemoryTable: boolean) => {
-  if (shouldObtainMemoryTable) {
-    return get<MemoryTableResponse>("/api/memory_table", {});
-  } else {
-    return null;
-  }
+export type MemoryGroupByKey = "node" | "stack_trace" | "";
+
+export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
+  return get<MemoryTableResponse>("/api/memory_table", {
+    group_by: groupByKey,
+  });
 };
 
 export const stopMemoryTableCollection = () =>

@@ -24,6 +24,14 @@ py_test(
     tags = ["exclusive"]
 )
 
+py_test(
+    name = "progress_bar",
+    size = "small",
+    srcs = ["examples/progress_bar.py"],
+    tags = ["exclusive"]
+)
+
+
 # Directory: examples/doc_code
 py_test(
     name = "doc_code_tf_example",
@@ -53,4 +61,13 @@ py_test(
     srcs = ["source/tune/_tutorials/tune-sklearn.py"],
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]
+)
+
+py_test(
+    name = "tune_serve_integration_mnist",
+    size = "medium",
+    main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
+    srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test", "--from_scratch", "--day 0"]
 )

@@ -34,8 +34,8 @@ constexpr char kObjectTablePrefix[] = "ObjectTable";
 /// Prefix for the task table keys in redis.
 constexpr char kTaskTablePrefix[] = "TaskTable";
 
-constexpr char kWorkerDynamicOptionPlaceholderPrefix[] =
-    "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_";
+constexpr char kWorkerDynamicOptionPlaceholder[] =
+    "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
 
 constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER";
 

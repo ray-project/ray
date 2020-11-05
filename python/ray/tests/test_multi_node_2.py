@@ -6,7 +6,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_internal_config_map, SignalActor
+from ray.test_utils import generate_system_config_map, SignalActor
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +33,11 @@ def test_shutdown():
 
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
-        generate_internal_config_map(
-            num_heartbeats_timeout=20,
-            initial_reconstruction_timeout_milliseconds=12345)
+        generate_system_config_map(
+            num_heartbeats_timeout=20, object_timeout_milliseconds=12345)
     ],
     indirect=True)
-def test_internal_config(ray_start_cluster_head):
+def test_system_config(ray_start_cluster_head):
     """Checks that the internal configuration setting works.
 
     We set the cluster to timeout nodes after 2 seconds of no timeouts. We
@@ -52,8 +51,7 @@ def test_internal_config(ray_start_cluster_head):
 
     @ray.remote
     def f():
-        assert ray._config.initial_reconstruction_timeout_milliseconds(
-        ) == 12345
+        assert ray._config.object_timeout_milliseconds() == 12345
         assert ray._config.num_heartbeats_timeout() == 20
 
     ray.get([f.remote() for _ in range(5)])
@@ -78,7 +76,7 @@ def setup_monitor(address):
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     while True:
         monitor.process_messages()
-        resource_usage = monitor.load_metrics.get_resource_usage()
+        resource_usage = monitor.load_metrics._get_resource_usage()
 
         if "memory" in resource_usage[1]:
             del resource_usage[1]["memory"]

@@ -89,7 +89,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
 }
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for job info.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for job info.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -419,7 +419,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 }
 
 void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for actor info.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -709,15 +709,26 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
     const StatusCallback &callback) {
-  rpc::ReportHeartbeatRequest request;
-  request.mutable_heartbeat()->CopyFrom(*data_ptr);
+  absl::MutexLock lock(&mutex_);
+  cached_heartbeat_.mutable_heartbeat()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
-      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+      cached_heartbeat_,
+      [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
         if (callback) {
           callback(status);
         }
       });
   return Status::OK();
+}
+
+void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
+  absl::MutexLock lock(&mutex_);
+  if (cached_heartbeat_.has_heartbeat()) {
+    RAY_LOG(INFO) << "Rereport heartbeat.";
+    client_impl_->GetGcsRpcClient().ReportHeartbeat(
+        cached_heartbeat_,
+        [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
+  }
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
@@ -794,7 +805,7 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
 }
 
 void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for node info.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -1070,7 +1081,7 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
 }
 
 void ServiceBasedTaskInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for task info.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for task info.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -1245,7 +1256,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
 }
 
 void ServiceBasedObjectInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for object locations.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for object locations.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -1328,21 +1339,12 @@ ServiceBasedErrorInfoAccessor::ServiceBasedErrorInfoAccessor(
 Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
     const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
     const StatusCallback &callback) {
-  JobID job_id = JobID::FromBinary(data_ptr->job_id());
-  std::string type = data_ptr->type();
-  RAY_LOG(DEBUG) << "Reporting job error, job id = " << job_id << ", type = " << type;
-  rpc::ReportJobErrorRequest request;
-  request.mutable_error_data()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportJobError(
-      request, [job_id, type, callback](const Status &status,
-                                        const rpc::ReportJobErrorReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished reporting job error, status = " << status
-                       << ", job id = " << job_id << ", type = " << type;
-      });
-  return Status::OK();
+  auto job_id = JobID::FromBinary(data_ptr->job_id());
+  RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
+  Status status = client_impl_->GetGcsPubSub().Publish(
+      ERROR_INFO_CHANNEL, job_id.Hex(), data_ptr->SerializeAsString(), callback);
+  RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
+  return status;
 }
 
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
@@ -1365,7 +1367,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
 }
 
 void ServiceBasedWorkerInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for worker failures.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for worker failures.";
   // If the pub-sub server has restarted, we need to resubscribe to the pub-sub server.
   if (subscribe_operation_ != nullptr && is_pubsub_server_restarted) {
     RAY_CHECK_OK(subscribe_operation_(nullptr));
@@ -1455,7 +1457,46 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = "
                          << placement_group_spec.PlacementGroupId();
+        } else {
+          RAY_LOG(ERROR) << "Placement group id = "
+                         << placement_group_spec.PlacementGroupId()
+                         << " failed to be registered. " << status;
         }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
+    const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+  rpc::RemovePlacementGroupRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  client_impl_->GetGcsRpcClient().RemovePlacementGroup(
+      request,
+      [callback](const Status &status, const rpc::RemovePlacementGroupReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
+    const PlacementGroupID &placement_group_id,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting placement group info, placement group id = "
+                 << placement_group_id;
+  rpc::GetPlacementGroupRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  client_impl_->GetGcsRpcClient().GetPlacementGroup(
+      request, [placement_group_id, callback](const Status &status,
+                                              const rpc::GetPlacementGroupReply &reply) {
+        if (reply.has_placement_group_table_data()) {
+          callback(status, reply.placement_group_table_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
+                       << placement_group_id;
       });
   return Status::OK();
 }

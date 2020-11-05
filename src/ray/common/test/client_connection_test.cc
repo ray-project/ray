@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/common/client_connection.h"
+
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <list>
@@ -19,8 +21,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#include "ray/common/client_connection.h"
 
 namespace ray {
 namespace raylet {

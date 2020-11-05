@@ -1,0 +1,328 @@
+"""
+Some instructions on writing CLI tests:
+1. Look at test_ray_start for a simple output test example.
+2. To get a valid regex, start with copy-pasting your output from a captured
+   version (no formatting). Then escape ALL regex characters (parenthesis,
+   brackets, dots, etc.). THEN add ".+" to all the places where info might
+   change run to run.
+3. Look at test_ray_up for an example of how to mock AWS, commands,
+   and autoscaler config.
+4. Print your outputs!!!! Tests are impossible to debug if they fail
+   and you did not print anything. Since command output is captured by click,
+   MAKE SURE YOU print(result.output) when tests fail!!!
+
+WARNING: IF YOU MOCK AWS, DON'T FORGET THE AWS_CREDENTIALS FIXTURE.
+         THIS IS REQUIRED SO BOTO3 DOES NOT ACCESS THE ACTUAL AWS SERVERS.
+
+Note: config cache does not work with AWS mocks since the AWS resource ids are
+      randomized each time.
+"""
+import glob
+import sys
+import tempfile
+import re
+import os
+from contextlib import contextmanager
+from pathlib import Path
+
+import pytest
+
+import moto
+from moto import mock_ec2, mock_iam
+from click.testing import CliRunner
+
+from testfixtures import Replacer
+from testfixtures.popen import MockPopen, PopenBehaviour
+
+import ray.autoscaler._private.aws.config as aws_config
+import ray.scripts.scripts as scripts
+
+
+@pytest.fixture
+def configure_lang():
+    """Configure output for travis + click."""
+    if sys.platform != "darwin":
+        os.environ["LC_ALL"] = "C.UTF-8"
+        os.environ["LANG"] = "C.UTF-8"
+
+
+@pytest.fixture
+def configure_aws():
+    """Mocked AWS Credentials for moto."""
+    os.environ["LC_ALL"] = "C.UTF-8"
+    os.environ["LANG"] = "C.UTF-8"
+    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+    os.environ["AWS_SECURITY_TOKEN"] = "testing"
+    os.environ["AWS_SESSION_TOKEN"] = "testing"
+
+    # moto (boto3 mock) only allows a hardcoded set of AMIs
+    dlami = moto.ec2.ec2_backends["us-west-2"].describe_images(
+        filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
+    aws_config.DEFAULT_AMI["us-west-2"] = dlami
+
+
+@pytest.fixture(scope="function")
+def _unlink_test_ssh_key():
+    """Use this to remove the keys spawned by ray up."""
+    yield
+    try:
+        for path in glob.glob(os.path.expanduser("~/.ssh/__test-cli_key*")):
+            os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
+def _debug_die(result):
+    print("!!!!")
+    print(result.output)
+    print("!!!!")
+    assert False
+
+
+def _die_on_error(result):
+    if result.exit_code == 0:
+        return
+    _debug_die(result)
+
+
+def _debug_check_line_by_line(result, expected_lines):
+    output_lines = result.output.split("\n")
+    i = 0
+
+    for out in output_lines:
+        if i >= len(expected_lines):
+            i += 1
+            print("!!!!!! Expected fewer lines")
+            context = [f"CONTEXT: {line}" for line in output_lines[i - 3:i]]
+            print("\n".join(context))
+            extra = [f"-- {line}" for line in output_lines[i:]]
+            print("\n".join(extra))
+            break
+
+        exp = expected_lines[i]
+        matched = re.fullmatch(exp + r" *", out) is not None
+        if not matched:
+            print(f"!!! ERROR: Expected (regex): {repr(exp)}")
+            print(f"Got: {out}")
+        i += 1
+    if i < len(expected_lines):
+        print("!!! ERROR: Expected extra lines (regex):")
+        for line in expected_lines[i:]:
+
+            print(repr(line))
+
+    assert False
+
+
+@contextmanager
+def _setup_popen_mock(commands_mock):
+    Popen = MockPopen()
+    Popen.set_default(behaviour=commands_mock)
+
+    with Replacer() as replacer:
+        replacer.replace("subprocess.Popen", Popen)
+        yield
+
+
+def _load_output_pattern(name):
+    pattern_dir = Path(__file__).parent / "test_cli_patterns"
+    with open(str(pattern_dir / name)) as f:
+        # remove \n
+        return [x[:-1] for x in f.readlines()]
+
+
+def _check_output_via_pattern(name, result):
+    expected_lines = _load_output_pattern(name)
+    print("---")
+    print(result.output)
+    print("---")
+
+    if result.exception is not None:
+        print(result.output)
+        raise result.exception from None
+
+    expected = r" *\n".join(expected_lines) + "\n?"
+    if re.fullmatch(expected, result.output) is None:
+        _debug_check_line_by_line(result, expected_lines)
+
+    assert result.exit_code == 0
+
+
+DEFAULT_TEST_CONFIG_PATH = str(
+    Path(__file__).parent / "test_cli_patterns" / "test_ray_up_config.yaml")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+def test_ray_start(configure_lang):
+    runner = CliRunner()
+    result = runner.invoke(scripts.start, [
+        "--head", "--log-style=pretty", "--log-color", "False", "--port", "0"
+    ])
+    _die_on_error(runner.invoke(scripts.stop))
+
+    _check_output_via_pattern("test_ray_start.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
+def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
+    def commands_mock(command, stdin):
+        # if we want to have e.g. some commands fail,
+        # we can have overrides happen here.
+        # unfortunately, cutting out SSH prefixes and such
+        # is, to put it lightly, non-trivial
+        if "uptime" in command:
+            return PopenBehaviour(stdout="MOCKED uptime")
+        if "rsync" in command:
+            return PopenBehaviour(stdout="MOCKED rsync")
+        if "ray" in command:
+            return PopenBehaviour(stdout="MOCKED ray")
+        return PopenBehaviour(stdout="MOCKED GENERIC")
+
+    with _setup_popen_mock(commands_mock):
+        # config cache does not work with mocks
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-style=pretty", "--log-color", "False"
+        ])
+        _check_output_via_pattern("test_ray_up.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
+def test_ray_up_record(configure_lang, _unlink_test_ssh_key, configure_aws):
+    def commands_mock(command, stdin):
+        # if we want to have e.g. some commands fail,
+        # we can have overrides happen here.
+        # unfortunately, cutting out SSH prefixes and such
+        # is, to put it lightly, non-trivial
+        if "uptime" in command:
+            return PopenBehaviour(stdout="MOCKED uptime")
+        if "rsync" in command:
+            return PopenBehaviour(stdout="MOCKED rsync")
+        if "ray" in command:
+            return PopenBehaviour(stdout="MOCKED ray")
+        return PopenBehaviour(stdout="MOCKED GENERIC")
+
+    with _setup_popen_mock(commands_mock):
+        # config cache does not work with mocks
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-style=record"
+        ])
+        _check_output_via_pattern("test_ray_up_record.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
+def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        print("ubuntu@ip-.+:~$ exit")
+        return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
+
+    with _setup_popen_mock(commands_mock):
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-style=pretty", "--log-color", "False"
+        ])
+        _die_on_error(result)
+
+        result = runner.invoke(scripts.attach, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache",
+            "--log-style=pretty", "--log-color", "False"
+        ])
+
+        _check_output_via_pattern("test_ray_attach.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
+def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        print("This is a test!")
+        return PopenBehaviour(stdout="This is a test!")
+
+    with _setup_popen_mock(commands_mock):
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-style=pretty", "--log-color", "False"
+        ])
+        _die_on_error(result)
+
+        result = runner.invoke(scripts.exec, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache",
+            "--log-style=pretty", "\"echo This is a test!\""
+        ])
+
+        _check_output_via_pattern("test_ray_exec.txt", result)
+
+
+# Try to check if we are running in travis. Bazel overrides and controls
+# env vars, so the typical travis env-vars don't help.
+# Unfortunately it will not be nice if your username is travis
+# and you're running on a Mac.
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
+def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        if "rsync" not in command:
+            print("This is a test!")
+        return PopenBehaviour(stdout="This is a test!")
+
+    with _setup_popen_mock(commands_mock):
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-style=pretty", "--log-color", "False"
+        ])
+        _die_on_error(result)
+
+        with tempfile.NamedTemporaryFile(suffix="test.py", mode="w") as f:
+            f.write("print('This is a test!')\n")
+            result = runner.invoke(
+                scripts.submit,
+                [
+                    DEFAULT_TEST_CONFIG_PATH,
+                    "--no-config-cache",
+                    "--log-style=pretty",
+                    "--log-color",
+                    "False",
+                    # this is somewhat misleading, since the file
+                    # actually never gets run
+                    # TODO(maximsmol): make this work properly one day?
+                    f.name
+                ])
+
+            _check_output_via_pattern("test_ray_submit.txt", result)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -6,8 +6,8 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
     normc_initializer
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import get_activation_fn, try_import_torch
-from ray.rllib.utils.types import Dict, TensorType, List, ModelConfigDict
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
 
 torch, nn = try_import_torch()
 
@@ -24,8 +24,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
 
-        activation = get_activation_fn(
-            model_config.get("fcnet_activation"), framework="torch")
+        activation = model_config.get("fcnet_activation")
         hiddens = model_config.get("fcnet_hiddens")
         no_final_linear = model_config.get("no_final_linear")
         self.vf_share_layers = model_config.get("vf_share_layers")
@@ -81,7 +80,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                     activation_fn=None)
             else:
                 self.num_outputs = (
-                    [np.product(obs_space.shape)] + hiddens[-1:])[-1]
+                    [int(np.product(obs_space.shape))] + hiddens[-1:])[-1]
 
         # Layer to add the log std vars to the state-dependent means.
         if self.free_log_std and self._logits:

@@ -4,6 +4,8 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
+from ray.util.placement_group import PlacementGroup, \
+    check_placement_group_index
 import ray.signature
 
 # Default parameters for remote functions.
@@ -38,10 +40,10 @@ class RemoteFunction:
         _object_store_memory: The object store memory request for this task.
         _resources: The default custom resource requirements for invocations of
             this remote function.
-        _num_return_vals: The default number of return values for invocations
+        _num_returns: The default number of return values for invocations
             of this remote function.
         _max_calls: The number of times a worker can execute this function
-            before executing.
+            before exiting.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
             invoking the function. The decorator must return a function that
@@ -60,7 +62,8 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 num_return_vals, max_calls, max_retries):
+                 accelerator_type, num_returns, max_calls, max_retries,
+                 placement_group, placement_group_bundle_index):
         self._language = language
         self._function = function
         self._function_name = (
@@ -76,8 +79,9 @@ class RemoteFunction:
                 "setting object_store_memory is not implemented for tasks")
         self._object_store_memory = None
         self._resources = resources
-        self._num_return_vals = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS if
-                                 num_return_vals is None else num_return_vals)
+        self._accelerator_type = accelerator_type
+        self._num_returns = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS
+                             if num_returns is None else num_returns)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
@@ -98,13 +102,13 @@ class RemoteFunction:
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Remote functions cannot be called directly. Instead "
-                        "of running '{}()', try '{}.remote()'.".format(
-                            self._function_name, self._function_name))
+                        f"of running '{self._function_name}()', "
+                        f"try '{self._function_name}.remote()'.")
 
     def _submit(self,
                 args=None,
                 kwargs=None,
-                num_return_vals=None,
+                num_returns=None,
                 num_cpus=None,
                 num_gpus=None,
                 resources=None):
@@ -113,42 +117,75 @@ class RemoteFunction:
         return self._remote(
             args=args,
             kwargs=kwargs,
-            num_return_vals=num_return_vals,
+            num_returns=num_returns,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources)
 
-    def options(self, **options):
-        """Convenience method for executing a task with options.
+    def options(self,
+                args=None,
+                kwargs=None,
+                num_returns=None,
+                num_cpus=None,
+                num_gpus=None,
+                memory=None,
+                object_store_memory=None,
+                accelerator_type=None,
+                resources=None,
+                max_retries=None,
+                placement_group=None,
+                placement_group_bundle_index=-1,
+                name=""):
+        """Configures and overrides the task invocation parameters.
 
-        Same arguments as func._remote(), but returns a wrapped function
-        that a non-underscore .remote() can be called on.
+        Options are overlapping values provided by :obj:`ray.remote`.
 
         Examples:
-            # The following two calls are equivalent.
-            >>> func._remote(num_cpus=4, args=[x, y])
-            >>> func.options(num_cpus=4).remote(x, y)
+
+        .. code-block:: python
+
+            @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+            def f():
+               return 1, 2
+            # Task f will require 2 gpus instead of 1.
+            g = f.options(num_gpus=2, max_calls=None)
         """
 
         func_cls = self
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **options)
+                return func_cls._remote(
+                    args=args,
+                    kwargs=kwargs,
+                    num_returns=num_returns,
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    object_store_memory=object_store_memory,
+                    accelerator_type=accelerator_type,
+                    resources=resources,
+                    max_retries=max_retries,
+                    placement_group=placement_group,
+                    placement_group_bundle_index=placement_group_bundle_index,
+                    name=name)
 
         return FuncWrapper()
 
     def _remote(self,
                 args=None,
                 kwargs=None,
-                num_return_vals=None,
-                is_direct_call=None,
+                num_returns=None,
                 num_cpus=None,
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
+                accelerator_type=None,
                 resources=None,
-                max_retries=None):
+                max_retries=None,
+                placement_group=None,
+                placement_group_bundle_index=-1,
+                name=""):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -178,17 +215,22 @@ class RemoteFunction:
         kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args
 
-        if num_return_vals is None:
-            num_return_vals = self._num_return_vals
-        if is_direct_call is not None and not is_direct_call:
-            raise ValueError("Non-direct call tasks are no longer supported.")
+        if num_returns is None:
+            num_returns = self._num_returns
         if max_retries is None:
             max_retries = self._max_retries
 
+        if placement_group is None:
+            placement_group = PlacementGroup.empty()
+
+        check_placement_group_index(placement_group,
+                                    placement_group_bundle_index)
+
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
-            self._object_store_memory, self._resources, num_cpus, num_gpus,
-            memory, object_store_memory, resources)
+            self._object_store_memory, self._resources, self._accelerator_type,
+            num_cpus, num_gpus, memory, object_store_memory, resources,
+            accelerator_type)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -204,8 +246,9 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
-                self._language, self._function_descriptor, list_args,
-                num_return_vals, resources, max_retries)
+                self._language, self._function_descriptor, list_args, name,
+                num_returns, resources, max_retries, placement_group.id,
+                placement_group_bundle_index)
 
             if len(object_refs) == 1:
                 return object_refs[0]

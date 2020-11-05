@@ -148,6 +148,30 @@ You can run this :doc:`toy PBT example </tune/examples/pbt_function>` to get an 
 .. autoclass:: ray.tune.schedulers.PopulationBasedTraining
 
 
+.. _tune-scheduler-pbt-replay:
+
+Population Based Training Replay (tune.schedulers.PopulationBasedTrainingReplay)
+--------------------------------------------------------------------------------
+
+Tune includes a utility to replay hyperparameter schedules of Population Based Training runs.
+You just specify an existing experiment directory and the ID of the trial you would
+like to replay. The scheduler accepts only one trial, and it will update its
+config according to the obtained schedule.
+
+.. code-block:: python
+
+    replay = PopulationBasedTrainingReplay(
+        experiment_dir="~/ray_results/pbt_experiment/",
+        trial_id="XXXXX_00001")
+    tune.run(
+        ...,
+        scheduler=replay)
+
+See :ref:`here for an example <tune-advanced-tutorial-pbt-replay>` on how to use the
+replay utility in practice.
+
+.. autoclass:: ray.tune.schedulers.PopulationBasedTrainingReplay
+
 .. _tune-scheduler-bohb:
 
 BOHB (tune.schedulers.HyperBandForBOHB)
@@ -172,3 +196,9 @@ TrialScheduler
 
 .. autoclass:: ray.tune.schedulers.TrialScheduler
     :members:
+
+Shim Instantiation (tune.create_scheduler)
+------------------------------------------
+There is also a shim function that constructs the scheduler based on the provided string. This can be useful if the scheduler you want to use changes often (e.g., specifying the scheduler via a CLI option or config file).
+
+.. automethod:: ray.tune.create_scheduler

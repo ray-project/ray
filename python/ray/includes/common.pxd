@@ -162,6 +162,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
+    cdef CWorkerType WORKER_TYPE_IO_WORKER "ray::WorkerType::IO_WORKER"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -173,6 +174,10 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         "ray::PlacementStrategy::PACK"
     cdef CPlacementStrategy PLACEMENT_STRATEGY_SPREAD \
         "ray::PlacementStrategy::SPREAD"
+    cdef CPlacementStrategy PLACEMENT_STRATEGY_STRICT_PACK \
+        "ray::PlacementStrategy::STRICT_PACK"
+    cdef CPlacementStrategy PLACEMENT_STRATEGY_STRICT_SPREAD \
+        "ray::PlacementStrategy::STRICT_SPREAD"
 
 cdef extern from "ray/common/task/scheduling_resources.h" nogil:
     cdef cppclass ResourceSet "ray::ResourceSet":
@@ -236,7 +241,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
-        CTaskOptions(int num_returns,
+        CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":

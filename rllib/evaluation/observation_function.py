@@ -4,7 +4,7 @@ from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy
 from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from ray.rllib.utils.framework import TensorType
-from ray.rllib.utils.types import AgentID, PolicyID
+from ray.rllib.utils.typing import AgentID, PolicyID
 
 
 class ObservationFunction:

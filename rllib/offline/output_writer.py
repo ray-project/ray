@@ -1,6 +1,6 @@
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 
 
 @PublicAPI
@@ -11,7 +11,7 @@ class OutputWriter:
     def write(self, sample_batch: SampleBatchType):
         """Save a batch of experiences.
 
-        Arguments:
+        Args:
             sample_batch: SampleBatch or MultiAgentBatch to save.
         """
         raise NotImplementedError

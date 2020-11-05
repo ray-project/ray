@@ -1,19 +1,19 @@
 import { TableRow } from "@material-ui/core";
 import React from "react";
 import { MemoryTableEntry } from "../../../api";
+import { formatByteAmount } from "../../../common/formatUtils";
 import { StyledTableCell } from "../../../common/TableCell";
 
 type Props = {
   memoryTableEntry: MemoryTableEntry;
-  key: string;
 };
 
 export const MemoryTableRow = (props: Props) => {
-  const { memoryTableEntry, key } = props;
+  const { memoryTableEntry } = props;
   const object_size =
     memoryTableEntry.object_size === -1
       ? "?"
-      : `${memoryTableEntry.object_size}  B`;
+      : formatByteAmount(memoryTableEntry.object_size, "mebibyte");
   const memoryTableEntryValues = [
     memoryTableEntry.node_ip_address,
     memoryTableEntry.pid,
@@ -24,9 +24,9 @@ export const MemoryTableRow = (props: Props) => {
     memoryTableEntry.call_site,
   ];
   return (
-    <TableRow hover key={key}>
+    <TableRow hover>
       {memoryTableEntryValues.map((value, index) => (
-        <StyledTableCell key={`${key}-${index}`}>{value}</StyledTableCell>
+        <StyledTableCell key={`${index}`}>{value}</StyledTableCell>
       ))}
     </TableRow>
   );

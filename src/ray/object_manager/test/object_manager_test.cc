@@ -21,6 +21,7 @@
 #include "ray/common/status.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
+#include "src/ray/protobuf/common.pb.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"
@@ -144,7 +145,8 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<arrow::Buffer> data;
-    RAY_CHECK_OK(client.Create(object_id, data_size, metadata, metadata_size, &data));
+    RAY_CHECK_OK(client.Create(object_id, ray::rpc::Address(), data_size, metadata,
+                               metadata_size, &data));
     RAY_CHECK_OK(client.Seal(object_id));
     return object_id;
   }
@@ -259,7 +261,7 @@ class TestObjectManager : public TestObjectManagerBase {
     UniqueID sub_id = ray::UniqueID::FromRandom();
 
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
-        sub_id, object_1,
+        sub_id, object_1, rpc::Address(),
         [this, sub_id, object_1, object_2](
             const ray::ObjectID &object_id,
             const std::unordered_set<ray::ClientID> &clients) {
@@ -279,7 +281,8 @@ class TestObjectManager : public TestObjectManagerBase {
     UniqueID wait_id = UniqueID::FromRandom();
 
     RAY_CHECK_OK(server1->object_manager_.AddWaitRequest(
-        wait_id, object_ids, timeout_ms, required_objects, false,
+        wait_id, object_ids, std::unordered_map<ObjectID, rpc::Address>(), timeout_ms,
+        required_objects, false,
         [this, sub_id, object_1, object_ids, start_time](
             const std::vector<ray::ObjectID> &found,
             const std::vector<ray::ObjectID> &remaining) {
@@ -352,7 +355,8 @@ class TestObjectManager : public TestObjectManagerBase {
 
     boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
     RAY_CHECK_OK(server1->object_manager_.Wait(
-        object_ids, timeout_ms, required_objects, false,
+        object_ids, std::unordered_map<ObjectID, rpc::Address>(), timeout_ms,
+        required_objects, false,
         [this, object_ids, num_objects, timeout_ms, required_objects, start_time](
             const std::vector<ray::ObjectID> &found,
             const std::vector<ray::ObjectID> &remaining) {

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <memory>
+
 #include "gtest/gtest.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"

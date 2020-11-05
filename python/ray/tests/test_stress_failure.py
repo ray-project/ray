@@ -1,14 +1,12 @@
-import json
 import numpy as np
-import os
 import pytest
 import sys
 import time
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import flat_errors
 import ray.ray_constants as ray_constants
+from ray.test_utils import get_error_message
 
 
 @pytest.fixture(params=[1, 4])
@@ -23,9 +21,9 @@ def ray_start_reconstruction(request):
             "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
             "redis_max_memory": 10**7,
-            "_internal_config": json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200
-            })
+            "_system_config": {
+                "object_timeout_milliseconds": 200
+            }
         })
     for i in range(num_nodes - 1):
         cluster.add_node(
@@ -39,9 +37,7 @@ def ray_start_reconstruction(request):
     cluster.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
+@pytest.mark.skip(reason="Failing with new GCS API on Linux.")
 def test_simple(ray_start_reconstruction):
     plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
@@ -88,9 +84,7 @@ def sorted_random_indexes(total, output_num):
     return random_indexes
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
+@pytest.mark.skip(reason="Failing with new GCS API on Linux.")
 def test_recursive(ray_start_reconstruction):
     plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
@@ -147,9 +141,6 @@ def test_recursive(ray_start_reconstruction):
 
 
 @pytest.mark.skip(reason="This test often hangs or fails in CI.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
 def test_multiple_recursive(ray_start_reconstruction):
     plasma_store_memory, _, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
@@ -203,12 +194,12 @@ def test_multiple_recursive(ray_start_reconstruction):
     assert cluster.remaining_processes_alive()
 
 
-def wait_for_errors(error_check):
+def wait_for_errors(p, error_check):
     # Wait for errors from all the nondeterministic tasks.
     errors = []
     time_left = 100
     while time_left > 0:
-        errors = flat_errors()
+        errors.extend(get_error_message(p, 1))
         if error_check(errors):
             break
         time_left -= 1
@@ -220,10 +211,8 @@ def wait_for_errors(error_check):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
-def test_nondeterministic_task(ray_start_reconstruction):
+def test_nondeterministic_task(ray_start_reconstruction, error_pubsub):
+    p = error_pubsub
     plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
@@ -280,20 +269,19 @@ def test_nondeterministic_task(ray_start_reconstruction):
             min_errors = 1
         return len(errors) >= min_errors
 
-    errors = wait_for_errors(error_check)
+    errors = wait_for_errors(p, error_check)
     # Make sure all the errors have the correct type.
-    assert all(error["type"] == ray_constants.HASH_MISMATCH_PUSH_ERROR
+    assert all(error.type == ray_constants.HASH_MISMATCH_PUSH_ERROR
                for error in errors)
 
     assert cluster.remaining_processes_alive()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
+@pytest.mark.skip(reason="Failing with new GCS API on Linux.")
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**9], indirect=True)
-def test_driver_put_errors(ray_start_object_store_memory):
+def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
+    p = error_pubsub
     plasma_store_memory = ray_start_object_store_memory
     # Define the size of one task's return argument so that the combined
     # sum of all objects' sizes is at least twice the plasma stores'
@@ -333,9 +321,9 @@ def test_driver_put_errors(ray_start_object_store_memory):
     def error_check(errors):
         return len(errors) > 1
 
-    errors = wait_for_errors(error_check)
-    assert all(error["type"] == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
-               or "ray.exceptions.UnreconstructableError" in error["message"]
+    errors = wait_for_errors(p, error_check)
+    assert all(error.type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+               or "ray.exceptions.ObjectLostError" in error.error_messages
                for error in errors)
 
 

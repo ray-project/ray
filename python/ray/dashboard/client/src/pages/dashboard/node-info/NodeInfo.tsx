@@ -26,6 +26,7 @@ import gpuFeature from "./features/GPU";
 import gramFeature from "./features/GRAM";
 import hostFeature from "./features/Host";
 import makeLogsFeature from "./features/Logs";
+import objectStoreMemoryFeature from "./features/ObjectStoreMemory";
 import ramFeature from "./features/RAM";
 import receivedFeature from "./features/Received";
 import sentFeature from "./features/Sent";
@@ -70,8 +71,11 @@ const makeGroupedTableContents = (
   rayletInfo: RayletInfoResponse | null,
   nodeInfoFeatures: NodeInfoFeature[],
 ) => {
-  const sortedGroups = stableSort(nodes, sortGroupComparator);
+  const sortedGroups = sortGroupComparator
+    ? stableSort(nodes, sortGroupComparator)
+    : nodes;
   return sortedGroups.map((node) => {
+    const plasmaStats = rayletInfo?.plasmaStats?.[node.ip];
     const workerFeatureData: WorkerFeatureData[] = node.workers.map(
       (worker) => {
         const rayletWorker =
@@ -79,7 +83,7 @@ const makeGroupedTableContents = (
             (workerStats) => workerStats.pid === worker.pid,
           ) || null;
         return {
-          node: node,
+          node,
           worker,
           rayletWorker,
         };
@@ -96,6 +100,7 @@ const makeGroupedTableContents = (
         node={node}
         workerFeatureData={sortedClusterWorkers}
         features={nodeInfoFeatures}
+        plasmaStats={plasmaStats}
         initialExpanded={nodes.length <= 1}
       />
     );
@@ -167,6 +172,7 @@ const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
   { id: "ram", label: "RAM", numeric: true, sortable: true },
   { id: "gpu", label: "GPU", numeric: true, sortable: true },
   { id: "gram", label: "GRAM", numeric: true, sortable: true },
+  { id: "objectStoreMemory", label: "Plasma", numeric: false, sortable: true },
   { id: "disk", label: "Disk", numeric: true, sortable: true },
   { id: "sent", label: "Sent", numeric: true, sortable: true },
   { id: "received", label: "Received", numeric: false, sortable: true },
@@ -183,7 +189,6 @@ const NodeInfo: React.FC<{}> = () => {
   const [orderBy, setOrderBy] = React.useState<nodeInfoColumnId | null>(null);
   const classes = useNodeInfoStyles();
   const { nodeInfo, rayletInfo } = useSelector(nodeInfoSelector);
-
   if (nodeInfo === null || rayletInfo === null) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
@@ -198,6 +203,7 @@ const NodeInfo: React.FC<{}> = () => {
     ramFeature,
     gpuFeature,
     gramFeature,
+    objectStoreMemoryFeature,
     diskFeature,
     sentFeature,
     receivedFeature,
@@ -260,6 +266,7 @@ const NodeInfo: React.FC<{}> = () => {
           <TotalRow
             clusterTotalWorkers={clusterTotalWorkers}
             nodes={nodeInfo.clients}
+            plasmaStats={Object.values(rayletInfo.plasmaStats)}
             features={nodeInfoFeatures.map(
               (feature) => feature.ClusterFeatureRenderFn,
             )}

@@ -97,6 +97,13 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
+        name = "com_github_spdlog",
+        build_file = "//bazel:BUILD.spdlog",
+        urls = ["https://github.com/gabime/spdlog/archive/v1.7.0.zip"],
+        sha256 = "c8f1e1103e0b148eb8832275d8e68036f2fdd3975a1199af0e844908c56f6ea5",
+    )
+    
+    auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
         build_file = "//bazel:BUILD.redis",
         strip_prefix = None,
@@ -144,8 +151,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        url = "https://github.com/nelhage/rules_boost/archive/5b53112431ef916381d6969f114727cc4f83960b.tar.gz",
-        sha256 = "32080749fdb8e4015815694a5c7d009f479e5f6a4da443d262bd7f28b8bd1b55",
+        url = "https://github.com/nelhage/rules_boost/archive/2613d04ab3d22dfc4543ea0a083d9adeaa0daf09.tar.gz",
+        sha256 = "512f913240e026099d4ca4a98b1ce8048c99de77fdc8e8584e9e2539ee119ca2",
         patches = [
             "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
             "//thirdparty/patches:rules_boost-windows-linkopts.patch",
@@ -263,4 +270,11 @@ def ray_deps_setup():
         patches = [
             "//thirdparty/patches:msgpack-windows-iovec.patch",
         ],
+    )
+
+    http_archive(
+        name = "io_opencensus_proto",
+        strip_prefix = "opencensus-proto-0.3.0/src",
+        urls = ["https://github.com/census-instrumentation/opencensus-proto/archive/v0.3.0.tar.gz"],
+        sha256 = "b7e13f0b4259e80c3070b583c2f39e53153085a6918718b1c710caf7037572b0",
     )

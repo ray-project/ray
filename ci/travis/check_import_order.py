@@ -9,6 +9,7 @@ some/file/path.py:23 import psutil without explicitly import ray before it.
 """
 
 import argparse
+import glob
 import io
 import re
 import sys
@@ -64,7 +65,7 @@ if __name__ == "__main__":
 
     file_path = Path(args.path)
     if file_path.is_dir():
-        all_py_files = file_path.rglob("*.py")
+        all_py_files = glob.glob("*.py", recursive=True)
     else:
         all_py_files = [file_path]
 

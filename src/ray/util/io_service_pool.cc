@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/util/io_service_pool.h"
+
 #include "ray/util/logging.h"
 
 namespace ray {

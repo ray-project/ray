@@ -62,8 +62,14 @@ inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobjec
               env->CallObjectMethod(java_id, java_base_id_get_bytes));
           RAY_CHECK_JAVA_EXCEPTION(env);
           auto id = JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes);
-          return std::unique_ptr<ray::TaskArg>(new ray::TaskArgByReference(
-              id, ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(id)));
+          auto java_owner_address =
+              env->GetObjectField(arg, java_function_arg_owner_address);
+          RAY_CHECK(java_owner_address);
+          auto owner_address =
+              JavaProtobufObjectToNativeProtobufObject<ray::rpc::Address>(
+                  env, java_owner_address);
+          return std::unique_ptr<ray::TaskArg>(
+              new ray::TaskArgByReference(id, owner_address));
         }
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
@@ -76,7 +82,6 @@ inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobjec
 
 inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
                                                            jobject java_resources) {
-  std::unordered_map<std::string, double> resources;
   return JavaMapToNativeMap<std::string, double>(
       env, java_resources,
       [](JNIEnv *env, jobject java_key) {
@@ -91,13 +96,18 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
 
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
   std::unordered_map<std::string, double> resources;
+  std::string name = "";
   if (callOptions) {
     jobject java_resources =
         env->GetObjectField(callOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
+    auto java_name = (jstring)env->GetObjectField(callOptions, java_call_options_name);
+    if (java_name) {
+      name = JavaStringToNativeString(env, java_name);
+    }
   }
 
-  ray::TaskOptions task_options{numReturns, resources};
+  ray::TaskOptions task_options{name, numReturns, resources};
   return task_options;
 }
 
@@ -162,7 +172,16 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 }
 
 inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
-  return 0 == java_strategy ? ray::rpc::PACK : ray::rpc::SPREAD;
+  switch (java_strategy) {
+  case 0:
+    return ray::rpc::PACK;
+  case 1:
+    return ray::rpc::SPREAD;
+  case 2:
+    return ray::rpc::STRICT_PACK;
+  default:
+    return ray::rpc::STRICT_SPREAD;
+  }
 }
 
 inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
@@ -198,9 +217,11 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
 
   std::vector<ObjectID> return_ids;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
-  ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function, task_args,
-                                                     task_options, &return_ids,
-                                                     /*max_retries=*/0);
+  ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(
+      ray_function, task_args, task_options, &return_ids,
+      /*max_retries=*/0,
+      /*placement_options=*/
+      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0));
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {

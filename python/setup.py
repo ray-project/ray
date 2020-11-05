@@ -1,4 +1,5 @@
 import argparse
+import errno
 import glob
 import io
 import logging
@@ -12,6 +13,7 @@ import tempfile
 import zipfile
 
 from itertools import chain
+from itertools import takewhile
 
 import urllib.error
 import urllib.parse
@@ -30,6 +32,11 @@ SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+
+PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
+THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
+
+CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
 
@@ -61,7 +68,7 @@ generated_python_directories = [
     "ray/streaming/generated",
 ]
 
-optional_ray_files = []
+optional_ray_files = ["ray/nightly-wheels.yaml"]
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
@@ -91,17 +98,19 @@ optional_ray_files += ray_autoscaler_files
 optional_ray_files += ray_project_files
 optional_ray_files += ray_dashboard_files
 
-if os.getenv("RAY_USE_NEW_GCS") == "on":
-    ray_files += [
-        "ray/core/src/credis/build/src/libmember.so",
-        "ray/core/src/credis/build/src/libmaster.so",
-        "ray/core/src/credis/redis/src/redis-server" + exe_suffix,
-    ]
-
+# If you're adding dependencies for ray extras, please
+# also update the matching section of requirements.txt
+# in this directory
 extras = {
     "debug": [],
-    "serve": ["uvicorn", "flask", "blist", "requests"],
-    "tune": ["tabulate", "tensorboardX", "pandas"]
+    "serve": [
+        "uvicorn", "flask", "requests", "pydantic",
+        "dataclasses; python_version < '3.7'"
+    ],
+    "tune": [
+        "tabulate", "tensorboardX", "pandas",
+        "dataclasses; python_version < '3.7'"
+    ]
 }
 
 extras["rllib"] = extras["tune"] + [
@@ -109,14 +118,43 @@ extras["rllib"] = extras["tune"] + [
     "dm_tree",
     "gym[atari]",
     "lz4",
-    "opencv-python-headless",
+    "opencv-python-headless<=4.3.0.36",
     "pyyaml",
     "scipy",
 ]
 
-extras["streaming"] = ["msgpack >= 0.6.2"]
+extras["streaming"] = []
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
+
+# These are the main dependencies for users of ray. This list
+# should be carefully curated. If you change it, please reflect
+# the change in the matching section of requirements.txt
+install_requires = [
+    # TODO(alex) Pin the version once this PR is
+    # included in the stable release.
+    # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
+    "aiohttp",
+    "aiohttp_cors",
+    "aioredis",
+    "click >= 7.0",
+    "colorama",
+    "colorful",
+    "filelock",
+    "google",
+    "gpustat",
+    "grpcio >= 1.28.1",
+    "jsonschema",
+    "msgpack >= 1.0.0, < 2.0.0",
+    "numpy >= 1.16",
+    "protobuf >= 3.8.0",
+    "py-spy >= 0.2.0",
+    "pyyaml",
+    "requests",
+    "redis >= 3.3.2, < 3.5.0",
+    "opencensus",
+    "prometheus_client >= 0.7.1",
+]
 
 
 def is_native_windows_or_msys():
@@ -232,7 +270,7 @@ def build(build_python, build_java):
         except ImportError:
             pass
     if not pickle5:
-        download_pickle5(os.path.join(ROOT_DIR, "ray", "pickle5_files"))
+        download_pickle5(os.path.join(ROOT_DIR, PICKLE5_SUBDIR))
 
     # Note: We are passing in sys.executable so that we use the same
     # version of Python to build packages inside the build.sh script. Note
@@ -243,13 +281,17 @@ def build(build_python, build_java):
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
-                "--target=" + os.path.join(ROOT_DIR, "ray", "thirdparty_files")
+                "--target=" + os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
             ] + pip_packages,
             env=dict(os.environ, CC="gcc"))
 
     version_info = bazel_invoke(subprocess.check_output, ["--version"])
     bazel_version_str = version_info.rstrip().decode("utf-8").split(" ", 1)[1]
-    bazel_version = tuple(map(int, bazel_version_str.split(".")))
+    bazel_version_split = bazel_version_str.split(".")
+    bazel_version_digits = [
+        "".join(takewhile(str.isdigit, s)) for s in bazel_version_split
+    ]
+    bazel_version = tuple(map(int, bazel_version_digits))
     if bazel_version < SUPPORTED_BAZEL:
         logger.warning("Expected Bazel version {} but found {}".format(
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
@@ -299,27 +341,6 @@ def find_version(*filepath):
         raise RuntimeError("Unable to find version string.")
 
 
-install_requires = [
-    "aiohttp",
-    "aioredis",
-    "click >= 7.0",
-    "colorama",
-    "colorful",
-    "filelock",
-    "google",
-    "gpustat",
-    "grpcio >= 1.28.1",
-    "jsonschema",
-    "msgpack >= 0.6.0, < 2.0.0",
-    "numpy >= 1.16",
-    "protobuf >= 3.8.0",
-    "py-spy >= 0.2.0",
-    "pyyaml",
-    "requests",
-    "redis >= 3.3.2, < 3.5.0",
-]
-
-
 def pip_run(build_ext):
     build(True, BUILD_JAVA)
 
@@ -327,10 +348,10 @@ def pip_run(build_ext):
 
     # We also need to install pickle5 along with Ray, so make sure that the
     # relevant non-Python pickle5 files get copied.
-    pickle5_dir = os.path.join(ROOT_DIR, "ray", "pickle5_files")
+    pickle5_dir = os.path.join(ROOT_DIR, PICKLE5_SUBDIR)
     files_to_include += walk_directory(os.path.join(pickle5_dir, "pickle5"))
 
-    thirdparty_dir = os.path.join(ROOT_DIR, "ray", "thirdparty_files")
+    thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
     files_to_include += walk_directory(thirdparty_dir)
 
     # Copy over the autogenerated protobuf Python bindings.
@@ -353,7 +374,7 @@ def pip_run(build_ext):
 
 def api_main(program, *args):
     parser = argparse.ArgumentParser()
-    choices = ["build", "bazel_version", "help"]
+    choices = ["build", "bazel_version", "python_versions", "clean", "help"]
     parser.add_argument("command", type=str, choices=choices)
     parser.add_argument(
         "-l",
@@ -379,6 +400,22 @@ def api_main(program, *args):
         result = build(**kwargs)
     elif parsed_args.command == "bazel_version":
         print(".".join(map(str, SUPPORTED_BAZEL)))
+    elif parsed_args.command == "python_versions":
+        for version in SUPPORTED_PYTHONS:
+            # NOTE: On Windows this will print "\r\n" on the command line.
+            # Strip it out by piping to tr -d "\r".
+            print(".".join(map(str, version)))
+    elif parsed_args.command == "clean":
+
+        def onerror(function, path, excinfo):
+            nonlocal result
+            if excinfo[1].errno != errno.ENOENT:
+                msg = excinfo[1].strerror
+                logger.error("cannot remove {}: {}".format(path, msg))
+                result = 1
+
+        for subdir in CLEANABLE_SUBDIRS:
+            shutil.rmtree(os.path.join(ROOT_DIR, subdir), onerror=onerror)
     elif parsed_args.command == "help":
         parser.print_help()
     else:

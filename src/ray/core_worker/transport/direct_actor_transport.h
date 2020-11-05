@@ -63,10 +63,11 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
 class CoreWorkerDirectActorTaskSubmitter
     : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
-  CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
-                                     std::shared_ptr<CoreWorkerMemoryStore> store,
-                                     std::shared_ptr<TaskFinisherInterface> task_finisher)
-      : client_factory_(client_factory),
+  CoreWorkerDirectActorTaskSubmitter(
+      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+      std::shared_ptr<CoreWorkerMemoryStore> store,
+      std::shared_ptr<TaskFinisherInterface> task_finisher)
+      : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
 
@@ -217,8 +218,8 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
+  /// Pool for producing new core worker clients.
+  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;
@@ -493,7 +494,7 @@ class CoreWorkerDirectTaskReceiver {
         task_done_(task_done) {}
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
+  void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
             std::shared_ptr<DependencyWaiter> dependency_waiter);
 
   /// Handle a `PushTask` request.
@@ -513,8 +514,8 @@ class CoreWorkerDirectTaskReceiver {
   boost::asio::io_service &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
   OnTaskDone task_done_;
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
+  /// Shared pool for producing new core worker clients.
+  std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   /// Address of our RPC server.
   rpc::Address rpc_address_;
   /// Shared waiter for dependencies required by incoming tasks.

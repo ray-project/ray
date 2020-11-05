@@ -1,12 +1,15 @@
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 
 from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.types import AgentID, PolicyID
+from ray.rllib.utils.typing import AgentID, PolicyID
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import RolloutWorker
 
 
 @PublicAPI
@@ -27,9 +30,9 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self, worker: RolloutWorker, base_env: BaseEnv,
+    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode, **kwargs):
+                         episode: MultiAgentEpisode, env_index: int, **kwargs):
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -42,6 +45,8 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (int): The index of the (vectorized) env, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -52,8 +57,8 @@ class DefaultCallbacks:
                 "episode": episode,
             })
 
-    def on_episode_step(self, worker: RolloutWorker, base_env: BaseEnv,
-                        episode: MultiAgentEpisode, **kwargs):
+    def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+                        episode: MultiAgentEpisode, env_index: int, **kwargs):
         """Runs on each episode step.
 
         Args:
@@ -64,6 +69,8 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (int): The index of the (vectorized) env, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -73,9 +80,9 @@ class DefaultCallbacks:
                 "episode": episode
             })
 
-    def on_episode_end(self, worker: RolloutWorker, base_env: BaseEnv,
+    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode, **kwargs):
+                       episode: MultiAgentEpisode, env_index: int, **kwargs):
         """Runs when an episode is done.
 
         Args:
@@ -88,6 +95,8 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (int): The index of the (vectorized) env, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -99,7 +108,7 @@ class DefaultCallbacks:
             })
 
     def on_postprocess_trajectory(
-            self, worker: RolloutWorker, episode: MultiAgentEpisode,
+            self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
             agent_id: AgentID, policy_id: PolicyID,
             policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
             original_batches: Dict[AgentID, SampleBatch], **kwargs):
@@ -133,9 +142,9 @@ class DefaultCallbacks:
                 "all_pre_batches": original_batches,
             })
 
-    def on_sample_end(self, worker: RolloutWorker, samples: SampleBatch,
+    def on_sample_end(self, *, worker: "RolloutWorker", samples: SampleBatch,
                       **kwargs):
-        """Called at the end RolloutWorker.sample().
+        """Called at the end of RolloutWorker.sample().
 
         Args:
             worker (RolloutWorker): Reference to the current rollout worker.
@@ -150,7 +159,7 @@ class DefaultCallbacks:
                 "samples": samples,
             })
 
-    def on_train_result(self, trainer, result: dict, **kwargs):
+    def on_train_result(self, *, trainer, result: dict, **kwargs):
         """Called at the end of Trainable.train().
 
         Args:

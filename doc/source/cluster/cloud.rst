@@ -153,6 +153,7 @@ Kubernetes
 The cluster launcher can also be used to start Ray clusters on an existing Kubernetes cluster. First, install the Kubernetes API client (``pip install kubernetes``), then make sure your Kubernetes credentials are set up properly to access the cluster (if a command like ``kubectl get pods`` succeeds, you should be good to go).
 
 Once you have ``kubectl`` configured locally to access the remote cluster, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/kubernetes/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__ cluster config file will create a small cluster of one pod for the head node configured to autoscale up to two worker node pods, with all pods requiring 1 CPU and 0.5GiB of memory.
+It's also possible to deploy service and ingress resources for each scaled worker pod. An example is provided in `ray/python/ray/autoscaler/kubernetes/example-ingress.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-ingress.yaml>`__.
 
 Test that it works by running the following commands from your local machine:
 
@@ -177,17 +178,100 @@ Test that it works by running the following commands from your local machine:
 
 .. tip:: This section describes the easiest way to launch a Ray cluster on Kubernetes. See this :ref:`document for advanced usage <ray-k8s-deploy>` of Kubernetes with Ray.
 
+.. tip:: If you would like to use Ray Tune in your Kubernetes cluster, have a look at :ref:`this short guide to make it work <tune-kubernetes>`.
+
+Staroid
+-------
+
+First, install the staroid client package (``pip install staroid``) then get `access token <https://staroid.com/settings/accesstokens>`_.
+Once you have an access token, you should be ready to launch your cluster.
+
+The provided `ray/python/ray/autoscaler/staroid/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/staroid/example-full.yaml>`__ cluster config file will create a cluster with
+
+- a Jupyter notebook running on head node.
+  (Staroid management console -> Kubernetes -> ``<your_ske_name>`` -> ``<ray_cluster_name>`` -> Click "notebook")
+- a shared nfs volume across all ray nodes mounted under ``/nfs`` directory.
+
+Test that it works by running the following commands from your local machine:
+
+.. code-block:: bash
+
+    # Configure access token through environment variable.
+    $ export STAROID_ACCESS_TOKEN=<your access token>
+
+    # Create or update the cluster. When the command finishes,
+    # you can attach a screen to the head node.
+    $ ray up ray/python/ray/autoscaler/staroid/example-full.yaml
+
+    # Get a remote screen on the head node.
+    $ ray attach ray/python/ray/autoscaler/staroid/example-full.yaml
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
+
+    # Tear down the cluster
+    $ ray down ray/python/ray/autoscaler/staroid/example-full.yaml
+
 .. _cluster-private-setup:
 
-Private Cluster (List of nodes)
--------------------------------
+Local On Premise Cluster (List of nodes)
+----------------------------------------
+You would use this mode if you want to run distributed Ray applications on some local nodes available on premise.
 
 The most preferable way to run a Ray cluster on a private cluster of hosts is via the Ray Cluster Launcher.
+
+There are two ways of running private clusters:
+
+- Manually managed, i.e., the user explicitly specifies the head and worker ips.
+
+- Automatically managed, i.e., the user only specifies a coordinator address to a coordinating server that automatically coordinates its head and worker ips.
+
+.. tip:: To avoid getting the password prompt when running private clusters make sure to setup your ssh keys on the private cluster as follows:
+
+    .. code-block:: bash
+
+        $ ssh-keygen
+        $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+
+Manually Managed
+~~~~~~~~~~~~~~~~
 
 You can get started by filling out the fields in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
 Be sure to specify the proper ``head_ip``, list of ``worker_ips``, and the ``ssh_user`` field.
 
 Test that it works by running the following commands from your local machine:
+
+.. code-block:: bash
+
+    # Create or update the cluster. When the command finishes, it will print
+    # out the command that can be used to get a remote shell into the head node.
+    $ ray up ray/python/ray/autoscaler/local/example-full.yaml
+
+    # Get a remote screen on the head node.
+    $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
+
+    # Tear down the cluster
+    $ ray down ray/python/ray/autoscaler/local/example-full.yaml
+
+Automatically Managed
+~~~~~~~~~~~~~~~~~~~~~
+
+Start by launching the coordinator server that will manage all the on prem clusters. This server also makes sure to isolate the resources between different users. The script for running the coordinator server is `ray/python/ray/autoscaler/local/coordinator_server.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/coordinator_server.py>`__. To launch the coordinator server run:
+
+.. code-block:: bash
+
+    $ python coordinator_server.py --ips <list_of_node_ips> --port <PORT>
+
+where ``list_of_node_ips`` is a comma separated list of all the available nodes on the private cluster. For example, ``160.24.42.48,160.24.42.49,...`` and ``<PORT>`` is the port that the coordinator server will listen on.
+After running the coordinator server it will print the address of the coordinator server. For example:
+
+.. code-block:: bash
+
+  >> INFO:ray.autoscaler.local.coordinator_server:Running on prem coordinator server
+        on address <Host:PORT>
+
+Next, the user only specifies the ``<Host:PORT>`` printed above in the ``coordinator_address`` entry instead of specific head/worker ips in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
+
+Now we cant test that it works by running the following commands from your local machine:
 
 .. code-block:: bash
 
@@ -298,7 +382,7 @@ and opens all the necessary ports to support the Ray cluster.
 .. code-block:: yaml
 
     docker:
-        image: tensorflow/tensorflow:1.5.0-py3
+        image: rayproject/ray:0.8.7
         container_name: ray_docker
 
 If Docker is not installed, add the following commands to ``initialization_commands`` to install it.

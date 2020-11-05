@@ -1,4 +1,6 @@
+from collections import Counter
 import os
+import pickle
 import shutil
 import sys
 import tempfile
@@ -14,14 +16,21 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.suggest.repeater import Repeater
-from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
-                                         SearchGenerator, Searcher)
+from ray.tune.suggest._mock import _MockSuggestionAlgorithm
+from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
+from ray.tune.suggest.search_generator import SearchGenerator
 
 
 class TrialRunnerTest3(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
+        if "CUDA_VISIBLE_DEVICES" in os.environ:
+            del os.environ["CUDA_VISIBLE_DEVICES"]
+        shutil.rmtree(self.tmpdir)
 
     def testStepHook(self):
         ray.init(num_cpus=4, num_gpus=2)
@@ -120,7 +129,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
     def testSearchAlgFinished(self):
         """Checks that SearchAlg is Finished before all trials are done."""
-        ray.init(num_cpus=4, num_gpus=2)
+        ray.init(num_cpus=4, local_mode=True, include_dashboard=False)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 1}}
         experiments = [Experiment.from_json("test", experiment_spec)]
         searcher = _MockSuggestionAlgorithm()
@@ -145,7 +154,7 @@ class TrialRunnerTest3(unittest.TestCase):
             def on_trial_result(self, *args, **kwargs):
                 return TrialScheduler.STOP
 
-        ray.init(num_cpus=4, num_gpus=2)
+        ray.init(num_cpus=4, local_mode=True, include_dashboard=False)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
         experiments = [Experiment.from_json("test", experiment_spec)]
         searcher = _MockSuggestionAlgorithm()
@@ -219,24 +228,23 @@ class TrialRunnerTest3(unittest.TestCase):
         class FinishFastAlg(_MockSuggestionAlgorithm):
             _index = 0
 
-            def next_trials(self):
+            def next_trial(self):
                 spec = self._experiment.spec
-                trials = []
+                trial = None
                 if self._index < spec["num_samples"]:
                     trial = Trial(
                         spec.get("run"), stopping_criterion=spec.get("stop"))
-                    trials.append(trial)
                 self._index += 1
 
                 if self._index > 4:
                     self.set_finished()
 
-                return trials
+                return trial
 
             def suggest(self, trial_id):
                 return {}
 
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=2, local_mode=True, include_dashboard=False)
         experiment_spec = {
             "run": "__fake",
             "num_samples": 2,
@@ -264,12 +272,169 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(searcher.is_finished())
         self.assertRaises(TuneError, runner.step)
 
+    def testSearcherSaveRestore(self):
+        ray.init(num_cpus=8, local_mode=True)
+
+        def create_searcher():
+            class TestSuggestion(Searcher):
+                def __init__(self, index):
+                    self.index = index
+                    self.returned_result = []
+                    super().__init__(metric="result", mode="max")
+
+                def suggest(self, trial_id):
+                    self.index += 1
+                    return {"test_variable": self.index}
+
+                def on_trial_complete(self, trial_id, result=None, **kwargs):
+                    self.returned_result.append(result)
+
+                def save(self, checkpoint_path):
+                    with open(checkpoint_path, "wb") as f:
+                        pickle.dump(self.__dict__, f)
+
+                def restore(self, checkpoint_path):
+                    with open(checkpoint_path, "rb") as f:
+                        self.__dict__.update(pickle.load(f))
+
+            searcher = TestSuggestion(0)
+            searcher = ConcurrencyLimiter(searcher, max_concurrent=2)
+            searcher = Repeater(searcher, repeat=3, set_index=False)
+            search_alg = SearchGenerator(searcher)
+            experiment_spec = {
+                "run": "__fake",
+                "num_samples": 20,
+                "stop": {
+                    "training_iteration": 2
+                }
+            }
+            experiments = [Experiment.from_json("test", experiment_spec)]
+            search_alg.add_configurations(experiments)
+            return search_alg
+
+        searcher = create_searcher()
+        runner = TrialRunner(
+            search_alg=searcher,
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=-1)
+        for i in range(6):
+            runner.step()
+
+        assert len(
+            runner.get_trials()) == 6, [t.config for t in runner.get_trials()]
+        runner.checkpoint()
+        trials = runner.get_trials()
+        [
+            runner.trial_executor.stop_trial(t) for t in trials
+            if t.status is not Trial.ERROR
+        ]
+        del runner
+        # stop_all(runner.get_trials())
+
+        searcher = create_searcher()
+        runner2 = TrialRunner(
+            search_alg=searcher,
+            local_checkpoint_dir=self.tmpdir,
+            resume="LOCAL")
+        assert len(runner2.get_trials()) == 6, [
+            t.config for t in runner2.get_trials()
+        ]
+
+        def trial_statuses():
+            return [t.status for t in runner2.get_trials()]
+
+        def num_running_trials():
+            return sum(t.status == Trial.RUNNING for t in runner2.get_trials())
+
+        for i in range(6):
+            runner2.step()
+        assert len(set(trial_statuses())) == 1
+        assert Trial.RUNNING in trial_statuses()
+        for i in range(20):
+            runner2.step()
+            assert 1 <= num_running_trials() <= 6
+        evaluated = [
+            t.evaluated_params["test_variable"] for t in runner2.get_trials()
+        ]
+        count = Counter(evaluated)
+        assert all(v <= 3 for v in count.values())
+
+    def testTrialErrorResumeFalse(self):
+        ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
+        runner = TrialRunner(local_checkpoint_dir=self.tmpdir)
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 4
+            },
+            "resources": Resources(cpu=1, gpu=0),
+        }
+        trials = [
+            Trial("__fake", config={"mock_error": True}, **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+        ]
+        for t in trials:
+            runner.add_trial(t)
+
+        while not runner.is_finished():
+            runner.step()
+
+        runner.checkpoint(force=True)
+
+        assert trials[0].status == Trial.ERROR
+        del runner
+
+        new_runner = TrialRunner(resume=True, local_checkpoint_dir=self.tmpdir)
+        assert len(new_runner.get_trials()) == 3
+        assert Trial.ERROR in (t.status for t in new_runner.get_trials())
+
+    def testTrialErrorResumeTrue(self):
+        ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
+        runner = TrialRunner(local_checkpoint_dir=self.tmpdir)
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 4
+            },
+            "resources": Resources(cpu=1, gpu=0),
+        }
+        trials = [
+            Trial("__fake", config={"mock_error": True}, **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+        ]
+        for t in trials:
+            runner.add_trial(t)
+
+        while not runner.is_finished():
+            runner.step()
+
+        runner.checkpoint(force=True)
+
+        assert trials[0].status == Trial.ERROR
+        del runner
+
+        new_runner = TrialRunner(
+            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir)
+        assert len(new_runner.get_trials()) == 3
+        assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
+        # The below is just a check for standard behavior.
+        disable_error = False
+        for t in new_runner.get_trials():
+            if t.config.get("mock_error"):
+                t.config["mock_error"] = False
+                disable_error = True
+        assert disable_error
+
+        while not new_runner.is_finished():
+            new_runner.step()
+        assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
+
     def testTrialSaveRestore(self):
         """Creates different trials to test runner.checkpoint/restore."""
         ray.init(num_cpus=3)
-        tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         trials = [
             Trial(
                 "__fake",
@@ -310,7 +475,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
         self.assertEquals(trials[2].status, Trial.RUNNING)
 
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         for tid in ["trial_terminate", "trial_fail"]:
             original_trial = runner.get_trial(tid)
             restored_trial = runner2.get_trial(tid)
@@ -325,14 +490,13 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()  # Process result, dispatch save
         runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
-        shutil.rmtree(tmpdir)
 
     def testTrialNoSave(self):
         """Check that non-checkpointing trials are not saved."""
         ray.init(num_cpus=3)
-        tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(
             Trial(
                 "__fake",
@@ -363,7 +527,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()
         runner.step()
 
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         new_trials = runner2.get_trials()
         self.assertEquals(len(new_trials), 3)
         self.assertTrue(
@@ -373,28 +537,27 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
         self.assertTrue(not runner2.get_trial("pending").last_result)
         runner2.step()
-        shutil.rmtree(tmpdir)
 
     def testCheckpointWithFunction(self):
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial(
             "__fake",
             config={"callbacks": {
                 "on_episode_start": lambda i: i,
             }},
             checkpoint_freq=1)
-        tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for _ in range(5):
             runner.step()
         # force checkpoint
         runner.checkpoint()
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         new_trial = runner2.get_trials()[0]
         self.assertTrue("callbacks" in new_trial.config)
         self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
-        shutil.rmtree(tmpdir)
 
     def testCheckpointOverwrite(self):
         def count_checkpoints(cdir):
@@ -402,7 +565,8 @@ class TrialRunnerTest3(unittest.TestCase):
                         and fname.endswith(".json"))
                        for fname in os.listdir(cdir))
 
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
@@ -460,7 +624,7 @@ class SearchAlgorithmTest(unittest.TestCase):
         searcher = TestSuggestion()
         alg = SearchGenerator(searcher)
         alg.add_configurations({"test": {"run": "__fake"}})
-        trial = alg.next_trials()[0]
+        trial = alg.next_trial()
         self.assertTrue("e=5" in trial.experiment_tag)
         self.assertTrue("d=4" in trial.experiment_tag)
 
@@ -511,6 +675,117 @@ class SearchAlgorithmTest(unittest.TestCase):
         self.assertEquals(len(trials), 11)
         parameter_set = {t.evaluated_params["test_variable"] for t in trials}
         self.assertEquals(len(parameter_set), 3)
+
+    def testSetGetRepeater(self):
+        ray.init(num_cpus=4)
+
+        class TestSuggestion(Searcher):
+            def __init__(self, index):
+                self.index = index
+                self.returned_result = []
+                super().__init__(metric="result", mode="max")
+
+            def suggest(self, trial_id):
+                self.index += 1
+                return {"score": self.index}
+
+            def on_trial_complete(self, trial_id, result=None, **kwargs):
+                self.returned_result.append(result)
+
+        searcher = TestSuggestion(0)
+        repeater1 = Repeater(searcher, repeat=3, set_index=False)
+        for i in range(3):
+            assert repeater1.suggest(f"test_{i}")["score"] == 1
+        for i in range(2):  # An incomplete set of results
+            assert repeater1.suggest(f"test_{i}_2")["score"] == 2
+
+        # Restore a new one
+        state = repeater1.get_state()
+        del repeater1
+        new_repeater = Repeater(searcher, repeat=1, set_index=True)
+        new_repeater.set_state(state)
+        assert new_repeater.repeat == 3
+        assert new_repeater.suggest("test_2_2")["score"] == 2
+        assert new_repeater.suggest("test_x")["score"] == 3
+
+        # Report results
+        for i in range(3):
+            new_repeater.on_trial_complete(f"test_{i}", {"result": 2})
+
+        for i in range(3):
+            new_repeater.on_trial_complete(f"test_{i}_2", {"result": -i * 10})
+
+        assert len(new_repeater.searcher.returned_result) == 2
+        assert new_repeater.searcher.returned_result[-1] == {"result": -10}
+
+        # Finish the rest of the last trial group
+        new_repeater.on_trial_complete("test_x", {"result": 3})
+        assert new_repeater.suggest("test_y")["score"] == 3
+        new_repeater.on_trial_complete("test_y", {"result": 3})
+        assert len(new_repeater.searcher.returned_result) == 2
+        assert new_repeater.suggest("test_z")["score"] == 3
+        new_repeater.on_trial_complete("test_z", {"result": 3})
+        assert len(new_repeater.searcher.returned_result) == 3
+        assert new_repeater.searcher.returned_result[-1] == {"result": 3}
+
+    def testSetGetLimiter(self):
+        ray.init(num_cpus=4)
+
+        class TestSuggestion(Searcher):
+            def __init__(self, index):
+                self.index = index
+                self.returned_result = []
+                super().__init__(metric="result", mode="max")
+
+            def suggest(self, trial_id):
+                self.index += 1
+                return {"score": self.index}
+
+            def on_trial_complete(self, trial_id, result=None, **kwargs):
+                self.returned_result.append(result)
+
+        searcher = TestSuggestion(0)
+        limiter = ConcurrencyLimiter(searcher, max_concurrent=2)
+        assert limiter.suggest("test_1")["score"] == 1
+        assert limiter.suggest("test_2")["score"] == 2
+        assert limiter.suggest("test_3") is None
+
+        state = limiter.get_state()
+        del limiter
+        limiter2 = ConcurrencyLimiter(searcher, max_concurrent=3)
+        limiter2.set_state(state)
+        assert limiter2.suggest("test_4") is None
+        assert limiter2.suggest("test_5") is None
+        limiter2.on_trial_complete("test_1", {"result": 3})
+        limiter2.on_trial_complete("test_2", {"result": 3})
+        assert limiter2.suggest("test_3")["score"] == 3
+
+    def testBatchLimiter(self):
+        ray.init(num_cpus=4)
+
+        class TestSuggestion(Searcher):
+            def __init__(self, index):
+                self.index = index
+                self.returned_result = []
+                super().__init__(metric="result", mode="max")
+
+            def suggest(self, trial_id):
+                self.index += 1
+                return {"score": self.index}
+
+            def on_trial_complete(self, trial_id, result=None, **kwargs):
+                self.returned_result.append(result)
+
+        searcher = TestSuggestion(0)
+        limiter = ConcurrencyLimiter(searcher, max_concurrent=2, batch=True)
+        assert limiter.suggest("test_1")["score"] == 1
+        assert limiter.suggest("test_2")["score"] == 2
+        assert limiter.suggest("test_3") is None
+
+        limiter.on_trial_complete("test_1", {"result": 3})
+        assert limiter.suggest("test_3") is None
+        limiter.on_trial_complete("test_2", {"result": 3})
+        assert limiter.suggest("test_3") is not None
 
 
 class ResourcesTest(unittest.TestCase):

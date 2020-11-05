@@ -135,6 +135,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   Language GetLanguage() const;
 
+  // Returns the task's name.
+  const std::string GetName() const;
+
   /// Whether this task is a normal task.
   bool IsNormalTask() const;
 
@@ -183,7 +186,14 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // A one-word summary of the task func as a call site (e.g., __main__.foo).
   std::string CallSiteString() const;
 
+  // Lookup the resource shape that corresponds to the static key.
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
+
+  // Compute a static key that represents the given resource shape.
+  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+
+  // Placement Group ID that this task or actor creation is associated with.
+  const PlacementGroupID PlacementGroupId() const;
 
  private:
   void ComputeResources();

@@ -23,26 +23,23 @@ def compute_advantages(rollout: SampleBatch,
                        use_gae: bool = True,
                        use_critic: bool = True):
     """
-    Given a rollout, compute its value targets and the advantage.
+    Given a rollout, compute its value targets and the advantages.
 
     Args:
-        rollout (SampleBatch): SampleBatch of a single trajectory
-        last_r (float): Value estimation for last observation
+        rollout (SampleBatch): SampleBatch of a single trajectory.
+        last_r (float): Value estimation for last observation.
         gamma (float): Discount factor.
-        lambda_ (float): Parameter for GAE
-        use_gae (bool): Using Generalized Advantage Estimation
+        lambda_ (float): Parameter for GAE.
+        use_gae (bool): Using Generalized Advantage Estimation.
         use_critic (bool): Whether to use critic (value estimates). Setting
-                           this to False will use 0 as baseline.
+            this to False will use 0 as baseline.
 
     Returns:
         SampleBatch (SampleBatch): Object with experience from rollout and
             processed rewards.
     """
 
-    traj = {}
-    trajsize = len(rollout[SampleBatch.ACTIONS])
-    for key in rollout:
-        traj[key] = np.stack(rollout[key])
+    rollout_size = len(rollout[SampleBatch.ACTIONS])
 
     assert SampleBatch.VF_PREDS in rollout or not use_critic, \
         "use_critic=True but values not found"
@@ -54,13 +51,13 @@ def compute_advantages(rollout: SampleBatch,
             [rollout[SampleBatch.VF_PREDS],
              np.array([last_r])])
         delta_t = (
-            traj[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1])
+            rollout[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1])
         # This formula for the advantage comes from:
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
-        traj[Postprocessing.ADVANTAGES] = discount(delta_t, gamma * lambda_)
-        traj[Postprocessing.VALUE_TARGETS] = (
-            traj[Postprocessing.ADVANTAGES] +
-            traj[SampleBatch.VF_PREDS]).copy().astype(np.float32)
+        rollout[Postprocessing.ADVANTAGES] = discount(delta_t, gamma * lambda_)
+        rollout[Postprocessing.VALUE_TARGETS] = (
+            rollout[Postprocessing.ADVANTAGES] +
+            rollout[SampleBatch.VF_PREDS]).copy().astype(np.float32)
     else:
         rewards_plus_v = np.concatenate(
             [rollout[SampleBatch.REWARDS],
@@ -69,18 +66,18 @@ def compute_advantages(rollout: SampleBatch,
                                       gamma)[:-1].copy().astype(np.float32)
 
         if use_critic:
-            traj[Postprocessing.
-                 ADVANTAGES] = discounted_returns - rollout[SampleBatch.
-                                                            VF_PREDS]
-            traj[Postprocessing.VALUE_TARGETS] = discounted_returns
+            rollout[Postprocessing.
+                    ADVANTAGES] = discounted_returns - rollout[SampleBatch.
+                                                               VF_PREDS]
+            rollout[Postprocessing.VALUE_TARGETS] = discounted_returns
         else:
-            traj[Postprocessing.ADVANTAGES] = discounted_returns
-            traj[Postprocessing.VALUE_TARGETS] = np.zeros_like(
-                traj[Postprocessing.ADVANTAGES])
+            rollout[Postprocessing.ADVANTAGES] = discounted_returns
+            rollout[Postprocessing.VALUE_TARGETS] = np.zeros_like(
+                rollout[Postprocessing.ADVANTAGES])
 
-    traj[Postprocessing.ADVANTAGES] = traj[
+    rollout[Postprocessing.ADVANTAGES] = rollout[
         Postprocessing.ADVANTAGES].copy().astype(np.float32)
 
-    assert all(val.shape[0] == trajsize for val in traj.values()), \
+    assert all(val.shape[0] == rollout_size for key, val in rollout.items()), \
         "Rollout stacked incorrectly!"
-    return SampleBatch(traj)
+    return rollout

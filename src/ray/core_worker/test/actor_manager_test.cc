@@ -18,7 +18,6 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_accessor.h"

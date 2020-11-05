@@ -3,35 +3,35 @@
 <project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xmlns="http://maven.apache.org/POM/4.0.0"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
-    <parent>
-        <artifactId>ray-streaming</artifactId>
-        <groupId>io.ray</groupId>
-        <version>0.1-SNAPSHOT</version>
-    </parent>
-    <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <artifactId>ray-streaming</artifactId>
+    <groupId>io.ray</groupId>
+    <version>1.1.0-SNAPSHOT</version>
+  </parent>
+  <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>streaming-api</artifactId>
-    <name>ray streaming api</name>
-    <description>ray streaming api</description>
+  <artifactId>streaming-api</artifactId>
+  <name>ray streaming api</name>
+  <description>ray streaming api</description>
 
-    <packaging>jar</packaging>
+  <packaging>jar</packaging>
 
-    <dependencies>
-        <dependency>
-            <groupId>io.ray</groupId>
-            <artifactId>ray-api</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.ray</groupId>
-            <artifactId>ray-runtime</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.ray</groupId>
-            <artifactId>streaming-state</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        {generated_bzl_deps}
-    </dependencies>
+  <dependencies>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>streaming-state</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    {generated_bzl_deps}
+  </dependencies>
 </project>

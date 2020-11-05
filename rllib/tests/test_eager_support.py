@@ -76,7 +76,10 @@ class TestEagerSupportPG(unittest.TestCase):
 
     def test_impala(self):
         check_support(
-            "IMPALA", {"num_workers": 1, "num_gpus": 0}, test_eager=True)
+            "IMPALA", {
+                "num_workers": 1,
+                "num_gpus": 0
+            }, test_eager=True)
 
 
 class TestEagerSupportOffPolicy(unittest.TestCase):
@@ -130,5 +133,6 @@ if __name__ == "__main__":
     # None for all unittest.TestCase classes in this file.
     import pytest
     class_ = sys.argv[1] if len(sys.argv) > 1 else None
-    sys.exit(pytest.main(
-        ["-v", __file__ + ("" if class_ is None else "::" + class_)]))
+    sys.exit(
+        pytest.main(
+            ["-v", __file__ + ("" if class_ is None else "::" + class_)]))

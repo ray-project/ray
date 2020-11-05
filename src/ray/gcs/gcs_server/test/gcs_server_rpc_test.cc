@@ -57,8 +57,8 @@ class GcsServerTest : public ::testing::Test {
   void TearDown() override {
     gcs_server_->Stop();
     io_service_.stop();
-    gcs_server_.reset();
     thread_io_service_->join();
+    gcs_server_.reset();
   }
 
   bool AddJob(const rpc::AddJobRequest &request) {
@@ -369,16 +369,6 @@ class GcsServerTest : public ::testing::Test {
     std::promise<bool> promise;
     client_->AddProfileData(
         request, [&promise](const Status &status, const rpc::AddProfileDataReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool ReportJobError(const rpc::ReportJobErrorRequest &request) {
-    std::promise<bool> promise;
-    client_->ReportJobError(
-        request, [&promise](const Status &status, const rpc::ReportJobErrorReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -755,16 +745,6 @@ TEST_F(GcsServerTest, TestStats) {
   ASSERT_TRUE(AddProfileData(add_profile_data_request));
 }
 
-TEST_F(GcsServerTest, TestErrorInfo) {
-  // Report error
-  rpc::ReportJobErrorRequest report_error_request;
-  rpc::ErrorTableData error_table_data;
-  JobID job_id = JobID::FromInt(1);
-  error_table_data.set_job_id(job_id.Binary());
-  report_error_request.mutable_error_data()->CopyFrom(error_table_data);
-  ASSERT_TRUE(ReportJobError(report_error_request));
-}
-
 TEST_F(GcsServerTest, TestWorkerInfo) {
   // Report worker failure
   auto worker_failure_data = Mocker::GenWorkerTableData();
@@ -790,6 +770,8 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   ASSERT_TRUE(result->worker_address().worker_id() ==
               worker_data->worker_address().worker_id());
 }
+
+// TODO(sang): Add tests after adding asyncAdd
 
 }  // namespace ray
 

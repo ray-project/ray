@@ -201,6 +201,37 @@ class StoreClientTestBase : public ::testing::Test {
     WaitPendingDone();
   }
 
+  void DeleteWithIndex() {
+    auto delete_calllback = [this](const Status &status) {
+      RAY_CHECK_OK(status);
+      --pending_count_;
+    };
+    for (const auto &elem : key_to_value_) {
+      ++pending_count_;
+      RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(table_name_, elem.first.Binary(),
+                                                       key_to_index_[elem.first].Hex(),
+                                                       delete_calllback));
+    }
+    WaitPendingDone();
+  }
+
+  void BatchDeleteWithIndex() {
+    auto delete_calllback = [this](const Status &status) {
+      RAY_CHECK_OK(status);
+      --pending_count_;
+    };
+    ++pending_count_;
+    std::vector<std::string> keys;
+    std::vector<std::string> index_keys;
+    for (auto &elem : key_to_value_) {
+      keys.push_back(elem.first.Binary());
+      index_keys.push_back(key_to_index_[elem.first].Hex());
+    }
+    RAY_CHECK_OK(store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys,
+                                                          delete_calllback));
+    WaitPendingDone();
+  }
+
   void TestAsyncPutAndAsyncGet() {
     // AsyncPut without index.
     Put();
@@ -237,6 +268,34 @@ class StoreClientTestBase : public ::testing::Test {
 
     // AsyncBatchDelete
     BatchDelete();
+
+    // AsyncGet
+    GetEmpty();
+  }
+
+  void TestAsyncDeleteWithIndex() {
+    // AsyncPut with index
+    PutWithIndex();
+
+    // AsyncGet with index
+    GetByIndex();
+
+    // AsyncDelete key-value and index-key
+    DeleteWithIndex();
+
+    // AsyncGet
+    GetEmpty();
+  }
+
+  void TestAsyncBatchDeleteWithIndex() {
+    // AsyncPut with index
+    PutWithIndex();
+
+    // AsyncGetAll
+    GetByIndex();
+
+    // AsyncBatchDeleteWithIndex
+    BatchDeleteWithIndex();
 
     // AsyncGet
     GetEmpty();

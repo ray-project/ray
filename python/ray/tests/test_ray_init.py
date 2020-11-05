@@ -15,15 +15,12 @@ def password():
 
 
 class TestRedisPassword:
-    @pytest.mark.skipif(
-        os.environ.get("RAY_USE_NEW_GCS") == "on",
-        reason="New GCS API doesn't support Redis authentication yet.")
     def test_redis_password(self, password, shutdown_only):
         @ray.remote
         def f():
             return 1
 
-        info = ray.init(redis_password=password)
+        info = ray.init(_redis_password=password)
         address = info["redis_address"]
         redis_ip, redis_port = address.split(":")
 
@@ -42,9 +39,6 @@ class TestRedisPassword:
             host=redis_ip, port=redis_port, password=password)
         assert redis_client.ping()
 
-    @pytest.mark.skipif(
-        os.environ.get("RAY_USE_NEW_GCS") == "on",
-        reason="New GCS API doesn't support Redis authentication yet.")
     def test_redis_password_cluster(self, password, shutdown_only):
         @ray.remote
         def f():
@@ -57,20 +51,6 @@ class TestRedisPassword:
 
         object_ref = f.remote()
         ray.get(object_ref)
-
-    def test_redis_port(self, shutdown_only):
-        @ray.remote
-        def f():
-            return 1
-
-        info = ray.init(redis_port=1234, redis_password="testpassword")
-        address = info["redis_address"]
-        redis_ip, redis_port = address.split(":")
-        assert redis_port == "1234"
-
-        redis_client = redis.StrictRedis(
-            host=redis_ip, port=redis_port, password="testpassword")
-        assert redis_client.ping()
 
 
 if __name__ == "__main__":

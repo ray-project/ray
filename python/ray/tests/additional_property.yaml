@@ -22,7 +22,6 @@ head_node:
 setup_commands:
     - error me
     #     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    #     - source activate tensorflow_p27 && pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp27-cp27mu-manylinux1_x86_64.whl
 
 # # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:

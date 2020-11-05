@@ -18,6 +18,7 @@
 #include <functional>
 
 #include "ray/common/buffer.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
@@ -41,8 +42,14 @@ void TestSetupUtil::StartUpRedisServers(const std::vector<int> &redis_server_por
 int TestSetupUtil::StartUpRedisServer(const int &port) {
   int actual_port = port;
   if (port == 0) {
+    static std::atomic<bool> srand_called(false);
+    if (!srand_called.exchange(true)) {
+      srand(current_time_ms() % RAND_MAX);
+    }
     // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
-    actual_port = rand() % 5000 + 2000;
+    do {
+      actual_port = rand() % 5000 + 2000;
+    } while (!CheckFree(actual_port));
   }
 
   std::string program = TEST_REDIS_SERVER_EXEC_PATH;
@@ -117,7 +124,7 @@ std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
       ray::JoinPaths(ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex());
   std::vector<std::string> cmdargs(
       {TEST_GCS_SERVER_EXEC_PATH, "--redis_address=" + redis_address, "--redis_port=6379",
-       "--config_list=initial_reconstruction_timeout_milliseconds,2000"});
+       "--config_list=object_timeout_milliseconds,2000"});
   RAY_LOG(INFO) << "Start gcs server command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, gcs_server_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -146,7 +153,7 @@ std::string TestSetupUtil::StartRaylet(const std::string &store_socket_name,
        "--python_worker_command=" +
            CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH, store_socket_name,
                               raylet_socket_name, std::to_string(port)}),
-       "--config_list=initial_reconstruction_timeout_milliseconds,2000"});
+       "--config_list=object_timeout_milliseconds,2000"});
   RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -173,6 +180,14 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
     }
   }
   return false;
+}
+
+void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
+                          int timeout_ms) {
+  auto condition = [&current_count, expected_count]() {
+    return current_count == expected_count;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms));
 }
 
 void KillProcessBySocketName(std::string socket_name) {
@@ -202,6 +217,12 @@ TaskID RandomTaskId() {
   std::string data(TaskID::Size(), 0);
   FillRandom(&data);
   return TaskID::FromBinary(data);
+}
+
+JobID RandomJobId() {
+  std::string data(JobID::Size(), 0);
+  FillRandom(&data);
+  return JobID::FromBinary(data);
 }
 
 std::shared_ptr<Buffer> GenerateRandomBuffer() {

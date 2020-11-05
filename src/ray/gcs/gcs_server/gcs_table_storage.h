@@ -84,14 +84,15 @@ class GcsTable {
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status Delete(const Key &key, const StatusCallback &callback);
+  virtual Status Delete(const Key &key, const StatusCallback &callback);
 
   /// Delete a batch of data from the table asynchronously.
   ///
   /// \param keys The batch key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status BatchDelete(const std::vector<Key> &keys, const StatusCallback &callback);
+  virtual Status BatchDelete(const std::vector<Key> &keys,
+                             const StatusCallback &callback);
 
  protected:
   std::string table_name_;
@@ -131,6 +132,21 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback);
+
+  /// Delete data and index from the table asynchronously.
+  ///
+  /// \param key The key that will be deleted from the table.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  Status Delete(const Key &key, const StatusCallback &callback) override;
+
+  /// Delete a batch of data and index from the table asynchronously.
+  ///
+  /// \param keys The batch key that will be deleted from the table.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  Status BatchDelete(const std::vector<Key> &keys,
+                     const StatusCallback &callback) override;
 
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
@@ -269,14 +285,6 @@ class GcsHeartbeatBatchTable : public GcsTable<ClientID, HeartbeatBatchTableData
   }
 };
 
-class GcsErrorInfoTable : public GcsTable<JobID, ErrorTableData> {
- public:
-  explicit GcsErrorInfoTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::ERROR_INFO);
-  }
-};
-
 class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
  public:
   explicit GcsProfileTable(std::shared_ptr<StoreClient> &store_client)
@@ -377,11 +385,6 @@ class GcsTableStorage {
     return *heartbeat_batch_table_;
   }
 
-  GcsErrorInfoTable &ErrorInfoTable() {
-    RAY_CHECK(error_info_table_ != nullptr);
-    return *error_info_table_;
-  }
-
   GcsProfileTable &ProfileTable() {
     RAY_CHECK(profile_table_ != nullptr);
     return *profile_table_;
@@ -393,8 +396,8 @@ class GcsTableStorage {
   }
 
   GcsInternalConfigTable &InternalConfigTable() {
-    RAY_CHECK(internal_config_table_ != nullptr);
-    return *internal_config_table_;
+    RAY_CHECK(system_config_table_ != nullptr);
+    return *system_config_table_;
   }
 
  protected:
@@ -413,10 +416,9 @@ class GcsTableStorage {
   std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
   std::unique_ptr<GcsHeartbeatTable> heartbeat_table_;
   std::unique_ptr<GcsHeartbeatBatchTable> heartbeat_batch_table_;
-  std::unique_ptr<GcsErrorInfoTable> error_info_table_;
   std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
-  std::unique_ptr<GcsInternalConfigTable> internal_config_table_;
+  std::unique_ptr<GcsInternalConfigTable> system_config_table_;
 };
 
 /// \class RedisGcsTableStorage
@@ -443,10 +445,9 @@ class RedisGcsTableStorage : public GcsTableStorage {
     placement_group_schedule_table_.reset(
         new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
-    error_info_table_.reset(new GcsErrorInfoTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
-    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
+    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 
@@ -472,10 +473,9 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
         new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
-    error_info_table_.reset(new GcsErrorInfoTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
-    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
+    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 

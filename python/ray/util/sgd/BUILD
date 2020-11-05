@@ -19,17 +19,17 @@ py_test(
 )
 
 py_test(
-    name = "test_torch_runner",
-    size = "small",
-    srcs = ["tests/test_torch_runner.py"],
+    name = "test_torch_failure",
+    size = "large",
+    srcs = ["tests/test_torch_failure.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
 )
 
 py_test(
-    name = "test_torch_trainable",
+    name = "test_torch_runner",
     size = "small",
-    srcs = ["tests/test_torch_trainable.py"],
+    srcs = ["tests/test_torch_runner.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
 )
@@ -75,7 +75,7 @@ py_test(
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
-    args = ["--num-replicas=1"]
+    args = ["--num-replicas=1", "--smoke-test"]
 )
 
 py_test(
@@ -85,7 +85,7 @@ py_test(
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
-    args = ["--num-replicas=2"]
+    args = ["--num-replicas=2", "--smoke-test"]
 )
 
 py_test(
@@ -95,7 +95,7 @@ py_test(
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
-    args = ["--tune"]
+    args = ["--tune", "--smoke-test"]
 )
 
 # --------------------------------------------------------------------
@@ -156,7 +156,7 @@ py_test(
     srcs = ["torch/examples/train_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
-    args = ["--num-workers=1"]
+    args = ["--num-workers=1", "--smoke-test"]
 )
 
 py_test(
@@ -166,7 +166,7 @@ py_test(
     srcs = ["torch/examples/train_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
-    args = ["--num-workers=2"]
+    args = ["--num-workers=2", "--smoke-test"]
 )
 
 py_test(
@@ -176,7 +176,7 @@ py_test(
     srcs = ["torch/examples/tune_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
-    args = ["--num-workers=1"]
+    args = ["--num-workers=1", "--smoke-test"]
 )
 
 py_test(
@@ -186,7 +186,7 @@ py_test(
     srcs = ["torch/examples/tune_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
-    args = ["--num-workers=2"]
+    args = ["--num-workers=2", "--smoke-test"]
 )
 
 

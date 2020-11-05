@@ -1,5 +1,8 @@
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules.schedule import Schedule
+
+torch, _ = try_import_torch()
 
 
 class ExponentialSchedule(Schedule):
@@ -33,5 +36,7 @@ class ExponentialSchedule(Schedule):
     def _value(self, t):
         """Returns the result of: initial_p * decay_rate ** (`t`/t_max)
         """
+        if self.framework == "torch" and torch and isinstance(t, torch.Tensor):
+            t = t.float()
         return self.initial_p * \
             self.decay_rate ** (t / self.schedule_timesteps)

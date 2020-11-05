@@ -3,6 +3,7 @@ import logging
 
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
+from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,7 @@ class TrialExecutor:
         self.start_trial(trial)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
-        """Tries to invoke `Trainable.reset_config()` to reset trial.
+        """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:
             trial (Trial): Trial to be reset.
@@ -139,7 +140,7 @@ class TrialExecutor:
                 for trial.
 
         Returns:
-            True if `reset_config` is successful else False.
+            True if `reset` is successful else False.
         """
         raise NotImplementedError
 
@@ -162,17 +163,22 @@ class TrialExecutor:
         for trial in trial_runner.get_trials():
             if trial.status == Trial.PENDING:
                 if not self.has_resources(trial.resources):
+                    resource_string = trial.resources.summary_string()
+                    trial_resource_help_msg = trial.get_trainable_cls(
+                    ).resource_help(trial.config)
+                    autoscaling_msg = ""
+                    if is_ray_cluster():
+                        autoscaling_msg = (
+                            "Pass `queue_trials=True` in ray.tune.run() or "
+                            "on the command line to queue trials until the "
+                            "cluster scales up or resources become available. "
+                        )
                     raise TuneError(
-                        ("Insufficient cluster resources to launch trial: "
-                         "trial requested {} but the cluster has only {}. "
-                         "Pass `queue_trials=True` in "
-                         "ray.tune.run() or on the command "
-                         "line to queue trials until the cluster scales "
-                         "up or resources become available. {}").format(
-                             trial.resources.summary_string(),
-                             self.resource_string(),
-                             trial.get_trainable_cls().resource_help(
-                                 trial.config)))
+                        "Insufficient cluster resources to launch trial: "
+                        f"trial requested {resource_string}, but the cluster "
+                        f"has only {self.resource_string()}. "
+                        f"{autoscaling_msg}"
+                        f"{trial_resource_help_msg} ")
             elif trial.status == Trial.PAUSED:
                 raise TuneError("There are paused trials, but no more pending "
                                 "trials with sufficient resources.")

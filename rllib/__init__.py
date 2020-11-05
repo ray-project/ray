@@ -10,7 +10,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.tune.registry import register_trainable
 
 
@@ -60,6 +60,7 @@ _register_all()
 __all__ = [
     "Policy",
     "TFPolicy",
+    "TorchPolicy",
     "RolloutWorker",
     "SampleBatch",
     "BaseEnv",

@@ -128,6 +128,14 @@ table PlasmaGetDebugStringReply {
 table PlasmaCreateRequest {
   // ID of the object to be created.
   object_id: string;
+  // Owner raylet ID of this object.
+  owner_raylet_id: string;
+  // Owner IP address of this object.
+  owner_ip_address: string;
+  // Owner port address of this object.
+  owner_port: int;
+  // Unique id for the owner worker.
+  owner_worker_id: string;
   // Whether to evict other objects to make room for this one.
   evict_if_full: bool;
   // The size of the object's data in bytes.

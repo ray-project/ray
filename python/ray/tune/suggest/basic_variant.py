@@ -1,13 +1,13 @@
 import itertools
 import os
-import random
 import uuid
+from typing import Dict, List, Union
 
 from ray.tune.error import TuneError
-from ray.tune.experiment import convert_to_experiment_list
+from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.variant_generator import (generate_variants, format_vars,
-                                                flatten_resolved_vars)
+from ray.tune.suggest.variant_generator import (
+    count_variants, generate_variants, format_vars, flatten_resolved_vars)
 from ray.tune.suggest.search import SearchAlgorithm
 
 
@@ -15,10 +15,6 @@ class BasicVariantGenerator(SearchAlgorithm):
     """Uses Tune's variant generation for resolving variables.
 
     See also: `ray.tune.suggest.variant_generator`.
-
-
-    Parameters:
-        shuffle (bool): Shuffles the generated list of configurations.
 
     User API:
 
@@ -38,19 +34,19 @@ class BasicVariantGenerator(SearchAlgorithm):
 
         searcher = BasicVariantGenerator()
         searcher.add_configurations({"experiment": { ... }})
-        list_of_trials = searcher.next_trials()
+        trial = searcher.next_trial()
         searcher.is_finished == True
     """
 
-    def __init__(self, shuffle=False):
+    def __init__(self):
         """Initializes the Variant Generator.
 
         """
         self._parser = make_parser()
         self._trial_generator = []
+        self._trial_iter = None
         self._counter = 0
         self._finished = False
-        self._shuffle = shuffle
 
         # Unique prefix for all trials generated, e.g., trial ids start as
         # 2f1e_00001, 2f1ef_00002, 2f1ef_0003, etc. Overridable for testing.
@@ -60,7 +56,15 @@ class BasicVariantGenerator(SearchAlgorithm):
         else:
             self._uuid_prefix = str(uuid.uuid1().hex)[:5] + "_"
 
-    def add_configurations(self, experiments):
+        self._total_samples = 0
+
+    @property
+    def total_samples(self):
+        return self._total_samples
+
+    def add_configurations(
+            self,
+            experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]):
         """Chains generator given experiment specifications.
 
         Arguments:
@@ -68,23 +72,28 @@ class BasicVariantGenerator(SearchAlgorithm):
         """
         experiment_list = convert_to_experiment_list(experiments)
         for experiment in experiment_list:
+            self._total_samples += count_variants(experiment.spec)
             self._trial_generator = itertools.chain(
                 self._trial_generator,
                 self._generate_trials(
                     experiment.spec.get("num_samples", 1), experiment.spec,
                     experiment.name))
 
-    def next_trials(self):
-        """Provides Trial objects to be queued into the TrialRunner.
+    def next_trial(self):
+        """Provides one Trial object to be queued into the TrialRunner.
 
         Returns:
-            trials (list): Returns a list of trials.
+            Trial: Returns a single trial.
         """
-        trials = list(self._trial_generator)
-        if self._shuffle:
-            random.shuffle(trials)
-        self.set_finished()
-        return trials
+        if not self._trial_iter:
+            self._trial_iter = iter(self._trial_generator)
+        try:
+            return next(self._trial_iter)
+        except StopIteration:
+            self._trial_generator = []
+            self._trial_iter = None
+            self.set_finished()
+            return None
 
     def _generate_trials(self, num_samples, unresolved_spec, output_path=""):
         """Generates Trial objects with the variant generation process.

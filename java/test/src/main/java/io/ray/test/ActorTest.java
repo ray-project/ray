@@ -5,9 +5,9 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
+import io.ray.runtime.exception.UnreconstructableException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -42,6 +42,10 @@ public class ActorTest extends BaseTest {
       value += largeObject.data.length;
       return value;
     }
+
+    public TestUtils.LargeObject createLargeObject() {
+      return new TestUtils.LargeObject();
+    }
   }
 
   public void testCreateAndCallActor() {
@@ -68,8 +72,7 @@ public class ActorTest extends BaseTest {
     ObjectRef<Integer> result = actor.task(Counter::getValue).remote();
     Assert.assertEquals(result.get(), Integer.valueOf(1));
     Assert.assertEquals(result.get(), Integer.valueOf(1));
-    // TODO(hchen): The following code will still fail, and can be fixed by using ref counting.
-    // Assert.assertEquals(Ray.get(result.getId()), Integer.valueOf(1));
+    Assert.assertEquals(Ray.get(result), Integer.valueOf(1));
   }
 
   public void testCallActorWithLargeObject() {
@@ -117,35 +120,28 @@ public class ActorTest extends BaseTest {
             Collections.singletonList(actor), 100).remote().get());
   }
 
-  // TODO(qwang): Will re-enable this test case once ref counting is supported in Java.
-  @Test(enabled = false)
+  // This test case follows `test_internal_free` in `python/ray/tests/test_advanced.py`.
+  @Test(groups = {"cluster"})
   public void testUnreconstructableActorObject() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
-
-    // The UnreconstructableException is created by raylet.
     ActorHandle<Counter> counter = Ray.actor(Counter::new, 100).remote();
     // Call an actor method.
     ObjectRef value = counter.task(Counter::getValue).remote();
     Assert.assertEquals(100, value.get());
     // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(value.getId()), false, false);
-    // Wait until the object is deleted, because the above free operation is async.
-    while (true) {
-      Boolean result = TestUtils.getRuntime().getObjectStore()
-          .wait(ImmutableList.of(value.getId()), 1, 0).get(0);
-      if (!result) {
-        break;
-      }
-      TimeUnit.MILLISECONDS.sleep(100);
-    }
+    Ray.internal().free(ImmutableList.of(value), false, false);
+    // Wait for delete RPC to propagate
+    TimeUnit.SECONDS.sleep(1);
+    // Free deletes from in-memory store.
+    Assert.expectThrows(UnreconstructableException.class, () -> value.get());
 
-    try {
-      // Try getting the object again, this should throw an UnreconstructableException.
-      // Use `Ray.get()` to bypass the cache in `RayObjectImpl`.
-      Ray.get(value.getId(), value.getType());
-      Assert.fail("This line should not be reachable.");
-    } catch (UnreconstructableException e) {
-      Assert.assertEquals(value.getId(), e.objectId);
-    }
+    // Call an actor method.
+    ObjectRef<TestUtils.LargeObject> largeValue = counter.task(Counter::createLargeObject).remote();
+    Assert.assertTrue(largeValue.get() instanceof TestUtils.LargeObject);
+    // Delete the object from the object store.
+    Ray.internal().free(ImmutableList.of(largeValue), false, false);
+    // Wait for delete RPC to propagate
+    TimeUnit.SECONDS.sleep(1);
+    // Free deletes big objects from plasma store.
+    Assert.expectThrows(UnreconstructableException.class, () -> largeValue.get());
   }
 }

@@ -1,6 +1,7 @@
 import gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.tests.test_rollout_worker import MockEnv, MockEnv2
 
 
@@ -164,3 +165,5 @@ class RoundRobinMultiAgent(MultiAgentEnv):
 MultiAgentCartPole = make_multiagent("CartPole-v0")
 MultiAgentMountainCar = make_multiagent("MountainCarContinuous-v0")
 MultiAgentPendulum = make_multiagent("Pendulum-v0")
+MultiAgentStatelessCartPole = make_multiagent(
+    lambda config: StatelessCartPole(config))

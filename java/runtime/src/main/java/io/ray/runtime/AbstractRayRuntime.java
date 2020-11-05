@@ -8,7 +8,6 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
-import io.ray.api.exception.RayException;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -36,10 +35,12 @@ import io.ray.runtime.task.ArgumentsBuilder;
 import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,12 +69,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     setIsContextSet(rayConfig.workerMode == Common.WorkerType.DRIVER);
-    functionManager = new FunctionManager(rayConfig.jobResourcePath);
+    functionManager = new FunctionManager(rayConfig.codeSearchPath);
     runtimeContext = new RuntimeContextImpl(this);
   }
-
-  @Override
-  public abstract void shutdown();
 
   @Override
   public <T> ObjectRef<T> put(T obj) {
@@ -82,19 +80,27 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public <T> T get(ObjectId objectId, Class<T> objectType) throws RayException {
-    List<T> ret = get(ImmutableList.of(objectId), objectType);
+  public <T> T get(ObjectRef<T> objectRef) throws RuntimeException {
+    List<T> ret = get(ImmutableList.of(objectRef));
     return ret.get(0);
   }
 
   @Override
-  public <T> List<T> get(List<ObjectId> objectIds, Class<T> objectType) {
+  public <T> List<T> get(List<ObjectRef<T>> objectRefs) {
+    List<ObjectId> objectIds = new ArrayList<>();
+    Class<T> objectType = null;
+    for (ObjectRef<T> o : objectRefs) {
+      ObjectRefImpl<T> objectRefImpl = (ObjectRefImpl<T>) o;
+      objectIds.add(objectRefImpl.getId());
+      objectType = objectRefImpl.getType();
+    }
     return objectStore.get(objectIds, objectType);
   }
 
   @Override
-  public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    objectStore.delete(objectIds, localOnly, deleteCreatingTasks);
+  public void free(List<ObjectRef<?>> objectRefs, boolean localOnly, boolean deleteCreatingTasks) {
+    objectStore.delete(objectRefs.stream().map(ref -> ((ObjectRefImpl<?>) ref).getId()).collect(
+        Collectors.toList()), localOnly, deleteCreatingTasks);
   }
 
   @Override

@@ -1,3 +1,4 @@
+from gym.spaces import Box
 import numpy as np
 import random
 
@@ -11,6 +12,19 @@ class RandomPolicy(Policy):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        # Whether for compute_actions, the bounds given in action_space
+        # should be ignored (default: False). This is to test action-clipping
+        # and any Env's reaction to bounds breaches.
+        if self.config.get("ignore_action_bounds", False) and \
+                isinstance(self.action_space, Box):
+            self.action_space_for_sampling = Box(
+                -float("inf"),
+                float("inf"),
+                shape=self.action_space.shape,
+                dtype=self.action_space.dtype)
+        else:
+            self.action_space_for_sampling = self.action_space
+
     @override(Policy)
     def compute_actions(self,
                         obs_batch,
@@ -20,7 +34,8 @@ class RandomPolicy(Policy):
                         **kwargs):
         # Alternatively, a numpy array would work here as well.
         # e.g.: np.array([random.choice([0, 1])] * len(obs_batch))
-        return [self.action_space.sample() for _ in obs_batch], [], {}
+        return [self.action_space_for_sampling.sample() for _ in obs_batch], \
+               [], {}
 
     @override(Policy)
     def learn_on_batch(self, samples):

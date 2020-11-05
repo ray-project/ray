@@ -33,20 +33,19 @@ enum TablePrefix {
   TASK_RECONSTRUCTION = 8;
   HEARTBEAT = 9;
   HEARTBEAT_BATCH = 10;
-  ERROR_INFO = 11;
-  JOB = 12;
-  PROFILE = 13;
-  TASK_LEASE = 14;
-  ACTOR_CHECKPOINT = 15;
-  ACTOR_CHECKPOINT_ID = 16;
-  NODE_RESOURCE = 17;
-  DIRECT_ACTOR = 18;
+  JOB = 11;
+  PROFILE = 12;
+  TASK_LEASE = 13;
+  ACTOR_CHECKPOINT = 14;
+  ACTOR_CHECKPOINT_ID = 15;
+  NODE_RESOURCE = 16;
+  DIRECT_ACTOR = 17;
   // WORKER is already used in WorkerType, so use WORKERS here.
-  WORKERS = 19;
-  INTERNAL_CONFIG = 20;
-  TABLE_PREFIX_MAX = 21;
-  PLACEMENT_GROUP_SCHEDULE = 22;
-  PLACEMENT_GROUP = 23;
+  WORKERS = 18;
+  INTERNAL_CONFIG = 29;
+  TABLE_PREFIX_MAX = 20;
+  PLACEMENT_GROUP_SCHEDULE = 21;
+  PLACEMENT_GROUP = 22;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -60,13 +59,12 @@ enum TablePubsub {
   ACTOR_PUBSUB = 6;
   HEARTBEAT_PUBSUB = 7;
   HEARTBEAT_BATCH_PUBSUB = 8;
-  ERROR_INFO_PUBSUB = 9;
-  TASK_LEASE_PUBSUB = 10;
-  JOB_PUBSUB = 11;
-  NODE_RESOURCE_PUBSUB = 12;
-  DIRECT_ACTOR_PUBSUB = 13;
-  WORKER_FAILURE_PUBSUB = 14;
-  TABLE_PUBSUB_MAX = 15;
+  TASK_LEASE_PUBSUB = 9;
+  JOB_PUBSUB = 10;
+  NODE_RESOURCE_PUBSUB = 11;
+  DIRECT_ACTOR_PUBSUB = 12;
+  WORKER_FAILURE_PUBSUB = 13;
+  TABLE_PUBSUB_MAX = 14;
 }
 
 enum GcsChangeMode {
@@ -103,7 +101,7 @@ message TaskTableData {
 message ActorTableData {
   // State of an actor.
   enum ActorState {
-    // Actor info ins registered in GCS. But its dependencies are not ready.
+    // Actor info is registered in GCS. But its dependencies are not ready.
     DEPENDENCIES_UNREADY = 0;
     // Actor local dependencies are ready. This actor is being created.
     PENDING_CREATION = 1;
@@ -130,9 +128,9 @@ message ActorTableData {
   // Max number of times this actor should be restarted,
   // a value of -1 indicates an infinite number of reconstruction attempts.
   int64 max_restarts = 7;
-  // Number of restarts that have been successfully performed on this
-  // actor. This is the equal to the number of ALIVE messages that have been
-  // previously published for this actor.
+  // Number of restarts that has been tried on this actor.
+  // This will be greater by 1 than what's published before in ALIVE.
+  // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
   uint64 num_restarts = 8;
   // The address of the the actor.
   Address address = 9;
@@ -167,10 +165,12 @@ message PlacementGroupTableData {
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
-    // Placement Group is alive.
-    ALIVE = 1;
-    // Placement Group is already dead and won't be reschedule.
-    DEAD = 2;
+    // Placement Group is created.
+    CREATED = 1;
+    // Placement Group is already removed and won't be reschedule.
+    REMOVED = 2;
+    // Placement Group is rescheduling because the node it placed is dead.
+    RESCHEDULING = 3;
   }
 
   // ID of the PlacementGroup.
@@ -251,6 +251,29 @@ message GcsNodeInfo {
 
   // The Hostname address of the node manager.
   string node_manager_hostname = 8;
+
+  // The port at which the node will expose metrics to.
+  int32 metrics_export_port = 9;
+}
+
+// Represents the demand for a particular resource shape.
+message ResourceDemand {
+  // The resource shape requested. This is a map from the resource string
+  // (e.g., "CPU") to the amount requested.
+  map<string, double> shape = 1;
+  // The number of requests that are ready to run (i.e., dependencies have been
+  // fulfilled), but that are waiting for resources.
+  uint64 num_ready_requests_queued = 2;
+  // The number of requests for which there is no node that is a superset of
+  // the requested resource shape.
+  uint64 num_infeasible_requests_queued = 3;
+}
+
+// Represents the demand sorted by resource shape.
+message ResourceLoad {
+  // A list of all resource demands. The resource shape in each demand is
+  // unique.
+  repeated ResourceDemand resource_demands = 1;
 }
 
 message HeartbeatTableData {
@@ -262,14 +285,19 @@ message HeartbeatTableData {
   map<string, double> resources_total = 3;
   // Aggregate outstanding resource load on this node manager.
   map<string, double> resource_load = 4;
+  // The resource load on this node, sorted by resource shape.
+  ResourceLoad resource_load_by_shape = 5;
   // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 5;
+  repeated bytes active_object_id = 6;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 6;
+  bool should_global_gc = 7;
 }
 
 message HeartbeatBatchTableData {
   repeated HeartbeatTableData batch = 1;
+  // The total resource demand on all nodes included in the batch, sorted by
+  // resource shape.
+  ResourceLoad resource_load_by_shape = 2;
 }
 
 // Data for a lease on task execution.
@@ -286,19 +314,17 @@ message TaskLeaseData {
   uint64 timeout = 4;
 }
 
-message JobConfigs {
-  // The initial Python workers to start per node. If a negative value is specified, it
-  // fallbacks to `num_cpus`.
-  int32 num_initial_python_workers = 1;
-  // The initial Java workers to start per node. If a negative value is specified, it
-  // fallbacks to `num_cpus`.
-  int32 num_initial_java_workers = 2;
+message JobConfig {
   // Environment variables to be set on worker processes.
-  map<string, string> worker_env = 3;
+  map<string, string> worker_env = 1;
   // The number of java workers per worker process.
-  uint32 num_java_workers_per_process = 4;
+  uint32 num_java_workers_per_process = 2;
   // The jvm options for java workers of the job.
-  repeated string jvm_options = 5;
+  repeated string jvm_options = 3;
+  // A list of directories or jar files that specify the search path for user
+  // code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH` in
+  // Python.
+  repeated string code_search_path = 4;
 }
 
 message JobTableData {
@@ -312,8 +338,8 @@ message JobTableData {
   string driver_ip_address = 4;
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
-  // The configs of this job.
-  JobConfigs configs = 6;
+  // The config of this job.
+  JobConfig config = 6;
 }
 
 // This table stores the actor checkpoint data. An actor checkpoint
@@ -399,38 +425,4 @@ message NodeResourceChange {
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
-}
-
-// This enum type is used as object's metadata to indicate the object's
-// creating task has failed because of a certain error.
-// TODO(hchen): We may want to make these errors more specific. E.g., we may
-// want to distinguish between intentional and expected actor failures, and
-// between worker process failure and node failure.
-enum ErrorType {
-  // Indicates that a task failed because the worker died unexpectedly while
-  // executing it.
-  WORKER_DIED = 0;
-  // Indicates that a task failed because the actor died unexpectedly before
-  // finishing it.
-  ACTOR_DIED = 1;
-  // Indicates that an object is lost and cannot be restarted.
-  // Note, this currently only happens to actor objects. When the actor's
-  // state is already after the object's creating task, the actor cannot
-  // re-run the task.
-  // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
-  // 1) A object that was put by the driver.
-  // 2) The object's creating task is already cleaned up from GCS (this
-  // currently
-  //    crashes raylet).
-  OBJECT_UNRECONSTRUCTABLE = 2;
-  // Indicates that a task failed due to user code failure.
-  TASK_EXECUTION_EXCEPTION = 3;
-  // Indicates that the object has been placed in plasma. This error shouldn't
-  // ever be exposed to user code; it is only used internally to indicate the
-  // result of a direct call has been placed in plasma.
-  OBJECT_IN_PLASMA = 4;
-  // Indicates that an object has been cancelled.
-  TASK_CANCELLED = 5;
-  // Inidicates that creating the GCS service failed to create the actor.
-  ACTOR_CREATION_FAILED = 6;
 }

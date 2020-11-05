@@ -1,11 +1,10 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
+load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
-load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
 
@@ -19,124 +18,10 @@ config_setting(
     flag_values = {"@bazel_tools//tools/cpp:compiler": "clang-cl"},
 )
 
-# === Begin of protobuf definitions ===
-
-proto_library(
-    name = "common_proto",
-    srcs = ["src/ray/protobuf/common.proto"],
-    visibility = ["//java:__subpackages__"],
+config_setting(
+    name = "opt",
+    values = {"compilation_mode": "opt"},
 )
-
-cc_proto_library(
-    name = "common_cc_proto",
-    deps = [":common_proto"],
-)
-
-python_grpc_compile(
-    name = "common_py_proto",
-    deps = [":common_proto"],
-)
-
-proto_library(
-    name = "gcs_proto",
-    srcs = ["src/ray/protobuf/gcs.proto"],
-    visibility = ["//java:__subpackages__"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "gcs_cc_proto",
-    deps = [":gcs_proto"],
-)
-
-python_grpc_compile(
-    name = "gcs_py_proto",
-    deps = [":gcs_proto"],
-)
-
-proto_library(
-    name = "node_manager_proto",
-    srcs = ["src/ray/protobuf/node_manager.proto"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "node_manager_cc_proto",
-    deps = [":node_manager_proto"],
-)
-
-python_grpc_compile(
-    name = "node_manager_py_proto",
-    deps = [":node_manager_proto"],
-)
-
-proto_library(
-    name = "reporter_proto",
-    srcs = ["src/ray/protobuf/reporter.proto"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "reporter_cc_proto",
-    deps = [":reporter_proto"],
-)
-
-python_grpc_compile(
-    name = "reporter_py_proto",
-    deps = [":reporter_proto"],
-)
-
-proto_library(
-    name = "gcs_service_proto",
-    srcs = ["src/ray/protobuf/gcs_service.proto"],
-    deps = [
-        ":common_proto",
-        ":gcs_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "gcs_service_cc_proto",
-    deps = [":gcs_service_proto"],
-)
-
-proto_library(
-    name = "object_manager_proto",
-    srcs = ["src/ray/protobuf/object_manager.proto"],
-)
-
-cc_proto_library(
-    name = "object_manager_cc_proto",
-    deps = [":object_manager_proto"],
-)
-
-proto_library(
-    name = "core_worker_proto",
-    srcs = ["src/ray/protobuf/core_worker.proto"],
-    deps = [":common_proto"],
-)
-
-python_grpc_compile(
-    name = "core_worker_py_proto",
-    deps = [":core_worker_proto"],
-)
-
-cc_proto_library(
-    name = "worker_cc_proto",
-    deps = ["core_worker_proto"],
-)
-
-proto_library(
-    name = "serialization_proto",
-    srcs = ["src/ray/protobuf/serialization.proto"],
-)
-
-cc_proto_library(
-    name = "serialization_cc_proto",
-    deps = ["serialization_proto"],
-)
-
-# === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
 
@@ -162,9 +47,9 @@ cc_library(
 # Node manager gRPC lib.
 cc_grpc_library(
     name = "node_manager_cc_grpc",
-    srcs = [":node_manager_proto"],
+    srcs = ["//src/ray/protobuf:node_manager_proto"],
     grpc_only = True,
-    deps = [":node_manager_cc_proto"],
+    deps = ["//src/ray/protobuf:node_manager_cc_proto"],
 )
 
 # Node manager server and client.
@@ -187,9 +72,9 @@ cc_library(
 # gcs_service gRPC lib.
 cc_grpc_library(
     name = "gcs_service_cc_grpc",
-    srcs = [":gcs_service_proto"],
+    srcs = ["//src/ray/protobuf:gcs_service_proto"],
     grpc_only = True,
-    deps = [":gcs_service_cc_proto"],
+    deps = ["//src/ray/protobuf:gcs_service_cc_proto"],
 )
 
 # gcs rpc server and client.
@@ -213,9 +98,9 @@ cc_library(
 # Object manager gRPC lib.
 cc_grpc_library(
     name = "object_manager_cc_grpc",
-    srcs = [":object_manager_proto"],
+    srcs = ["//src/ray/protobuf:object_manager_proto"],
     grpc_only = True,
-    deps = [":object_manager_cc_proto"],
+    deps = ["//src/ray/protobuf:object_manager_cc_proto"],
 )
 
 # Object manager rpc server and client.
@@ -238,14 +123,17 @@ cc_library(
 # Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
-    srcs = [":core_worker_proto"],
+    srcs = ["//src/ray/protobuf:core_worker_proto"],
     grpc_only = True,
-    deps = [":worker_cc_proto"],
+    deps = ["//src/ray/protobuf:worker_cc_proto"],
 )
 
 # worker server and client.
 cc_library(
     name = "worker_rpc",
+    srcs = glob([
+        "src/ray/rpc/worker/*.cc",
+    ]),
     hdrs = glob([
         "src/ray/rpc/worker/*.h",
     ]),
@@ -264,9 +152,9 @@ cc_library(
 # Metrics Agent gRPC lib.
 cc_grpc_library(
     name = "reporter_cc_grpc",
-    srcs = [":reporter_proto"],
+    srcs = ["//src/ray/protobuf:reporter_proto"],
     grpc_only = True,
-    deps = [":reporter_cc_proto"],
+    deps = ["//src/ray/protobuf:reporter_cc_proto"],
 )
 
 # Metrics Agent client.
@@ -283,6 +171,30 @@ cc_library(
         ":reporter_cc_grpc",
         "@boost//:asio",
         "@boost//:thread",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# Agent manager.
+cc_grpc_library(
+    name = "agent_manager_cc_grpc",
+    srcs = ["//src/ray/protobuf:agent_manager_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:agent_manager_cc_proto"],
+)
+
+cc_library(
+    name = "agent_manager_rpc",
+    hdrs = glob([
+        "src/ray/rpc/agent_manager/*.h",
+    ]),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":agent_manager_cc_grpc",
+        ":grpc_common_lib",
+        ":ray_common",
+        "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -358,6 +270,7 @@ cc_library(
         ":plasma_fbs",
         ":ray_common",
         ":ray_util",
+        "//src/ray/protobuf:common_cc_proto",
         "@arrow",
         "@com_github_google_glog//:glog",
         "@msgpack",
@@ -439,10 +352,10 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":common_cc_proto",
-        ":gcs_cc_proto",
         ":node_manager_fbs",
         ":ray_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
         "@arrow",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -452,6 +365,29 @@ cc_library(
         "@com_google_googletest//:gtest",
         "@msgpack",
     ],
+)
+
+# This header is used to warp some streaming code so we can reduce suspicious
+# symbols export.
+cc_library(
+    name = "exported_streaming_internal",
+    srcs = glob(
+        [
+            "src/ray/streaming/streaming.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/streaming/streaming.h",
+        ],
+    ),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core_worker_lib",
+    ],
+    alwayslink = 1,
 )
 
 cc_binary(
@@ -526,6 +462,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+        ":agent_manager_rpc",
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
@@ -596,7 +533,7 @@ cc_library(
             "src/ray/raylet/**/*.cc",
         ],
         exclude = [
-            "src/ray/raylet/*_test.cc",
+            "src/ray/raylet/**/*_test.cc",
             "src/ray/raylet/main.cc",
         ],
     ),
@@ -617,7 +554,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
-        ":common_cc_proto",
+        ":agent_manager_rpc",
         ":gcs",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -628,6 +565,7 @@ cc_library(
         ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
+        "//src/ray/protobuf:common_cc_proto",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
@@ -660,11 +598,12 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
-        ":gcs_cc_proto",
+        ":agent_manager_rpc",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
+        "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",
     ],
 )
@@ -680,7 +619,7 @@ cc_library(
             "src/ray/rpc/worker/*.cc",
         ],
         exclude = [
-            "src/ray/core_worker/*_test.cc",
+            "src/ray/core_worker/**/*_test.cc",
             "src/ray/core_worker/mock_worker.cc",
         ],
     ),
@@ -700,8 +639,9 @@ cc_library(
         ":ray_util",
         ":raylet_client_lib",
         ":service_based_gcs_client_lib",
-        ":worker_cc_proto",
+        ":stats_lib",
         ":worker_rpc",
+        "//src/ray/protobuf:worker_cc_proto",
         "@boost//:fiber",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -831,8 +771,10 @@ cc_test(
 )
 
 cc_test(
-    name = "scheduling_test",
-    srcs = ["src/ray/raylet/scheduling/scheduling_test.cc"],
+    name = "cluster_resource_scheduler_test",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
+    ],
     copts = COPTS,
     deps = [
         ":raylet_lib",
@@ -841,11 +783,12 @@ cc_test(
 )
 
 cc_test(
-    name = "lineage_cache_test",
-    srcs = ["src/ray/raylet/lineage_cache_test.cc"],
+    name = "cluster_task_manager_test",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
+    ],
     copts = COPTS,
     deps = [
-        ":node_manager_fbs",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -908,6 +851,17 @@ cc_test(
     deps = [
         ":ray_util",
         "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "event_test",
+    srcs = ["src/ray/util/event_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1312,6 +1266,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+        ":core_worker_lib",
         ":gcs",
         ":object_manager_fbs",
         ":object_manager_rpc",
@@ -1329,6 +1284,7 @@ cc_binary(
     copts = COPTS,
     deps = [
         ":object_manager",
+        "//src/ray/protobuf:common_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1340,6 +1296,7 @@ cc_binary(
     copts = COPTS,
     deps = [
         ":object_manager",
+        "//src/ray/protobuf:common_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1386,8 +1343,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":sha256",
+        "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
+        "@boost//:property_tree",
         "@com_github_google_glog//:glog",
+        "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -1417,7 +1377,10 @@ action_listener(
 
 extra_action(
     name = "iwyu_action",
-    cmd = "$(location :iwyu_sh) $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE)",
+    cmd = "$(location :iwyu_sh) postbuild $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE) > $(output $(ACTION_ID).iwyu.txt)",
+    out_templates = [
+        "$(ACTION_ID).iwyu.txt",
+    ],
     tools = [
         ":extra_actions_base_proto",
         ":iwyu_sh",
@@ -1562,13 +1525,14 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":gcs_cc_proto",
+        ":agent_manager_rpc",
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
+        "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",
     ],
 )
@@ -1764,13 +1728,14 @@ pyx_library(
     ),
     deps = [
         "//:core_worker_lib",
+        "//:exported_streaming_internal",
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
-        "//:serialization_cc_proto",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//:stats_lib",
+        "//src/ray/protobuf:serialization_cc_proto",
     ],
 )
 
@@ -1818,6 +1783,7 @@ cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
+        "//:exported_streaming_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
@@ -1831,6 +1797,7 @@ filegroup(
     srcs = glob([
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
+        "python/ray/autoscaler/_private/*.py",
         "python/ray/autoscaler/aws/example-full.yaml",
         "python/ray/autoscaler/azure/example-full.yaml",
         "python/ray/autoscaler/gcp/example-full.yaml",
@@ -1845,11 +1812,6 @@ filegroup(
         "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
-        "python/ray/projects/*.py",
-        "python/ray/projects/schema.json",
-        "python/ray/projects/templates/cluster_template.yaml",
-        "python/ray/projects/templates/project_template.yaml",
-        "python/ray/projects/templates/requirements.txt",
         "python/ray/workers/default_worker.py",
     ]),
 )
@@ -1892,20 +1854,22 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
     deps = [
-        ":gcs_cc_proto",
         ":ray_common",
         ":ray_redis_module",
+        "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
 
 filegroup(
     name = "all_py_proto",
     srcs = [
-        "common_py_proto",
-        "core_worker_py_proto",
-        "gcs_py_proto",
-        "node_manager_py_proto",
-        "reporter_py_proto",
+        "//src/ray/protobuf:agent_manager_py_proto",
+        "//src/ray/protobuf:common_py_proto",
+        "//src/ray/protobuf:core_worker_py_proto",
+        "//src/ray/protobuf:gcs_py_proto",
+        "//src/ray/protobuf:gcs_service_py_proto",
+        "//src/ray/protobuf:node_manager_py_proto",
+        "//src/ray/protobuf:reporter_py_proto",
     ],
 )
 
@@ -1992,17 +1956,11 @@ genrule(
         fi
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
-        files=(
-            python/ray/core/generated/gcs_pb2.py
-            python/ray/core/generated/common_pb2.py
-            python/ray/core/generated/node_manager_pb2.py
-            python/ray/core/generated/node_manager_pb2_grpc.py
-            python/ray/core/generated/reporter_pb2.py
-            python/ray/core/generated/reporter_pb2_grpc.py
-            python/ray/core/generated/core_worker_pb2.py
-            python/ray/core/generated/core_worker_pb2_grpc.py
-        )
+        # shellcheck disable=SC2006
+        files=(`ls python/ray/core/generated/*_pb2*.py`)
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
+        sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,

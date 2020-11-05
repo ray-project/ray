@@ -211,7 +211,10 @@ def RunnerHandler(runner):
             resource["trials"] = []
             trial_generator = BasicVariantGenerator()
             trial_generator.add_configurations({name: spec})
-            for trial in trial_generator.next_trials():
+            while not trial_generator.is_finished():
+                trial = trial_generator.next_trial()
+                if not trial:
+                    break
                 runner.add_trial(trial)
                 resource["trials"].append(self._trial_info(trial))
             return resource

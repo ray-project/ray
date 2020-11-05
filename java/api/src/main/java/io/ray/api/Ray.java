@@ -1,13 +1,11 @@
 package io.ray.api;
 
-import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtime.RayRuntime;
 import io.ray.api.runtime.RayRuntimeFactory;
 import io.ray.api.runtimecontext.RuntimeContext;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,7 +37,7 @@ public final class Ray extends RayCall {
    *
    * @param factory A factory that produces the runtime instance.
    */
-  public static synchronized void init(RayRuntimeFactory factory) {
+  private static synchronized void init(RayRuntimeFactory factory) {
     if (runtime == null) {
       runtime = factory.createRayRuntime();
       Runtime.getRuntime().addShutdownHook(new Thread(Ray::shutdown));
@@ -51,9 +49,17 @@ public final class Ray extends RayCall {
    */
   public static synchronized void shutdown() {
     if (runtime != null) {
-      runtime.shutdown();
+      internal().shutdown();
       runtime = null;
     }
+  }
+
+  /**
+   * Check if {@link #init} has been called yet.
+   * @return True if {@link #init} has already been called and false otherwise.
+   */
+  public static boolean isInitialized() {
+    return runtime != null;
   }
 
   /**
@@ -63,29 +69,17 @@ public final class Ray extends RayCall {
    * @return A ObjectRef instance that represents the in-store object.
    */
   public static <T> ObjectRef<T> put(T obj) {
-    return runtime.put(obj);
+    return internal().put(obj);
   }
 
   /**
-   * Get an object by id from the object store.
+   * Get an object by `ObjectRef` from the object store.
    *
-   * @param objectId The ID of the object to get.
-   * @param objectType The type of the object to get.
+   * @param objectRef The reference of the object to get.
    * @return The Java object.
    */
-  public static <T> T get(ObjectId objectId, Class<T> objectType) {
-    return runtime.get(objectId, objectType);
-  }
-
-  /**
-   * Get a list of objects by ids from the object store.
-   *
-   * @param objectIds The list of object IDs.
-   * @param objectType The type of object.
-   * @return A list of Java objects.
-   */
-  public static <T> List<T> get(List<ObjectId> objectIds, Class<T> objectType) {
-    return runtime.get(objectIds, objectType);
+  public static <T> T get(ObjectRef<T> objectRef) {
+    return internal().get(objectRef);
   }
 
   /**
@@ -95,13 +89,7 @@ public final class Ray extends RayCall {
    * @return A list of Java objects.
    */
   public static <T> List<T> get(List<ObjectRef<T>> objectList) {
-    List<ObjectId> objectIds = new ArrayList<>();
-    Class<T> objectType = null;
-    for (ObjectRef<T> o : objectList) {
-      objectIds.add(o.getId());
-      objectType = o.getType();
-    }
-    return runtime.get(objectIds, objectType);
+    return internal().get(objectList);
   }
 
   /**
@@ -115,7 +103,7 @@ public final class Ray extends RayCall {
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns,
                                        int timeoutMs) {
-    return runtime.wait(waitList, numReturns, timeoutMs);
+    return internal().wait(waitList, numReturns, timeoutMs);
   }
 
   /**
@@ -127,7 +115,7 @@ public final class Ray extends RayCall {
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns) {
-    return runtime.wait(waitList, numReturns, Integer.MAX_VALUE);
+    return internal().wait(waitList, numReturns, Integer.MAX_VALUE);
   }
 
   /**
@@ -138,7 +126,7 @@ public final class Ray extends RayCall {
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList) {
-    return runtime.wait(waitList, waitList.size(), Integer.MAX_VALUE);
+    return internal().wait(waitList, waitList.size(), Integer.MAX_VALUE);
   }
 
   /**
@@ -152,7 +140,7 @@ public final class Ray extends RayCall {
    *     Optional.empty()
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
-    return runtime.getActor(name, false);
+    return internal().getActor(name, false);
   }
 
   /**
@@ -166,7 +154,7 @@ public final class Ray extends RayCall {
    *     Optional.empty()
    */
   public static <T extends BaseActorHandle> Optional<T> getGlobalActor(String name) {
-    return runtime.getActor(name, true);
+    return internal().getActor(name, true);
   }
 
   /**
@@ -176,7 +164,7 @@ public final class Ray extends RayCall {
    * @return The async context.
    */
   public static Object getAsyncContext() {
-    return runtime.getAsyncContext();
+    return internal().getAsyncContext();
   }
 
   /**
@@ -185,7 +173,7 @@ public final class Ray extends RayCall {
    * @param asyncContext The async context to set.
    */
   public static void setAsyncContext(Object asyncContext) {
-    runtime.setAsyncContext(asyncContext);
+    internal().setAsyncContext(asyncContext);
   }
 
   // TODO (kfstorm): add the `rollbackAsyncContext` API to allow rollbacking the async context of
@@ -201,7 +189,7 @@ public final class Ray extends RayCall {
    * @return The wrapped runnable.
    */
   public static Runnable wrapRunnable(Runnable runnable) {
-    return runtime.wrapRunnable(runnable);
+    return internal().wrapRunnable(runnable);
   }
 
   /**
@@ -212,13 +200,17 @@ public final class Ray extends RayCall {
    * @return The wrapped callable.
    */
   public static <T> Callable<T> wrapCallable(Callable<T> callable) {
-    return runtime.wrapCallable(callable);
+    return internal().wrapCallable(callable);
   }
 
   /**
    * Get the underlying runtime instance.
    */
   public static RayRuntime internal() {
+    if (runtime == null) {
+      throw new IllegalStateException(
+          "Ray has not been started yet. You can start Ray with 'Ray.init()'");
+    }
     return runtime;
   }
 
@@ -227,21 +219,21 @@ public final class Ray extends RayCall {
    * Set the resource for the specific node.
    */
   public static void setResource(UniqueId nodeId, String resourceName, double capacity) {
-    runtime.setResource(resourceName, capacity, nodeId);
+    internal().setResource(resourceName, capacity, nodeId);
   }
 
   /**
    * Set the resource for local node.
    */
   public static void setResource(String resourceName, double capacity) {
-    runtime.setResource(resourceName, capacity, UniqueId.NIL);
+    internal().setResource(resourceName, capacity, UniqueId.NIL);
   }
 
   /**
    * Get the runtime context.
    */
   public static RuntimeContext getRuntimeContext() {
-    return runtime.getRuntimeContext();
+    return internal().getRuntimeContext();
   }
 
   /**
@@ -259,6 +251,18 @@ public final class Ray extends RayCall {
    */
   public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return runtime.createPlacementGroup(bundles, strategy);
+    return internal().createPlacementGroup(bundles, strategy);
+  }
+
+  /**
+   * Intentionally exit the current actor.
+   * <p>
+   * This method is used to disconnect an actor and exit the worker.
+   *
+   * @throws RuntimeException An exception is raised if this is a driver or this  worker is not
+   *                          an actor.
+   */
+  public static void exitActor() {
+    runtime.exitActor();
   }
 }

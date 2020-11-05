@@ -65,6 +65,63 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWai
 JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
     JNIEnv *, jclass, jobject, jboolean, jboolean);
 
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativeAddLocalReference
+ * Signature: ([B)V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, jclass,
+                                                                     jbyteArray,
+                                                                     jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativeRemoveLocalReference
+ * Signature: ([B)V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *, jclass,
+                                                                        jbyteArray,
+                                                                        jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativeGetAllReferenceCounts
+ * Signature: ()Ljava/util/Map;
+ */
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *,
+                                                                         jclass);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativeGetOwnerAddress
+ * Signature: ([B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *, jclass,
+                                                                   jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativePromoteAndGetOwnershipInfo
+ * Signature: ([B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(JNIEnv *,
+                                                                              jclass,
+                                                                              jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativeRegisterOwnershipInfoAndResolveFuture
+ * Signature: ([B[B[B)V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResolveFuture(
+    JNIEnv *, jclass, jbyteArray, jbyteArray, jbyteArray);
+
 #ifdef __cplusplus
 }
 #endif

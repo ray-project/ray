@@ -54,17 +54,18 @@ class RecurrentNetwork(TFModelV2):
 
         You should implement forward_rnn() in your subclass."""
         assert seq_lens is not None
-
+        padded_inputs = input_dict["obs_flat"]
+        max_seq_len = tf.shape(padded_inputs)[0] // tf.shape(seq_lens)[0]
         output, new_state = self.forward_rnn(
             add_time_dimension(
-                input_dict["obs_flat"], seq_lens, framework="tf"), state,
+                padded_inputs, max_seq_len=max_seq_len, framework="tf"), state,
             seq_lens)
         return tf.reshape(output, [-1, self.num_outputs]), new_state
 
     def forward_rnn(self, inputs, state, seq_lens):
         """Call the model with the given input tensors and state.
 
-        Arguments:
+        Args:
             inputs (dict): observation tensor with shape [B, T, obs_size].
             state (list): list of state tensors, each with shape [B, T, size].
             seq_lens (Tensor): 1d tensor holding input sequence lengths.

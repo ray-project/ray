@@ -5,69 +5,9 @@ import traceback
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
 
-def _import_sac():
-    from ray.rllib.agents import sac
-    return sac.SACTrainer
-
-
-def _import_appo():
-    from ray.rllib.agents import ppo
-    return ppo.APPOTrainer
-
-
-def _import_ddppo():
-    from ray.rllib.agents import ppo
-    return ppo.DDPPOTrainer
-
-
-def _import_qmix():
-    from ray.rllib.agents import qmix
-    return qmix.QMixTrainer
-
-
-def _import_ddpg():
-    from ray.rllib.agents import ddpg
-    return ddpg.DDPGTrainer
-
-
-def _import_apex_ddpg():
-    from ray.rllib.agents import ddpg
-    return ddpg.ApexDDPGTrainer
-
-
-def _import_td3():
-    from ray.rllib.agents import ddpg
-    return ddpg.TD3Trainer
-
-
-def _import_ppo():
-    from ray.rllib.agents import ppo
-    return ppo.PPOTrainer
-
-
-def _import_es():
-    from ray.rllib.agents import es
-    return es.ESTrainer
-
-
-def _import_ars():
-    from ray.rllib.agents import ars
-    return ars.ARSTrainer
-
-
-def _import_dqn():
-    from ray.rllib.agents import dqn
-    return dqn.DQNTrainer
-
-
-def _import_simple_q():
-    from ray.rllib.agents import dqn
-    return dqn.SimpleQTrainer
-
-
-def _import_apex():
-    from ray.rllib.agents import dqn
-    return dqn.ApexTrainer
+def _import_a2c():
+    from ray.rllib.agents import a3c
+    return a3c.A2CTrainer
 
 
 def _import_a3c():
@@ -75,14 +15,54 @@ def _import_a3c():
     return a3c.A3CTrainer
 
 
-def _import_a2c():
-    from ray.rllib.agents import a3c
-    return a3c.A2CTrainer
+def _import_apex():
+    from ray.rllib.agents import dqn
+    return dqn.ApexTrainer
 
 
-def _import_pg():
-    from ray.rllib.agents import pg
-    return pg.PGTrainer
+def _import_apex_ddpg():
+    from ray.rllib.agents import ddpg
+    return ddpg.ApexDDPGTrainer
+
+
+def _import_appo():
+    from ray.rllib.agents import ppo
+    return ppo.APPOTrainer
+
+
+def _import_ars():
+    from ray.rllib.agents import ars
+    return ars.ARSTrainer
+
+
+def _import_bc():
+    from ray.rllib.agents import marwil
+    return marwil.BCTrainer
+
+
+def _import_ddpg():
+    from ray.rllib.agents import ddpg
+    return ddpg.DDPGTrainer
+
+
+def _import_ddppo():
+    from ray.rllib.agents import ppo
+    return ppo.DDPPOTrainer
+
+
+def _import_dqn():
+    from ray.rllib.agents import dqn
+    return dqn.DQNTrainer
+
+
+def _import_dreamer():
+    from ray.rllib.agents import dreamer
+    return dreamer.DREAMERTrainer
+
+
+def _import_es():
+    from ray.rllib.agents import es
+    return es.ESTrainer
 
 
 def _import_impala():
@@ -90,36 +70,74 @@ def _import_impala():
     return impala.ImpalaTrainer
 
 
-def _import_marwil():
-    from ray.rllib.agents import marwil
-    return marwil.MARWILTrainer
-
-
 def _import_maml():
     from ray.rllib.agents import maml
     return maml.MAMLTrainer
 
 
+def _import_marwil():
+    from ray.rllib.agents import marwil
+    return marwil.MARWILTrainer
+
+
+def _import_mbmpo():
+    from ray.rllib.agents import mbmpo
+    return mbmpo.MBMPOTrainer
+
+
+def _import_pg():
+    from ray.rllib.agents import pg
+    return pg.PGTrainer
+
+
+def _import_ppo():
+    from ray.rllib.agents import ppo
+    return ppo.PPOTrainer
+
+
+def _import_qmix():
+    from ray.rllib.agents import qmix
+    return qmix.QMixTrainer
+
+
+def _import_sac():
+    from ray.rllib.agents import sac
+    return sac.SACTrainer
+
+
+def _import_simple_q():
+    from ray.rllib.agents import dqn
+    return dqn.SimpleQTrainer
+
+
+def _import_td3():
+    from ray.rllib.agents import ddpg
+    return ddpg.TD3Trainer
+
+
 ALGORITHMS = {
-    "SAC": _import_sac,
-    "DDPG": _import_ddpg,
-    "APEX_DDPG": _import_apex_ddpg,
-    "TD3": _import_td3,
-    "PPO": _import_ppo,
-    "ES": _import_es,
-    "ARS": _import_ars,
-    "DQN": _import_dqn,
-    "SimpleQ": _import_simple_q,
-    "APEX": _import_apex,
-    "A3C": _import_a3c,
     "A2C": _import_a2c,
-    "PG": _import_pg,
-    "IMPALA": _import_impala,
-    "QMIX": _import_qmix,
+    "A3C": _import_a3c,
+    "APEX": _import_apex,
+    "APEX_DDPG": _import_apex_ddpg,
     "APPO": _import_appo,
+    "ARS": _import_ars,
+    "BC": _import_bc,
+    "ES": _import_es,
+    "DDPG": _import_ddpg,
     "DDPPO": _import_ddppo,
-    "MARWIL": _import_marwil,
+    "DQN": _import_dqn,
+    "DREAMER": _import_dreamer,
+    "IMPALA": _import_impala,
     "MAML": _import_maml,
+    "MARWIL": _import_marwil,
+    "MBMPO": _import_mbmpo,
+    "PG": _import_pg,
+    "PPO": _import_ppo,
+    "QMIX": _import_qmix,
+    "SAC": _import_sac,
+    "SimpleQ": _import_simple_q,
+    "TD3": _import_td3,
 }
 
 

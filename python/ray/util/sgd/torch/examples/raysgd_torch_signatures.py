@@ -7,6 +7,71 @@ in the documentation.
 """
 # yapf: disable
 
+# __torch_operator_start__
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+
+from ray.util.sgd.torch import TrainingOperator
+from ray.util.sgd.torch.examples.train_example import LinearDataset
+
+class MyTrainingOperator(TrainingOperator):
+    def setup(self, config):
+        # Setup all components needed for training here. This could include
+        # data, models, optimizers, loss & schedulers.
+
+        # Setup data loaders.
+        train_dataset, val_dataset = LinearDataset(2, 5), LinearDataset(2,
+                                                                        5)
+        train_loader = DataLoader(train_dataset,
+                                  batch_size=config["batch_size"])
+        val_loader = DataLoader(val_dataset,
+                                batch_size=config["batch_size"])
+
+        # Setup model.
+        model = nn.Linear(1, 1)
+
+        # Setup optimizer.
+        optimizer = torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
+
+        # Setup loss.
+        criterion = torch.nn.BCELoss()
+
+        # Setup scheduler.
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
+
+        # Register all of these components with Ray SGD.
+        # This allows Ray SGD to do framework level setup like Cuda, DDP,
+        # Distributed Sampling, FP16.
+        # We also assign the return values of self.register to instance
+        # attributes so we can access it in our custom training/validation
+        # methods.
+        self.model, self.optimizer, self.criterion, self.scheduler = \
+            self.register(models=model, optimizers=optimizer,
+                          criterion=criterion,
+                          schedulers=scheduler)
+        self.register_data(train_loader=train_loader, validation_loader=val_loader)
+# __torch_operator_end__
+
+# __torch_ray_start__
+import ray
+
+ray.init()
+# or ray.init(address="auto") to connect to a running cluster.
+# __torch_ray_end__
+
+# __torch_trainer_start__
+from ray.util.sgd import TorchTrainer
+
+trainer = TorchTrainer(
+    training_operator_cls=MyTrainingOperator,
+    scheduler_step_freq="epoch",  # if scheduler is used
+    config={"lr": 0.001, "batch_size": 64})
+
+# __torch_trainer_end__
+
+trainer.shutdown()
+
 # __torch_model_start__
 import torch.nn as nn
 
@@ -103,23 +168,19 @@ def scheduler_creator(optimizer, config):
 
 # __torch_scheduler_end__
 
-# __torch_ray_start__
-import ray
-
-ray.init()
-# or ray.init(address="auto") to connect to a running cluster.
-# __torch_ray_end__
-
-# __torch_trainer_start__
+# __backwards_compat_start__
 from ray.util.sgd import TorchTrainer
 
+MyTrainingOperator = TrainingOperator.from_creators(
+    model_creator=model_creator, optimizer_creator=optimizer_creator,
+    loss_creator=loss_creator, scheduler_creator=scheduler_creator,
+    data_creator=data_creator)
+
 trainer = TorchTrainer(
-    model_creator=model_creator,
-    data_creator=data_creator,
-    optimizer_creator=optimizer_creator,
-    loss_creator=nn.MSELoss,
-    scheduler_creator=scheduler_creator,
-    scheduler_step_freq="epoch",  # if scheduler_creator is set
+    training_operator_cls=MyTrainingOperator,
+    scheduler_step_freq="epoch",  # if scheduler_creator is passed in
     config={"lr": 0.001, "batch_size": 64})
 
-# __torch_trainer_end__
+# __backwards_compat_end__
+
+trainer.shutdown()

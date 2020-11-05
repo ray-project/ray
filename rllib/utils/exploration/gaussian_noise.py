@@ -120,7 +120,7 @@ class GaussianNoise(Exploration):
             true_fn=lambda: stochastic_actions,
             false_fn=lambda: deterministic_actions)
         # Logp=always zero.
-        logp = tf.zeros(shape=(batch_size,), dtype=tf.float32)
+        logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:
@@ -130,9 +130,9 @@ class GaussianNoise(Exploration):
                 self.last_timestep.assign(timestep)
             return action, logp
         else:
-            assign_op = (
-                tf1.assign_add(self.last_timestep, 1) if timestep is None else
-                tf1.assign(self.last_timestep, timestep))
+            assign_op = (tf1.assign_add(self.last_timestep, 1)
+                         if timestep is None else tf1.assign(
+                             self.last_timestep, timestep))
             with tf1.control_dependencies([assign_op]):
                 return action, logp
 
@@ -153,10 +153,19 @@ class GaussianNoise(Exploration):
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
-                    mean=torch.zeros(det_actions.size()), std=self.stddev)
-                action = torch.clamp(det_actions + gaussian_sample,
-                                     self.action_space.low.item(0),
-                                     self.action_space.high.item(0))
+                    mean=torch.zeros(det_actions.size()), std=self.stddev).to(
+                        self.device)
+                action = torch.min(
+                    torch.max(
+                        det_actions + gaussian_sample,
+                        torch.tensor(
+                            self.action_space.low,
+                            dtype=torch.float32,
+                            device=self.device)),
+                    torch.tensor(
+                        self.action_space.high,
+                        dtype=torch.float32,
+                        device=self.device))
         # No exploration -> Return deterministic actions.
         else:
             action = action_dist.deterministic_sample()

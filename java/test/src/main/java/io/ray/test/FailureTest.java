@@ -3,11 +3,12 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.exception.RayActorException;
-import io.ray.api.exception.RayException;
-import io.ray.api.exception.RayTaskException;
-import io.ray.api.exception.RayWorkerException;
 import io.ray.api.function.RayFunc0;
+import io.ray.api.id.ObjectId;
+import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.exception.RayTaskException;
+import io.ray.runtime.exception.RayWorkerException;
+import io.ray.runtime.exception.UnreconstructableException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -17,21 +18,25 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class FailureTest extends BaseTest {
 
   private static final String EXCEPTION_MESSAGE = "Oops";
+
+  private String oldNumWorkersPerProcess;
 
   @BeforeClass
   public void setUp() {
     // This is needed by `testGetThrowsQuicklyWhenFoundException`.
     // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
     // process, `sleep` will delay `System.exit`.
+    oldNumWorkersPerProcess = System.getProperty("ray.raylet.config.num_workers_per_process_java");
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
   }
 
   @AfterClass
   public void tearDown() {
-    System.clearProperty("ray.raylet.config.num_workers_per_process_java");
+    System.setProperty("ray.raylet.config.num_workers_per_process_java", oldNumWorkersPerProcess);
   }
 
   public static int badFunc() {
@@ -84,29 +89,21 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Test
   public void testNormalTaskFailure() {
-    TestUtils.skipTestUnderSingleProcess();
     assertTaskFailedWithRayTaskException(Ray.task(FailureTest::badFunc).remote());
   }
 
-  @Test
   public void testActorCreationFailure() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<BadActor> actor = Ray.actor(BadActor::new, true).remote();
     assertTaskFailedWithRayTaskException(actor.task(BadActor::badMethod).remote());
   }
 
-  @Test
   public void testActorTaskFailure() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<BadActor> actor = Ray.actor(BadActor::new, false).remote();
     assertTaskFailedWithRayTaskException(actor.task(BadActor::badMethod).remote());
   }
 
-  @Test
   public void testWorkerProcessDying() {
-    TestUtils.skipTestUnderSingleProcess();
     try {
       Ray.task(FailureTest::badFunc2).remote().get();
       Assert.fail("This line shouldn't be reached.");
@@ -116,9 +113,7 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Test
   public void testActorProcessDying() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<BadActor> actor = Ray.actor(BadActor::new, false).remote();
     try {
       actor.task(BadActor::badMethod2).remote().get();
@@ -126,6 +121,7 @@ public class FailureTest extends BaseTest {
     } catch (RayActorException e) {
       // When the actor process dies while executing a task, we should receive an
       // RayActorException.
+      Assert.assertEquals(e.actorId, actor.getId());
     }
     try {
       actor.task(BadActor::badMethod).remote().get();
@@ -136,9 +132,7 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Test
   public void testGetThrowsQuicklyWhenFoundException() {
-    TestUtils.skipTestUnderSingleProcess();
     List<RayFunc0<Integer>> badFunctions = Arrays.asList(FailureTest::badFunc,
         FailureTest::badFunc2);
     TestUtils.warmUpCluster();
@@ -149,13 +143,32 @@ public class FailureTest extends BaseTest {
       try {
         Ray.get(Arrays.asList(obj1, obj2));
         Assert.fail("Should throw RayException.");
-      } catch (RayException e) {
+      } catch (RuntimeException e) {
         Instant end = Instant.now();
         long duration = Duration.between(start, end).toMillis();
         Assert.assertTrue(duration < 5000, "Should fail quickly. " +
             "Actual execution time: " + duration + " ms.");
       }
     }
+  }
+
+  public void testExceptionSerialization() {
+    RayTaskException ex1 = Assert.expectThrows(RayTaskException.class, () -> {
+      Ray.put(new RayTaskException("xxx", new RayActorException())).get();
+    });
+    Assert.assertEquals(ex1.getCause().getClass(), RayActorException.class);
+    RayTaskException ex2 = Assert.expectThrows(RayTaskException.class, () -> {
+      Ray.put(new RayTaskException("xxx", new RayWorkerException())).get();
+    });
+    Assert.assertEquals(ex2.getCause().getClass(), RayWorkerException.class);
+
+    ObjectId objectId = ObjectId.fromRandom();
+    RayTaskException ex3 = Assert.expectThrows(RayTaskException.class, () -> {
+      Ray.put(new RayTaskException("xxx", new UnreconstructableException(objectId)))
+          .get();
+    });
+    Assert.assertEquals(ex3.getCause().getClass(), UnreconstructableException.class);
+    Assert.assertEquals(((UnreconstructableException) ex3.getCause()).objectId, objectId);
   }
 }
 

@@ -34,6 +34,7 @@ struct GcsServerConfig {
   uint16_t redis_port = 6379;
   bool retry_redis = true;
   bool is_test = false;
+  std::string node_ip_address;
 };
 
 class GcsNodeManager;
@@ -98,9 +99,6 @@ class GcsServer {
   /// The stats handler
   virtual std::unique_ptr<rpc::StatsHandler> InitStatsHandler();
 
-  /// The error info handler
-  virtual std::unique_ptr<rpc::ErrorInfoHandler> InitErrorInfoHandler();
-
   /// The worker manager
   virtual std::unique_ptr<GcsWorkerManager> InitGcsWorkerManager();
 
@@ -116,6 +114,10 @@ class GcsServer {
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
   boost::asio::io_context &main_service_;
+  /// The io service used by node manager in case of node failure detector being blocked
+  /// by main thread.
+  boost::asio::io_service node_manager_io_service_;
+  std::unique_ptr<std::thread> node_manager_io_service_thread_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
@@ -144,9 +146,6 @@ class GcsServer {
   /// Stats handler and service
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
-  /// Error info handler and service
-  std::unique_ptr<rpc::ErrorInfoHandler> error_info_handler_;
-  std::unique_ptr<rpc::ErrorInfoGrpcService> error_info_service_;
   /// The gcs worker manager
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service

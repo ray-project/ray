@@ -1,0 +1,5 @@
+Checking AWS environment settings
+Fetched IP: .+
+Checking AWS environment settings
+Fetched IP: .+
+This is a test!

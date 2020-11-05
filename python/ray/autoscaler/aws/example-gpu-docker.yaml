@@ -23,17 +23,17 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "tensorflow/tensorflow:1.12.0-gpu-py3"
+    image: "rayproject/ray:0.8.7-gpu"
     container_name: "ray-nvidia-docker-test" # e.g. ray_docker
     run_options:
       - --runtime=nvidia
 
     # # Example of running a GPU head with CPU workers
-    # head_image: "tensorflow/tensorflow:1.13.1-gpu-py3"
+    # head_image: "rayproject/ray:0.8.7-gpu"
     # head_run_options:
     #     - --runtime=nvidia
 
-    # worker_image: "tensorflow/tensorflow:1.13.1-py3"
+    # worker_image: "rayproject/ray:0.8.7"
     # worker_run_options: []
 
 # The autoscaler will scale up the cluster to this target fraction of resource
@@ -69,7 +69,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: p2.xlarge
-    ImageId: ami-05931d11d2bf831c3 # Deep Learning AMI (Ubuntu) Version 24.3
+    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
@@ -85,7 +85,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-05931d11d2bf831c3 # Deep Learning AMI (Ubuntu) Version 24.3
+    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -104,10 +104,10 @@ file_mounts: {
 }
 
 # List of shell commands to run to set up nodes.
-setup_commands:
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+# NOTE: rayproject/ray:0.8.7 has ray 0.8.7 bundled
+# setup_commands:
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

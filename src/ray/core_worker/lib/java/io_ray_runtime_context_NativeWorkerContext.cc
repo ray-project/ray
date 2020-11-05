@@ -13,11 +13,13 @@
 // limitations under the License.
 
 #include "io_ray_runtime_context_NativeWorkerContext.h"
+
 #include <jni.h>
+
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "jni_utils.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,6 +64,12 @@ Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *
   const auto &actor_id =
       ray::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
   return IdToJavaByteBuffer<ray::ActorID>(env, actor_id);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetRpcAddress(JNIEnv *env, jclass) {
+  const auto &rpc_address = ray::CoreWorkerProcess::GetCoreWorker().GetRpcAddress();
+  return NativeStringToJavaByteArray(env, rpc_address.SerializeAsString());
 }
 
 #ifdef __cplusplus

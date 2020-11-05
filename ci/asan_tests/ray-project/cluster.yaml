@@ -36,6 +36,8 @@ setup_commands:
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     - pip install -U pip || true
+    - conda uninstall -y terminado || true
+    - pip install terminado || true
     # Clone Ray.
     - cd $HOME; rm -rf $HOME/ray; git clone https://github.com/ray-project/ray || true
     # Install Node.js in order to build the dashboard.

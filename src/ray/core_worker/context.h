@@ -35,6 +35,8 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
+  const PlacementGroupID &GetCurrentPlacementGroupId() const;
+
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentJobId(const JobID &job_id);
 
@@ -69,6 +71,7 @@ class WorkerContext {
 
   int GetNextTaskIndex();
 
+  // Returns the next put object index; used to calculate ObjectIDs for puts.
   int GetNextPutIndex();
 
  protected:
@@ -83,6 +86,8 @@ class WorkerContext {
   ActorID current_actor_id_;
   int current_actor_max_concurrency_ = 1;
   bool current_actor_is_asyncio_ = false;
+  // The placement group id that the current actor belongs to.
+  PlacementGroupID current_actor_placement_group_id_;
 
   /// The id of the (main) thread that constructed this worker context.
   boost::thread::id main_thread_id_;

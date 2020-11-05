@@ -31,7 +31,7 @@ parser.add_argument(
     type=str,
     default=os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "../tests/data/cartpole/small"))
+        "../tests/data/cartpole/small.json"))
 
 if __name__ == "__main__":
     ray.init()

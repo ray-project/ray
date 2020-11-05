@@ -1,7 +1,12 @@
+from typing import Union
+
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.schedules.schedule import Schedule
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 
 class PolynomialSchedule(Schedule):
@@ -13,7 +18,7 @@ class PolynomialSchedule(Schedule):
                  power=2.0):
         """
         Polynomial interpolation between initial_p and final_p over
-        schedule_timesteps. After this many time steps always `final_p` is
+        schedule_timesteps. After this many time steps, always `final_p` is
         returned.
 
         Agrs:
@@ -30,11 +35,19 @@ class PolynomialSchedule(Schedule):
         self.initial_p = initial_p
         self.power = power
 
-    def _value(self, t):
-        """
-        Returns the result of:
+    @override(Schedule)
+    def _value(self, t: Union[int, TensorType]):
+        """Returns the result of:
         final_p + (initial_p - final_p) * (1 - `t`/t_max) ** power
         """
+        if self.framework == "torch" and torch and isinstance(t, torch.Tensor):
+            t = t.float()
         t = min(t, self.schedule_timesteps)
+        return self.final_p + (self.initial_p - self.final_p) * (
+            1.0 - (t / self.schedule_timesteps))**self.power
+
+    @override(Schedule)
+    def _tf_value_op(self, t: Union[int, TensorType]):
+        t = tf.math.minimum(t, self.schedule_timesteps)
         return self.final_p + (self.initial_p - self.final_p) * (
             1.0 - (t / self.schedule_timesteps))**self.power

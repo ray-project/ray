@@ -135,12 +135,17 @@ If you want to run applications on the cluster that are accessible from a web br
 Running Ray scripts on the cluster (``ray submit``)
 ---------------------------------------------------
 
-You can also use ``ray submit`` to execute Python scripts on clusters. This will ``rsync`` the designated file onto the cluster and execute it with the given arguments. See :ref:`the documentation <ray-submit-doc>` for ``ray submit``.
+You can also use ``ray submit`` to execute Python scripts on clusters. This will ``rsync`` the designated file onto the head node cluster and execute it with the given arguments. See :ref:`the documentation <ray-submit-doc>` for ``ray submit``.
 
 .. code-block:: shell
 
     # Run a Python script in a detached tmux session
     $ ray submit cluster.yaml --tmux --start --stop tune_experiment.py
+
+    # Run a Python script with arguments.
+    # This executes script.py on the head node of the cluster, using
+    # the command: python ~/script.py --arg1 --arg2 --arg3
+    $ ray submit cluster.yaml script.py -- --arg1 --arg2 --arg3
 
 
 Attaching to a running cluster (``ray attach``)
@@ -188,7 +193,7 @@ logs in ``/tmp/ray/session_*/logs/monitor*``.
 
     $ ray monitor cluster.yaml
 
-The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go the the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
+The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go to the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
 
 .. image:: /images/autoscaler-status.png
 
@@ -213,25 +218,7 @@ This tells ``ray up`` to sync the current git branch SHA from your personal comp
 2. Commit the changes with ``git commit`` and ``git push``
 3. Update files on your Ray cluster with ``ray up``
 
-
-Autoscaling
------------
-
-The Ray Cluster Launcher will automatically enable a load-based autoscaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit (in the cluster config). When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
-
-The default idle timeout is 5 minutes, which can be set in the cluster config. This is to prevent excessive node churn which could impact performance and increase costs (in AWS / GCP there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).
-
-
 Questions or Issues?
 --------------------
 
-You can post questions or issues or feedback through the following channels:
-
-1. `ray-dev@googlegroups.com`_: For discussions about development or any general
-   questions and feedback.
-2. `StackOverflow`_: For questions about how to use Ray.
-3. `GitHub Issues`_: For bug reports and feature requests.
-
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. include:: /_help.rst

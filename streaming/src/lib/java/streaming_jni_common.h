@@ -1,8 +1,10 @@
 #pragma once
 
 #include <jni.h>
+
 #include <string>
-#include "channel.h"
+
+#include "channel/channel.h"
 #include "ray/core_worker/common.h"
 #include "util/streaming_logging.h"
 

@@ -6,7 +6,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from typing import Dict, List
-from ray.rllib.utils.types import TensorType, SampleBatchType
+from ray.rllib.utils.typing import TensorType, SampleBatchType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -37,7 +37,7 @@ class InputReader:
         This method creates a queue runner thread that will call next() on this
         reader repeatedly to feed the TensorFlow queue.
 
-        Arguments:
+        Args:
             queue_size (int): Max elements to allow in the TF queue.
 
         Example:
@@ -92,7 +92,7 @@ class InputReader:
 class _QueueRunner(threading.Thread):
     """Thread that feeds a TF queue from a InputReader."""
 
-    def __init__(self, input_reader: InputReader, queue: tf1.FIFOQueue,
+    def __init__(self, input_reader: InputReader, queue: "tf1.FIFOQueue",
                  keys: List[str], dtypes: "tf.dtypes.DType"):
         threading.Thread.__init__(self)
         self.sess = tf1.get_default_session()

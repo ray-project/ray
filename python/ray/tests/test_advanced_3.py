@@ -2,9 +2,9 @@
 import glob
 import logging
 import os
-import json
 import sys
 import socket
+import tempfile
 import time
 
 import numpy as np
@@ -13,12 +13,14 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+import ray.util.accelerators
 import ray.cluster_utils
 import ray.test_utils
+from ray import resource_spec
 import setproctitle
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_num_actors)
+                            wait_for_condition, wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ def attempt_to_load_balance(remote_function,
             [remote_function.remote(*args) for _ in range(total_tasks)])
         names = set(locations)
         counts = [locations.count(name) for name in names]
-        logger.info("Counts are {}.".format(counts))
+        logger.info(f"Counts are {counts}.")
         if (len(names) == num_nodes
                 and all(count >= minimum_count for count in counts)):
             break
@@ -60,6 +62,34 @@ def test_load_balancing(ray_start_cluster):
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
     attempt_to_load_balance(f, [], 1000, num_nodes, 100)
+
+
+def test_local_scheduling_first(ray_start_cluster):
+    cluster = ray_start_cluster
+    num_cpus = 8
+    # Disable worker caching.
+    cluster.add_node(
+        num_cpus=num_cpus,
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+        })
+    cluster.add_node(num_cpus=num_cpus)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f():
+        time.sleep(0.01)
+        return ray.worker.global_worker.node.unique_id
+
+    def local():
+        return ray.get(f.remote()) == ray.worker.global_worker.node.unique_id
+
+    # Wait for a worker to get started.
+    wait_for_condition(local)
+
+    # Check that we are scheduling locally while there are resources available.
+    for i in range(20):
+        assert local()
 
 
 def test_load_balancing_with_dependencies(ray_start_cluster):
@@ -93,21 +123,6 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 def test_global_state_api(shutdown_only):
-
-    error_message = ("The ray global state API cannot be used "
-                     "before ray.init has been called.")
-
-    with pytest.raises(Exception, match=error_message):
-        ray.objects()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.actors()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.nodes()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.jobs()
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
@@ -201,23 +216,22 @@ def test_logging_to_driver(shutdown_only):
     def f():
         # It's important to make sure that these print statements occur even
         # without calling sys.stdout.flush() and sys.stderr.flush().
-        for i in range(100):
-            print(i)
-            print(100 + i, file=sys.stderr)
+        for i in range(10):
+            print(i, end=" ")
+            print(100 + i, end=" ", file=sys.stderr)
 
     captured = {}
     with CaptureOutputAndError(captured):
         ray.get(f.remote())
         time.sleep(1)
 
-    output_lines = captured["out"]
-    for i in range(200):
-        assert str(i) in output_lines
+    out_lines = captured["out"]
+    err_lines = captured["err"]
+    for i in range(10):
+        assert str(i) in out_lines
 
-    # TODO(rkn): Check that no additional logs appear beyond what we expect
-    # and that there are no duplicate logs. Once we address the issue
-    # described in https://github.com/ray-project/ray/pull/5462, we should
-    # also check that nothing is logged to stderr.
+    for i in range(100, 110):
+        assert str(i) in err_lines
 
 
 def test_not_logging_to_driver(shutdown_only):
@@ -239,15 +253,10 @@ def test_not_logging_to_driver(shutdown_only):
     output_lines = captured["out"]
     assert len(output_lines) == 0
 
-    # TODO(rkn): Check that no additional logs appear beyond what we expect
-    # and that there are no duplicate logs. Once we address the issue
-    # described in https://github.com/ray-project/ray/pull/5462, we should
-    # also check that nothing is logged to stderr.
+    err_lines = captured["err"]
+    assert len(err_lines) == 0
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
     ray.init(num_cpus=num_workers)
@@ -260,23 +269,6 @@ def test_workers(shutdown_only):
     worker_ids = set()
     while len(worker_ids) != num_workers:
         worker_ids = set(ray.get([f.remote() for _ in range(10)]))
-
-
-def test_specific_job_id():
-    dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id)
-
-    # in driver
-    assert dummy_driver_id == ray.worker.global_worker.current_job_id
-
-    # in worker
-    @ray.remote
-    def f():
-        return ray.worker.global_worker.current_job_id
-
-    assert dummy_driver_id == ray.get(f.remote())
-
-    ray.shutdown()
 
 
 def test_object_ref_properties():
@@ -321,9 +313,7 @@ def test_wait_reconstruction(shutdown_only):
     ray.init(
         num_cpus=1,
         object_store_memory=int(10**8),
-        _internal_config=json.dumps({
-            "object_pinning_enabled": 0
-        }))
+        _system_config={"object_pinning_enabled": 0})
 
     @ray.remote
     def f():
@@ -355,29 +345,26 @@ def test_ray_setproctitle(ray_start_2_cpus):
     ray.get(unique_1.remote())
 
 
-def test_duplicate_error_messages(shutdown_only):
-    ray.init(num_cpus=0)
+def test_ray_task_name_setproctitle(ray_start_2_cpus):
+    method_task_name = "foo"
 
-    driver_id = ray.WorkerID.nil()
-    error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
-                                                       "message", 0)
+    @ray.remote
+    class UniqueName:
+        def __init__(self):
+            assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
 
-    # Push the same message to the GCS twice (they are the same because we
-    # do not include a timestamp).
+        def f(self):
+            assert setproctitle.getproctitle() == f"ray::{method_task_name}"
 
-    r = ray.worker.global_worker.redis_client
+    task_name = "bar"
 
-    r.execute_command("RAY.TABLE_APPEND",
-                      ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-                      ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
-                      driver_id.binary(), error_data)
+    @ray.remote
+    def unique_1():
+        assert task_name in setproctitle.getproctitle()
 
-    # Before https://github.com/ray-project/ray/pull/3316 this would
-    # give an error
-    r.execute_command("RAY.TABLE_APPEND",
-                      ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-                      ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
-                      driver_id.binary(), error_data)
+    actor = UniqueName.remote()
+    ray.get(actor.f.options(name=method_task_name).remote())
+    ray.get(unique_1.options(name=task_name).remote())
 
 
 @pytest.mark.skipif(
@@ -414,16 +401,6 @@ def test_ray_stack(ray_start_2_cpus):
                         "'ray stack'")
 
 
-def test_socket_dir_not_existing(shutdown_only):
-    if sys.platform != "win32":
-        random_name = ray.ObjectRef.from_random().hex()
-        temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
-                                              "tests", random_name)
-        temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
-                                               "raylet_socket")
-        ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
-
-
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
     node_manager_address = None
     node_manager_port = None
@@ -454,15 +431,6 @@ def test_non_ascii_comment(ray_start_regular):
     assert ray.get(f.remote()) == 1
 
 
-def test_shutdown_disconnect_global_state():
-    ray.init(num_cpus=0)
-    ray.shutdown()
-
-    with pytest.raises(Exception) as e:
-        ray.objects()
-    assert str(e.value).endswith("ray.init has been called.")
-
-
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_put_pins_object(ray_start_object_store_memory):
@@ -483,13 +451,6 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert not ray.worker.global_worker.core_worker.object_exists(
         ray.ObjectRef(x_binary))
-
-    # weakref put
-    y_id = ray.put(obj, weakref=True)
-    for _ in range(10):
-        ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(y_id)
 
 
 def test_decorated_function(ray_start_regular):
@@ -568,7 +529,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
 
     # Wait till first worker log file is created.
     while True:
-        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
+        log_file_paths = glob.glob(f"{logs_dir}/worker*.out")
         if len(log_file_paths) == 0:
             time.sleep(0.2)
         else:
@@ -584,7 +545,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
     time.sleep(1.0)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 @pytest.mark.skip(reason="This test is too expensive to run.")
@@ -606,28 +567,24 @@ def test_move_log_files_to_old(shutdown_only):
 
     # Make sure no log files are in the "old" directory before the actors
     # are killed.
-    assert len(glob.glob("{}/old/worker*.out".format(logs_dir))) == 0
+    assert len(glob.glob(f"{logs_dir}/old/worker*.out")) == 0
 
     # Now kill the actors so the files get moved to logs/old/.
     [a.__ray_terminate__.remote() for a in actors]
 
     while True:
-        log_file_paths = glob.glob("{}/old/worker*.out".format(logs_dir))
+        log_file_paths = glob.glob(f"{logs_dir}/old/worker*.out")
         if len(log_file_paths) > 0:
             with open(log_file_paths[0], "r") as f:
                 assert "function f finished\n" in f.readlines()
             break
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 def test_lease_request_leak(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200
-        }))
+    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
     assert len(ray.objects()) == 0
 
     @ray.remote
@@ -674,6 +631,157 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.init()
     assert "CPU" in ray.state.cluster_resources()
     ray.shutdown()
+
+
+def test_ray_resources_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+
+    os.environ[
+        "RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2, \"CPU\":3}"
+    ray.init(address=address, resources={"custom1": 3, "custom3": 3})
+
+    cluster_resources = ray.cluster_resources()
+    print(cluster_resources)
+    assert cluster_resources["custom1"] == 1
+    assert cluster_resources["custom2"] == 2
+    assert cluster_resources["custom3"] == 3
+    assert cluster_resources["CPU"] == 3
+
+
+def test_gpu_info_parsing():
+    info_string = """Model:           Tesla V100-SXM2-16GB
+IRQ:             107
+GPU UUID:        GPU-8eaaebb8-bb64-8489-fda2-62256e821983
+Video BIOS:      88.00.4f.00.09
+Bus Type:        PCIe
+DMA Size:        47 bits
+DMA Mask:        0x7fffffffffff
+Bus Location:    0000:00:1e.0
+Device Minor:    0
+Blacklisted:     No
+    """
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
+    expected_dict = {
+        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}V100": 1,
+    }
+    assert constraints_dict == expected_dict
+
+    info_string = """Model:           Tesla T4
+IRQ:             10
+GPU UUID:        GPU-415fe7a8-f784-6e3d-a958-92ecffacafe2
+Video BIOS:      90.04.84.00.06
+Bus Type:        PCIe
+DMA Size:        47 bits
+DMA Mask:        0x7fffffffffff
+Bus Location:    0000:00:1b.0
+Device Minor:    0
+Blacklisted:     No
+    """
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
+    expected_dict = {
+        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}T4": 1,
+    }
+    assert constraints_dict == expected_dict
+
+    assert resource_spec._constraints_from_gpu_info(None) == {}
+
+
+def test_accelerator_type_api(shutdown_only):
+    v100 = ray.util.accelerators.NVIDIA_TESLA_V100
+    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{v100}"
+    ray.init(num_cpus=4, resources={resource_name: 1})
+
+    quantity = 1
+
+    @ray.remote(accelerator_type=v100)
+    def decorated_func(quantity):
+        return ray.available_resources()[resource_name] < quantity
+
+    assert ray.get(decorated_func.remote(quantity))
+
+    def via_options_func(quantity):
+        return ray.available_resources()[resource_name] < quantity
+
+    assert ray.get(
+        ray.remote(via_options_func).options(
+            accelerator_type=v100).remote(quantity))
+
+    @ray.remote(accelerator_type=v100)
+    class DecoratedActor:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    class ActorWithOptions:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    decorated_actor = DecoratedActor.remote()
+    # Avoid a race condition where the actor hasn't been initialized and
+    # claimed the resources yet.
+    ray.get(decorated_actor.initialized.remote())
+    assert ray.available_resources()[resource_name] < quantity
+
+    quantity = ray.available_resources()[resource_name]
+    with_options = ray.remote(ActorWithOptions).options(
+        accelerator_type=v100).remote()
+    ray.get(with_options.initialized.remote())
+    assert ray.available_resources()[resource_name] < quantity
+
+
+def test_detect_docker_cpus():
+    # No limits set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 64
+
+    # No cpuset used
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-10,20,50-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 26
+
+    # Quota set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("42")
+        period_file.write("100")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 0.42
 
 
 if __name__ == "__main__":

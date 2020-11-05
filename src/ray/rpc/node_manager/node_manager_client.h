@@ -41,12 +41,6 @@ class NodeManagerClient {
         new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
 
-  /// Forward a task and its uncommitted lineage.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ForwardTask, grpc_client_, )
-
   /// Get current node stats.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_, )
 
@@ -77,28 +71,34 @@ class NodeManagerWorkerClient
   }
 
   /// Request a worker lease.
-  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
 
   /// Return a worker lease.
-  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
 
   /// Release unused workers.
-  RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedWorkers, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedWorkers, grpc_client_, )
 
   /// Cancel a pending worker lease request.
-  RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
 
-  /// Request resource lease.
-  RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReserve, grpc_client_, )
+  /// Request prepare resources for an atomic placement group creation.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, PrepareBundleResources, grpc_client_, )
+
+  /// Request commit resources for an atomic placement group creation.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CommitBundleResources, grpc_client_, )
 
   /// Return resource lease.
-  RPC_CLIENT_METHOD(NodeManagerService, CancelResourceReserve, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelResourceReserve, grpc_client_, )
 
   /// Notify the raylet to pin the provided object IDs.
-  RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
 
   /// Trigger global GC across the cluster.
-  RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
+
+  /// Ask the raylet to spill an object to external storage.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestObjectSpillage, grpc_client_, )
 
  private:
   /// Constructor.

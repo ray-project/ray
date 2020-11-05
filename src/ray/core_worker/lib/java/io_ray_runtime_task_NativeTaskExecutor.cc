@@ -13,11 +13,13 @@
 // limitations under the License.
 
 #include "io_ray_runtime_task_NativeTaskExecutor.h"
+
 #include <jni.h>
+
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "jni_utils.h"
 #include "ray/raylet_client/raylet_client.h"
 
 #ifdef __cplusplus
@@ -35,10 +37,7 @@ Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *env,
   ActorCheckpointID checkpoint_id;
   auto status = core_worker.PrepareActorCheckpoint(actor_id, &checkpoint_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
-  jbyteArray result = env->NewByteArray(checkpoint_id.Size());
-  env->SetByteArrayRegion(result, 0, checkpoint_id.Size(),
-                          reinterpret_cast<const jbyte *>(checkpoint_id.Data()));
-  return result;
+  return IdToJavaByteArray<ActorCheckpointID>(env, checkpoint_id);
 }
 
 JNIEXPORT void JNICALL

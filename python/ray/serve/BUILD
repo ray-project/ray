@@ -6,8 +6,7 @@ py_library(
 )
 
 serve_tests_srcs = glob(["tests/*.py"],
-     exclude=["tests/test_nonblocking.py",
-              "tests/test_controller_crashes.py",
+     exclude=["tests/test_controller_crashes.py",
               "tests/test_serve.py",
              ])
 
@@ -65,15 +64,6 @@ py_test(
 
 
 py_test(
-    name = "test_metric",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
-
-py_test(
     name = "test_persistence",
     size = "small",
     srcs = serve_tests_srcs,
@@ -100,7 +90,7 @@ py_test(
 
 
 py_test(
-    name = "test_scaling",
+    name = "test_standalone",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
@@ -124,8 +114,7 @@ py_test(
     # srcs = glob(["tests/test_controller_crashes.py",
                  # "tests/test_api.py",
                  # "tests/test_failure.py"],
-                # exclude=["tests/test_nonblocking.py",
-                         # "tests/test_serve.py"]),
+                # exclude=["tests/test_serve.py"]),
 # )
 
 py_test(
@@ -134,14 +123,6 @@ py_test(
     srcs = glob(["examples/*.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"]
-)
-
-py_test(
-    name = "test_nonblocking",
-    size = "small",
-    srcs = glob(["tests/test_nonblocking.py"]),
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested
@@ -195,14 +176,6 @@ py_test(
 
 py_test(
     name = "snippet_model_composition",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
-    deps = [":serve_lib"]
-)
-
-py_test(
-    name = "snippet_metric_export",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],

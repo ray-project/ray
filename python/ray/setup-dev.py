@@ -11,16 +11,15 @@ import ray
 
 
 def do_link(package, force=False, local_path=""):
-    package_home = os.path.abspath(
-        os.path.join(ray.__file__, "../{}".format(package)))
+    package_home = os.path.abspath(os.path.join(ray.__file__, f"../{package}"))
     local_home = os.path.abspath(
-        os.path.join(__file__, local_path + "../{}".format(package)))
+        os.path.join(__file__, local_path + f"../{package}"))
     if not os.path.isdir(package_home):
-        print("{} does not exist. Continuing to link.".format(package_home))
+        print(f"{package_home} does not exist. Continuing to link.")
     assert os.path.isdir(local_home), local_home
     if not force and not click.confirm(
-            "This will replace:\n  {}\nwith a symlink to:\n  {}".format(
-                package_home, local_home),
+            f"This will replace:\n  {package_home}\nwith "
+            f"a symlink to:\n  {local_home}",
             default=True):
         return
     # Windows: Create directory junction.
@@ -37,8 +36,8 @@ def do_link(package, force=False, local_path=""):
     else:
         sudo = []
         if not os.access(os.path.dirname(package_home), os.W_OK):
-            print("You don't have write permission to {}, using sudo:".format(
-                package_home))
+            print("You don't have write permission "
+                  f"to {package_home}, using sudo:")
             sudo = ["sudo"]
         subprocess.check_call(sudo + ["rm", "-rf", package_home])
         subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
@@ -64,7 +63,7 @@ if __name__ == "__main__":
     print("Created links.\n\nIf you run into issues initializing Ray, please "
           "ensure that your local repo and the installed Ray are in sync "
           "(pip install -U the latest wheels at "
-          "https://docs.ray.io/en/latest/installation.html, "
+          "https://docs.ray.io/en/master/installation.html, "
           "and ensure you are up-to-date on the master branch on git).\n\n"
           "Note that you may need to delete the package symlinks when pip "
           "installing new Ray versions to prevent pip from overwriting files "

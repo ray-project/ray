@@ -134,6 +134,7 @@ You can evaluate best trained model using the :ref:`Analysis object <tune-analys
 Next Steps
 ----------
 
-* Take a look at the :ref:`tune-user-guide` for a more comprehensive overview of Tune's features.
+* Take a look at the :doc:`/tune/user-guide` for a more comprehensive overview of Tune's features.
+* Check out the :ref:`Tune tutorials <tune-guides>` for guides on using Tune with your preferred machine learning library.
 * Browse our :ref:`gallery of examples <tune-general-examples>` to see how to use Tune with PyTorch, XGBoost, Tensorflow, etc.
 * `Let us know <https://github.com/ray-project/ray/issues>`__ if you ran into issues or have any questions by opening an issue on our Github.

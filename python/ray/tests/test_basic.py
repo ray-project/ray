@@ -1,6 +1,5 @@
 # coding: utf-8
 import io
-import json
 import logging
 import os
 import pickle
@@ -65,12 +64,12 @@ def test_submit_api(shutdown_only):
     def g():
         return ray.get_gpu_ids()
 
-    assert f._remote([0], num_return_vals=0) is None
-    id1 = f._remote(args=[1], num_return_vals=1)
+    assert f._remote([0], num_returns=0) is None
+    id1 = f._remote(args=[1], num_returns=1)
     assert ray.get(id1) == [0]
-    id1, id2 = f._remote(args=[2], num_return_vals=2)
+    id1, id2 = f._remote(args=[2], num_returns=2)
     assert ray.get([id1, id2]) == [0, 1]
-    id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
+    id1, id2, id3 = f._remote(args=[3], num_returns=3)
     assert ray.get([id1, id2, id3]) == [0, 1, 2]
     assert ray.get(
         g._remote(args=[], num_cpus=1, num_gpus=1,
@@ -108,8 +107,62 @@ def test_submit_api(shutdown_only):
     ray.get(a2.method._remote())
 
     id1, id2, id3, id4 = a.method._remote(
-        args=["test"], kwargs={"b": 2}, num_return_vals=4)
+        args=["test"], kwargs={"b": 2}, num_returns=4)
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
+
+
+def test_invalid_arguments(shutdown_only):
+    ray.init(num_cpus=2)
+
+    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'num_returns' only accepts 0 or a"
+                " positive integer"):
+
+            @ray.remote(num_returns=opt)
+            def g1():
+                return 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_retries' only accepts 0, -1 or a"
+                " positive integer"):
+
+            @ray.remote(max_retries=opt)
+            def g2():
+                return 1
+
+    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_calls' only accepts 0 or a positive"
+                " integer"):
+
+            @ray.remote(max_calls=opt)
+            def g3():
+                return 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_restarts' only accepts -1, 0 or a"
+                " positive integer"):
+
+            @ray.remote(max_restarts=opt)
+            class A1:
+                x = 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_task_retries' only accepts -1, 0 or a"
+                " positive integer"):
+
+            @ray.remote(max_task_retries=opt)
+            class A2:
+                x = 1
 
 
 def test_many_fractional_resources(shutdown_only):
@@ -206,10 +259,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
 
 
 def test_fair_queueing(shutdown_only):
-    ray.init(
-        num_cpus=1, _internal_config=json.dumps({
-            "fair_queueing_enabled": 1
-        }))
+    ray.init(num_cpus=1, _system_config={"fair_queueing_enabled": 1})
 
     @ray.remote
     def h():
@@ -230,6 +280,51 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
+def test_put_get(shutdown_only):
+    ray.init(num_cpus=0)
+
+    for i in range(100):
+        value_before = i * 10**6
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
+        assert value_before == value_after
+
+    for i in range(100):
+        value_before = i * 10**6 * 1.0
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
+        assert value_before == value_after
+
+    for i in range(100):
+        value_before = "h" * i
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
+        assert value_before == value_after
+
+    for i in range(100):
+        value_before = [1] * i
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
+        assert value_before == value_after
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
+def test_wait_timing(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def f():
+        time.sleep(1)
+
+    future = f.remote()
+
+    start = time.time()
+    ready, not_ready = ray.wait([future], timeout=0.2)
+    assert 0.2 < time.time() - start < 0.3
+    assert len(ready) == 0
+    assert len(not_ready) == 1
+
+
 def test_function_descriptor():
     python_descriptor = ray._raylet.PythonFunctionDescriptor(
         "module_name", "function_name", "class_name", "function_hash")
@@ -247,14 +342,31 @@ def test_function_descriptor():
     assert d.get(python_descriptor2) == 123
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_nested_functions(ray_start_regular):
+def test_ray_options(shutdown_only):
+    @ray.remote(
+        num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
+    def foo():
+        return ray.available_resources()
+
+    ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
+
+    without_options = ray.get(foo.remote())
+    with_options = ray.get(
+        foo.options(
+            num_cpus=3,
+            num_gpus=4,
+            memory=50 * 2**20,
+            resources={
+                "custom1": 0.5
+            }).remote())
+
+    to_check = ["CPU", "GPU", "memory", "custom1"]
+    for key in to_check:
+        assert without_options[key] != with_options[key], key
+    assert without_options != with_options
+
+
+def test_nested_functions(ray_start_shared_local_modes):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
     @ray.remote
@@ -303,14 +415,7 @@ def test_nested_functions(ray_start_regular):
     assert ray.get(factorial_odd.remote(5)) == 120
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_ray_recursive_objects(ray_start_regular):
+def test_ray_recursive_objects(ray_start_shared_local_modes):
     class ClassA:
         pass
 
@@ -336,14 +441,7 @@ def test_ray_recursive_objects(ray_start_regular):
         ray.put(obj)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_reducer_override_no_reference_cycle(ray_start_regular):
+def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
     # bpo-39492: reducer_override used to induce a spurious reference cycle
     # inside the Pickler object, that could prevent all serialized objects
     # from being garbage-collected without explicity invoking gc.collect.
@@ -379,14 +477,7 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     assert new_obj() is None
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_deserialized_from_buffer_immutable(ray_start_regular):
+def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
     x = np.full((2, 2), 1.)
     o = ray.put(x)
     y = ray.get(o)
@@ -395,14 +486,8 @@ def test_deserialized_from_buffer_immutable(ray_start_regular):
         y[0, 0] = 9.
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
+def test_passing_arguments_by_value_out_of_the_box(
+        ray_start_shared_local_modes):
     @ray.remote
     def f(x):
         return x
@@ -434,14 +519,8 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
     ray.get(ray.put(Foo))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_putting_object_that_closes_over_object_ref(ray_start_regular):
+def test_putting_object_that_closes_over_object_ref(
+        ray_start_shared_local_modes):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 
@@ -456,79 +535,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_regular):
     ray.put(f)
 
 
-def test_put_get(shutdown_only):
-    ray.init(num_cpus=0)
-
-    for i in range(100):
-        value_before = i * 10**6
-        object_ref = ray.put(value_before)
-        value_after = ray.get(object_ref)
-        assert value_before == value_after
-
-    for i in range(100):
-        value_before = i * 10**6 * 1.0
-        object_ref = ray.put(value_before)
-        value_after = ray.get(object_ref)
-        assert value_before == value_after
-
-    for i in range(100):
-        value_before = "h" * i
-        object_ref = ray.put(value_before)
-        value_after = ray.get(object_ref)
-        assert value_before == value_after
-
-    for i in range(100):
-        value_before = [1] * i
-        object_ref = ray.put(value_before)
-        value_after = ray.get(object_ref)
-        assert value_before == value_after
-
-
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_custom_serializers(ray_start_regular):
-    class Foo:
-        def __init__(self):
-            self.x = 3
-
-    def custom_serializer(obj):
-        return 3, "string1", type(obj).__name__
-
-    def custom_deserializer(serialized_obj):
-        return serialized_obj, "string2"
-
-    ray.register_custom_serializer(
-        Foo, serializer=custom_serializer, deserializer=custom_deserializer)
-
-    assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__), "string2")
-
-    class Bar:
-        def __init__(self):
-            self.x = 3
-
-    ray.register_custom_serializer(
-        Bar, serializer=custom_serializer, deserializer=custom_deserializer)
-
-    @ray.remote
-    def f():
-        return Bar()
-
-    assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
-
-
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_keyword_args(ray_start_regular):
+def test_keyword_args(ray_start_shared_local_modes):
     @ray.remote
     def keyword_fct1(a, b="hello"):
         return "{} {}".format(a, b)
@@ -613,14 +620,7 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_args_starkwargs(ray_start_regular):
+def test_args_starkwargs(ray_start_shared_local_modes):
     def starkwargs(a, b, **kwargs):
         return a, b, kwargs
 
@@ -648,14 +648,7 @@ def test_args_starkwargs(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_args_named_and_star(ray_start_regular):
+def test_args_named_and_star(ray_start_shared_local_modes):
     def hello(a, x="hello", **kwargs):
         return a, x, kwargs
 
@@ -689,14 +682,7 @@ def test_args_named_and_star(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_args_stars_after(ray_start_regular):
+def test_args_stars_after(ray_start_shared_local_modes):
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
 
@@ -728,7 +714,7 @@ def test_args_stars_after(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-def test_object_id_backward_compatibility(ray_start_regular):
+def test_object_id_backward_compatibility(ray_start_shared_local_modes):
     # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
     # alias for backward compatibility.
     # This test is to make sure legacy code can still use `ObjectID`.
@@ -743,7 +729,7 @@ def test_object_id_backward_compatibility(ray_start_regular):
     assert isinstance(object_ref, ray.ObjectRef)
 
 
-def test_nonascii_in_function_body(ray_start_regular):
+def test_nonascii_in_function_body(ray_start_shared_local_modes):
     @ray.remote
     def return_a_greek_char():
         return "φ"
@@ -752,5 +738,4 @@ def test_nonascii_in_function_body(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))

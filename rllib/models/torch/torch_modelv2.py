@@ -4,7 +4,7 @@ from typing import List
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.types import ModelConfigDict, TensorType
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 _, nn = try_import_torch()
 

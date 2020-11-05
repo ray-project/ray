@@ -1,13 +1,14 @@
 
 #pragma once
 
+#include <ray/api/wait_result.h>
+
 #include <cstdint>
 #include <memory>
 #include <msgpack.hpp>
 #include <typeinfo>
 #include <vector>
 
-#include <ray/api/wait_result.h>
 #include "ray/core.h"
 
 namespace ray {
@@ -35,9 +36,9 @@ class RayRuntime {
   virtual WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
                           int timeout_ms) = 0;
 
-  virtual ObjectID Call(RemoteFunctionPtrHolder &fptr,
+  virtual ObjectID Call(const RemoteFunctionPtrHolder &fptr,
                         std::shared_ptr<msgpack::sbuffer> args) = 0;
-  virtual ActorID CreateActor(RemoteFunctionPtrHolder &fptr,
+  virtual ActorID CreateActor(const RemoteFunctionPtrHolder &fptr,
                               std::shared_ptr<msgpack::sbuffer> args) = 0;
   virtual ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
                              std::shared_ptr<msgpack::sbuffer> args) = 0;

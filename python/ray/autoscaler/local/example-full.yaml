@@ -26,7 +26,7 @@ idle_timeout_minutes: 5
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled. Assumes Docker is installed.
 docker:
-    image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
+    image: "" # e.g., rayproject/ray:0.8.7
     container_name: "" # e.g. ray_docker
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
@@ -38,11 +38,16 @@ provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME
     worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
+    # Optional when running automatic cluster management on prem. If you use a coordinator server,
+    # then you can launch multiple autoscaling clusters on the same set of machines, and the coordinator
+    # will assign individual nodes to clusters as needed.
+    #    coordinator_address: "<host>:<port>"
 
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: YOUR_USERNAME
-    ssh_private_key: ~/.ssh/id_rsa
+    # Optional if an ssh private key is necessary to ssh to the cluster.
+    # ssh_private_key: ~/.ssh/id_rsa
 
 # Leave this empty.
 head_node: {}
@@ -57,7 +62,14 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
-# Whether changes to mounted files in the head node should sync to the worker node continuously
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
+cluster_synced_files: []
+
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
 file_mounts_sync_continuously: False
 
 # List of commands that will be run before `setup_commands`. If docker is

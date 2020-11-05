@@ -68,8 +68,8 @@ class GlobalStateAccessorTest : public ::testing::Test {
   void TearDown() override {
     gcs_server_->Stop();
     io_service_->stop();
-    gcs_server_.reset();
     thread_io_service_->join();
+    gcs_server_.reset();
 
     gcs_client_->Disconnect();
     global_state_->Disconnect();
@@ -192,7 +192,7 @@ TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
-  int profile_count = 100;
+  int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
     auto client_id = ClientID::FromRandom();
@@ -203,7 +203,8 @@ TEST_F(GlobalStateAccessorTest, TestProfileTable) {
         [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }
-  ASSERT_EQ(global_state_->GetAllProfileInfo().size(), profile_count);
+  ASSERT_EQ(global_state_->GetAllProfileInfo().size(),
+            RayConfig::instance().maximum_profile_table_rows_count());
 }
 
 TEST_F(GlobalStateAccessorTest, TestObjectTable) {
@@ -269,9 +270,15 @@ TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 2);
 }
 
+// TODO(sang): Add tests after adding asyncAdd
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

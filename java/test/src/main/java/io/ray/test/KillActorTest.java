@@ -4,24 +4,27 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.exception.RayActorException;
+import io.ray.runtime.exception.RayActorException;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class KillActorTest extends BaseTest {
+
+  private String oldNumWorkersPerProcess;
 
   @BeforeClass
   public void setUp() {
+    oldNumWorkersPerProcess = System.getProperty("ray.raylet.config.num_workers_per_process_java");
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
   }
 
   @AfterClass
   public void tearDown() {
-    System.clearProperty("ray.raylet.config.num_workers_per_process_java");
+    System.setProperty("ray.raylet.config.num_workers_per_process_java", oldNumWorkersPerProcess);
   }
 
   public static class HangActor {
@@ -42,6 +45,10 @@ public class KillActorTest extends BaseTest {
     public void kill(ActorHandle<?> actor, boolean noRestart) {
       actor.kill(noRestart);
     }
+
+    public void killWithoutRestart(ActorHandle<?> actor) {
+      actor.kill();
+    }
   }
 
   private static void localKill(ActorHandle<?> actor, boolean noRestart) {
@@ -54,8 +61,6 @@ public class KillActorTest extends BaseTest {
   }
 
   private void testKillActor(BiConsumer<ActorHandle<?>, Boolean> kill, boolean noRestart) {
-    TestUtils.skipTestUnderSingleProcess();
-
     ActorHandle<HangActor> actor = Ray.actor(HangActor::new)
         .setMaxRestarts(1)
         .remote();
@@ -89,10 +94,16 @@ public class KillActorTest extends BaseTest {
   public void testLocalKill() {
     testKillActor(KillActorTest::localKill, false);
     testKillActor(KillActorTest::localKill, true);
+    testKillActor((actorHandle, noRestart) -> actorHandle.kill(), true);
   }
 
   public void testRemoteKill() {
     testKillActor(KillActorTest::remoteKill, false);
     testKillActor(KillActorTest::remoteKill, true);
+    testKillActor((actor, noRestart) -> {
+      ActorHandle<KillerActor> killer = Ray.actor(KillerActor::new).remote();
+      killer.task(KillerActor::killWithoutRestart, actor).remote();
+    }, true);
   }
+
 }

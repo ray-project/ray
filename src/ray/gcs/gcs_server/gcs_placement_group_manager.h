@@ -57,21 +57,32 @@ class GcsPlacementGroup {
   /// Get the immutable PlacementGroupTableData of this placement group.
   const rpc::PlacementGroupTableData &GetPlacementGroupTableData();
 
+  /// Get the mutable bundle of this placement group.
+  rpc::Bundle *GetMutableBundle(int bundle_index);
+
   /// Update the state of this placement_group.
   void UpdateState(rpc::PlacementGroupTableData::PlacementGroupState state);
+
   /// Get the state of this gcs placement_group.
   rpc::PlacementGroupTableData::PlacementGroupState GetState() const;
 
   /// Get the id of this placement_group.
   PlacementGroupID GetPlacementGroupID() const;
+
   /// Get the name of this placement_group.
   std::string GetName() const;
 
-  /// Get the bundles of this placement_group
+  /// Get the bundles of this placement_group (including unplaced).
   std::vector<std::shared_ptr<BundleSpecification>> GetBundles() const;
+
+  /// Get the unplaced bundles of this placement group.
+  std::vector<std::shared_ptr<BundleSpecification>> GetUnplacedBundles() const;
 
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
+
+  // Get debug string for the placement group.
+  std::string DebugString() const;
 
  private:
   /// The placement_group meta data which contains the task specification as well as the
@@ -81,6 +92,7 @@ class GcsPlacementGroup {
 
 using RegisterPlacementGroupCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
+
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
 /// group. This class is not thread-safe.
 /// The placementGroup will be added into queue and set the status as pending first and
@@ -106,18 +118,25 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                                   rpc::CreatePlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleRemovePlacementGroup(const rpc::RemovePlacementGroupRequest &request,
+                                  rpc::RemovePlacementGroupReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetPlacementGroup(const rpc::GetPlacementGroupRequest &request,
+                               rpc::GetPlacementGroupReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   /// Register placement_group asynchronously.
   ///
-  /// \param request Contains the meta info to create the placement_group.
+  /// \param placement_group The placement group to be created.
   /// \param callback Will be invoked after the placement_group is created successfully or
   /// be invoked immediately if the placement_group is already registered to
-  /// `registered_placement_groups_` and its state is `ALIVE`. The callback will not be
+  /// `registered_placement_groups_` and its state is `CREATED`. The callback will not be
   /// called in this case.
-  void RegisterPlacementGroup(const rpc::CreatePlacementGroupRequest &request,
-                              RegisterPlacementGroupCallback callback);
+  void RegisterPlacementGroup(const std::shared_ptr<GcsPlacementGroup> &placement_group,
+                              StatusCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
-  /// This function is exposed for testing only.
   void SchedulePendingPlacementGroups();
 
   /// Get the placement_group ID for the named placement_group. Returns nil if the
@@ -138,39 +157,70 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   ///
   /// \param placement_group The placement_group that has been created.
   void OnPlacementGroupCreationSuccess(
-      std::shared_ptr<GcsPlacementGroup> placement_group);
+      const std::shared_ptr<GcsPlacementGroup> &placement_group);
+
+  /// TODO-SANG Fill it up.
+  void RemovePlacementGroup(const PlacementGroupID &placement_group_id,
+                            StatusCallback on_placement_group_removed);
+
+  /// Handle a node death. This will reschedule all bundles associated with the
+  /// specified node id.
+  ///
+  /// \param node_id The specified node id.
+  void OnNodeDead(const ClientID &node_id);
 
  private:
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
+  /// Try to create placement group after a short time.
+  void RetryCreatingPlacementGroup();
 
-  /// Callbacks of placement_group registration requests that are not yet flushed.
-  /// This map is used to filter duplicated messages from a Driver/Worker caused by some
-  /// network problems.
-  ///
-  /// Since the GRPC message received by the GCS side is out of order, it can not be
-  /// determined that the last callback is the valid one. Therefore, the repeated
-  /// callbacks are recorded in the form of vector without distinction. When the operation
-  /// is successful, all callbacks will be triggered. One of them must be valid, and the
-  /// rest invalid callbacks will not have any effect even if they are called.
-  absl::flat_hash_map<PlacementGroupID, std::vector<RegisterPlacementGroupCallback>>
-      placement_group_to_register_callbacks_;
+  /// Mark the manager that there's a placement group scheduling going on.
+  void MarkSchedulingStarted(const PlacementGroupID placement_group_id) {
+    scheduling_in_progress_id_ = placement_group_id;
+  }
+
+  /// Mark the manager that there's no more placement group scheduling going on.
+  void MarkSchedulingDone() { scheduling_in_progress_id_ = PlacementGroupID::Nil(); }
+
+  /// Check if the placement group of a given id is scheduling.
+  bool IsSchedulingInProgress(const PlacementGroupID &placement_group_id) const {
+    return scheduling_in_progress_id_ == placement_group_id;
+  }
+
+  /// Check if there's any placement group scheduling going on.
+  bool IsSchedulingInProgress() const {
+    return scheduling_in_progress_id_ != PlacementGroupID::Nil();
+  }
+
+  /// The io loop that is used to delay execution of tasks (e.g.,
+  /// execute_after).
+  boost::asio::io_context &io_context_;
+
+  /// Callback of placement_group registration requests that are not yet flushed.
+  absl::flat_hash_map<PlacementGroupID, StatusCallback>
+      placement_group_to_register_callback_;
+
   /// All registered placement_groups (pending placement_groups are also included).
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
       registered_placement_groups_;
+
   /// The pending placement_groups which will not be scheduled until there's a resource
   /// change.
+  /// NOTE: When we remove placement group, we need to look for
+  /// `pending_placement_groups_` and delete the specific placement group, so we can't use
+  /// `std::priority_queue`.
   std::deque<std::shared_ptr<GcsPlacementGroup>> pending_placement_groups_;
+
   /// The scheduler to schedule all registered placement_groups.
   std::shared_ptr<gcs::GcsPlacementGroupSchedulerInterface>
       gcs_placement_group_scheduler_;
+
   /// Used to update placement group information upon creation, deletion, etc.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// If a placement group is creating
-  bool is_creating_ = false;
 
-  /// A timer that ticks every schedule failure milliseconds.
-  boost::asio::deadline_timer reschedule_timer_;
+  /// The placement group id that is in progress of scheduling bundles.
+  /// TODO(sang): Currently, only one placement group can be scheduled at a time.
+  /// We should probably support concurrenet creation (or batching).
+  PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
 };
 
 }  // namespace gcs

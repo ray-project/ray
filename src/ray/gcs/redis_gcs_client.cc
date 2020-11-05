@@ -54,7 +54,6 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   // For raylet, NodeID should be initialized in raylet layer(not here).
   client_table_.reset(new ClientTable({primary_context}, this));
 
-  error_table_.reset(new ErrorTable({primary_context}, this));
   job_table_.reset(new JobTable({primary_context}, this));
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context}, this));
   // Tables below would be sharded.
@@ -69,11 +68,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
   worker_table_.reset(new WorkerTable(shard_contexts, this));
 
-  if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_accessor_.reset(new RedisActorInfoAccessor(this));
-  } else {
-    actor_accessor_.reset(new RedisLogBasedActorInfoAccessor(this));
-  }
+  actor_accessor_.reset(new RedisActorInfoAccessor(this));
 
   job_accessor_.reset(new RedisJobInfoAccessor(this));
   object_accessor_.reset(new RedisObjectInfoAccessor(this));
@@ -86,7 +81,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   is_connected_ = true;
 
-  RAY_LOG(INFO) << "RedisGcsClient Connected.";
+  RAY_LOG(DEBUG) << "RedisGcsClient connected.";
 
   return Status::OK();
 }
@@ -107,7 +102,6 @@ std::string RedisGcsClient::DebugString() const {
   result << "\n- TaskReconstructionLog: " << task_reconstruction_log_->DebugString();
   result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
   result << "\n- HeartbeatTable: " << heartbeat_table_->DebugString();
-  result << "\n- ErrorTable: " << error_table_->DebugString();
   result << "\n- ProfileTable: " << profile_table_->DebugString();
   result << "\n- ClientTable: " << client_table_->DebugString();
   result << "\n- JobTable: " << job_table_->DebugString();
@@ -139,8 +133,6 @@ HeartbeatTable &RedisGcsClient::heartbeat_table() { return *heartbeat_table_; }
 HeartbeatBatchTable &RedisGcsClient::heartbeat_batch_table() {
   return *heartbeat_batch_table_;
 }
-
-ErrorTable &RedisGcsClient::error_table() { return *error_table_; }
 
 JobTable &RedisGcsClient::job_table() { return *job_table_; }
 

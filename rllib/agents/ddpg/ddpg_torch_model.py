@@ -51,9 +51,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         self.bounded = np.logical_and(action_space.bounded_above,
                                       action_space.bounded_below).any()
-        self.action_range = torch.from_numpy(
-            (action_space.high - action_space.low)[None])
-        self.low_action = torch.from_numpy(action_space.low[None])
+        self.low_action = torch.tensor(action_space.low, dtype=torch.float32)
+        self.action_range = torch.tensor(
+            action_space.high - action_space.low, dtype=torch.float32)
         self.action_dim = np.product(action_space.shape)
 
         # Build the policy network.
@@ -135,7 +135,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         This implements Q(s, a).
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
             actions (Tensor): Actions to return the Q-values for.
@@ -151,7 +151,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         This implements the twin Q(s, a).
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
             actions (Optional[Tensor]): Actions to return the Q-values for.
@@ -168,7 +168,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         This outputs the support for pi(s). For continuous action spaces, this
         is the action directly. For discrete, is is the mean / std dev.
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
 

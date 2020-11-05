@@ -3,7 +3,6 @@ package io.ray.test;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.id.ObjectId;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.testng.Assert;
@@ -37,8 +36,8 @@ public class ObjectStoreTest extends BaseTest {
   @Test
   public void testGetMultipleObjects() {
     List<Integer> ints = ImmutableList.of(1, 2, 3, 4, 5);
-    List<ObjectId> ids = ints.stream().map(obj -> Ray.put(obj).getId())
+    List<ObjectRef<Integer>> refs = ints.stream().map(Ray::put)
         .collect(Collectors.toList());
-    Assert.assertEquals(ints, Ray.get(ids, Integer.class));
+    Assert.assertEquals(ints, Ray.get(refs));
   }
 }

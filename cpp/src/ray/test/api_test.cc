@@ -1,6 +1,7 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
+
 #include <future>
 #include <thread>
 
@@ -40,6 +41,19 @@ TEST(RayApiTest, PutTest) {
   auto obj1 = Ray::Put(1);
   auto i1 = obj1.Get();
   EXPECT_EQ(1, *i1);
+}
+
+TEST(RayApiTest, StaticGetTest) {
+  Ray::Init();
+  /// `Get` member function
+  auto obj_ref1 = Ray::Put(100);
+  auto res1 = obj_ref1.Get();
+  EXPECT_EQ(100, *res1);
+
+  /// `Get` static function
+  auto obj_ref2 = Ray::Put(200);
+  auto res2 = Ray::Get(obj_ref2);
+  EXPECT_EQ(200, *res2);
 }
 
 TEST(RayApiTest, WaitTest) {

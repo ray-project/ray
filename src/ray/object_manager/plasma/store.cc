@@ -226,9 +226,13 @@ Status PlasmaStore::FreeCudaMemory(int device_num, int64_t size, uint8_t* pointe
 #endif
 
 // Create a new object buffer in the hash table.
-PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_full,
-                                      int64_t data_size, int64_t metadata_size,
-                                      int device_num, const std::shared_ptr<Client> &client,
+PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id,
+                                      const ClientID& owner_raylet_id,
+                                      const std::string& owner_ip_address,
+                                      int owner_port, const WorkerID& owner_worker_id,
+                                      bool evict_if_full, int64_t data_size,
+                                      int64_t metadata_size, int device_num,
+                                      const std::shared_ptr<Client> &client,
                                       PlasmaObject* result) {
   RAY_LOG(DEBUG) << "creating object " << object_id.Hex();
 
@@ -282,6 +286,10 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id, bool evict_if_f
   entry->offset = offset;
   entry->state = ObjectState::PLASMA_CREATED;
   entry->device_num = device_num;
+  entry->owner_raylet_id = owner_raylet_id;
+  entry->owner_ip_address = owner_ip_address;
+  entry->owner_port = owner_port;
+  entry->owner_worker_id = owner_worker_id;
   entry->create_time = std::time(nullptr);
   entry->construct_duration = -1;
 
@@ -607,6 +615,10 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID>& object_ids) {
 
     object_info.object_id = object_ids[i].Binary();
     object_info.data_size = entry->data_size;
+    object_info.owner_raylet_id = entry->owner_raylet_id.Binary();
+    object_info.owner_ip_address = entry->owner_ip_address;
+    object_info.owner_port = entry->owner_port;
+    object_info.owner_worker_id = entry->owner_worker_id.Binary();
     object_info.metadata_size = entry->metadata_size;
     infos.push_back(object_info);
   }
@@ -660,14 +672,19 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
     return PlasmaError::ObjectInUse;
   }
 
+  // Prepare the notification before deleting the object.
+  ObjectInfoT notification;
+  notification.object_id = object_id.Binary();
+  notification.owner_raylet_id = entry->owner_raylet_id.Binary();
+  notification.owner_ip_address = entry->owner_ip_address;
+  notification.owner_port = entry->owner_port;
+  notification.owner_worker_id = entry->owner_worker_id.Binary();
+  notification.is_deletion = true;
+
   eviction_policy_.RemoveObject(object_id);
   EraseFromObjectTable(object_id);
   // Inform all subscribers that the object has been deleted.
-  ObjectInfoT notification;
-  notification.object_id = object_id.Binary();
-  notification.is_deletion = true;
   PushNotification(&notification);
-
   return PlasmaError::OK;
 }
 
@@ -698,13 +715,18 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
           entry->pointer, entry->data_size + entry->metadata_size));
       evicted_entries.push_back(entry);
     } else {
+      // Prepare the notification before deleting the object.
+      ObjectInfoT notification;
+      notification.object_id = object_id.Binary();
+      notification.owner_raylet_id = entry->owner_raylet_id.Binary();
+      notification.owner_ip_address = entry->owner_ip_address;
+      notification.owner_port = entry->owner_port;
+      notification.owner_worker_id = entry->owner_worker_id.Binary();
+      notification.is_deletion = true;
       // If there is no backing external store, just erase the object entry
       // and send a deletion notification.
       EraseFromObjectTable(object_id);
       // Inform all subscribers that the object has been deleted.
-      ObjectInfoT notification;
-      notification.object_id = object_id.Binary();
-      notification.is_deletion = true;
       PushNotification(&notification);
     }
   }
@@ -840,6 +862,10 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
       info.object_id = entry.first.Binary();
       info.data_size = entry.second->data_size;
       info.metadata_size = entry.second->metadata_size;
+      info.owner_raylet_id = entry.second->owner_raylet_id.Binary();
+      info.owner_ip_address = entry.second->owner_ip_address;
+      info.owner_port = entry.second->owner_port;
+      info.owner_worker_id = entry.second->owner_worker_id.Binary();
       infos.push_back(info);
     }
   }
@@ -858,14 +884,21 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   // Process the different types of requests.
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
+      ClientID owner_raylet_id;
+      std::string owner_ip_address;
+      int owner_port;
+      WorkerID owner_worker_id;
       bool evict_if_full;
       int64_t data_size;
       int64_t metadata_size;
       int device_num;
-      RAY_RETURN_NOT_OK(ReadCreateRequest(input, input_size, &object_id, &evict_if_full,
-                                      &data_size, &metadata_size, &device_num));
-      PlasmaError error_code = CreateObject(object_id, evict_if_full, data_size,
-                                            metadata_size, device_num, client, &object);
+      RAY_RETURN_NOT_OK(ReadCreateRequest(
+        input, input_size, &object_id, &owner_raylet_id, &owner_ip_address, &owner_port,
+        &owner_worker_id, &evict_if_full, &data_size, &metadata_size, &device_num));
+      PlasmaError error_code = CreateObject(object_id, owner_raylet_id, owner_ip_address,
+                                            owner_port, owner_worker_id, evict_if_full,
+                                            data_size, metadata_size, device_num, client,
+                                            &object);
       int64_t mmap_size = 0;
       if (error_code == PlasmaError::OK && device_num == 0) {
         mmap_size = GetMmapSize(object.store_fd);

@@ -11,7 +11,8 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import run_string_as_driver, get_non_head_nodes
+from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
+                            wait_for_condition)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
@@ -188,9 +189,6 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
                 ray.get(x_id)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
@@ -346,9 +344,6 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
@@ -620,39 +615,52 @@ def test_calling_put_on_actor_handle(ray_start_regular):
     ray.get(g.remote())
 
 
-def test_pickling_actor_handle(ray_start_regular):
+def test_named_but_not_detached(ray_start_regular):
+    redis_address = ray_start_regular["redis_address"]
+
+    driver_script = """
+import ray
+ray.init(address="{}")
+
+@ray.remote
+class NotDetached:
+    def ping(self):
+        return "pong"
+
+actor = NotDetached.options(name="actor").remote()
+assert ray.get(actor.ping.remote()) == "pong"
+handle = ray.get_actor("actor")
+assert ray.get(handle.ping.remote()) == "pong"
+""".format(redis_address)
+
+    # Creates and kills actor once the driver exits.
+    run_string_as_driver(driver_script)
+
+    # Must raise an exception since lifetime is not detached.
+    with pytest.raises(Exception):
+        detached_actor = ray.get_actor("actor")
+        ray.get(detached_actor.ping.remote())
+
+    # Check that the names are reclaimed after actors die.
+
+    def check_name_available(name):
+        try:
+            ray.get_actor(name)
+            return False
+        except ValueError:
+            return True
+
     @ray.remote
-    class Foo:
-        def method(self):
-            pass
+    class A:
+        pass
 
-    f = Foo.remote()
-    new_f = ray.worker.pickle.loads(ray.worker.pickle.dumps(f))
-    # Verify that we can call a method on the unpickled handle. TODO(rkn):
-    # we should also test this from a different driver.
-    ray.get(new_f.method.remote())
+    a = A.options(name="my_actor_1").remote()
+    ray.kill(a, no_restart=True)
+    wait_for_condition(lambda: check_name_available("my_actor_1"))
 
-
-def test_pickled_actor_handle_call_in_method_twice(ray_start_regular):
-    @ray.remote
-    class Actor1:
-        def f(self):
-            return 1
-
-    @ray.remote
-    class Actor2:
-        def __init__(self, constructor):
-            self.actor = constructor()
-
-        def step(self):
-            ray.get(self.actor.f.remote())
-
-    a = Actor1.remote()
-
-    b = Actor2.remote(lambda: a)
-
-    ray.get(b.step.remote())
-    ray.get(b.step.remote())
+    b = A.options(name="my_actor_2").remote()
+    del b
+    wait_for_condition(lambda: check_name_available("my_actor_2"))
 
 
 def test_detached_actor(ray_start_regular):
@@ -662,17 +670,17 @@ def test_detached_actor(ray_start_regular):
             return "pong"
 
     with pytest.raises(TypeError):
-        DetachedActor._remote(name=1)
+        DetachedActor._remote(lifetime="detached", name=1)
 
     with pytest.raises(
             ValueError, match="Actor name cannot be an empty string"):
-        DetachedActor._remote(name="")
+        DetachedActor._remote(lifetime="detached", name="")
 
-    d = DetachedActor._remote(name="d_actor")
+    d = DetachedActor._remote(lifetime="detached", name="d_actor")
     assert ray.get(d.ping.remote()) == "pong"
 
     with pytest.raises(ValueError, match="Please use a different name"):
-        DetachedActor._remote(name="d_actor")
+        DetachedActor._remote(lifetime="detached", name="d_actor")
 
     redis_address = ray_start_regular["redis_address"]
 
@@ -690,7 +698,7 @@ class DetachedActor:
     def ping(self):
         return "pong"
 
-actor = DetachedActor._remote(name="{}")
+actor = DetachedActor._remote(lifetime="detached", name="{}")
 ray.get(actor.ping.remote())
 """.format(redis_address, get_actor_name, create_actor_name)
 
@@ -709,7 +717,8 @@ def test_detached_actor_cleanup(ray_start_regular):
 
     def create_and_kill_actor(actor_name):
         # Make sure same name is creatable after killing it.
-        detached_actor = DetachedActor.options(name=actor_name).remote()
+        detached_actor = DetachedActor.options(
+            lifetime="detached", name=actor_name).remote()
         # Wait for detached actor creation.
         assert ray.get(detached_actor.ping.remote()) == "pong"
         del detached_actor
@@ -746,7 +755,7 @@ class DetachedActor:
         return "pong"
 
 # Make sure same name is creatable after killing it.
-detached_actor = DetachedActor.options(name="{}").remote()
+detached_actor = DetachedActor.options(lifetime="detached", name="{}").remote()
 assert ray.get(detached_actor.ping.remote()) == "pong"
 ray.kill(detached_actor)
 # Wait until actor dies.
@@ -766,6 +775,27 @@ while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
     # Make sure we can create a detached actor created/killed
     # at other scripts.
     create_and_kill_actor(dup_actor_name)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }], indirect=True)
+def test_detached_actor_local_mode(ray_start_regular):
+    RETURN_VALUE = 3
+
+    @ray.remote
+    class Y:
+        def f(self):
+            return RETURN_VALUE
+
+    Y.options(lifetime="detached", name="test").remote()
+    y = ray.get_actor("test")
+    assert ray.get(y.f.remote()) == RETURN_VALUE
+
+    ray.kill(y)
+    with pytest.raises(ValueError):
+        ray.get_actor("test")
 
 
 @pytest.mark.parametrize(
@@ -813,7 +843,8 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
                         if schedule_in_second_node\
                         else {"first_node": 1}
         actor_handle = DetachedActor.options(
-            name=actor_name, resources=resources).remote()
+            lifetime="detached", name=actor_name,
+            resources=resources).remote()
         # Wait for detached actor creation.
         assert ray.get(actor_handle.ping.remote()) == "pong"
         return actor_handle
@@ -834,26 +865,6 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
     # Name should be available now.
     deatched_actor = create_detached_actor_blocking(node_failure_actor_name)
     assert ray.get(deatched_actor.ping.remote()) == "pong"
-
-
-def test_kill(ray_start_regular):
-    @ray.remote
-    class Actor:
-        def hang(self):
-            while True:
-                time.sleep(1)
-
-    actor = Actor.remote()
-    result = actor.hang.remote()
-    ready, _ = ray.wait([result], timeout=0.5)
-    assert len(ready) == 0
-    ray.kill(actor, no_restart=False)
-
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(result)
-
-    with pytest.raises(ValueError):
-        ray.kill("not_an_actor_handle")
 
 
 # This test verifies actor creation task failure will not
@@ -908,21 +919,19 @@ def test_actor_creation_task_crash(ray_start_regular):
     ray.get(ra.f.remote())
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED") != "true",
-    reason=("This edge case is not handled when GCS actor management is off. "
-            "We won't fix this because GCS actor management "
-            "will be on by default anyway."))
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "num_cpus": 2,
-        "num_gpus": 1
-    }], indirect=True)
+        "resources": {
+            "a": 1
+        }
+    }],
+    indirect=True)
 def test_pending_actor_removed_by_owner(ray_start_regular):
     # Verify when an owner of pending actors is killed, the actor resources
     # are correctly returned.
 
-    @ray.remote(num_cpus=1, num_gpus=1)
+    @ray.remote(num_cpus=1, resources={"a": 1})
     class A:
         def __init__(self):
             self.actors = []
@@ -930,12 +939,12 @@ def test_pending_actor_removed_by_owner(ray_start_regular):
         def create_actors(self):
             self.actors = [B.remote() for _ in range(2)]
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"a": 1})
     class B:
         def ping(self):
             return True
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"a": 1})
     def f():
         return True
 
@@ -950,6 +959,61 @@ def test_pending_actor_removed_by_owner(ray_start_regular):
     assert ray.get(a.ping.remote())
     ray.kill(a)
     assert ray.get(f.remote())
+
+
+def test_pickling_actor_handle(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def method(self):
+            pass
+
+    f = Foo.remote()
+    new_f = ray.worker.pickle.loads(ray.worker.pickle.dumps(f))
+    # Verify that we can call a method on the unpickled handle. TODO(rkn):
+    # we should also test this from a different driver.
+    ray.get(new_f.method.remote())
+
+
+def test_pickled_actor_handle_call_in_method_twice(ray_start_regular_shared):
+    @ray.remote
+    class Actor1:
+        def f(self):
+            return 1
+
+    @ray.remote
+    class Actor2:
+        def __init__(self, constructor):
+            self.actor = constructor()
+
+        def step(self):
+            ray.get(self.actor.f.remote())
+
+    a = Actor1.remote()
+
+    b = Actor2.remote(lambda: a)
+
+    ray.get(b.step.remote())
+    ray.get(b.step.remote())
+
+
+def test_kill(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def hang(self):
+            while True:
+                time.sleep(1)
+
+    actor = Actor.remote()
+    result = actor.hang.remote()
+    ready, _ = ray.wait([result], timeout=0.5)
+    assert len(ready) == 0
+    ray.kill(actor, no_restart=False)
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(result)
+
+    with pytest.raises(ValueError):
+        ray.kill("not_an_actor_handle")
 
 
 if __name__ == "__main__":

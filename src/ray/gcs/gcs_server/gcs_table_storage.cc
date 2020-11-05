@@ -106,6 +106,26 @@ Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
                                                  callback);
 }
 
+template <typename Key, typename Data>
+Status GcsTableWithJobId<Key, Data>::Delete(const Key &key,
+                                            const StatusCallback &callback) {
+  return this->store_client_->AsyncDeleteWithIndex(
+      this->table_name_, key.Binary(), GetJobIdFromKey(key).Binary(), callback);
+}
+
+template <typename Key, typename Data>
+Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
+                                                 const StatusCallback &callback) {
+  std::vector<std::string> keys_to_delete;
+  std::vector<std::string> indexs_to_delete;
+  for (auto key : keys) {
+    keys_to_delete.push_back(key.Binary());
+    indexs_to_delete.push_back(GetJobIdFromKey(key).Binary());
+  }
+  return this->store_client_->AsyncBatchDeleteWithIndex(this->table_name_, keys_to_delete,
+                                                        indexs_to_delete, callback);
+}
+
 template class GcsTable<JobID, JobTableData>;
 template class GcsTable<ClientID, GcsNodeInfo>;
 template class GcsTable<ClientID, ResourceMap>;

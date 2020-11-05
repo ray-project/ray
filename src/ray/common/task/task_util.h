@@ -41,7 +41,7 @@ class TaskArgByValue : public TaskArg {
   ///
   /// \param[in] value Value of the argument.
   /// \return The task argument.
-  TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
+  explicit TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
     RAY_CHECK(value) << "Value can't be null.";
   }
 
@@ -80,13 +80,15 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetCommonTaskSpec(
-      const TaskID &task_id, const Language &language,
+      const TaskID &task_id, const std::string name, const Language &language,
       const ray::FunctionDescriptor &function_descriptor, const JobID &job_id,
       const TaskID &parent_task_id, uint64_t parent_counter, const TaskID &caller_id,
       const rpc::Address &caller_address, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
-      const std::unordered_map<std::string, double> &required_placement_resources) {
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      const PlacementGroupID &placement_group_id) {
     message_->set_type(TaskType::NORMAL_TASK);
+    message_->set_name(name);
     message_->set_language(language);
     *message_->mutable_function_descriptor() = function_descriptor->GetMessage();
     message_->set_job_id(job_id.Binary());
@@ -100,6 +102,7 @@ class TaskSpecBuilder {
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(
         required_placement_resources.begin(), required_placement_resources.end());
+    message_->set_placement_group_id(placement_group_id.Binary());
     return *this;
   }
 

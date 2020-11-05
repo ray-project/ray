@@ -45,7 +45,7 @@ class ActorInfoAccessorTest : public AccessorTestBase<ActorID, ActorTableData> {
   }
 
   void GenCheckpointData() {
-    for (const auto item : id_to_data_) {
+    for (const auto &item : id_to_data_) {
       const ActorID &id = item.first;
       ActorCheckpointList checkpoints;
       for (size_t i = 0; i < checkpoint_number_; ++i) {

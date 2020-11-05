@@ -2,6 +2,7 @@
 #pragma once
 
 #include <ray/api/ray_exception.h>
+
 #include <msgpack.hpp>
 
 namespace ray {

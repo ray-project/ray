@@ -50,6 +50,10 @@ Summary
      - Gradient-free Optimization
      - [`Nevergrad <https://github.com/facebookresearch/nevergrad>`__]
      - :doc:`/tune/examples/nevergrad_example`
+   * - :ref:`OptunaSearch <tune-optuna>`
+     - Optuna search algorithms
+     - [`Optuna <https://optuna.org/>`__]
+     - :doc:`/tune/examples/optuna_example`
    * - :ref:`ZOOptSearch <zoopt>`
      - Zeroth-order Optimization
      - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
@@ -58,9 +62,6 @@ Summary
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/sigopt_example`
-
-
-.. note::Search algorithms will require a different search space declaration than the default Tune format - meaning that you will not be able to combine ``tune.grid_search`` with the below integrations.
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.
 
@@ -71,7 +72,56 @@ Tune also provides helpful utilities to use with Search Algorithms:
 
  * :ref:`repeater`: Support for running each *sampled hyperparameter* with multiple random seeds.
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
+ * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
+Saving and Restoring
+--------------------
+
+Certain search algorithms have ``save/restore`` implemented,
+allowing reuse of learnings across multiple tuning runs.
+
+.. code-block:: python
+
+    search_alg = HyperOptSearch()
+
+    experiment_1 = tune.run(
+        trainable,
+        search_alg=search_alg)
+
+    search_alg.save("./my-checkpoint.pkl")
+
+    # Restore the saved state onto another search algorithm
+
+    search_alg2 = HyperOptSearch()
+    search_alg2.restore("./my-checkpoint.pkl")
+
+    experiment_2 = tune.run(
+        trainable,
+        search_alg=search_alg2)
+
+Further, Tune automatically saves its state inside the current experiment folder ("Result Dir") during tuning.
+
+Note that if you have two Tune runs with the same experiment folder,
+the previous state checkpoint will be overwritten. You can
+avoid this by making sure ``tune.run(name=...)`` is set to a unique
+identifier.
+
+.. code-block:: python
+
+    search_alg = HyperOptSearch()
+    experiment_1 = tune.run(
+        cost,
+        num_samples=5,
+        search_alg=search_alg,
+        verbose=0,
+        name="my-experiment-1",
+        local_dir="~/my_results")
+
+    search_alg2 = HyperOptSearch()
+    search_alg2.restore_from_dir(
+      os.path.join("~/my_results", "my-experiment-1"))
+
+.. note:: This is currently not implemented for: AxSearch, TuneBOHB, SigOptSearch, and DragonflySearch.
 
 .. _tune-ax:
 
@@ -87,6 +137,7 @@ Bayesian Optimization (tune.suggest.bayesopt.BayesOptSearch)
 
 
 .. autoclass:: ray.tune.suggest.bayesopt.BayesOptSearch
+  :members: save, restore
 
 .. _`BayesianOptimization search space specification`: https://github.com/fmfn/BayesianOptimization/blob/master/examples/advanced-tour.ipynb
 
@@ -115,6 +166,7 @@ Dragonfly (tune.suggest.dragonfly.DragonflySearch)
 --------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
+  :members: save, restore
 
 .. _tune-hyperopt:
 
@@ -122,6 +174,7 @@ HyperOpt (tune.suggest.hyperopt.HyperOptSearch)
 -----------------------------------------------
 
 .. autoclass:: ray.tune.suggest.hyperopt.HyperOptSearch
+  :members: save, restore
 
 .. _nevergrad:
 
@@ -129,8 +182,18 @@ Nevergrad (tune.suggest.nevergrad.NevergradSearch)
 --------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.nevergrad.NevergradSearch
+  :members: save, restore
 
 .. _`Nevergrad README's Optimization section`: https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.rst#choosing-an-optimizer
+
+.. _tune-optuna:
+
+Optuna (tune.suggest.optuna.OptunaSearch)
+-----------------------------------------
+
+.. autoclass:: ray.tune.suggest.optuna.OptunaSearch
+
+.. _`Optuna samplers`: https://optuna.readthedocs.io/en/stable/reference/samplers.html
 
 .. _sigopt:
 
@@ -147,6 +210,7 @@ Scikit-Optimize (tune.suggest.skopt.SkOptSearch)
 ------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.skopt.SkOptSearch
+  :members: save, restore
 
 .. _`skopt Optimizer object`: https://scikit-optimize.github.io/#skopt.Optimizer
 
@@ -156,6 +220,7 @@ ZOOpt (tune.suggest.zoopt.ZOOptSearch)
 --------------------------------------
 
 .. autoclass:: ray.tune.suggest.zoopt.ZOOptSearch
+  :members: save, restore
 
 .. _repeater:
 
@@ -188,8 +253,8 @@ Use ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency w
 
 .. _byo-algo:
 
-Implementing your own Search Algorithm
---------------------------------------
+Custom Search Algorithms (tune.suggest.Searcher)
+------------------------------------------------
 
 If you are interested in implementing or contributing a new Search Algorithm, provide the following interface:
 
@@ -197,3 +262,11 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
     :members:
     :private-members:
     :show-inheritance:
+
+.. _shim:
+
+Shim Instantiation (tune.create_searcher)
+-----------------------------------------
+There is also a shim function that constructs the search algorithm based on the provided string. This can be useful if the search algorithm you want to use changes often (e.g., specifying the search algorithm via a CLI option or config file).
+
+.. automethod:: ray.tune.create_searcher

@@ -1,3 +1,4 @@
+from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree
 
@@ -6,19 +7,75 @@ from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
+# Limit values suitable for use as close to a -inf logit. These are useful
+# since -inf / inf cause NaNs during backprop.
+FLOAT_MIN = -3.4e38
+FLOAT_MAX = 3.4e38
+
 
 def atanh(x):
     return 0.5 * torch.log((1 + x) / (1 - x))
 
 
+def convert_to_non_torch_type(stats):
+    """Converts values in `stats` to non-Tensor numpy or python types.
+
+    Args:
+        stats (any): Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all torch tensors
+            being converted to numpy types.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to non-torch Tensor types.
+    """
+
+    # The mapping function used to numpyize torch Tensors.
+    def mapping(item):
+        if isinstance(item, torch.Tensor):
+            return item.cpu().item() if len(item.size()) == 0 else \
+                item.cpu().detach().numpy()
+        else:
+            return item
+
+    return tree.map_structure(mapping, stats)
+
+
+def convert_to_torch_tensor(x, device=None):
+    """Converts any struct to torch.Tensors.
+
+    x (any): Any (possibly nested) struct, the values in which will be
+        converted and returned as a new struct with all leaves converted
+        to torch tensors.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to torch Tensor types.
+    """
+
+    def mapping(item):
+        # Already torch tensor -> make sure it's on right device.
+        if torch.is_tensor(item):
+            return item if device is None else item.to(device)
+        # Special handling of "Repeated" values.
+        elif isinstance(item, RepeatedValues):
+            return RepeatedValues(
+                tree.map_structure(mapping, item.values), item.lengths,
+                item.max_len)
+        tensor = torch.from_numpy(np.asarray(item))
+        # Floatify all float64 tensors.
+        if tensor.dtype == torch.double:
+            tensor = tensor.float()
+        return tensor if device is None else tensor.to(device)
+
+    return tree.map_structure(mapping, x)
+
+
 def explained_variance(y, pred):
     y_var = torch.var(y, dim=[0])
     diff_var = torch.var(y - pred, dim=[0])
-    min_ = torch.Tensor([-1.0])
-    return torch.max(
-        min_.to(device=torch.device("cuda"))
-        if torch.cuda.is_available() else min_,
-        1 - (diff_var / y_var))
+    min_ = torch.tensor([-1.0]).to(pred.device)
+    return torch.max(min_, 1 - (diff_var / y_var))
 
 
 def global_norm(tensors):
@@ -66,6 +123,20 @@ def minimize_and_clip(optimizer, clip_val=10):
                 torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
+def one_hot(x, space):
+    if isinstance(space, Discrete):
+        return nn.functional.one_hot(x, space.n)
+    elif isinstance(space, MultiDiscrete):
+        return torch.cat(
+            [
+                nn.functional.one_hot(x[:, i], n)
+                for i, n in enumerate(space.nvec)
+            ],
+            dim=-1)
+    else:
+        raise ValueError("Unsupported space for `one_hot`: {}".format(space))
+
+
 def reduce_mean_ignore_inf(x, axis):
     """Same as torch.mean() but ignores -inf values."""
     mask = torch.ne(x, float("-inf"))
@@ -73,7 +144,7 @@ def reduce_mean_ignore_inf(x, axis):
     return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
 
-def sequence_mask(lengths, maxlen=None, dtype=None):
+def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
     """Offers same behavior as tf.sequence_mask for torch.
 
     Thanks to Dimitris Papatheodorou
@@ -83,8 +154,10 @@ def sequence_mask(lengths, maxlen=None, dtype=None):
     if maxlen is None:
         maxlen = int(lengths.max())
 
-    mask = ~(torch.ones((len(lengths), maxlen)).to(
-        lengths.device).cumsum(dim=1).t() > lengths).t()
+    mask = ~(torch.ones(
+        (len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t() > lengths)
+    if not time_major:
+        mask = mask.t()
     mask.type(dtype or torch.bool)
 
     return mask
@@ -102,55 +175,10 @@ def softmax_cross_entropy_with_logits(logits, labels):
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
 
 
-def convert_to_non_torch_type(stats):
-    """Converts values in `stats` to non-Tensor numpy or python types.
+class Swish(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self._beta = nn.Parameter(torch.tensor(1.0))
 
-    Args:
-        stats (any): Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all torch tensors
-            being converted to numpy types.
-
-    Returns:
-        Any: A new struct with the same structure as `stats`, but with all
-            values converted to non-torch Tensor types.
-    """
-
-    # The mapping function used to numpyize torch Tensors.
-    def mapping(item):
-        if isinstance(item, torch.Tensor):
-            return item.cpu().item() if len(item.size()) == 0 else \
-                item.cpu().detach().numpy()
-        else:
-            return item
-
-    return tree.map_structure(mapping, stats)
-
-
-def convert_to_torch_tensor(x, device=None):
-    """Converts any struct to torch.Tensors.
-
-    x (any): Any (possibly nested) struct, the values in which will be
-        converted and returned as a new struct with all leaves converted
-        to torch tensors.
-
-    Returns:
-        Any: A new struct with the same structure as `stats`, but with all
-            values converted to torch Tensor types.
-    """
-
-    def mapping(item):
-        # Already torch tensor -> make sure it's on right device.
-        if torch.is_tensor(item):
-            return item if device is None else item.to(device)
-        # Special handling of "Repeated" values.
-        elif isinstance(item, RepeatedValues):
-            return RepeatedValues(
-                tree.map_structure(mapping, item.values),
-                item.lengths, item.max_len)
-        tensor = torch.from_numpy(np.asarray(item))
-        # Floatify all float64 tensors.
-        if tensor.dtype == torch.double:
-            tensor = tensor.float()
-        return tensor if device is None else tensor.to(device)
-
-    return tree.map_structure(mapping, x)
+    def forward(self, input_tensor):
+        return input_tensor * torch.sigmoid(self._beta * input_tensor)

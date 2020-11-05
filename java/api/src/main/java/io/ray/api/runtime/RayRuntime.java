@@ -10,7 +10,6 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ActorId;
-import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
@@ -43,20 +42,18 @@ public interface RayRuntime {
   /**
    * Get an object from the object store.
    *
-   * @param objectId The ID of the object to get.
-   * @param objectType The type of the object to get.
+   * @param objectRef The reference of the object to get.
    * @return The Java object.
    */
-  <T> T get(ObjectId objectId, Class<T> objectType);
+  <T> T get(ObjectRef<T> objectRef);
 
   /**
    * Get a list of objects from the object store.
    *
-   * @param objectIds The list of object IDs.
-   * @param objectType The type of object.
+   * @param objectRefs The list of object references.
    * @return A list of Java objects.
    */
-  <T> List<T> get(List<ObjectId> objectIds, Class<T> objectType);
+  <T> List<T> get(List<ObjectRef<T>> objectRefs);
 
   /**
    * Wait for a list of RayObjects to be locally available, until specified number of objects are
@@ -72,11 +69,11 @@ public interface RayRuntime {
   /**
    * Free a list of objects from Plasma Store.
    *
-   * @param objectIds The object ids to free.
+   * @param objectRefs The object references to free.
    * @param localOnly Whether only free objects for local object store or not.
    * @param deleteCreatingTasks Whether also delete objects' creating tasks from GCS.
    */
-  void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks);
+  void free(List<ObjectRef<?>> objectRefs, boolean localOnly, boolean deleteCreatingTasks);
 
   /**
    * Set the resource for the specific node.
@@ -196,4 +193,9 @@ public interface RayRuntime {
    * @return The wrapped callable.
    */
   <T> Callable<T> wrapCallable(Callable<T> callable);
+
+  /**
+   * Intentionally exit the current actor.
+   */
+  void exitActor();
 }

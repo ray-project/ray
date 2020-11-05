@@ -5,7 +5,6 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.WaitResult;
-import io.ray.api.exception.RayException;
 import io.ray.api.id.ActorId;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class MultiThreadingTest extends BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MultiThreadingTest.class);
@@ -121,15 +120,15 @@ public class MultiThreadingTest extends BaseTest {
     testMultiThreading();
   }
 
+  // Single-process mode doesn't have real workers.
+  @Test(groups = {"cluster"})
   public void testInWorker() {
-    // Single-process mode doesn't have real workers.
-    TestUtils.skipTestUnderSingleProcess();
     ObjectRef<String> obj = Ray.task(MultiThreadingTest::testMultiThreading).remote();
     Assert.assertEquals("ok", obj.get());
   }
 
+  @Test(groups = {"cluster"})
   public void testGetCurrentActorId() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<ActorIdTester> actorIdTester = Ray.actor(ActorIdTester::new).remote();
     ActorId actorId = actorIdTester.task(ActorIdTester::getCurrentActorId).remote().get();
     Assert.assertEquals(actorId, actorIdTester.getId());
@@ -143,7 +142,7 @@ public class MultiThreadingTest extends BaseTest {
     final ActorHandle<Echo> fooActor = Ray.actor(Echo::new).remote();
     return new Runnable[]{
         () -> Ray.put(1),
-        () -> Ray.get(fooObject.getId(), fooObject.getType()),
+        () -> Ray.get(ImmutableList.of(fooObject)),
         fooObject::get,
         () -> Ray.wait(ImmutableList.of(fooObject)),
         Ray::getRuntimeContext,
@@ -189,7 +188,7 @@ public class MultiThreadingTest extends BaseTest {
         try {
           // It wouldn't be OK to run them in another thread if not wrapped the runnable.
           for (Runnable runnable : runnables) {
-            Assert.expectThrows(RayException.class, runnable::run);
+            Assert.expectThrows(RuntimeException.class, runnable::run);
           }
         } catch (Throwable ex) {
           throwable[0] = ex;
@@ -220,11 +219,6 @@ public class MultiThreadingTest extends BaseTest {
 
     // Return true here to make the caller.remote() returns an ObjectRef.
     return true;
-  }
-
-  @Test
-  public void testMissingWrapRunnableInDriver() throws InterruptedException {
-    testMissingWrapRunnable();
   }
 
   @Test

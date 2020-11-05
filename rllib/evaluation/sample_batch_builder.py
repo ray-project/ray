@@ -8,7 +8,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.types import PolicyID, AgentID
+from ray.rllib.utils.typing import PolicyID, AgentID
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.util.debug import log_once
 
@@ -23,6 +23,9 @@ def to_float_array(v: List[Any]) -> np.ndarray:
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
     return arr
+
+
+# TODO(sven): Remove the following class once we switch to trajectory view API.
 
 
 @PublicAPI
@@ -41,7 +44,7 @@ class SampleBatchBuilder:
         self.count = 0
 
     @PublicAPI
-    def add_values(self, **values: Dict[str, Any]) -> None:
+    def add_values(self, **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch."""
 
         for k, v in values.items():
@@ -70,6 +73,9 @@ class SampleBatchBuilder:
         self.buffers.clear()
         self.count = 0
         return batch
+
+
+# TODO(sven): Remove the following class once we switch to trajectory view API.
 
 
 @DeveloperAPI
@@ -132,10 +138,10 @@ class MultiAgentSampleBatchBuilder:
 
     @DeveloperAPI
     def add_values(self, agent_id: AgentID, policy_id: AgentID,
-                   **values: Dict[str, Any]) -> None:
+                   **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch.
 
-        Arguments:
+        Args:
             agent_id (obj): Unique id for the agent we are adding values for.
             policy_id (obj): Unique id for policy controlling the agent.
             values (dict): Row of values to add for this agent.
@@ -190,13 +196,14 @@ class MultiAgentSampleBatchBuilder:
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
                     "from a single trajectory.", pre_batch)
-            post_batches[agent_id] = policy.postprocess_trajectory(
-                pre_batch, other_batches, episode)
             # Call the Policy's Exploration's postprocess method.
+            post_batches[agent_id] = pre_batch
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(
                     policy, post_batches[agent_id],
                     getattr(policy, "_sess", None))
+            post_batches[agent_id] = policy.postprocess_trajectory(
+                post_batches[agent_id], other_batches, episode)
 
         if log_once("after_post"):
             logger.info(

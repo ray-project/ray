@@ -68,10 +68,7 @@ parameter_grid = {"alpha": [1e-4, 1e-1, 1], "epsilon": [0.01, 0.1]}
 # As you can see, the setup here is exactly how you would do it for Scikit-Learn. Now, let's try fitting a model.
 
 tune_search = TuneGridSearchCV(
-    SGDClassifier(),
-    parameter_grid,
-    early_stopping=True,
-    max_iters=10)
+    SGDClassifier(), parameter_grid, early_stopping=True, max_iters=10)
 
 import time  # Just to compare fit times
 start = time.time()
@@ -130,7 +127,7 @@ tune_search = TuneSearchCV(
     clf,
     parameter_grid,
     search_optimization="bayesian",
-    n_iter=3,
+    n_trials=3,
     early_stopping=True,
     max_iters=10,
 )
@@ -148,11 +145,11 @@ print(tune_search.best_params_)
 #
 # Check out more detailed examples and get started with tune-sklearn!
 #
-#  * `Skorch with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/torch_nn.py>`_
-#  * `Scikit-Learn Pipelines with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/sklearn_pipeline.py>`_
-#  * `XGBoost with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/xgbclassifier.py>`_
-#  * `KerasClassifier with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/keras_example.py>`_
-#  * `LightGBM with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/lgbm.py>`_
+# * `Skorch with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/torch_nn.py>`_
+# * `Scikit-Learn Pipelines with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/sklearn_pipeline.py>`_
+# * `XGBoost with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/xgbclassifier.py>`_
+# * `KerasClassifier with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/keras_example.py>`_
+# * `LightGBM with tune-sklearn <https://github.com/ray-project/tune-sklearn/blob/master/examples/lgbm.py>`_
 #
 #
 # Further Reading

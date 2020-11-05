@@ -6,7 +6,7 @@ import pickle
 import platform
 import os
 from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
-    TYPE_CHECKING, TypeVar
+    TYPE_CHECKING, Type, TypeVar
 
 import ray
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
@@ -36,15 +36,15 @@ from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import EnvType, AgentID, PolicyID, EnvConfigDict, \
-    ModelConfigDict, TrainerConfigDict, SampleBatchType, ModelWeights, \
-    ModelGradients, MultiAgentPolicyConfigDict
+from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
+    ModelConfigDict, ModelGradients, ModelWeights, \
+    MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
+    SampleBatchType, TrainerConfigDict
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
 
 # Generic type var for foreach_* methods.
@@ -129,63 +129,67 @@ class RolloutWorker(ParallelIteratorWorker):
             resources=resources)(cls)
 
     @DeveloperAPI
-    def __init__(self,
-                 env_creator: Callable[[EnvContext], EnvType],
-                 policy: type,
-                 policy_mapping_fn: Callable[[AgentID], PolicyID] = None,
-                 policies_to_train: List[PolicyID] = None,
-                 tf_session_creator: Callable[[], Any] = None,
-                 rollout_fragment_length: int = 100,
-                 batch_mode: str = "truncate_episodes",
-                 episode_horizon: int = None,
-                 preprocessor_pref: str = "deepmind",
-                 sample_async: bool = False,
-                 compress_observations: bool = False,
-                 num_envs: int = 1,
-                 observation_fn: "ObservationFunction" = None,
-                 observation_filter: str = "NoFilter",
-                 clip_rewards: bool = None,
-                 clip_actions: bool = True,
-                 env_config: EnvConfigDict = None,
-                 model_config: ModelConfigDict = None,
-                 policy_config: TrainerConfigDict = None,
-                 worker_index: int = 0,
-                 num_workers: int = 0,
-                 monitor_path: str = None,
-                 log_dir: str = None,
-                 log_level: str = None,
-                 callbacks: "DefaultCallbacks" = None,
-                 input_creator: Callable[[
-                     IOContext
-                 ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),
-                 input_evaluation: List[str] = frozenset([]),
-                 output_creator: Callable[
-                     [IOContext], OutputWriter] = lambda ioctx: NoopOutput(),
-                 remote_worker_envs: bool = False,
-                 remote_env_batch_wait_ms: int = 0,
-                 soft_horizon: bool = False,
-                 no_done_at_end: bool = False,
-                 seed: int = None,
-                 extra_python_environs: dict = None,
-                 fake_sampler: bool = False):
+    def __init__(
+            self,
+            env_creator: Callable[[EnvContext], EnvType],
+            policy: Union[type, Dict[str, Tuple[Optional[
+                type], gym.Space, gym.Space, PartialTrainerConfigDict]]],
+            policy_mapping_fn: Callable[[AgentID], PolicyID] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+            tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
+            rollout_fragment_length: int = 100,
+            batch_mode: str = "truncate_episodes",
+            episode_horizon: int = None,
+            preprocessor_pref: str = "deepmind",
+            sample_async: bool = False,
+            compress_observations: bool = False,
+            num_envs: int = 1,
+            observation_fn: "ObservationFunction" = None,
+            observation_filter: str = "NoFilter",
+            clip_rewards: bool = None,
+            clip_actions: bool = True,
+            env_config: EnvConfigDict = None,
+            model_config: ModelConfigDict = None,
+            policy_config: TrainerConfigDict = None,
+            worker_index: int = 0,
+            num_workers: int = 0,
+            monitor_path: str = None,
+            log_dir: str = None,
+            log_level: str = None,
+            callbacks: Type["DefaultCallbacks"] = None,
+            input_creator: Callable[[
+                IOContext
+            ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),
+            input_evaluation: List[str] = frozenset([]),
+            output_creator: Callable[
+                [IOContext], OutputWriter] = lambda ioctx: NoopOutput(),
+            remote_worker_envs: bool = False,
+            remote_env_batch_wait_ms: int = 0,
+            soft_horizon: bool = False,
+            no_done_at_end: bool = False,
+            seed: int = None,
+            extra_python_environs: dict = None,
+            fake_sampler: bool = False):
         """Initialize a rollout worker.
 
-        Arguments:
-            env_creator (func): Function that returns a gym.Env given an
-                EnvContext wrapped configuration.
-            policy (class|dict): Either a class implementing
-                Policy, or a dictionary of policy id strings to
-                (Policy, obs_space, action_space, config) tuples. If a
-                dict is specified, then we are in multi-agent mode and a
-                policy_mapping_fn should also be set.
-            policy_mapping_fn (func): A function that maps agent ids to
-                policy ids in multi-agent mode. This function will be called
-                each time a new agent appears in an episode, to bind that agent
-                to a policy for the duration of the episode.
-            policies_to_train (list): Optional list of policies to train,
-                or None for all policies.
-            tf_session_creator (func): A function that returns a TF session.
-                This is optional and only useful with TFPolicy.
+        Args:
+            env_creator (Callable[[EnvContext], EnvType]): Function that
+                returns a gym.Env given an EnvContext wrapped configuration.
+            policy (Union[type, Dict[str, Tuple[Optional[type], gym.Space,
+                gym.Space, PartialTrainerConfigDict]]]): Either a Policy class
+                or a dict of policy id strings to
+                (Policy (None for default), obs_space, action_space,
+                config)-tuples. If a dict is specified, then we are in
+                multi-agent mode and a policy_mapping_fn should also be set.
+            policy_mapping_fn (Callable[[AgentID], PolicyID]): A function that
+                maps agent ids to policy ids in multi-agent mode. This function
+                will be called each time a new agent appears in an episode, to
+                bind that agent to a policy for the duration of the episode.
+            policies_to_train (Optional[List[PolicyID]]): Optional list of
+                policies to train, or None for all policies.
+            tf_session_creator (Optional[Callable[[], tf1.Session]]): A
+                function that returns a TF session. This is optional and only
+                useful with TFPolicy.
             rollout_fragment_length (int): The target number of env transitions
                 to include in each sample batch returned from this worker.
             batch_mode (str): One of the following batch modes:
@@ -221,10 +225,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 only.
             clip_actions (bool): Whether to clip action values to the range
                 specified by the policy action space.
-            env_config (dict): Config to pass to the env creator.
-            model_config (dict): Config to use when creating the policy model.
-            policy_config (dict): Config to pass to the policy. In the
-                multi-agent case, this config will be merged with the
+            env_config (EnvConfigDict): Config to pass to the env creator.
+            model_config (ModelConfigDict): Config to use when creating the
+                policy model.
+            policy_config (TrainerConfigDict): Config to pass to the policy.
+                In the multi-agent case, this config will be merged with the
                 per-policy configs specified by `policy`.
             worker_index (int): For remote workers, this should be set to a
                 non-zero and unique value. This index is passed to created envs
@@ -236,17 +241,19 @@ class RolloutWorker(ParallelIteratorWorker):
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
             callbacks (DefaultCallbacks): Custom training callbacks.
-            input_creator (func): Function that returns an InputReader object
-                for loading previous generated experiences.
-            input_evaluation (list): How to evaluate the policy performance.
-                This only makes sense to set when the input is reading offline
-                data. The possible values include:
+            input_creator (Callable[[IOContext], InputReader]): Function that
+                returns an InputReader object for loading previous generated
+                experiences.
+            input_evaluation (List[str]): How to evaluate the policy
+                performance. This only makes sense to set when the input is
+                reading offline data. The possible values include:
                   - "is": the step-wise importance sampling estimator.
                   - "wis": the weighted step-wise is estimator.
                   - "simulation": run the environment in the background, but
                     use this data for evaluation only and never for learning.
-            output_creator (func): Function that returns an OutputWriter object
-                for saving generated experiences.
+            output_creator (Callable[[IOContext], OutputWriter]): Function that
+                returns an OutputWriter object for saving generated
+                experiences.
             remote_worker_envs (bool): If using num_envs > 1, whether to create
                 those new envs in remote processes instead of in the current
                 process. This adds overheads, but can make sense if your envs
@@ -284,7 +291,6 @@ class RolloutWorker(ParallelIteratorWorker):
 
         policy_config: TrainerConfigDict = policy_config or {}
         if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
-                and not policy_config.get("no_eager_on_workers")
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
                 and not tf1.executing_eagerly()):
@@ -299,6 +305,7 @@ class RolloutWorker(ParallelIteratorWorker):
             enable_periodic_logging()
 
         env_context = EnvContext(env_config or {}, worker_index)
+        self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
@@ -334,6 +341,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # Deepmind wrappers already handle all preprocessing
             self.preprocessing_enabled = False
 
+            # If clip_rewards not explicitly set to False, switch it
+            # on here (clip between -1.0 and 1.0).
             if clip_rewards is None:
                 clip_rewards = True
 
@@ -360,7 +369,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return wrap(
                 env_creator(
                     env_context.copy_with_overrides(
-                        vector_index=vector_index, remote=remote_worker_envs)))
+                        worker_index=worker_index,
+                        vector_index=vector_index,
+                        remote=remote_worker_envs)))
+
+        self.make_env_fn = make_env
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy, self.env)
@@ -374,9 +387,10 @@ class RolloutWorker(ParallelIteratorWorker):
             np.random.seed(seed)
             random.seed(seed)
             if not hasattr(self.env, "seed"):
-                raise ValueError("Env doesn't support env.seed(): {}".format(
+                logger.info("Env doesn't support env.seed(): {}".format(
                     self.env))
-            self.env.seed(seed)
+            else:
+                self.env.seed(seed)
             try:
                 assert torch is not None
                 torch.manual_seed(seed)
@@ -403,14 +417,13 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
 
-        if (ray.is_initialized() and
-                ray.worker._mode() != ray.worker.LOCAL_MODE):
+        if (ray.is_initialized()
+                and ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs
             if not ray.get_gpu_ids():
-                logger.debug(
-                    "Creating policy evaluation worker {}".format(
-                        worker_index) +
-                    " on CPU (please ignore any CUDA init errors)")
+                logger.debug("Creating policy evaluation worker {}".format(
+                    worker_index) +
+                             " on CPU (please ignore any CUDA init errors)")
             elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
                   not tf.config.experimental.list_physical_devices("GPU")) or \
                     (policy_config["framework"] == "torch" and
@@ -419,9 +432,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     "GPUs were assigned to this worker by Ray, but "
                     "your DL framework ({}) reports GPU acceleration is "
                     "disabled. This could be due to a bad CUDA- or {} "
-                    "installation.".format(
-                        policy_config["framework"],
-                        policy_config["framework"]))
+                    "installation.".format(policy_config["framework"],
+                                           policy_config["framework"]))
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
@@ -443,14 +455,19 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
-        # Always use vector env for consistency even if num_envs = 1.
-        self.async_env: BaseEnv = BaseEnv.to_base_env(
-            self.env,
-            make_env=make_env,
-            num_envs=num_envs,
-            remote_envs=remote_worker_envs,
-            remote_env_batch_wait_ms=remote_env_batch_wait_ms)
         self.num_envs: int = num_envs
+
+        if "custom_vector_env" in policy_config:
+            custom_vec_wrapper = policy_config["custom_vector_env"]
+            self.async_env = custom_vec_wrapper(self.env)
+        else:
+            # Always use vector env for consistency even if num_envs = 1.
+            self.async_env: BaseEnv = BaseEnv.to_base_env(
+                self.env,
+                make_env=make_env,
+                num_envs=num_envs,
+                remote_envs=remote_worker_envs,
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
@@ -498,7 +515,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
-                pack_multiple_episodes_in_batch=pack,
+                multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
@@ -521,7 +538,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
-                pack_multiple_episodes_in_batch=pack,
+                multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
@@ -602,7 +619,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return batch
 
     @DeveloperAPI
-    @ray.method(num_return_vals=2)
+    @ray.method(num_returns=2)
     def sample_with_count(self) -> Tuple[SampleBatchType, int]:
         """Same as sample() but returns the count as a separate future."""
         batch = self.sample()
@@ -765,7 +782,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         This is typically used in combination with distributed allreduce.
 
-        Arguments:
+        Args:
             expected_batch_size (int): Expected number of samples to learn on.
             num_sgd_iter (int): Number of SGD iterations.
             sgd_minibatch_size (int): SGD minibatch size.
@@ -810,7 +827,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self, policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
-        Arguments:
+        Args:
             policy_id (str): id of policy to return.
         """
 
@@ -819,20 +836,25 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def for_policy(self,
                    func: Callable[[Policy], T],
-                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> T:
+                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID,
+                   **kwargs) -> T:
         """Apply the given function to the specified policy."""
 
-        return func(self.policy_map[policy_id])
+        return func(self.policy_map[policy_id], **kwargs)
 
     @DeveloperAPI
-    def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
+    def foreach_policy(self, func: Callable[[Policy, PolicyID], T],
+                       **kwargs) -> List[T]:
         """Apply the given function to each (policy, policy_id) tuple."""
 
-        return [func(policy, pid) for pid, policy in self.policy_map.items()]
+        return [
+            func(policy, pid, **kwargs)
+            for pid, policy in self.policy_map.items()
+        ]
 
     @DeveloperAPI
-    def foreach_trainable_policy(
-            self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
+    def foreach_trainable_policy(self, func: Callable[[Policy, PolicyID], T],
+                                 **kwargs) -> List[T]:
         """
         Applies the given function to each (policy, policy_id) tuple, which
         can be found in `self.policies_to_train`.
@@ -846,7 +868,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 `func([policy], [ID])`-calls.
         """
         return [
-            func(policy, pid) for pid, policy in self.policy_map.items()
+            func(policy, pid, **kwargs)
+            for pid, policy in self.policy_map.items()
             if pid in self.policies_to_train
         ]
 
@@ -1010,7 +1033,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     def get_node_ip(self) -> str:
         """Returns the IP address of the current node."""
-        return ray.services.get_node_ip_address()
+        return ray._private.services.get_node_ip_address()
 
     def find_free_port(self) -> int:
         """Finds a free port on the current node."""

@@ -185,10 +185,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (return_object.in_plasma()) {
       const auto pinned_at_raylet_id = ClientID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
+        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
         // Mark it as in plasma with a dummy object.
         RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                         object_id));
-        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
       } else {
         RAY_LOG(INFO) << "Task " << task_id << " returned object " << object_id
                       << " in plasma on a dead node, attempting to recover";
@@ -301,8 +301,8 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   if (num_retries_left != 0) {
     auto retries_str =
         num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(ERROR) << retries_str << " retries left for task " << spec.TaskId()
-                   << ", attempting to resubmit.";
+    RAY_LOG(INFO) << retries_str << " retries left for task " << spec.TaskId()
+                  << ", attempting to resubmit.";
     retry_task_callback_(spec, /*delay=*/true);
     will_retry = true;
   } else {
@@ -315,8 +315,8 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
            (current_time_ms() - last_log_time_ms_) >
                kTaskFailureLoggingFrequencyMillis)) {
         if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
-          RAY_LOG(ERROR) << "Too many failure logs, throttling to once every "
-                         << kTaskFailureLoggingFrequencyMillis << " millis.";
+          RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
+                           << kTaskFailureLoggingFrequencyMillis << " millis.";
         }
         last_log_time_ms_ = current_time_ms();
         if (status != nullptr) {
@@ -442,14 +442,8 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
-    const auto object_id = ObjectID::ForTaskReturn(task_id, /*index=*/i + 1);
+    const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
-  }
-
-  if (spec.IsActorCreationTask()) {
-    // Publish actor death if actor creation task failed after
-    // a number of retries.
-    actor_reporter_->PublishTerminatedActor(spec);
   }
 }
 

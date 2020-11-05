@@ -1,0 +1,7 @@
+tensorflow-probability
+gast
+# Version requirement to match Tune
+torch>=1.5.0
+# Version requirement to match Tune
+torchvision>=0.6.0
+smart_open

@@ -12,6 +12,7 @@ import torch.optim as optim
 from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
+import ray
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
@@ -58,7 +59,7 @@ class Net(nn.Module):
 
 
 # __train_begin__
-def train_cifar(config, checkpoint=None, data_dir=None):
+def train_cifar(config, checkpoint_dir=None, data_dir=None):
     net = Net(config["l1"], config["l2"])
 
     device = "cpu"
@@ -71,8 +72,10 @@ def train_cifar(config, checkpoint=None, data_dir=None):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
-    if checkpoint:
-        print("loading checkpoint {}".format(checkpoint))
+    # The `checkpoint_dir` parameter gets passed by Ray Tune when a checkpoint
+    # should be restored.
+    if checkpoint_dir:
+        checkpoint = os.path.join(checkpoint_dir, "checkpoint")
         model_state, optimizer_state = torch.load(checkpoint)
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
@@ -138,10 +141,13 @@ def train_cifar(config, checkpoint=None, data_dir=None):
                 val_loss += loss.cpu().numpy()
                 val_steps += 1
 
-        checkpoint_dir = tune.make_checkpoint_dir(epoch)
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        torch.save((net.state_dict(), optimizer.state_dict()), path)
-        tune.save_checkpoint(path)
+        # Here we save a checkpoint. It is automatically registered with
+        # Ray Tune and will potentially be passed as the `checkpoint_dir`
+        # parameter in future iterations.
+        with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
+            path = os.path.join(checkpoint_dir, "checkpoint")
+            torch.save(
+                (net.state_dict(), optimizer.state_dict()), path)
 
         tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
     print("Finished Training")
@@ -173,7 +179,7 @@ def test_accuracy(net, device="cpu"):
 # __main_begin__
 def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     data_dir = os.path.abspath("./data")
-    load_data(data_dir)
+    load_data(data_dir)  # Download data for all trials before starting the run
     config = {
         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
@@ -195,8 +201,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        progress_reporter=reporter,
-        checkpoint_at_end=True)
+        progress_reporter=reporter)
 
     best_trial = result.get_best_trial("loss", "min", "last")
     print("Best trial config: {}".format(best_trial.config))
@@ -213,7 +218,9 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
             best_trained_model = nn.DataParallel(best_trained_model)
     best_trained_model.to(device)
 
-    model_state, optimizer_state = torch.load(best_trial.checkpoint.value)
+    checkpoint_path = os.path.join(best_trial.checkpoint.value, "checkpoint")
+
+    model_state, optimizer_state = torch.load(checkpoint_path)
     best_trained_model.load_state_dict(model_state)
 
     test_acc = test_accuracy(best_trained_model, device)
@@ -230,6 +237,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
+        ray.init(num_cpus=2)
         main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
     else:
         # Change this to activate training on GPUs

@@ -4,7 +4,7 @@ from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 from typing import Dict
 
 
@@ -24,7 +24,7 @@ class MixedInput(InputReader):
     def __init__(self, dist: Dict[JsonReader, float], ioctx: IOContext):
         """Initialize a MixedInput.
 
-        Arguments:
+        Args:
             dist (dict): dict mapping JSONReader paths or "sampler" to
                 probabilities. The probabilities must sum to 1.0.
             ioctx (IOContext): current IO context object.

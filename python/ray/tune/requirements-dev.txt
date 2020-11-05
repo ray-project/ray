@@ -1,7 +1,7 @@
 flake8==3.7.7
 flake8-quotes
 gym
-opencv-python
+opencv-python-headless==4.3.0.36
 pandas
 requests
 tabulate

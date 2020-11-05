@@ -1,7 +1,7 @@
 package io.ray.runtime.metric;
 
 import com.google.common.base.Preconditions;
-
+import com.google.common.util.concurrent.AtomicDouble;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -14,7 +14,8 @@ import java.util.stream.Collectors;
 public abstract class Metric {
   protected String name;
 
-  protected double value;
+  protected AtomicDouble value;
+
   // Native pointer mapping to gauge object of stats.
   protected long metricNativePointer = 0L;
 
@@ -25,12 +26,13 @@ public abstract class Metric {
     Preconditions.checkNotNull(name, "Metric name must not be null.");
     this.name = name;
     this.tags = tags;
-    this.value = 0.0d;
+    this.value = new AtomicDouble();
   }
 
   // Sync metric with core worker stats for registry.
   // Metric data will be flushed into stats view data inside core worker immediately after
   // record is called.
+
   /**
    * Flush records to stats in last aggregator.
    */
@@ -44,25 +46,33 @@ public abstract class Metric {
       tagValues.add(entry.getValue());
     }
     // Get tag value list from map;
-    NativeMetric.recordNative(metricNativePointer, value, nativeTagKeyList.stream()
+    NativeMetric.recordNative(metricNativePointer, getAndReset(), nativeTagKeyList.stream()
         .map(TagKey::getTagKey).collect(Collectors.toList()), tagValues);
   }
 
-  /** Update gauge value without tags.
-   * Update metric info for user.
-   * @param value lastest value for updating
+  /**
+   * Get the value to record and then reset.
+   *
+   * @return latest updating value.
    */
-  public void update(double value) {
-    this.value = value;
+  protected abstract double getAndReset();
 
-  }
+  /**
+   * Update gauge value without tags.
+   * Update metric info for user.
+   *
+   * @param value latest value for updating
+   */
+  public abstract void update(double value);
 
-  /** Update gauge value with dynamic tag values.
-   * @param value lastest value for updating
-   * @param tags tag map
+  /**
+   * Update gauge value with dynamic tag values.
+   *
+   * @param value latest value for updating
+   * @param tags  tag map
    */
   public void update(double value, Map<TagKey, String> tags) {
-    this.value = value;
+    update(value);
     this.tags = tags;
   }
 
@@ -76,16 +86,4 @@ public abstract class Metric {
     metricNativePointer = 0;
   }
 
-  /**
-   * @return lastest updating value.
-   */
-  public double getValue() {
-    return value;
-  }
-
-  /**
-   * It's abstract method for each metric measurements, so metric registry can store transient
-   * value and aggregate historical data for flushing.
-   */
-  public abstract void reset();
 }

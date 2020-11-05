@@ -24,8 +24,7 @@ LEARNER_INFO = "learner"
 
 # Asserts that an object is a type of SampleBatch.
 def _check_sample_batch_type(batch):
-    if not isinstance(batch, SampleBatch) and not isinstance(
-            batch, MultiAgentBatch):
+    if not isinstance(batch, (SampleBatch, MultiAgentBatch)):
         raise ValueError("Expected either SampleBatch or MultiAgentBatch, "
                          "got {}: {}".format(type(batch), batch))
 
