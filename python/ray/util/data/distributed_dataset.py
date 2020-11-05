@@ -1,22 +1,20 @@
-from typing import Any, Callable, List, Optional, Iterable, Iterator
-
-from .dataset import Dataset
-from ..iter import T, U
-from ray.util.iter import _NextValueNotReady, LocalIterator, ParallelIterator
-from dataclasses import dataclass, is_dataclass
+import random
+from collections import defaultdict
+from dataclasses import is_dataclass
 from functools import wraps
+from typing import Callable, List, Optional, Union, Iterable, Iterator
 
 import pandas as pd
 from pandas import DataFrame
 
-from collections import defaultdict
-
-import random
+from ray.util.iter import _NextValueNotReady, LocalIterator, ParallelIterator
+from .dataset import Dataset
+from ..iter import T, U
 
 
 def item_check(item) -> bool:
-    if (hasattr(item, "__getitem__") or
-       hasattr(item, "__iter__") or is_dataclass(item)):
+    if (hasattr(item, "__getitem__") or hasattr(item, "__iter__")
+            or is_dataclass(item)):
         return True
     else:
         return False
@@ -31,23 +29,32 @@ def type_check(func, is_batch: bool, check_fn: Callable[[T], bool]):
                 if all([check_fn(inner) for inner in item]):
                     yield item
                 else:
-                    raise ValueError("DistributedDataset only support list like "
-                                     "item or dataclass instance")
+                    raise ValueError(
+                        "DistributedDataset only support list like "
+                        "item or dataclass instance")
         else:
             for item in it:
                 if check_fn(item):
                     yield item
                 else:
-                    raise ValueError("DistributedDataset only support list like "
-                                     "item or dataclass instance")
-
+                    raise ValueError(
+                        "DistributedDataset only support list like "
+                        "item or dataclass instance")
     return wrapper
 
 
 class DistributedDataset(Dataset[T]):
     """ A distributed dataset implemented based on ParallelIterator
 
-    All item should be a dataclass
+    All item should be a list like object or dataclass instance.
+
+    Args:
+        para_it (ParallelIterator[T]): An existing parallel iterator, and each
+            should be a list like object or dataclass instance.
+        batch_size (int): The batch size of the item.
+        add_type_check (bool): Whether we need to wrap the transform function
+            with type check.
+        item_check_fn (Callable[[T], bool]): A check function for each item.
     """
 
     def __init__(self,
@@ -63,15 +70,35 @@ class DistributedDataset(Dataset[T]):
     def transform(self,
                   fn: Callable[[Iterable[T]], Iterable[U]],
                   fn_name=".transform()") -> "DistributedDataset[U]":
+        """
+        Apply the fn function to the DistributedDataset
+        Args:
+            fn (Callable[[Iterable[T]], Iterable[U]]): The function to applied.
+                The input is a iterable records, and the output is also a
+                iterable records. However, the item of the output iterable
+                should also be list like or dataclass instance.
+            fn_name (str): the function name.
+        Returns:
+            A new DistributedDataset
+        """
         if self._add_type_check:
             fn = type_check(fn, self._batch_size > 0, self._item_check_fn)
             fn_name = fn_name + ".type_check()"
         para_it = self._para_it._with_transform(
             lambda local_it: local_it.transform(fn), fn_name)
-        return DistributedDataset(
-            para_it, self._batch_size, self._add_type_check)
+        return DistributedDataset(para_it, self._batch_size,
+                                  self._add_type_check)
 
     def batch(self, batch_size: int) -> "DistributedDataset[U]":
+        """
+        Batch the DistributedDataset with the given batch size. It will return
+        the current dataset if the batch size equals the current one, else will
+        rebatch the dataset to the given batch size.
+        Args:
+            batch_size (int): the batch size
+        Returns:
+            The current DistributedDataset or rebatched DistributedDataset
+        """
         if batch_size == self._batch_size:
             return self
 
@@ -82,7 +109,13 @@ class DistributedDataset(Dataset[T]):
         return DistributedDataset(para_it, self._batch_size,
                                   self._add_type_check, self._item_check_fn)
 
-    def shuffle(self, shuffle_batch_size: int, seed: int = None) -> "DistributedDataset[T]":
+    def shuffle(self, shuffle_batch_size: int,
+                seed: int = None) -> "DistributedDataset[T]":
+        """
+        see ParallelIterator.local_shuffle
+        Returns
+            A shuffled DistributedDataset
+        """
         para_it = self._para_it.local_shuffle(shuffle_batch_size, seed)
         return DistributedDataset(para_it, self._batch_size,
                                   self._add_type_check, self._item_check_fn)
@@ -95,30 +128,70 @@ class DistributedDataset(Dataset[T]):
                   shuffle_buffer_size: int = 1,
                   seed: int = None,
                   inner_shuffle_fn: Callable[[T], T] = None) -> Iterator[T]:
+        """
+        Get the given shard of the current dataset. The return is a iterator.
+        We support shuffle the return iterator when each call iter on the
+        return.
+        Args:
+            index (int): the shard index id
+            batch_ms (int): Batches items for batch_ms milliseconds
+                before retrieving it.
+                Increasing batch_ms increases latency but improves throughput.
+                If this value is 0, then items are returned immediately.
+            num_async (int): The max number of requests in flight.
+                Increasing this improves the amount of pipeline
+                parallelism in the iterator.
+            shuffle (bool): whether shuffle the given shard data
+            shuffle_buffer_size (int): same as ParallelIterator.local_shuffle
+            seed (int): the random seed
+            inner_shuffle_fn (Callable[[T], T]): If the shuffle is True and
+                current dataset is batched, this function will apply to the
+                batched records.
+        Returns:
+            The given shard iterator. If the shuffle is True, each call iter
+            will return a different ordered iterator.
+        """
         if shuffle and self._batch_size > 0:
             shuffle_random = random.Random(seed)
             inner_shuffle_fn = lambda x: shuffle_random.shuffle(x)
-        return _RepeatableIterator(
-            self._para_it, index, batch_ms, num_async, shuffle,
-            shuffle_buffer_size, seed, inner_shuffle_fn)
+        return _RepeatableIterator(self._para_it, index, batch_ms, num_async,
+                                   shuffle, shuffle_buffer_size, seed,
+                                   inner_shuffle_fn)
 
     def num_shards(self) -> int:
         return self._para_it.num_shards()
 
-    def repartition(self, num_partitions: int, batch_ms: int = 0) -> "DistributedDataset[T]":
+    def repartition(self, num_partitions: int,
+                    batch_ms: int = 0) -> "DistributedDataset[T]":
+        """see ParallelIterator.repartition"""
         para_it = self._para_it.repartition(num_partitions, batch_ms)
         return DistributedDataset(para_it, self._batch_size,
                                   self._add_type_check, self._item_check_fn)
 
     def to_pandas(self,
-                  column_names: List[Optional[int, str]],
+                  column_names: List[Union[int, str]],
                   batch_size: int = 32) -> "PandasDistributedDataset":
+        """
+        Convert the current DistributedDataset to PandasDistributedDataset. If
+        the record is a iterable, we will convert to a list. If the record has
+        __getitem__ attr, we will use __getitem__ to get the given column
+        indexes data to create pandas DataFrame. If the record is dataclass
+        instance we will use __getattr__ to get the given column.
+        Args:
+            column_names (List[Union[int, str]]): This should be a list of int
+                if the item has __getitem__ attr. This should be a list of str
+                if the item is a instance of dataclass. And the column names
+                will be the pandas DataFrame column names.
+            batch_size (int): batch the given size to create a pandas DataFrame
+        Returns:
+            A PandasDistributedDataset
+        """
         typ = type(column_names[0])
         all_equals = all([isinstance(col, typ) for col in column_names])
-        assert all_equals
+        assert all_equals, "The column names should all be int or str"
         if isinstance(column_names[0], str):
             def get_column_fn(item, col):
-                return get_column_fn(item, col)
+                return getattr(item, col)
         elif isinstance(column_names[0], int):
             def get_column_fn(item, col):
                 return item[col]
@@ -134,37 +207,80 @@ class DistributedDataset(Dataset[T]):
                 elif hasattr(batch[0], "__iter__"):
                     batch = [batch]
                 else:
-                    raise ValueError("DistributedDataset only support list like "
-                                     "item or dataclass instance")
+                    raise ValueError(
+                        "DistributedDataset only support list like "
+                        "item or dataclass instance")
 
                 values = defaultdict(lambda x: [])
                 for item in batch:
                     for col in column_names:
                         values[col].append(get_column_fn(item, col))
                 yield DataFrame(values)
+
         ds = ds.transform(convert_fn, ".to_pandas()")
         return PandasDistributedDataset.from_distributed_ds(ds)
 
-    def to_torch(self,
-                 feature_columns: List[Optional[int, str]] = None,
-                 feature_shapes: Optional[List[Any]] = None,
-                 feature_types: Optional[List["torch.dtype"]] = None,
-                 label_column: Optional[int, str] = None,
-                 label_shape: Optional[int] = None,
-                 label_type: Optional["torch.dtype"] = None):
+    def to_torch(self, feature_columns=None, feature_shapes=None,
+                 feature_types=None, label_column=None, label_shape=None,
+                 label_type=None):
+        """
+        Create a TorchDataset from the current DistributedDataset. This will
+        convert to a PandasDistributedDataset first, and then convert a
+        TorchDataset.
+        Args:
+            feature_columns (List[Union[int, str]]): the column indexes
+                name. This is a list of int if the record is list like object.
+                This is a list of str if the record is dataclass instance.
+            feature_shapes (Optional[List[Any]]): the feature shapes matching
+               the feature columns. One row will packet into one torch.Tensor
+               if this is not provided. Otherwise, each feature column will be
+               one torch.Tensor and with the provided shapes.
+            feature_types (Optional[List["torch.dtype"]]): the feature types
+               matching the feature columns. All feature will be cast into
+               torch.float by default. Otherwise, cast into the provided type.
+            label_column (Union[int, str]): the label index or name. This is a
+               int index if the record is list like object. It should be str if
+               the record is dataclass instance.
+            label_shape (Optional[int]): the label shape.
+            label_type (Optional["torch.dtype"]): the label type, this will be
+               cast into torch.float by default
+        Returns:
+            A TorchDataset
+        """
         column_names = feature_columns.copy()
         column_names.append(label_column)
         pandas_ds = self.to_pandas(column_names)
-        return pandas_ds.to_torch(feature_columns, feature_shapes, feature_types,
-                                  label_column, label_shape, label_type)
+        return pandas_ds.to_torch(feature_columns, feature_shapes,
+                                  feature_types, label_column, label_shape,
+                                  label_type)
 
-    def to_tf(self,
-              feature_columns: List[str],
-              feature_shapes: List["tensorflow.TensorShape"],
-              feature_types: List["tensorflow.DType"],
-              label_column: str,
-              label_shape: "tensorflow.TensorShape",
-              label_type: "tensorflow.DType"):
+    def to_tf(self, feature_columns=None, feature_shapes=None,
+              feature_types=None, label_column=None, label_shape=None,
+              label_type=None):
+        """
+        Create a TFDataset from the current DistributedDataset. This will
+        convert to a PandasDistributedDataset first, and then convert a
+        TFDataset.
+        Args:
+            feature_columns (List[Union[int, str]]): the column indexes
+                name. This is a list of int if the record is list like object.
+                This is a list of str if the record is dataclass instance.
+            feature_shapes (Optional[List[tf.TensorShape]]): the feature shapes
+                matching the feature columns. One row will packet into one
+                tf.Tensor if this is not provided. Otherwise, each feature
+                column will be one tf.Tensor and with the provided shapes.
+            feature_types (Optional[List["tf.DType"]]): the feature types
+               matching the feature columns. All feature will be cast into
+               tf.float by default. Otherwise, cast into the provided type.
+            label_column (Union[int, str]): the label index or name. This is a
+               int index if the record is list like object. It should be str if
+               the record is dataclass instance.
+            label_shape (Optional[tf.TensorShape]): the label shape.
+            label_type (Optional["tf.DType"]): the label type, this will be
+               cast into tf.float by default
+        Returns:
+            A TFDataset
+        """
         column_names = feature_columns.copy()
         column_names.append(label_column)
         pandas_ds = self.to_pandas(column_names)
@@ -173,8 +289,19 @@ class DistributedDataset(Dataset[T]):
 
 
 class PandasDistributedDataset(Dataset[DataFrame]):
+    """
+    A distributed dataset implemented based on ParallelIterator. And each item
+    is a pandas DataFrame.
+    Args:
+        para_it (ParallelIterator[pd.DataFrame]): An existing parallel
+            iterator, and each should be a pandas DataFrame.
+        batch_size (int): The batch size of the item.
+        add_type_check (bool): Whether we need to wrap the transform function
+            with type check.
+        item_check_fn (Callable[[T], bool]): A check function for each item.
+    """
     def __init__(self,
-                 para_it: ParallelIterator[T],
+                 para_it: ParallelIterator[DataFrame],
                  batch_size: int = 0,
                  add_type_check: bool = False,
                  item_check_fn=lambda item: isinstance(item, DataFrame)):
@@ -186,31 +313,28 @@ class PandasDistributedDataset(Dataset[DataFrame]):
 
     @staticmethod
     def from_distributed_ds(
-        ds: DistributedDataset[DataFrame]
-    ) -> "PandasDistributedDataset":
-        return PandasDistributedDataset(
-            ds._para_it, ds._batch_size, ds._add_type_check)
+            ds: DistributedDataset[DataFrame]) -> "PandasDistributedDataset":
+        return PandasDistributedDataset(ds._para_it, ds._batch_size,
+                                        ds._add_type_check)
 
-    def transform(
-        self, fn: Callable[[T], U], fn_name: str
-    ) -> "PandasDistributedDataset":
+    def transform(self, fn: Callable[[T], U],
+                  fn_name: str) -> "PandasDistributedDataset":
         if self._add_type_check:
             fn = type_check(fn, self._batch_size > 0, self._item_check_fn)
             fn_name = fn_name + ".type_check()"
         para_it = self._para_it._with_transform(
             lambda local_it: local_it.transform(fn), fn_name)
-        return PandasDistributedDataset(
-            para_it, self._batch_size, self._add_type_check)
+        return PandasDistributedDataset(para_it, self._batch_size,
+                                        self._add_type_check)
 
     def num_shards(self) -> int:
         return self._para_it.num_shards()
 
-    def repartition(
-        self, num_partitions: int, batch_ms: int = 0
-    ) -> "PandasDistributedDataset":
+    def repartition(self, num_partitions: int,
+                    batch_ms: int = 0) -> "PandasDistributedDataset":
         para_it = self._para_it.repartition(num_partitions, batch_ms)
-        return PandasDistributedDataset(
-            para_it, self._batch_size, self._add_type_check)
+        return PandasDistributedDataset(para_it, self._batch_size,
+                                        self._add_type_check)
 
     def batch(self, batch_size: int) -> "PandasDistributedDataset":
         """
@@ -258,61 +382,130 @@ class PandasDistributedDataset(Dataset[DataFrame]):
 
         return self.transform(batch_fn, f".batch({batch_size})")
 
-    def shuffle(self, shuffle_buffer_size: int, seed: int = None) -> "PandasDistributedDataset":
+    def shuffle(self, shuffle_buffer_size: int,
+                seed: int = None) -> "PandasDistributedDataset":
+        """
+        Unlike the ParallelIterator.local_shuffle. This shuffle will first
+        apply the local_shuffle for each shards and then shuffle the each
+        pandas DataFrame.
+        """
         para_it = self._para_it.local_shuffle(shuffle_buffer_size, seed)
 
         def shuffle_fn(it: Iterable[DataFrame]) -> Iterable[DataFrame]:
             for df in it:
                 df = df.sample(frac=1, random_state=seed)
                 yield df
-        para_it = para_it._with_transform(
-            lambda local_it: local_it.transform(shuffle_fn), ".inner_pandas_shuffle()")
-        return PandasDistributedDataset(
-            para_it, self._batch_size, self._add_type_check, self._item_check_fn)
 
-    def get_shard(self,
-                  shard_index: int,
-                  batch_ms: int = 0,
-                  num_async: int = 1,
-                  shuffle: bool = False,
-                  shuffle_buffer_size: int = 1,
-                  seed: int = None,
-                  inner_shuffle_fn: Callable[[T], T] = None) -> Iterator[DataFrame]:
+        para_it = para_it._with_transform(
+            lambda local_it: local_it.transform(shuffle_fn),
+            ".inner_pandas_shuffle()")
+        return PandasDistributedDataset(para_it, self._batch_size,
+                                        self._add_type_check,
+                                        self._item_check_fn)
+
+    def get_shard(
+            self,
+            shard_index: int,
+            batch_ms: int = 0,
+            num_async: int = 1,
+            shuffle: bool = False,
+            shuffle_buffer_size: int = 1,
+            seed: int = None,
+            inner_shuffle_fn: Callable[[T], T] = None) -> Iterator[DataFrame]:
         if shuffle and inner_shuffle_fn is None:
             inner_shuffle_fn = lambda df: df.sample(frac=1, random_state=seed)
-        return _RepeatableIterator(
-            self._para_it, shard_index, batch_ms, num_async,
-            shuffle, shuffle_buffer_size, seed, inner_shuffle_fn)
+        return _RepeatableIterator(self._para_it, shard_index, batch_ms,
+                                   num_async, shuffle, shuffle_buffer_size,
+                                   seed, inner_shuffle_fn)
 
-    def to_pandas(self,
-                  column_names: List[Optional[int, str]],
-                  batch_size: int = 32) -> "PandasDistributedDataset":
+    def to_pandas(self, batch_size: int = 32) -> "PandasDistributedDataset":
         return self.batch(batch_size)
 
-    def to_torch(self,
-                 feature_columns: List[str] = None,
-                 feature_shapes: Optional[List[Any]] = None,
-                 feature_types: Optional[List["torch.dtype"]] = None,
-                 label_column: str = None,
-                 label_shape: Optional[int] = None,
-                 label_type: Optional["torch.dtype"] = None) -> "TorchDataset":
+    def to_torch(self, feature_columns=None, feature_shapes=None,
+                 feature_types=None, label_column=None, label_shape=None,
+                 label_type=None):
+        """
+        Create a TorchDataset from the current DistributedDataset.
+        Args:
+            feature_columns (List[Union[int, str]]): the column indexes
+                name. This is a list of int if the record is list like object.
+                This is a list of str if the record is dataclass instance.
+            feature_shapes (Optional[List[Any]]): the feature shapes matching
+               the feature columns. One row will packet into one torch.Tensor
+               if this is not provided. Otherwise, each feature column will be
+               one torch.Tensor and with the provided shapes.
+            feature_types (Optional[List["torch.dtype"]]): the feature types
+               matching the feature columns. All feature will be cast into
+               torch.float by default. Otherwise, cast into the provided type.
+            label_column (Union[int, str]): the label index or name. This is a
+               int index if the record is list like object. It should be str if
+               the record is dataclass instance.
+            label_shape (Optional[int]): the label shape.
+            label_type (Optional["torch.dtype"]): the label type, this will be
+               cast into torch.float by default
+        Returns:
+            A TorchDataset
+        """
         from ray.util.sgd.torch.torch_dataset import TorchDataset
         return TorchDataset(self, feature_columns, feature_shapes,
                             feature_types, label_column, label_shape,
                             label_type)
 
-    def to_tf(self,
-              feature_columns: List[str],
-              feature_shapes: List["tensorflow.TensorShape"],
-              feature_types: List["tensorflow.DType"], label_column: str,
-              label_shape: "tensorflow.TensorShape",
-              label_type: "tensorflow.DType"):
+    def to_tf(self, feature_columns=None, feature_shapes=None,
+              feature_types=None, label_column=None, label_shape=None,
+              label_type=None):
+        """
+        Create a TFDataset from the current DistributedDataset. This will
+        convert to a PandasDistributedDataset first, and then convert a
+        TFDataset.
+        Args:
+            feature_columns (List[Union[int, str]]): the column indexes
+                name. This is a list of int if the record is list like object.
+                This is a list of str if the record is dataclass instance.
+            feature_shapes (Optional[List[tf.TensorShape]]): the feature shapes
+                matching the feature columns. One row will packet into one
+                tf.Tensor if this is not provided. Otherwise, each feature
+                column will be one tf.Tensor and with the provided shapes.
+            feature_types (Optional[List["tf.DType"]]): the feature types
+               matching the feature columns. All feature will be cast into
+               tf.float by default. Otherwise, cast into the provided type.
+            label_column (Union[int, str]): the label index or name. This is a
+               int index if the record is list like object. It should be str if
+               the record is dataclass instance.
+            label_shape (Optional[tf.TensorShape]): the label shape.
+            label_type (Optional["tf.DType"]): the label type, this will be
+               cast into tf.float by default
+        Returns:
+            A TFDataset
+        """
         from ray.util.sgd.tf.tf_dataset import TFDataset
         return TFDataset(self, feature_columns, feature_shapes, feature_types,
                          label_column, label_shape, label_type)
 
 
 class _RepeatableIterator(Iterator[T]):
+    """
+    A repeatable iterator for the given shard index data. Each call
+    iter(_RepeatableIterator instance) will shuffle the iterator and return a
+    different order or data.
+    Args:
+        it (ParallelIterator[T]): a ParallelIterator to fetch the given shard
+            data.
+        shard_index (int): the shard index id.
+        batch_ms (int): Batches items for batch_ms milliseconds
+                before retrieving it.
+                Increasing batch_ms increases latency but improves throughput.
+                If this value is 0, then items are returned immediately.
+        num_async (int): The max number of requests in flight.
+            Increasing this improves the amount of pipeline
+            parallelism in the iterator.
+        shuffle (bool): whether shuffle the given shard data
+        shuffle_buffer_size (int): same as ParallelIterator.local_shuffle
+        seed (int): the random seed
+        inner_shuffle_fn (Callable[[T], T]): If the shuffle is True and
+            current dataset is batched, this function will apply to the
+            batched records.
+    """
     def __init__(self,
                  it: ParallelIterator[T],
                  shard_index: int,
@@ -361,7 +554,8 @@ class _RepeatableIterator(Iterator[T]):
                     buffer.append(item)
                     if len(buffer) >= self._shuffle_buffer_size:
                         item = buffer.pop(
-                            shuffle_random.randint(0, len(buffer) - 1))
+                            shuffle_random.randint(0,
+                                                   len(buffer) - 1))
                         item = self._inner_shuffle_fn(item)
                         yield item
             while len(buffer) > 0:
@@ -374,6 +568,6 @@ class _RepeatableIterator(Iterator[T]):
             local_it.shared_metrics,
             local_it.local_transforms + [apply_shuffle],
             name=local_it.name +
-                 ".shuffle(shuffle_buffer_size={}, seed={})".format(
-                     self._shuffle_buffer_size,
-                     str(self._seed) if self._seed is not None else "None"))
+            ".shuffle(shuffle_buffer_size={}, seed={})".format(
+                self._shuffle_buffer_size,
+                str(self._seed) if self._seed is not None else "None"))

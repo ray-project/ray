@@ -1,9 +1,14 @@
-from typing import Callable, Generic
+from typing import Callable, Iterable, Generic
 from ray.util.iter import T, U
 
 
 class Dataset(Generic[T]):
-    def transform(self, fn: Callable[[T], U], fn_name: str) -> "Dataset[U]":
+    """
+    A Dataset abstraction
+    """
+
+    def transform(self, fn: Callable[[Iterable[T]], Iterable[U]],
+                  fn_name: str) -> "Dataset[U]":
         raise NotImplementedError
 
     def batch(self, batch_size: int) -> "Dataset[U]":
