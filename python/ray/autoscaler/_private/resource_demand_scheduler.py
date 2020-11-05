@@ -85,14 +85,17 @@ class ResourceDemandScheduler:
                 that we don't take into account existing usage.
         """
 
-        # Calculate any extra requests we need to make that don't already fit
-        # into the cluster.
+        # If the user is using request_resources() API, calculate the remaining
+        # delta resources required to meet their requested cluster size.
         if ensure_min_cluster_size is not None:
             used_resources = []
             for ip, max_res in max_resources_by_ip.items():
                 res = copy.deepcopy(max_res)
                 _inplace_subtract(res, unused_resources_by_ip.get(ip, {}))
                 used_resources.append(res)
+            # Example: user requests 1000 CPUs, but the cluster is currently
+            # 500 CPUs in size with 250 used. Then, the delta is 750 CPUs that
+            # we need to fit to get the cluster to scale to 1000.
             resource_requests, _ = get_bin_pack_residual(
                 used_resources, ensure_min_cluster_size)
             resource_demands += resource_requests
