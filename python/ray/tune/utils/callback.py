@@ -23,7 +23,7 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
 
     if not has_trial_progress_callback:
         trial_progress_callback = TrialProgressCallback(metric=metric)
-    callbacks.append(trial_progress_callback)
+        callbacks.append(trial_progress_callback)
 
     # Track syncer obj/index to move callback after loggers
     last_logger_index = None
@@ -78,7 +78,6 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
         if add_loggers:
             callbacks.append(LegacyExperimentLogger(add_loggers))
             last_logger_index = len(callbacks) - 1
->>>>>>> master
 
     # If no SyncerCallback was found, add
     if not has_syncer_callback and os.environ.get(
