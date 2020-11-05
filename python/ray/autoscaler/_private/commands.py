@@ -112,14 +112,6 @@ def request_resources(num_cpus: Optional[int] = None,
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
             resource shapes can fit. This request is persistent until another
             call to request_resources() is made.
-
-    Examples:
-        >>> # Request 1000 CPUs.
-        >>> request_resources(num_cpus=1000)
-        >>> # Request 64 CPUs and also fit a 1-GPU/4-CPU task.
-        >>> request_resources(num_cpus=64, bundles=[{"GPU": 1, "CPU": 4}])
-        >>> # Same as requesting 3 CPUs.
-        >>> request_resources(bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")
