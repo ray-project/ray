@@ -7,9 +7,9 @@ from typing import Callable, List, Union, Iterable, Iterator
 import pandas as pd
 from pandas import DataFrame
 
-from ray.util.iter import _NextValueNotReady, LocalIterator, ParallelIterator
+from ray.util.iter import (_NextValueNotReady, LocalIterator, ParallelIterator,
+                           T, U)
 from .dataset import Dataset
-from ..iter import T, U
 
 
 def item_check(item) -> bool:
