@@ -10,7 +10,7 @@ Ray has a built in debugger that allows you to debug your distributed applicatio
 Getting Started
 ---------------
 
-Take the following example that is modified from the Ray README:
+Take the following example:
 
 .. code-block:: python
 
