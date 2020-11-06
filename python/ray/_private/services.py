@@ -134,16 +134,20 @@ def find_redis_address(address=None):
             # the first argument.
             # Explanation: https://unix.stackexchange.com/a/432681
             # More info: https://github.com/giampaolo/psutil/issues/1179
-            for arglist in proc.cmdline():
-                # Given we're merely seeking --redis-address, we just split
-                # every argument on spaces for now.
-                for arg in arglist.split(" "):
-                    # TODO(ekl): Find a robust solution for locating Redis.
-                    if arg.startswith("--redis-address="):
-                        proc_addr = arg.split("=")[1]
-                        if address is not None and address != proc_addr:
-                            continue
-                        redis_addresses.add(proc_addr)
+            cmdline = proc.cmdline()
+            # NOTE(kfstorm): To support Windows, we can't use
+            # `os.path.basename(cmdline[0]) == "raylet"` here.
+            if len(cmdline) > 0 and "raylet" in os.path.basename(cmdline[0]):
+                for arglist in cmdline:
+                    # Given we're merely seeking --redis-address, we just split
+                    # every argument on spaces for now.
+                    for arg in arglist.split(" "):
+                        # TODO(ekl): Find a robust solution for locating Redis.
+                        if arg.startswith("--redis-address="):
+                            proc_addr = arg.split("=")[1]
+                            if address is not None and address != proc_addr:
+                                continue
+                            redis_addresses.add(proc_addr)
         except psutil.AccessDenied:
             pass
         except psutil.NoSuchProcess:
