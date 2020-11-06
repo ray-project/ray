@@ -263,7 +263,7 @@ class TrialRunnerTest(unittest.TestCase):
             def on_trial_result(self, trial_runner, trial, result):
                 if result["training_iteration"] == 1:
                     executor = trial_runner.trial_executor
-                    executor.stop_trial(trial, stop_logger=False)
+                    executor.stop_trial(trial)
                     trial.update_resources(2, 0)
                     executor.start_trial(trial)
                 return TrialScheduler.CONTINUE

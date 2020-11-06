@@ -218,7 +218,8 @@ class StandardAutoscaler:
                 self.pending_launches.breakdown(),
                 resource_demand_vector,
                 self.load_metrics.get_resource_utilization(),
-                pending_placement_groups)
+                pending_placement_groups,
+                self.load_metrics.get_static_node_resources_by_ip())
             for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
 
@@ -227,10 +228,9 @@ class StandardAutoscaler:
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
-        if num_workers < target_workers:
-            max_allowed = min(self.max_launch_batch,
-                              self.max_concurrent_launches - num_pending)
-
+        max_allowed = min(self.max_launch_batch,
+                          self.max_concurrent_launches - num_pending)
+        if num_workers < target_workers and max_allowed > 0:
             num_launches = min(max_allowed, target_workers - num_workers)
             self.launch_new_node(num_launches,
                                  self.config.get("worker_default_node_type"))
@@ -301,9 +301,9 @@ class StandardAutoscaler:
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 node_type_counts[node_type] += 1
-                if node_type_counts[node_type] <= \
-                        self.available_node_types[node_type].get(
-                            "min_workers", 0):
+                min_workers = self.available_node_types[node_type].get(
+                    "min_workers", 0)
+                if node_type_counts[node_type] <= min_workers:
                     return True
 
         return False

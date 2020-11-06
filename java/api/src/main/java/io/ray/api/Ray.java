@@ -245,10 +245,16 @@ public final class Ray extends RayCall {
    * to be updated and rescheduled.
    * This function only works when gcs actor manager is turned on.
    *
-   * @param bundles Preallocated resource list.
+   * @param name Name of the Placement Group.
+   * @param bundles Pre-allocated resource list.
    * @param strategy Actor placement strategy.
    * @return A handle to the created placement group.
    */
+  public static PlacementGroup createPlacementGroup(String name,
+      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    return internal().createPlacementGroup(name, bundles, strategy);
+  }
+
   public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
     return internal().createPlacementGroup(bundles, strategy);
