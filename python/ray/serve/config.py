@@ -30,7 +30,7 @@ class BackendMetadata:
 class BackendConfig(BaseModel):
     """Configuration options for a backend, to be set by the user.
 
-    :param num_replicas: The number of worker processes to start up that will
+    :param num_replicas: The number of processes to start up that will
         handle requests to this backend. Defaults to 0.
     :type num_replicas: int, optional
     :param max_batch_size: The maximum number of requests that will be
@@ -76,7 +76,7 @@ class BackendConfig(BaseModel):
 
     # Dynamic default for max_concurrent_queries
     @validator("max_concurrent_queries", always=True)
-    def set_max_queries_by_mode(cls, v, values):
+    def set_max_queries_by_mode(cls, v, values):  # noqa 805
         if v is None:
             # Model serving mode: if the servable is blocking and the wait
             # timeout is default zero seconds, then we keep the existing

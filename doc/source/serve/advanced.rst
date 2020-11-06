@@ -16,7 +16,7 @@ the properties of a particular backend.
 Scaling Out
 ===========
 
-To scale out a backend to multiple workers, simply configure the number of replicas.
+To scale out a backend to many instances, simply configure the number of replicas.
 
 .. code-block:: python
 
@@ -27,14 +27,14 @@ To scale out a backend to multiple workers, simply configure the number of repli
   config = {"num_replicas": 2}
   client.update_backend_config("my_scaled_endpoint_backend", config)
 
-This will scale up or down the number of workers that can accept requests.
+This will scale up or down the number of replicas that can accept requests.
 
 Using Resources (CPUs, GPUs)
 ============================
 
-To assign hardware resources per worker, you can pass resource requirements to
+To assign hardware resources per replica, you can pass resource requirements to
 ``ray_actor_options``.
-By default, each worker requires one CPU.
+By default, each replica requires one CPU.
 To learn about options to pass in, take a look at :ref:`Resources with Actor<actor-resource-guide>` guide.
 
 For example, to create a backend where each replica uses a single GPU, you can do the
@@ -49,7 +49,7 @@ Fractional Resources
 --------------------
 
 The resources specified in ``ray_actor_options`` can also be *fractional*.
-This allows you to flexibly share resources between workers.
+This allows you to flexibly share resources between replicas.
 For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
 The same could be done to multiplex over CPUs.
 

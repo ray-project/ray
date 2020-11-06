@@ -52,10 +52,10 @@ class Query:
 
     def ray_serialize(self):
         # NOTE: this method is needed because Query need to be serialized and
-        # sent to the replica worker. However, after we send the query to
-        # replica worker the async_future is still needed to retrieve the final
-        # result. Therefore we need a way to pass the information to replica
-        # worker without removing async_future.
+        # sent to the replica. However, after we send the query to the
+        # replica the async_future is still needed to retrieve the final
+        # result. Therefore we need a way to pass the information to replicas
+        # without removing async_future.
         clone = copy.copy(self.__dict__)
         clone.pop("async_future")
         return pickle.dumps(clone)
@@ -67,7 +67,7 @@ class Query:
 
 
 class Router:
-    """A router that routes request to available workers."""
+    """A router that routes request to available replicas."""
 
     async def setup(self, name, controller_name):
         # Note: Several queues are used in the router
@@ -116,7 +116,7 @@ class Router:
         self.flush_lock = asyncio.Lock()
 
         # -- State Restoration -- #
-        # Fetch the worker handles, traffic policies, and backend configs from
+        # Fetch the replica handles, traffic policies, and backend configs from
         # the controller. We use a "pull-based" approach instead of pushing
         # them from the controller so that the router can transparently recover
         # from failure.
@@ -127,10 +127,12 @@ class Router:
         for endpoint, traffic_policy in traffic_policies.items():
             await self.set_traffic(endpoint, traffic_policy)
 
-        backend_dict = ray.get(self.controller.get_all_worker_handles.remote())
+        backend_dict = ray.get(
+            self.controller.get_all_replica_handles.remote())
         for backend_tag, replica_dict in backend_dict.items():
-            for replica_tag, worker in replica_dict.items():
-                await self.add_new_worker(backend_tag, replica_tag, worker)
+            for replica_tag, replica_handle in replica_dict.items():
+                await self.add_new_replica(backend_tag, replica_tag,
+                                           replica_handle)
 
         backend_configs = ray.get(self.controller.get_backend_configs.remote())
         for backend, backend_config in backend_configs.items():
@@ -186,11 +188,11 @@ class Router:
             result = e
         return result
 
-    async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
+    async def add_new_replica(self, backend_tag, replica_tag, replica_handle):
         backend_replica_tag = backend_tag + ":" + replica_tag
         if backend_replica_tag in self.replicas:
             return
-        self.replicas[backend_replica_tag] = worker_handle
+        self.replicas[backend_replica_tag] = replica_handle
 
         logger.debug("New worker added for backend '{}'".format(backend_tag))
         await self.mark_worker_idle(backend_tag, backend_replica_tag)
@@ -207,7 +209,7 @@ class Router:
                 self.worker_queues[backend_tag].appendleft(backend_replica_tag)
             self.flush_backend_queues([backend_tag])
 
-    async def remove_worker(self, backend_tag, replica_tag):
+    async def remove_replica(self, backend_tag, replica_tag):
         backend_replica_tag = backend_tag + ":" + replica_tag
         if backend_replica_tag not in self.replicas:
             return

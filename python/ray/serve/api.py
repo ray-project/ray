@@ -163,7 +163,7 @@ class Client:
             config_options(dict, serve.BackendConfig): Backend config options
                 to update. Either a BackendConfig object or a dict mapping
                 strings to values for the following supported options:
-                - "num_replicas": number of worker processes to start up that
+                - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
                 - "max_batch_size": the maximum number of requests that will
                 be processed in one batch by this backend.
@@ -215,7 +215,7 @@ class Client:
             config (dict, serve.BackendConfig, optional): configuration options
                 for this backend. Either a BackendConfig, or a dictionary
                 mapping strings to values for the following supported options:
-                - "num_replicas": number of worker processes to start up that
+                - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
                 - "max_batch_size": the maximum number of requests that will
                 be processed in one batch by this backend.
