@@ -73,7 +73,7 @@ tune.run_experiments({
             "c": tune.grid_search(list(range(10))),
         },
     },
-}, verbose=1, progress_reporter=reporter)"""
+}, verbose=3, progress_reporter=reporter)"""
 
 EXPECTED_END_TO_END_START = """Number of trials: 1/30 (1 RUNNING)
 +---------------+----------+-------+-----+
