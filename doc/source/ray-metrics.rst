@@ -37,11 +37,11 @@ Let's modify Prometheus's config file to scrape metrics from Prometheus endpoint
 
     # prometheus.yml
     global:
-    scrape_interval:     5s
-    evaluation_interval: 5s
+      scrape_interval:     5s
+      evaluation_interval: 5s
 
     scrape_configs:
-    - job_name: prometheus
+      - job_name: prometheus
         static_configs:
         - targets: ['localhost:8080'] # This must be same as metrics_export_port
 
