@@ -410,6 +410,7 @@ void NodeManager::Heartbeat() {
            "lagging, this node can be marked as dead mistakenly.";
   }
   last_heartbeat_at_ms_ = now_ms;
+  stats::HeartbeatReportMs.Record(interval);
 
   auto heartbeat_data = std::make_shared<HeartbeatTableData>();
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
@@ -609,9 +610,7 @@ void NodeManager::WarnResourceDeadlock() {
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
-        << " is pending and cannot currently be scheduled. It requires "
-        << exemplar.GetTaskSpecification().GetRequiredResources().ToString()
-        << " for execution and "
+        << " cannot be scheduled right now. It requires "
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
         << " for placement, but this node only has remaining "
         << local_resources.GetAvailableResources().ToString() << ". In total there are "
@@ -2086,9 +2085,7 @@ void NodeManager::ScheduleTasks(
       std::ostringstream error_message;
       error_message
           << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
-          << " is infeasible and cannot currently be scheduled. It requires "
-          << task.GetTaskSpecification().GetRequiredResources().ToString()
-          << " for execution and "
+          << " cannot be scheduled right now. It requires "
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
           << " for placement, however the cluster currently cannot provide the requested "
              "resources. The required resources may be added as autoscaling takes place "
@@ -2181,7 +2178,6 @@ void NodeManager::MarkObjectsAsFailed(
 }
 
 void NodeManager::SubmitTask(const Task &task) {
-  stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
   // Actor tasks should be no longer submitted to raylet.
   RAY_CHECK(!spec.IsActorTask());
@@ -3313,14 +3309,11 @@ void NodeManager::RecordMetrics() {
   }
 
   object_manager_.RecordMetrics();
-  worker_pool_.RecordMetrics();
   local_queues_.RecordMetrics();
-  task_dependency_manager_.RecordMetrics();
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   stats::LiveActors().Record(statistical_data.live_actors);
   stats::RestartingActors().Record(statistical_data.restarting_actors);
-  stats::DeadActors().Record(statistical_data.dead_actors);
 }
 
 bool NodeManager::ReturnBundleResources(const BundleSpecification &bundle_spec) {

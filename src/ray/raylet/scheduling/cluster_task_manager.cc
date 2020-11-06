@@ -30,13 +30,14 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // tasks from being scheduled.
       Work work = *work_it;
       Task task = std::get<0>(work);
-      auto request_resources =
-          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+      auto placement_resources =
+          task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
       int64_t _unused;
       // TODO (Alex): We should distinguish between infeasible tasks and a fully
       // utilized cluster.
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          request_resources, task.GetTaskSpecification().IsActorCreationTask(), &_unused);
+          placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+          &_unused);
       if (node_id_string.empty()) {
         // There is no node that has available resources to run the request.
         // Move on to the next shape.
@@ -49,8 +50,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
           did_schedule = task_scheduled || did_schedule;
         } else {
           // Should spill over to a different node.
-          cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
-                                                                   request_resources);
+          cluster_resource_scheduler_->AllocateRemoteTaskResources(
+              node_id_string,
+              task.GetTaskSpecification().GetRequiredResources().GetResourceMap());
 
           NodeID node_id = NodeID::FromBinary(node_id_string);
           auto node_info_opt = get_node_info_(node_id);
