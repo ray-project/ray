@@ -301,7 +301,6 @@ class Router:
         # If the worker died, this will be a RayActorError. Just return it and
         # let the HTTP proxy handle the retry logic.
         logger.debug("Sending query to replica:" + backend_replica_tag)
-        start = time.time()
         worker = self.replicas[backend_replica_tag]
         try:
             object_ref = worker.handle_request.remote(req.ray_serialize())

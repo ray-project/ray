@@ -61,7 +61,7 @@ class RayServeHandle:
                 ``request.args``.
         """
         request_metadata = RequestMetadata(
-            get_random_letters(10), # Used for debugging.
+            get_random_letters(10),  # Used for debugging.
             self.endpoint_name,
             TaskContext.Python,
             call_method=self.method_name or "__call__",
