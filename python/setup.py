@@ -105,7 +105,7 @@ optional_ray_files += ray_dashboard_files
 extras = {
     "debug": [],
     "serve": [
-        "uvicorn", "flask", "requests", "pydantic<1.7",
+        "uvicorn", "flask", "requests", "pydantic",
         "dataclasses; python_version < '3.7'"
     ],
     "tune": [
