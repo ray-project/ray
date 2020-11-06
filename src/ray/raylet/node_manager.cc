@@ -610,9 +610,7 @@ void NodeManager::WarnResourceDeadlock() {
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
-        << " is pending and cannot currently be scheduled. It requires "
-        << exemplar.GetTaskSpecification().GetRequiredResources().ToString()
-        << " for execution and "
+        << " cannot be scheduled right now. It requires "
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
         << " for placement, but this node only has remaining "
         << local_resources.GetAvailableResources().ToString() << ". In total there are "
@@ -2087,9 +2085,7 @@ void NodeManager::ScheduleTasks(
       std::ostringstream error_message;
       error_message
           << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
-          << " is infeasible and cannot currently be scheduled. It requires "
-          << task.GetTaskSpecification().GetRequiredResources().ToString()
-          << " for execution and "
+          << " cannot be scheduled right now. It requires "
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
           << " for placement, however the cluster currently cannot provide the requested "
              "resources. The required resources may be added as autoscaling takes place "
