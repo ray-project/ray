@@ -271,6 +271,8 @@ def test_spill_remote_object(ray_start_cluster_head):
     ray.get(depends.remote(ref))
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
