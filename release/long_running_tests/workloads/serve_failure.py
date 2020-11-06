@@ -118,4 +118,4 @@ random_killer = RandomKiller.remote()
 random_killer.run.remote()
 # Subtract 1 CPU for the controller and 1 CPU from each node for the HTTP
 # server.
-RandomTest(client, max_endpoints=(num_nodes * cpus_per_node - 1) - 1).run()
+RandomTest(client, max_endpoints=(num_nodes * (cpus_per_node - 1)) - 1).run()
