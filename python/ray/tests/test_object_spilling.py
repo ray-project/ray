@@ -336,5 +336,38 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
         print(ray.get(x).shape)
 
 
+def test_spill_deadlock(object_spilling_config, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+        })
+    arr = np.random.rand(1024 * 1024)  # 8 MB data
+    replay_buffer = []
+
+    # Wait raylet for starting an IO worker.
+    time.sleep(1)
+
+    # Create objects of more than 800 MiB.
+    for _ in range(100):
+        ref = None
+        while ref is None:
+            ref = ray.put(arr)
+            replay_buffer.append(ref)
+
+    print("-----------------------------------")
+
+    # randomly sample objects
+    for _ in range(1000):
+        ref = random.choice(replay_buffer)
+        sample = ray.get(ref, timeout=0)
+        assert np.array_equal(sample, arr)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -333,3 +333,9 @@ RAY_CONFIG(std::string, object_spilling_config, "")
 RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
 /// The maximum number of I/O worker that raylet starts.
 RAY_CONFIG(int, max_io_workers, 1)
+
+/// The maximum number of I/O spill worker that raylet starts.
+RAY_CONFIG(int, max_spill_workers, 1)
+
+/// The maximum number of I/O restore worker that raylet starts.
+RAY_CONFIG(int, max_restore_workers, 1)
