@@ -185,18 +185,19 @@ RAY_CONFIG(int, object_manager_push_timeout_ms, 10000)
 
 /// The period of time that an object manager will wait before pushing the
 /// same object again to a specific object manager.
-RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000)
+/// NOTE(ekl): this has been raised to avoid spurious repeated pushes.
+RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 10 * 60 * 1000)
 
 /// Default chunk size for multi-chunk transfers to use in the object manager.
 /// In the object manager, no single thread is permitted to transfer more
 /// data than what is specified by the chunk size unless the number of object
 /// chunks exceeds the number of available sending threads.
-RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
+/// NOTE(ekl): this has been raised to lower broadcast overheads.
+RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
-/// The number of chunks to send at once before waiting for confirmation.
-/// More chunks means less latency, fewer chunks means better multiplexing of
-/// RPC calls.
-RAY_CONFIG(uint64_t, object_manager_default_batch_size, 100)
+/// The maximum number of outbound bytes to allow to be outstanding. This avoids
+/// excessive memory usage during object broadcast to many receivers.
+RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 10 * 1024 * 1024 * 1024)
 
 /// Number of workers per Python worker process
 RAY_CONFIG(int, num_workers_per_process_python, 1)
