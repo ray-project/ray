@@ -357,9 +357,7 @@ class Simulator:
             self.load_metrics.update(
                 ip=ip,
                 static_resources=node.total_resources,
-                update_dynamic_resources=True,
                 dynamic_resources=node.available_resources,
-                update_resource_load=False,
                 resource_load={},
                 waiting_bundles=waiting_bundles,
                 infeasible_bundles=infeasible_bundles,
@@ -569,7 +567,7 @@ class AutoscalingPolicyTest(unittest.TestCase):
         simulator.submit(placement_group_requests)
 
         time = 0
-        while start_count < len(placement_group_requests) and time < 500:
+        while start_count < len(placement_group_requests):
             time = simulator.step()
 
         # for ip, node in simulator.ip_to_nodes.items():

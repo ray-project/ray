@@ -4,11 +4,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -32,12 +28,8 @@ public class PlacementGroupTest extends BaseTest {
   // This test just creates a placement group with one bundle.
   // It's not comprehensive to test all placement group test cases.
   public void testCreateAndCallActor() {
-    List<Map<String, Double>> bundles = new ArrayList<>();
-    Map<String, Double> bundle = new HashMap<>();
-    bundle.put("CPU", 1.0);
-    bundles.add(bundle);
-    PlacementStrategy strategy = PlacementStrategy.PACK;
-    PlacementGroup placementGroup = Ray.createPlacementGroup(bundles, strategy);
+    PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
+    Assert.assertEquals(((PlacementGroupImpl)placementGroup).getName(),"unnamed_group");
 
     // Test creating an actor from a constructor.
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 1)
@@ -49,12 +41,7 @@ public class PlacementGroupTest extends BaseTest {
   }
 
   public void testCheckBundleIndex() {
-    List<Map<String, Double>> bundles = new ArrayList<>();
-    Map<String, Double> bundle = new HashMap<>();
-    bundle.put("CPU", 1.0);
-    bundles.add(bundle);
-    PlacementStrategy strategy = PlacementStrategy.PACK;
-    PlacementGroup placementGroup = Ray.createPlacementGroup(bundles, strategy);
+    PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
 
     int exceptionCount = 0;
     try {
@@ -64,12 +51,21 @@ public class PlacementGroupTest extends BaseTest {
     }
     Assert.assertEquals(1, exceptionCount);
 
-
     try {
       Ray.actor(Counter::new, 1).setPlacementGroup(placementGroup, -1).remote();
     } catch (IllegalArgumentException e) {
       ++exceptionCount;
     }
     Assert.assertEquals(2, exceptionCount);
+  }
+
+  @Test (expectedExceptions = { IllegalArgumentException.class })
+  public void testBundleSizeValidCheckWhenCreate() {
+    PlacementGroupTestUtils.createBundleSizeInvalidGroup();
+  }
+
+  @Test (expectedExceptions = { IllegalArgumentException.class })
+  public void testBundleResourceValidCheckWhenCreate() {
+    PlacementGroupTestUtils.createBundleResourceInvalidGroup();
   }
 }

@@ -15,7 +15,7 @@ import ray
 import ray._private.services as services
 from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.autoscaler._private import commands
-from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler.sdk import get_docker_host_mount_location
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
@@ -256,101 +256,61 @@ SMALL_CLUSTER = {
 class LoadMetricsTest(unittest.TestCase):
     def testUpdate(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
         assert lm.approx_workers_used() == 0.5
-        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
         assert lm.approx_workers_used() == 1.0
-        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 0}, True, {})
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
         assert lm.approx_workers_used() == 2.0
 
     def testLoadMessages(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
         self.assertEqual(lm.approx_workers_used(), 0.5)
-        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {"CPU": 1})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {"CPU": 1})
         self.assertEqual(lm.approx_workers_used(), 1.0)
 
         # Both nodes count as busy since there is a queue on one.
-        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 2}, True, {})
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 2}, {})
         self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 0}, True, {})
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
         self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-
-        # No queue anymore, so we're back to exact accounting.
-        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
-        self.assertEqual(lm.approx_workers_used(), 1.5)
-        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 1}, True, {"GPU": 1})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-
-        lm.update("3.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("4.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("5.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("6.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("7.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("8.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        self.assertEqual(lm.approx_workers_used(), 8.0)
-
-        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 1}, True,
-                  {})  # no queue anymore
-        self.assertEqual(lm.approx_workers_used(), 4.5)
-
-    def testLoadMessagesWithLightHeartbeat(self):
-        lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        self.assertEqual(lm.approx_workers_used(), 0.5)
-        lm.update("1.1.1.1", {}, False, {}, True, {"CPU": 1})
-        self.assertEqual(lm.approx_workers_used(), 1.0)
-
-        # Both nodes count as busy since there is a queue on one.
-        lm.update("2.2.2.2", {"CPU": 2}, True, {"CPU": 2}, True, {})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {}, True, {"CPU": 0}, False, {})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {}, True, {"CPU": 1}, False, {})
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})
         self.assertEqual(lm.approx_workers_used(), 2.0)
 
         # No queue anymore, so we're back to exact accounting.
-        lm.update("1.1.1.1", {}, True, {"CPU": 0}, True, {})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
         self.assertEqual(lm.approx_workers_used(), 1.5)
-        lm.update("2.2.2.2", {}, False, {}, True, {"GPU": 1})
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {"GPU": 1})
         self.assertEqual(lm.approx_workers_used(), 2.0)
 
-        lm.update("3.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("4.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("5.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("6.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("7.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
-        lm.update("8.3.3.3", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("3.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("4.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("5.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("6.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("7.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("8.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
         self.assertEqual(lm.approx_workers_used(), 8.0)
 
-        lm.update("2.2.2.2", {}, False, {"CPU": 1}, True,
-                  {})  # no queue anymore
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})  # no queue anymore
         self.assertEqual(lm.approx_workers_used(), 4.5)
 
     def testPruneByNodeIp(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 1}, True, {"CPU": 0}, True, {})
-        lm.update("2.2.2.2", {"CPU": 1}, True, {"CPU": 0}, True, {})
+        lm.update("1.1.1.1", {"CPU": 1}, {"CPU": 0}, {})
+        lm.update("2.2.2.2", {"CPU": 1}, {"CPU": 0}, {})
         lm.prune_active_ips({"1.1.1.1", "4.4.4.4"})
         assert lm.approx_workers_used() == 1.0
 
     def testBottleneckResource(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
-        lm.update("2.2.2.2", {
-            "CPU": 2,
-            "GPU": 16
-        }, True, {
-            "CPU": 2,
-            "GPU": 2
-        }, True, {})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
         assert lm.approx_workers_used() == 1.88
 
     def testHeartbeat(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
         lm.mark_active("2.2.2.2")
         assert "1.1.1.1" in lm.last_heartbeat_time_by_ip
         assert "2.2.2.2" in lm.last_heartbeat_time_by_ip
@@ -358,21 +318,15 @@ class LoadMetricsTest(unittest.TestCase):
 
     def testDebugString(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
-        lm.update("2.2.2.2", {
-            "CPU": 2,
-            "GPU": 16
-        }, True, {
-            "CPU": 2,
-            "GPU": 2
-        }, True, {})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
         lm.update("3.3.3.3", {
             "memory": 20,
             "object_store_memory": 40
-        }, True, {
+        }, {
             "memory": 0,
             "object_store_memory": 20
-        }, True, {})
+        }, {})
         debug = lm.info_string()
         assert ("ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU, "
                 "1.05 GiB/1.05 GiB memory, "
@@ -427,11 +381,26 @@ class AutoscalingTest(unittest.TestCase):
             f.write(yaml.dump(config))
         return path
 
-    def testInvalidConfig(self):
-        invalid_config = os.devnull
-        with pytest.raises(ValueError):
-            StandardAutoscaler(
-                invalid_config, LoadMetrics(), update_interval_s=0)
+    def testAutoscalerConfigValidationFailNotFatal(self):
+        invalid_config = {**SMALL_CLUSTER, "invalid_property_12345": "test"}
+        # First check that this config is actually invalid
+        with pytest.raises(ValidationError):
+            validate_config(invalid_config)
+
+        config_path = self.write_config(invalid_config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(2)
+        autoscaler.update()
+        self.waitForNodes(2)
 
     def testValidation(self):
         """Ensures that schema validation is working."""
@@ -487,14 +456,18 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "start_ray_head")
         self.assertEqual(self.provider.mock_nodes[0].node_type, None)
         runner.assert_has_call("1.2.3.4", pattern="docker run")
+
+        docker_mount_prefix = get_docker_host_mount_location(
+            SMALL_CLUSTER["cluster_name"])
         runner.assert_not_has_call(
-            "1.2.3.4", pattern="-v /tmp/ray_tmp_mount/~/ray_bootstrap_config")
+            "1.2.3.4",
+            pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_key.pem")
-        runner.assert_has_call(
-            "1.2.3.4",
-            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_config.yaml")
+            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+        pattern_to_assert = \
+            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testRsyncCommandWithDocker(self):
@@ -755,8 +728,8 @@ class AutoscalingTest(unittest.TestCase):
             tag_filters={TAG_RAY_NODE_KIND: "worker"}, )
         addrs += head_ip
         for addr in addrs:
-            lm.update(addr, {"CPU": 2}, True, {"CPU": 0}, True, {})
-            lm.update(addr, {"CPU": 2}, True, {"CPU": 2}, True, {})
+            lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})
+            lm.update(addr, {"CPU": 2}, {"CPU": 2}, {})
         assert autoscaler.bringup
         autoscaler.update()
 
@@ -765,7 +738,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(1)
 
         # All of the nodes are down. Simulate some load on the head node
-        lm.update(head_ip, {"CPU": 2}, True, {"CPU": 0}, True, {})
+        lm.update(head_ip, {"CPU": 2}, {"CPU": 0}, {})
 
         autoscaler.update()
         self.waitForNodes(6)  # expected due to batch sizes and concurrency
@@ -808,12 +781,12 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         # This node has num_cpus=0
-        lm.update(head_ip, {"CPU": 1}, True, {"CPU": 0}, True, {})
-        lm.update(unmanaged_ip, {"CPU": 0}, True, {"CPU": 0}, True, {})
+        lm.update(head_ip, {"CPU": 1}, {"CPU": 0}, {})
+        lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {})
         autoscaler.update()
         self.waitForNodes(2)
         # 1 CPU task cannot be scheduled.
-        lm.update(unmanaged_ip, {"CPU": 0}, True, {"CPU": 0}, True, {"CPU": 1})
+        lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {"CPU": 1})
         autoscaler.update()
         self.waitForNodes(3)
 
@@ -852,8 +825,8 @@ class AutoscalingTest(unittest.TestCase):
             process_runner=runner,
             update_interval_s=0)
 
-        lm.update(head_ip, {"CPU": 1}, True, {"CPU": 0}, True, {"CPU": 1})
-        lm.update(unmanaged_ip, {"CPU": 0}, True, {"CPU": 0}, True, {})
+        lm.update(head_ip, {"CPU": 1}, {"CPU": 0}, {"CPU": 1})
+        lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {})
 
         # Note that we shouldn't autoscale here because the resource demand
         # vector is not set and target utilization fraction = 1.
@@ -1080,8 +1053,6 @@ class AutoscalingTest(unittest.TestCase):
 
     def testReportsConfigFailures(self):
         config = copy.deepcopy(SMALL_CLUSTER)
-        config["provider"]["type"] = "external"
-        config = prepare_config(config)
         config["provider"]["type"] = "mock"
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -1149,18 +1120,17 @@ class AutoscalingTest(unittest.TestCase):
 
         # Scales up as nodes are reported as used
         local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, True, {"CPU": 0}, True, {})  # head
-        lm.update("172.0.0.0", {"CPU": 2}, True, {"CPU": 0}, True,
-                  {})  # worker 1
+        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
+        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0}, {})  # worker 1
         autoscaler.update()
         self.waitForNodes(3)
-        lm.update("172.0.0.1", {"CPU": 2}, True, {"CPU": 0}, True, {})
+        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 0}, {})
         autoscaler.update()
         self.waitForNodes(5)
 
         # Holds steady when load is removed
-        lm.update("172.0.0.0", {"CPU": 2}, True, {"CPU": 2}, True, {})
-        lm.update("172.0.0.1", {"CPU": 2}, True, {"CPU": 2}, True, {})
+        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2}, {})
+        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2}, {})
         autoscaler.update()
         assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 5
@@ -1199,20 +1169,20 @@ class AutoscalingTest(unittest.TestCase):
 
         # Scales up as nodes are reported as used
         local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, True, {"CPU": 0}, True, {})  # head
+        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
         # 1.0 nodes used => target nodes = 2 => target workers = 1
         autoscaler.update()
         self.waitForNodes(1)
 
         # Make new node idle, and never used.
         # Should hold steady as target is still 2.
-        lm.update("172.0.0.0", {"CPU": 0}, True, {"CPU": 0}, True, {})
+        lm.update("172.0.0.0", {"CPU": 0}, {"CPU": 0}, {})
         lm.last_used_time_by_ip["172.0.0.0"] = 0
         autoscaler.update()
         assert len(self.provider.non_terminated_nodes({})) == 1
 
         # Reduce load on head => target nodes = 1 => target workers = 0
-        lm.update(local_ip, {"CPU": 2}, True, {"CPU": 1}, True, {})
+        lm.update(local_ip, {"CPU": 2}, {"CPU": 1}, {})
         autoscaler.update()
         assert len(self.provider.non_terminated_nodes({})) == 0
 
@@ -1458,12 +1428,13 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         autoscaler.update()
-
+        docker_mount_prefix = get_docker_host_mount_location(
+            config["cluster_name"])
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
                 f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
         runner.clear_history()
 
@@ -1483,7 +1454,7 @@ class AutoscalingTest(unittest.TestCase):
             runner.assert_has_call(
                 f"172.0.0.{i}", f"172.0.0.{i}",
                 f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
     def testFileMountsNonContinuous(self):
         file_mount_dir = tempfile.mkdtemp()
@@ -1510,13 +1481,15 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         autoscaler.update()
+        docker_mount_prefix = get_docker_host_mount_location(
+            config["cluster_name"])
 
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
                 f"172.0.0.{i}", f"172.0.0.{i}",
                 f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
         runner.clear_history()
 
@@ -1533,7 +1506,7 @@ class AutoscalingTest(unittest.TestCase):
             runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_not_has_call(
                 f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
         # Simulate a second `ray up` call
         from ray.autoscaler._private import util
@@ -1559,7 +1532,7 @@ class AutoscalingTest(unittest.TestCase):
             runner.assert_has_call(
                 f"172.0.0.{i}", f"172.0.0.{i}",
                 f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
-                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+                f"{docker_mount_prefix}/home/test-folder/")
 
 
 if __name__ == "__main__":

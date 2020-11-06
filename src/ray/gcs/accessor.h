@@ -495,9 +495,11 @@ class NodeInfoAccessor {
   /// is called before.
   ///
   /// \param node_id The ID of node to look up in local cache.
-  /// \return The item returned by GCS. If the item to read doesn't exist,
-  /// this optional object is empty.
-  virtual boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id) const = 0;
+  /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
+  /// \return The item returned by GCS. If the item to read doesn't exist or the node is
+  /// dead, this optional object is empty.
+  virtual boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+                                                bool filter_dead_nodes = true) const = 0;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
@@ -574,23 +576,13 @@ class NodeInfoAccessor {
   /// Resend heartbeat when GCS restarts from a failure.
   virtual void AsyncReReportHeartbeat() = 0;
 
-  /// Subscribe to the heartbeat of each node from GCS.
+  /// Get newest heartbeat of all nodes from GCS asynchronously. Only used when light
+  /// heartbeat enabled.
   ///
-  /// \param subscribe Callback that will be called each time when heartbeat is updated.
-  /// \param done Callback that will be called when subscription is complete.
+  /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-      const StatusCallback &done) = 0;
-
-  /// Report state of all nodes to GCS asynchronously.
-  ///
-  /// \param data_ptr The heartbeats that will be reported to GCS.
-  /// \param callback Callback that will be called after report finishes.
-  /// \return Status
-  virtual Status AsyncReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-      const StatusCallback &callback) = 0;
+  virtual Status AsyncGetAllHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) = 0;
 
   /// Subscribe batched state of all nodes from GCS.
   ///

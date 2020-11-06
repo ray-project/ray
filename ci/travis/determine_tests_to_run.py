@@ -107,7 +107,7 @@ if __name__ == "__main__":
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
                 if changed_file.startswith("python/setup.py") or re.match(
-                        "requirements.*\.txt", changed_file):
+                        ".*requirements.*\.txt", changed_file):
                     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1

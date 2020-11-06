@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
+#include "ray/util/asio_util.h"
 
 namespace ray {
 namespace gcs {
@@ -191,9 +192,14 @@ void GcsServer::InitGcsActorManager() {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_, [this](const rpc::Address &address) {
+      scheduler, gcs_table_storage_, gcs_pub_sub_,
+      [this](const ActorID &actor_id) {
+        gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+      },
+      [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
+
   gcs_node_manager_->AddNodeAddedListener(
       [this](const std::shared_ptr<rpc::GcsNodeInfo> &) {
         // Because a new node has been added, we need to try to schedule the pending
@@ -227,6 +233,7 @@ void GcsServer::InitGcsJobManager() {
       std::unique_ptr<GcsJobManager>(new GcsJobManager(gcs_table_storage_, gcs_pub_sub_));
   gcs_job_manager_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
     gcs_actor_manager_->OnJobFinished(*job_id);
+    gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
   });
 }
 
@@ -279,6 +286,14 @@ std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
 std::unique_ptr<GcsWorkerManager> GcsServer::InitGcsWorkerManager() {
   return std::unique_ptr<GcsWorkerManager>(
       new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
+}
+
+void GcsServer::CollectStats() {
+  gcs_actor_manager_->CollectStats();
+  gcs_placement_group_manager_->CollectStats();
+  execute_after(
+      main_service_, [this] { CollectStats(); },
+      (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 
 }  // namespace gcs

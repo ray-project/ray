@@ -16,7 +16,6 @@ from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
                                   docker_start_cmds, \
-                                  DOCKER_MOUNT_PREFIX, \
                                   with_docker_exec
 from ray.autoscaler._private.log_timer import LogTimer
 
@@ -194,9 +193,10 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             target = "/root" + target[1:]
 
         try:
+            flags = "-aqz" if is_rsync_silent() else "-avz"
             self.process_runner.check_call([
                 KUBECTL_RSYNC,
-                "-avz",
+                flags,
                 source,
                 "{}@{}:{}".format(self.node_id, self.namespace, target),
             ])
@@ -218,9 +218,10 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             target = "/root" + target[1:]
 
         try:
+            flags = "-aqz" if is_rsync_silent() else "-avz"
             self.process_runner.check_call([
                 KUBECTL_RSYNC,
-                "-avz",
+                flags,
                 "{}@{}:{}".format(self.node_id, self.namespace, source),
                 target,
             ])
@@ -292,6 +293,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             ssh_user_hash[:HASH_MAX_LENGTH],
             ssh_control_hash[:HASH_MAX_LENGTH])
 
+        self.cluster_name = cluster_name
         self.log_prefix = log_prefix
         self.process_runner = process_runner
         self.node_id = node_id
@@ -324,9 +326,6 @@ class SSHCommandRunner(CommandRunnerInterface):
         with cli_logger.group("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
-                cli_logger.old_info(logger, "{}Waiting for IP...",
-                                    self.log_prefix)
-
                 ip = self._get_node_ip()
                 if ip is not None:
                     cli_logger.labeled_value("Received", ip)
@@ -360,7 +359,6 @@ class SSHCommandRunner(CommandRunnerInterface):
             os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
         except OSError as e:
             cli_logger.warning("{}", str(e))  # todo: msg
-            cli_logger.old_warning(logger, "{}", str(e))
 
     def _run_helper(self,
                     final_cmd,
@@ -389,7 +387,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             # For now, if the output is needed we just skip the new logic.
             # In the future we could update the new logic to support
             # capturing output, but it is probably not needed.
-            if not cli_logger.old_style and not with_output:
+            if not with_output:
                 return run_cmd_redirected(
                     final_cmd,
                     process_runner=self.process_runner,
@@ -400,17 +398,17 @@ class SSHCommandRunner(CommandRunnerInterface):
             else:
                 return self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError as e:
-            quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-            if not cli_logger.old_style and not is_using_login_shells():
+            joined_cmd = " ".join(final_cmd)
+            if not is_using_login_shells():
                 raise ProcessRunnerError(
                     "Command failed",
                     "ssh_command_failed",
                     code=e.returncode,
-                    command=quoted_cmd)
+                    command=joined_cmd)
 
             if exit_on_fail:
                 raise click.ClickException(
-                    "Command failed:\n\n  {}\n".format(quoted_cmd)) from None
+                    "Command failed:\n\n  {}\n".format(joined_cmd)) from None
             else:
                 fail_msg = "SSH command failed."
                 if is_output_redirected():
@@ -456,9 +454,6 @@ class SSHCommandRunner(CommandRunnerInterface):
                     cli_logger.verbose(
                         "Forwarding port {} to port {} on localhost.",
                         cf.bold(local), cf.bold(remote))  # todo: msg
-                    cli_logger.old_info(logger,
-                                        "{}Forwarding {} -> localhost:{}",
-                                        self.log_prefix, local, remote)
                     ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
         final_cmd = ssh + ssh_options.to_ssh_options_list(timeout=timeout) + [
@@ -471,8 +466,6 @@ class SSHCommandRunner(CommandRunnerInterface):
                 final_cmd += _with_interactive(cmd)
             else:
                 final_cmd += [cmd]
-            cli_logger.old_info(logger, "{}Running {}", self.log_prefix,
-                                " ".join(final_cmd))
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
@@ -597,8 +590,9 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run_rsync_up(self, source, target, options=None):
         options = options or {}
-        host_destination = os.path.join(DOCKER_MOUNT_PREFIX,
-                                        target.lstrip("/"))
+        host_destination = os.path.join(
+            self._get_docker_host_mount_location(
+                self.ssh_command_runner.cluster_name), target.lstrip("/"))
 
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
@@ -617,7 +611,9 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
-        host_source = os.path.join(DOCKER_MOUNT_PREFIX, source.lstrip("/"))
+        host_source = os.path.join(
+            self._get_docker_host_mount_location(
+                self.ssh_command_runner.cluster_name), source.lstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
         if source[-1] == "/":
@@ -709,7 +705,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.docker_config.get(
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options",
-                        []) + self._configure_runtime())
+                        []) + self._configure_runtime(),
+                self.ssh_command_runner.cluster_name)
             self.run(start_command, run_env="host")
         else:
             running_image = self.run(
@@ -746,7 +743,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             if mount in file_mounts:
                 self.ssh_command_runner.run(
                     "docker cp {src} {container}:{dst}".format(
-                        src=os.path.join(DOCKER_MOUNT_PREFIX, mount),
+                        src=os.path.join(
+                            self._get_docker_host_mount_location(
+                                self.ssh_command_runner.cluster_name), mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True
@@ -769,3 +768,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 return []
 
         return []
+
+    def _get_docker_host_mount_location(self, cluster_name: str) -> str:
+        """Return the docker host mount directory location."""
+        # Imported here due to circular dependency in imports.
+        from ray.autoscaler.sdk import get_docker_host_mount_location
+        return get_docker_host_mount_location(cluster_name)

@@ -192,6 +192,11 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 
+std::unordered_map<std::string, std::string>
+TaskSpecification::OverrideEnvironmentVariables() const {
+  return MapFromProtobuf(message_->override_environment_variables());
+}
+
 bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
 }

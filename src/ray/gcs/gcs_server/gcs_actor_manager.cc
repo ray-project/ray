@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 namespace gcs {
@@ -83,15 +84,19 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-                                 std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                                 std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                                 const rpc::ClientFactoryFn &worker_client_factory)
+GcsActorManager::GcsActorManager(
+    std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+    const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
-      worker_client_factory_(worker_client_factory) {
+      worker_client_factory_(worker_client_factory),
+      destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed) {
   RAY_CHECK(worker_client_factory_);
+  RAY_CHECK(destroy_owned_placement_group_if_needed_);
 }
 
 void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &request,
@@ -655,6 +660,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                            actor_table_data->SerializeAsString(),
                                            nullptr));
+        // Destroy placement group owned by this actor.
+        destroy_owned_placement_group_if_needed_(actor_id);
       }));
 }
 
@@ -681,6 +688,10 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
     }
   }
   return actor_ids;
+}
+
+void GcsActorManager::CollectStats() const {
+  stats::PendingActors.Record(pending_actors_.size());
 }
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
@@ -800,6 +811,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   int64_t max_restarts = mutable_actor_table_data->max_restarts();
   uint64_t num_restarts = mutable_actor_table_data->num_restarts();
   int64_t remaining_restarts;
+  // Destroy placement group owned by this actor.
+  destroy_owned_placement_group_if_needed_(actor_id);
   if (!need_reschedule) {
     remaining_restarts = 0;
   } else if (max_restarts == -1) {
@@ -848,7 +861,9 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           // if actor was an detached actor, make sure to destroy it.
           // We need to do this because detached actors are not destroyed
           // when its owners are dead because it doesn't have owners.
-          if (actor->IsDetached()) DestroyActor(actor_id);
+          if (actor->IsDetached()) {
+            DestroyActor(actor_id);
+          }
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
@@ -950,14 +965,6 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
           // This actor is owned. Send a long polling request to the actor's
           // owner to determine when the actor should be removed.
           PollOwnerForActorOutOfScope(actor);
-        }
-
-        auto &workers = owners_[actor->GetNodeID()];
-        auto it = workers.find(actor->GetWorkerID());
-        if (it == workers.end()) {
-          std::shared_ptr<rpc::CoreWorkerClientInterface> client =
-              worker_client_factory_(actor->GetOwnerAddress());
-          workers.emplace(actor->GetOwnerID(), Owner(std::move(client)));
         }
 
         if (!actor->GetWorkerID().IsNil()) {

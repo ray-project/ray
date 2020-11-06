@@ -53,6 +53,13 @@ class GcsPlacementGroup {
     placement_group_table_data_.mutable_bundles()->CopyFrom(
         placement_group_spec.bundles());
     placement_group_table_data_.set_strategy(placement_group_spec.strategy());
+    placement_group_table_data_.set_creator_job_id(placement_group_spec.creator_job_id());
+    placement_group_table_data_.set_creator_actor_id(
+        placement_group_spec.creator_actor_id());
+    placement_group_table_data_.set_creator_job_dead(
+        placement_group_spec.creator_job_dead());
+    placement_group_table_data_.set_creator_actor_dead(
+        placement_group_spec.creator_actor_dead());
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
@@ -82,17 +89,31 @@ class GcsPlacementGroup {
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
 
-  // Get debug string for the placement group.
+  /// Get debug string for the placement group.
   std::string DebugString() const;
+
+  /// Below fields are used for automatic cleanup of placement groups.
+
+  /// Get the actor id that created the placement group.
+  const ActorID GetCreatorActorId() const;
+
+  /// Get the job id that created the placement group.
+  const JobID GetCreatorJobId() const;
+
+  /// Mark that the creator job of this placement group is dead.
+  void MarkCreatorJobDead();
+
+  /// Mark that the creator actor of this placement group is dead.
+  void MarkCreatorActorDead();
+
+  /// Return True if the placement group is removable. False otherwise.
+  bool IsPlacementGroupRemovable() const;
 
  private:
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).
   rpc::PlacementGroupTableData placement_group_table_data_;
 };
-
-using RegisterPlacementGroupCallback =
-    std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
 
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
 /// group. This class is not thread-safe.
@@ -176,6 +197,40 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
+  /// Clean placement group that belongs to the job id if necessary.
+  ///
+  /// This interface is a part of automatic lifecycle management for placement groups.
+  /// When a job is killed, this method should be invoked to clean up
+  /// placement groups that belong to the given job.
+  ///
+  /// Calling this method doesn't mean placement groups that belong to the given job
+  /// will be cleaned. Placement groups are cleaned only when the creator job AND actor
+  /// are both dead.
+  ///
+  /// NOTE: This method is idempotent.
+  ///
+  /// \param job_id The job id where placement groups that need to be cleaned belong to.
+  void CleanPlacementGroupIfNeededWhenJobDead(const JobID &job_id);
+
+  /// Clean placement group that belongs to the actor id if necessary.
+  ///
+  /// This interface is a part of automatic lifecycle management for placement groups.
+  /// When an actor is killed, this method should be invoked to clean up
+  /// placement groups that belong to the given actor.
+  ///
+  /// Calling this method doesn't mean placement groups that belong to the given actor
+  /// will be cleaned. Placement groups are cleaned only when the creator job AND actor
+  /// are both dead.
+  ///
+  /// NOTE: This method is idempotent.
+  ///
+  /// \param actor_id The actor id where placement groups that need to be cleaned belong
+  /// to.
+  void CleanPlacementGroupIfNeededWhenActorDead(const ActorID &actor_id);
+
+  /// Collect stats from gcs placement group manager in-memory data structures.
+  void CollectStats() const;
+
  private:
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
@@ -199,10 +254,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   }
 
   // Method that is invoked every second.
-  void Tick() const;
+  void Tick();
 
   // Update placement group load information so that the autoscaler can use it.
-  void UpdatePlacementGroupLoad() const;
+  void UpdatePlacementGroupLoad();
 
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
@@ -236,7 +291,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
 
   /// Reference of GcsNodeManager.
-  const GcsNodeManager &gcs_node_manager_;
+  GcsNodeManager &gcs_node_manager_;
 };
 
 }  // namespace gcs
