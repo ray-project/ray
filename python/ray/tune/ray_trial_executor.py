@@ -177,7 +177,7 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
 
     def _setup_remote_runner(self, trial, reuse_allowed):
-        trial.init_logger()
+        trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
@@ -297,8 +297,7 @@ class RayTrialExecutor(TrialExecutor):
         elif train and not trial.is_restoring:
             self._train(trial)
 
-    def _stop_trial(self, trial, error=False, error_msg=None,
-                    stop_logger=True):
+    def _stop_trial(self, trial, error=False, error_msg=None):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -308,7 +307,6 @@ class RayTrialExecutor(TrialExecutor):
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            stop_logger (bool): Whether to shut down the trial logger.
         """
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
         trial.set_location(Location())
@@ -329,8 +327,6 @@ class RayTrialExecutor(TrialExecutor):
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.set_runner(None)
-            if stop_logger:
-                trial.close_logger()
 
     def start_trial(self, trial, checkpoint=None, train=True):
         """Starts the trial.
@@ -365,11 +361,10 @@ class RayTrialExecutor(TrialExecutor):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
-    def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
+    def stop_trial(self, trial, error=False, error_msg=None):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(
-            trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
+        self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             self._return_resources(trial.resources)

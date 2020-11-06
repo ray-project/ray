@@ -169,6 +169,9 @@ public interface RayRuntime {
   PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
                             ActorCreationOptions options);
 
+  PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
+      PlacementStrategy strategy);
+
   PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy);
 
@@ -198,4 +201,5 @@ public interface RayRuntime {
    * Intentionally exit the current actor.
    */
   void exitActor();
+
 }

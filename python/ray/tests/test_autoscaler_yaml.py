@@ -23,10 +23,8 @@ CONFIG_PATHS += recursive_fnmatch(
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
-            if ("aws/example-multi-node-type.yaml" in config_path
-                    or "staroid/example-multi-node-type.yaml" in config_path):
+            if "aws/example-multi-node-type.yaml" in config_path:
                 # aws is tested in testValidateDefaultConfigAWSMultiNodeTypes.
-                # staroid fails as it requires an installation of staroid.
                 continue
             with open(config_path) as f:
                 config = yaml.safe_load(f)
