@@ -17,9 +17,15 @@ from typing import List, Dict
 from ray.autoscaler.node_provider import NodeProvider
 from ray.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import PlacementStrategy
+<<<<<<< HEAD
 from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED, NODE_TYPE_LEGACY_WORKER,
     NODE_KIND_WORKER, NODE_TYPE_LEGACY_HEAD, TAG_RAY_NODE_KIND, NODE_KIND_HEAD)
+=======
+from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED,
+                                 NODE_TYPE_LEGACY_WORKER, NODE_KIND_WORKER,
+                                 NODE_TYPE_LEGACY_HEAD, TAG_RAY_NODE_KIND)
+>>>>>>> 6b7a4dfaa02c2395285b2363c4b7f0cc50b83c86
 
 logger = logging.getLogger(__name__)
 

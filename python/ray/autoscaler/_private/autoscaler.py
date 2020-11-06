@@ -271,6 +271,7 @@ class StandardAutoscaler:
         Returns:
             bool: if workers of node_types should be terminated or not.
         """
+<<<<<<< HEAD
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
@@ -279,6 +280,17 @@ class StandardAutoscaler:
                 "min_workers", 0)
             if node_type_counts[node_type] <= min_workers:
                 return True
+=======
+        if self.resource_demand_scheduler:
+            tags = self.provider.node_tags(node_id)
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                node_type_counts[node_type] += 1
+                min_workers = self.available_node_types[node_type].get(
+                    "min_workers", 0)
+                if node_type_counts[node_type] <= min_workers:
+                    return True
+>>>>>>> 6b7a4dfaa02c2395285b2363c4b7f0cc50b83c86
 
         return False
 
