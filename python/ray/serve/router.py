@@ -1,6 +1,7 @@
 import asyncio
 import copy
 from collections import defaultdict, deque
+import itertools
 import time
 from typing import DefaultDict, List, Dict, Any, Optional
 import pickle
@@ -8,11 +9,12 @@ from dataclasses import dataclass, field
 from ray.actor import ActorHandle
 
 from ray.exceptions import RayTaskError
+from ray.serve.long_pull import LongPullerAsyncClient, LongPullerSyncClient
 
 import ray
 from ray.util import metrics
 from ray.serve.context import TaskContext
-from ray.serve.endpoint_policy import RandomEndpointPolicy
+from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.utils import logger, chain_future
 
 REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
@@ -65,6 +67,132 @@ class Query:
     def ray_deserialize(value):
         kwargs = pickle.loads(value)
         return Query(**kwargs)
+
+
+class ReplicaSet:
+    def __init__(self) -> None:
+        self.max_concurrent_queries = 8  # max_concurrent_queries
+        self.in_flight_queries: Dict[ActorHandle, set] = dict()
+        self.replica_iterator = itertools.cycle(self.in_flight_queries.keys())
+
+    def update_state(self, worker_replicas=None, max_concurrent_queries=None):
+        # NOTE(simon): We have an interesting race condition here:
+        # - Router long pull from controller worker replicas
+        # - Controller kill one replica before router received the update
+        # - Router think that replica is alive and still sends query to it
+
+        if not (worker_replicas or max_concurrent_queries):
+            return
+
+        if max_concurrent_queries:
+            self.max_concurrent_queries = max_concurrent_queries
+
+        if worker_replicas:
+            current_replica_set = set(self.in_flight_queries.keys())
+            updated_replica_set = set(worker_replicas)
+
+            added = updated_replica_set - current_replica_set
+            for new_replica_handle in added:
+                self.in_flight_queries[new_replica_handle] = set()
+
+            removed = current_replica_set - updated_replica_set
+            for removed_replica_handle in removed:
+                # Do we warn if there are still inflight queries?
+                del self.in_flight_queries[removed_replica_handle]
+
+            if len(added) > 0 or len(
+                    removed) > 0:  # State changed, reset the iterator
+                self.replica_iterator = itertools.cycle(
+                    self.in_flight_queries.keys())
+
+    def _drain_completed_object_refs(self, block=True) -> int:
+        all_queries_ref = list(
+            itertools.chain.from_iterable(self.in_flight_queries.values()))
+        ray_wait_timeout = None if block else 0
+        done, _ = ray.wait(
+            all_queries_ref,
+            num_returns=len(all_queries_ref),
+            timeout=ray_wait_timeout)
+        for replica_in_flight_queries in self.in_flight_queries.values():
+            replica_in_flight_queries.difference_update(done)
+        return len(done)
+
+    def assign_replica_blocking(self, query) -> ray.ObjectRef:
+        for _ in range(len(self.in_flight_queries.keys())):
+            replica = next(self.replica_iterator)
+            if len(self.in_flight_queries[replica]
+                   ) >= self.max_concurrent_queries:
+                # This replica is overloaded, try next one
+                continue
+            ref = replica.handle_request.remote(query.ray_serialize())
+            self.in_flight_queries[replica].add(ref)
+            return ref
+        else:
+            # First try to run it with timeout=0, so we clean up the inflight
+            # tracker as much as possible
+            num_finished = self._drain_completed_object_refs()
+            if num_finished == 0:
+                # Block only if we are really at capacity here.
+                num_finished = self._drain_completed_object_refs(block=True)
+                assert num_finished > 0
+            # Recurse, because we know at least one replica is available.
+            return self.assign_replica_blocking(query)
+
+
+class SyncRouter:
+    def setup(self, name, controller_name):
+        self.name = name
+        self.controller = ray.get_actor(controller_name)
+
+        self.endpoint_policies: Dict[str, EndpointPolicy] = dict()
+        self.backend_replicas: Dict[str, ReplicaSet] = dict()
+
+        self.long_pull_client = LongPullerSyncClient(
+            self.controller,
+            ["traffic_policies", "worker_handles", "backend_configs"],
+            self.update_state)
+
+    def update_state(self, object_snapshots, keys_updated):
+        print(object_snapshots)
+        if "traffic_policies" in keys_updated:
+            traffic_policies = object_snapshots["traffic_policies"]
+            for endpoint, traffic_policy in traffic_policies.items():
+                self.endpoint_policies[endpoint] = RandomEndpointPolicy(
+                    traffic_policy)
+
+        if "worker_handles" in keys_updated:
+            worker_handles = object_snapshots["worker_handles"]
+            for backend_tag, replica_handles in worker_handles.items():
+                if backend_tag not in self.backend_replicas:
+                    self.backend_replicas[backend_tag] = ReplicaSet()
+                self.backend_replicas[backend_tag].update_state(
+                    worker_replicas=replica_handles)
+
+        if "backend_configs" in keys_updated:
+            backend_configs = object_snapshots["backend_configs"]
+            for backend_tag, config in backend_configs.items():
+                self.backend_replicas[backend_tag].update_state(
+                    max_concurrent_queries=config.max_concurrent_queries)
+
+    def enqueue_request(self, request_meta, *request_args,
+                        **request_kwargs) -> ray.ObjectRef:
+        self.long_pull_client.refresh()
+        endpoint = request_meta.endpoint
+        query = Query(
+            list(request_args),
+            request_kwargs,
+            request_meta.request_context,
+            metadata=request_meta,
+        )
+        chosen_backend, *shadow_backends = self.endpoint_policies[
+            endpoint].flush(query)
+        result_ref = self.backend_replicas[
+            chosen_backend].assign_replica_blocking(query)
+
+        for backend in shadow_backends:
+            self.backend_replicas[backend].assign_replica_blocking(query)
+
+        return result_ref
 
 
 class Router:
@@ -148,9 +276,6 @@ class Router:
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
-        await self.update_state()
-
-    async def update_state(self):
         traffic_policies = ray.get(
             self.controller.get_traffic_policies.remote())
         for endpoint, traffic_policy in traffic_policies.items():
@@ -266,9 +391,12 @@ class Router:
         assert self.flush_lock.locked()
         if endpoint not in self.traffic:
             return
-        backends_to_flush = self.traffic[endpoint].flush(
-            self.endpoint_queues[endpoint], self.backend_queues)
-        self.flush_backend_queues(backends_to_flush)
+        if len(self.endpoint_queues[endpoint]):
+            query = self.endpoint_queues[endpoint].pop()
+            backends_to_flush = self.traffic[endpoint].flush(query)
+            for b in backends_to_flush:
+                self.backend_queues[b].appendleft(query)
+            self.flush_backend_queues(backends_to_flush)
 
     # Flushes the specified backend queues and assigns work to workers.
     def flush_backend_queues(self, backends_to_flush):

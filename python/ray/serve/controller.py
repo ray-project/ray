@@ -122,7 +122,7 @@ class ActorStateReconciler:
     backends_to_remove: List[BackendTag] = field(default_factory=list)
     endpoints_to_remove: List[EndpointTag] = field(default_factory=list)
     # TODO(edoakes): consider removing this and just using the names.
-    workers: Dict[BackendTag, Dict[ReplicaConfig, ActorHandle]] = field(
+    workers: Dict[BackendTag, Dict[ReplicaTag, ActorHandle]] = field(
         default_factory=lambda: defaultdict(dict))
 
     def router_handles(self) -> List[ActorHandle]:
@@ -136,13 +136,7 @@ class ActorStateReconciler:
             ]))
 
     def get_replica_actors(self, backend_tag: BackendTag) -> List[ActorHandle]:
-        return_list = []
-        for replica_tag in self.replicas.get(backend_tag, []):
-            try:
-                return_list.append(ray.get_actor(replica_tag))
-            except ValueError:
-                pass
-        return return_list
+        return list(self.workers[backend_tag].values())
 
     async def _start_pending_replicas(
             self, config_store: ConfigurationStore) -> None:
@@ -537,7 +531,16 @@ class ServeController:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
+        self.long_pull_host = LongPullerHost()
+        self.long_pull_host.notify_on_changed("traffic_policies", dict())
+        self.long_pull_host.notify_on_changed("worker_handles", dict())
+        self.long_pull_host.notify_on_changed("backend_configs", dict())
+
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    async def listen_on_changed(self, keys_to_snapshot_ids: Dict[str, int]):
+        return await self.long_pull_host.listen_on_changed(keys_to_snapshot_ids
+                                                           )
 
     def get_routers(self) -> Dict[str, ActorHandle]:
         """Returns a dictionary of node ID to router actor handles."""
@@ -690,6 +693,8 @@ class ServeController:
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
+        self.long_pull_host.notify_on_changed(
+            "traffic_policies", self.configuration_store.traffic_policies)
         await asyncio.gather(*[
             router.set_traffic.remote(endpoint_name, traffic_policy)
             for router in self.actor_reconciler.router_handles()
@@ -859,6 +864,17 @@ class ServeController:
             self._checkpoint()
             await self.actor_reconciler._start_pending_replicas(
                 self.configuration_store)
+
+            logger.error(f"REPLCIAS: {self.actor_reconciler.replicas}")
+
+            self.long_pull_host.notify_on_changed(
+                "worker_handles", {
+                    tag: self.actor_reconciler.get_replica_actors(tag)
+                    for tag in self.configuration_store.backends.keys()
+                })
+            self.long_pull_host.notify_on_changed(
+                "backend_configs",
+                self.configuration_store.get_backend_configs())
 
             # Set the backend config inside the router
             # (particularly for max-batch-size).
