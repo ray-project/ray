@@ -35,8 +35,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
-      client_call_manager_(main_service),
-      print_debug_info_timer_(main_service_) {}
+      client_call_manager_(main_service) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -309,9 +308,9 @@ void GcsServer::PrintDebugInfo() {
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.
   RAY_LOG(INFO) << stream.str();
-  execute_after(
-      main_service_, [this] { PrintDebugInfo(); },
-      (RayConfig::instance().gcs_dump_debug_log_interval_minutes() * 60000) /* milliseconds */);
+  execute_after(main_service_, [this] { PrintDebugInfo(); },
+                (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
+                 60000) /* milliseconds */);
 }
 
 }  // namespace gcs
