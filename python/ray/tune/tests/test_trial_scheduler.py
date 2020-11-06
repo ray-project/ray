@@ -1838,6 +1838,21 @@ class AsyncHyperBandSuite(unittest.TestCase):
                 TrialScheduler.CONTINUE)
         return t1, t2
 
+    def nanInfSetup(self, scheduler, runner=None):
+        t1 = Trial("PPO")
+        t2 = Trial("PPO")
+        t3 = Trial("PPO")
+        scheduler.on_trial_add(runner, t1)
+        scheduler.on_trial_add(runner, t2)
+        scheduler.on_trial_add(runner, t3)
+        for i in range(10):
+            scheduler.on_trial_result(runner, t1, result(i, np.nan))
+        for i in range(10):
+            scheduler.on_trial_result(runner, t2, result(i, float("inf")))
+        for i in range(10):
+            scheduler.on_trial_result(runner, t3, result(i, float("-inf")))
+        return t1, t2, t3
+
     def testAsyncHBOnComplete(self):
         scheduler = AsyncHyperBandScheduler(
             metric="episode_reward_mean", mode="max", max_t=10, brackets=1)
@@ -1922,6 +1937,41 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self.assertEqual(
             scheduler.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
+
+    def testMedianStoppingNanInf(self):
+        scheduler = MedianStoppingRule(
+            metric="episode_reward_mean", mode="max")
+
+        t1, t2, t3 = self.nanInfSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, np.nan))
+        scheduler.on_trial_complete(None, t2, result(10, float("inf")))
+        scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
+
+    def testHyperbandNanInf(self):
+        scheduler = HyperBandScheduler(
+            metric="episode_reward_mean", mode="max")
+        t1, t2, t3 = self.nanInfSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, np.nan))
+        scheduler.on_trial_complete(None, t2, result(10, float("inf")))
+        scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
+
+    def testBOHBNanInf(self):
+        scheduler = HyperBandForBOHB(metric="episode_reward_mean", mode="max")
+
+        runner = _MockTrialRunner(scheduler)
+        runner._search_alg = MagicMock()
+        runner._search_alg.searcher = MagicMock()
+
+        t1, t2, t3 = self.nanInfSetup(scheduler, runner)
+        # skip trial complete in this mock setting
+
+    def testPBTNanInf(self):
+        scheduler = PopulationBasedTraining(
+            metric="episode_reward_mean", mode="max")
+        t1, t2, t3 = self.nanInfSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, np.nan))
+        scheduler.on_trial_complete(None, t2, result(10, float("inf")))
+        scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
 
     def _test_metrics(self, result_func, metric, mode):
         scheduler = AsyncHyperBandScheduler(
