@@ -19,6 +19,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
 from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.long_pull import LongPullerHost
 from ray.actor import ActorHandle
 
 import numpy as np
@@ -979,22 +980,3 @@ class ServeController:
         # TODO: remove old router stats when removing them.
         for backend, queue_length in queue_lengths.items():
             self.backend_stats[backend][router_name] = queue_length
-
-    # Long pull
-    async def long_pull_state(self, state_key, epoch_id: int = None):
-        assert state_key in {"workers", "traffic_policies", "backend_configs"}
-
-        if epoch_id == self.epoch_ids[state_key]:
-            event = asyncio.Event()
-            self.notifier_events[state_key].append(event)
-            await event.wait()
-            assert epoch_id != self.epoch_ids[state_key]
-
-        return self.workers, self.epoch_ids[state_key]
-
-    def notify_event(self, state_key):
-        self.epoch_ids[state_key] += 1
-        print(
-            f"pushing update to {len(self.notifier_events[state_key])} clients listen to {state_key}, new epoch id is {self.epoch_ids[state_key]}"
-        )
-        [event.set() for event in self.notifier_events[state_key]]

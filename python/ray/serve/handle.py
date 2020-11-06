@@ -49,27 +49,27 @@ class RayServeHandle:
         self.controller = serve.connect()._controller
         # asyncio.get_event_loop().create_task(self.pull_state())
 
-        self.epoch_id = None
+        self.snapshot_id = None
         self.pull_state_sync_future = None
 
     async def pull_state(self):
-        epoch_id = None
+        snapshot_id = None
         while True:
-            workers, epoch_id = await self.controller.long_pull_state.remote(
-                "workers", epoch_id)
-            print(workers, epoch_id)
+            workers, snapshot_id = await self.controller.long_pull_state.remote(
+                "workers", snapshot_id)
+            print(workers, snapshot_id)
 
     def pull_state_sync(self):
         if self.pull_state_sync_future is None:
             self.pull_state_sync_future = self.controller.long_pull_state.remote(
-                "workers", self.epoch_id)
+                "workers", self.snapshot_id)
         done, not_done = ray.wait(
             [self.pull_state_sync_future], num_returns=1, timeout=0)
         if self.pull_state_sync_future in done:
-            workers, self.epoch_id = ray.get(self.pull_state_sync_future)
-            print(workers, self.epoch_id)
+            workers, self.snapshot_id = ray.get(self.pull_state_sync_future)
+            print(workers, self.snapshot_id)
             self.pull_state_sync_future = self.controller.long_pull_state.remote(
-                "workers", self.epoch_id)
+                "workers", self.snapshot_id)
         else:
             print("not done")
 
