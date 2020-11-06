@@ -42,7 +42,7 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
   if (!status.ok()) {
     on_done(status);
   }
-  ++metrics_[MetricsType::ADD_TASK];
+  ++counts_[CountsType::ADD_TASK_REQUEST];
 }
 
 void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
@@ -65,7 +65,7 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
   if (!status.ok()) {
     on_done(status, boost::none);
   }
-  ++metrics_[MetricsType::GET_TASK];
+  ++counts_[CountsType::GET_TASK_REQUEST];
 }
 
 void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request,
@@ -89,7 +89,7 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
   }
   RAY_LOG(DEBUG) << "Finished deleting tasks, job id = " << job_id
                  << ", task id list size = " << task_ids.size();
-  ++metrics_[MetricsType::DELETE_TASKS];
+  ++counts_[CountsType::DELETE_TASKS_REQUEST];
 }
 
 void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &request,
@@ -119,7 +119,7 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
   if (!status.ok()) {
     on_done(status);
   }
-  ++metrics_[MetricsType::ADD_TASK_LEASE];
+  ++counts_[CountsType::ADD_TASK_LEASE_REQUEST];
 }
 
 void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &request,
@@ -142,7 +142,7 @@ void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &reque
   if (!status.ok()) {
     on_done(status, boost::none);
   }
-  ++metrics_[MetricsType::GET_TASK_LEASE];
+  ++counts_[CountsType::GET_TASK_LEASE_REQUEST];
 }
 
 void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
@@ -175,20 +175,21 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
   if (!status.ok()) {
     on_done(status);
   }
-  ++metrics_[MetricsType::ATTEMPT_TASK_RECONSTRUCTION];
+  ++counts_[CountsType::ATTEMPT_TASK_RECONSTRUCTION_REQUEST];
 }
 
 std::string DefaultTaskInfoHandler::DebugString() const {
   std::ostringstream stream;
-  stream << "DefaultTaskInfoHandler metrics: "
-         << "\n{"
-         << "\nAddTask count: " << metrics_[MetricsType::ADD_TASK]
-         << "\nGetTask count: " << metrics_[MetricsType::GET_TASK]
-         << "\nDeleteTasks count: " << metrics_[MetricsType::DELETE_TASKS]
-         << "\nAddTaskLease count: " << metrics_[MetricsType::ADD_TASK_LEASE]
-         << "\nGetTaskLease count: " << metrics_[MetricsType::GET_TASK_LEASE]
-         << "\nAttemptTaskReconstruction count: "
-         << metrics_[MetricsType::ATTEMPT_TASK_RECONSTRUCTION] << "\n}";
+  stream << "DefaultTaskInfoHandler: {AddTask request counts: "
+         << counts_[CountsType::ADD_TASK_REQUEST]
+         << ", GetTask request counts: " << counts_[CountsType::GET_TASK_REQUEST]
+         << ", DeleteTasks request counts: " << counts_[CountsType::DELETE_TASKS_REQUEST]
+         << ", AddTaskLease request counts: "
+         << counts_[CountsType::ADD_TASK_LEASE_REQUEST]
+         << ", GetTaskLease request counts: "
+         << counts_[CountsType::GET_TASK_LEASE_REQUEST]
+         << ", AttemptTaskReconstruction request counts: "
+         << counts_[CountsType::ATTEMPT_TASK_RECONSTRUCTION_REQUEST] << "}";
   return stream.str();
 }
 

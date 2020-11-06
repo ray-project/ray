@@ -55,16 +55,16 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
 
   // Debug info.
-  enum MetricsType {
-    ADD_TASK = 0,
-    GET_TASK = 1,
-    DELETE_TASKS = 2,
-    ADD_TASK_LEASE = 3,
-    GET_TASK_LEASE = 4,
-    ATTEMPT_TASK_RECONSTRUCTION = 5,
-    MetricsType_MAX = 6,
+  enum CountsType {
+    ADD_TASK_REQUEST = 0,
+    GET_TASK_REQUEST = 1,
+    DELETE_TASKS_REQUEST = 2,
+    ADD_TASK_LEASE_REQUEST = 3,
+    GET_TASK_LEASE_REQUEST = 4,
+    ATTEMPT_TASK_RECONSTRUCTION_REQUEST = 5,
+    CountsType_MAX = 6,
   };
-  uint64_t metrics_[MetricsType::MetricsType_MAX] = {0};
+  uint64_t counts_[CountsType::CountsType_MAX] = {0};
 };
 
 }  // namespace rpc

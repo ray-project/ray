@@ -301,21 +301,17 @@ void GcsServer::CollectStats() {
 }
 
 void GcsServer::PrintDebugInfo() {
-  auto dump_interval_minutes =
-      RayConfig::instance().gcs_dump_debug_log_interval_minutes();
-  print_debug_info_timer_.expires_from_now(std::chrono::minutes(dump_interval_minutes));
-  print_debug_info_timer_.async_wait([this](const boost::system::error_code &error) {
-    RAY_CHECK(!error);
-    std::ostringstream stream;
-    stream << gcs_node_manager_->DebugString() << "\n"
-           << gcs_actor_manager_->DebugString() << "\n"
-           << gcs_object_manager_->DebugString() << "\n"
-           << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
-    // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
-    // gcs_debug_state.txt.
-    RAY_LOG(INFO) << stream.str();
-    PrintDebugInfo();
-  });
+  std::ostringstream stream;
+  stream << gcs_node_manager_->DebugString() << "\n"
+         << gcs_actor_manager_->DebugString() << "\n"
+         << gcs_object_manager_->DebugString() << "\n"
+         << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
+  // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
+  // gcs_debug_state.txt.
+  RAY_LOG(INFO) << stream.str();
+  execute_after(
+      main_service_, [this] { PrintDebugInfo(); },
+      (RayConfig::instance().gcs_dump_debug_log_interval_minutes() * 60000) /* milliseconds */);
 }
 
 }  // namespace gcs

@@ -417,20 +417,20 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
 
   // Debug info.
-  enum MetricsType {
-    REGISTER_ACTOR = 0,
-    CREATE_ACTOR = 1,
-    GET_ACTOR_INFO = 2,
-    GET_NAMED_ACTOR_INFO = 3,
-    GET_ALL_ACTOR_INFO = 4,
-    REGISTER_ACTOR_INFO = 5,
-    UPDATE_ACTOR_INFO = 6,
-    ADD_ACTOR_CHECKPOINT = 7,
-    GET_ACTOR_CHECKPOINT = 8,
-    GET_ACTOR_CHECKPOINT_ID = 9,
-    MetricsType_MAX = 10,
+  enum CountsType {
+    REGISTER_ACTOR_REQUEST = 0,
+    CREATE_ACTOR_REQUEST = 1,
+    GET_ACTOR_INFO_REQUEST = 2,
+    GET_NAMED_ACTOR_INFO_REQUEST = 3,
+    GET_ALL_ACTOR_INFO_REQUEST = 4,
+    REGISTER_ACTOR_INFO_REQUEST = 5,
+    UPDATE_ACTOR_INFO_REQUEST = 6,
+    ADD_ACTOR_CHECKPOINT_REQUEST = 7,
+    GET_ACTOR_CHECKPOINT_REQUEST = 8,
+    GET_ACTOR_CHECKPOINT_ID_REQUEST = 9,
+    CountsType_MAX = 10,
   };
-  uint64_t metrics_[MetricsType::MetricsType_MAX] = {0};
+  uint64_t counts_[CountsType::CountsType_MAX] = {0};
 };
 
 }  // namespace gcs
