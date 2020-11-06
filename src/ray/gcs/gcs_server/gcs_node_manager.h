@@ -64,6 +64,16 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                              rpc::ReportHeartbeatReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle report resource usage rpc come from raylet.
+  void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
+                                 rpc::ReportResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get all resource usage rpc request.
+  void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
+                                 rpc::GetAllResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle get resource rpc request.
   void HandleGetResources(const rpc::GetResourcesRequest &request,
                           rpc::GetResourcesReply *reply,
