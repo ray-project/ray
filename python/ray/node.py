@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 SESSION_LATEST = "session_latest"
 NUMBER_OF_PORT_RETRIES = 40
+NUMBER_OF_NAME_READ_RETRIES = 10
 
 
 class Node:
@@ -139,8 +140,20 @@ class Node:
             self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
             redis_client = self.create_redis_client()
-            self.session_name = ray.utils.decode(
-                redis_client.get("session_name"))
+            session_name = None
+            for i in range(NUMBER_OF_NAME_READ_RETRIES):
+                session_name = redis_client.get("session_name")
+                if session_name:
+                    break
+                else:
+                    logger.debug(
+                        "Fetched session_name=None from redis. Retrying.")
+                    time.sleep(1)
+            if not session_name:
+                raise RuntimeError(
+                    "Could not read 'session_name' from GCS (redis). "
+                    "Has redis started correctly on the head node?")
+            self.session_name = ray.utils.decode(session_name)
 
         self._init_temp(redis_client)
 
