@@ -416,13 +416,21 @@ void PushManager::StartPush(const NodeID &dest_id, const ObjectID &obj_id,
   RAY_CHECK(num_chunks > 0);
   push_info_[push_id] = std::make_pair(num_chunks, send_chunk_fn);
   next_chunk_id_[push_id] = 0;
-  chunks_remaining_ += num_chunks;
+  chunks_remaining_[push_id] += num_chunks;
   ScheduleRemainingPushes();
   RAY_CHECK(push_info_.size() == next_chunk_id_.size());
 }
 
-void PushManager::OnChunkComplete() {
+void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id) {
+  auto push_id = std::make_pair(dest_id, obj_id);
   chunks_in_flight_ -= 1;
+  if (--chunks_remaining_[push_id] <= 0) {
+    next_chunk_id_.erase(push_id);
+    chunks_remaining_.erase(push_id);
+    push_info_.erase(push_id);
+    RAY_LOG(DEBUG) << "Push for " << push_id.first << ", " << push_id.second
+                   << " completed, remaining: " << NumPushesInFlight();
+  }
   ScheduleRemainingPushes();
 }
 
@@ -435,23 +443,19 @@ void PushManager::ScheduleRemainingPushes() {
     auto max_chunks = it->second.first;
     auto send_chunk_fn = it->second.second;
 
+    // All chunks for this push have been sent; move on to the next one.
+    if (next_chunk_id_[push_id] >= max_chunks) {
+      it++;
+      continue;
+    }
+
     // Send the next chunk for this push.
-    send_chunk_fn(next_chunk_id_[push_id]);
+    send_chunk_fn(next_chunk_id_[push_id]++);
     chunks_in_flight_ += 1;
-    chunks_remaining_ -= 1;
     RAY_LOG(DEBUG) << "Sending chunk " << next_chunk_id_[push_id] << " of " << max_chunks
                    << " for push " << push_id.first << ", " << push_id.second << ", chunks in flight "
                    << NumChunksInFlight() << " / " << max_chunks_in_flight_
                    << " max, remaining chunks: " << NumChunksRemaining();
-
-    // It is the last chunk and we don't need to track it any more.
-    if (++next_chunk_id_[push_id] >= max_chunks) {
-      next_chunk_id_.erase(push_id);
-      push_info_.erase(it++);
-      RAY_LOG(DEBUG) << "Push for " << push_id.first << ", " << push_id.second
-                     << " completed, remaining: " << NumPushesInFlight();
-    }
-    // Note that we don't advance the iterator until done with the push.
   }
 }
 
@@ -513,7 +517,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &client_id) {
     push_manager_->StartPush(client_id, object_id, num_chunks, [=](int64_t chunk_id) {
       SendObjectChunk(push_id, object_id, owner_address, client_id, data_size,
                       metadata_size, chunk_id, rpc_client,
-                      [=](const Status &status) { push_manager_->OnChunkComplete(); });
+                      [=](const Status &status) { push_manager_->OnChunkComplete(client_id, object_id); });
     });
   } else {
     // Push is best effort, so do nothing here.

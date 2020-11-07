@@ -121,13 +121,19 @@ class PushManager {
 
   /// Called every time a chunk completes to trigger additional sends.
   /// TODO(ekl) maybe we should cancel the entire push on error.
-  void OnChunkComplete();
+  void OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id);
 
   /// Return the number of chunks currently in flight. For testing only.
   int64_t NumChunksInFlight() const { return chunks_in_flight_; };
 
   /// Return the number of chunks remaining. For testing only.
-  int64_t NumChunksRemaining() const { return chunks_remaining_; };
+  int64_t NumChunksRemaining() const {
+    int total = 0;
+    for (const auto& pair : chunks_remaining_) {
+      total += pair.second;
+    }
+    return total;
+  }
 
   /// Return the number of pushes currently in flight. For testing only.
   int64_t NumPushesInFlight() const { return push_info_.size(); };
@@ -155,9 +161,6 @@ class PushManager {
   /// Max number of chunks in flight allowed.
   const int64_t max_chunks_in_flight_;
 
-  /// Running count of chunks remaining.
-  int64_t chunks_remaining_ = 0;
-
   /// Running count of chunks in flight, used to limit progress of in_flight_pushes_.
   int64_t chunks_in_flight_ = 0;
 
@@ -166,6 +169,9 @@ class PushManager {
 
   /// Tracks progress of in flight pushes.
   absl::flat_hash_map<PushID, int64_t> next_chunk_id_;
+
+  /// Tracks number of unfinished chunk sends.
+  absl::flat_hash_map<PushID, int64_t> chunks_remaining_;
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
