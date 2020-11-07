@@ -65,6 +65,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &sel
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   main_service_ = &main_service;
 
+  push_manager_.reset(new PushManager(std::max(
+      1L,
+      static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
+
   if (plasma::plasma_store_runner) {
     store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
     plasma::plasma_store_runner->SetNotificationListener(store_notification_);
@@ -388,23 +392,23 @@ void PushManager::StartPush(const UniqueID &push_id, int64_t num_chunks,
   push_info_[push_id] = std::make_pair(num_chunks, send_chunk_fn);
   next_chunk_id_[push_id] = 0;
   chunks_remaining_ += num_chunks;
-  SendUpToInFlightChunks();
-  RAY_CHECK(push_info_.size() == next_chunk_id_.size();
+  ScheduleRemainingPushes();
+  RAY_CHECK(push_info_.size() == next_chunk_id_.size());
 }
 
 void PushManager::OnChunkComplete() {
   chunks_in_flight_ -= 1;
-  SendUpToInFlightChunks();
+  ScheduleRemainingPushes();
 }
 
-void PushManager::SendUpToInFlightChunks() {
-  // TODO(ekl) currently chunks are sent in somewhat arbitrary order, we might want to
-  // prioritize chunk sends in FIFO or round robin according to push id.
+// TODO(ekl) currently chunks are sent in somewhat arbitrary order, we might want to
+// prioritize chunk sends in FIFO or round robin according to push id.
+void PushManager::ScheduleRemainingPushes() {
   auto it = push_info_.begin();
   while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
     auto push_id = it->first;
-    auto max_chunks = it->second->first;
-    auto send_chunk_fn = it->second->second;
+    auto max_chunks = it->second.first;
+    auto send_chunk_fn = it->second.second;
 
     // Send the next chunk for this push.
     send_chunk_fn(next_chunk_id_[push_id]);
@@ -419,7 +423,8 @@ void PushManager::SendUpToInFlightChunks() {
     if (++next_chunk_id[push_id] >= max_chunks) {
       next_chunk_id_.erase(push_id);
       it = push_info_.erase(it);
-      RAY_LOG(INFO) << "Push for " << push_id_ << " completed.";
+      RAY_LOG(INFO) << "Push for " << push_id
+                    << " completed, remaining: " << NumPushesInFlight();
     }
   }
 }
@@ -504,7 +509,7 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     UniqueID push_id = UniqueID::FromRandom();
     push_manager_->StartPush(push_id, num_chunks, [=](int64_t chunk_id) {
       SendObjectChunk(push_id, object_id, owner_address, client_id, data_size,
-                      metadata_size, index, rpc_client,
+                      metadata_size, chunk_id, rpc_client,
                       [=](const Status &status) { push_manager_->OnChunkComplete(); });
     });
   } else {
@@ -542,7 +547,8 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   if (!chunk_status.second.ok()) {
     RAY_LOG(WARNING) << "Attempting to push object " << object_id
                      << " which is not local. It may have been evicted.";
-    RAY_RETURN_NOT_OK(status);
+    on_complete(status);
+    return;
   }
 
   push_request.set_data(chunk_info.data, chunk_info.buffer_length);
