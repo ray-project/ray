@@ -482,7 +482,7 @@ class AutoscalingPolicyTest(unittest.TestCase):
         while done_count < len(tasks):
             time = simulator.step()
 
-        assert time < 400
+        assert time < 850
 
     def testManyActors(self):
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
@@ -510,7 +510,7 @@ class AutoscalingPolicyTest(unittest.TestCase):
         while start_count < len(tasks):
             time = simulator.step()
 
-        assert time < 200
+        assert time < 650
 
     def testManyPlacementGroups(self):
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
@@ -574,4 +574,4 @@ class AutoscalingPolicyTest(unittest.TestCase):
         #     print(f"{ip}: {node.available_resources}, {node.total_resources}")
         #     pass
 
-        assert time < 200
+        assert time < 630
