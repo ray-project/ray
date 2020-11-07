@@ -17,7 +17,8 @@ class TestPettingZooEnv(unittest.TestCase):
         ray.shutdown()
 
     def test_pettingzoo_env(self):
-        register_env("simple_spread", lambda _: PettingZooEnv(simple_spread_v2.env()))
+        register_env("simple_spread",
+                     lambda _: PettingZooEnv(simple_spread_v2.env()))
 
         agent_class = get_agent_class("PPO")
 
