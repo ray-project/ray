@@ -76,9 +76,6 @@ struct ObjectManagerConfig {
 struct LocalObjectInfo {
   /// Information from the object store about the object.
   object_manager::protocol::ObjectInfoT object_info;
-  /// A map from the ID of a remote object manager to the timestamp of when
-  /// the object was last pushed to that object manager (if a push took place).
-  std::unordered_map<NodeID, int64_t> recent_pushes;
 };
 
 class ObjectStoreRunner {
@@ -101,7 +98,7 @@ class ObjectManagerInterface {
 
 class PushManager {
  public:
-  /// Manages rate limiting of outbound object pushes.
+  /// Manages rate limiting and deduplication of outbound object pushes.
 
   /// Create a push manager.
   PushManager(int64_t max_chunks_in_flight)
@@ -111,12 +108,15 @@ class PushManager {
 
   /// Start pushing an object subject to max bytes in flight limit.
   ///
-  /// \param push_id Unique identifier for this push.
+  /// Duplicate concurrent pushes to the same destination will be suppressed.
+  ///
+  /// \param dest_id The node to send to.
+  /// \param obj_id The object to send.
   /// \param num_chunks The total number of chunks to send.
   /// \param send_chunk_fn This function will be called with args 0...{num_chunks-1}.
   ///                      The caller promises to call PushManager::OnChunkComplete()
   ///                      once a call to send_chunk_fn finishes.
-  void StartPush(const UniqueID &push_id, int64_t num_chunks,
+  void StartPush(const NodeID &dest_id, const ObjectID &obj_id, int64_t num_chunks,
                  std::function<void(int64_t)> send_chunk_fn);
 
   /// Called every time a chunk completes to trigger additional sends.
@@ -146,6 +146,9 @@ class PushManager {
   /// Called on completion events to trigger additional pushes.
   void ScheduleRemainingPushes();
 
+  /// Pair of (destination, object_id)
+  typedef std::pair<NodeID, ObjectID> PushID;
+
   /// Pair of (num_chunks, chunk_send_fn).
   typedef std::pair<int64_t, std::function<void(int64_t)>> PushInfo;
 
@@ -159,10 +162,10 @@ class PushManager {
   int64_t chunks_in_flight_ = 0;
 
   /// Tracks all pushes with chunk transfers in flight.
-  absl::flat_hash_map<UniqueID, PushInfo> push_info_;
+  absl::flat_hash_map<PushID, PushInfo> push_info_;
 
   /// Tracks progress of in flight pushes.
-  absl::flat_hash_map<UniqueID, int64_t> next_chunk_id_;
+  absl::flat_hash_map<PushID, int64_t> next_chunk_id_;
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
