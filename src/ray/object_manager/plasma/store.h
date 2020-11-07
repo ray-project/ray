@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/common.h"
@@ -52,7 +53,8 @@ class PlasmaStore {
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
               const std::string& socket_name,
-              std::shared_ptr<ExternalStore> external_store);
+              std::shared_ptr<ExternalStore> external_store,
+              ray::SpillObjectsCallback spill_objects_callback);
 
   ~PlasmaStore();
 
@@ -94,7 +96,10 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
-  PlasmaError CreateObject(const ObjectID& object_id, const ClientID& owner_raylet_id,
+  ///  - PlasmaError::TransientOutOfMemory, if the store is temporarily out of
+  ///    memory but there may be space soon to create the object.  In this
+  ///    case, the client should not call plasma_release.
+  PlasmaError CreateObject(const ObjectID& object_id, const NodeID& owner_raylet_id,
                            const std::string& owner_ip_address, int owner_port,
                            const WorkerID& owner_worker_id, bool evict_if_full,
                            int64_t data_size, int64_t metadata_size, int device_num,
@@ -194,7 +199,18 @@ class PlasmaStore {
     }
   }
 
+  /// Process queued requests to create an object.
+  ///
+  /// The queue is processed FIFO.
+  ///
+  /// \param num_bytes_space A lower bound on the number of bytes of space that
+  /// have been made newly available, since the last time this method was
+  /// called.
+  void ProcessCreateRequests();
+
  private:
+  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message);
+
   void PushNotification(ObjectInfoT* object_notification);
 
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
@@ -222,7 +238,8 @@ class PlasmaStore {
   void EraseFromObjectTable(const ObjectID& object_id);
 
   uint8_t* AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE* fd, int64_t* map_size,
-                          ptrdiff_t* offset, const std::shared_ptr<Client> &client, bool is_create);
+                          ptrdiff_t* offset, const std::shared_ptr<Client> &client, bool is_create,
+                          PlasmaError *error);
 #ifdef PLASMA_CUDA
   Status AllocateCudaMemory(int device_num, int64_t size, uint8_t** out_pointer,
                             std::shared_ptr<CudaIpcMemHandle>* out_ipc_handle);
@@ -262,6 +279,24 @@ class PlasmaStore {
   arrow::cuda::CudaDeviceManager* manager_;
 #endif
   std::shared_ptr<ray::ObjectStoreNotificationManager> notification_listener_;
+  /// A callback to asynchronously spill objects when space is needed. The
+  /// callback returns the amount of space still needed after the spilling is
+  /// complete.
+  ray::SpillObjectsCallback spill_objects_callback_;
+
+  /// Queue of object creation requests to respond to. Requests will be placed
+  /// on this queue if the object store does not have enough room at the time
+  /// that the client made the creation request, but space may be made through
+  /// object spilling. Once the raylet notifies us that objects have been
+  /// spilled, we will attempt to process these requests again and respond to
+  /// the client if successful or out of memory. If more objects must be
+  /// spilled, the request will be replaced at the head of the queue.
+  /// TODO(swang): We should also queue objects here even if there is no room
+  /// in the object store. Then, the client does not need to poll on an
+  /// OutOfMemory error and we can just respond to them once there is enough
+  /// space made, or after a timeout.
+  std::list<std::pair<const std::shared_ptr<Client>,
+    const std::vector<uint8_t>>> create_request_queue_;
 };
 
 }  // namespace plasma

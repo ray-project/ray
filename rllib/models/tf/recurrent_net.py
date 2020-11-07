@@ -65,7 +65,7 @@ class RecurrentNetwork(TFModelV2):
     def forward_rnn(self, inputs, state, seq_lens):
         """Call the model with the given input tensors and state.
 
-        Arguments:
+        Args:
             inputs (dict): observation tensor with shape [B, T, obs_size].
             state (list): list of state tensors, each with shape [B, T, size].
             seq_lens (Tensor): 1d tensor holding input sequence lengths.
@@ -113,7 +113,10 @@ class LSTMWrapper(RecurrentNetwork):
         self.cell_size = model_config["lstm_cell_size"]
         self.use_prev_action_reward = model_config[
             "lstm_use_prev_action_reward"]
-        self.action_dim = int(np.product(action_space.shape))
+        if action_space.shape is not None:
+            self.action_dim = int(np.product(action_space.shape))
+        else:
+            self.action_dim = int(len(action_space))
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action_reward:
             self.num_outputs += 1 + self.action_dim

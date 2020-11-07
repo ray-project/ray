@@ -36,6 +36,8 @@ DEFINE_int32(min_worker_port, 0,
              "The lowest port that workers' gRPC servers will bind on.");
 DEFINE_int32(max_worker_port, 0,
              "The highest port that workers' gRPC servers will bind on.");
+DEFINE_string(worker_port_list, "",
+              "An explicit list of ports that workers' gRPC servers will bind on.");
 DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
 DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
@@ -75,6 +77,7 @@ int main(int argc, char *argv[]) {
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
+  const std::string worker_port_list = FLAGS_worker_port_list;
   const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
   const int num_initial_python_workers_for_first_job =
       static_cast<int>(FLAGS_num_initial_python_workers_for_first_job);
@@ -124,7 +127,7 @@ int main(int argc, char *argv[]) {
     std::string config_value;
 
     while (std::getline(config_string, config_name, ',')) {
-      RAY_CHECK(std::getline(config_string, config_value, ','));
+      RAY_CHECK(std::getline(config_string, config_value, ';'));
       // TODO(rkn): The line below could throw an exception. What should we do about this?
       raylet_config[config_name] = config_value;
     }
@@ -150,6 +153,15 @@ int main(int argc, char *argv[]) {
 
         RayConfig::instance().initialize(raylet_config);
 
+        // Parse the worker port list.
+        std::istringstream worker_port_list_string(worker_port_list);
+        std::string worker_port;
+        std::vector<int> worker_ports;
+
+        while (std::getline(worker_port_list_string, worker_port, ',')) {
+          worker_ports.push_back(std::stoi(worker_port));
+        }
+
         // Parse the resource list.
         std::istringstream resource_string(static_resource_list);
         std::string resource_name;
@@ -157,10 +169,12 @@ int main(int argc, char *argv[]) {
 
         while (std::getline(resource_string, resource_name, ',')) {
           RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
-          // TODO(rkn): The line below could throw an exception. What should we do
-          // about this?
           static_resource_conf[resource_name] = std::stod(resource_quantity);
         }
+        auto num_cpus_it = static_resource_conf.find("CPU");
+        int num_cpus = num_cpus_it != static_resource_conf.end()
+                           ? static_cast<int>(num_cpus_it->second)
+                           : 0;
 
         node_manager_config.raylet_config = raylet_config;
         node_manager_config.resource_config =
@@ -170,11 +184,13 @@ int main(int argc, char *argv[]) {
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
         node_manager_config.num_initial_workers = num_initial_workers;
+        node_manager_config.num_workers_soft_limit = num_cpus;
         node_manager_config.num_initial_python_workers_for_first_job =
             num_initial_python_workers_for_first_job;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
+        node_manager_config.worker_ports = worker_ports;
 
         if (!python_worker_command.empty()) {
           node_manager_config.worker_commands.emplace(
@@ -203,8 +219,6 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
         node_manager_config.debug_dump_period_ms =
             RayConfig::instance().debug_dump_period_milliseconds();
-        node_manager_config.free_objects_period_ms =
-            RayConfig::instance().free_objects_period_milliseconds();
         node_manager_config.fair_queueing_enabled =
             RayConfig::instance().fair_queueing_enabled();
         node_manager_config.object_pinning_enabled =
@@ -227,7 +241,6 @@ int main(int argc, char *argv[]) {
         object_manager_config.plasma_directory = plasma_directory;
         object_manager_config.huge_pages = huge_pages;
 
-        int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
         object_manager_config.rpc_service_threads_number =
             std::min(std::max(2, num_cpus / 4), 8);
         object_manager_config.object_chunk_size =
@@ -241,7 +254,7 @@ int main(int argc, char *argv[]) {
         // Initialize stats.
         const ray::stats::TagsType global_tags = {
             {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::VersionKey, "0.9.0.dev0"},
+            {ray::stats::VersionKey, "1.1.0.dev0"},
             {ray::stats::NodeAddressKey, node_ip_address}};
         ray::stats::Init(global_tags, metrics_agent_port);
 

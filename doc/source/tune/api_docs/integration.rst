@@ -7,6 +7,15 @@ External library integrations (tune.integration)
     :local:
     :depth: 1
 
+
+.. _tune-integration-docker:
+
+Docker (tune.integration.docker)
+--------------------------------
+
+.. autofunction:: ray.tune.integration.docker.DockerSyncer
+
+
 .. _tune-integration-keras:
 
 Keras (tune.integration.keras)
@@ -22,6 +31,16 @@ Kubernetes (tune.integration.kubernetes)
 ----------------------------------------
 
 .. autofunction:: ray.tune.integration.kubernetes.NamespacedKubernetesSyncer
+
+.. _tune-integration-mxnet:
+
+MXNet (tune.integration.mxnet)
+------------------------------
+
+.. autoclass:: ray.tune.integration.mxnet.TuneReportCallback
+
+.. autoclass:: ray.tune.integration.mxnet.TuneCheckpointCallback
+
 
 .. _tune-integration-pytorch-lightning:
 
@@ -42,6 +61,14 @@ Torch (tune.integration.torch)
 .. autofunction:: ray.tune.integration.torch.distributed_checkpoint_dir
 
 .. autofunction:: ray.tune.integration.torch.is_distributed_trainable
+
+
+.. _tune-integration-horovod:
+
+Horovod (tune.integration.horovod)
+----------------------------------
+
+.. autofunction:: ray.tune.integration.horovod.DistributedTrainableCreator
 
 .. _tune-integration-wandb:
 

@@ -1,32 +1,73 @@
 /*Extends the docstring signature box.*/
 .rst-content dl:not(.docutils) dt {
-    display: block;
-    padding: 10px;
-    word-wrap: break-word;
-    padding-right: 100px;
+  display: block;
+  padding: 10px;
+  word-wrap: break-word;
+  padding-right: 100px;
 }
 /*Lists in an admonition note do not have awkward whitespace below.*/
 .rst-content .admonition-note .section ul {
-    margin-bottom: 0px
+  margin-bottom: 0px;
 }
 /*Properties become blue (classmethod, staticmethod, property)*/
 .rst-content dl dt em.property {
-    color: #2980B9;
-    text-transform: uppercase
+  color: #2980b9;
+  text-transform: uppercase;
 }
 
-.rst-content .section ol p, .rst-content .section ul p {
-    margin-bottom: 0px;
+.rst-content .section ol p,
+.rst-content .section ul p {
+  margin-bottom: 0px;
 }
 
 div.sphx-glr-bigcontainer {
-    display: inline-block;
-    width: 100%
+  display: inline-block;
+  width: 100%;
 }
 
-
-td.tune-colab, th.tune-colab {
+td.tune-colab,
+th.tune-colab {
   border: 1px solid #dddddd;
   text-align: left;
   padding: 8px;
+}
+
+/* Adjustment to Sphinx Book Theme */
+.table td {
+  /* Remove row spacing */
+  padding: 0;
+}
+
+table {
+  /* Force full width for all table */
+  width: 136% !important;
+}
+
+img.inline-figure {
+  /* Override the display: block for img */
+  display: inherit !important;
+}
+
+#version-warning-banner {
+  /* Make version warning clickable */
+  z-index: 1;
+  margin-left: 0;
+  /* 20% is for ToC rightbar */
+  /* 2 * 1.5625em is for horizontal margins */
+  width: calc(100% - 20% - 2 * 1.5625em);
+}
+
+span.rst-current-version > span.fa.fa-book {
+  /* Move the book icon away from the top right
+   * corner of the version flyout menu */
+  margin: 10px 0px 0px 5px;
+}
+
+/* Adjustment to Version block */
+.rst-versions {
+  z-index: 1200 !important;
+}
+
+dt:target, span.highlighted {
+  background-color: #fbe54e;
 }

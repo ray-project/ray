@@ -67,16 +67,16 @@ def test_system_config(ray_start_cluster_head):
 def setup_monitor(address):
     monitor = Monitor(
         address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    monitor.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
-    monitor.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)  # TODO: Remove?
     monitor.update_raylet_map(_append_port=True)
+    monitor.subscribe(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
     return monitor
 
 
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     while True:
+        monitor.update_load_metrics()
         monitor.process_messages()
-        resource_usage = monitor.load_metrics.get_resource_usage()
+        resource_usage = monitor.load_metrics._get_resource_usage()
 
         if "memory" in resource_usage[1]:
             del resource_usage[1]["memory"]

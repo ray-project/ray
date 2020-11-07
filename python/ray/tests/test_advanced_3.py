@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import socket
+import tempfile
 import time
 
 import numpy as np
@@ -12,10 +13,12 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+import ray.util.accelerators
 import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
+import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
                             wait_for_condition, wait_for_num_actors)
@@ -35,7 +38,7 @@ def attempt_to_load_balance(remote_function,
             [remote_function.remote(*args) for _ in range(total_tasks)])
         names = set(locations)
         counts = [locations.count(name) for name in names]
-        logger.info("Counts are {}.".format(counts))
+        logger.info(f"Counts are {counts}.")
         if (len(names) == num_nodes
                 and all(count >= minimum_count for count in counts)):
             break
@@ -151,7 +154,7 @@ def test_global_state_api(shutdown_only):
         def __init__(self):
             pass
 
-    _ = Actor.remote()  # noqa: F841
+    _ = Actor.options(name="test_actor").remote()  # noqa: F841
     # Wait for actor to be created
     wait_for_num_actors(1)
 
@@ -160,6 +163,7 @@ def test_global_state_api(shutdown_only):
 
     actor_info, = actor_table.values()
     assert actor_info["JobID"] == job_id.hex()
+    assert actor_info["Name"] == "test_actor"
     assert "IPAddress" in actor_info["Address"]
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
@@ -255,9 +259,6 @@ def test_not_logging_to_driver(shutdown_only):
     assert len(err_lines) == 0
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
     ray.init(num_cpus=num_workers)
@@ -344,6 +345,28 @@ def test_ray_setproctitle(ray_start_2_cpus):
     actor = UniqueName.remote()
     ray.get(actor.f.remote())
     ray.get(unique_1.remote())
+
+
+def test_ray_task_name_setproctitle(ray_start_2_cpus):
+    method_task_name = "foo"
+
+    @ray.remote
+    class UniqueName:
+        def __init__(self):
+            assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
+
+        def f(self):
+            assert setproctitle.getproctitle() == f"ray::{method_task_name}"
+
+    task_name = "bar"
+
+    @ray.remote
+    def unique_1():
+        assert task_name in setproctitle.getproctitle()
+
+    actor = UniqueName.remote()
+    ray.get(actor.f.options(name=method_task_name).remote())
+    ray.get(unique_1.options(name=task_name).remote())
 
 
 @pytest.mark.skipif(
@@ -501,6 +524,12 @@ def test_export_after_shutdown(ray_start_regular):
     ray.get(export_definitions_from_worker.remote(f, Actor))
 
 
+def test_ray_start_and_stop():
+    for i in range(10):
+        subprocess.check_call(["ray", "start", "--head"])
+        subprocess.check_call(["ray", "stop"])
+
+
 def test_invalid_unicode_in_worker_log(shutdown_only):
     info = ray.init(num_cpus=1)
 
@@ -508,7 +537,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
 
     # Wait till first worker log file is created.
     while True:
-        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
+        log_file_paths = glob.glob(f"{logs_dir}/worker*.out")
         if len(log_file_paths) == 0:
             time.sleep(0.2)
         else:
@@ -524,7 +553,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
     time.sleep(1.0)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 @pytest.mark.skip(reason="This test is too expensive to run.")
@@ -546,20 +575,20 @@ def test_move_log_files_to_old(shutdown_only):
 
     # Make sure no log files are in the "old" directory before the actors
     # are killed.
-    assert len(glob.glob("{}/old/worker*.out".format(logs_dir))) == 0
+    assert len(glob.glob(f"{logs_dir}/old/worker*.out")) == 0
 
     # Now kill the actors so the files get moved to logs/old/.
     [a.__ray_terminate__.remote() for a in actors]
 
     while True:
-        log_file_paths = glob.glob("{}/old/worker*.out".format(logs_dir))
+        log_file_paths = glob.glob(f"{logs_dir}/old/worker*.out")
         if len(log_file_paths) > 0:
             with open(log_file_paths[0], "r") as f:
                 assert "function f finished\n" in f.readlines()
             break
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 def test_lease_request_leak(shutdown_only):
@@ -641,7 +670,7 @@ Blacklisted:     No
     """
     constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
     expected_dict = {
-        "{}V100".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}V100": 1,
     }
     assert constraints_dict == expected_dict
 
@@ -658,11 +687,236 @@ Blacklisted:     No
     """
     constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
     expected_dict = {
-        "{}T4".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}T4": 1,
     }
     assert constraints_dict == expected_dict
 
     assert resource_spec._constraints_from_gpu_info(None) == {}
+
+
+def test_accelerator_type_api(shutdown_only):
+    v100 = ray.util.accelerators.NVIDIA_TESLA_V100
+    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{v100}"
+    ray.init(num_cpus=4, resources={resource_name: 1})
+
+    quantity = 1
+
+    @ray.remote(accelerator_type=v100)
+    def decorated_func(quantity):
+        wait_for_condition(
+            lambda: ray.available_resources()[resource_name] < quantity)
+        return True
+
+    assert ray.get(decorated_func.remote(quantity))
+
+    def via_options_func(quantity):
+        wait_for_condition(
+            lambda: ray.available_resources()[resource_name] < quantity)
+        return True
+
+    assert ray.get(
+        ray.remote(via_options_func).options(
+            accelerator_type=v100).remote(quantity))
+
+    @ray.remote(accelerator_type=v100)
+    class DecoratedActor:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    class ActorWithOptions:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    decorated_actor = DecoratedActor.remote()
+    # Avoid a race condition where the actor hasn't been initialized and
+    # claimed the resources yet.
+    ray.get(decorated_actor.initialized.remote())
+    wait_for_condition(
+        lambda: ray.available_resources()[resource_name] < quantity)
+
+    quantity = ray.available_resources()[resource_name]
+    with_options = ray.remote(ActorWithOptions).options(
+        accelerator_type=v100).remote()
+    ray.get(with_options.initialized.remote())
+    wait_for_condition(
+        lambda: ray.available_resources()[resource_name] < quantity)
+
+
+def test_detect_docker_cpus():
+    # No limits set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 64
+
+    # No cpuset used
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-10,20,50-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 26
+
+    # Quota set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("42")
+        period_file.write("100")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 0.42
+
+
+def test_override_environment_variables_task(ray_start_regular):
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("a")) == "b")
+
+
+def test_override_environment_variables_actor(ray_start_regular):
+    @ray.remote
+    class EnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+    a = EnvGetter.options(override_environment_variables={
+        "a": "b",
+        "c": "d"
+    }).remote()
+    assert (ray.get(a.get.remote("a")) == "b")
+    assert (ray.get(a.get.remote("c")) == "d")
+
+
+def test_override_environment_variables_nested_task(ray_start_regular):
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    @ray.remote
+    def get_env_wrapper(key):
+        return ray.get(get_env.remote(key))
+
+    assert (ray.get(
+        get_env_wrapper.options(override_environment_variables={
+            "a": "b"
+        }).remote("a")) == "b")
+
+
+def test_override_environment_variables_multitenancy(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "foo1": "bar1",
+            "foo2": "bar2"
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert ray.get(get_env.remote("foo1")) == "bar1"
+    assert ray.get(get_env.remote("foo2")) == "bar2"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1"
+        }).remote("foo1")) == "baz1"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1"
+        }).remote("foo2")) == "bar2"
+
+
+def test_override_environment_variables_complex(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "a": "job_a",
+            "b": "job_b",
+            "z": "job_z"
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    @ray.remote
+    class NestedEnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+        def get_task(self, key):
+            return ray.get(get_env.remote(key))
+
+    @ray.remote
+    class EnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+        def get_task(self, key):
+            return ray.get(get_env.remote(key))
+
+        def nested_get(self, key):
+            aa = NestedEnvGetter.options(override_environment_variables={
+                "c": "e",
+                "d": "dd"
+            }).remote()
+            return ray.get(aa.get.remote(key))
+
+    a = EnvGetter.options(override_environment_variables={
+        "a": "b",
+        "c": "d"
+    }).remote()
+    assert (ray.get(a.get.remote("a")) == "b")
+    assert (ray.get(a.get_task.remote("a")) == "b")
+    assert (ray.get(a.nested_get.remote("a")) == "b")
+    assert (ray.get(a.nested_get.remote("c")) == "e")
+    assert (ray.get(a.nested_get.remote("d")) == "dd")
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("a")) == "b")
+
+    assert (ray.get(a.get.remote("z")) == "job_z")
+    assert (ray.get(a.get_task.remote("z")) == "job_z")
+    assert (ray.get(a.nested_get.remote("z")) == "job_z")
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("z")) == "job_z")
 
 
 if __name__ == "__main__":

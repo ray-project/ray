@@ -11,12 +11,19 @@ logger = logging.getLogger(__name__)
 
 if "pickle5" in sys.modules:
     import pkg_resources
-    version_info = pkg_resources.require("pickle5")
-    version = tuple(int(n) for n in version_info[0].version.split("."))
-    if version < (0, 0, 10):
-        raise ImportError("You are using an old version of pickle5 that "
-                          "leaks memory, please run 'pip install pickle5 -U' "
-                          "to upgrade")
+    try:
+        version_info = pkg_resources.require("pickle5")
+        version = tuple(int(n) for n in version_info[0].version.split("."))
+        if version < (0, 0, 10):
+            raise ImportError("You are using an old version of pickle5 "
+                              "that leaks memory, please run "
+                              "'pip install pickle5 -U' to upgrade")
+    except pkg_resources.DistributionNotFound:
+        logger.warning("You are using the 'pickle5' module, but "
+                       "the exact version is unknown (possibly carried as "
+                       "an internal component by another module). Please "
+                       "make sure you are using pickle5 >= 0.0.10 because "
+                       "previous versions may leak memory.")
 
 if "OMP_NUM_THREADS" not in os.environ:
     logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
@@ -59,7 +66,7 @@ from ray._raylet import (
     ActorCheckpointID,
     ActorClassID,
     ActorID,
-    ClientID,
+    NodeID,
     Config as _Config,
     JobID,
     WorkerID,
@@ -95,7 +102,7 @@ from ray import util  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
 __commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "0.9.0.dev0"
+__version__ = "1.1.0.dev0"
 
 __all__ = [
     "__version__",
@@ -103,6 +110,7 @@ __all__ = [
     "get_runtime_context",
     "actor",
     "actors",
+    "workers",
     "available_resources",
     "cancel",
     "cluster_resources",
@@ -144,7 +152,7 @@ __all__ += [
     "ActorCheckpointID",
     "ActorClassID",
     "ActorID",
-    "ClientID",
+    "NodeID",
     "JobID",
     "WorkerID",
     "FunctionID",

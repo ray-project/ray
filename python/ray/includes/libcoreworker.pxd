@@ -14,11 +14,12 @@ from libcpp.vector cimport vector as c_vector
 from ray.includes.unique_ids cimport (
     CActorID,
     CActorCheckpointID,
-    CClientID,
+    CNodeID,
     CJobID,
     CTaskID,
     CObjectID,
     CPlacementGroupID,
+    CWorkerID,
 )
 from ray.includes.common cimport (
     CAddress,
@@ -89,7 +90,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids,
             int max_retries,
-            c_pair[CPlacementGroupID, int64_t] placement_options)
+            c_pair[CPlacementGroupID, int64_t] placement_options,
+            c_bool placement_group_capture_child_tasks)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -121,6 +123,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
+        CNodeID GetCurrentNodeId()
+        CPlacementGroupID GetCurrentPlacementGroupId()
+        c_bool ShouldCaptureChildTasksInPlacementGroup()
         const CActorID &GetActorId()
         void SetActorTitle(const c_string &title)
         void SetWebuiDisplay(const c_string &key, const c_string &message)
@@ -194,10 +199,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
-                               const CClientID &client_Id)
+                               const CNodeID &client_Id)
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
-        CRayStatus ForceRestoreSpilledObjects(
-                const c_vector[CObjectID] &object_ids)
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
@@ -217,6 +220,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string stderr_file
         (CRayStatus(
             CTaskType task_type,
+            const c_string name,
             const CRayFunction &ray_function,
             const unordered_map[c_string, double] &resources,
             const c_vector[shared_ptr[CRayObject]] &args,
@@ -224,6 +228,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &return_ids,
             c_vector[shared_ptr[CRayObject]] *returns) nogil
          ) task_execution_callback
+        (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
         (c_vector[c_string](const c_vector[CObjectID]&) nogil) spill_objects

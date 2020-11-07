@@ -7,6 +7,7 @@ via a custom training workflow.
 
 import argparse
 import gym
+import os
 
 import ray
 from ray import tune
@@ -48,18 +49,18 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
 
     def add_ppo_metrics(batch):
         print("PPO policy learning on samples from",
-              batch.policy_batches.keys(), "env steps", batch.count,
-              "agent steps", batch.total())
+              batch.policy_batches.keys(), "env steps", batch.env_steps(),
+              "agent steps", batch.env_steps())
         metrics = _get_shared_metrics()
-        metrics.counters["agent_steps_trained_PPO"] += batch.total()
+        metrics.counters["agent_steps_trained_PPO"] += batch.env_steps()
         return batch
 
     def add_dqn_metrics(batch):
         print("DQN policy learning on samples from",
-              batch.policy_batches.keys(), "env steps", batch.count,
-              "agent steps", batch.total())
+              batch.policy_batches.keys(), "env steps", batch.env_steps(),
+              "agent steps", batch.env_steps())
         metrics = _get_shared_metrics()
-        metrics.counters["agent_steps_trained_DQN"] += batch.total()
+        metrics.counters["agent_steps_trained_DQN"] += batch.env_steps()
         return batch
 
     # Generate common experiences.
@@ -139,6 +140,8 @@ if __name__ == "__main__":
             "policy_mapping_fn": policy_mapping_fn,
             "policies_to_train": ["dqn_policy", "ppo_policy"],
         },
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "torch" if args.torch else "tf",
     }
 

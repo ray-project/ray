@@ -114,7 +114,10 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         self.time_major = model_config.get("_time_major", False)
         self.use_prev_action_reward = model_config[
             "lstm_use_prev_action_reward"]
-        self.action_dim = int(np.product(action_space.shape))
+        if action_space.shape is not None:
+            self.action_dim = int(np.product(action_space.shape))
+        else:
+            self.action_dim = int(len(action_space))
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action_reward:
             self.num_outputs += 1 + self.action_dim
@@ -135,24 +138,19 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
-        self.inference_view_requirements.update(
-            dict(
-                **{
-                    SampleBatch.OBS: ViewRequirement(shift=0),
-                    SampleBatch.PREV_REWARDS: ViewRequirement(
-                        SampleBatch.REWARDS, shift=-1),
-                    SampleBatch.PREV_ACTIONS: ViewRequirement(
-                        SampleBatch.ACTIONS, space=self.action_space,
-                        shift=-1),
-                }))
+        # Add prev-a/r to this model's view, if required.
+        if model_config["lstm_use_prev_action_reward"]:
+            self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
+                ViewRequirement(SampleBatch.REWARDS, shift=-1)
+            self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
+                ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
+                                shift=-1)
+        # Add state-ins to this model's view.
         for i in range(2):
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
                     shift=-1,
-                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
-            self.inference_view_requirements["state_out_{}".format(i)] = \
-                ViewRequirement(
                     space=Box(-1.0, 1.0, shape=(self.cell_size,)))
 
     @override(RecurrentNetwork)

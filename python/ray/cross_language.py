@@ -56,6 +56,12 @@ def get_function_descriptor_for_actor_method(
 
 
 def java_function(class_name, function_name):
+    """Define a Java function.
+
+    Args:
+        class_name (str): Java class name.
+        function_name (str): Java function name.
+    """
     from ray.remote_function import RemoteFunction
     return RemoteFunction(
         Language.JAVA,
@@ -66,23 +72,28 @@ def java_function(class_name, function_name):
         None,  # memory,
         None,  # object_store_memory,
         None,  # resources,
+        None,  # accelerator_type,
         None,  # num_returns,
         None,  # max_calls,
-        None,  # max_retries
-        placement_group=None,
-        # TODO(ekl) set default to -1 once we support -1 as "any index"
-        placement_group_bundle_index=0)
+        None)  # max_retries
 
 
 def java_actor_class(class_name):
+    """Define a Java actor class.
+
+    Args:
+        class_name (str): Java class name.
+    """
     from ray.actor import ActorClass
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
-        0,  # max_restarts,
-        0,  # max_task_retries,
-        None,  # num_cpus,
-        None,  # num_gpus,
-        None,  # memory,
-        None,  # object_store_memory,
-        None)  # resources,
+        max_restarts=0,
+        max_task_retries=0,
+        num_cpus=None,
+        num_gpus=None,
+        memory=None,
+        object_store_memory=None,
+        resources=None,
+        accelerator_type=None,
+    )

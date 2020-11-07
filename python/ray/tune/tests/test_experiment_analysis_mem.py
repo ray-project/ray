@@ -15,6 +15,14 @@ from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=False, num_cpus=1)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def setUp(self):
         class MockTrainable(Trainable):
             scores_dict = {
@@ -42,11 +50,9 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
         self.MockTrainable = MockTrainable
         self.test_dir = tempfile.mkdtemp()
-        ray.init(local_mode=False, num_cpus=1)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
     def testInit(self):
         experiment_checkpoint_path = os.path.join(self.test_dir,
@@ -83,10 +89,10 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
             num_samples=1,
             config={"id": grid_search(list(range(5)))})
 
-        max_all = ea.get_best_trial("score",
-                                    "max").metric_analysis["score"]["max"]
-        min_all = ea.get_best_trial("score",
-                                    "min").metric_analysis["score"]["min"]
+        max_all = ea.get_best_trial("score", "max",
+                                    "all").metric_analysis["score"]["max"]
+        min_all = ea.get_best_trial("score", "min",
+                                    "all").metric_analysis["score"]["min"]
         max_last = ea.get_best_trial("score", "max",
                                      "last").metric_analysis["score"]["last"]
         max_avg = ea.get_best_trial("score", "max",
@@ -123,8 +129,15 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
 
 class AnalysisSuite(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=True, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def setUp(self):
-        ray.init(local_mode=True)
         self.test_dir = tempfile.mkdtemp()
         self.num_samples = 10
         self.metric = "episode_reward_mean"
@@ -135,7 +148,6 @@ class AnalysisSuite(unittest.TestCase):
         run(MyTrainableClass,
             name=test_name,
             local_dir=self.test_dir,
-            return_trials=False,
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
@@ -146,11 +158,10 @@ class AnalysisSuite(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
     def testDataframe(self):
         analysis = Analysis(self.test_dir)
-        df = analysis.dataframe()
+        df = analysis.dataframe(self.metric, mode="max")
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEqual(df.shape[0], self.num_samples * 2)
 

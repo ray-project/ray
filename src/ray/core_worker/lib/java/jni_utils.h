@@ -94,6 +94,9 @@ extern jmethodID java_system_gc;
 /// RayException class
 extern jclass java_ray_exception_class;
 
+/// RayIntentionalSystemExitException class
+extern jclass java_ray_intentional_system_exit_exception_class;
+
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
 /// getStackTrace method of JniExceptionUtil class
@@ -103,6 +106,11 @@ extern jmethodID java_jni_exception_util_get_stack_trace;
 extern jclass java_base_id_class;
 /// getBytes method of BaseId class
 extern jmethodID java_base_id_get_bytes;
+
+/// AbstractMessageLite class
+extern jclass java_abstract_message_lite_class;
+/// toByteArray method of AbstractMessageLite class
+extern jmethodID java_abstract_message_lite_to_byte_array;
 
 /// FunctionDescriptor interface
 extern jclass java_function_descriptor_class;
@@ -120,6 +128,8 @@ extern jmethodID java_language_get_number;
 extern jclass java_function_arg_class;
 /// id field of FunctionArg class
 extern jfieldID java_function_arg_id;
+/// ownerAddress field of FunctionArg class
+extern jfieldID java_function_arg_owner_address;
 /// value field of FunctionArg class
 extern jfieldID java_function_arg_value;
 
@@ -127,6 +137,11 @@ extern jfieldID java_function_arg_value;
 extern jclass java_base_task_options_class;
 /// resources field of BaseTaskOptions class
 extern jfieldID java_base_task_options_resources;
+
+/// CallOptions class
+extern jclass java_call_options_class;
+/// name field of CallOptions class
+extern jfieldID java_call_options_name;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
@@ -171,6 +186,11 @@ extern jclass java_task_executor_class;
 extern jmethodID java_task_executor_parse_function_arguments;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
+
+/// NativeTaskExecutor class
+extern jclass java_native_task_executor_class;
+/// onWorkerShutdown method of NativeTaskExecutor class
+extern jmethodID java_native_task_executor_on_worker_shutdown;
 
 /// PlacementGroup class
 extern jclass java_placement_group_class;
@@ -518,6 +538,27 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   }
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
+}
+
+/// Convert a Java protobuf object to a C++ protobuf object
+template <typename NativeT>
+inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject java_obj) {
+  NativeT native_obj;
+  if (java_obj) {
+    jbyteArray bytes = static_cast<jbyteArray>(
+        env->CallObjectMethod(java_obj, java_abstract_message_lite_to_byte_array));
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    RAY_CHECK(bytes != nullptr);
+    auto buffer = JavaByteArrayToNativeBuffer(env, bytes);
+    RAY_CHECK(buffer);
+    native_obj.ParseFromArray(buffer->Data(), buffer->Size());
+    // Destroy the buffer before deleting the local ref of `bytes`. We need to make sure
+    // that `bytes` is still available when invoking the destructor of
+    // `JavaByteArrayBuffer`.
+    buffer.reset();
+    env->DeleteLocalRef(bytes);
+  }
+  return native_obj;
 }
 
 // Return an actor fullname with job id prepended if this tis a global actor.

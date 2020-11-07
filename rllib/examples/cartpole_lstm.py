@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -6,7 +7,8 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--torch", action="store_true")
+parser.add_argument(
+    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--use-prev-action-reward", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
@@ -35,13 +37,18 @@ if __name__ == "__main__":
     }
 
     config = dict(
-        configs[args.run], **{
+        configs[args.run],
+        **{
             "env": StatelessCartPole,
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "model": {
                 "use_lstm": True,
                 "lstm_use_prev_action_reward": args.use_prev_action_reward,
             },
-            "framework": "torch" if args.torch else "tf",
+            "framework": args.framework,
+            # Run with tracing enabled for tfe/tf2.
+            "eager_tracing": args.framework in ["tfe", "tf2"],
         })
 
     stop = {
@@ -50,7 +57,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop)
+    results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

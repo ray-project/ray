@@ -59,6 +59,9 @@ This document describes the process for creating new releases.
    - ``ci/regression_test/rllib_stress_tests`` run multinode 8hr IMPALA trial.
    - ``ci/regression_test/stress_tests`` contains two tests: ``many_tasks`` and ``dead_actors``.
      Each of the test runs on 105 spot instances.
+   - ``ci/regression_test/stress_tests/placement_group`` contains a Python script to run tests.
+     It currently uses ``cluster_util`` to emulate the cluster testing. It will be converted to 
+     real multi-node tests in the future. For now, just make sure the test succeed locally.
 
    Make sure that these pass. For the RLlib regression tests, see the comment on the
    file for the pass criteria. For the rest, it will be obvious if they passed.
@@ -126,9 +129,9 @@ This document describes the process for creating new releases.
        export RAY_VERSION=...  # e.g., 0.7.0
 
        # Linux Wheels
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux1_x86_64.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux1_x86_64.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-manylinux1_x86_64.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux2014_x86_64.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux2014_x86_64.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-manylinux2014_x86_64.whl
 
        # Mac Wheels
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_13_intel.whl

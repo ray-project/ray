@@ -21,8 +21,10 @@ def increase(x):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular",
-    [generate_system_config_map(num_heartbeats_timeout=20)],
+    "ray_start_regular", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
     indirect=True)
 def test_gcs_server_restart(ray_start_regular):
     actor1 = Increase.remote()
@@ -44,8 +46,10 @@ def test_gcs_server_restart(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular",
-    [generate_system_config_map(num_heartbeats_timeout=20)],
+    "ray_start_regular", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
     indirect=True)
 def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     ids = []
@@ -63,8 +67,10 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [generate_system_config_map(num_heartbeats_timeout=20)],
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
     indirect=True)
 def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     """Checks that the node failure detector is correct when gcs server restart.
@@ -118,6 +124,39 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
 
     # Wait for the removed node dead.
     wait_for_condition(condition, timeout=10)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_del_actor_after_gcs_server_restart(ray_start_regular):
+    actor = Increase.options(name="abc").remote()
+    result = ray.get(actor.method.remote(1))
+    assert result == 3
+
+    ray.worker._global_node.kill_gcs_server()
+    ray.worker._global_node.start_gcs_server()
+
+    actor_id = actor._actor_id.hex()
+    del actor
+
+    def condition():
+        actor_status = ray.actors(actor_id=actor_id)
+        if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD:
+            return True
+        else:
+            return False
+
+    # Wait for the actor dead.
+    wait_for_condition(condition, timeout=10)
+
+    # If `PollOwnerForActorOutOfScope` was successfully called,
+    # name should be properly deleted.
+    with pytest.raises(ValueError):
+        ray.get_actor("abc")
 
 
 if __name__ == "__main__":

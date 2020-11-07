@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
+#include "ray/util/asio_util.h"
 
 namespace ray {
 namespace gcs {
@@ -191,9 +192,14 @@ void GcsServer::InitGcsActorManager() {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_, [this](const rpc::Address &address) {
+      scheduler, gcs_table_storage_, gcs_pub_sub_,
+      [this](const ActorID &actor_id) {
+        gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
+      },
+      [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
+
   gcs_node_manager_->AddNodeAddedListener(
       [this](const std::shared_ptr<rpc::GcsNodeInfo> &) {
         // Because a new node has been added, we need to try to schedule the pending
@@ -206,8 +212,8 @@ void GcsServer::InitGcsActorManager() {
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
-        gcs_placement_group_manager_->OnNodeDead(ClientID::FromBinary(node->node_id()));
-        gcs_actor_manager_->OnNodeDead(ClientID::FromBinary(node->node_id()));
+        gcs_placement_group_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
+        gcs_actor_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
       });
 
   auto on_subscribe = [this](const std::string &id, const std::string &data) {
@@ -215,7 +221,7 @@ void GcsServer::InitGcsActorManager() {
     worker_failure_data.ParseFromString(data);
     auto &worker_address = worker_failure_data.worker_address();
     WorkerID worker_id = WorkerID::FromBinary(id);
-    ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
+    NodeID node_id = NodeID::FromBinary(worker_address.raylet_id());
     gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
                                      worker_failure_data.intentional_disconnect());
   };
@@ -227,6 +233,7 @@ void GcsServer::InitGcsJobManager() {
       std::unique_ptr<GcsJobManager>(new GcsJobManager(gcs_table_storage_, gcs_pub_sub_));
   gcs_job_manager_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
     gcs_actor_manager_->OnJobFinished(*job_id);
+    gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
   });
 }
 
@@ -243,7 +250,7 @@ void GcsServer::InitGcsPlacementGroupManager() {
       });
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
-      main_service_, scheduler, gcs_table_storage_);
+      main_service_, scheduler, gcs_table_storage_, *gcs_node_manager_);
 }
 
 std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
@@ -252,11 +259,13 @@ std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
-  std::string address =
-      GetValidLocalIp(
-          GetPort(),
-          RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()) +
-      ":" + std::to_string(GetPort());
+  std::string ip = config_.node_ip_address;
+  if (ip.empty()) {
+    ip = GetValidLocalIp(
+        GetPort(),
+        RayConfig::instance().internal_gcs_service_connect_wait_milliseconds());
+  }
+  std::string address = ip + ":" + std::to_string(GetPort());
   RAY_LOG(INFO) << "Gcs server address = " << address;
 
   RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
@@ -277,6 +286,14 @@ std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
 std::unique_ptr<GcsWorkerManager> GcsServer::InitGcsWorkerManager() {
   return std::unique_ptr<GcsWorkerManager>(
       new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
+}
+
+void GcsServer::CollectStats() {
+  gcs_actor_manager_->CollectStats();
+  gcs_placement_group_manager_->CollectStats();
+  execute_after(
+      main_service_, [this] { CollectStats(); },
+      (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 
 }  // namespace gcs

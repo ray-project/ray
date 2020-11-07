@@ -144,11 +144,12 @@ void ReferenceCounter::AddObjectRefStats(
   }
 }
 
-void ReferenceCounter::AddOwnedObject(
-    const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
-    const rpc::Address &owner_address, const std::string &call_site,
-    const int64_t object_size, bool is_reconstructable,
-    const absl::optional<ClientID> &pinned_at_raylet_id) {
+void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
+                                      const std::vector<ObjectID> &inner_ids,
+                                      const rpc::Address &owner_address,
+                                      const std::string &call_site,
+                                      const int64_t object_size, bool is_reconstructable,
+                                      const absl::optional<NodeID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
@@ -491,6 +492,9 @@ bool ReferenceCounter::SetDeleteCallback(
     // The object has been freed by the language frontend, so it
     // should be deleted immediately.
     return false;
+  } else if (it->second.spilled) {
+    // The object has been spilled, so it can be released immediately.
+    return false;
   }
 
   // NOTE: In two cases, `GcsActorManager` will send `WaitForActorOutOfScope` request more
@@ -504,12 +508,12 @@ bool ReferenceCounter::SetDeleteCallback(
 }
 
 std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
-    const ClientID &raylet_id) {
+    const NodeID &raylet_id) {
   absl::MutexLock lock(&mutex_);
   std::vector<ObjectID> lost_objects;
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
     const auto &object_id = it->first;
-    if (it->second.pinned_at_raylet_id.value_or(ClientID::Nil()) == raylet_id) {
+    if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id) {
       lost_objects.push_back(object_id);
       ReleasePlasmaObject(it);
     }
@@ -518,7 +522,7 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
 }
 
 void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
-                                                  const ClientID &raylet_id) {
+                                                  const NodeID &raylet_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
@@ -538,13 +542,15 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
   }
 }
 
-bool ReferenceCounter::IsPlasmaObjectPinned(const ObjectID &object_id,
-                                            ClientID *pinned_at) const {
+bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
+                                                     NodeID *pinned_at,
+                                                     bool *spilled) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (it->second.owned_by_us) {
-      *pinned_at = it->second.pinned_at_raylet_id.value_or(ClientID::Nil());
+      *spilled = it->second.spilled;
+      *pinned_at = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
       return true;
     }
   }
@@ -890,33 +896,46 @@ void ReferenceCounter::SetReleaseLineageCallback(
 }
 
 void ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
-                                         const ClientID &node_id) {
+                                         const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_locations_.find(object_id);
   if (it == object_id_locations_.end()) {
-    it = object_id_locations_.emplace(object_id, absl::flat_hash_set<ClientID>()).first;
+    it = object_id_locations_.emplace(object_id, absl::flat_hash_set<NodeID>()).first;
   }
   it->second.insert(node_id);
 }
 
 void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
-                                            const ClientID &node_id) {
+                                            const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_locations_.find(object_id);
   RAY_CHECK(it != object_id_locations_.end());
   it->second.erase(node_id);
 }
 
-std::unordered_set<ClientID> ReferenceCounter::GetObjectLocations(
+std::unordered_set<NodeID> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_locations_.find(object_id);
   RAY_CHECK(it != object_id_locations_.end());
-  std::unordered_set<ClientID> locations;
+  std::unordered_set<NodeID> locations;
   for (const auto &location : it->second) {
     locations.insert(location);
   }
   return locations;
+}
+
+void ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(WARNING) << "Spilled object " << object_id << " already out of scope";
+    return;
+  }
+
+  it->second.spilled = true;
+  // Release the primary plasma copy, if any.
+  ReleasePlasmaObject(it);
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

@@ -11,7 +11,8 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import run_string_as_driver, get_non_head_nodes
+from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
+                            wait_for_condition, new_scheduler_enabled)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
@@ -90,6 +91,7 @@ def test_actor_load_balancing(ray_start_cluster):
     ray.get(results)
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="multi node broken")
 def test_actor_lifetime_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -188,9 +190,6 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
                 ray.get(x_id)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
@@ -346,9 +345,6 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
@@ -646,6 +642,27 @@ assert ray.get(handle.ping.remote()) == "pong"
         detached_actor = ray.get_actor("actor")
         ray.get(detached_actor.ping.remote())
 
+    # Check that the names are reclaimed after actors die.
+
+    def check_name_available(name):
+        try:
+            ray.get_actor(name)
+            return False
+        except ValueError:
+            return True
+
+    @ray.remote
+    class A:
+        pass
+
+    a = A.options(name="my_actor_1").remote()
+    ray.kill(a, no_restart=True)
+    wait_for_condition(lambda: check_name_available("my_actor_1"))
+
+    b = A.options(name="my_actor_2").remote()
+    del b
+    wait_for_condition(lambda: check_name_available("my_actor_2"))
+
 
 def test_detached_actor(ray_start_regular):
     @ray.remote
@@ -678,9 +695,22 @@ existing_actor = ray.get_actor("{}")
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
 @ray.remote
+def foo():
+    return "bar"
+
+@ray.remote
+class NonDetachedActor:
+    def foo(self):
+        return "bar"
+
+@ray.remote
 class DetachedActor:
     def ping(self):
         return "pong"
+
+    def foobar(self):
+        actor = NonDetachedActor.remote()
+        return ray.get([foo.remote(), actor.foo.remote()])
 
 actor = DetachedActor._remote(lifetime="detached", name="{}")
 ray.get(actor.ping.remote())
@@ -689,6 +719,9 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+    # Verify that a detached actor is able to create tasks/actors
+    # even if the driver of the detached actor has exited.
+    assert ray.get(detached_actor.foobar.remote()) == ["bar", "bar"]
 
 
 def test_detached_actor_cleanup(ray_start_regular):
@@ -911,6 +944,7 @@ def test_actor_creation_task_crash(ray_start_regular):
         }
     }],
     indirect=True)
+@pytest.mark.skipif(new_scheduler_enabled(), reason="todo hangs")
 def test_pending_actor_removed_by_owner(ray_start_regular):
     # Verify when an owner of pending actors is killed, the actor resources
     # are correctly returned.

@@ -4,6 +4,7 @@ import argparse
 import collections
 import copy
 import gym
+from gym import wrappers as gym_wrappers
 import json
 import os
 from pathlib import Path
@@ -266,6 +267,9 @@ def run(args, parser):
     if "num_workers" in config:
         config["num_workers"] = min(2, config["num_workers"])
 
+    # Make sure worker 0 has an Env.
+    config["create_env_on_driver"] = True
+
     # Merge with `evaluation_config` (first try from command line, then from
     # pkl file).
     evaluation_config = copy.deepcopy(
@@ -379,7 +383,7 @@ def rollout(agent,
     # If monitoring has been requested, manually wrap our environment with a
     # gym monitor, which is set to record every episode.
     if video_dir:
-        env = gym.wrappers.Monitor(
+        env = gym_wrappers.Monitor(
             env=env,
             directory=video_dir,
             video_callable=lambda x: True,

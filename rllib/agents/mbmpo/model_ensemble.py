@@ -19,7 +19,7 @@ class TDModel(nn.Module):
     def __init__(self,
                  input_size,
                  output_size,
-                 hidden_layers=[512, 512],
+                 hidden_layers=(512, 512),
                  hidden_nonlinearity=None,
                  output_nonlinearity=None,
                  weight_normalization=False,
@@ -118,7 +118,7 @@ def process_samples(samples: SampleBatchType):
 
 
 class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
-    """Represents a Transition Dyamics ensemble
+    """Represents an ensemble of transition dynamics (TD) models.
     """
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
@@ -139,6 +139,9 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         super(DynamicsEnsembleCustomModel, self).__init__(
             input_space, action_space, num_outputs, model_config, name)
 
+        # Keep the original Env's observation space for possible clipping.
+        self.env_obs_space = obs_space
+
         self.num_models = model_config["ensemble_size"]
         self.max_epochs = model_config["train_epochs"]
         self.lr = model_config["lr"]
@@ -158,7 +161,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
 
         for i in range(self.num_models):
             self.add_module("TD-model-" + str(i), self.dynamics_ensemble[i])
-        self.replay_buffer_max = 100000
+        self.replay_buffer_max = 10000
         self.replay_buffer = None
         self.optimizers = [
             torch.optim.Adam(
@@ -170,7 +173,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         self.metrics[STEPS_SAMPLED_COUNTER] = 0
 
         # For each worker, choose a random model to choose trajectories from
-        self.sample_index = np.random.randint(self.num_models)
+        worker_index = get_global_worker().worker_index
+        self.sample_index = int((worker_index - 1) / self.num_models)
         self.global_itr = 0
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
@@ -195,9 +199,10 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         # Add env samples to Replay Buffer
         local_worker = get_global_worker()
         new_samples = local_worker.sample()
+        # Initial Exploration of 8000 timesteps
         if not self.global_itr:
-            tmp = local_worker.sample()
-            new_samples.concat(tmp)
+            extra = local_worker.sample()
+            new_samples.concat(extra)
 
         # Process Samples
         new_samples = process_samples(new_samples)
@@ -257,9 +262,6 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                     train_losses[ind] = train_losses[
                         ind].detach().cpu().numpy()
 
-                del x
-                del y
-
             # Validation
             val_lists = []
             for data in zip(*val_loaders):
@@ -273,8 +275,6 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
 
                 for ind in range(self.num_models):
                     val_losses[ind] = val_losses[ind].detach().cpu().numpy()
-                del x
-                del y
 
             val_lists = np.array(val_lists)
             avg_val_losses = np.mean(val_lists, axis=0)
@@ -320,10 +320,9 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
             val[key] = samples[key][idx_test, :]
         return SampleBatch(train), SampleBatch(val)
 
-    """Used by worker who gather trajectories via TD models
-    """
-
     def predict_model_batches(self, obs, actions, device=None):
+        """Used by worker who gather trajectories via TD models.
+        """
         pre_obs = obs
         if self.normalize_data:
             obs = normalize(obs, self.normalizations[SampleBatch.CUR_OBS])
@@ -331,10 +330,13 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                                 self.normalizations[SampleBatch.ACTIONS])
         x = np.concatenate([obs, actions], axis=-1)
         x = convert_to_torch_tensor(x, device=device)
-        delta = self.forward(x).detach().numpy()
+        delta = self.forward(x).detach().cpu().numpy()
         if self.normalize_data:
             delta = denormalize(delta, self.normalizations["delta"])
-        return pre_obs + delta
+        new_obs = pre_obs + delta
+        clipped_obs = np.clip(new_obs, self.env_obs_space.low,
+                              self.env_obs_space.high)
+        return clipped_obs
 
     def set_norms(self, normalization_dict):
         self.normalizations = normalization_dict

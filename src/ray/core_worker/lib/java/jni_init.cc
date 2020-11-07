@@ -54,12 +54,16 @@ jclass java_system_class;
 jmethodID java_system_gc;
 
 jclass java_ray_exception_class;
+jclass java_ray_intentional_system_exit_exception_class;
 
 jclass java_jni_exception_util_class;
 jmethodID java_jni_exception_util_get_stack_trace;
 
 jclass java_base_id_class;
 jmethodID java_base_id_get_bytes;
+
+jclass java_abstract_message_lite_class;
+jmethodID java_abstract_message_lite_to_byte_array;
 
 jclass java_function_descriptor_class;
 jmethodID java_function_descriptor_get_language;
@@ -70,10 +74,14 @@ jmethodID java_language_get_number;
 
 jclass java_function_arg_class;
 jfieldID java_function_arg_id;
+jfieldID java_function_arg_owner_address;
 jfieldID java_function_arg_value;
 
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
+
+jclass java_call_options_class;
+jfieldID java_call_options_name;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_global;
@@ -98,6 +106,9 @@ jfieldID java_native_ray_object_contained_object_ids;
 jclass java_task_executor_class;
 jmethodID java_task_executor_parse_function_arguments;
 jmethodID java_task_executor_execute;
+
+jclass java_native_task_executor_class;
+jmethodID java_native_task_executor_on_worker_shutdown;
 
 jclass java_placement_group_class;
 jfieldID java_placement_group_id;
@@ -168,6 +179,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_system_gc = env->GetStaticMethodID(java_system_class, "gc", "()V");
 
   java_ray_exception_class = LoadClass(env, "io/ray/runtime/exception/RayException");
+  java_ray_intentional_system_exit_exception_class =
+      LoadClass(env, "io/ray/runtime/exception/RayIntentionalSystemExitException");
 
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
@@ -176,6 +189,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_base_id_class = LoadClass(env, "io/ray/api/id/BaseId");
   java_base_id_get_bytes = env->GetMethodID(java_base_id_class, "getBytes", "()[B");
+
+  java_abstract_message_lite_class =
+      LoadClass(env, "com/google/protobuf/AbstractMessage");
+  java_abstract_message_lite_to_byte_array =
+      env->GetMethodID(java_abstract_message_lite_class, "toByteArray", "()[B");
 
   java_function_descriptor_class =
       LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");
@@ -191,12 +209,19 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_function_arg_class = LoadClass(env, "io/ray/runtime/task/FunctionArg");
   java_function_arg_id =
       env->GetFieldID(java_function_arg_class, "id", "Lio/ray/api/id/ObjectId;");
+  java_function_arg_owner_address =
+      env->GetFieldID(java_function_arg_class, "ownerAddress",
+                      "Lio/ray/runtime/generated/Common$Address;");
   java_function_arg_value = env->GetFieldID(java_function_arg_class, "value",
                                             "Lio/ray/runtime/object/NativeRayObject;");
 
   java_base_task_options_class = LoadClass(env, "io/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
+
+  java_call_options_class = LoadClass(env, "io/ray/api/options/CallOptions");
+  java_call_options_name =
+      env->GetFieldID(java_call_options_class, "name", "Ljava/lang/String;");
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
@@ -245,6 +270,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
+  java_native_task_executor_class =
+      LoadClass(env, "io/ray/runtime/task/NativeTaskExecutor");
+  java_native_task_executor_on_worker_shutdown =
+      env->GetMethodID(java_native_task_executor_class, "onWorkerShutdown", "([B)V");
   return CURRENT_JNI_VERSION;
 }
 
@@ -265,8 +294,10 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_map_entry_class);
   env->DeleteGlobalRef(java_system_class);
   env->DeleteGlobalRef(java_ray_exception_class);
+  env->DeleteGlobalRef(java_ray_intentional_system_exit_exception_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
+  env->DeleteGlobalRef(java_abstract_message_lite_class);
   env->DeleteGlobalRef(java_function_descriptor_class);
   env->DeleteGlobalRef(java_language_class);
   env->DeleteGlobalRef(java_function_arg_class);
@@ -274,4 +305,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_actor_creation_options_class);
   env->DeleteGlobalRef(java_native_ray_object_class);
   env->DeleteGlobalRef(java_task_executor_class);
+  env->DeleteGlobalRef(java_native_task_executor_class);
 }

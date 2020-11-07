@@ -108,6 +108,12 @@ class TaskQueue {
   /// require that shape.
   const std::unordered_map<SchedulingClass, uint64_t> &GetResourceLoadByShape() const;
 
+  /// \brief Get the resources required by the tasks queued in CoreWorkers.
+  ///
+  /// \return A map from resource shape key to the number of tasks queued that
+  /// require that shape.
+  const std::unordered_map<SchedulingClass, int64_t> &GetRequestBacklogByShape() const;
+
  protected:
   /// A list of tasks.
   std::list<Task> task_list_;
@@ -119,6 +125,11 @@ class TaskQueue {
   /// map from resource shape key to number of tasks queued that require that
   /// shape.
   std::unordered_map<SchedulingClass, uint64_t> resource_load_by_shape_;
+  /// Required resources for all the tasks that are queued in core workers
+  /// still.. This is a map from resource shape key to number of tasks queued
+  /// on any worker requesting a lease from this raylet that require that
+  /// shape.
+  std::unordered_map<SchedulingClass, int64_t> request_backlog_by_shape_;
 };
 
 class ReadyQueue : public TaskQueue {
@@ -216,7 +227,8 @@ class SchedulingQueue {
   ///
   /// \return A message summarizing the number of requests, sorted by shape, in
   /// the ready and infeasible queues.
-  rpc::ResourceLoad GetResourceLoadByShape(int64_t max_shapes = -1) const;
+  rpc::ResourceLoad GetResourceLoadByShape(int64_t max_shapes = -1,
+                                           bool report_worker_backlog = true) const;
 
   /// Get the tasks in the blocked state.
   ///

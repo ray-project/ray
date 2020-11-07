@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 import os
 import sys
 from typing import Any, Optional
@@ -38,9 +39,6 @@ def try_import_tf(error=False):
 
     if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
-    # TODO: (sven) Allow env var to force compat.v1 behavior even if tf2.x
-    #  installed.
 
     # Try to reuse already imported tf module. This will avoid going through
     # the initial import steps below and thereby switching off v2_behavior
@@ -188,12 +186,13 @@ def get_variable(value,
             does not have any (e.g. if it's an initializer w/o explicit value).
         dtype (Optional[TensorType]): An optional dtype to use iff `value` does
             not have any (e.g. if it's an initializer w/o explicit value).
+            This should always be a numpy dtype (e.g. np.float32, np.int64).
 
     Returns:
         any: A framework-specific variable (tf.Variable, torch.tensor, or
             python primitive).
     """
-    if framework in ["tf", "tfe"]:
+    if framework in ["tf2", "tf", "tfe"]:
         import tensorflow as tf
         dtype = dtype or getattr(
             value, "dtype", tf.float32
@@ -210,10 +209,13 @@ def get_variable(value,
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
         var_ = torch.from_numpy(value)
-        if dtype == torch.float32:
+        if dtype in [torch.float32, np.float32]:
             var_ = var_.float()
-        elif dtype == torch.int32:
+        elif dtype in [torch.int32, np.int32]:
             var_ = var_.int()
+        elif dtype in [torch.float64, np.float64]:
+            var_ = var_.double()
+
         if device:
             var_ = var_.to(device)
         var_.requires_grad = trainable
@@ -222,11 +224,12 @@ def get_variable(value,
     return value
 
 
+# TODO: (sven) move to models/utils.py
 def get_activation_fn(name, framework="tf"):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (str): One of "relu" (default), "tanh", or "linear".
+        name (str): One of "relu" (default), "tanh", "swish", or "linear".
         framework (str): One of "tf" or "torch".
 
     Returns:
@@ -239,6 +242,9 @@ def get_activation_fn(name, framework="tf"):
     if framework == "torch":
         if name in ["linear", None]:
             return None
+        if name == "swish":
+            from ray.rllib.utils.torch_ops import Swish
+            return Swish
         _, nn = try_import_torch()
         if name == "relu":
             return nn.ReLU

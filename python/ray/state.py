@@ -6,10 +6,9 @@ import time
 
 import ray
 
-from ray import (
-    gcs_utils,
-    services,
-)
+from ray import gcs_utils
+from google.protobuf.json_format import MessageToDict
+from ray._private import services
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -238,6 +237,7 @@ class GlobalState:
         """
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),
+            "Name": actor_table_data.name,
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
                 "IPAddress": actor_table_data.address.ip_address,
@@ -267,7 +267,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        node_id = ray.ClientID(hex_to_binary(node_id))
+        node_id = ray.NodeID(hex_to_binary(node_id))
         node_resource_bytes = \
             self.global_state_accessor.get_node_resource_info(node_id)
         if node_resource_bytes is None:
@@ -389,8 +389,18 @@ class GlobalState:
                                         FromString(placement_group_info))
                 return self._gen_placement_group_info(placement_group_info)
         else:
-            raise NotImplementedError(
-                "Get all placement group is not implemented yet.")
+            placement_group_table = self.global_state_accessor.\
+                                    get_placement_group_table()
+            results = {}
+            for placement_group_info in placement_group_table:
+                placement_group_table_data = gcs_utils.\
+                    PlacementGroupTableData.FromString(placement_group_info)
+                placement_group_id = binary_to_hex(
+                    placement_group_table_data.placement_group_id)
+                results[placement_group_id] = \
+                    self._gen_placement_group_info(placement_group_table_data)
+
+            return results
 
     def _gen_placement_group_info(self, placement_group_info):
         # This should be imported here, otherwise, it will error doc build.
@@ -407,8 +417,15 @@ class GlobalState:
         def get_strategy(strategy):
             if strategy == PlacementStrategy.PACK:
                 return "PACK"
-            else:
+            elif strategy == PlacementStrategy.STRICT_PACK:
+                return "STRICT_PACK"
+            elif strategy == PlacementStrategy.STRICT_SPREAD:
+                return "STRICT_SPREAD"
+            elif strategy == PlacementStrategy.SPREAD:
                 return "SPREAD"
+            else:
+                raise ValueError(
+                    f"Invalid strategy returned: {PlacementStrategy}")
 
         assert placement_group_info is not None
         return {
@@ -416,7 +433,10 @@ class GlobalState:
                 placement_group_info.placement_group_id),
             "name": placement_group_info.name,
             "bundles": {
-                bundle.bundle_id.bundle_index: bundle.unit_resources
+                # The value here is needs to be dictionarified
+                # otherwise, the payload becomes unserializable.
+                bundle.bundle_id.bundle_index:
+                MessageToDict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
             "strategy": get_strategy(placement_group_info.strategy),
@@ -747,6 +767,33 @@ class GlobalState:
             for client in self.node_table() if (client["Alive"])
         }
 
+    def _available_resources_per_node(self):
+        """Returns a dictionary mapping node id to avaiable resources."""
+        available_resources_by_id = {}
+
+        all_available_resources = \
+            self.global_state_accessor.get_all_available_resources()
+        for available_resource in all_available_resources:
+            message = ray.gcs_utils.AvailableResources.FromString(
+                available_resource)
+            # Calculate available resources for this node.
+            dynamic_resources = {}
+            for resource_id, capacity in \
+                    message.resources_available.items():
+                dynamic_resources[resource_id] = capacity
+            # Update available resources for this node.
+            node_id = ray.utils.binary_to_hex(message.node_id)
+            available_resources_by_id[node_id] = dynamic_resources
+
+        # Update nodes in cluster.
+        node_ids = self._live_client_ids()
+        # Remove disconnected nodes.
+        for node_id in available_resources_by_id.keys():
+            if node_id not in node_ids:
+                del available_resources_by_id[node_id]
+
+        return available_resources_by_id
+
     def available_resources(self):
         """Get the current available cluster resources.
 
@@ -761,49 +808,13 @@ class GlobalState:
         """
         self._check_connected()
 
-        available_resources_by_id = {}
+        available_resources_by_id = self._available_resources_per_node()
 
-        subscribe_client = self.redis_client.pubsub(
-            ignore_subscribe_messages=True)
-        subscribe_client.psubscribe(gcs_utils.XRAY_HEARTBEAT_PATTERN)
-
-        client_ids = self._live_client_ids()
-
-        while set(available_resources_by_id.keys()) != client_ids:
-            # Parse client message
-            raw_message = subscribe_client.get_message()
-            if (raw_message is None or raw_message["pattern"] !=
-                    gcs_utils.XRAY_HEARTBEAT_PATTERN):
-                continue
-            data = raw_message["data"]
-            pub_message = gcs_utils.PubSubMessage.FromString(data)
-            heartbeat_data = pub_message.data
-            message = gcs_utils.HeartbeatTableData.FromString(heartbeat_data)
-            # Calculate available resources for this client
-            dynamic_resources = {}
-            for resource_id, capacity in message.resources_available.items():
-                dynamic_resources[resource_id] = capacity
-
-            # Update available resources for this client
-            client_id = ray.utils.binary_to_hex(message.client_id)
-            available_resources_by_id[client_id] = dynamic_resources
-
-            # Update clients in cluster
-            client_ids = self._live_client_ids()
-
-            # Remove disconnected clients
-            for client_id in list(available_resources_by_id.keys()):
-                if client_id not in client_ids:
-                    del available_resources_by_id[client_id]
-
-        # Calculate total available resources
+        # Calculate total available resources.
         total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
                 total_available_resources[resource_id] += num_available
-
-        # Close the pubsub clients to avoid leaking file descriptors.
-        subscribe_client.close()
 
         return dict(total_available_resources)
 
@@ -866,6 +877,15 @@ def nodes():
     return state.node_table()
 
 
+def workers():
+    """Get a list of the workers in the cluster.
+
+    Returns:
+        Information about the Ray workers in the cluster.
+    """
+    return state.workers()
+
+
 def current_node_id():
     """Return the node id of the current node.
 
@@ -876,8 +896,8 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return ray.resource_spec.NODE_ID_PREFIX + ray.services.get_node_ip_address(
-    )
+    return (ray.resource_spec.NODE_ID_PREFIX +
+            ray._private.services.get_node_ip_address())
 
 
 def node_ids():

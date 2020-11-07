@@ -130,38 +130,12 @@ DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 
 # Used in gpu detection
-RESOURCE_CONSTRAINT_PREFIX = "gpu_type:"
+RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 
-# Abort autoscaling if more than this number of errors are encountered. This
-# is a safety feature to prevent e.g. runaway node launches.
-AUTOSCALER_MAX_NUM_FAILURES = env_integer("AUTOSCALER_MAX_NUM_FAILURES", 5)
-
-# The maximum number of nodes to launch in a single request.
-# Multiple requests may be made for this batch size, up to
-# the limit of AUTOSCALER_MAX_CONCURRENT_LAUNCHES.
-AUTOSCALER_MAX_LAUNCH_BATCH = env_integer("AUTOSCALER_MAX_LAUNCH_BATCH", 5)
-
-# Max number of nodes to launch at a time.
-AUTOSCALER_MAX_CONCURRENT_LAUNCHES = env_integer(
-    "AUTOSCALER_MAX_CONCURRENT_LAUNCHES", 10)
-
-# Interval at which to perform autoscaling updates.
-AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
-
-# The autoscaler will attempt to restart Ray on nodes it hasn't heard from
-# in more than this interval.
-AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
-                                             30)
-
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
-
-# Max number of retries to AWS (default is 5, time increases exponentially)
-BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
-# Max number of retries to create an EC2 node (retry different subnet)
-BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
@@ -183,6 +157,9 @@ PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
+
+WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
+WORKER_PROCESS_TYPE_IO_WORKER = "ray::IOWorker"
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 

@@ -11,7 +11,7 @@ In particular, we show:
 
 Please see the :doc:`../key-concepts` to learn more general information about Ray Serve.
 
-Ray Serve is framework agnostic you can use any version of Tensorflow.
+Ray Serve is framework agnostic -- you can use any version of Tensorflow.
 However, for this tutorial, we use Tensorflow 2 and Keras. Please make sure you have
 Tensorflow 2 installed.
 

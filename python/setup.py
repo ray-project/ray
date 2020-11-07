@@ -71,47 +71,49 @@ generated_python_directories = [
 optional_ray_files = ["ray/nightly-wheels.yaml"]
 
 ray_autoscaler_files = [
-    "ray/autoscaler/aws/example-full.yaml",
-    "ray/autoscaler/azure/example-full.yaml",
-    "ray/autoscaler/azure/azure-vm-template.json",
-    "ray/autoscaler/azure/azure-config-template.json",
-    "ray/autoscaler/gcp/example-full.yaml",
-    "ray/autoscaler/local/example-full.yaml",
-    "ray/autoscaler/kubernetes/example-full.yaml",
+    "ray/autoscaler/aws/defaults.yaml",
+    "ray/autoscaler/azure/defaults.yaml",
+    "ray/autoscaler/_private/azure/azure-vm-template.json",
+    "ray/autoscaler/_private/azure/azure-config-template.json",
+    "ray/autoscaler/gcp/defaults.yaml",
+    "ray/autoscaler/local/defaults.yaml",
+    "ray/autoscaler/kubernetes/defaults.yaml",
     "ray/autoscaler/kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/ray-schema.json"
+    "ray/autoscaler/staroid/defaults.yaml",
+    "ray/autoscaler/ray-schema.json",
 ]
 
 ray_project_files = [
-    "ray/projects/schema.json", "ray/projects/templates/cluster_template.yaml",
+    "ray/projects/schema.json",
+    "ray/projects/templates/cluster_template.yaml",
     "ray/projects/templates/project_template.yaml",
-    "ray/projects/templates/requirements.txt"
+    "ray/projects/templates/requirements.txt",
 ]
 
 ray_dashboard_files = [
-    os.path.join(dirpath, filename)
-    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
-    for filename in filenames
+    os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
+    os.walk("ray/new_dashboard/client/build") for filename in filenames
 ]
 
 optional_ray_files += ray_autoscaler_files
 optional_ray_files += ray_project_files
 optional_ray_files += ray_dashboard_files
 
-if os.getenv("RAY_USE_NEW_GCS") == "on":
-    ray_files += [
-        "ray/core/src/credis/build/src/libmember.so",
-        "ray/core/src/credis/build/src/libmaster.so",
-        "ray/core/src/credis/redis/src/redis-server" + exe_suffix,
-    ]
-
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements.txt
 # in this directory
 extras = {
     "debug": [],
-    "serve": ["uvicorn", "flask", "requests", "dataclasses"],
-    "tune": ["tabulate", "tensorboardX", "pandas"]
+    "serve": [
+        "uvicorn", "flask", "requests", "pydantic<1.7",
+        "dataclasses; python_version < '3.7'"
+    ],
+    "tune": [
+        "dataclasses; python_version < '3.7'",
+        "pandas",
+        "tabulate",
+        "tensorboardX",
+    ]
 }
 
 extras["rllib"] = extras["tune"] + [
@@ -152,7 +154,7 @@ install_requires = [
     "py-spy >= 0.2.0",
     "pyyaml",
     "requests",
-    "redis >= 3.3.2, < 3.5.0",
+    "redis >= 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",
 ]
@@ -176,7 +178,8 @@ def is_invalid_windows_platform():
 # (~/.bazel/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
-    candidates = ["bazel"]
+    first_candidate = os.getenv("BAZEL_PATH", "bazel")
+    candidates = [first_candidate]
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:

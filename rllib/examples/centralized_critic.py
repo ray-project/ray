@@ -16,6 +16,7 @@ modifies the environment.
 import argparse
 import numpy as np
 from gym.spaces import Discrete
+import os
 
 import ray
 from ray import tune
@@ -90,7 +91,7 @@ def centralized_critic_postprocessing(policy,
                     sample_batch[OPPONENT_OBS], policy.device),
                 convert_to_torch_tensor(
                     sample_batch[OPPONENT_ACTION], policy.device)) \
-                .detach().numpy()
+                .cpu().detach().numpy()
         else:
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
                 sample_batch[SampleBatch.CUR_OBS], sample_batch[OPPONENT_OBS],
@@ -137,12 +138,20 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
     return loss
 
 
-def setup_mixins(policy, obs_space, action_space, config):
-    # copied from PPO
+def setup_tf_mixins(policy, obs_space, action_space, config):
+    # Copied from PPOTFPolicy (w/o ValueNetworkMixin).
     KLCoeffMixin.__init__(policy, config)
     EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
                                   config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+
+
+def setup_torch_mixins(policy, obs_space, action_space, config):
+    # Copied from PPOTorchPolicy  (w/o ValueNetworkMixin).
+    TorchKLCoeffMixin.__init__(policy, config)
+    TorchEntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                       config["entropy_coeff_schedule"])
+    TorchLR.__init__(policy, config["lr"], config["lr_schedule"])
 
 
 def central_vf_stats(policy, train_batch, grads):
@@ -158,7 +167,7 @@ CCPPOTFPolicy = PPOTFPolicy.with_updates(
     name="CCPPOTFPolicy",
     postprocess_fn=centralized_critic_postprocessing,
     loss_fn=loss_with_central_critic,
-    before_loss_init=setup_mixins,
+    before_loss_init=setup_tf_mixins,
     grad_stats_fn=central_vf_stats,
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
@@ -169,7 +178,7 @@ CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
     name="CCPPOTorchPolicy",
     postprocess_fn=centralized_critic_postprocessing,
     loss_fn=loss_with_central_critic,
-    before_init=setup_mixins,
+    before_init=setup_torch_mixins,
     mixins=[
         TorchLR, TorchEntropyCoeffSchedule, TorchKLCoeffMixin,
         CentralizedValueMixin
@@ -188,7 +197,7 @@ CCTrainer = PPOTrainer.with_updates(
 )
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
+    ray.init()
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(
@@ -198,6 +207,8 @@ if __name__ == "__main__":
     config = {
         "env": TwoStepGame,
         "batch_mode": "complete_episodes",
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "multiagent": {
             "policies": {
@@ -222,7 +233,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(CCTrainer, config=config, stop=stop)
+    results = tune.run(CCTrainer, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

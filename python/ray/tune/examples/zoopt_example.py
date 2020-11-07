@@ -8,7 +8,7 @@ import ray
 from ray import tune
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from zoopt import ValueType
+from zoopt import ValueType  # noqa: F401
 
 
 def evaluation_fn(step, width, height):
@@ -36,28 +36,36 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    # This dict could mix continuous dimensions and discrete dimensions,
-    # for example:
-    dim_dict = {
-        # for continuous dimensions: (continuous, search_range, precision)
-        "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
-        # for discrete dimensions: (discrete, search_range, has_order)
-        "width": (ValueType.DISCRETE, [0, 10], False)
-    }
-
-    config = {
+    tune_kwargs = {
         "num_samples": 10 if args.smoke_test else 1000,
         "config": {
-            "steps": 10,  # evaluation times
+            "steps": 10,
+            "height": tune.quniform(-10, 10, 1e-2),
+            "width": tune.randint(0, 10)
         }
+    }
+
+    # Optional: Pass the parameter space yourself
+    # space = {
+    #     # for continuous dimensions: (continuous, search_range, precision)
+    #     "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
+    #     # for discrete dimensions: (discrete, search_range, has_order)
+    #     "width": (ValueType.DISCRETE, [0, 10], True)
+    #     # for grid dimensions: (grid, grid_list)
+    #     "layers": (ValueType.GRID, [4, 8, 16])
+    # }
+
+    zoopt_search_config = {
+        "parallel_num": 8,
     }
 
     zoopt_search = ZOOptSearch(
         algo="Asracos",  # only support ASRacos currently
-        budget=config["num_samples"],
-        dim_dict=dim_dict,
+        budget=tune_kwargs["num_samples"],
+        # dim_dict=space,  # If you want to set the space yourself
         metric="mean_loss",
-        mode="min")
+        mode="min",
+        **zoopt_search_config)
 
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
 
@@ -66,4 +74,4 @@ if __name__ == "__main__":
         search_alg=zoopt_search,
         name="zoopt_search",
         scheduler=scheduler,
-        **config)
+        **tune_kwargs)

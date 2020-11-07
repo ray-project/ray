@@ -60,9 +60,11 @@ class ModelV2:
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
         self.inference_view_requirements = {
-            SampleBatch.OBS: ViewRequirement(shift=0),
+            SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
+    # TODO: (sven): Get rid of `get_initial_state` once Trajectory
+    #  View API is supported across all of RLlib.
     @PublicAPI
     def get_initial_state(self) -> List[np.ndarray]:
         """Get the initial recurrent state values for the model.
@@ -142,7 +144,7 @@ class ModelV2:
 
         You can find an runnable example in examples/custom_loss.py.
 
-        Arguments:
+        Args:
             policy_loss (Union[List[Tensor],Tensor]): List of or single policy
                 loss(es) from the policy.
             loss_inputs (dict): map of input placeholders for rollout data.
@@ -181,7 +183,7 @@ class ModelV2:
 
         Custom models should override forward() instead of __call__.
 
-        Arguments:
+        Args:
             input_dict (dict): dictionary of input tensors, including "obs",
                 "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those

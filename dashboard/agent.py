@@ -3,6 +3,7 @@ import asyncio
 import logging
 import logging.handlers
 import os
+import platform
 import sys
 import socket
 import json
@@ -18,7 +19,7 @@ import ray
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
@@ -38,6 +39,7 @@ aiogrpc.init_grpc_aio()
 class DashboardAgent(object):
     def __init__(self,
                  redis_address,
+                 dashboard_agent_port,
                  redis_password=None,
                  temp_dir=None,
                  log_dir=None,
@@ -51,13 +53,17 @@ class DashboardAgent(object):
         self.redis_password = redis_password
         self.temp_dir = temp_dir
         self.log_dir = log_dir
+        self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
-        self.ip = ray.services.get_node_ip_address()
+        self.node_id = os.environ["RAY_NODE_ID"]
+        assert self.node_id, "Empty node id (RAY_NODE_ID)."
+        self.ip = ray._private.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = self.server.add_insecure_port("[::]:0")
+        self.grpc_port = self.server.add_insecure_port(
+            f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
@@ -152,8 +158,8 @@ class DashboardAgent(object):
 
         # Write the dashboard agent port to redis.
         await self.aioredis_client.set(
-            "{}{}".format(dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
-                          self.ip), json.dumps([http_port, self.grpc_port]))
+            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
+            json.dumps([http_port, self.grpc_port]))
 
         # Register agent to agent manager.
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
@@ -184,6 +190,11 @@ if __name__ == "__main__":
         required=True,
         type=int,
         help="The port to expose metrics through Prometheus.")
+    parser.add_argument(
+        "--dashboard-agent-port",
+        required=True,
+        type=int,
+        help="The port on which the dashboard agent will receive GRPCs.")
     parser.add_argument(
         "--node-manager-port",
         required=True,
@@ -245,35 +256,23 @@ if __name__ == "__main__":
         format(dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT))
     parser.add_argument(
         "--log-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of log directory.")
     parser.add_argument(
         "--temp-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
 
     args = parser.parse_args()
     try:
-        if args.temp_dir:
-            temp_dir = "/" + args.temp_dir.strip("/")
-        else:
-            temp_dir = "/tmp/ray"
-        os.makedirs(temp_dir, exist_ok=True)
-
-        if args.log_dir:
-            log_dir = args.log_dir
-        else:
-            log_dir = os.path.join(temp_dir, "session_latest/logs")
-        os.makedirs(log_dir, exist_ok=True)
-
         if args.logging_filename:
             logging_handlers = [
                 logging.handlers.RotatingFileHandler(
-                    os.path.join(log_dir, args.logging_filename),
+                    os.path.join(args.log_dir, args.logging_filename),
                     maxBytes=args.logging_rotate_bytes,
                     backupCount=args.logging_rotate_backup_count)
             ]
@@ -286,9 +285,10 @@ if __name__ == "__main__":
 
         agent = DashboardAgent(
             args.redis_address,
+            args.dashboard_agent_port,
             redis_password=args.redis_password,
-            temp_dir=temp_dir,
-            log_dir=log_dir,
+            temp_dir=args.temp_dir,
+            log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
             object_store_name=args.object_store_name,
@@ -298,11 +298,11 @@ if __name__ == "__main__":
         loop.run_until_complete(agent.run())
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
+        redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The agent on node {} failed with the following "
-                   "error:\n{}".format(os.uname()[1], traceback_str))
+                   "error:\n{}".format(platform.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
         raise e

@@ -4,19 +4,35 @@ from collections import defaultdict, deque
 import time
 from typing import DefaultDict, List, Dict, Any, Optional
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ray.exceptions import RayTaskError
 
 import ray
-from ray import serve
-from ray.experimental import metrics
+from ray.util import metrics
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import RandomEndpointPolicy
-from ray.serve.request_params import RequestMetadata
 from ray.serve.utils import logger, chain_future
 
 REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
+
+
+@dataclass
+class RequestMetadata:
+    endpoint: str
+    request_context: TaskContext
+
+    call_method: str = "__call__"
+    shard_key: Optional[str] = None
+
+    http_method: str = "GET"
+    http_headers: Dict[str, str] = field(default_factory=dict)
+
+    is_shadow_query: bool = False
+
+    def __post_init__(self):
+        self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
+        self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
 
 
 @dataclass
@@ -27,6 +43,9 @@ class Query:
 
     metadata: RequestMetadata
     async_future: Optional[asyncio.Future] = None
+
+    tick_enter_router: Optional[float] = None
+    tick_enter_replica: Optional[float] = None
 
     def __reduce__(self):
         return type(self).ray_deserialize, (self.ray_serialize(), )
@@ -50,7 +69,7 @@ class Query:
 class Router:
     """A router that routes request to available workers."""
 
-    async def setup(self, name, instance_name=None):
+    async def setup(self, name, controller_name):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -101,8 +120,7 @@ class Router:
         # the controller. We use a "pull-based" approach instead of pushing
         # them from the controller so that the router can transparently recover
         # from failure.
-        serve.init(name=instance_name)
-        self.controller = serve.api._get_controller()
+        self.controller = ray.get_actor(controller_name)
 
         traffic_policies = ray.get(
             self.controller.get_traffic_policies.remote())
@@ -121,16 +139,25 @@ class Router:
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Count(
             "num_router_requests",
-            "Number of requests processed by the router.", "requests",
-            ["endpoint"])
+            description="Number of requests processed by the router.",
+            tag_keys=("endpoint", ))
         self.num_error_endpoint_requests = metrics.Count(
             "num_error_endpoint_requests",
-            ("Number of requests that errored when getting results "
-             "for the endpoint."), "requests", ["endpoint"])
+            description=(
+                "Number of requests that errored when getting results "
+                "for the endpoint."),
+            tag_keys=("endpoint", ))
         self.num_error_backend_requests = metrics.Count(
             "num_error_backend_requests",
-            ("Number of requests that errored when getting result "
-             "from the backend."), "requests", ["backend"])
+            description=("Number of requests that errored when getting result "
+                         "from the backend."),
+            tag_keys=("backend", ))
+
+        self.backend_queue_size = metrics.Gauge(
+            "backend_queued_queries",
+            description=("Current number of queries queued "
+                         "in the router for a backend"),
+            tag_keys=("backend", ))
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
@@ -138,7 +165,7 @@ class Router:
                               **request_kwargs):
         endpoint = request_meta.endpoint
         logger.debug("Received a request for endpoint {}".format(endpoint))
-        self.num_router_requests.record(1, {"endpoint": endpoint})
+        self.num_router_requests.record(1, tags={"endpoint": endpoint})
 
         request_context = request_meta.request_context
         query = Query(
@@ -154,7 +181,8 @@ class Router:
         try:
             result = await query.async_future
         except RayTaskError as e:
-            self.num_error_endpoint_requests.record(1, {"endpoint": endpoint})
+            self.num_error_endpoint_requests.record(
+                1, tags={"endpoint": endpoint})
             result = e
         return result
 
@@ -278,7 +306,8 @@ class Router:
             else:
                 result = await object_ref
         except RayTaskError as error:
-            self.num_error_backend_requests.record(1, {"backend": backend})
+            self.num_error_backend_requests.record(
+                1, tags={"backend": backend})
             result = error
         self.queries_counter[backend][backend_replica_tag] -= 1
         await self.mark_worker_idle(backend, backend_replica_tag)
@@ -327,9 +356,15 @@ class Router:
 
     async def report_queue_lengths(self):
         while True:
+            queue_lengths = {
+                backend: len(q)
+                for backend, q in self.backend_queues.items()
+            }
             self.controller.report_queue_lengths.remote(
-                self.name, {
-                    backend: len(q)
-                    for backend, q in self.backend_queues.items()
-                })
+                self.name, queue_lengths)
+
+            for backend, length in queue_lengths.items():
+                self.backend_queue_size.record(
+                    length, tags={"backend": backend})
+
             await asyncio.sleep(REPORT_QUEUE_LENGTH_PERIOD_S)

@@ -7,5 +7,5 @@ alabaster>=0.7,<0.8,!=0.7.5
 commonmark==0.8.1
 recommonmark==0.5.0
 sphinx<2
-sphinx-rtd-theme<0.5
 readthedocs-sphinx-ext<1.1
+sphinx-book-theme

@@ -2,10 +2,12 @@ from collections import OrderedDict
 import gym
 import logging
 import numpy as np
-from typing import Callable, Dict, List, Optional, Tuple
+import re
+from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from ray.util.debug import log_once
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -13,6 +15,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import get_placeholder
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -53,8 +56,9 @@ class DynamicTFPolicy(TFPolicy):
             obs_space: gym.spaces.Space,
             action_space: gym.spaces.Space,
             config: TrainerConfigDict,
-            loss_fn: Callable[[Policy, ModelV2, type, SampleBatch],
-                              TensorType],
+            loss_fn: Callable[[
+                Policy, ModelV2, Type[TFActionDistribution], SampleBatch
+            ], TensorType],
             *,
             stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
                 str, TensorType]]] = None,
@@ -80,14 +84,14 @@ class DynamicTFPolicy(TFPolicy):
             obs_include_prev_action_reward: bool = True):
         """Initialize a dynamic TF policy.
 
-        Arguments:
+        Args:
             observation_space (gym.spaces.Space): Observation space of the
                 policy.
             action_space (gym.spaces.Space): Action space of the policy.
             config (TrainerConfigDict): Policy-specific configuration data.
-            loss_fn (Callable[[Policy, ModelV2, type, SampleBatch],
-                TensorType]): Function that returns a loss tensor for the
-                policy graph.
+            loss_fn (Callable[[Policy, ModelV2, Type[TFActionDistribution],
+                SampleBatch], TensorType]): Function that returns a loss tensor
+                for the policy graph.
             stats_fn (Optional[Callable[[Policy, SampleBatch],
                 Dict[str, TensorType]]]): Optional function that returns a dict
                 of TF fetches given the policy and batch input tensors.
@@ -128,9 +132,9 @@ class DynamicTFPolicy(TFPolicy):
                 placeholders to use instead of defining new ones.
             existing_model (Optional[ModelV2]): When copying a policy, this
                 specifies an existing model to clone and share weights with.
-            get_batch_divisibility_req (Optional[Callable[[Policy], int]]]):
-                Optional callable that returns the divisibility requirement
-                for sample batches given the Policy.
+            get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
+                Optional callable that returns the divisibility requirement for
+                sample batches. If None, will assume a value of 1.
             obs_include_prev_action_reward (bool): Whether to include the
                 previous action and reward in the model input (default: True).
         """
@@ -167,7 +171,7 @@ class DynamicTFPolicy(TFPolicy):
                     tf.float32, [None], name="prev_reward")
             explore = tf1.placeholder_with_default(
                 True, (), name="is_exploring")
-            timestep = tf1.placeholder(tf.int32, (), name="timestep")
+            timestep = tf1.placeholder(tf.int64, (), name="timestep")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,
@@ -262,10 +266,10 @@ class DynamicTFPolicy(TFPolicy):
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session()
-        if get_batch_divisibility_req:
-            batch_divisibility_req = get_batch_divisibility_req(self)
-        else:
-            batch_divisibility_req = 1
+
+        batch_divisibility_req = get_batch_divisibility_req(self) if \
+            callable(get_batch_divisibility_req) else \
+            (get_batch_divisibility_req or 1)
 
         super().__init__(
             observation_space=obs_space,
@@ -352,6 +356,56 @@ class DynamicTFPolicy(TFPolicy):
             return self.model.get_initial_state()
         else:
             return []
+
+    def _get_input_dict_and_dummy_batch(self, view_requirements,
+                                        existing_inputs):
+        """Creates input_dict and dummy_batch for loss initialization.
+
+        Used for managing the Policy's input placeholders and for loss
+        initialization.
+        Input_dict: Str -> tf.placeholders, dummy_batch: str -> np.arrays.
+
+        Args:
+            view_requirements (ViewReqs): The view requirements dict.
+            existing_inputs (Dict[str, tf.placeholder]): A dict of already
+                existing placeholders.
+
+        Returns:
+            Tuple[Dict[str, tf.placeholder], Dict[str, np.ndarray]]: The
+                input_dict/dummy_batch tuple.
+        """
+        input_dict = {}
+        dummy_batch = {}
+        for view_col, view_req in view_requirements.items():
+            # Point state_in to the already existing self._state_inputs.
+            mo = re.match("state_in_(\d+)", view_col)
+            if mo is not None:
+                input_dict[view_col] = self._state_inputs[int(mo.group(1))]
+                dummy_batch[view_col] = np.zeros_like(
+                    [view_req.space.sample()])
+            # State-outs (no placeholders needed).
+            elif view_col.startswith("state_out_"):
+                dummy_batch[view_col] = np.zeros_like(
+                    [view_req.space.sample()])
+            # Skip action dist inputs placeholder (do later).
+            elif view_col == SampleBatch.ACTION_DIST_INPUTS:
+                continue
+            elif view_col in existing_inputs:
+                input_dict[view_col] = existing_inputs[view_col]
+                dummy_batch[view_col] = np.zeros(
+                    shape=[
+                        1 if s is None else s
+                        for s in existing_inputs[view_col].shape.as_list()
+                    ],
+                    dtype=np.float32)
+            # All others.
+            else:
+                if view_req.used_for_training:
+                    input_dict[view_col] = get_placeholder(
+                        space=view_req.space)
+                dummy_batch[view_col] = np.zeros_like(
+                    [view_req.space.sample()])
+        return input_dict, dummy_batch
 
     def _initialize_loss_dynamically(self):
         def fake_array(tensor):

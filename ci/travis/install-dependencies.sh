@@ -286,6 +286,8 @@ install_dependencies() {
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
+    # install the following packages for testing on travis only
+    pip install 'recsim>=0.2.4'
   fi
 
   # Additional Tune test dependencies.
@@ -296,12 +298,14 @@ install_dependencies() {
   # Additional RaySGD test dependencies.
   if [ "${SGD_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+    # TODO: eventually have a separate requirements file for Ray SGD.
   fi
 
   # Additional Doc test dependencies.
   if [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
   fi
+
 
   # If CI has deemed that a different version of Tensorflow or Torch
   # should be installed, then upgrade/downgrade to that specific version.
@@ -314,6 +318,13 @@ install_dependencies() {
     pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
       torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
       tensorflow=="${TF_VERSION-2.2.0}" gym
+  fi
+
+  # Additional Tune dependency for Horovod.
+  # This must be run last (i.e., torch cannot be re-installed after this)
+  if [ "${INSTALL_HOROVOD-}" = 1 ]; then
+    # TODO: eventually pin this to master.
+    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then

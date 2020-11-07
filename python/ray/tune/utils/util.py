@@ -1,9 +1,14 @@
 import copy
+import json
 import logging
+import numbers
+import os
 import inspect
 import threading
 import time
+import uuid
 from collections import defaultdict, deque, Mapping, Sequence
+from datetime import datetime
 from threading import Thread
 
 import numpy as np
@@ -152,6 +157,21 @@ class Tee(object):
         self.stream2.flush(*args, **kwargs)
 
 
+def date_str():
+    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def env_integer(key, default):
+    # TODO(rliaw): move into ray.constants
+    if key in os.environ:
+        value = os.environ[key]
+        if value.isdigit():
+            return int(os.environ[key])
+        raise ValueError(f"Found {key} in environment, but value must "
+                         f"be an integer. Got: {value}.")
+    return default
+
+
 def merge_dicts(d1, d2):
     """
     Args:
@@ -234,7 +254,7 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
                             "Found delimiter `{}` in key when trying to "
                             "flatten array. Please avoid using the delimiter "
                             "in your specification.")
-                    add[delimiter.join([key, subkey])] = v
+                    add[delimiter.join([key, str(subkey)])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
@@ -294,18 +314,19 @@ def _from_pinnable(obj):
 
 
 def diagnose_serialization(trainable):
-    """Utility for detecting accidentally-scoped objects.
+    """Utility for detecting why your trainable function isn't serializing.
 
     Args:
-        trainable (cls | func): The trainable object passed to
-            tune.run(trainable).
+        trainable (func): The trainable object passed to
+            tune.run(trainable). Currently only supports
+            Function API.
 
     Returns:
         bool | set of unserializable objects.
 
     Example:
 
-    .. code-block::
+    .. code-block:: python
 
         import threading
         # this is not serializable
@@ -379,6 +400,59 @@ def diagnose_serialization(trainable):
         return failure_set
 
 
+def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
+    """Checks if a given GPU has freed memory.
+
+    Requires ``gputil`` to be installed: ``pip install gputil``.
+
+    Args:
+        gpu_id (Optional[str]): GPU id to check. Must be found
+            within GPUtil.getGPUs(). If none, resorts to
+            the first item returned from `ray.get_gpu_ids()`.
+        gpu_memory_limit (float): If memory usage is below
+            this quantity, the check will break.
+        retry (int): Number of times to check GPU limit. Sleeps 5
+            seconds between checks.
+
+    Returns:
+        bool
+            True if free.
+
+    Raises:
+        RuntimeError
+            If GPUtil is not found, if no GPUs are detected
+            or if the check fails.
+
+    Example:
+
+    .. code-block:: python
+
+        def tune_func(config):
+            tune.util.wait_for_gpu()
+            train()
+
+        tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
+    """
+    if GPUtil is None:
+        raise RuntimeError(
+            "GPUtil must be installed if calling `wait_for_gpu`.")
+    if not gpu_id:
+        gpu_id_list = ray.get_gpu_ids()
+        if not gpu_id_list:
+            raise RuntimeError(f"No GPU ids found from {ray.get_gpu_ids()}. "
+                               "Did you set Tune resources correctly?")
+        gpu_id = gpu_id_list[0]
+    gpu_object = GPUtil.getGPUs()[gpu_id]
+    for i in range(int(retry)):
+        if gpu_object.memoryUsed > gpu_memory_limit:
+            logger.info(f"Waiting for GPU {gpu_id} memory to free. "
+                        f"Mem: {gpu_object.memoryUsed:0.3f}")
+            time.sleep(5)
+        else:
+            return True
+    raise RuntimeError("GPU memory was not freed.")
+
+
 def validate_save_restore(trainable_cls,
                           config=None,
                           num_gpus=0,
@@ -421,6 +495,99 @@ def validate_save_restore(trainable_cls,
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 5
     return True
+
+
+def detect_checkpoint_function(train_func, abort=False):
+    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
+    func_sig = inspect.signature(train_func)
+    validated = True
+    try:
+        # check if signature is func(config, checkpoint_dir=None)
+        func_sig.bind({}, checkpoint_dir="tmp/path")
+    except Exception as e:
+        logger.debug(str(e))
+        validated = False
+    if abort and not validated:
+        func_args = inspect.getfullargspec(train_func).args
+        raise ValueError(
+            "Provided training function must have 2 args "
+            "in the signature, and the latter arg must "
+            "contain `checkpoint_dir`. For example: "
+            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
+    return validated
+
+
+def detect_reporter(func):
+    """Use reporter if any arg has "reporter" and args = 2"""
+    func_sig = inspect.signature(func)
+    use_reporter = True
+    try:
+        func_sig.bind({}, reporter=None)
+    except Exception as e:
+        logger.debug(str(e))
+        use_reporter = False
+    return use_reporter
+
+
+def detect_config_single(func):
+    """Check if func({}) works."""
+    func_sig = inspect.signature(func)
+    use_config_single = True
+    try:
+        func_sig.bind({})
+    except Exception as e:
+        logger.debug(str(e))
+        use_config_single = False
+    return use_config_single
+
+
+def create_logdir(dirname: str, local_dir: str):
+    """Create an empty logdir with name `dirname` in `local_dir`.
+
+    If `local_dir`/`dirname` already exists, a unique string is appended
+    to the dirname.
+
+    Args:
+        dirname (str): Dirname to create in `local_dir`
+        local_dir (str): Root directory for the log dir
+
+    Returns: full path to the newly created logdir.
+    """
+    local_dir = os.path.expanduser(local_dir)
+    logdir = os.path.join(local_dir, dirname)
+    if os.path.exists(logdir):
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
+        logdir = os.path.join(local_dir, dirname)
+    os.makedirs(logdir, exist_ok=True)
+    return logdir
+
+
+class SafeFallbackEncoder(json.JSONEncoder):
+    def __init__(self, nan_str="null", **kwargs):
+        super(SafeFallbackEncoder, self).__init__(**kwargs)
+        self.nan_str = nan_str
+
+    def default(self, value):
+        try:
+            if np.isnan(value):
+                return self.nan_str
+
+            if (type(value).__module__ == np.__name__
+                    and isinstance(value, np.ndarray)):
+                return value.tolist()
+
+            if issubclass(type(value), numbers.Integral):
+                return int(value)
+            if issubclass(type(value), numbers.Number):
+                return float(value)
+
+            return super(SafeFallbackEncoder, self).default(value)
+
+        except Exception:
+            return str(value)  # give up, just stringify it (ok for logs)
 
 
 if __name__ == "__main__":

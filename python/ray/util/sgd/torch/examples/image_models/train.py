@@ -9,6 +9,7 @@
 
 from os.path import join
 
+from ray.util.sgd.torch import TrainingOperator
 from tqdm import trange
 
 import torch.nn as nn
@@ -127,17 +128,20 @@ def main():
     setup_default_logging()
 
     args, args_text = parse_args()
+    if args.smoke_test:
+        ray.init(num_cpus=int(args.ray_num_workers))
+    else:
+        ray.init(address=args.ray_address)
 
-    ray.init(address=args.ray_address)
-
-    trainer = TorchTrainer(
+    CustomTrainingOperator = TrainingOperator.from_creators(
         model_creator=model_creator,
-        data_creator=data_creator,
         optimizer_creator=optimizer_creator,
-        loss_creator=loss_creator,
+        data_creator=data_creator,
+        loss_creator=loss_creator)
+    trainer = TorchTrainer(
+        training_operator_cls=CustomTrainingOperator,
         use_tqdm=True,
         use_fp16=args.amp,
-        apex_args={"opt_level": "O1"},
         config={
             "args": args,
             BATCH_SIZE: args.batch_size

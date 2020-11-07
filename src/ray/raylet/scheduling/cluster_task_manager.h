@@ -2,7 +2,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -20,7 +19,7 @@ namespace raylet {
 /// dispatch/spillback and the callback to trigger it.
 typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
 
-typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)>
+typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
@@ -50,7 +49,7 @@ class ClusterTaskManager {
   /// \param fulfills_dependencies_func: Returns true if all of a task's
   /// dependencies are fulfilled.
   /// \param gcs_client: A gcs client.
-  ClusterTaskManager(const ClientID &self_node_id,
+  ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
                      NodeInfoGetter get_node_info);
@@ -97,19 +96,30 @@ class ClusterTaskManager {
   /// false if the task is already running.
   bool CancelTask(const TaskID &task_id);
 
+  /// Populate the relevant parts of the heartbeat table. This is intended for
+  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// resource_load and resource_load_by_shape.
+  ///
+  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  /// fields used.
+  void Heartbeat(bool light_heartbeat_enabled,
+                 std::shared_ptr<HeartbeatTableData> data) const;
+
   std::string DebugString();
 
  private:
-  const ClientID &self_node_id_;
+  const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::function<bool(const Task &)> fulfills_dependencies_func_;
   NodeInfoGetter get_node_info_;
 
+  // TODO (Alex): Implement fair queuing for these queues
   /// Queue of lease requests that are waiting for resources to become available.
-  /// TODO this should be a queue for each SchedulingClass
-  std::deque<Work> tasks_to_schedule_;
+  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
+
   /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<Work> tasks_to_dispatch_;
+  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
   /// Tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
@@ -125,7 +135,7 @@ class ClusterTaskManager {
       const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
-  void Spillback(ClientID spillback_to, std::string address, int port,
+  void Spillback(NodeID spillback_to, std::string address, int port,
                  rpc::RequestWorkerLeaseReply *reply,
                  std::function<void(void)> send_reply_callback);
 };

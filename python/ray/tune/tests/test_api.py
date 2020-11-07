@@ -12,9 +12,10 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
-                      EarlyStopping)
+                      EarlyStopping, run)
 from ray.tune import register_env, register_trainable, run_experiments
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler
+from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
+                                 AsyncHyperBandScheduler)
 from ray.tune.trial import Trial
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              EPISODES_TOTAL, TRAINING_ITERATION,
@@ -24,6 +25,8 @@ from ray.tune.logger import Logger
 from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
+from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.utils import (flatten_dict, get_pinned_object,
                             pin_in_object_store)
@@ -87,19 +90,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         class_trainable_name = "class_trainable"
         register_trainable(class_trainable_name, _WrappedTrainable)
 
-        trials = run_experiments(
-            {
-                "function_api": {
-                    "run": _function_trainable,
-                    "loggers": [FunctionAPILogger],
-                },
-                "class_api": {
-                    "run": class_trainable_name,
-                    "loggers": [ClassAPILogger],
-                },
-            },
+        [trial1] = run(
+            _function_trainable,
+            loggers=[FunctionAPILogger],
             raise_on_failed_trial=False,
-            scheduler=MockScheduler())
+            scheduler=MockScheduler()).trials
+
+        [trial2] = run(
+            class_trainable_name,
+            loggers=[ClassAPILogger],
+            raise_on_failed_trial=False,
+            scheduler=MockScheduler()).trials
+
+        trials = [trial1, trial2]
 
         # Ignore these fields
         NO_COMPARE_FIELDS = {
@@ -515,7 +518,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
-        self.assertTrue(len(analysis.dataframe()) <= top)
+        self.assertTrue(
+            len(analysis.dataframe(metric="test", mode="max")) <= top)
 
         patience = 5
         stopper = EarlyStopping("test", top=top, mode="min", patience=patience)
@@ -523,14 +527,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
         analysis = tune.run(train, num_samples=20, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
-        self.assertTrue(len(analysis.dataframe()) <= patience)
+        self.assertTrue(
+            len(analysis.dataframe(metric="test", mode="max")) <= patience)
 
         stopper = EarlyStopping("test", top=top, mode="min")
 
         analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
-        self.assertTrue(len(analysis.dataframe()) <= top)
+        self.assertTrue(
+            len(analysis.dataframe(metric="test", mode="max")) <= top)
 
     def testBadStoppingFunction(self):
         def train(config, reporter):
@@ -636,68 +642,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
             loggers=None)
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
-        new_trials = tune.run(
-            test, resume=True, run_errored_only=True, **config).trials
+        new_trials = tune.run(test, resume="ERRORED_ONLY", **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(
             all(t.last_result.get("hello") == 123 for t in new_trials))
-
-    def testErrorReturn(self):
-        def train(config, reporter):
-            raise Exception("uh oh")
-
-        register_trainable("f1", train)
-
-        def f():
-            run_experiments({
-                "foo": {
-                    "run": "f1",
-                }
-            })
-
-        self.assertRaises(TuneError, f)
-
-    def testSuccess(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
-        register_trainable("f1", train)
-        [trial] = run_experiments({
-            "foo": {
-                "run": "f1",
-            }
-        })
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
-
-    def testNoRaiseFlag(self):
-        def train(config, reporter):
-            raise Exception()
-
-        register_trainable("f1", train)
-
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                }
-            }, raise_on_failed_trial=False)
-        self.assertEqual(trial.status, Trial.ERROR)
-
-    def testReportInfinity(self):
-        def train(config, reporter):
-            for _ in range(100):
-                reporter(mean_accuracy=float("inf"))
-
-        register_trainable("f1", train)
-        [trial] = run_experiments({
-            "foo": {
-                "run": "f1",
-            }
-        })
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
 
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
@@ -737,63 +685,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return result
 
             def cleanup(self):
-                time.sleep(2)
+                time.sleep(0.3)
                 open(os.path.join(self.logdir, "marker"), "a").close()
                 return 1
 
         analysis = tune.run(
             TestTrainable, num_samples=10, stop={TRAINING_ITERATION: 1})
-        ray.shutdown()
         for trial in analysis.trials:
             path = os.path.join(trial.logdir, "marker")
             assert os.path.exists(path)
-
-    def testNestedResults(self):
-        def create_result(i):
-            return {"test": {"1": {"2": {"3": i, "4": False}}}}
-
-        flattened_keys = list(flatten_dict(create_result(0)))
-
-        class _MockScheduler(FIFOScheduler):
-            results = []
-
-            def on_trial_result(self, trial_runner, trial, result):
-                self.results += [result]
-                return TrialScheduler.CONTINUE
-
-            def on_trial_complete(self, trial_runner, trial, result):
-                self.complete_result = result
-
-        def train(config, reporter):
-            for i in range(100):
-                reporter(**create_result(i))
-
-        algo = _MockSuggestionAlgorithm()
-        scheduler = _MockScheduler()
-        [trial] = tune.run(
-            train,
-            scheduler=scheduler,
-            search_alg=algo,
-            stop={
-                "test/1/2/3": 20
-            }).trials
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result["test"]["1"]["2"]["3"], 20)
-        self.assertEqual(trial.last_result["test"]["1"]["2"]["4"], False)
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 21)
-        self.assertEqual(len(scheduler.results), 20)
-        self.assertTrue(
-            all(
-                set(result) >= set(flattened_keys)
-                for result in scheduler.results))
-        self.assertTrue(set(scheduler.complete_result) >= set(flattened_keys))
-        self.assertEqual(len(algo.results), 20)
-        self.assertTrue(
-            all(set(result) >= set(flattened_keys) for result in algo.results))
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train, stop={"1/2/3": 20})
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train, stop={"test": 1}).trials
 
     def testReportTimeStep(self):
         # Test that no timestep count are logged if never the Trainable never
@@ -989,28 +889,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
 
-    def testIterationCounter(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(itr=i, timesteps_this_iter=1)
-
-        register_trainable("exp", train)
-        config = {
-            "my_exp": {
-                "run": "exp",
-                "config": {
-                    "iterations": 100,
-                },
-                "stop": {
-                    "timesteps_total": 100
-                },
-            }
-        }
-        [trial] = run_experiments(config)
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 100)
-        self.assertEqual(trial.last_result["itr"], 99)
-
     def testBackwardsCompat(self):
         class TestTrain(Trainable):
             def _setup(self, config):
@@ -1103,6 +981,303 @@ class TrainableFunctionApiTest(unittest.TestCase):
             content = fp.read()
             self.assertIn("PRINT_STDERR", content)
             self.assertIn("LOG_STDERR", content)
+
+    def testTimeout(self):
+        from ray.tune.stopper import TimeoutStopper
+        import datetime
+
+        def train(config):
+            for i in range(20):
+                tune.report(metric=i)
+                time.sleep(1)
+
+        register_trainable("f1", train)
+
+        start = time.time()
+        tune.run("f1", time_budget_s=5)
+        diff = time.time() - start
+        self.assertLess(diff, 10)
+
+        # Metric should fire first
+        start = time.time()
+        tune.run("f1", stop={"metric": 3}, time_budget_s=7)
+        diff = time.time() - start
+        self.assertLess(diff, 7)
+
+        # Timeout should fire first
+        start = time.time()
+        tune.run("f1", stop={"metric": 10}, time_budget_s=5)
+        diff = time.time() - start
+        self.assertLess(diff, 10)
+
+        # Combined stopper. Shorter timeout should win.
+        start = time.time()
+        tune.run(
+            "f1",
+            stop=TimeoutStopper(10),
+            time_budget_s=datetime.timedelta(seconds=3))
+        diff = time.time() - start
+        self.assertLess(diff, 9)
+
+    def testMetricCheckingEndToEnd(self):
+        from ray import tune
+
+        def train(config):
+            tune.report(val=4, second=8)
+
+        def train2(config):
+            return
+
+        os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "0"
+        # `acc` is not reported, should raise
+        with self.assertRaises(TuneError):
+            # The trial runner raises a ValueError, but the experiment fails
+            # with a TuneError
+            tune.run(train, metric="acc")
+
+        # `val` is reported, should not raise
+        tune.run(train, metric="val")
+
+        # Run does not report anything, should not raise
+        tune.run(train2, metric="val")
+
+        # Only the scheduler requires a metric
+        with self.assertRaises(TuneError):
+            tune.run(
+                train,
+                scheduler=AsyncHyperBandScheduler(metric="acc", mode="max"))
+
+        tune.run(
+            train, scheduler=AsyncHyperBandScheduler(metric="val", mode="max"))
+
+        # Only the search alg requires a metric
+        with self.assertRaises(TuneError):
+            tune.run(
+                train,
+                config={"a": tune.choice([1, 2])},
+                search_alg=HyperOptSearch(metric="acc", mode="max"))
+
+        # Metric is passed
+        tune.run(
+            train,
+            config={"a": tune.choice([1, 2])},
+            search_alg=HyperOptSearch(metric="val", mode="max"))
+
+        os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
+        # With strict metric checking disabled, this should not raise
+        tune.run(train, metric="acc")
+
+    def testTrialDirCreation(self):
+        def test_trial_dir(config):
+            return 1.0
+
+        # Per default, the directory should be named `test_trial_dir_{date}`
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tune.run(test_trial_dir, local_dir=tmp_dir)
+
+            subdirs = list(os.listdir(tmp_dir))
+            self.assertNotIn("test_trial_dir", subdirs)
+            found = False
+            for subdir in subdirs:
+                if subdir.startswith("test_trial_dir_"):  # Date suffix
+                    found = True
+                    break
+            self.assertTrue(found)
+
+        # If we set an explicit name, no date should be appended
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tune.run(test_trial_dir, local_dir=tmp_dir, name="my_test_exp")
+
+            subdirs = list(os.listdir(tmp_dir))
+            self.assertIn("my_test_exp", subdirs)
+            found = False
+            for subdir in subdirs:
+                if subdir.startswith("my_test_exp_"):  # Date suffix
+                    found = True
+                    break
+            self.assertFalse(found)
+
+        # Don't append date if we set the env variable
+        os.environ["TUNE_DISABLE_DATED_SUBDIR"] = "1"
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tune.run(test_trial_dir, local_dir=tmp_dir)
+
+            subdirs = list(os.listdir(tmp_dir))
+            self.assertIn("test_trial_dir", subdirs)
+            found = False
+            for subdir in subdirs:
+                if subdir.startswith("test_trial_dir_"):  # Date suffix
+                    found = True
+                    break
+            self.assertFalse(found)
+
+
+class ShimCreationTest(unittest.TestCase):
+    def testCreateScheduler(self):
+        kwargs = {"metric": "metric_foo", "mode": "min"}
+
+        scheduler = "async_hyperband"
+        shim_scheduler = tune.create_scheduler(scheduler, **kwargs)
+        real_scheduler = AsyncHyperBandScheduler(**kwargs)
+        assert type(shim_scheduler) is type(real_scheduler)
+
+    def testCreateSearcher(self):
+        kwargs = {"metric": "metric_foo", "mode": "min"}
+
+        searcher_ax = "ax"
+        shim_searcher_ax = tune.create_searcher(searcher_ax, **kwargs)
+        real_searcher_ax = AxSearch(space=[], **kwargs)
+        assert type(shim_searcher_ax) is type(real_searcher_ax)
+
+        searcher_hyperopt = "hyperopt"
+        shim_searcher_hyperopt = tune.create_searcher(searcher_hyperopt,
+                                                      **kwargs)
+        real_searcher_hyperopt = HyperOptSearch({}, **kwargs)
+        assert type(shim_searcher_hyperopt) is type(real_searcher_hyperopt)
+
+
+class ApiTestFast(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(
+            num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+        _register_all()
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def testNestedResults(self):
+        def create_result(i):
+            return {"test": {"1": {"2": {"3": i, "4": False}}}}
+
+        flattened_keys = list(flatten_dict(create_result(0)))
+
+        class _MockScheduler(FIFOScheduler):
+            results = []
+
+            def on_trial_result(self, trial_runner, trial, result):
+                self.results += [result]
+                return TrialScheduler.CONTINUE
+
+            def on_trial_complete(self, trial_runner, trial, result):
+                self.complete_result = result
+
+        def train(config, reporter):
+            for i in range(100):
+                reporter(**create_result(i))
+
+        algo = _MockSuggestionAlgorithm()
+        scheduler = _MockScheduler()
+        [trial] = tune.run(
+            train,
+            scheduler=scheduler,
+            search_alg=algo,
+            stop={
+                "test/1/2/3": 20
+            }).trials
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["3"], 20)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["4"], False)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 21)
+        self.assertEqual(len(scheduler.results), 20)
+        self.assertTrue(
+            all(
+                set(result) >= set(flattened_keys)
+                for result in scheduler.results))
+        self.assertTrue(set(scheduler.complete_result) >= set(flattened_keys))
+        self.assertEqual(len(algo.results), 20)
+        self.assertTrue(
+            all(set(result) >= set(flattened_keys) for result in algo.results))
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"1/2/3": 20})
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"test": 1}).trials
+
+    def testIterationCounter(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(itr=i, timesteps_this_iter=1)
+
+        register_trainable("exp", train)
+        config = {
+            "my_exp": {
+                "run": "exp",
+                "config": {
+                    "iterations": 100,
+                },
+                "stop": {
+                    "timesteps_total": 100
+                },
+            }
+        }
+        [trial] = run_experiments(config)
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 100)
+        self.assertEqual(trial.last_result["itr"], 99)
+
+    def testErrorReturn(self):
+        def train(config, reporter):
+            raise Exception("uh oh")
+
+        register_trainable("f1", train)
+
+        def f():
+            run_experiments({
+                "foo": {
+                    "run": "f1",
+                }
+            })
+
+        self.assertRaises(TuneError, f)
+
+    def testSuccess(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        register_trainable("f1", train)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
+
+    def testNoRaiseFlag(self):
+        def train(config, reporter):
+            raise Exception()
+
+        register_trainable("f1", train)
+
+        [trial] = run_experiments(
+            {
+                "foo": {
+                    "run": "f1",
+                }
+            }, raise_on_failed_trial=False)
+        self.assertEqual(trial.status, Trial.ERROR)
+
+    def testReportInfinity(self):
+        def train(config, reporter):
+            for _ in range(100):
+                reporter(mean_accuracy=float("inf"))
+
+        register_trainable("f1", train)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
 
 
 if __name__ == "__main__":

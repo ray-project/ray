@@ -1,16 +1,14 @@
 import logging
-import io
 import os
 
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import DataLoader, IterableDataset
-from torch.utils.data.distributed import DistributedSampler
 from ray.util.sgd.torch.utils import setup_process_group
 
 import ray
 from ray.util.sgd.torch.torch_runner import TorchRunner
+
+from ray.util.sgd.torch.utils import setup_address
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +40,10 @@ class DistributedTorchRunner(TorchRunner):
         self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
         self.world_rank = None
+        self.local_rank = None
 
-    def setup(self):
-        raise RuntimeError("Need to call setup commands separately.")
+    def setup_address(self):
+        return setup_address()
 
     def setup_process_group(self, url, world_rank, world_size, timeout):
         """Connects the distributed PyTorch backend.
@@ -56,11 +55,20 @@ class DistributedTorchRunner(TorchRunner):
             timeout (timedelta): Seconds for process group
                 operations to timeout.
         """
+        logger.info(f"Setting up process group for: {url} [rank={world_rank}]")
         self.world_rank = world_rank
         setup_process_group(
             url, world_rank, world_size, timeout, backend=self.backend)
 
-    def setup_ddp_and_operator(self):
+    def set_local_rank(self, local_rank):
+        """Sets the local rank of this runner.
+
+        Args:
+            local_rank (int): the index of the runner on its node.
+        """
+        self.local_rank = local_rank
+
+    def setup_operator(self):
         """Runs distributed coordination components.
 
         This helps avoid timeouts due to creator functions (perhaps
@@ -70,90 +78,38 @@ class DistributedTorchRunner(TorchRunner):
         if self.use_gpu and torch.cuda.is_available():
             device_ids = self.get_device_ids()
 
-        # Wrap dataloaders
-        self._wrap_dataloaders()
-
-        training_models = self.models
-        if self.wrap_ddp:
-            # This needs to happen after apex
-            training_models = [
-                DistributedDataParallel(model, device_ids=device_ids)
-                for model in self.models
-            ]
         self.training_operator = self.training_operator_cls(
             self.config,
-            models=training_models,
-            optimizers=self.optimizers,
-            criterion=self.criterion,
-            train_loader=self.train_loader,
-            validation_loader=self.validation_loader,
             world_rank=self.world_rank,
-            schedulers=self.schedulers,
+            local_rank=self.local_rank,
+            is_distributed=True,
             device_ids=device_ids,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
-            use_tqdm=self.use_tqdm)
+            use_tqdm=self.use_tqdm,
+            wrap_ddp=self.wrap_ddp,
+            add_dist_sampler=self.add_dist_sampler,
+            scheduler_step_freq=self.scheduler_step_freq)
 
     def get_device_ids(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         return [0]
 
-    def load_state_stream(self, byte_obj):
-        """Loads a bytes object the training state dict.
-
-        This is needed because we don't want to deserialize the tensor
-        onto the same device (which is from the driver process). We want to
-        map it onto the actor's specific device.
-
-        From: github.com/pytorch/pytorch/issues/10622#issuecomment-474733769
-        """
-        _buffer = io.BytesIO(byte_obj)
-        to_gpu = self.use_gpu and torch.cuda.is_available()
-        state_dict = torch.load(
-            _buffer,
-            map_location=("cpu" if not to_gpu else
-                          lambda storage, loc: storage.cuda()))
-        return self.load_state_dict(state_dict)
-
-    def _wrap_dataloaders(self):
-        def with_sampler(loader):
-            # Automatically set the DistributedSampler
-            data_loader_args = {
-                "dataset": loader.dataset,
-                "batch_size": loader.batch_size,
-                "shuffle": False,
-                "num_workers": loader.num_workers,
-                "collate_fn": loader.collate_fn,
-                "pin_memory": loader.pin_memory,
-                "drop_last": loader.drop_last,
-                "timeout": loader.timeout,
-                "worker_init_fn": loader.worker_init_fn,
-                "sampler": DistributedSampler(loader.dataset)
-            }
-            return DataLoader(**data_loader_args)
-
-        def should_wrap_dataloader(loader):
-            return (isinstance(loader, DataLoader)
-                    and not isinstance(loader.dataset, IterableDataset))
-
-        if should_wrap_dataloader(self.train_loader):
-            if self.add_dist_sampler:
-                self.train_loader = with_sampler(self.train_loader)
-
-        if self.validation_loader is not None and should_wrap_dataloader(
-                self.validation_loader):
-            if self.add_dist_sampler:
-                self.validation_loader = with_sampler(self.validation_loader)
-
-    def train_epoch(self, **kwargs):
+    def train_epoch(self,
+                    num_steps=None,
+                    profile=False,
+                    info=None,
+                    iterator=None):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
-        if hasattr(self.train_loader, "sampler") and hasattr(
+        if iterator is None and hasattr(self.train_loader, "sampler") and \
+            hasattr(
                 self.train_loader.sampler, "set_epoch"):
             self.train_loader.sampler.set_epoch(self.epochs)
-        return super(DistributedTorchRunner, self).train_epoch(**kwargs)
+        return super(DistributedTorchRunner, self).train_epoch(
+            num_steps=num_steps, profile=profile, info=info, iterator=iterator)
 
     def shutdown(self):
         """Attempts to shut down the worker."""
@@ -361,10 +317,3 @@ class LocalDistributedRunner(DistributedTorchRunner):
     def is_actor(self):
         actor_id = ray.worker.global_worker.actor_id
         return actor_id != actor_id.nil()
-
-
-class DeactivatedRunner:
-    def __getattr__(self, *args, **kwargs):
-        raise RuntimeError(
-            "This TorchTrainer is not active (it is likely shutdown already). "
-            "Create a new TorchTrainer.")

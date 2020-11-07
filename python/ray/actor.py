@@ -6,8 +6,8 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray.experimental.placement_group import PlacementGroup, \
-    check_placement_group_index
+from ray.util.placement_group import (
+    PlacementGroup, check_placement_group_index, get_current_placement_group)
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -100,7 +100,27 @@ class ActorMethod:
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
-    def _remote(self, args=None, kwargs=None, num_returns=None):
+    def options(self, **options):
+        """Convenience method for executing an actor method call with options.
+
+        Same arguments as func._remote(), but returns a wrapped function
+        that a non-underscore .remote() can be called on.
+
+        Examples:
+            # The following two calls are equivalent.
+            >>> actor.my_method._remote(args=[x, y], name="foo", num_returns=2)
+            >>> actor.my_method.options(name="foo", num_returns=2).remote(x, y)
+        """
+
+        func_cls = self
+
+        class FuncWrapper:
+            def remote(self, *args, **kwargs):
+                return func_cls._remote(args=args, kwargs=kwargs, **options)
+
+        return FuncWrapper()
+
+    def _remote(self, args=None, kwargs=None, name="", num_returns=None):
         if num_returns is None:
             num_returns = self._num_returns
 
@@ -112,6 +132,7 @@ class ActorMethod:
                 self._method_name,
                 args=args,
                 kwargs=kwargs,
+                name=name,
                 num_returns=num_returns)
 
         # Apply the decorator if there is one.
@@ -243,7 +264,7 @@ class ActorClassMetadata:
     def __init__(self, language, modified_class,
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
-                 object_store_memory, resources):
+                 object_store_memory, resources, accelerator_type):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -258,6 +279,7 @@ class ActorClassMetadata:
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
+        self.accelerator_type = accelerator_type
         self.last_export_session_and_job = None
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor)
@@ -315,10 +337,13 @@ class ActorClass:
     @classmethod
     def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
                                  max_task_retries, num_cpus, num_gpus, memory,
-                                 object_store_memory, resources):
+                                 object_store_memory, resources,
+                                 accelerator_type):
         for attribute in [
-                "remote", "_remote", "_ray_from_modified_class",
-                "_ray_from_function_descriptor"
+                "remote",
+                "_remote",
+                "_ray_from_modified_class",
+                "_ray_from_function_descriptor",
         ]:
             if hasattr(modified_class, attribute):
                 logger.warning("Creating an actor from class "
@@ -345,7 +370,7 @@ class ActorClass:
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources)
+            resources, accelerator_type)
 
         return self
 
@@ -353,13 +378,13 @@ class ActorClass:
     def _ray_from_function_descriptor(
             cls, language, actor_creation_function_descriptor, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources):
+            resources, accelerator_type):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
-            object_store_memory, resources)
+            object_store_memory, resources, accelerator_type)
 
         return self
 
@@ -377,23 +402,66 @@ class ActorClass:
         """
         return self._remote(args=args, kwargs=kwargs)
 
-    def options(self, **options):
-        """Convenience method for creating an actor with options.
+    def options(self,
+                args=None,
+                kwargs=None,
+                num_cpus=None,
+                num_gpus=None,
+                memory=None,
+                object_store_memory=None,
+                resources=None,
+                accelerator_type=None,
+                max_concurrency=None,
+                max_restarts=None,
+                max_task_retries=None,
+                name=None,
+                lifetime=None,
+                placement_group=None,
+                placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None,
+                override_environment_variables=None):
+        """Configures and overrides the actor instantiation parameters.
 
-        Same arguments as Actor._remote(), but returns a wrapped actor class
-        that a non-underscore .remote() can be called on.
+        The arguments are the same as those that can be passed
+        to :obj:`ray.remote`.
 
         Examples:
-            # The following two calls are equivalent.
-            >>> Actor._remote(num_cpus=4, max_concurrency=8, args=[x, y])
-            >>> Actor.options(num_cpus=4, max_concurrency=8).remote(x, y)
+
+        .. code-block:: python
+
+            @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+            class Foo:
+                def method(self):
+                    return 1
+            # Class Foo will require 1 cpu instead of 2.
+            # It will also require no custom resources.
+            Bar = Foo.options(num_cpus=1, resources=None)
         """
 
         actor_cls = self
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
-                return actor_cls._remote(args=args, kwargs=kwargs, **options)
+                return actor_cls._remote(
+                    args=args,
+                    kwargs=kwargs,
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    object_store_memory=object_store_memory,
+                    resources=resources,
+                    accelerator_type=accelerator_type,
+                    max_concurrency=max_concurrency,
+                    max_restarts=max_restarts,
+                    max_task_retries=max_task_retries,
+                    name=name,
+                    lifetime=lifetime,
+                    placement_group=placement_group,
+                    placement_group_bundle_index=placement_group_bundle_index,
+                    placement_group_capture_child_tasks=(
+                        placement_group_capture_child_tasks),
+                    override_environment_variables=(
+                        override_environment_variables))
 
         return ActorOptionWrapper()
 
@@ -405,13 +473,16 @@ class ActorClass:
                 memory=None,
                 object_store_memory=None,
                 resources=None,
+                accelerator_type=None,
                 max_concurrency=None,
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
                 lifetime=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None,
+                override_environment_variables=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -445,6 +516,12 @@ class ActorClass:
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
                 specify any available bundle.
+            placement_group_capture_child_tasks: Whether or not children tasks
+                of this actor should implicitly use the same placement group
+                as its parent. It is True by default.
+            override_environment_variables: Environment variables to override
+                and/or introduce for this actor.  This is a dictionary mapping
+                variable names to their values.
 
         Returns:
             A handle to the newly created actor.
@@ -502,7 +579,15 @@ class ActorClass:
         else:
             raise ValueError("lifetime must be either `None` or 'detached'")
 
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                worker.should_capture_child_tasks_in_placement_group)
+
         if placement_group is None:
+            if placement_group_capture_child_tasks:
+                placement_group = get_current_placement_group()
+
+        if not placement_group:
             placement_group = PlacementGroup.empty()
 
         check_placement_group_index(placement_group,
@@ -513,8 +598,9 @@ class ActorClass:
         # decorator. Last three conditions are to check that no resources were
         # specified when _remote() was called.
         if (meta.num_cpus is None and meta.num_gpus is None
-                and meta.resources is None and num_cpus is None
-                and num_gpus is None and resources is None):
+                and meta.resources is None and meta.accelerator_type is None
+                and num_cpus is None and num_gpus is None and resources is None
+                and accelerator_type is None):
             # In the default case, actors acquire no resources for
             # their lifetime, and actor methods will require 1 CPU.
             cpus_to_use = ray_constants.DEFAULT_ACTOR_CREATION_CPU_SIMPLE
@@ -549,8 +635,8 @@ class ActorClass:
 
         resources = ray.utils.resources_from_resource_arguments(
             cpus_to_use, meta.num_gpus, meta.memory, meta.object_store_memory,
-            meta.resources, num_cpus, num_gpus, memory, object_store_memory,
-            resources)
+            meta.resources, meta.accelerator_type, num_cpus, num_gpus, memory,
+            object_store_memory, resources, accelerator_type)
 
         # If the actor methods require CPU resources, then set the required
         # placement resources. If actor_placement_resources is empty, then
@@ -580,8 +666,11 @@ class ActorClass:
             is_asyncio,
             placement_group.id,
             placement_group_bundle_index,
+            placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
-            extension_data=str(actor_method_cpu))
+            extension_data=str(actor_method_cpu),
+            override_environment_variables=override_environment_variables
+            or dict())
 
         actor_handle = ActorHandle(
             meta.language,
@@ -679,6 +768,7 @@ class ActorHandle:
                            method_name,
                            args=None,
                            kwargs=None,
+                           name="",
                            num_returns=None):
         """Method execution stub for an actor handle.
 
@@ -691,6 +781,7 @@ class ActorHandle:
             method_name: The name of the actor method to execute.
             args: A list of arguments for the actor method.
             kwargs: A dictionary of keyword arguments for the actor method.
+            name (str): The name to give the actor method call task.
             num_returns (int): The number of return values for the method.
 
         Returns:
@@ -724,7 +815,7 @@ class ActorHandle:
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language, self._ray_actor_id, function_descriptor,
-            list_args, num_returns, self._ray_actor_method_cpus)
+            list_args, name, num_returns, self._ray_actor_method_cpus)
 
         if len(object_refs) == 1:
             object_refs = object_refs[0]
@@ -879,7 +970,7 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               max_restarts, max_task_retries):
+               accelerator_type, max_restarts, max_task_retries):
     Class = modify_class(cls)
 
     if max_restarts is None:
@@ -903,7 +994,8 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
 
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_restarts, max_task_retries,
-        num_cpus, num_gpus, memory, object_store_memory, resources)
+        num_cpus, num_gpus, memory, object_store_memory, resources,
+        accelerator_type)
 
 
 def exit_actor():

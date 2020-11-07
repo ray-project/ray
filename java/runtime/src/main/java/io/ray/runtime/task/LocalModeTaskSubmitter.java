@@ -22,6 +22,7 @@ import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.ActorCreationTaskSpec;
 import io.ray.runtime.generated.Common.ActorTaskSpec;
+import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.generated.Common.ObjectReference;
 import io.ray.runtime.generated.Common.TaskArg;
@@ -29,7 +30,6 @@ import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.object.NativeRayObject;
-import io.ray.runtime.placementgroup.PlacementGroupId;
 import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -170,7 +170,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       if (options.group != null) {
         PlacementGroupImpl group = (PlacementGroupImpl)options.group;
         Preconditions.checkArgument(options.bundleIndex >= 0
-                && options.bundleIndex < group.getBundleCount(),
+                && options.bundleIndex < group.getBundles().size(),
             String.format("Bundle index %s is invalid", options.bundleIndex));
       }
     }
@@ -223,9 +223,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+  public PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return new PlacementGroupImpl(PlacementGroupId.fromRandom(), bundles.size());
+    return new PlacementGroupImpl.Builder()
+      .setName(name).setBundles(bundles).setStrategy(strategy).build();
   }
 
   @Override
@@ -381,7 +382,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       TaskArg arg = taskSpec.getArgs(i);
       if (arg.getObjectRef().getObjectId() != ByteString.EMPTY) {
         functionArgs.add(FunctionArg
-            .passByReference(new ObjectId(arg.getObjectRef().getObjectId().toByteArray())));
+            .passByReference(new ObjectId(arg.getObjectRef().getObjectId().toByteArray()),
+            Address.getDefaultInstance()));
       } else {
         functionArgs.add(FunctionArg.passByValue(
             new NativeRayObject(arg.getData().toByteArray(), arg.getMetadata().toByteArray())));

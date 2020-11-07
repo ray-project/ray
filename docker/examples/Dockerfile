@@ -3,7 +3,7 @@
 FROM rayproject/ray:latest
 
 # Needed to run Tune example with a 'plot' call - which does not actually render a plot, but throws an error.
-RUN apt-get update && install -y zlib1g-dev libgl1-mesa-dev libgtk2.0-dev && apt-get clean
+RUN apt-get update && apt-get install -y zlib1g-dev libgl1-mesa-dev libgtk2.0-dev && apt-get clean
 RUN pip install --no-cache-dir -U pip \
     gym[atari] \
     opencv-python-headless==4.3.0.36 \

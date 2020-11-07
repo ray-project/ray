@@ -34,7 +34,7 @@ class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr,
+      : WorkerPool(io_service, 0, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr,
                    worker_commands, {}, []() {}),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
@@ -135,7 +135,8 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
       const rpc::JobConfig &job_config = rpc::JobConfig()) {
     auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
     driver->AssignTaskId(TaskID::ForDriverTask(job_id));
-    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_id, job_config, nullptr));
+    RAY_CHECK_OK(
+        worker_pool_->RegisterDriver(driver, job_id, job_config, [](Status, int) {}));
     return driver;
   }
 
@@ -246,7 +247,8 @@ TEST_P(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), nullptr));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
   }
@@ -257,6 +259,12 @@ TEST_P(WorkerPoolTest, HandleWorkerRegistration) {
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
   }
+}
+
+TEST_P(WorkerPoolTest, HandleUnknownWorkerRegistration) {
+  auto worker = CreateWorker(Process(), Language::PYTHON);
+  auto status = worker_pool_->RegisterWorker(worker, 1234, [](Status, int) {});
+  ASSERT_FALSE(status.ok());
 }
 
 TEST_P(WorkerPoolTest, StartupPythonWorkerProcessCount) {
@@ -273,13 +281,10 @@ TEST_P(WorkerPoolTest, StartupJavaWorkerProcessCount) {
 TEST_P(WorkerPoolTest, InitialWorkerProcessCount) {
   if (!RayConfig::instance().enable_multi_tenancy()) {
     worker_pool_->Start(1);
-    // Here we try to start only 1 worker for each worker language. But since each Java
-    // worker process contains exactly NUM_WORKERS_PER_PROCESS_JAVA (3) workers here,
-    // it's expected to see 3 workers for Java and 1 worker for Python, instead of 1 for
-    // each worker language.
-    ASSERT_NE(worker_pool_->NumWorkersStarting(), 1 * LANGUAGES.size());
-    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1 + NUM_WORKERS_PER_PROCESS_JAVA);
-    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), LANGUAGES.size());
+    // Here we try to start only 1 worker for each worker language. But since we disabled
+    // initial workers for Java, we expect to see only 1 worker which is a Python worker.
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1);
+    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 1);
   } else {
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
     ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
@@ -363,13 +368,29 @@ TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   TaskSpecification task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::JAVA, JOB_ID,
       ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1), {"test_op_0", "test_op_1"});
+
+  rpc::JobConfig job_config = rpc::JobConfig();
+  job_config.add_code_search_path("/test/code_serch_path");
+  job_config.set_num_java_workers_per_process(1);
+  worker_pool_->HandleJobStarted(JOB_ID, job_config);
+
   worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID,
                                    task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
-  ASSERT_EQ(real_command, std::vector<std::string>(
-                              {"test_op_0", "test_op_1", "dummy_java_worker_command",
-                               GetNumJavaWorkersPerProcessSystemProperty(1)}));
+
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    ASSERT_EQ(
+        real_command,
+        std::vector<std::string>(
+            {"test_op_0", "test_op_1", "-Dray.job.code-search-path=/test/code_serch_path",
+             "dummy_java_worker_command", GetNumJavaWorkersPerProcessSystemProperty(1)}));
+  } else {
+    ASSERT_EQ(real_command, std::vector<std::string>(
+                                {"test_op_0", "test_op_1", "dummy_java_worker_command",
+                                 GetNumJavaWorkersPerProcessSystemProperty(1)}));
+  }
+  worker_pool_->HandleJobFinished(JOB_ID);
 }
 
 TEST_P(WorkerPoolTest, PopWorkerMultiTenancy) {
@@ -435,6 +456,51 @@ TEST_P(WorkerPoolTest, PopWorkerMultiTenancy) {
       }
     }
   }
+}
+
+TEST_P(WorkerPoolTest, MaximumStartupConcurrency) {
+  auto task_spec = ExampleTaskSpec();
+  std::vector<Process> started_processes;
+
+  // Try to pop some workers. Some worker processes will be started.
+  for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; i++) {
+    auto worker = worker_pool_->PopWorker(task_spec);
+    RAY_CHECK(!worker);
+    auto last_process = worker_pool_->LastStartedWorkerProcess();
+    RAY_CHECK(last_process.IsValid());
+    started_processes.push_back(last_process);
+  }
+
+  // Can't start a new worker process at this point.
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+  RAY_CHECK(!worker_pool_->PopWorker(task_spec));
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  // Call `RegisterWorker` to emulate worker registration.
+  for (const auto &process : started_processes) {
+    auto worker = CreateWorker(Process());
+    RAY_CHECK_OK(
+        worker_pool_->RegisterWorker(worker, process.GetId(), [](Status, int) {}));
+    // Calling `RegisterWorker` won't affect the counter of starting worker processes.
+    ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+    workers.push_back(worker);
+  }
+
+  // Can't start a new worker process at this point.
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+  RAY_CHECK(!worker_pool_->PopWorker(task_spec));
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+
+  // Call `OnWorkerStarted` to emulate worker port announcement.
+  for (size_t i = 0; i < workers.size(); i++) {
+    worker_pool_->OnWorkerStarted(workers[i]);
+    // Calling `OnWorkerStarted` will affect the counter of starting worker processes.
+    ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY - i - 1,
+              worker_pool_->NumWorkerProcessesStarting());
+  }
+
+  ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
 }
 
 INSTANTIATE_TEST_CASE_P(WorkerPoolMultiTenancyTest, WorkerPoolTest,

@@ -108,9 +108,11 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
 /// Whether to enable the new scheduler. The new scheduler is designed
-/// only to work with  direct calls. Once direct calls afre becoming
+/// only to work with direct calls. Once direct calls are becoming
 /// the default, this scheduler will also become the default.
-RAY_CONFIG(bool, new_scheduler_enabled, false)
+RAY_CONFIG(bool, new_scheduler_enabled,
+           getenv("RAY_ENABLE_NEW_SCHEDULER") != nullptr &&
+               getenv("RAY_ENABLE_NEW_SCHEDULER") == std::string("1"))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -203,7 +205,7 @@ RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 10L * 1024 * 1024 * 102
 RAY_CONFIG(int, num_workers_per_process_python, 1)
 
 /// Number of workers per Java worker process
-RAY_CONFIG(int, num_workers_per_process_java, 10)
+RAY_CONFIG(int, num_workers_per_process_java, 1)
 
 /// Number of workers per CPP worker process
 RAY_CONFIG(int, num_workers_per_process_cpp, 1)
@@ -211,8 +213,11 @@ RAY_CONFIG(int, num_workers_per_process_cpp, 1)
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
-/// Maximum number of items in one batch to scan from GCS storage.
-RAY_CONFIG(uint32_t, maximum_gcs_scan_batch_size, 1000)
+/// Maximum number of items in one batch to scan/get/delete from GCS storage.
+RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
+
+/// Maximum number of rows in GCS profile table.
+RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
@@ -235,6 +240,10 @@ RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 /// Duration to wait between retries for creating placement group in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
+/// Maximum number of destroyed actors in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead nodes in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -253,7 +262,7 @@ RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, plasma_store_as_thread, false)
@@ -286,11 +295,24 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
+/// If true, the worker's queue backlog size will be propagated to the heartbeat batch
+/// data.
+RAY_CONFIG(bool, report_worker_backlog, true)
+
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable multi tenancy features.
-RAY_CONFIG(bool, enable_multi_tenancy, false)
+RAY_CONFIG(bool, enable_multi_tenancy,
+           getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
+               getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
+
+/// The interval of periodic idle worker killing. A negative value means worker capping is
+/// disabled.
+RAY_CONFIG(int64_t, kill_idle_workers_interval_ms, 200)
+
+/// The idle time threshold for an idle worker to be killed.
+RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
@@ -298,9 +320,22 @@ RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
-/// The maximum number of I/O worker that raylet starts.
-RAY_CONFIG(int, max_io_workers, 1)
-
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
 RAY_CONFIG(bool, enable_timeline, true)
+
+/// The maximum number of pending placement group entries that are reported to monitor to
+/// autoscale the cluster.
+RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+
+/* Configuration parameters for object spilling. */
+/// JSON configuration that describes the external storage. This is passed to
+/// Python IO workers to determine how to store/restore an object to/from
+/// external storage.
+RAY_CONFIG(std::string, object_spilling_config, "")
+/// Whether to enable automatic object spilling. If enabled, then
+/// Ray will choose objects to spill when the object store is out of
+/// memory.
+RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
+/// The maximum number of I/O worker that raylet starts.
+RAY_CONFIG(int, max_io_workers, 1)

@@ -23,7 +23,8 @@ class TrialRunnerTest(unittest.TestCase):
         ray.shutdown()
 
     def testTrialStatus(self):
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial("__fake")
         trial_executor = RayTrialExecutor()
         self.assertEqual(trial.status, Trial.PENDING)
@@ -35,7 +36,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.ERROR)
 
     def testExperimentTagTruncation(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
         def train(config, reporter):
             reporter(timesteps_total=1)
@@ -56,7 +57,10 @@ class TrialRunnerTest(unittest.TestCase):
         for name, spec in experiments.items():
             trial_generator = BasicVariantGenerator()
             trial_generator.add_configurations({name: spec})
-            for trial in trial_generator.next_trials():
+            while not trial_generator.is_finished():
+                trial = trial_generator.next_trial()
+                if not trial:
+                    break
                 trial_executor.start_trial(trial)
                 self.assertLessEqual(len(os.path.basename(trial.logdir)), 200)
                 trial_executor.stop_trial(trial)
@@ -259,7 +263,7 @@ class TrialRunnerTest(unittest.TestCase):
             def on_trial_result(self, trial_runner, trial, result):
                 if result["training_iteration"] == 1:
                     executor = trial_runner.trial_executor
-                    executor.stop_trial(trial, stop_logger=False)
+                    executor.stop_trial(trial)
                     trial.update_resources(2, 0)
                     executor.start_trial(trial)
                 return TrialScheduler.CONTINUE
@@ -283,6 +287,44 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(runner.trial_executor._committed_resources.cpu, 2)
+
+    def testQueueFilling(self):
+        ray.init(num_cpus=4)
+
+        def f1(config):
+            for i in range(10):
+                yield i
+
+        tune.register_trainable("f1", f1)
+
+        search_alg = BasicVariantGenerator()
+        search_alg.add_configurations({
+            "foo": {
+                "run": "f1",
+                "num_samples": 100,
+                "config": {
+                    "a": tune.sample_from(lambda spec: 5.0 / 7),
+                    "b": tune.sample_from(lambda spec: "long" * 40)
+                },
+                "resources_per_trial": {
+                    "cpu": 2
+                }
+            }
+        })
+
+        runner = TrialRunner(search_alg=search_alg)
+
+        runner.step()
+        runner.step()
+        runner.step()
+        self.assertEqual(len(runner._trials), 3)
+
+        runner.step()
+        self.assertEqual(len(runner._trials), 3)
+
+        self.assertEqual(runner._trials[0].status, Trial.RUNNING)
+        self.assertEqual(runner._trials[1].status, Trial.RUNNING)
+        self.assertEqual(runner._trials[2].status, Trial.PENDING)
 
 
 if __name__ == "__main__":

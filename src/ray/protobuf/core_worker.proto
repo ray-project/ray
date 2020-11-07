@@ -287,8 +287,6 @@ message LocalGCReply {
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
-  int64 data_size = 2;
-  int64 metadata_size = 3;
 }
 
 message PlasmaObjectReadyReply {
@@ -310,6 +308,12 @@ message RestoreSpilledObjectsRequest {
 }
 
 message RestoreSpilledObjectsReply {
+}
+
+message ExitRequest {
+}
+
+message ExitReply {
 }
 
 service CoreWorkerService {
@@ -357,4 +361,6 @@ service CoreWorkerService {
       returns (RestoreSpilledObjectsReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
+  // Request for a worker to exit.
+  rpc Exit(ExitRequest) returns (ExitReply);
 }

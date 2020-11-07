@@ -1,22 +1,17 @@
-from ray.serve.api import (init, create_backend, delete_backend,
-                           create_endpoint, delete_endpoint, set_traffic,
-                           shadow_traffic, get_handle, update_backend_config,
-                           get_backend_config, accept_batch, list_backends,
-                           list_endpoints, shutdown)  # noqa: E402
+from ray.serve.api import (accept_batch, Client, connect, start)  # noqa: F401
+from ray.serve.config import BackendConfig
+from ray.serve.env import CondaEnv
+
+# Mute the warning because Serve sometimes intentionally calls
+# ray.get inside async actors.
+import ray.worker
+ray.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
-    "init",
-    "create_backend",
-    "delete_backend",
-    "create_endpoint",
-    "delete_endpoint",
-    "set_traffic",
-    "shadow_traffic",
-    "get_handle",
-    "update_backend_config",
-    "get_backend_config",
     "accept_batch",
-    "list_backends",
-    "list_endpoints",
-    "shutdown",
+    "BackendConfig",
+    "CondaEnv",
+    "connect",
+    "Client",
+    "start",
 ]

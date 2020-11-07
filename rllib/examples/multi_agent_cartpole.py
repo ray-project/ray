@@ -11,6 +11,7 @@ execution, set the TF_TIMELINE_DIR environment variable.
 
 import argparse
 import gym
+import os
 import random
 
 import ray
@@ -75,6 +76,8 @@ if __name__ == "__main__":
             "num_agents": args.num_agents,
         },
         "simple_optimizer": args.simple,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_sgd_iter": 10,
         "multiagent": {
             "policies": policies,

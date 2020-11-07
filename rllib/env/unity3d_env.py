@@ -1,7 +1,9 @@
 from gym.spaces import Box, MultiDiscrete, Tuple as TupleSpace
 import logging
 import numpy as np
-from typing import Callable, Tuple
+import random
+import time
+from typing import Callable, Optional, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override
@@ -25,13 +27,14 @@ class Unity3DEnv(MultiAgentEnv):
     inside an RLlib PolicyClient for cloud/distributed training of Unity games.
     """
 
+    _BASE_PORT = 5004
+
     def __init__(self,
                  file_name: str = None,
-                 worker_id: int = 0,
-                 base_port: int = 5004,
+                 port: Optional[int] = None,
                  seed: int = 0,
                  no_graphics: bool = False,
-                 timeout_wait: int = 60,
+                 timeout_wait: int = 300,
                  episode_horizon: int = 1000):
         """Initializes a Unity3DEnv object.
 
@@ -39,12 +42,7 @@ class Unity3DEnv(MultiAgentEnv):
             file_name (Optional[str]): Name of the Unity game binary.
                 If None, will assume a locally running Unity3D editor
                 to be used, instead.
-            worker_id (int): Number to add to `base_port`. Used when more than
-                one Unity3DEnv (games) are running on the same machine. This
-                will be determined automatically, if possible, so a value
-                of 0 should always suffice here.
-            base_port (int): Port number to connect to Unity environment.
-                `worker_id` increments on top of this.
+            port (Optional[int]): Port number to connect to Unity environment.
             seed (int): A random seed value to use for the Unity3D game.
             no_graphics (bool): Whether to run the Unity3D simulator in
                 no-graphics mode. Default: False.
@@ -69,23 +67,26 @@ class Unity3DEnv(MultiAgentEnv):
         import mlagents_envs
         from mlagents_envs.environment import UnityEnvironment
 
-        # Try connecting to the Unity3D game instance. If a port
+        # Try connecting to the Unity3D game instance. If a port is blocked
         while True:
-            self.worker_id = worker_id
+            # Sleep for random time to allow for concurrent startup of many
+            # environments (num_workers >> 1). Otherwise, would lead to port
+            # conflicts sometimes.
+            time.sleep(random.randint(1, 10))
+            port_ = port or self._BASE_PORT
+            self._BASE_PORT += 1
             try:
                 self.unity_env = UnityEnvironment(
                     file_name=file_name,
-                    worker_id=worker_id,
-                    base_port=base_port,
+                    worker_id=0,
+                    base_port=port_,
                     seed=seed,
                     no_graphics=no_graphics,
                     timeout_wait=timeout_wait,
                 )
-            except mlagents_envs.exception.UnityWorkerInUseException as e:
-                worker_id += 1
-                # Hard limit.
-                if worker_id > 100:
-                    raise e
+                print("Created UnityEnvironment for port {}".format(port_))
+            except mlagents_envs.exception.UnityWorkerInUseException:
+                pass
             else:
                 break
 
@@ -203,6 +204,13 @@ class Unity3DEnv(MultiAgentEnv):
             "3DBall": Box(float("-inf"), float("inf"), (8, )),
             # 3DBallHard.
             "3DBallHard": Box(float("-inf"), float("inf"), (45, )),
+            # Pyramids.
+            "Pyramids": TupleSpace([
+                Box(float("-inf"), float("inf"), (56, )),
+                Box(float("-inf"), float("inf"), (56, )),
+                Box(float("-inf"), float("inf"), (56, )),
+                Box(float("-inf"), float("inf"), (4, )),
+            ]),
             # SoccerStrikersVsGoalie.
             "Goalie": Box(float("-inf"), float("inf"), (738, )),
             "Striker": TupleSpace([
@@ -215,6 +223,11 @@ class Unity3DEnv(MultiAgentEnv):
             "VisualHallway": Box(float("-inf"), float("inf"), (84, 84, 3)),
             # Walker.
             "Walker": Box(float("-inf"), float("inf"), (212, )),
+            # FoodCollector.
+            "FoodCollector": TupleSpace([
+                Box(float("-inf"), float("inf"), (49, )),
+                Box(float("-inf"), float("inf"), (4, )),
+            ]),
         }
         action_spaces = {
             # 3DBall.
@@ -223,6 +236,8 @@ class Unity3DEnv(MultiAgentEnv):
             # 3DBallHard.
             "3DBallHard": Box(
                 float("-inf"), float("inf"), (2, ), dtype=np.float32),
+            # Pyramids.
+            "Pyramids": MultiDiscrete([5]),
             # SoccerStrikersVsGoalie.
             "Goalie": MultiDiscrete([3, 3, 3]),
             "Striker": MultiDiscrete([3, 3, 3]),
@@ -232,6 +247,8 @@ class Unity3DEnv(MultiAgentEnv):
             "VisualHallway": MultiDiscrete([5]),
             # Walker.
             "Walker": Box(float("-inf"), float("inf"), (39, )),
+            # FoodCollector.
+            "FoodCollector": MultiDiscrete([3, 3, 3, 2]),
         }
 
         # Policies (Unity: "behaviors") and agent-to-policy mapping fns.

@@ -5,11 +5,12 @@ import os
 from typing import Sequence
 
 from ray.tune.error import TuneError
-from ray.tune.function_runner import detect_checkpoint_function
 from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
-from ray.tune.stopper import FunctionStopper, Stopper
+from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
+    TimeoutStopper
+from ray.tune.utils import date_str, detect_checkpoint_function
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,7 @@ class Experiment:
                  name,
                  run,
                  stop=None,
+                 time_budget_s=None,
                  config=None,
                  resources_per_trial=None,
                  num_samples=1,
@@ -121,6 +123,17 @@ class Experiment:
                  max_failures=0,
                  restore=None):
 
+        if loggers is not None:
+            # Most users won't run into this as `tune.run()` does not pass
+            # the argument anymore. However, we will want to inform users
+            # if they instantiate their `Experiment` objects themselves.
+            raise ValueError(
+                "Passing `loggers` to an `Experiment` is deprecated. Use "
+                "an `ExperimentLogger` callback instead, e.g. by passing the "
+                "`Logger` classes to `tune.logger.LegacyExperimentLogger` and "
+                "passing this as part of the `callback` parameter to "
+                "`tune.run()`.")
+
         config = config or {}
         if callable(run) and detect_checkpoint_function(run):
             if checkpoint_at_end:
@@ -135,8 +148,18 @@ class Experiment:
                     "within your trainable function.")
         self._run_identifier = Experiment.register_if_needed(run)
         self.name = name or self._run_identifier
+
+        # If the name has been set explicitly, we don't want to create
+        # dated directories. The same is true for string run identifiers.
+        if int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1 or name \
+           or isinstance(run, str):
+            self.dir_name = self.name
+        else:
+            self.dir_name = "{}_{}".format(self.name, date_str())
+
         if upload_dir:
-            self.remote_checkpoint_dir = os.path.join(upload_dir, self.name)
+            self.remote_checkpoint_dir = os.path.join(upload_dir,
+                                                      self.dir_name)
         else:
             self.remote_checkpoint_dir = None
 
@@ -158,6 +181,13 @@ class Experiment:
         else:
             raise ValueError("Invalid stop criteria: {}. Must be a "
                              "callable or dict".format(stop))
+
+        if time_budget_s:
+            if self._stopper:
+                self._stopper = CombinedStopper(self._stopper,
+                                                TimeoutStopper(time_budget_s))
+            else:
+                self._stopper = TimeoutStopper(time_budget_s)
 
         _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 
@@ -240,8 +270,16 @@ class Experiment:
             return run_object
         elif isinstance(run_object, type) or callable(run_object):
             name = "DEFAULT"
-            if hasattr(run_object, "__name__"):
-                name = run_object.__name__
+            if hasattr(run_object, "_name"):
+                name = run_object._name
+            elif hasattr(run_object, "__name__"):
+                fn_name = run_object.__name__
+                if fn_name == "<lambda>":
+                    name = "lambda"
+                elif fn_name.startswith("<"):
+                    name = "DEFAULT"
+                else:
+                    name = fn_name
             else:
                 logger.warning(
                     "No name detected on trainable. Using {}.".format(name))
@@ -278,7 +316,7 @@ class Experiment:
     @property
     def checkpoint_dir(self):
         if self.local_dir:
-            return os.path.join(self.local_dir, self.name)
+            return os.path.join(self.local_dir, self.dir_name)
 
     @property
     def run_identifier(self):

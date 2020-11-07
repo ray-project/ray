@@ -25,7 +25,7 @@ import ray.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
-import ray.services as services
+import ray._private.services as services
 import ray
 import setproctitle
 import ray.signature
@@ -154,6 +154,18 @@ class Worker:
     @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
+
+    @property
+    def current_node_id(self):
+        return self.core_worker.get_current_node_id()
+
+    @property
+    def placement_group_id(self):
+        return self.core_worker.get_placement_group_id()
+
+    @property
+    def should_capture_child_tasks_in_placement_group(self):
+        return self.core_worker.should_capture_child_tasks_in_placement_group()
 
     @property
     def current_session_and_job(self):
@@ -347,8 +359,9 @@ class Worker:
                                    "function", self)
 
             # Run the function on all workers.
-            self.redis_client.hmset(
-                key, {
+            self.redis_client.hset(
+                key,
+                mapping={
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
@@ -356,7 +369,7 @@ class Worker:
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
-            # successfully completes the hmset and rpush, then the program will
+            # successfully completes the hset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
             # operations into a transaction (or by implementing a custom
             # command that does all three things).
@@ -484,20 +497,20 @@ def init(
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_to_driver=True,
-        enable_object_reconstruction=False,
         # The following are unstable parameters and their use is discouraged.
+        _enable_object_reconstruction=False,
         _redis_max_memory=None,
+        _plasma_directory=None,
         _node_ip_address=ray_constants.NODE_DEFAULT_IP,
         _driver_object_store_memory=None,
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        _include_java=False,
         _java_worker_options=None,
+        _code_search_path=None,
         _temp_dir=None,
         _load_code_from_local=False,
         _lru_evict=False,
         _metrics_export_port=None,
-        _object_spilling_config=None,
         _system_config=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
@@ -566,27 +579,27 @@ def init(
             is true.
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        enable_object_reconstruction (bool): If True, when an object stored in
+        _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.ObjectLostError will be
             thrown.
         _redis_max_memory: Redis max memory.
+        _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address (str): The IP address of the node that we are on.
         _driver_object_store_memory (int): Limit the amount of memory the
             driver can use in the object store for creating objects.
         _memory: Amount of reservable memory resource to create.
         _redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
-        _include_java: Boolean flag indicating whether or not to enable java
-            workers.
         _temp_dir (str): If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
         _load_code_from_local: Whether code should be loaded from a local
             module or from the GCS.
         _java_worker_options: Overwrite the options to start Java workers.
+        _code_search_path (list): Java classpath or python import path.
         _lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.ObjectLostError may be thrown. If False, then
@@ -596,9 +609,7 @@ def init(
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
-        _object_spilling_config (str): The configuration json string for object
-            spilling I/O worker.
-        _system_config (str): JSON configuration for overriding
+        _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
     Returns:
@@ -608,6 +619,29 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    # Try to increase the file descriptor limit, which is too low by
+    # default for Ray: https://github.com/ray-project/ray/issues/11239
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < hard:
+            logger.debug("Automatically increasing RLIMIT_NOFILE to max "
+                         "value of {}".format(hard))
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+            except ValueError:
+                logger.debug("Failed to raise limit.")
+        soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < 4096:
+            logger.warning(
+                "File descriptor limit {} is too low for production "
+                "servers and may result in connection errors. "
+                "At least 8192 is recommended. --- "
+                "Fix with 'ulimit -n 8192'".format(soft))
+    except ImportError:
+        logger.debug("Could not import resource module (on Windows)")
+        pass
 
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
@@ -620,6 +654,11 @@ def init(
                 "please call ray.init() or ray.init(address=\"auto\") on the "
                 "driver.")
 
+    # Convert hostnames to numerical IP address.
+    if _node_ip_address is not None:
+        node_ip_address = services.address_to_ip(_node_ip_address)
+    raylet_ip_address = node_ip_address
+
     if address:
         redis_address, _, _ = services.validate_redis_address(address)
     else:
@@ -627,6 +666,10 @@ def init(
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
+
+    if redis_address is not None:
+        logger.info(
+            f"Connecting to existing Ray cluster at address: {redis_address}")
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -653,8 +696,8 @@ def init(
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
-            node_ip_address=None,
-            raylet_ip_address=None,
+            node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_worker_output=None,
@@ -665,9 +708,8 @@ def init(
             num_redis_shards=None,
             redis_max_clients=None,
             redis_password=_redis_password,
-            plasma_directory=None,
+            plasma_directory=_plasma_directory,
             huge_pages=None,
-            include_java=_include_java,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
@@ -678,12 +720,12 @@ def init(
             temp_dir=_temp_dir,
             load_code_from_local=_load_code_from_local,
             java_worker_options=_java_worker_options,
+            code_search_path=_code_search_path,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction,
-            metrics_export_port=_metrics_export_port,
-            object_spilling_config=_object_spilling_config)
+            enable_object_reconstruction=_enable_object_reconstruction,
+            metrics_export_port=_metrics_export_port)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -711,15 +753,15 @@ def init(
         if _lru_evict:
             raise ValueError("When connecting to an existing cluster, "
                              "_lru_evict must not be provided.")
-        if enable_object_reconstruction:
+        if _enable_object_reconstruction:
             raise ValueError(
                 "When connecting to an existing cluster, "
-                "enable_object_reconstruction must not be provided.")
+                "_enable_object_reconstruction must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
-            node_ip_address=None,
-            raylet_ip_address=None,
+            node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
@@ -727,7 +769,7 @@ def init(
             load_code_from_local=_load_code_from_local,
             _system_config=_system_config,
             lru_evict=_lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction,
+            enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
             ray_params,
@@ -748,7 +790,8 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
-    return _global_node.address_info
+    node_id = global_worker.core_worker.get_current_node_id()
+    return dict(_global_node.address_info, node_id=node_id.hex())
 
 
 # Functions to run as callback after a successful ray init.
@@ -982,7 +1025,8 @@ def print_logs(redis_client, threads_stopped, job_id):
 def print_error_messages_raylet(task_error_queue, threads_stopped):
     """Prints message received in the given output queue.
 
-    This checks periodically if any un-raised errors occured in the background.
+    This checks periodically if any un-raised errors occurred in the
+    background.
 
     Args:
         task_error_queue (queue.Queue): A queue used to receive errors from the
@@ -1140,8 +1184,11 @@ def connect(node,
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
 
-    if mode is not SCRIPT_MODE and setproctitle:
-        setproctitle.setproctitle("ray::IDLE")
+    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
+        process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
+        if mode is IO_WORKER_MODE:
+            process_name = ray_constants.WORKER_PROCESS_TYPE_IO_WORKER
+        setproctitle.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -1154,7 +1201,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray.services.check_version_info(worker.redis_client)
+        ray._private.services.check_version_info(worker.redis_client)
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
@@ -1321,11 +1368,13 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    setproctitle.setproctitle(title)
+    if _mode() is not LOCAL_MODE:
+        setproctitle.setproctitle(title)
     try:
         yield
     finally:
-        setproctitle.setproctitle(next_title)
+        if _mode() is not LOCAL_MODE:
+            setproctitle.setproctitle(next_title)
 
 
 def show_in_dashboard(message, key="", dtype="text"):
@@ -1339,7 +1388,7 @@ def show_in_dashboard(message, key="", dtype="text"):
         message (str): Message to be displayed.
         key (str): The key name for the message. Multiple message under
             different keys will be displayed at the same time. Messages
-            under the same key will be overriden.
+            under the same key will be overridden.
         data_type (str): The type of message for rendering. One of the
             following: text, html.
     """
@@ -1396,10 +1445,10 @@ def get(object_refs, *, timeout=None):
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.debug("Using blocking ray.get inside async actor. "
-                         "This blocks the event loop. Please use `await` "
-                         "on object ref with asyncio.gather if you want to "
-                         "yield execution to the event loop instead.")
+            logger.warning("Using blocking ray.get inside async actor. "
+                           "This blocks the event loop. Please use `await` "
+                           "on object ref with asyncio.gather if you want to "
+                           "yield execution to the event loop instead.")
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
@@ -1611,7 +1660,8 @@ def cancel(object_ref, *, force=False):
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
 
-    Calling ray.get on a canceled task will raise a TaskCancelledError.
+    Calling ray.get on a canceled task will raise a TaskCancelledError or a
+    WorkerCrashedError if ``force=True``.
 
     Args:
         object_ref (ObjectRef): ObjectRef returned by the task
@@ -1648,13 +1698,12 @@ def make_decorator(num_returns=None,
                    memory=None,
                    object_store_memory=None,
                    resources=None,
+                   accelerator_type=None,
                    max_calls=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
-                   worker=None,
-                   placement_group=None,
-                   placement_group_bundle_index=-1):
+                   worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1682,8 +1731,8 @@ def make_decorator(num_returns=None,
                     " integer")
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, num_returns, max_calls,
-                max_retries, placement_group, placement_group_bundle_index)
+                memory, object_store_memory, resources, accelerator_type,
+                num_returns, max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1704,7 +1753,8 @@ def make_decorator(num_returns=None,
                     " positive integer")
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_restarts, max_task_retries)
+                                        accelerator_type, max_restarts,
+                                        max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1713,7 +1763,7 @@ def make_decorator(num_returns=None,
 
 
 def remote(*args, **kwargs):
-    """Define a remote function or an actor class.
+    """Defines a remote function or an actor class.
 
     This can be used with no arguments to define a remote function or actor as
     follows:
@@ -1729,47 +1779,7 @@ def remote(*args, **kwargs):
             def method(self):
                 return 1
 
-    It can also be used with specific keyword arguments:
-
-    * **num_returns:** This is only for *remote functions*. It specifies
-      the number of object refs returned by the remote function invocation.
-    * **num_cpus:** The quantity of CPU cores to reserve for this task or for
-      the lifetime of the actor.
-    * **num_gpus:** The quantity of GPUs to reserve for this task or for the
-      lifetime of the actor.
-    * **resources:** The quantity of various custom resources to reserve for
-      this task or for the lifetime of the actor. This is a dictionary mapping
-      strings (resource names) to numbers.
-    * **max_calls:** Only for *remote functions*. This specifies the maximum
-      number of times that a given worker can execute the given remote function
-      before it must exit (this can be used to address memory leaks in
-      third-party libraries or to reclaim resources that cannot easily be
-      released, e.g., GPU memory that was acquired by TensorFlow). By
-      default this is infinite.
-    * **max_restarts**: Only for *actors*. This specifies the maximum
-      number of times that the actor should be restarted when it dies
-      unexpectedly. The minimum valid value is 0 (default), which indicates
-      that the actor doesn't need to be restarted. A value of -1
-      indicates that an actor should be restarted indefinitely.
-    * **max_task_retries**: Only for *actors*. How many times to retry an actor
-      task if the task fails due to a system error, e.g., the actor has died.
-      If set to -1, the system will retry the failed task until the task
-      succeeds, or the actor has reached its max_restarts limit. If set to n >
-      0, the system will retry the failed task up to n times, after which the
-      task will throw a `RayActorError` exception upon `ray.get`. Note that
-      Python exceptions are not considered system errors and will not trigger
-      retries.
-    * **max_retries**: Only for *remote functions*. This specifies the maximum
-      number of times that the remote function should be rerun when the worker
-      process executing it crashes unexpectedly. The minimum valid value is 0,
-      the default is 4 (default), and a value of -1 indicates infinite retries.
-    * **placement_group**: the placement group this task belongs to,
-        or None if it doesn't belong to any group.
-    * **placement_group_bundle_index**: the index of the bundle
-        if the task belongs to a placement group, which may be -1 to indicate
-        any available bundle.
-
-    This can be done as follows:
+    It can also be used with specific keyword arguments as follows:
 
     .. code-block:: python
 
@@ -1803,6 +1813,56 @@ def remote(*args, **kwargs):
     in Python is deleted, which will cause them to complete any outstanding
     work and then shut down. If you want to kill them immediately, you can
     also call ``ray.kill(actor)``.
+
+    Args:
+        num_returns (int): This is only for *remote functions*. It specifies
+            the number of object refs returned by
+            the remote function invocation.
+        num_cpus (float): The quantity of CPU cores to reserve
+            for this task or for the lifetime of the actor.
+        num_gpus (int): The quantity of GPUs to reserve
+            for this task or for the lifetime of the actor.
+        resources (Dict[str, float]): The quantity of various custom resources
+            to reserve for this task or for the lifetime of the actor.
+            This is a dictionary mapping strings (resource names) to floats.
+        accelerator_type: If specified, requires that the task or actor run
+            on a node with the specified type of accelerator.
+            See `ray.accelerators` for accelerator types.
+        max_calls (int): Only for *remote functions*. This specifies the
+            maximum number of times that a given worker can execute
+            the given remote function before it must exit
+            (this can be used to address memory leaks in third-party
+            libraries or to reclaim resources that cannot easily be
+            released, e.g., GPU memory that was acquired by TensorFlow).
+            By default this is infinite.
+        max_restarts (int): Only for *actors*. This specifies the maximum
+            number of times that the actor should be restarted when it dies
+            unexpectedly. The minimum valid value is 0 (default),
+            which indicates that the actor doesn't need to be restarted.
+            A value of -1 indicates that an actor should be restarted
+            indefinitely.
+        max_task_retries (int): Only for *actors*. How many times to
+            retry an actor task if the task fails due to a system error,
+            e.g., the actor has died. If set to -1, the system will
+            retry the failed task until the task succeeds, or the actor
+            has reached its max_restarts limit. If set to `n > 0`, the
+            system will retry the failed task up to n times, after which the
+            task will throw a `RayActorError` exception upon :obj:`ray.get`.
+            Note that Python exceptions are not considered system errors
+            and will not trigger retries.
+        max_retries (int): Only for *remote functions*. This specifies
+            the maximum number of times that the remote function
+            should be rerun when the worker process executing it
+            crashes unexpectedly. The minimum valid value is 0,
+            the default is 4 (default), and a value of -1 indicates
+            infinite retries.
+        override_environment_variables (Dict[str, str]): This specifies
+            environment variables to override for the actor or task.  The
+            overrides are propagated to all child actors and tasks.  This
+            is a dictionary mapping variable names to their values.  Existing
+            variables can be overridden, new ones can be created, and an
+            existing variable can be unset by setting it to an empty string.
+
     """
     worker = global_worker
 
@@ -1828,12 +1888,11 @@ def remote(*args, **kwargs):
             "memory",
             "object_store_memory",
             "resources",
+            "accelerator_type",
             "max_calls",
             "max_restarts",
             "max_task_retries",
             "max_retries",
-            "placement_group",
-            "placement_group_bundle_index",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -1845,6 +1904,8 @@ def remote(*args, **kwargs):
     if resources is not None:
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
+
+    accelerator_type = kwargs.get("accelerator_type")
 
     # Handle other arguments.
     num_returns = kwargs.get("num_returns")
@@ -1862,6 +1923,7 @@ def remote(*args, **kwargs):
         memory=memory,
         object_store_memory=object_store_memory,
         resources=resources,
+        accelerator_type=accelerator_type,
         max_calls=max_calls,
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,

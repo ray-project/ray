@@ -34,6 +34,7 @@ struct GcsServerConfig {
   uint16_t redis_port = 6379;
   bool retry_redis = true;
   bool is_test = false;
+  std::string node_ip_address;
 };
 
 class GcsNodeManager;
@@ -108,6 +109,9 @@ class GcsServer {
   /// TODO(ffbin): Once we entirely migrate to service-based GCS, we should pass GCS
   /// server address directly to raylets and get rid of this lookup.
   void StoreGcsServerAddressInRedis();
+
+  /// Collect stats from each module for every (metrics_report_interval_ms / 2) ms.
+  void CollectStats();
 
   /// Gcs server configuration
   GcsServerConfig config_;

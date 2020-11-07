@@ -3,16 +3,13 @@ from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
 
 import copy
-import io
 import logging
-import glob
 import os
 import pickle
 import platform
 
-import pandas as pd
+from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import Tee
-from six import string_types
 import shutil
 import tempfile
 import time
@@ -20,7 +17,6 @@ import uuid
 
 import ray
 from ray.util.debug import log_once
-from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (
     DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
     TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION,
@@ -30,155 +26,6 @@ from ray.tune.utils import UtilMonitor
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
-
-
-class TrainableUtil:
-    @staticmethod
-    def process_checkpoint(checkpoint, parent_dir, trainable_state):
-        saved_as_dict = False
-        if isinstance(checkpoint, string_types):
-            if not checkpoint.startswith(parent_dir):
-                raise ValueError(
-                    "The returned checkpoint path must be within the "
-                    "given checkpoint dir {}: {}".format(
-                        parent_dir, checkpoint))
-            checkpoint_path = checkpoint
-            if os.path.isdir(checkpoint_path):
-                # Add trailing slash to prevent tune metadata from
-                # being written outside the directory.
-                checkpoint_path = os.path.join(checkpoint_path, "")
-        elif isinstance(checkpoint, dict):
-            saved_as_dict = True
-            checkpoint_path = os.path.join(parent_dir, "checkpoint")
-            with open(checkpoint_path, "wb") as f:
-                pickle.dump(checkpoint, f)
-        else:
-            raise ValueError("Returned unexpected type {}. "
-                             "Expected str or dict.".format(type(checkpoint)))
-
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
-            trainable_state["saved_as_dict"] = saved_as_dict
-            pickle.dump(trainable_state, f)
-        return checkpoint_path
-
-    @staticmethod
-    def pickle_checkpoint(checkpoint_path):
-        """Pickles checkpoint data."""
-        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        data = {}
-        for basedir, _, file_names in os.walk(checkpoint_dir):
-            for file_name in file_names:
-                path = os.path.join(basedir, file_name)
-                with open(path, "rb") as f:
-                    data[os.path.relpath(path, checkpoint_dir)] = f.read()
-        # Use normpath so that a directory path isn't mapped to empty string.
-        name = os.path.relpath(
-            os.path.normpath(checkpoint_path), checkpoint_dir)
-        name += os.path.sep if os.path.isdir(checkpoint_path) else ""
-        data_dict = pickle.dumps({
-            "checkpoint_name": name,
-            "data": data,
-        })
-        return data_dict
-
-    @staticmethod
-    def checkpoint_to_object(checkpoint_path):
-        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
-        out = io.BytesIO()
-        if len(data_dict) > 10e6:  # getting pretty large
-            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
-        out.write(data_dict)
-        return out.getvalue()
-
-    @staticmethod
-    def find_checkpoint_dir(checkpoint_path):
-        """Returns the directory containing the checkpoint path.
-
-        Raises:
-            FileNotFoundError if the directory is not found.
-        """
-        if not os.path.exists(checkpoint_path):
-            raise FileNotFoundError("Path does not exist", checkpoint_path)
-        if os.path.isdir(checkpoint_path):
-            checkpoint_dir = checkpoint_path
-        else:
-            checkpoint_dir = os.path.dirname(checkpoint_path)
-        while checkpoint_dir != os.path.dirname(checkpoint_dir):
-            if os.path.exists(os.path.join(checkpoint_dir, ".is_checkpoint")):
-                break
-            checkpoint_dir = os.path.dirname(checkpoint_dir)
-        else:
-            raise FileNotFoundError("Checkpoint directory not found for {}"
-                                    .format(checkpoint_path))
-        return checkpoint_dir
-
-    @staticmethod
-    def make_checkpoint_dir(checkpoint_dir, index, override=False):
-        """Creates a checkpoint directory within the provided path.
-
-        Args:
-            checkpoint_dir (str): Path to checkpoint directory.
-            index (str): A subdirectory will be created
-                at the checkpoint directory named 'checkpoint_{index}'.
-            override (bool): Deletes checkpoint_dir before creating
-                a new one.
-        """
-        suffix = "checkpoint"
-        if index is not None:
-            suffix += "_{}".format(index)
-        checkpoint_dir = os.path.join(checkpoint_dir, suffix)
-
-        if override and os.path.exists(checkpoint_dir):
-            shutil.rmtree(checkpoint_dir)
-        os.makedirs(checkpoint_dir, exist_ok=True)
-        # Drop marker in directory to identify it as a checkpoint dir.
-        open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
-        return checkpoint_dir
-
-    @staticmethod
-    def create_from_pickle(obj, tmpdir):
-        info = pickle.loads(obj)
-        data = info["data"]
-        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
-
-        for relpath_name, file_contents in data.items():
-            path = os.path.join(tmpdir, relpath_name)
-
-            # This may be a subdirectory, hence not just using tmpdir
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "wb") as f:
-                f.write(file_contents)
-        return checkpoint_path
-
-    @staticmethod
-    def get_checkpoints_paths(logdir):
-        """ Finds the checkpoints within a specific folder.
-
-        Returns a pandas DataFrame of training iterations and checkpoint
-        paths within a specific folder.
-
-        Raises:
-            FileNotFoundError if the directory is not found.
-        """
-        marker_paths = glob.glob(
-            os.path.join(logdir, "checkpoint_*/.is_checkpoint"))
-        iter_chkpt_pairs = []
-        for marker_path in marker_paths:
-            chkpt_dir = os.path.dirname(marker_path)
-            metadata_file = glob.glob(
-                os.path.join(chkpt_dir, "*.tune_metadata"))
-            if len(metadata_file) != 1:
-                raise ValueError(
-                    "{} has zero or more than one tune_metadata.".format(
-                        chkpt_dir))
-
-            chkpt_path = metadata_file[0][:-len(".tune_metadata")]
-            chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1:])
-            iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
-
-        chkpt_df = pd.DataFrame(
-            iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
-        return chkpt_df
 
 
 class Trainable:
@@ -302,7 +149,7 @@ class Trainable:
             `done` (bool): training is terminated. Filled only if not provided.
 
             `time_this_iter_s` (float): Time in seconds this iteration
-            took to run. This may be overriden in order to override the
+            took to run. This may be overridden in order to override the
             system-computed time difference.
 
             `time_total_s` (float): Accumulated time in seconds for this
@@ -552,7 +399,22 @@ class Trainable:
         self._close_logfiles()
         self._open_logfiles(stdout_file, stderr_file)
 
-        return self.reset_config(new_config)
+        success = self.reset_config(new_config)
+        if not success:
+            return False
+
+        # Reset attributes. Will be overwritten by `restore` if a checkpoint
+        # is provided.
+        self._iteration = 0
+        self._time_total = 0.0
+        self._timesteps_total = None
+        self._episodes_total = None
+        self._time_since_restore = 0.0
+        self._timesteps_since_restore = 0
+        self._iterations_since_restore = 0
+        self._restored = False
+
+        return True
 
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
@@ -579,6 +441,8 @@ class Trainable:
             self._result_logger = logger_creator(config)
             self._logdir = self._result_logger.logdir
         else:
+            from ray.tune.logger import UnifiedLogger
+
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             ray.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
             self._logdir = tempfile.mkdtemp(
@@ -637,6 +501,9 @@ class Trainable:
         """
         self._result_logger.flush()
         self._result_logger.close()
+        if self._monitor.is_alive():
+            self._monitor.stop()
+            self._monitor.join()
         self.cleanup()
 
         self._close_logfiles()
@@ -724,7 +591,7 @@ class Trainable:
         """
         result = self._train()
 
-        if self._is_overriden("_train") and log_once("_train"):
+        if self._is_overridden("_train") and log_once("_train"):
             logger.warning(
                 "Trainable._train is deprecated and will be removed in "
                 "a future version of Ray. Override Trainable.step instead.")
@@ -775,7 +642,7 @@ class Trainable:
         """
         checkpoint = self._save(tmp_checkpoint_dir)
 
-        if self._is_overriden("_save") and log_once("_save"):
+        if self._is_overridden("_save") and log_once("_save"):
             logger.warning(
                 "Trainable._save is deprecated and will be removed in a "
                 "future version of Ray. Override "
@@ -833,7 +700,7 @@ class Trainable:
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
         self._restore(checkpoint)
-        if self._is_overriden("_restore") and log_once("_restore"):
+        if self._is_overridden("_restore") and log_once("_restore"):
             logger.warning(
                 "Trainable._restore is deprecated and will be removed in a "
                 "future version of Ray. Override Trainable.load_checkpoint "
@@ -856,7 +723,7 @@ class Trainable:
                 Copy of `self.config`.
         """
         self._setup(config)
-        if self._is_overriden("_setup") and log_once("_setup"):
+        if self._is_overridden("_setup") and log_once("_setup"):
             logger.warning(
                 "Trainable._setup is deprecated and will be removed in "
                 "a future version of Ray. Override Trainable.setup instead.")
@@ -881,7 +748,7 @@ class Trainable:
             result (dict): Training result returned by step().
         """
         self._log_result(result)
-        if self._is_overriden("_log_result") and log_once("_log_result"):
+        if self._is_overridden("_log_result") and log_once("_log_result"):
             logger.warning(
                 "Trainable._log_result is deprecated and will be removed in "
                 "a future version of Ray. Override "
@@ -906,7 +773,7 @@ class Trainable:
         .. versionadded:: 0.8.7
         """
         self._stop()
-        if self._is_overriden("_stop") and log_once("trainable.cleanup"):
+        if self._is_overridden("_stop") and log_once("trainable.cleanup"):
             logger.warning(
                 "Trainable._stop is deprecated and will be removed in "
                 "a future version of Ray. Override Trainable.cleanup instead.")
@@ -930,5 +797,5 @@ class Trainable:
         """
         return {}
 
-    def _is_overriden(self, key):
+    def _is_overridden(self, key):
         return getattr(self, key).__code__ != getattr(Trainable, key).__code__

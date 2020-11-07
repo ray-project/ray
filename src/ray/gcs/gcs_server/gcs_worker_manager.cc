@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 namespace gcs {
@@ -22,7 +23,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
     rpc::SendReplyCallback send_reply_callback) {
   const rpc::Address worker_address = request.worker_failure().worker_address();
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
-  const auto node_id = ClientID::FromBinary(worker_address.raylet_id());
+  const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
   std::stringstream log_stream;
   log_stream << "Reporting worker failure, worker id = " << worker_id
              << ", node id = " << node_id
@@ -30,7 +31,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   if (request.worker_failure().intentional_disconnect()) {
     RAY_LOG(INFO) << log_stream.str();
   } else {
-    RAY_LOG(WARNING) << log_stream.str();
+    RAY_LOG(WARNING) << log_stream.str()
+                     << ". Unintentional worker failures have been reported. If there "
+                        "are lots of this logs, that might indicate there are "
+                        "unexpected failures in the cluster.";
   }
   auto worker_failure_data = std::make_shared<WorkerTableData>();
   worker_failure_data->CopyFrom(request.worker_failure());
@@ -49,6 +53,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                          << ", node id = " << node_id
                          << ", address = " << worker_address.ip_address();
         } else {
+          stats::UnintentionalWorkerFailures.Record(1);
           RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
                                              worker_failure_data->SerializeAsString(),
                                              nullptr));

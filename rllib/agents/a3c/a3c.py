@@ -37,6 +37,9 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
+    # Switch on Trajectory View API for A2/3C by default.
+    # NOTE: Only supported for PyTorch so far.
+    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -53,7 +56,7 @@ def get_policy_class(config):
 
 def validate_config(config):
     if config["entropy_coeff"] < 0:
-        raise DeprecationWarning("entropy_coeff must be >= 0")
+        raise DeprecationWarning("`entropy_coeff` must be >= 0")
     if config["sample_async"] and config["framework"] == "torch":
         config["sample_async"] = False
         logger.warning("`sample_async=True` is not supported for PyTorch! "

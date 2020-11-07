@@ -1,7 +1,9 @@
+import ray
 from ray import serve
 import requests
 
-serve.init()
+ray.init(num_cpus=8)
+client = serve.start()
 
 
 class Counter:
@@ -9,11 +11,12 @@ class Counter:
         self.count = 0
 
     def __call__(self, flask_request):
+        self.count += 1
         return {"current_counter": self.count}
 
 
-serve.create_backend("counter", Counter)
-serve.create_endpoint("counter", backend="counter", route="/counter")
+client.create_backend("counter", Counter)
+client.create_endpoint("counter", backend="counter", route="/counter")
 
-requests.get("http://127.0.0.1:8000/counter").json()
-# > {"current_counter": self.count}
+print(requests.get("http://127.0.0.1:8000/counter").json())
+# > {"current_counter": 1}

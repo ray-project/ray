@@ -349,9 +349,9 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   // For direct actor creation task:
   //   - when it's submitted by core worker, we guarantee that
   //     we always request a new worker lease, in that case
-  //     `OnDispatch` is overriden to an actual callback.
+  //     `OnDispatch` is overridden to an actual callback.
   //   - when it's resubmitted by raylet because of reconstruction,
-  //     `OnDispatch` will not be overriden and thus is nullptr.
+  //     `OnDispatch` will not be overridden and thus is nullptr.
   if (task.GetTaskSpecification().IsActorCreationTask() && task.OnDispatch() == nullptr) {
     // This is an actor creation task, and it's being restarted,
     // in this case we still need the task lease. Note that we don't
@@ -445,13 +445,6 @@ std::string TaskDependencyManager::DebugString() const {
   result << "\n- local objects map size: " << local_objects_.size();
   result << "\n- pending tasks map size: " << pending_tasks_.size();
   return result.str();
-}
-
-void TaskDependencyManager::RecordMetrics() const {
-  stats::NumSubscribedTasks().Record(task_dependencies_.size());
-  stats::NumRequiredTasks().Record(required_tasks_.size());
-  stats::NumRequiredObjects().Record(required_objects_.size());
-  stats::NumPendingTasks().Record(pending_tasks_.size());
 }
 
 bool TaskDependencyManager::GetOwnerAddress(const ObjectID &object_id,
