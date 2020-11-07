@@ -227,9 +227,7 @@ def test_object_transfer_retry(ray_start_cluster):
     # Get the objects locally to cause them to be transferred. This is the
     # first time the objects are getting transferred, so it should happen
     # quickly.
-    start_time = time.time()
     ray.get(x_id)
-    end_time = time.time()
 
     def not_exists():
         return not ray.worker.global_worker.core_worker.object_exists(x_id)

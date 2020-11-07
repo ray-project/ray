@@ -129,7 +129,7 @@ class PushManager {
   /// Return the number of chunks remaining. For testing only.
   int64_t NumChunksRemaining() const {
     int total = 0;
-    for (const auto& pair : chunks_remaining_) {
+    for (const auto &pair : chunks_remaining_) {
       total += pair.second;
     }
     return total;

@@ -453,8 +453,9 @@ void PushManager::ScheduleRemainingPushes() {
     send_chunk_fn(next_chunk_id_[push_id]++);
     chunks_in_flight_ += 1;
     RAY_LOG(DEBUG) << "Sending chunk " << next_chunk_id_[push_id] << " of " << max_chunks
-                   << " for push " << push_id.first << ", " << push_id.second << ", chunks in flight "
-                   << NumChunksInFlight() << " / " << max_chunks_in_flight_
+                   << " for push " << push_id.first << ", " << push_id.second
+                   << ", chunks in flight " << NumChunksInFlight() << " / "
+                   << max_chunks_in_flight_
                    << " max, remaining chunks: " << NumChunksRemaining();
   }
 }
@@ -516,8 +517,9 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &client_id) {
     UniqueID push_id = UniqueID::FromRandom();
     push_manager_->StartPush(client_id, object_id, num_chunks, [=](int64_t chunk_id) {
       SendObjectChunk(push_id, object_id, owner_address, client_id, data_size,
-                      metadata_size, chunk_id, rpc_client,
-                      [=](const Status &status) { push_manager_->OnChunkComplete(client_id, object_id); });
+                      metadata_size, chunk_id, rpc_client, [=](const Status &status) {
+                        push_manager_->OnChunkComplete(client_id, object_id);
+                      });
     });
   } else {
     // Push is best effort, so do nothing here.

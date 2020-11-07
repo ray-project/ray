@@ -89,8 +89,14 @@ TEST(TestPushManager, TestMultipleTransfers) {
   int num_active1 = 0;
   int num_active2 = 0;
   PushManager pm(5);
-  pm.StartPush(client1, obj_id, 10, [&](int64_t chunk_id) { results1[chunk_id] = 1; num_active1++;});
-  pm.StartPush(client2, obj_id, 10, [&](int64_t chunk_id) { results2[chunk_id] = 2; num_active2++;});
+  pm.StartPush(client1, obj_id, 10, [&](int64_t chunk_id) {
+    results1[chunk_id] = 1;
+    num_active1++;
+  });
+  pm.StartPush(client2, obj_id, 10, [&](int64_t chunk_id) {
+    results2[chunk_id] = 2;
+    num_active2++;
+  });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 20);
   ASSERT_EQ(pm.NumPushesInFlight(), 2);
