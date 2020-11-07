@@ -24,19 +24,17 @@ TEST(TestPushManager, TestSingleTransfer) {
   results.reserve(10);
   UniqueID push_id = UniqueID::FromRandom();
   PushManager pm(5);
-  pm.StartPush(push_id, 10, [&](int64_t chunk_id) {
-    results[chunk_id] = 1;
-  });
+  pm.StartPush(push_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 1; });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 5);
   ASSERT_EQ(pm.NumPushesInFlight(), 1);
-  for (int i=0; i < 10; i++) {
+  for (int i = 0; i < 10; i++) {
     pm.OnChunkComplete();
   }
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
   ASSERT_EQ(pm.NumPushesInFlight(), 0);
-  for (int i=0; i < 10; i++) {
+  for (int i = 0; i < 10; i++) {
     ASSERT_EQ(results[i], 1);
   }
 }
@@ -49,25 +47,21 @@ TEST(TestPushManager, TestMultipleTransfers) {
   UniqueID push1 = UniqueID::FromRandom();
   UniqueID push2 = UniqueID::FromRandom();
   PushManager pm(5);
-  pm.StartPush(push1, 10, [&](int64_t chunk_id) {
-    results1[chunk_id] = 1;
-  });
-  pm.StartPush(push2, 10, [&](int64_t chunk_id) {
-    results2[chunk_id] = 2;
-  });
+  pm.StartPush(push1, 10, [&](int64_t chunk_id) { results1[chunk_id] = 1; });
+  pm.StartPush(push2, 10, [&](int64_t chunk_id) { results2[chunk_id] = 2; });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 15);
   ASSERT_EQ(pm.NumPushesInFlight(), 2);
-  for (int i=0; i < 20; i++) {
+  for (int i = 0; i < 20; i++) {
     pm.OnChunkComplete();
   }
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
   ASSERT_EQ(pm.NumPushesInFlight(), 0);
-  for (int i=0; i < 10; i++) {
+  for (int i = 0; i < 10; i++) {
     ASSERT_EQ(results1[i], 1);
   }
-  for (int i=0; i < 10; i++) {
+  for (int i = 0; i < 10; i++) {
     ASSERT_EQ(results2[i], 2);
   }
 }
