@@ -7,6 +7,7 @@ from typing import Dict, Callable, List
 import shutil
 from queue import PriorityQueue
 import unittest
+import pytest
 
 import ray
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
