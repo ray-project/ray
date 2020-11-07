@@ -406,7 +406,7 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
 
 void PushManager::StartPush(const UniqueID &push_id, int64_t num_chunks,
                             std::function<void(int64_t)> send_chunk_fn) {
-  RAY_LOG(ERROR) << "Start push for " << push_id << ", num chunks " << num_chunks;
+  RAY_LOG(DEBUG) << "Start push for " << push_id << ", num chunks " << num_chunks;
   RAY_CHECK(num_chunks > 0);
   push_info_[push_id] = std::make_pair(num_chunks, send_chunk_fn);
   next_chunk_id_[push_id] = 0;
@@ -433,7 +433,7 @@ void PushManager::ScheduleRemainingPushes() {
     send_chunk_fn(next_chunk_id_[push_id]);
     chunks_in_flight_ += 1;
     chunks_remaining_ -= 1;
-    RAY_LOG(ERROR) << "Sending chunk " << next_chunk_id_[push_id] << " of " << max_chunks
+    RAY_LOG(DEBUG) << "Sending chunk " << next_chunk_id_[push_id] << " of " << max_chunks
                    << " for push " << push_id << ", chunks in flight "
                    << NumChunksInFlight() << " / " << max_chunks_in_flight_
                    << " max, remaining chunks: " << NumChunksRemaining();
@@ -442,7 +442,7 @@ void PushManager::ScheduleRemainingPushes() {
     if (++next_chunk_id_[push_id] >= max_chunks) {
       next_chunk_id_.erase(push_id);
       push_info_.erase(it++);
-      RAY_LOG(ERROR) << "Push for " << push_id
+      RAY_LOG(DEBUG) << "Push for " << push_id
                      << " completed, remaining: " << NumPushesInFlight();
     } else {
       it++;
@@ -968,6 +968,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_requests_.size();
   result << "\n- num buffered profile events: " << profile_events_.size();
+  result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_->DebugString();
   result << "\n" << buffer_pool_.DebugString();

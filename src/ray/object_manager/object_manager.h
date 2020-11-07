@@ -124,13 +124,23 @@ class PushManager {
   void OnChunkComplete();
 
   /// Return the number of chunks currently in flight. For testing only.
-  int64_t NumChunksInFlight() { return chunks_in_flight_; };
+  int64_t NumChunksInFlight() const { return chunks_in_flight_; };
 
   /// Return the number of chunks remaining. For testing only.
-  int64_t NumChunksRemaining() { return chunks_remaining_; };
+  int64_t NumChunksRemaining() const { return chunks_remaining_; };
 
   /// Return the number of pushes currently in flight. For testing only.
-  int64_t NumPushesInFlight() { return push_info_.size(); };
+  int64_t NumPushesInFlight() const { return push_info_.size(); };
+
+  std::string DebugString() const {
+    std::stringstream result;
+    result << "PushManager:";
+    result << "\n- num pushes in flight: " << NumPushesInFlight();
+    result << "\n- num chunks in flight: " << NumChunksInFlight();
+    result << "\n- num chunks remaining: " << NumChunksRemaining();
+    result << "\n- max chunks allowed: " << max_chunks_in_flight_;
+    return result.str();
+  }
 
  private:
   /// Called on completion events to trigger additional pushes.
