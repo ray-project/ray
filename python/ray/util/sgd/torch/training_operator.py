@@ -137,7 +137,7 @@ class TrainingOperator:
         self._use_fp16 = use_fp16
         self._device_ids = device_ids
         self._use_gpu = use_gpu and torch.cuda.is_available()
-        self._device = torch.device("cuda" if self._use_gpu else "cpu")
+        #self._device = torch.device("cuda" if self._use_gpu else "cpu")
         if tqdm is None and use_tqdm:
             raise ValueError("tqdm must be installed to use tqdm in training.")
         self._use_tqdm = use_tqdm
