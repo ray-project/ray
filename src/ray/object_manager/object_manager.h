@@ -123,6 +123,7 @@ class PushManager {
                  std::function<void(int64_t)> send_chunk_fn);
 
   /// Called every time a chunk completes to trigger additional sends.
+  /// TODO(ekl) maybe we should cancel the entire push on error.
   void OnChunkComplete();
 
   /// Return the number of chunks currently in flight. For testing only.

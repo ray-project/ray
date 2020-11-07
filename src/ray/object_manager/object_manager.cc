@@ -412,19 +412,21 @@ void PushManager::ScheduleRemainingPushes() {
 
     // Send the next chunk for this push.
     send_chunk_fn(next_chunk_id_[push_id]);
-    chunk_in_flight_ += 1;
+    chunks_in_flight_ += 1;
     chunks_remaining_ -= 1;
     RAY_LOG(INFO) << "Sending chunk " << next_chunk_id_[push_id] << " of " << max_chunks
-                  << " for push " << push_id << ", chunks in flight " << chunks_in_flight_
+                  << " for push " << push_id << ", chunks in flight " << NumChunksInFlight()
                   << " / " << max_chunks_in_flight_
-                  << ", remaining chunks: " << chunks_remaining_;
+                  << "max, remaining chunks: " << NumChunksRemaining();
 
     // It is the last chunk and we don't need to track it any more.
-    if (++next_chunk_id[push_id] >= max_chunks) {
+    if (++next_chunk_id_[push_id] >= max_chunks) {
       next_chunk_id_.erase(push_id);
-      it = push_info_.erase(it);
+      push_info_.erase(it++);
       RAY_LOG(INFO) << "Push for " << push_id
                     << " completed, remaining: " << NumPushesInFlight();
+    } else {
+      it++;
     }
   }
 }
