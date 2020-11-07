@@ -187,8 +187,7 @@ RAY_CONFIG(int, object_manager_push_timeout_ms, 10000)
 
 /// The period of time that an object manager will wait before pushing the
 /// same object again to a specific object manager.
-/// NOTE(ekl): this has been raised to avoid spurious repeated pushes.
-RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 10 * 60 * 1000)
+RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000)
 
 /// Default chunk size for multi-chunk transfers to use in the object manager.
 /// In the object manager, no single thread is permitted to transfer more
