@@ -152,7 +152,7 @@ class PushManager {
   /// Called on completion events to trigger additional pushes.
   void ScheduleRemainingPushes();
 
-  /// Pair of (destination, object_id)
+  /// Pair of (destination, object_id).
   typedef std::pair<NodeID, ObjectID> PushID;
 
   /// Pair of (num_chunks, chunk_send_fn).
