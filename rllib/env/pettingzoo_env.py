@@ -109,7 +109,7 @@ class PettingZooEnv(MultiAgentEnv):
         rew_d = {}
         done_d = {}
         info_d = {}
-        while True:
+        while self.env.agents:
             obs, rew, done, info = self.env.last()
             a = self.env.agent_selection
             obs_d[a] = obs
