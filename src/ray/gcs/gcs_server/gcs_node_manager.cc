@@ -16,6 +16,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/stats.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -445,6 +446,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     removed_node = std::move(iter->second);
+    // Record stats that there's a new removed node.
+    stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     // Remove from cluster resources.
@@ -557,6 +560,7 @@ void GcsNodeManager::SendBatchedHeartbeat() {
     for (auto &heartbeat : heartbeat_buffer_) {
       batch->add_batch()->Swap(&heartbeat.second);
     }
+    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));

@@ -40,7 +40,7 @@ void ProcessCallback(int64_t callback_index,
   if (!callback_item->is_subscription_) {
     // Record the redis latency for non-subscription redis operations.
     auto end_time = absl::GetCurrentTimeNanos() / 1000;
-    ray::stats::RedisLatency().Record(end_time - callback_item->start_time_);
+    ray::stats::GcsLatency().Record(end_time - callback_item->start_time_);
   }
 
   // Dispatch the callback.

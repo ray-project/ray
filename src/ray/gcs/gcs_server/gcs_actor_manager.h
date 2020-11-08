@@ -299,6 +299,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       &GetActorRegisterCallbacks() const;
 
+  /// Collect stats from gcs actor manager in-memory data structures.
+  void CollectStats() const;
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {

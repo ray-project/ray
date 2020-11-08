@@ -194,6 +194,7 @@ void LocalObjectManager::SpillObjectsInternal(
                                << status.ToString();
                 if (callback) {
                   callback(status);
+                  on_objects_spilled_();
                 }
               } else {
                 AddSpilledUrls(objects_to_spill, r, callback);
@@ -206,6 +207,7 @@ void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  auto num_bytes_spilled = std::make_shared<size_t>(0);
   for (size_t i = 0; i < object_ids.size(); ++i) {
     const ObjectID &object_id = object_ids[i];
     const std::string &object_url = worker_reply.spilled_objects_url(i);
@@ -214,18 +216,21 @@ void LocalObjectManager::AddSpilledUrls(
     // releasing the object to make sure that the spilled object can
     // be retrieved by other raylets.
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-        object_id, object_url, [this, object_id, callback, num_remaining](Status status) {
+        object_id, object_url,
+        [this, object_id, callback, num_remaining, num_bytes_spilled](Status status) {
           RAY_CHECK_OK(status);
           absl::MutexLock lock(&mutex_);
           // Unpin the object.
           auto it = objects_pending_spill_.find(object_id);
           RAY_CHECK(it != objects_pending_spill_.end());
           num_bytes_pending_spill_ -= it->second->GetSize();
+          *num_bytes_spilled += it->second->GetSize();
           objects_pending_spill_.erase(it);
 
           (*num_remaining)--;
           if (*num_remaining == 0 && callback) {
             callback(status);
+            on_objects_spilled_();
           }
         }));
   }

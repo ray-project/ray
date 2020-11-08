@@ -21,6 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/gcs/accessor.h"
+#include "ray/object_manager/common.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
@@ -36,13 +37,15 @@ class LocalObjectManager {
                      IOWorkerPoolInterface &io_worker_pool,
                      gcs::ObjectInfoAccessor &object_info_accessor,
                      rpc::CoreWorkerClientPool &owner_client_pool,
-                     std::function<void(const std::vector<ObjectID> &)> on_objects_freed)
+                     std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
+                     SpaceReleasedCallback on_objects_spilled)
       : free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
         object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(on_objects_freed),
+        on_objects_spilled_(on_objects_spilled),
         last_free_objects_at_ms_(current_time_ms()) {}
 
   /// Pin objects.
@@ -137,6 +140,10 @@ class LocalObjectManager {
   // written to the object directory.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_
       GUARDED_BY(mutex_);
+
+  /// Callback to call whenever objects have been spilled or failed to be
+  /// spilled.
+  SpaceReleasedCallback on_objects_spilled_;
 
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.

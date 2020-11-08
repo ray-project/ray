@@ -292,6 +292,7 @@ Papers
    :caption: Ray Observability
 
    ray-metrics.rst
+   ray-debugging.rst
 
 .. toctree::
    :hidden:
