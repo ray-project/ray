@@ -132,7 +132,8 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
 NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory)
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                         SpaceReleasedCallback on_objects_spilled)
     : self_node_id_(self_node_id),
       io_service_(io_service),
       object_manager_(object_manager),
@@ -179,7 +180,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                             [this](const std::vector<ObjectID> &object_ids) {
                               object_manager_.FreeObjects(object_ids,
                                                           /*local_only=*/false);
-                            }),
+                            },
+                            on_objects_spilled),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -483,12 +485,10 @@ void NodeManager::Heartbeat() {
     }
   }
 
-  if (!new_scheduler_enabled_) {
-    // Add resource load by shape. This will be used by the new autoscaler.
-    auto resource_load = local_queues_.GetResourceLoadByShape(
-        RayConfig::instance().max_resource_shapes_per_load_report());
-    heartbeat_data->mutable_resource_load_by_shape()->Swap(&resource_load);
-  }
+  // Add resource load by shape. This will be used by the new autoscaler.
+  auto resource_load = local_queues_.GetResourceLoadByShape(
+      RayConfig::instance().max_resource_shapes_per_load_report());
+  heartbeat_data->mutable_resource_load_by_shape()->Swap(&resource_load);
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
@@ -886,7 +886,7 @@ void NodeManager::HeartbeatAdded(const NodeID &client_id,
       ResourceSet remote_total(MapFromProtobuf(heartbeat_data.resources_total()));
       remote_resources.SetTotalResources(std::move(remote_total));
     }
-    if (heartbeat_data.resources_available_changed()) {
+    if (heartbeat_data.resource_load_changed()) {
       ResourceSet remote_available(MapFromProtobuf(heartbeat_data.resources_available()));
       remote_resources.SetAvailableResources(std::move(remote_available));
     }

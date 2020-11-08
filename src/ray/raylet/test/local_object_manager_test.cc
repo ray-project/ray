@@ -196,7 +196,8 @@ class LocalObjectManagerTest : public ::testing::Test {
                   for (const auto &object_id : object_ids) {
                     freed.insert(object_id);
                   }
-                }),
+                },
+                [&]() { num_callbacks_fired++; }),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
     RayConfig::instance().initialize({{"object_spilling_config", "mock_config"}});
   }
@@ -212,6 +213,7 @@ class LocalObjectManagerTest : public ::testing::Test {
   // This hashmap is incremented when objects are unpinned by destroying their
   // unique_ptr.
   std::shared_ptr<std::unordered_map<ObjectID, int>> unpins;
+  size_t num_callbacks_fired = 0;
 };
 
 TEST_F(LocalObjectManagerTest, TestPin) {
@@ -240,6 +242,7 @@ TEST_F(LocalObjectManagerTest, TestPin) {
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
+  ASSERT_EQ(num_callbacks_fired, 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
@@ -252,6 +255,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
     num_times_fired++;
   });
   ASSERT_EQ(num_times_fired, 1);
+  ASSERT_EQ(num_callbacks_fired, 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
@@ -294,6 +298,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 1);
   }
+  ASSERT_TRUE(num_callbacks_fired > 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
@@ -345,6 +350,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 1);
   }
+  ASSERT_TRUE(num_callbacks_fired > 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
@@ -400,6 +406,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   // Check that this returns the total number of bytes currently being spilled.
   num_bytes_required = manager.SpillObjectsOfSize(0);
   ASSERT_EQ(num_bytes_required, 0);
+  ASSERT_TRUE(num_callbacks_fired > 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillError) {
@@ -443,6 +450,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   ASSERT_EQ(num_times_fired, 2);
   ASSERT_EQ(object_table.object_urls[object_id], url);
   ASSERT_EQ((*unpins)[object_id], 1);
+  ASSERT_TRUE(num_callbacks_fired > 0);
 }
 
 }  // namespace raylet
