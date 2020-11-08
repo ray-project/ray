@@ -19,7 +19,8 @@ from ray.autoscaler._private.providers import (
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.node_launcher import NodeLauncher
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
+from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND,
+                                 NODE_KIND_HEAD)
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
@@ -169,7 +170,7 @@ class Simulator:
         self.provider.create_node(
             {},
             {
-                TAG_RAY_NODE_KIND: "head",
+                TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
                 TAG_RAY_USER_NODE_TYPE: self.config["head_node_type"],
             },
             1,
