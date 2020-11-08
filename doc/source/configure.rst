@@ -169,6 +169,11 @@ with ``nc`` or ``nmap`` (or your browser).
   8265/tcp open  http    syn-ack ttl 60 aiohttp 3.7.2 (Python 3.8)
   Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
 
+Note that the dashboard runs as a separate subprocess which can crash invisibly
+in the background, so even if you checked port 8265 earlier, the port might be
+closed *now* (for the prosaic reason that there is no longer a service running
+on it).
+
 If you don't want the dashboard, set ``--include-dashboard=false``.
 
 Redis Port Authentication
