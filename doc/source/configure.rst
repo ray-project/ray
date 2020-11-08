@@ -172,7 +172,8 @@ with ``nc`` or ``nmap`` (or your browser).
 Note that the dashboard runs as a separate subprocess which can crash invisibly
 in the background, so even if you checked port 8265 earlier, the port might be
 closed *now* (for the prosaic reason that there is no longer a service running
-on it).
+on it). On the other side, if that port is unreachable, if you ``ray stop`` and
+``ray start``, it may become reachable again due to the dashboard restarting.
 
 If you don't want the dashboard, set ``--include-dashboard=false``.
 
