@@ -157,8 +157,19 @@ the head node, you will repeatedly get
 (Also, you will not be able to access the dashboard.)
 
 If you see that error, check whether the ``--dashboard-port`` is accessible
-with ``nc`` or ``nmap`` (or your browser). If you don't want the dashboard, set
-``--include-dashboard=false``.
+with ``nc`` or ``nmap`` (or your browser).
+
+.. code-block:: bash
+
+  $ nmap -sV --reason -p 8265 $HEAD_ADDRESS
+  Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+  Host is up, received reset ttl 60 (0.00065s latency).
+  rDNS record for 123.456.78.910: compute04.berkeley.edu
+  PORT     STATE SERVICE REASON         VERSION
+  8265/tcp open  http    syn-ack ttl 60 aiohttp 3.7.2 (Python 3.8)
+  Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+
+If you don't want the dashboard, set ``--include-dashboard=false``.
 
 Redis Port Authentication
 -------------------------
