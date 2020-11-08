@@ -560,16 +560,19 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
                 "Waiting for redis server at {}:{} to respond...".format(
                     redis_ip_address, redis_port))
             redis_client.client_list()
-        except redis.ConnectionError:
+        except redis.ConnectionError as redisConnectionError:
             # Wait a little bit.
             time.sleep(delay)
             delay *= 2
         else:
             break
     else:
-        raise RuntimeError("Unable to connect to Redis. If the Redis instance "
-                           "is on a different machine, check that your "
-                           "firewall is configured properly.")
+        raise RuntimeError("Unable to connect to Redis at {0}:{1}. Check that "
+                           "{0}:{1} is reachable from this machine. If it is "
+                           "not, your firewall may be blocking this "
+                           "port. If it is, check the Redis password.".format(
+                               redis_ip_address, redis_port)
+                           ) from redisConnectionError
 
 
 def _compute_version_info():
