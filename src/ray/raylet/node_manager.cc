@@ -1946,9 +1946,6 @@ bool NodeManager::PrepareBundle(
     }
   }
 
-  // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
-  // once retry is implemented. If the resource map contains the local raylet, update load
-  // before calling policy.
   if (resource_map.count(self_node_id_) > 0) {
     resource_map[self_node_id_].SetLoadResources(local_queues_.GetTotalResourceLoad());
   }

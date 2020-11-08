@@ -299,6 +299,20 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
 
+  struct IOWorkerState {
+    /// The pool of idle I/O workers.
+    std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
+    /// The queue of pending I/O tasks.
+    std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
+    /// All I/O workers that have registered and are still connected, including both
+    /// idle and executing.
+    // SANG-TODO OnWorkerStarted
+    std::unordered_set<std::shared_ptr<WorkerInterface>> registered_io_workers;
+    /// Number of starting I/O workers.
+    // Used in various places.
+    int num_starting_io_workers = 0;
+  }
+
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -312,15 +326,21 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     /// The pool of idle actor workers.
     std::unordered_map<ActorID, std::shared_ptr<WorkerInterface>> idle_actor;
-    /// The pool of idle I/O workers.
-    std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
-    /// The queue of pending I/O tasks.
-    std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
-    /// All I/O workers that have registered and are still connected, including both
-    /// idle and executing.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> registered_io_workers;
-    /// Number of starting I/O workers.
-    int num_starting_io_workers = 0;
+    // States for io workers.
+    IOWorkerState io_worker_state;
+    // SANG-TODO Encapsulate io worker states start.
+    // /// The pool of idle I/O workers.
+    // std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
+    // /// The queue of pending I/O tasks.
+    // std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
+    // /// All I/O workers that have registered and are still connected, including both
+    // /// idle and executing.
+    // // SANG-TODO OnWorkerStarted
+    // std::unordered_set<std::shared_ptr<WorkerInterface>> registered_io_workers;
+    // /// Number of starting I/O workers.
+    // // Used in various places.
+    // int num_starting_io_workers = 0;
+    // SANG-TODO Encapsulate io worker states end.
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
