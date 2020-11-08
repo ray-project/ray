@@ -326,11 +326,24 @@ class StandardAutoscaler:
                                                    self.config["cluster_name"])
 
             self.available_node_types = self.config["available_node_types"]
-            self.resource_demand_scheduler = ResourceDemandScheduler(
-                self.provider, self.available_node_types,
-                self.config["max_workers"],
-                self.config["autoscaling_mode"] == "aggressive",
-                self.config["target_utilization_fraction"])
+            if hasattr(self, "resource_demand_scheduler"
+                       ) and self.resource_demand_scheduler.is_legacy_yaml():
+                # The node types are autofilled internally, overwriting the
+                # class will remove the inferred node resources for legacy
+                # yamls.
+                node_types = copy.deepcopy(self.available_node_types)
+                node_types.update(
+                    self.resource_demand_scheduler.get_node_types())
+                self.resource_demand_scheduler = ResourceDemandScheduler(
+                    self.provider, node_types, self.config["max_workers"],
+                    self.config["autoscaling_mode"] == "aggressive",
+                    self.config["target_utilization_fraction"])
+            else:
+                self.resource_demand_scheduler = ResourceDemandScheduler(
+                    self.provider, self.available_node_types,
+                    self.config["max_workers"],
+                    self.config["autoscaling_mode"] == "aggressive",
+                    self.config["target_utilization_fraction"])
 
         except Exception as e:
             if errors_fatal:

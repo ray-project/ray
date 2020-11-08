@@ -51,10 +51,17 @@ class ResourceDemandScheduler:
         self.max_workers = max_workers
         self.aggressive = aggressive
         self.target_utilization_fraction = target_utilization_fraction
-        # is_legacy_yaml tracks if the cluster configs was originally without
-        # available_node_types and was autofilled with available_node_types.
-        self.is_legacy_yaml = (NODE_TYPE_LEGACY_HEAD in node_types
-                               and NODE_TYPE_LEGACY_WORKER in node_types)
+
+    def is_legacy_yaml(self):
+        """Returns if the cluster configs was originally a legacy yaml.
+
+        A legacy yaml is one that was originally without available_node_types
+        and was autofilled with available_node_types."""
+        return (NODE_TYPE_LEGACY_HEAD in self.node_types
+                and NODE_TYPE_LEGACY_WORKER in self.node_types)
+
+    def get_node_types(self):
+        return self.node_types
 
     def get_nodes_to_launch(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeType, int],
@@ -83,11 +90,12 @@ class ResourceDemandScheduler:
             pending_placement_groups: Placement group demands.
             static_node_resources: Mapping from ip to static node resources.
         """
-        if self.is_legacy_yaml:
+        if self.is_legacy_yaml():
             # When using legacy yaml files we need to infer the head & worker
             # node resources from the static node resources from LoadMetrics.
             self._infer_legacy_node_resources_if_needed(static_node_resources)
-
+        import pdb
+        pdb.set_trace()
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
         node_resources, node_type_counts = \
@@ -106,7 +114,7 @@ class ResourceDemandScheduler:
             placement_groups_to_resource_demands(pending_placement_groups)
         resource_demands.extend(placement_group_demand_vector)
 
-        if self.is_legacy_yaml and \
+        if self.is_legacy_yaml() and \
                 not self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]:
             # Need to launch worker nodes to later infer their
             # resources.
@@ -139,7 +147,6 @@ class ResourceDemandScheduler:
         # Limit the number of concurrent launches
         total_nodes_to_add = self._get_concurrent_resource_demand_to_launch(
             total_nodes_to_add, usage_by_ip.keys(), nodes, pending_nodes)
-
         logger.info("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add
 
@@ -191,24 +198,22 @@ class ResourceDemandScheduler:
                     })[0])
                 self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"] = \
                     static_node_resources[head_ip]
-            except IndexError:
-                logger.exception("Could not get the head node ip.")
+            except (IndexError, KeyError):
+                logger.exception("Could not reach the head node.")
         # We fill the worker node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]:
-            if len(static_node_resources) > 1:
-                # Set the node_types here as we already launched a worker node
-                # from which we directly get the node_resources.
-                worker_nodes = self.provider.non_terminated_nodes(
-                    tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-                worker_node_ips = [
-                    self.provider.internal_ip(node_id)
-                    for node_id in worker_nodes
-                ]
-                for ip in worker_node_ips:
-                    if ip in static_node_resources:
-                        self.node_types[NODE_TYPE_LEGACY_WORKER][
-                            "resources"] = static_node_resources[ip]
-                assert self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
+            # Set the node_types here in case we already launched a worker node
+            # from which we can directly get the node_resources.
+            worker_nodes = self.provider.non_terminated_nodes(
+                tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+            worker_node_ips = [
+                self.provider.internal_ip(node_id) for node_id in worker_nodes
+            ]
+            for ip in worker_node_ips:
+                if ip in static_node_resources:
+                    self.node_types[NODE_TYPE_LEGACY_WORKER][
+                        "resources"] = static_node_resources[ip]
+                    break
 
     def _get_concurrent_resource_demand_to_launch(
             self, to_launch: Dict[NodeType, int],
@@ -236,14 +241,6 @@ class ResourceDemandScheduler:
             Dict[NodeType, int]: Maximum number of nodes to launch for each
                 node type.
         """
-        if self.aggressive:
-            # TODO(ameer): The concern here is that we might launch a lot of
-            # nodes that end up failing in aggressive mode. This is the case
-            # if target_utilization_fraction is very low too.
-            # The function calculate_node_resources() might be resolving this
-            # issue since it counts failed node's resources as unutilized.
-            return to_launch
-
         frac = 1 / max(self.target_utilization_fraction, 0.01)
         updated_nodes_to_launch = {}
         running_nodes, pending_nodes = \
@@ -265,8 +262,16 @@ class ResourceDemandScheduler:
                 total_pending_nodes - running_nodes[node_type])
 
             if nodes_to_add > 0:
-                updated_nodes_to_launch[node_type] = min(
-                    nodes_to_add, to_launch[node_type])
+                if self.aggressive:
+                    # We lift the max concurrency launch to respect
+                    # aggressiveness only if we do not have "too many" pending
+                    # or launching nodes. If we ignore nodes_to_add we might
+                    # end up launchign a lot of nodes that end up failing in
+                    # aggressive mode.
+                    updated_nodes_to_launch[node_type] = to_launch[node_type]
+                else:
+                    updated_nodes_to_launch[node_type] = min(
+                        nodes_to_add, to_launch[node_type])
 
         return updated_nodes_to_launch
 

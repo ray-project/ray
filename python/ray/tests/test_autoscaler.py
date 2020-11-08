@@ -665,30 +665,28 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
 
         self.waitForNodes(1)
+        lm.update(
+            head_ip, {"CPU": 1}, {"CPU": 0}, {},
+            waiting_bundles=[{
+                "CPU": 6
+            }],
+            infeasible_bundles=[{
+                "CPU": 5
+            }])
         autoscaler.update()
-        self.waitForNodes(6)  # expected due to batch sizes and concurrency
-        autoscaler.update()
-        self.waitForNodes(11)
-
-        # Connect the head and workers to end the bringup phase
-        addrs = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_KIND: "worker"}, )
-        addrs += head_ip
-        for addr in addrs:
-            lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})
-            lm.update(addr, {"CPU": 2}, {"CPU": 2}, {})
-        assert autoscaler.bringup
-        autoscaler.update()
-
-        assert not autoscaler.bringup
-        autoscaler.update()
-        self.waitForNodes(1)
-
-        # All of the nodes are down. Simulate some load on the head node
-        lm.update(head_ip, {"CPU": 2}, {"CPU": 0}, {})
-
-        autoscaler.update()
-        self.waitForNodes(6)  # expected due to batch sizes and concurrency
+        self.waitForNodes(2)  # launches a single node to get its resources
+        worker_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: "worker"}, )[0]
+        lm.update(
+            worker_ip, {"CPU": 1}, {"CPU": 0}, {},
+            waiting_bundles=[{
+                "CPU": 6
+            }],
+            infeasible_bundles=[{
+                "CPU": 5
+            }])
+        # Otherwise the worker is immediately terminated due to being idle.
+        lm.last_used_time_by_ip[worker_ip] = time.time() + 5
         autoscaler.update()
         self.waitForNodes(11)
 
