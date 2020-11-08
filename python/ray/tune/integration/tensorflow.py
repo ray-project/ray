@@ -14,7 +14,7 @@ def setup_process_group(worker_addresses, index):
     """Set up distributed training info for training task.
 
     Args:
-        tf_config (dict): cluster spec.
+        worker_addresses (list): addresses of the workers.
         index (int): index of current worker
     """
     tf_config = {

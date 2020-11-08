@@ -30,13 +30,14 @@ def build_and_compile_cnn_model(config):
         tf.keras.layers.Reshape(target_shape=(28, 28, 1)),
         tf.keras.layers.Conv2D(32, 3, activation="relu"),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(config["hidden"], activation="relu"),
+        tf.keras.layers.Dense(config.get("hidden", 128), activation="relu"),
         tf.keras.layers.Dense(10)
     ])
     model.compile(
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        optimizer=tf.keras.optimizers.SGD(learning_rate=config["lr"],
-                                          momentum=config["momentum"]),
+        optimizer=tf.keras.optimizers.SGD(learning_rate=config.get("lr", 0.05),
+                                          momentum=config.get("momentum",
+                                                              0.5)),
         metrics=["accuracy"])
     return model
 
@@ -52,7 +53,7 @@ def train_mnist(config, checkpoint_dir=None):
         multi_worker_model = build_and_compile_cnn_model(config)
 
     multi_worker_model.fit(multi_worker_dataset,
-                           epochs=3,
+                           epochs=2,
                            steps_per_epoch=70,
                            callbacks=[
                                TuneReportCheckpointCallback(
@@ -95,7 +96,7 @@ if __name__ == "__main__":
             "mean_accuracy": 0.99,
             "training_iteration": 10
         },
-        num_samples=2,
+        num_samples=1,
         config={
             "lr": tune.sample_from(lambda spec: np.random.uniform(0.001, 0.1)),
             "momentum": tune.sample_from(
