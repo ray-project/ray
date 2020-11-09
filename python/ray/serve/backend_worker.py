@@ -171,8 +171,8 @@ class RayServeReplica:
         self.error_counter.set_default_tags({"backend": self.backend_tag})
 
         self.restart_counter = metrics.Count(
-            "backend_worker_starts",
-            description=("The number of time this replica workers "
+            "backend_replica_starts",
+            description=("The number of time this replica "
                          "has been restarted due to failure."),
             tag_keys=("backend", "replica_tag"))
         self.restart_counter.set_default_tags({

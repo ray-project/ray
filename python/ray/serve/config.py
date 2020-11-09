@@ -90,8 +90,8 @@ class BackendConfig(BaseModel):
                     v = 8
 
             # Pipeline/async mode: if the servable is not blocking,
-            # router should just keep pushing queries to the worker
-            # replicas until a high limit.
+            # router should just keep pushing queries to the replicas
+            # until a high limit.
             if not values["internal_metadata"].is_blocking:
                 v = ASYNC_CONCURRENCY
 
