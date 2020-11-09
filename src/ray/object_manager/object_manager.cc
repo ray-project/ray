@@ -443,7 +443,7 @@ void PushManager::ScheduleRemainingPushes() {
     // Loop over each active push and try to send another chunk.
     auto it = push_info_.begin();
     remaining = false;
-    while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_; it++) {
+    while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
       auto push_id = it->first;
       auto max_chunks = it->second.first;
       auto send_chunk_fn = it->second.second;
@@ -460,6 +460,7 @@ void PushManager::ScheduleRemainingPushes() {
                        << " / " << max_chunks_in_flight_
                        << " max, remaining chunks: " << NumChunksRemaining();
       }
+      it++;
     }
   }
 }
