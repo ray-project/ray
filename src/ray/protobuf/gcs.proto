@@ -356,6 +356,9 @@ message JobConfig {
   // code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH` in
   // Python.
   repeated string code_search_path = 4;
+  // Whether to clean up actors, objects and tasks associated with this job during the
+  // shutdown process of the driver.
+  bool long_running = 5;
 }
 
 message JobTableData {

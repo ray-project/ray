@@ -428,6 +428,12 @@ absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetNode(
   return iter->second;
 }
 
+std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetAliveNode(
+    const ray::NodeID &node_id) const {
+  auto iter = alive_nodes_.find(node_id);
+  return iter == alive_nodes_.end() ? nullptr : iter->second;
+}
+
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);

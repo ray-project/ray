@@ -217,6 +217,7 @@ void GcsServer::InitGcsActorManager() {
         // node is removed from the GCS.
         gcs_placement_group_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
         gcs_actor_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
+        gcs_job_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
       });
 
   auto on_subscribe = [this](const std::string &id, const std::string &data) {
@@ -232,8 +233,8 @@ void GcsServer::InitGcsActorManager() {
 }
 
 void GcsServer::InitGcsJobManager() {
-  gcs_job_manager_ =
-      std::unique_ptr<GcsJobManager>(new GcsJobManager(gcs_table_storage_, gcs_pub_sub_));
+  gcs_job_manager_ = std::unique_ptr<GcsJobManager>(
+      new GcsJobManager(gcs_table_storage_, gcs_pub_sub_, gcs_node_manager_));
   gcs_job_manager_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
     gcs_actor_manager_->OnJobFinished(*job_id);
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);

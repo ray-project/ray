@@ -120,6 +120,12 @@ class GcsRpcClient {
   /// Get information of all jobs from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetAllJobInfo, job_info_grpc_client_, )
 
+  /// Submit a job to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, SubmitJob, job_info_grpc_client_, )
+
+  /// Drop a job from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, DropJob, job_info_grpc_client_, )
+
   /// Register actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActor,
                              actor_info_grpc_client_, )

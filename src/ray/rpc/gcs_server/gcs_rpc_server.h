@@ -64,6 +64,12 @@ class JobInfoGcsServiceHandler {
                                    GetAllJobInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleSubmitJob(const SubmitJobRequest &request, SubmitJobReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleDropJob(const DropJobRequest &request, DropJobReply *reply,
+                             SendReplyCallback send_reply_callback) = 0;
+
   virtual void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) = 0;
 };
