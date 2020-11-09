@@ -463,7 +463,7 @@ def warn_about_bad_start_command(start_commands: List[str]) -> None:
 
 
 def get_or_create_head_node(config: Dict[str, Any],
-                            config_file: str,
+                            printable_config_file: str,
                             no_restart: bool,
                             restart_only: bool,
                             yes: bool,
@@ -475,7 +475,6 @@ def get_or_create_head_node(config: Dict[str, Any],
                                                 config["cluster_name"]))
 
     config = copy.deepcopy(config)
-    config_file = os.path.abspath(config_file)
     head_node_tags = {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
     }
@@ -519,7 +518,6 @@ def get_or_create_head_node(config: Dict[str, Any],
                 _abort=True)
 
     cli_logger.newline()
-
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
     head_node_config = copy.deepcopy(config["head_node"])
     head_node_resources = None
@@ -674,13 +672,15 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     cli_logger.newline()
     with cli_logger.group("Useful commands"):
+        printable_config_file = os.path.abspath(printable_config_file)
         cli_logger.print("Monitor autoscaling with")
         cli_logger.print(
-            cf.bold("  ray exec {}{} {}"), config_file, modifiers,
+            cf.bold("  ray exec {}{} {}"), printable_config_file, modifiers,
             quote(monitor_str))
 
         cli_logger.print("Connect to a terminal on the cluster head:")
-        cli_logger.print(cf.bold("  ray attach {}{}"), config_file, modifiers)
+        cli_logger.print(
+            cf.bold("  ray attach {}{}"), printable_config_file, modifiers)
 
         remote_shell_str = updater.cmd_runner.remote_shell_command_str()
         cli_logger.print("Get a remote shell to the cluster manually:")
@@ -1010,7 +1010,7 @@ def _get_worker_nodes(config: Dict[str, Any],
 
 
 def _get_head_node(config: Dict[str, Any],
-                   config_file: str,
+                   printable_config_file: str,
                    override_cluster_name: Optional[str],
                    create_if_needed: bool = False) -> str:
     provider = _get_node_provider(config["provider"], config["cluster_name"])
@@ -1025,13 +1025,16 @@ def _get_head_node(config: Dict[str, Any],
     elif create_if_needed:
         get_or_create_head_node(
             config,
-            config_file,
+            printable_config_file=printable_config_file,
             restart_only=False,
             no_restart=False,
             yes=True,
             override_cluster_name=override_cluster_name)
         return _get_head_node(
-            config, config_file, override_cluster_name, create_if_needed=False)
+            config,
+            printable_config_file,
+            override_cluster_name,
+            create_if_needed=False)
     else:
         raise RuntimeError("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))
