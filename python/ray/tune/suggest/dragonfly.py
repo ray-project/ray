@@ -47,6 +47,9 @@ class DragonflySearch(Searcher):
     This interface requires using FunctionCallers and optimizers provided by
     Dragonfly.
 
+    This searcher will automatically filter out any NaN, inf or -inf
+    results.
+
     Parameters:
         optimizer (dragonfly.opt.BlackboxOptimiser|str): Optimizer provided
             from dragonfly. Choose an optimiser that extends BlackboxOptimiser.

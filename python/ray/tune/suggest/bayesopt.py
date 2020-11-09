@@ -38,6 +38,9 @@ class BayesOptSearch(Searcher):
     fmfn/BayesianOptimization is a library for Bayesian Optimization. More
     info can be found here: https://github.com/fmfn/BayesianOptimization.
 
+    This searcher will automatically filter out any NaN, inf or -inf
+    results.
+
     You will need to install fmfn/BayesianOptimization via the following:
 
     .. code-block:: bash

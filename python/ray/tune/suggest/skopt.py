@@ -64,6 +64,9 @@ class SkOptSearch(Searcher):
 
     This Search Algorithm requires you to pass in a `skopt Optimizer object`_.
 
+    This searcher will automatically filter out any NaN, inf or -inf
+    results.
+
     Parameters:
         optimizer (skopt.optimizer.Optimizer): Optimizer provided
             from skopt.
