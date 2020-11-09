@@ -186,11 +186,11 @@ class TestModelCatalog(unittest.TestCase):
             object_store_memory=1000 * 1024 * 1024,
             ignore_reinit_error=True)  # otherwise fails sometimes locally
         # registration
-        ModelCatalog.register_custom_action_dist("test",
-                                                 CustomMultiActionDistribution)
+        ModelCatalog.register_custom_action_dist(
+            "test", CustomMultiActionDistribution)
         s1 = Discrete(5)
-        s2 = Box(0, 1, shape=(3,), dtype=np.float32)
-        spaces = dict(action_1=s1, action_2=s2)                                               
+        s2 = Box(0, 1, shape=(3, ), dtype=np.float32)
+        spaces = dict(action_1=s1, action_2=s2)
         action_space = Dict(spaces)
         # test retrieving it
         model_config = MODEL_DEFAULTS.copy()
@@ -198,7 +198,7 @@ class TestModelCatalog(unittest.TestCase):
         dist_cls, param_shape = ModelCatalog.get_action_dist(
             action_space, model_config)
         self.assertIsInstance(dist_cls, partial)
-        self.assertEqual(param_shape, s1.n + 2*s2.shape[0])
+        self.assertEqual(param_shape, s1.n + 2 * s2.shape[0])
 
         # test the class works as a distribution
         dist_input = tf1.placeholder(tf.float32, (None, param_shape))
@@ -210,9 +210,10 @@ class TestModelCatalog(unittest.TestCase):
         self.assertIn("action_2", dist.sample())
         self.assertEqual(dist.sample()["action_1"].dtype, tf.int64)
         self.assertEqual(dist.sample()["action_2"].shape[1:], s2.shape)
-        
+
         with self.assertRaises(NotImplementedError):
             dist.entropy()
+
 
 if __name__ == "__main__":
     import sys
