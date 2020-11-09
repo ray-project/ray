@@ -445,6 +445,7 @@ class GTrXLNet(RecurrentNetwork):
                 [train_batch[k] for k in state_keys],
                 self.model_config["max_seq_len"],
                 dynamic_max=False,
+                states_already_reduced_to_init=True,
                 shuffle=False)
         for i, k in enumerate(feature_keys_):
             train_batch[k] = feature_sequences[i]

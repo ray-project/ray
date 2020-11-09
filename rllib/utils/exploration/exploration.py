@@ -184,7 +184,7 @@ class Exploration:
                 Policy's own loss function and maybe the Model's custom loss.
             train_batch (SampleBatch): The training data to calculate the
                 loss(es) for. This train data has already gone through
-                this Exploration's `preprocess_train_batch()` method.
+                this Exploration's `postprocess_trajectory()` method.
 
         Returns:
             List[TensorType]: The updated list of loss terms.

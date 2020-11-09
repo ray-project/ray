@@ -169,6 +169,7 @@ def chop_into_sequences(episode_ids,
                         max_seq_len,
                         dynamic_max=True,
                         shuffle=False,
+                        states_already_reduced_to_init=False,
                         _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
@@ -255,15 +256,20 @@ def chop_into_sequences(episode_ids,
         assert i == len(unique_ids), f
         feature_sequences.append(f_pad)
 
-    initial_states = []
-    for s in state_columns:
-        s = np.array(s)
-        s_init = []
-        i = 0
-        for len_ in seq_lens:
-            s_init.append(s[i])
-            i += len_
-        initial_states.append(np.array(s_init))
+    if states_already_reduced_to_init:
+        initial_states = state_columns
+    else:
+        initial_states = []
+        for s in state_columns:
+            # Save unnecessary copy.
+            if not isinstance(s, np.ndarray):
+                s = np.array(s)
+            s_init = []
+            i = 0
+            for len_ in seq_lens:
+                s_init.append(s[i])
+                i += len_
+            initial_states.append(np.array(s_init))
 
     if shuffle:
         permutation = np.random.permutation(len(seq_lens))

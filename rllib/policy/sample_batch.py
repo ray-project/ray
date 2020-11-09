@@ -251,16 +251,20 @@ class SampleBatch:
             data = {k: v[start:end] for k, v in self.data.items()}
             # Fix state_in_x data.
             count = 0
+            state_start = state_end = None
             for i, seq_len in enumerate(self.seq_lens):
                 count += seq_len
-                if count >= start:
-                    state_start = i
-                elif count >= end:
+                if count >= end:
                     state_end = i
+                    break
+                elif state_start is None and count >= start:
+                    state_start = i
             data["state_in_0"] = self.data["state_in_0"][state_start:state_end]
             return SampleBatch(
                 data, _seq_lens=self.seq_lens[state_start:state_end],
-                _time_major=self.time_major)
+                _time_major=self.time_major,
+                _dont_check_lens=True
+            )
         #elif self.time_major is not None:
         #    return SampleBatch(
         #        {k: v[:, start:end]
