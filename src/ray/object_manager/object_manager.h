@@ -101,12 +101,15 @@ class PushManager {
   /// Manages rate limiting and deduplication of outbound object pushes.
 
   /// Create a push manager.
+  ///
+  /// \param max_chunks_in_flight Max number of chunks allowed to be in flight
+  ///                             from this PushManager (this raylet).
   PushManager(int64_t max_chunks_in_flight)
       : max_chunks_in_flight_(max_chunks_in_flight) {
     RAY_CHECK(max_chunks_in_flight_ > 0) << max_chunks_in_flight_;
   };
 
-  /// Start pushing an object subject to max bytes in flight limit.
+  /// Start pushing an object subject to max chunks in flight limit.
   ///
   /// Duplicate concurrent pushes to the same destination will be suppressed.
   ///
@@ -155,7 +158,7 @@ class PushManager {
   /// Pair of (destination, object_id).
   typedef std::pair<NodeID, ObjectID> PushID;
 
-  /// Pair of (num_chunks, chunk_send_fn).
+  /// Info about the pushed object: (num_chunks_total, chunk_send_fn).
   typedef std::pair<int64_t, std::function<void(int64_t)>> PushInfo;
 
   /// Max number of chunks in flight allowed.

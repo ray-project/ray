@@ -70,7 +70,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   main_service_ = &main_service;
 
-  push_manager_.reset(new PushManager(std::max(
+  push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       1L,
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
 
@@ -434,29 +434,33 @@ void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id)
   ScheduleRemainingPushes();
 }
 
-// TODO(ekl) currently chunks are sent in somewhat arbitrary order, we might want to
-// prioritize chunk sends in FIFO or round robin according to push id.
 void PushManager::ScheduleRemainingPushes() {
-  auto it = push_info_.begin();
-  while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
-    auto push_id = it->first;
-    auto max_chunks = it->second.first;
-    auto send_chunk_fn = it->second.second;
+  bool remaining = true;
+  // Loop over all active pushes for approximate round-robin prioritization.
+  // TODO(ekl) this isn't the best implementation of round robin, we should
+  // consider tracking the number of chunks active per-push and balancing those.
+  while (chunks_in_flight_ < max_chunks_in_flight_ && remaining) {
+    // Loop over each active push and try to send another chunk.
+    auto it = push_info_.begin();
+    remaining = false;
+    while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_; it++) {
+      auto push_id = it->first;
+      auto max_chunks = it->second.first;
+      auto send_chunk_fn = it->second.second;
 
-    // All chunks for this push have been sent; move on to the next one.
-    if (next_chunk_id_[push_id] >= max_chunks) {
-      it++;
-      continue;
+      // All chunks for this push have been sent; move on to the next one.
+      if (next_chunk_id_[push_id] < max_chunks) {
+        remaining = true;
+        // Send the next chunk for this push.
+        send_chunk_fn(next_chunk_id_[push_id]++);
+        chunks_in_flight_ += 1;
+        RAY_LOG(DEBUG) << "Sending chunk " << next_chunk_id_[push_id] << " of "
+                       << max_chunks << " for push " << push_id.first << ", "
+                       << push_id.second << ", chunks in flight " << NumChunksInFlight()
+                       << " / " << max_chunks_in_flight_
+                       << " max, remaining chunks: " << NumChunksRemaining();
+      }
     }
-
-    // Send the next chunk for this push.
-    send_chunk_fn(next_chunk_id_[push_id]++);
-    chunks_in_flight_ += 1;
-    RAY_LOG(DEBUG) << "Sending chunk " << next_chunk_id_[push_id] << " of " << max_chunks
-                   << " for push " << push_id.first << ", " << push_id.second
-                   << ", chunks in flight " << NumChunksInFlight() << " / "
-                   << max_chunks_in_flight_
-                   << " max, remaining chunks: " << NumChunksRemaining();
   }
 }
 
