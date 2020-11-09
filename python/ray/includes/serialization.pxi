@@ -232,7 +232,8 @@ def unpack_pickle5_buffers(uint8_t[:] bufferview):
             data + inband_offset + inband_size, <int32_t>protobuf_size):
         raise ValueError("Protobuf object is corrupted.")
     buffers_segment = aligned_address(
-        <uint8_t*>data + inband_size + protobuf_size, kMajorBufferAlign)
+        <uint8_t*>data + inband_offset + inband_size + protobuf_size,
+        kMajorBufferAlign)
     pickled_buffers = []
     # Now read buffer meta
     for i in range(python_object.buffer_size()):
