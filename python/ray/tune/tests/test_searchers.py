@@ -47,7 +47,7 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=True)
+            reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -65,7 +65,7 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=True)
+            reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -82,7 +82,7 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=True)
+            reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["point"], 2.0)
@@ -98,7 +98,7 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=True)
+            reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -116,7 +116,7 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=16,
-            reuse_actors=True)
+            reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -134,7 +134,7 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=True)
+            reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -151,7 +151,7 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=True)
+            reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -168,7 +168,7 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=True)
+            reuse_actors=False)
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
