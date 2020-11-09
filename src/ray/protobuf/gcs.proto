@@ -359,6 +359,18 @@ message JobConfig {
 }
 
 message JobTableData {
+  enum JobState {
+    INIT = 0;
+    SUBMITTED = 1;
+    RUNNING = 2;
+    FINISHED = 3;
+    FAILED = 4;
+  }
+  enum DriverExitState {
+    UNKNOWN = 0;
+    OK = 1;
+    ERROR = 2;
+  }
   // The job ID.
   bytes job_id = 1;
   // Whether it's dead.
@@ -369,8 +381,28 @@ message JobTableData {
   string driver_ip_address = 4;
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
+  // Hostname of the node this job was started on.
+  string driver_hostname = 6;
+  // Raylet which the job's driver belongs to
+  bytes raylet_id = 7;
+  // Language the job uses
+  Language language = 8;
   // The config of this job.
-  JobConfig config = 6;
+  JobConfig config = 9;
+  // Job state.
+  JobState state = 10;
+  // namespace id.
+  string namespace_id = 11;
+  // job payload.
+  string job_payload = 12;
+  // The reason for the job failure.
+  string fail_error_message = 15;
+  // The driver cmdline.
+  string driver_cmdline = 16;
+  // is dropped.
+  bool is_dropped = 17;
+  // driver exit state.
+  DriverExitState driver_exit_state = 18;
 }
 
 // This table stores the actor checkpoint data. An actor checkpoint
