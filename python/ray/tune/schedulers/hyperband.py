@@ -244,12 +244,14 @@ class HyperBandScheduler(FIFOScheduler):
                     bracket.cleanup_trial(t)
                     action = TrialScheduler.STOP
                 else:
-                    raise TuneError("Trial with unexpected status encountered")
+                    raise TuneError(f"Trial with unexpected bad status "
+                                    f"encountered: {t.status}")
 
             # ready the good trials - if trial is too far ahead, don't continue
             for t in good:
                 if t.status not in [Trial.PAUSED, Trial.RUNNING]:
-                    raise TuneError("Trial with unexpected status encountered")
+                    raise TuneError(f"Trial with unexpected good status "
+                                    f"encountered: {t.status}")
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
                         self._unpause_trial(trial_runner, t)
