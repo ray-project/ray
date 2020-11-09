@@ -206,7 +206,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
     /// Handle a heartbeat from a Raylet.
     ///
-    /// \param node_id The client ID of the Raylet that sent the heartbeat.
+    /// \param node_id The node ID of the Raylet that sent the heartbeat.
     void HandleHeartbeat(const NodeID &node_id);
 
    protected:
