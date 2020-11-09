@@ -77,7 +77,7 @@ When you have multiple tasks that need to wait on some condition, you can use a 
     signal = SignalActor.remote()
     tasks = [wait_and_go.remote(signal) for _ in range(4)]
     print("ready...")
-    # Tasks will all be waiting for the singals.
+    # Tasks will all be waiting for the signals.
     print("set..")
     ray.get(signal.send.remote())
 

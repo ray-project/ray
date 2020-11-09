@@ -237,6 +237,7 @@ class GlobalState:
         """
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),
+            "Name": actor_table_data.name,
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
                 "IPAddress": actor_table_data.address.ip_address,
@@ -874,6 +875,15 @@ def nodes():
         Information about the Ray clients in the cluster.
     """
     return state.node_table()
+
+
+def workers():
+    """Get a list of the workers in the cluster.
+
+    Returns:
+        Information about the Ray workers in the cluster.
+    """
+    return state.workers()
 
 
 def current_node_id():

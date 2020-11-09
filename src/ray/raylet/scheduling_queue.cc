@@ -537,12 +537,7 @@ std::string SchedulingQueue::DebugString() const {
 }
 
 void SchedulingQueue::RecordMetrics() const {
-  stats::NumPlaceableTasks().Record(
-      GetTaskQueue(TaskState::PLACEABLE)->GetTasks().size());
-  stats::NumPlaceableTasks().Record(GetTaskQueue(TaskState::WAITING)->GetTasks().size());
-  stats::NumPlaceableTasks().Record(GetTaskQueue(TaskState::READY)->GetTasks().size());
-  stats::NumPlaceableTasks().Record(GetTaskQueue(TaskState::RUNNING)->GetTasks().size());
-  stats::NumPlaceableTasks().Record(
+  stats::NumInfeasibleTasks().Record(
       GetTaskQueue(TaskState::INFEASIBLE)->GetTasks().size());
 }
 

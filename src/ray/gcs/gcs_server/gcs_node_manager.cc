@@ -16,6 +16,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/stats.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -193,6 +194,8 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
 
+  UpdateNodeHeartbeat(node_id, request);
+
   // Update node realtime resources.
   UpdateNodeRealtimeResources(node_id, *heartbeat_data);
 
@@ -335,6 +338,77 @@ void GcsNodeManager::HandleGetAllAvailableResources(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &request,
+                                           rpc::GetAllHeartbeatReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
+  if (!node_heartbeats_.empty()) {
+    auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
+    absl::flat_hash_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
+    for (auto &heartbeat : node_heartbeats_) {
+      // Aggregate the load reported by each raylet.
+      auto load = heartbeat.second.resource_load_by_shape();
+      for (const auto &demand : load.resource_demands()) {
+        auto scheduling_key = ResourceSet(MapFromProtobuf(demand.shape()));
+        auto &aggregate_demand = aggregate_load[scheduling_key];
+        aggregate_demand.set_num_ready_requests_queued(
+            aggregate_demand.num_ready_requests_queued() +
+            demand.num_ready_requests_queued());
+        aggregate_demand.set_num_infeasible_requests_queued(
+            aggregate_demand.num_infeasible_requests_queued() +
+            demand.num_infeasible_requests_queued());
+        if (RayConfig::instance().report_worker_backlog()) {
+          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                            demand.backlog_size());
+        }
+      }
+      heartbeat.second.clear_resource_load_by_shape();
+
+      batch->add_batch()->Swap(&heartbeat.second);
+    }
+
+    for (auto &demand : aggregate_load) {
+      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
+      demand_proto->Swap(&demand.second);
+      for (const auto &resource_pair : demand.first.GetResourceMap()) {
+        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+      }
+    }
+
+    // Update placement group load to heartbeat batch.
+    // This is updated only one per second.
+    if (placement_group_load_.has_value()) {
+      auto placement_group_load = placement_group_load_.value();
+      auto placement_group_load_proto = batch->mutable_placement_group_load();
+      placement_group_load_proto->CopyFrom(*placement_group_load.get());
+    }
+    reply->mutable_heartbeat_data()->CopyFrom(*batch);
+  }
+
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+void GcsNodeManager::UpdateNodeHeartbeat(const NodeID node_id,
+                                         const rpc::ReportHeartbeatRequest &request) {
+  auto iter = node_heartbeats_.find(node_id);
+  if (!RayConfig::instance().light_heartbeat_enabled() ||
+      iter == node_heartbeats_.end()) {
+    auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
+    heartbeat_data->CopyFrom(request.heartbeat());
+    node_heartbeats_[node_id] = *heartbeat_data;
+  } else {
+    if (request.heartbeat().resources_total_size() > 0) {
+      (*iter->second.mutable_resources_total()) = request.heartbeat().resources_total();
+    }
+    if (request.heartbeat().resources_available_changed()) {
+      (*iter->second.mutable_resources_available()) =
+          request.heartbeat().resources_available();
+    }
+    if (request.heartbeat().resource_load_changed()) {
+      (*iter->second.mutable_resource_load()) = request.heartbeat().resource_load();
+    }
+  }
+}
+
 absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
@@ -372,6 +446,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     removed_node = std::move(iter->second);
+    // Record stats that there's a new removed node.
+    stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     // Remove from cluster resources.
@@ -482,43 +558,9 @@ void GcsNodeManager::SendBatchedHeartbeat() {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
     std::unordered_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
     for (auto &heartbeat : heartbeat_buffer_) {
-      // Aggregate the load reported by each raylet.
-      auto load = heartbeat.second.resource_load_by_shape();
-      for (const auto &demand : load.resource_demands()) {
-        auto scheduling_key = ResourceSet(MapFromProtobuf(demand.shape()));
-        auto &aggregate_demand = aggregate_load[scheduling_key];
-        aggregate_demand.set_num_ready_requests_queued(
-            aggregate_demand.num_ready_requests_queued() +
-            demand.num_ready_requests_queued());
-        aggregate_demand.set_num_infeasible_requests_queued(
-            aggregate_demand.num_infeasible_requests_queued() +
-            demand.num_infeasible_requests_queued());
-        if (RayConfig::instance().report_worker_backlog()) {
-          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                            demand.backlog_size());
-        }
-      }
-      heartbeat.second.clear_resource_load_by_shape();
-
       batch->add_batch()->Swap(&heartbeat.second);
     }
-
-    for (auto &demand : aggregate_load) {
-      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
-      demand_proto->Swap(&demand.second);
-      for (const auto &resource_pair : demand.first.GetResourceMap()) {
-        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
-      }
-    }
-
-    // Update placement group load to heartbeat batch.
-    // This is updated only one per second.
-    if (placement_group_load_.has_value()) {
-      auto placement_group_load = placement_group_load_.value();
-      auto placement_group_load_proto = batch->mutable_placement_group_load();
-      placement_group_load_proto->Swap(placement_group_load.get());
-      placement_group_load_.reset();
-    }
+    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));

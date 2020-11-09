@@ -30,13 +30,14 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // tasks from being scheduled.
       Work work = *work_it;
       Task task = std::get<0>(work);
-      auto request_resources =
-          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+      auto placement_resources =
+          task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
       int64_t _unused;
       // TODO (Alex): We should distinguish between infeasible tasks and a fully
       // utilized cluster.
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          request_resources, &_unused);
+          placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+          &_unused);
       if (node_id_string.empty()) {
         // There is no node that has available resources to run the request.
         // Move on to the next shape.
@@ -49,8 +50,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
           did_schedule = task_scheduled || did_schedule;
         } else {
           // Should spill over to a different node.
-          cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
-                                                                   request_resources);
+          cluster_resource_scheduler_->AllocateRemoteTaskResources(
+              node_id_string,
+              task.GetTaskSpecification().GetRequiredResources().GetResourceMap());
 
           NodeID node_id = NodeID::FromBinary(node_id_string);
           auto node_info_opt = get_node_info_(node_id);
@@ -174,10 +176,15 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
 }
 
 void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker) {
-  cluster_resource_scheduler_->SubtractCPUResourceInstances(
-      worker->GetBorrowedCPUInstances());
   cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
   worker->ClearAllocatedInstances();
+}
+
+void ReplyCancelled(Work &work) {
+  auto reply = std::get<1>(work);
+  auto callback = std::get<2>(work);
+  reply->set_canceled(true);
+  callback();
 }
 
 bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
@@ -186,6 +193,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
+        ReplyCancelled(*work_it);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_schedule_.erase(shapes_it);
@@ -199,6 +207,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
+        ReplyCancelled(*work_it);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_dispatch_.erase(shapes_it);
@@ -210,6 +219,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
 
   auto iter = waiting_tasks_.find(task_id);
   if (iter != waiting_tasks_.end()) {
+    ReplyCancelled(iter->second);
     waiting_tasks_.erase(iter);
     return true;
   }

@@ -253,7 +253,7 @@ def build_q_losses(policy: Policy, model, _,
         is_training=True)
 
     # Q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
+    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
                                   policy.action_space.n)
     q_t_selected = torch.sum(
         torch.where(q_t > FLOAT_MIN, q_t,

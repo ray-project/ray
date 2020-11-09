@@ -15,11 +15,19 @@ class PlasmaStoreRunner {
   PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
                     bool hugepages_enabled, std::string plasma_directory,
                     const std::string external_store_endpoint);
-  void Start();
+  void Start(ray::SpillObjectsCallback spill_objects_callback = nullptr);
   void Stop();
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
     store_->SetNotificationListener(notification_listener);
+  }
+
+  ray::SpaceReleasedCallback OnSpaceReleased() {
+    return [this]() {
+      main_service_.post([this]() {
+          store_->ProcessCreateRequests();
+        });
+    };
   }
 
  private:

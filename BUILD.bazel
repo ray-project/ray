@@ -289,6 +289,7 @@ cc_library(
         "src/ray/object_manager/plasma/store_runner.cc",
     ],
     hdrs = [
+        "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/eviction_policy.h",
         "src/ray/object_manager/plasma/external_store.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
@@ -786,6 +787,18 @@ cc_test(
     name = "cluster_task_manager_test",
     srcs = [
         "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "local_object_manager_test",
+    srcs = [
+        "src/ray/raylet/test/local_object_manager_test.cc",
     ],
     copts = COPTS,
     deps = [
@@ -1848,6 +1861,7 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
+        "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
     ],
 )

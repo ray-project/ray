@@ -6,6 +6,8 @@ import numpy as np
 import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES
 from ray.gcs_utils import PlacementGroupTableData
+from ray.autoscaler._private.resource_demand_scheduler import \
+    NodeIP, ResourceDict
 
 logger = logging.getLogger(__name__)
 
@@ -33,22 +35,13 @@ class LoadMetrics:
     def update(self,
                ip: str,
                static_resources: Dict[str, Dict],
-               update_dynamic_resources: bool,
                dynamic_resources: Dict[str, Dict],
-               update_resource_load: bool,
                resource_load: Dict[str, Dict],
                waiting_bundles: List[Dict[str, float]] = None,
                infeasible_bundles: List[Dict[str, float]] = None,
                pending_placement_groups: List[PlacementGroupTableData] = None):
-        # If light heartbeat enabled, only resources changed will be received.
-        # We should update the changed part and compare static_resources with
-        # dynamic_resources using those updated.
-        if ip not in self.static_resources_by_ip or len(static_resources) > 0:
-            self.static_resources_by_ip[ip] = static_resources
-        if ip not in self.dynamic_resources_by_ip or update_dynamic_resources:
-            self.dynamic_resources_by_ip[ip] = dynamic_resources
-        if ip not in self.resource_load_by_ip or update_resource_load:
-            self.resource_load_by_ip[ip] = resource_load
+        self.resource_load_by_ip[ip] = resource_load
+        self.static_resources_by_ip[ip] = static_resources
 
         if not waiting_bundles:
             waiting_bundles = []
@@ -61,7 +54,7 @@ class LoadMetrics:
         # for every static resource because dynamic resources are based on
         # the available resources in the heartbeat, which does not exist
         # if it is zero. Thus, we have to update dynamic resources here.
-        dynamic_resources_update = self.dynamic_resources_by_ip[ip].copy()
+        dynamic_resources_update = dynamic_resources.copy()
         for resource_name, capacity in self.static_resources_by_ip[ip].items():
             if resource_name not in dynamic_resources_update:
                 dynamic_resources_update[resource_name] = 0.0
@@ -113,13 +106,22 @@ class LoadMetrics:
         return self._info()["NumNodesConnected"]
 
     def get_node_resources(self):
-        """Return a list of node resources (static resource sizes.
+        """Return a list of node resources (static resource sizes).
 
         Example:
             >>> metrics.get_node_resources()
             [{"CPU": 1}, {"CPU": 4, "GPU": 8}]  # for two different nodes
         """
         return self.static_resources_by_ip.values()
+
+    def get_static_node_resources_by_ip(self) -> Dict[NodeIP, ResourceDict]:
+        """Return a dict of node resources for every node ip.
+
+        Example:
+            >>> lm.get_static_node_resources_by_ip()
+            {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "GPU": 8}}
+        """
+        return self.static_resources_by_ip
 
     def get_resource_utilization(self):
         return self.dynamic_resources_by_ip
