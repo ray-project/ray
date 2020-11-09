@@ -1,6 +1,4 @@
 .+\.py.*Cluster: test-cli
-.+\.py.*Updating the resources of ray-legacy-head-node-type to {'CPU': 1}.
-.+\.py.*Updating the resources of ray-legacy-worker-node-type to {'CPU': 1}.
 .+\.py.*Checking AWS environment settings
 .+\.py.*Creating new IAM instance profile ray-autoscaler-v1 for use as the default\.
 .+\.py.*Creating new IAM role ray-autoscaler-v1 for use as the default instance role\.
@@ -73,6 +71,7 @@
 .+\.py.*\(3/4\) echo head
 .+\.py.*Running `echo head`
 .+\.py.*Full command is `ssh.+`
+.+\.py.*NodeUpdater: i-.+: Setup commands succeeded \[LogTimer=.+\]
 .+\.py.*\[7/7\] Starting the Ray runtime
 .+\.py.*Running `ray stop`
 .+\.py.*Full command is `ssh.+`

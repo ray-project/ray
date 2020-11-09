@@ -2,7 +2,7 @@ auth:
     ssh_user: ubuntu
 cluster_name: test-cli
 docker:
-    image: rayproject/ray:0.8.7
+    image: rayproject/ray:1.0.0
     container_name: raydocker
     pull_before_run: True
     run_options: []
