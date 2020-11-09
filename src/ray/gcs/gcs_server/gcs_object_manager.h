@@ -142,14 +142,14 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 
   // Debug info.
-  enum CountsType {
+  enum CountType {
     GET_OBJECT_LOCATIONS_REQUEST = 0,
     GET_ALL_OBJECT_LOCATIONS_REQUEST = 1,
     ADD_OBJECT_LOCATION_REQUEST = 2,
     REMOVE_OBJECT_LOCATION_REQUEST = 3,
-    CountsType_MAX = 4,
+    CountType_MAX = 4,
   };
-  uint64_t counts_[CountsType::CountsType_MAX] = {0};
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

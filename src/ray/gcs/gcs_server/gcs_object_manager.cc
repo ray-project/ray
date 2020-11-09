@@ -35,7 +35,7 @@ void GcsObjectManager::HandleGetObjectLocations(
   RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
                  << object_id.TaskId().JobId() << ", object id = " << object_id;
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountsType::GET_OBJECT_LOCATIONS_REQUEST];
+  ++counts_[CountType::GET_OBJECT_LOCATIONS_REQUEST];
 }
 
 void GcsObjectManager::HandleGetAllObjectLocations(
@@ -55,7 +55,7 @@ void GcsObjectManager::HandleGetAllObjectLocations(
   }
   RAY_LOG(DEBUG) << "Finished getting all object locations.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountsType::GET_ALL_OBJECT_LOCATIONS_REQUEST];
+  ++counts_[CountType::GET_ALL_OBJECT_LOCATIONS_REQUEST];
 }
 
 void GcsObjectManager::HandleAddObjectLocation(
@@ -109,7 +109,7 @@ void GcsObjectManager::HandleAddObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
-  ++counts_[CountsType::ADD_OBJECT_LOCATION_REQUEST];
+  ++counts_[CountType::ADD_OBJECT_LOCATION_REQUEST];
 }
 
 void GcsObjectManager::HandleRemoveObjectLocation(
@@ -155,7 +155,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
-  ++counts_[CountsType::REMOVE_OBJECT_LOCATION_REQUEST];
+  ++counts_[CountType::REMOVE_OBJECT_LOCATION_REQUEST];
 }
 
 void GcsObjectManager::AddObjectsLocation(
@@ -311,15 +311,15 @@ void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
 std::string GcsObjectManager::DebugString() const {
   absl::MutexLock lock(&mutex_);
   std::ostringstream stream;
-  stream << "GcsObjectManager: {GetObjectLocations request counts: "
-         << counts_[CountsType::GET_OBJECT_LOCATIONS_REQUEST]
-         << ", GetAllObjectLocations request counts: "
-         << counts_[CountsType::GET_ALL_OBJECT_LOCATIONS_REQUEST]
-         << ", AddObjectLocation request counts: "
-         << counts_[CountsType::ADD_OBJECT_LOCATION_REQUEST]
-         << ", RemoveObjectLocation request counts: "
-         << counts_[CountsType::REMOVE_OBJECT_LOCATION_REQUEST]
-         << ", Object counts: " << object_to_locations_.size() << "}";
+  stream << "GcsObjectManager: {GetObjectLocations request count: "
+         << counts_[CountType::GET_OBJECT_LOCATIONS_REQUEST]
+         << ", GetAllObjectLocations request count: "
+         << counts_[CountType::GET_ALL_OBJECT_LOCATIONS_REQUEST]
+         << ", AddObjectLocation request count: "
+         << counts_[CountType::ADD_OBJECT_LOCATION_REQUEST]
+         << ", RemoveObjectLocation request count: "
+         << counts_[CountType::REMOVE_OBJECT_LOCATION_REQUEST]
+         << ", Object count: " << object_to_locations_.size() << "}";
   return stream.str();
 }
 

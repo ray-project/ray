@@ -293,7 +293,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
   // Debug info.
-  enum CountsType {
+  enum CountType {
     REGISTER_NODE_REQUEST = 0,
     UNREGISTER_NODE_REQUEST = 1,
     GET_ALL_NODE_INFO_REQUEST = 2,
@@ -306,9 +306,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     SET_INTERNAL_CONFIG_REQUEST = 9,
     GET_INTERNAL_CONFIG_REQUEST = 10,
     GET_ALL_AVAILABLE_RESOURCES_REQUEST = 11,
-    CountsType_MAX = 12,
+    CountType_MAX = 12,
   };
-  uint64_t counts_[CountsType::CountsType_MAX] = {0};
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

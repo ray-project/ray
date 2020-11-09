@@ -417,7 +417,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
 
   // Debug info.
-  enum CountsType {
+  enum CountType {
     REGISTER_ACTOR_REQUEST = 0,
     CREATE_ACTOR_REQUEST = 1,
     GET_ACTOR_INFO_REQUEST = 2,
@@ -428,9 +428,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     ADD_ACTOR_CHECKPOINT_REQUEST = 7,
     GET_ACTOR_CHECKPOINT_REQUEST = 8,
     GET_ACTOR_CHECKPOINT_ID_REQUEST = 9,
-    CountsType_MAX = 10,
+    CountType_MAX = 10,
   };
-  uint64_t counts_[CountsType::CountsType_MAX] = {0};
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs
