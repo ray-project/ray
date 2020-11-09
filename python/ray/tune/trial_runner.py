@@ -1,3 +1,6 @@
+import uuid
+from typing import Any
+
 import click
 from datetime import datetime
 import json
@@ -39,15 +42,43 @@ def _find_newest_ckpt(ckpt_dir):
     return max(full_paths)
 
 
+class _RawJson:
+    def __init__(self, content):
+        self.content = content
+
+    def toJSON(self):
+        return self.content
+
+
 class _TuneFunctionEncoder(json.JSONEncoder):
+    def __init__(self, *args, **kwargs):
+        super(_TuneFunctionEncoder, self).__init__(*args, **kwargs)
+        self._replace_map = {}
+
     def default(self, obj):
-        if isinstance(obj, types.FunctionType):
+        if isinstance(obj, _RawJson):
+            key = f"__REPLACE__{uuid.uuid4().hex}__"
+            self._replace_map[key] = obj.content
+            return key
+        elif isinstance(obj, types.FunctionType):
             return self._to_cloudpickle(obj)
         try:
             return super(_TuneFunctionEncoder, self).default(obj)
         except Exception:
             logger.debug("Unable to encode. Falling back to cloudpickle.")
             return self._to_cloudpickle(obj)
+
+    def encode(self, o: Any) -> str:
+        result = super(_TuneFunctionEncoder, self).encode(o)
+        for k, v in self._replace_map.items():
+            result = result.replace(f'"{k}"', v)
+        return result
+
+    def iterencode(self, o: Any, _one_shot: bool = False):
+        for result in super(_TuneFunctionEncoder, self).iterencode(o):
+            for k, v in self._replace_map.items():
+                result = result.replace(f'"{k}"', v)
+            yield result
 
     def _to_cloudpickle(self, obj):
         return {

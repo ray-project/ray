@@ -1,4 +1,5 @@
 # coding: utf-8
+import json
 import logging
 
 from ray.tune.trial import Trial, Checkpoint
@@ -53,13 +54,17 @@ class TrialExecutor:
         Args:
             trial (Trial): Trial to checkpoint.
         """
+        from ray.tune.trial_runner import _TuneFunctionEncoder, _RawJson
+
         if trial.checkpoint.storage == Checkpoint.MEMORY:
             logger.debug("Trial %s: Not saving data for memory checkpoint.",
                          trial)
             return
         try:
             logger.debug("Trial %s: Saving trial metadata.", trial)
-            self._cached_trial_state[trial.trial_id] = trial.__getstate__()
+            json_state = json.dumps(
+                trial.__getstate__(), indent=2, cls=_TuneFunctionEncoder)
+            self._cached_trial_state[trial.trial_id] = _RawJson(json_state)
         except Exception:
             logger.exception("Trial %s: Error checkpointing trial metadata.",
                              trial)
