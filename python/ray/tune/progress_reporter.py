@@ -657,6 +657,13 @@ def _get_trial_info(trial, parameters, metrics):
 
 
 class TrialProgressCallback(Callback):
+    """Reports (prints) intermediate trial progress.
+
+    This callback is automatically added to the callback stack. When a
+    result is obtained, this callback will print the results according to
+    the specified verbosity level.
+    """
+
     def __init__(self, metric: Optional[str] = None):
         self._last_print = collections.defaultdict(float)
         self._metric = metric
@@ -674,11 +681,12 @@ class TrialProgressCallback(Callback):
         last_print = self._last_print[trial]
         if has_verbosity(Verbosity.TRIAL_DETAILS) and \
            (done or time.time() - last_print > DEBUG_PRINT_INTERVAL):
-            print("Result for {}:".format(self))
+            print("Result for {}:".format(trial))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self._last_print[trial] = time.time()
         elif has_verbosity(Verbosity.TRIAL_NORM) and (
-                done or time.time() - last_print > DEBUG_PRINT_INTERVAL):
+                done or error
+                or time.time() - last_print > DEBUG_PRINT_INTERVAL):
             info = ""
             if done:
                 info = " This trial completed."
@@ -698,24 +706,17 @@ class TrialProgressCallback(Callback):
             error_file = os.path.join(trial.logdir, "error.txt")
 
             if error:
-                message = "The trial {trial} errored with " \
-                          "parameters={trial.config}. " \
-                          "Error file: {error_file}"
+                message = f"The trial {trial} errored with " \
+                          f"parameters={trial.config}. " \
+                          f"Error file: {error_file}"
             elif self._metric:
-                message = "Trial {trial} reported " \
-                          "{metric_name}={metric_value:.2f} " \
-                          "with parameters={trial.config}.{info}"
+                message = f"Trial {trial} reported " \
+                          f"{metric_name}={metric_value:.2f} " \
+                          f"with parameters={trial.config}.{info}"
             else:
-                message = "Trial {trial} reported " \
-                          "{result} " \
-                          "with parameters={trial.config}.{info}"
+                message = f"Trial {trial} reported " \
+                          f"{print_result_str} " \
+                          f"with parameters={trial.config}.{info}"
 
-            print(
-                message.format(
-                    trial=trial,
-                    error_file=error_file,
-                    metric_name=metric_name,
-                    metric_value=metric_value,
-                    result=print_result_str,
-                    info=info))
+            print(message)
             self._last_print[trial] = time.time()

@@ -192,7 +192,7 @@ def run(
             This has no effect when using the Functional Training API.
         verbose (int): 0, 1, 2, or 3. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and brief trial results,
-            3 = status and detailed trial results.
+            3 = status and detailed trial results. Defaults to 3.
         progress_reporter (ProgressReporter): Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
