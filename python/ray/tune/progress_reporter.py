@@ -658,7 +658,7 @@ def _get_trial_info(trial, parameters, metrics):
 
 class TrialProgressCallback(Callback):
     def __init__(self, metric: Optional[str] = None):
-        self._last_print = collections.defaultdict(lambda: 0.)
+        self._last_print = collections.defaultdict(float)
         self._metric = metric
 
     def on_trial_result(self, iteration: int, trials: List["Trial"],
