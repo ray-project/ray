@@ -2,15 +2,14 @@
 Adapted from
 https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras
 """
-import json
-import os
 import argparse
 import tensorflow as tf
 import numpy as np
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.integration.keras import TuneReportCheckpointCallback
-from ray.tune.integration.tensorflow import DistributedTrainableCreator
+from ray.tune.integration.tensorflow import (DistributedTrainableCreator,
+                                             get_num_workers)
 
 
 def mnist_dataset(batch_size):
@@ -45,8 +44,7 @@ def build_and_compile_cnn_model(config):
 def train_mnist(config, checkpoint_dir=None):
     strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
     per_worker_batch_size = 64
-    tf_config = json.loads(os.environ["TF_CONFIG"])
-    num_workers = len(tf_config["cluster"]["worker"])
+    num_workers = get_num_workers()
     global_batch_size = per_worker_batch_size * num_workers
     multi_worker_dataset = mnist_dataset(global_batch_size)
     with strategy.scope():

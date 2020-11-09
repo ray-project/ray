@@ -109,28 +109,28 @@ def DistributedTrainableCreator(
         num_cpus_per_worker: int = 1) -> Type[_TensorFlowTrainable]:
     """Converts TensorFlow MultiWorkerMirror training to be executable by Tune.
 
-        Requires TensorFlow > 2.0 to work, recommends TensorFlow > 2.2.
+    Requires TensorFlow > 2.0 to work, recommends TensorFlow > 2.2.
 
-        This function wraps and sets resources for a TF distributed training
-        function to be used with Tune. It generates a TensorFlow Trainable
-        which can be a distributed
-        training job.
+    This function wraps and sets resources for a TF distributed training
+    function to be used with Tune. It generates a TensorFlow Trainable
+    which can be a distributed
+    training job.
 
-        Note: there is no fault tolerance at the moment.
-        Args:
-            func (Callable[[dict], None]): A training function that takes in
-                a config dict for hyperparameters and should initialize
-                horovod via horovod.init.
-            use_gpu (bool); Whether to allocate a GPU per worker.
-            num_cpus_per_worker (int): Number of CPUs to request
-                from Ray per worker.
-            num_workers (int): Number of hosts that each trial is expected
-                to use.
+    Note: there is no fault tolerance at the moment.
+    Args:
+        func (Callable[[dict], None]): A training function that takes in
+            a config dict for hyperparameters and should initialize
+            horovod via horovod.init.
+        use_gpu (bool); Whether to allocate a GPU per worker.
+        num_cpus_per_worker (int): Number of CPUs to request
+            from Ray per worker.
+        num_workers (int): Number of hosts that each trial is expected
+            to use.
 
-            Returns:
-                Trainable class that can be passed into `tune.run`.
-            .. versionadded:: 1.0.0
-        """
+        Returns:
+            Trainable class that can be passed into `tune.run`.
+        .. versionadded:: 1.0.0
+    """
     class WrappedDistributedTensorFlowTrainable(_TensorFlowTrainable):
         _function = func
         _num_workers = num_workers
@@ -149,3 +149,9 @@ def DistributedTrainableCreator(
                              extra_gpu=num_workers_ if use_gpu_ else 0)
 
     return WrappedDistributedTensorFlowTrainable
+
+
+def get_num_workers():
+    tf_config = json.loads(os.environ["TF_CONFIG"])
+    num_workers = len(tf_config["cluster"]["worker"])
+    return num_workers
