@@ -155,7 +155,7 @@ class PushManager {
   /// Max number of chunks in flight allowed.
   const int64_t max_chunks_in_flight_;
 
-  /// Running count of chunks remaining.
+  /// Running count of chunks remaining to send.
   int64_t chunks_remaining_ = 0;
 
   /// Running count of chunks in flight, used to limit progress of in_flight_pushes_.
