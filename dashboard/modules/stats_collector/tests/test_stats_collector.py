@@ -207,6 +207,7 @@ def test_multi_nodes_info(enable_test_module, disable_aiohttp_cache,
 
     wait_for_condition(_check_nodes, timeout=10)
 
+
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "include_dashboard": True
@@ -230,7 +231,7 @@ def test_multi_node_churn(enable_test_module, disable_aiohttp_cache,
             else:
                 node_index = random.randrange(0, len(worker_nodes))
                 node_to_remove = worker_nodes.pop(node_index)
-                cluster.remove_node()
+                cluster.remove_node(node_to_remove)
 
     def get_index():
         resp = requests.get(webui_url)
