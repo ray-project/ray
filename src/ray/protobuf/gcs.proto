@@ -394,8 +394,6 @@ message JobTableData {
   JobConfig config = 9;
   // Job state.
   JobState state = 10;
-  // namespace id.
-  string namespace_id = 11;
   // job payload.
   string job_payload = 12;
   // The reason for the job failure.

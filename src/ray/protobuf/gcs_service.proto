@@ -53,8 +53,6 @@ message SubmitJobRequest {
   bytes job_id = 1;
   // Language the job uses
   Language language = 2;
-  // namespace id.
-  string namespace_id = 3;
   // job payload.
   string job_payload = 4;
   // required resources.

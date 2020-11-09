@@ -174,14 +174,15 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
-      local_object_manager_(RayConfig::instance().free_objects_batch_size(),
-                            RayConfig::instance().free_objects_period_milliseconds(),
-                            worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
-                            [this](const std::vector<ObjectID> &object_ids) {
-                              object_manager_.FreeObjects(object_ids,
-                                                          /*local_only=*/false);
-                            },
-                            on_objects_spilled),
+      local_object_manager_(
+          RayConfig::instance().free_objects_batch_size(),
+          RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
+          gcs_client_->Objects(), worker_rpc_pool_,
+          [this](const std::vector<ObjectID> &object_ids) {
+            object_manager_.FreeObjects(object_ids,
+                                        /*local_only=*/false);
+          },
+          on_objects_spilled),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -310,10 +311,15 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
-    if (!job_data.is_dead()) {
+    if (job_data.state() == JobTableData::SUBMITTED) {
+      HandleJobSubmitted(job_id, job_data);
+    } else if (job_data.state() == JobTableData::RUNNING) {
       HandleJobStarted(job_id, job_data);
-    } else {
+    } else if (job_data.state() == JobTableData::FINISHED ||
+               job_data.state() == JobTableData::FAILED) {
       HandleJobFinished(job_id, job_data);
+    } else {
+      // The job state is UNKNOWN, just ignore.
     }
   };
   RAY_RETURN_NOT_OK(
@@ -349,6 +355,15 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
     // Force kill worker
     worker->GetProcess().Kill();
   });
+}
+
+void NodeManager::HandleJobSubmitted(const JobID &job_id, const JobTableData &job_data) {
+  RAY_LOG(DEBUG) << "HandleJobSubmitted " << job_id;
+  RAY_CHECK(!job_data.is_dead());
+
+  // If the namespace of the node is match with the job's namespace then int the job
+  // env.
+  // InitializeJobEnv(job_data);
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {

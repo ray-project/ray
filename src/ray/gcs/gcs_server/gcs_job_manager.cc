@@ -132,10 +132,8 @@ void GcsJobManager::HandleDropJob(const rpc::DropJobRequest &request,
 Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
                                 const ray::gcs::StatusCallback &callback) {
   auto job_id = JobID::FromBinary(request.job_id());
-  const auto &namespace_id = request.namespace_id();
 
-  RAY_LOG(INFO) << "Starting register job " << job_id
-                << " with namespace id = " << namespace_id;
+  RAY_LOG(INFO) << "Starting register job " << job_id;
 
   auto it = jobs_.find(job_id);
   if (it != jobs_.end()) {
@@ -147,18 +145,15 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
 
   auto job_table_data = std::make_shared<rpc::JobTableData>();
   job_table_data->set_job_id(request.job_id());
-  job_table_data->set_namespace_id(request.namespace_id());
   job_table_data->set_language(request.language());
   job_table_data->set_job_payload(request.job_payload());
   job_table_data->set_state(rpc::JobTableData_JobState_SUBMITTED);
 
   auto driver_client_id = SelectDriver(*job_table_data);
   if (driver_client_id.IsNil()) {
-    RAY_LOG(ERROR) << "Failed to init job " << job_id
-                   << " with namespace id = " << namespace_id;
+    RAY_LOG(ERROR) << "Failed to init job " << job_id;
     std::ostringstream ss;
-    ss << "Insufficient resources, job id: " << job_id
-       << ", namespace id: " << namespace_id;
+    ss << "Insufficient resources, job id: " << job_id;
     return Status::Invalid(ss.str());
   }
 
@@ -178,8 +173,7 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
     if (callback) {
       callback(status);
     }
-    RAY_LOG(INFO) << "Finished submitting job, job id = " << job_id
-                  << " with namespace id " << job_table_data->namespace_id();
+    RAY_LOG(INFO) << "Finished submitting job, job id = " << job_id;
   };
   return gcs_table_storage_->JobTable().Put(job_id, *job_table_data, on_done);
 }
