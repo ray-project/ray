@@ -71,7 +71,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   main_service_ = &main_service;
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
-      1L,
+      static_cast<int64_t>(1L),
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
 
   if (plasma::plasma_store_runner) {
@@ -447,13 +447,11 @@ void PushManager::ScheduleRemainingPushes() {
       auto push_id = it->first;
       auto max_chunks = it->second.first;
       auto send_chunk_fn = it->second.second;
-
-      // All chunks for this push have been sent; move on to the next one.
       if (next_chunk_id_[push_id] < max_chunks) {
-        remaining = true;
         // Send the next chunk for this push.
         send_chunk_fn(next_chunk_id_[push_id]++);
         chunks_in_flight_ += 1;
+        remaining = true;
         RAY_LOG(DEBUG) << "Sending chunk " << next_chunk_id_[push_id] << " of "
                        << max_chunks << " for push " << push_id.first << ", "
                        << push_id.second << ", chunks in flight " << NumChunksInFlight()
