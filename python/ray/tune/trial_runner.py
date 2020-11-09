@@ -193,7 +193,7 @@ class TrialRunner:
                 self.resume(run_errored_only=errored_only)
                 self._resumed = True
             except Exception as e:
-                if has_verbosity(Verbosity.TRIAL_DETAILS):
+                if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
                     logger.error(str(e))
                 logger.exception("Runner restore failed.")
                 if self._fail_fast:

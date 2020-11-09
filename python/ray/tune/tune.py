@@ -72,7 +72,7 @@ def run(
         checkpoint_score_attr=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
-        verbose=Verbosity.TRIAL_DETAILS,
+        verbose=Verbosity.V3_TRIAL_DETAILS,
         progress_reporter=None,
         loggers=None,
         log_to_file=False,
@@ -386,7 +386,7 @@ def run(
     if progress_reporter is None:
         if IS_NOTEBOOK:
             progress_reporter = JupyterNotebookReporter(
-                overwrite=not has_verbosity(Verbosity.TRIAL_NORM))
+                overwrite=not has_verbosity(Verbosity.V2_TRIAL_NORM))
         else:
             progress_reporter = CLIReporter()
 
@@ -419,7 +419,7 @@ def run(
     tune_start = time.time()
     while not runner.is_finished():
         runner.step()
-        if has_verbosity(Verbosity.EXPERIMENT):
+        if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
     tune_taken = time.time() - tune_start
 
@@ -428,7 +428,7 @@ def run(
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
-    if has_verbosity(Verbosity.EXPERIMENT):
+    if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
@@ -447,7 +447,7 @@ def run(
 
     all_taken = time.time() - all_start
     verbose_log(
-        logger.info, Verbosity.EXPERIMENT,
+        logger.info, Verbosity.V1_EXPERIMENT,
         f"Total run time: {all_taken:.2f} seconds "
         f"({tune_taken:.2f} seconds for the tuning loop).")
 
@@ -462,7 +462,7 @@ def run(
 def run_experiments(experiments,
                     scheduler=None,
                     server_port=None,
-                    verbose=Verbosity.TRIAL_DETAILS,
+                    verbose=Verbosity.V3_TRIAL_DETAILS,
                     progress_reporter=None,
                     resume=False,
                     queue_trials=False,

@@ -229,7 +229,7 @@ class TuneReporterBase(ProgressReporter):
                 best_trial_str(current_best_trial, metric,
                                self._parameter_columns))
 
-        if has_verbosity(Verbosity.EXPERIMENT):
+        if has_verbosity(Verbosity.V1_EXPERIMENT):
             # Will filter the table in `trial_progress_str`
             messages.append(
                 trial_progress_str(
@@ -466,9 +466,8 @@ def trial_progress_str(trials,
         num_trials, f"/{total_samples}"
         if total_samples else "", ", ".join(num_trials_strs)))
 
-    if has_verbosity(
-            Verbosity.TRIAL_DETAILS) or (has_verbosity(Verbosity.TRIAL_NORM)
-                                         and done):
+    if has_verbosity(Verbosity.V3_TRIAL_DETAILS) or (has_verbosity(
+            Verbosity.V2_TRIAL_NORM) and done):
         messages += trial_progress_table(trials, metric_columns,
                                          parameter_columns, fmt, max_rows)
 
@@ -662,6 +661,18 @@ class TrialProgressCallback(Callback):
     This callback is automatically added to the callback stack. When a
     result is obtained, this callback will print the results according to
     the specified verbosity level.
+
+    For ``Verbosity.V3_TRIAL_DETAILS``, a full result list is printed.
+
+    For ``Verbosity.V2_TRIAL_NORM``, only one line is printed per received
+    result.
+
+    All other verbosity levels do not print intermediate trial progress.
+
+    Result printing is throttled on a per-trial basis. Per default, results are
+    printed only once every 30 seconds. Results are always printed when a trial
+    finished or errored.
+
     """
 
     def __init__(self, metric: Optional[str] = None):
@@ -679,12 +690,12 @@ class TrialProgressCallback(Callback):
     def log_result(self, trial: "Trial", result: Dict, error: bool = False):
         done = result.get("done", False) is True
         last_print = self._last_print[trial]
-        if has_verbosity(Verbosity.TRIAL_DETAILS) and \
-           (done or time.time() - last_print > DEBUG_PRINT_INTERVAL):
+        if has_verbosity(Verbosity.V3_TRIAL_DETAILS) and \
+           (done or error or time.time() - last_print > DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(trial))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self._last_print[trial] = time.time()
-        elif has_verbosity(Verbosity.TRIAL_NORM) and (
+        elif has_verbosity(Verbosity.V2_TRIAL_NORM) and (
                 done or error
                 or time.time() - last_print > DEBUG_PRINT_INTERVAL):
             info = ""

@@ -3,16 +3,16 @@ from typing import Any, Callable, Union
 
 
 class Verbosity(Enum):
-    MINIMAL = 0
-    EXPERIMENT = 1
-    TRIAL_NORM = 2
-    TRIAL_DETAILS = 3
+    V0_MINIMAL = 0
+    V1_EXPERIMENT = 1
+    V2_TRIAL_NORM = 2
+    V3_TRIAL_DETAILS = 3
 
     def __int__(self):
         return self.value
 
 
-verbosity: Union[int, Verbosity] = Verbosity.TRIAL_DETAILS
+verbosity: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
 
 
 def set_verbosity(level: Union[int, Verbosity]):
