@@ -28,14 +28,14 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
             "t": ViewRequirement(),
             SampleBatch.OBS: ViewRequirement(),
             SampleBatch.PREV_ACTIONS: ViewRequirement(
-                SampleBatch.ACTIONS, space=self.action_space, shift=-1),
+                SampleBatch.ACTIONS, space=self.action_space, data_rel_pos=-1),
             SampleBatch.PREV_REWARDS: ViewRequirement(
-                SampleBatch.REWARDS, shift=-1),
+                SampleBatch.REWARDS, data_rel_pos=-1),
         }
         for i in range(2):
             self.model.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
-                    "state_out_{}".format(i), shift=-1, space=self.state_space)
+                    "state_out_{}".format(i), data_rel_pos=-1, space=self.state_space)
             self.model.inference_view_requirements[
                 "state_out_{}".format(i)] = \
                 ViewRequirement(space=self.state_space)
@@ -43,7 +43,7 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
         self.view_requirements = dict(
             **{
                 SampleBatch.NEXT_OBS: ViewRequirement(
-                    SampleBatch.OBS, shift=1),
+                    SampleBatch.OBS, data_rel_pos=1),
                 SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
                 SampleBatch.REWARDS: ViewRequirement(),
                 SampleBatch.DONES: ViewRequirement(),

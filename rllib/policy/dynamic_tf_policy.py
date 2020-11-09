@@ -440,7 +440,7 @@ class DynamicTFPolicy(TFPolicy):
                     dtype=np.float32)
             # All others.
             else:
-                time_axis = not isinstance(view_req.shift, int)
+                time_axis = not isinstance(view_req.data_rel_pos, int)
                 if view_req.used_for_training:
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).
@@ -591,11 +591,11 @@ class DynamicTFPolicy(TFPolicy):
                     del self._loss_input_dict[key]
             # Add those data_cols (again) that are missing and have
             # dependencies by view_cols.
-            for key in list(self.view_requirements.keys()):
-                vr = self.view_requirements[key]
-                if vr.data_col is not None and vr.data_col not in self.view_requirements:
-                    used_for_training = vr.data_col in train_batch.accessed_keys
-                    self.view_requirements[vr.data_col] = ViewRequirement(space=vr.space, used_for_training=used_for_training)
+            #for key in list(self.view_requirements.keys()):
+            #    vr = self.view_requirements[key]
+            #    if vr.data_col is not None and vr.data_col not in self.view_requirements:
+            #        used_for_training = vr.data_col in train_batch.accessed_keys
+            #        self.view_requirements[vr.data_col] = ViewRequirement(space=vr.space, used_for_training=used_for_training)
 
         self._loss_input_dict_no_rnn = {
             k: v for k, v in self._loss_input_dict.items() if

@@ -14,6 +14,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
+from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -557,19 +558,23 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
-                shift=1,
+                data_rel_pos=1,
                 space=self.observation_space),
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
             SampleBatch.REWARDS: ViewRequirement(),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
+            SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
             "t": ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(
-            self, auto_remove_unneeded_view_reqs: bool = True) -> None:
+            self,
+            auto_remove_unneeded_view_reqs: bool = True,
+            stats_fn=None,
+    ) -> None:
         """Performs test calls through policy's model and loss.
 
         NOTE: This base method should work for define-by-run Policies such as
@@ -584,42 +589,54 @@ class Policy(metaclass=ABCMeta):
             auto_remove_unneeded_view_reqs (bool): Whether to automatically
                 remove those ViewRequirements records from
                 self.view_requirements that are not needed.
+            stats_fn (Optional[Callable[[Policy, SampleBatch], Dict[str,
+                TensorType]]]): An optional stats function to be called after
+                the loss.
         """
-        sample_batch_size = max(self.batch_divisibility_req, 2)
+        sample_batch_size = max(self.batch_divisibility_req, 4)
         B = 2  # For RNNs, have B=2, T=[depends on sample_batch_size]
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
         input_dict = self._lazy_tensor_dict(self._dummy_batch)
         actions, state_outs, extra_outs = \
-            self.compute_actions_from_input_dict(input_dict)
-        # Add extra outs to view reqs.
+            self.compute_actions_from_input_dict(input_dict, explore=False)
+        # Add all extra action outputs to view reqirements (these may be
+        # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
             self._dummy_batch[key] = np.zeros_like(value)
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
-        sb = SampleBatch(self._dummy_batch)
+        batch_for_postproc = UsageTrackingDict(self._dummy_batch)  #self._lazy_numpy_dict(self._dummy_batch)
+        batch_for_postproc.count = self._dummy_batch.count
+        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
             # TODO: (sven) This hack will not work for attention net traj.
             #  view setup.
             i = 0
-            while "state_in_{}".format(i) in sb:
-                sb["state_in_{}".format(i)] = sb["state_in_{}".format(i)][:B]
-                if "state_out_{}".format(i) in sb:
-                    sb["state_out_{}".format(i)] = \
-                        sb["state_out_{}".format(i)][:B]
+            while "state_in_{}".format(i) in postprocessed_batch:
+                postprocessed_batch["state_in_{}".format(i)] = \
+                    postprocessed_batch["state_in_{}".format(i)][:B]
+                if "state_out_{}".format(i) in postprocessed_batch:
+                    postprocessed_batch["state_out_{}".format(i)] = \
+                        postprocessed_batch["state_out_{}".format(i)][:B]
                 i += 1
-        batch_for_postproc = self._lazy_numpy_dict(sb)
-        batch_for_postproc.count = sb.count
-        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
-        if state_outs:
-            seq_len = (self.batch_divisibility_req // B) or 1
-            postprocessed_batch["seq_lens"] = \
+            seq_len = (self.batch_divisibility_req // B) or 2
+            postprocessed_batch.seq_lens = \
                 np.array([seq_len for _ in range(B)], dtype=np.int32)
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Remove the UsageTrackingDict wrap to prep for wrapping the
+        # train batch with a to-tensor UsageTrackingDict.
+        train_batch = {k: v for k, v in postprocessed_batch.items()}
+        train_batch = self.model.preprocess_train_batch(train_batch)
+        train_batch = self._lazy_tensor_dict(train_batch)
+        train_batch.count = self._dummy_batch.count
+        # Call the loss function, if it exists.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
+        # Call the stats fn, if given.
+        if stats_fn is not None:
+            stats_fn(self, train_batch)
 
         # Add new columns automatically to view-reqs.
         if self.config["_use_trajectory_view_api"] and \
@@ -634,7 +651,7 @@ class Policy(metaclass=ABCMeta):
             if self._loss:
                 # Tag those only needed for post-processing.
                 for key in batch_for_postproc.accessed_keys:
-                    if key not in train_batch.accessed_keys:
+                    if key not in train_batch.accessed_keys and key not in self.model.inference_view_requirements:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
@@ -646,16 +663,16 @@ class Policy(metaclass=ABCMeta):
                         del self.view_requirements[key]
             # Add those data_cols (again) that are missing and have
             # dependencies by view_cols.
-            for key in list(self.view_requirements.keys()):
-                vr = self.view_requirements[key]
-                if vr.data_col is not None and \
-                        vr.data_col not in self.view_requirements:
-                    used_for_training = \
-                        vr.data_col in train_batch.accessed_keys
-                    self.view_requirements[vr.data_col] = \
-                        ViewRequirement(
-                            space=vr.space,
-                            used_for_training=used_for_training)
+            #for key in list(self.view_requirements.keys()):
+            #    vr = self.view_requirements[key]
+            #    if vr.data_col is not None and \
+            #            vr.data_col not in self.view_requirements:
+            #        used_for_training = \
+            #            vr.data_col in train_batch.accessed_keys
+            #        self.view_requirements[vr.data_col] = \
+            #            ViewRequirement(
+            #                space=vr.space,
+            #                used_for_training=used_for_training)
 
     def _get_dummy_batch_from_view_requirements(
             self, batch_size: int = 1) -> SampleBatch:
@@ -669,24 +686,35 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
+            # Skip input_dicts for now.
+            if view_req.is_input_dict:
+                continue
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 _, shape = ModelCatalog.get_action_shape(view_req.space)
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:
                 # Range of indices on time-axis, make sure to create
-                if view_req.shift_from is not None:
+                if view_req.data_rel_pos_from is not None:
                     ret[view_col] = np.zeros_like(
-                        [[view_req.space.sample() for _ in range(view_req.shift_to - view_req.shift_from + 1)]  for b in range(batch_size)])
+                        [[view_req.space.sample() for _ in range(view_req.data_rel_pos_to - view_req.data_rel_pos_from + 1)]  for b in range(batch_size)])
                 # Set of (probably non-consecutive) indices.
-                elif isinstance(view_req.shift, (list, tuple)):
+                elif isinstance(view_req.data_rel_pos, (list, tuple)):
                     ret[view_col] = np.zeros_like(
-                        [[view_req.space.sample() for t in range(len(view_req.shift))] for b in range(batch_size)])
+                        [[view_req.space.sample() for t in range(len(view_req.data_rel_pos))] for b in range(batch_size)])
                 # Single index.
                 else:
                     ret[view_col] = np.zeros_like(
                         [view_req.space.sample() for _ in range(batch_size)])
-        return SampleBatch(ret)
+
+        # Handle input-dict requests (point to same ret here).
+        _input_dict = {k: v for k, v in ret.items()}
+        for view_col, view_req in self.view_requirements.items():
+            if view_req.is_input_dict:
+                ret[view_col] = _input_dict
+                ret[view_col]["seq_lens"] = np.array([1 for _ in range(batch_size)])
+
+        return SampleBatch(ret, _dont_check_lens=True)
 
     def _update_model_inference_view_requirements_from_init_state(self):
         """Uses this Model's initial state to auto-add necessary ViewReqs.
@@ -701,7 +729,7 @@ class Policy(metaclass=ABCMeta):
             model.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
-                    shift=-1,
+                    data_rel_pos=-1,
                     space=Box(-1.0, 1.0, shape=state.shape))
             model.inference_view_requirements["state_out_{}".format(i)] = \
                 ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))

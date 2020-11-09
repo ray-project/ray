@@ -90,6 +90,10 @@ def compute_advantages(rollout: SampleBatch,
     rollout[Postprocessing.ADVANTAGES] = rollout[
         Postprocessing.ADVANTAGES].astype(np.float32)
 
-    assert all(val.shape[0] == rollout_size for key, val in rollout.items()), \
-        "Rollout stacked incorrectly!"
+    #try:#TODO
+    ## Check on batch sizes for those batch items that are ndarrays.
+    #    assert all(val.shape[0] == rollout_size if isinstance(val, np.ndarray) else True for key, val in rollout.items()), \
+    #        "Rollout stacked incorrectly!"
+    #except Exception as e:
+    #    raise e
     return rollout

@@ -61,6 +61,7 @@ class SampleBatch:
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
+        self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = None
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.max_seq_len = max(self.seq_lens)
@@ -76,12 +77,13 @@ class SampleBatch:
                 self.data[k] = np.array(v)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) == 1, \
-            "Data columns must be same length, but lens are {}".format(lengths)
+        if not self.dont_check_lens:
+            assert len(set(lengths)) == 1, \
+                "Data columns must be same length, but lens are {}".format(lengths)
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
-            self.count = len(self.data[k])
+            self.count = len(next(iter(self.data.values())))
 
         # Keeps track of new columns added after initial ones.
         self.new_columns = []
@@ -115,7 +117,7 @@ class SampleBatch:
                 [s[k] for s in concat_samples],
                 time_major=concat_samples[0].time_major)
         return SampleBatch(
-            out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major)
+            out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major, _dont_check_lens=True)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -245,12 +247,26 @@ class SampleBatch:
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        if self.time_major is not None:
+        if self.seq_lens:
+            data = {k: v[start:end] for k, v in self.data.items()}
+            # Fix state_in_x data.
+            count = 0
+            for i, seq_len in enumerate(self.seq_lens):
+                count += seq_len
+                if count >= start:
+                    state_start = i
+                elif count >= end:
+                    state_end = i
+            data["state_in_0"] = self.data["state_in_0"][state_start:state_end]
             return SampleBatch(
-                {k: v[:, start:end]
-                 for k, v in self.data.items()},
-                _seq_lens=self.seq_lens[start:end],
+                data, _seq_lens=self.seq_lens[state_start:state_end],
                 _time_major=self.time_major)
+        #elif self.time_major is not None:
+        #    return SampleBatch(
+        #        {k: v[:, start:end]
+        #         for k, v in self.data.items()},
+        #        _seq_lens=self.seq_lens[start:end],
+        #        _time_major=self.time_major)
         else:
             return SampleBatch(
                 {k: v[start:end]

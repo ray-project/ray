@@ -27,13 +27,16 @@ class ViewRequirement:
         >>> # The default ViewRequirement for a Model is:
         >>> req = [ModelV2].inference_view_requirements
         >>> print(req)
-        {"obs": ViewRequirement(shift=0)}
+        {"obs": ViewRequirement(data_rel_pos=0)}
     """
 
     def __init__(self,
                  data_col: Optional[str] = None,
                  space: gym.Space = None,
-                 shift: Union[int, str, List[int]] = 0,
+                 data_rel_pos: Union[int, str, List[int]] = 0,
+                 abs_pos: Optional[int] = None,
+                 #batch_repeat_type: str = "repeat",
+                 batch_repeat_value: int = 1,
                  used_for_training: bool = True,
                  is_input_dict: bool = False):
         """Initializes a ViewRequirement object.
@@ -45,16 +48,25 @@ class ViewRequirement:
             space (gym.Space): The gym Space used in case we need to pad data
                 in inaccessible areas of the trajectory (t<0 or t>H).
                 Default: Simple box space, e.g. rewards.
-            shift (Union[int, str, List[int]]): Single shift value of list of
+            data_rel_pos (Union[int, str, List[int]]): Single shift value or list of
                 shift values to use relative to the underlying `data_col`.
                 Example: For a view column "prev_actions", you can set
-                `data_col="actions"` and `shift=-1`.
+                `data_col="actions"` and `data_rel_pos=-1`.
                 Example: For a view column "obs" in an Atari framestacking
                 fashion, you can set `data_col="obs"` and
-                `shift=[-3, -2, -1, 0]`.
+                `data_rel_pos=[-3, -2, -1, 0]`.
                 Example: For the obs input to an attention net, you can specify
-                a range via a str: `shift="-100:0"`, which will pass in the
-                past 100 observations plus the current one.
+                a range via a str: `data_rel_pos="-100:0"`, which will pass in
+                the past 100 observations plus the current one.
+            abs_pos (Optional[int]): An optional absolute position arg,
+                used e.g. for the location of a requested inference dict within
+                the trajectory. Negative values refer to counting from the end
+                of a trajectory.
+            #batch_repeat_type (str): The mode of repeating the view on the time
+            #    axis. Allowed values are:
+            #    once: Only provide the view once (at ts=`batch_repeat_value`).
+            #    repeat: Repeat the view on the time axis every
+            #        `batch_repeat_value` timesteps, starting from 0.
             used_for_training (bool): Whether the data will be used for
                 training. If False, the column will not be copied into the
                 final train batch.
@@ -66,14 +78,21 @@ class ViewRequirement:
         self.space = space or gym.spaces.Box(
             float("-inf"), float("inf"), shape=())
 
-        self.shift = shift
+        self.abs_pos = abs_pos
+        #self.batch_repeat_type = batch_repeat_type
+        self.batch_repeat_value = batch_repeat_value
+
+        self.data_rel_pos = data_rel_pos
+        if isinstance(self.data_rel_pos, (list, tuple)):
+            self.data_rel_pos = np.array(self.data_rel_pos)
+
         # Special case: Providing a (probably larger) range of indices, e.g.
         # "-100:0" (past 100 timesteps plus current one).
-        self.shift_from = self.shift_to = None
-        if isinstance(self.shift, str):
-            f, t = self.shift.split(":")
-            self.shift_from = int(f)
-            self.shift_to = int(t)
+        self.data_rel_pos_from = self.data_rel_pos_to = None
+        if isinstance(self.data_rel_pos, str):
+            f, t = self.data_rel_pos.split(":")
+            self.data_rel_pos_from = int(f)
+            self.data_rel_pos_to = int(t)
 
         self.used_for_training = used_for_training
 

@@ -47,7 +47,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_col is None
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
-                    assert view_req_policy[key].shift == 1
+                    assert view_req_policy[key].data_rel_pos == 1
             trainer.stop()
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):
@@ -77,10 +77,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
                 if key == SampleBatch.PREV_ACTIONS:
                     assert view_req_policy[key].data_col == SampleBatch.ACTIONS
-                    assert view_req_policy[key].shift == -1
+                    assert view_req_policy[key].data_rel_pos == -1
                 elif key == SampleBatch.PREV_REWARDS:
                     assert view_req_policy[key].data_col == SampleBatch.REWARDS
-                    assert view_req_policy[key].shift == -1
+                    assert view_req_policy[key].data_rel_pos == -1
                 elif key not in [
                         SampleBatch.NEXT_OBS, SampleBatch.PREV_ACTIONS,
                         SampleBatch.PREV_REWARDS
@@ -88,7 +88,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_col is None
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
-                    assert view_req_policy[key].shift == 1
+                    assert view_req_policy[key].data_rel_pos == 1
             trainer.stop()
 
     def test_traj_view_simple_performance(self):

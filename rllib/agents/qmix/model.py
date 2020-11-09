@@ -28,7 +28,7 @@ class RNNModel(TorchModelV2, nn.Module):
         self.inference_view_requirements.update({
             "state_in_0": ViewRequirement(
                 "state_out_0",
-                shift=-1,
+                data_rel_pos=-1,
                 space=Box(-1.0, 1.0, (self.n_agents, self.rnn_hidden_dim)))
         })
 

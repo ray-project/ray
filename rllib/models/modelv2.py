@@ -62,7 +62,7 @@ class ModelV2:
         self.time_major = self.model_config.get("_time_major")
         # Basic view requirement for all models: Use the observation as input.
         self.inference_view_requirements = {
-            SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
+            SampleBatch.OBS: ViewRequirement(data_rel_pos=0, space=self.obs_space),
         }
 
     # TODO: (sven): Get rid of `get_initial_state` once Trajectory
@@ -256,6 +256,10 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, input_dict.get("seq_lens"))
 
+    # TODO: (sven) Experimental method.
+    def preprocess_train_batch(self, train_batch):
+        return train_batch
+
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
 
@@ -329,7 +333,7 @@ class ModelV2:
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
-                    shift=-1,
+                    data_rel_pos=-1,
                     space=Box(-1.0, 1.0, shape=state.shape))
             self.inference_view_requirements["state_out_{}".format(i)] = \
                 ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))

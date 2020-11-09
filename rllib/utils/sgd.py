@@ -66,24 +66,45 @@ def minibatches(samples, sgd_minibatch_size):
     # Replace with `if samples.seq_lens` check.
     if "state_in_0" in samples.data or "state_out_0" in samples.data:
         if log_once("not_shuffling_rnn_data_in_simple_mode"):
-            logger.warning("Not shuffling RNN data for SGD in simple mode")
+            logger.warning("Not time-shuffling RNN data for SGD.")
     else:
         samples.shuffle()
 
     i = 0
     slices = []
     if samples.seq_lens:
-        seq_no = 0
-        while i < samples.count:
-            seq_no_end = seq_no
-            actual_count = 0
-            while actual_count < sgd_minibatch_size and len(
-                    samples.seq_lens) > seq_no_end:
-                actual_count += samples.seq_lens[seq_no_end]
-                seq_no_end += 1
-            slices.append((seq_no, seq_no_end))
-            i += actual_count
-            seq_no = seq_no_end
+        start_pos = 0
+        #end_pos = 0
+        minibatch_size = 0
+        l = 0
+        while l < len(samples.seq_lens):
+            seq_len = samples.seq_lens[l]
+            minibatch_size += seq_len
+            # Complete minibatch -> Append to slices.
+            if minibatch_size >= sgd_minibatch_size:
+                slices.append((start_pos, start_pos + sgd_minibatch_size))
+                start_pos += sgd_minibatch_size
+                if minibatch_size > sgd_minibatch_size:
+                    overhead = minibatch_size - sgd_minibatch_size
+                    start_pos -= (seq_len - overhead)
+                    l -= 1
+                #end_pos = start_pos
+                minibatch_size = 0
+            #else:
+                #end_pos += seq_len
+            l += 1
+
+        #seq_no = 0
+        #while i < samples.count:
+        #    seq_no_end = seq_no
+        #    actual_count = 0
+        #    while actual_count < sgd_minibatch_size and len(
+        #            samples.seq_lens) > seq_no_end:
+        #        actual_count += samples.seq_lens[seq_no_end]
+        #        seq_no_end += 1
+        #    slices.append((seq_no, seq_no_end))
+        #    i += actual_count
+        #    seq_no = seq_no_end
     else:
         while i < samples.count:
             slices.append((i, i + sgd_minibatch_size))

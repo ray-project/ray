@@ -15,7 +15,8 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
-from ray.rllib.policy.rnn_sequencing import add_time_dimension
+from ray.rllib.policy.rnn_sequencing import add_time_dimension, \
+    chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -292,38 +293,55 @@ class GTrXLNet(RecurrentNetwork):
         self.register_variables(self.trxl_model.variables)
         self.trxl_model.summary()
 
-        # Setup inference view (memory-inference x past observations +
+        # Setup inference view (`memory-inference` x past observations +
         # current one (0))
+        # 1 to `num_transformer_units`: Memory data (one per transformer unit).
+        for i in range(self.num_transformer_units):
+            #self.inference_view_requirements["state_out_{}".format(i)] = \
+            #    ViewRequirement(
+            #        data_rel_pos="-{}:-1".format(self.memory_inference),
+            #        space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                   "state_out_{}".format(i),
+                    data_rel_pos="-{}:-1".format(self.memory_inference),
+                    # Repeat the incoming state every max-seq-len times.
+                    #batch_repeat_type="repeat",
+                    batch_repeat_value=self.max_seq_len,
+                    space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
+
         #self.inference_view_requirements.update({
         #    SampleBatch.OBS: ViewRequirement(
-        #        shift="-{}:0".format(self.memory_inference),
+        #        data_rel_pos="-{}:0".format(self.memory_inference),
         #        space=self.obs_space)
         #})
         # Setup additional view requirements for attention net inference calls.
         # 0: The last `max_seq_len` observations.
         #self.inference_view_requirements["state_in_0"] = ViewRequirement(
         #    "state_out_0",
-        #    shift=-1,
+        #    data_rel_pos=-1,
         #    space=Box(-1.0, 1.0, shape=(self.max_seq_len, self.obs_dim)))
         ## 1 to `num_transformer_units`: Memory data (one per transformer unit).
         #for i in range(1, self.num_transformer_units + 1):
         #    self.inference_view_requirements["state_in_{}".format(i)] = \
         #        ViewRequirement(
         #            "state_out_{}".format(i),
-        #            shift=-1,
+        #            data_rel_pos=-1,
         #            space=Box(-1.0, 1.0,
         #                      shape=(self.memory_tau, self.attn_dim)))
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
-        is_training = input_dict["is_training"]
+        assert seq_lens is not None
+        # Add the needed batch rank (tf Models' Input requires this).
+        is_training = tf.expand_dims(input_dict["is_training"], axis=0)
         observations = input_dict[SampleBatch.OBS]
         # Add the time dim to observations.
         B = len(seq_lens)
-        T = tf.shape(observations)[0] // B
-        observations = tf.reshape(observations, [-1, T] + observations.shape.as_list()[1:])
+        shape = tf.shape(observations)
+        T = shape[0] // B
+        observations = tf.reshape(observations, tf.concat([[-1, T], shape[1:]], axis=0))
 
-        assert seq_lens is not None
         #padded_inputs = input_dict["obs_flat"]
         #max_seq_len = tf.shape(observations)[0] // tf.shape(seq_lens)[0]
         all_out = self.trxl_model([observations] + state + [is_training])
@@ -375,19 +393,19 @@ class GTrXLNet(RecurrentNetwork):
 
     #    return logits, memory_outs
 
-    @override(ModelV2)
-    def update_view_requirements_from_init_state(self):
-        # 1 to `num_transformer_units`: Memory data (one per transformer unit).
-        for i in range(self.num_transformer_units):
-            self.inference_view_requirements["state_out_{}".format(i)] = \
-                ViewRequirement(
-                    shift="-{}:-1".format(self.memory_inference),
-                    space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
-            self.inference_view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement(
-                   "state_out_{}".format(i),
-                    shift="-{}:-1".format(self.memory_inference),
-                    space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
+    #@override(ModelV2)
+    #def update_view_requirements_from_init_state(self):
+    #    # 1 to `num_transformer_units`: Memory data (one per transformer unit).
+    #    for i in range(self.num_transformer_units):
+    #        self.inference_view_requirements["state_out_{}".format(i)] = \
+    #            ViewRequirement(
+    #                data_rel_pos="-{}:-1".format(self.memory_inference),
+    #                space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
+    #        self.inference_view_requirements["state_in_{}".format(i)] = \
+    #            ViewRequirement(
+    #               "state_out_{}".format(i),
+    #                data_rel_pos="-{}:-1".format(self.memory_inference),
+    #                space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
 
     # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
@@ -396,12 +414,44 @@ class GTrXLNet(RecurrentNetwork):
         # Plus all Transformer blocks' E(l) outputs concat'd together (up to
         # tau timesteps). Tau=memory size in inference mode.
         #return #[np.zeros((self.memory_inference, self.obs_dim), np.float32)] + \
-        return [np.zeros((self.memory_inference, self.attn_dim), np.float32)
-                for _ in range(self.num_transformer_units)]
+        return []
+        #return [np.zeros((self.memory_inference, self.attn_dim), np.float32)
+        #        for _ in range(self.num_transformer_units)]
 
     @override(ModelV2)
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
+
+    @override(RecurrentNetwork)
+    def preprocess_train_batch(self, train_batch):
+        # Should be the same as for RecurrentNets, but with dynamic-max=False.
+        assert "state_in_0" in train_batch
+        state_keys = []
+        feature_keys_ = []
+        for k, v in train_batch.items():
+            if k.startswith("state_in_"):
+                state_keys.append(k)
+            elif not k.startswith(
+                    "state_out_") and k != "infos" and isinstance(v,
+                                                                  np.ndarray):
+                feature_keys_.append(k)
+    
+        feature_sequences, initial_states, seq_lens = \
+            chop_into_sequences(
+                train_batch[SampleBatch.EPS_ID],
+                train_batch[SampleBatch.UNROLL_ID],
+                train_batch[SampleBatch.AGENT_INDEX],
+                [train_batch[k] for k in feature_keys_],
+                [train_batch[k] for k in state_keys],
+                self.model_config["max_seq_len"],
+                dynamic_max=False,
+                shuffle=False)
+        for i, k in enumerate(feature_keys_):
+            train_batch[k] = feature_sequences[i]
+        for i, k in enumerate(state_keys):
+            train_batch[k] = initial_states[i]
+        train_batch["seq_lens"] = seq_lens
+        return train_batch
 
 
 def relative_position_embedding(seq_length, out_dim):

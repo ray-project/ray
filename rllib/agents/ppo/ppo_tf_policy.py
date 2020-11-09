@@ -48,7 +48,8 @@ def ppo_surrogate_loss(
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
     if state:
-        max_seq_len = tf.reduce_max(train_batch["seq_lens"])
+        B = tf.shape(train_batch["seq_lens"])[0]
+        max_seq_len = tf.shape(logits)[0] // B #tf.reduce_max(train_batch["seq_lens"])
         mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
 
@@ -295,7 +296,7 @@ class ValueNetworkMixin:
 
                 @make_tf_callable(self.get_session())
                 def value(input_dict):
-                    model_out, _ = self.model.from_batch(input_dict)
+                    model_out, _ = self.model.from_batch(input_dict, is_training=False)
                     # [0] = remove the batch dim.
                     return self.model.value_function()[0]
 
@@ -361,9 +362,10 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
 
 def view_requirements_fn(policy):
     # Adds the input-dict used in postprocessing to the dict of view-reqs.
-    # This is for value calculation at the very end of a trajectory (not done).
+    # This is for value calculation at the very end of a trajectory
+    # (which is not done).
     return {
-        "_value_input_dict": ViewRequirement(is_input_dict=True, shift=-1)
+        "_value_input_dict": ViewRequirement(is_input_dict=True, abs_pos=-1)
     }
 
 

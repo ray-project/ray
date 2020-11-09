@@ -141,10 +141,10 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         # Add prev-a/r to this model's view, if required.
         if model_config["lstm_use_prev_action_reward"]:
             self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
-                ViewRequirement(SampleBatch.REWARDS, shift=-1)
+                ViewRequirement(SampleBatch.REWARDS, data_rel_pos=-1)
             self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
                 ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
-                                shift=-1)
+                                data_rel_pos=-1)
 
     @override(RecurrentNetwork)
     def forward(self, input_dict, state, seq_lens):
