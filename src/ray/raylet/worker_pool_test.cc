@@ -104,7 +104,8 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
 
   std::shared_ptr<WorkerInterface> CreateWorker(
       Process proc, const Language &language = Language::PYTHON,
-      const JobID &job_id = JOB_ID) {
+      const JobID &job_id = JOB_ID,
+      const rpc::WorkerType worker_type = rpc::WorkerType::WORKER) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<ClientConnection>, int64_t,
@@ -118,9 +119,9 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
     auto client =
         ClientConnection::Create(client_handler, message_handler, std::move(socket),
                                  "worker", {}, error_message_type_);
-    std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
-        WorkerID::FromRandom(), language, rpc::WorkerType::WORKER, "127.0.0.1", client,
-        client_call_manager_);
+    std::shared_ptr<Worker> worker_ =
+        std::make_shared<Worker>(WorkerID::FromRandom(), language, worker_type,
+                                 "127.0.0.1", client, client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
     worker->AssignJobId(job_id);
@@ -129,6 +130,10 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
     }
     return worker;
   }
+
+  // std::shared_ptr<WorkerInterface> CreateIOWorker(Process proc) {
+  //   return CreateWorker(proc, Language::PYTHON, JOB_ID, rpc::WorkerType::IO_WORKER);
+  // }
 
   std::shared_ptr<WorkerInterface> RegisterDriver(
       const Language &language = Language::PYTHON, const JobID &job_id = JOB_ID,
@@ -501,6 +506,27 @@ TEST_P(WorkerPoolTest, MaximumStartupConcurrency) {
   }
 
   ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
+}
+
+TEST_P(WorkerPoolTest, PushPopIoWorker) {
+  // auto worker = CreateIOWorker(Process::CreateNewDummy());
+  // worker_pool_->PushIOWorker(worker);
+  // 1. Pop worker doesn't do anything.
+  // 2. Push a worker will finish that.
+  // 3. Pop multiple and make sure it doesn't do anything.
+  // 4. Push some portion of workers to make sure it runs.
+  // 5. Pop some of them and push until all workers are idle.
+  // 6. Push workers first this time.
+  // 7. Make sure pop will succeed.
+}
+
+TEST_P(WorkerPoolTest, MaxSpillRestoreWorkersTest) {
+  // auto worker = CreateIOWorker(Process::CreateNewDummy());
+  // worker_pool_->PushIOWorker(worker);
+  // Make sure starting workers are taken into consideration.
+  // Make sure spill and restore workers are 0.
+  // Make sure spill and restore workers increase.
+  // Make sure pill and restore workers don't go up more than threshold.
 }
 
 INSTANTIATE_TEST_CASE_P(WorkerPoolMultiTenancyTest, WorkerPoolTest,

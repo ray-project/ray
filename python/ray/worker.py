@@ -53,7 +53,8 @@ from ray.utils import (_random_string, check_oversized_pickle, is_cython,
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
-IO_WORKER_MODE = 3
+SPILL_WORKER_MODE = 3
+RESTORE_WORKER_MODE = 4
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -1165,7 +1166,7 @@ def connect(node,
     worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
-    if mode in (WORKER_MODE, IO_WORKER_MODE):
+    if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1186,8 +1187,10 @@ def connect(node,
 
     if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
-        if mode is IO_WORKER_MODE:
-            process_name = ray_constants.WORKER_PROCESS_TYPE_IO_WORKER
+        if mode is SPILL_WORKER_MODE:
+            process_name = ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER
+        elif mode is RESTORE_WORKER_MODE:
+            process_name = ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER
         setproctitle.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
@@ -1222,7 +1225,8 @@ def connect(node,
         import __main__ as main
         driver_name = (main.__file__
                        if hasattr(main, "__file__") else "INTERACTIVE MODE")
-    elif mode == WORKER_MODE or mode == IO_WORKER_MODE:
+    elif (mode == WORKER_MODE or mode == SPILL_WORKER_MODE
+          or mode == RESTORE_WORKER_MODE):
         # Check the RedirectOutput key in Redis and based on its value redirect
         # worker output and error to their own files.
         # This key is set in services.py when Redis is started.

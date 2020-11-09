@@ -65,7 +65,8 @@ from ray.includes.common cimport (
     TASK_TYPE_ACTOR_TASK,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
-    WORKER_TYPE_IO_WORKER,
+    WORKER_TYPE_SPILL_WORKER,
+    WORKER_TYPE_RESTORE_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -615,7 +616,7 @@ cdef c_vector[c_string] spill_objects_handler(
             logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
-                "io_worker_spill_objects_error",
+                "spill_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
         return return_urls
@@ -637,7 +638,7 @@ cdef void restore_spilled_objects_handler(
             logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
-                "io_worker_retore_spilled_objects_error",
+                "retore_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
 
@@ -723,9 +724,12 @@ cdef class CoreWorker:
         elif worker_type == ray.WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_WORKER
-        elif worker_type == ray.IO_WORKER_MODE:
+        elif worker_type == ray.SPILL_WORKER_MODE:
             self.is_driver = False
-            options.worker_type = WORKER_TYPE_IO_WORKER
+            options.worker_type = WORKER_TYPE_SPILL_WORKER
+        elif worker_type == ray.RESTORE_WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_RESTORE_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON

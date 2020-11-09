@@ -1198,7 +1198,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   };
 
   if (worker_type == rpc::WorkerType::WORKER ||
-      worker_type == rpc::WorkerType::IO_WORKER) {
+      worker_type == rpc::WorkerType::SPILL_WORKER ||
+      worker_type == rpc::WorkerType::RESTORE_WORKER) {
     // Register the new worker.
     auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
     if (!status.ok()) {
@@ -1257,9 +1258,15 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
 
-  if (worker->GetWorkerType() == rpc::WorkerType::IO_WORKER) {
+  if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
     // Return the worker to the idle pool.
-    worker_pool_.PushIOWorker(worker);
+    worker_pool_.PushSpillWorker(worker);
+    return;
+  }
+
+  if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushRestoreWorker(worker);
     return;
   }
 
