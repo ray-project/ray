@@ -927,7 +927,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(MULTI_WORKER_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(100)])
+        runner.respond_to_call("json .Config.Env", ["[]"])
         get_or_create_head_node(
             MULTI_WORKER_CLUSTER,
             config_path,
@@ -1167,7 +1167,6 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(100)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1198,7 +1197,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(100)])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1280,7 +1279,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(100)])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
