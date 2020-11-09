@@ -117,18 +117,38 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
+  // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
+  // the GCS server is restarted, it is required to continue to register placement group
+  // successfully.
   RAY_CHECK(callback);
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
 
-  // TODO(ffbin): If GCS is restarted, GCS client will repeatedly send
-  // `CreatePlacementGroup` requests,
-  //  which will lead to resource leakage, we will solve it in next pr.
+  auto iter = registered_placement_groups_.find(placement_group_id);
+  if (iter != registered_placement_groups_.end()) {
+    auto pending_register_iter =
+        placement_group_to_register_callback_.find(placement_group_id);
+    if (pending_register_iter != placement_group_to_register_callback_.end()) {
+      // 1. The GCS client sends the `RegisterPlacementGroup` request to the GCS server.
+      // 2. The GCS client receives some network errors.
+      // 3. The GCS client resends the `RegisterPlacementGroup` request to the GCS server.
+      pending_register_iter->second = std::move(callback);
+    } else {
+      // 1. The GCS client sends the `RegisterPlacementGroup` request to the GCS server.
+      // 2. The GCS server flushes the placement group to the storage and restarts before
+      // replying to the GCS client.
+      // 3. The GCS client resends the `RegisterPlacementGroup` request to the GCS server.
+      callback(Status::OK());
+    }
+    return;
+  }
+
   // Mark the callback as pending and invoke it after the placement_group has been
   // successfully created.
   placement_group_to_register_callback_[placement_group->GetPlacementGroupID()] =
       std::move(callback);
   registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
                                        placement_group);
-  pending_placement_groups_.emplace_back(std::move(placement_group));
+  pending_placement_groups_.emplace_back(placement_group);
   SchedulePendingPlacementGroups();
 }
 
@@ -446,6 +466,30 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
     }
   }
   gcs_node_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
+}
+
+void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
+  RAY_LOG(INFO) << "Loading initial data.";
+  auto callback = [this,
+                   done](const std::unordered_map<PlacementGroupID,
+                                                  rpc::PlacementGroupTableData> &result) {
+    for (auto &item : result) {
+      auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
+      if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
+        registered_placement_groups_.emplace(item.first, placement_group);
+
+        if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
+            item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
+          pending_placement_groups_.emplace_back(std::move(placement_group));
+        }
+      }
+    }
+
+    SchedulePendingPlacementGroups();
+    RAY_LOG(INFO) << "Finished loading initial data.";
+    done();
+  };
+  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().GetAll(callback));
 }
 
 }  // namespace gcs
