@@ -580,8 +580,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
 
   // record the time cost between send chunk and receive reply
   rpc::ClientCallback<rpc::PushReply> callback =
-      [this, start_time, object_id, client_id, chunk_index, push_id, data_size,
-       owner_address, metadata_size, rpc_client,
+      [this, start_time, object_id, client_id, chunk_index, owner_address, rpc_client,
        on_complete](const Status &status, const rpc::PushReply &reply) {
         // TODO: Just print warning here, should we try to resend this chunk?
         if (!status.ok()) {
