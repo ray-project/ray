@@ -207,9 +207,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// Handle a heartbeat from a Raylet.
     ///
     /// \param node_id The client ID of the Raylet that sent the heartbeat.
-    /// \param heartbeat_data The heartbeat sent by the client.
-    void HandleHeartbeat(const NodeID &node_id,
-                         const rpc::HeartbeatTableData &heartbeat_data);
+    void HandleHeartbeat(const NodeID &node_id);
 
    protected:
     /// A periodic timer that fires on every heartbeat period. Raylets that have
