@@ -53,9 +53,9 @@ class LongPullerSyncClient(BaseClient):
         super().__init__(host_actor, keys, callback)
         self.in_flight_request_ref: ray.ObjectRef = self._pull_once()
 
-    def refresh(self):
+    def refresh(self, block=False):
         done, _ = ray.wait([self.in_flight_request_ref], timeout=0)
-        if len(done) == 1:
+        if len(done) == 1 or block:
             self._update(ray.get(self.in_flight_request_ref))
         self.in_flight_request_ref = self._pull_once()
 
