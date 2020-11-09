@@ -277,17 +277,20 @@ class ResourceDemandScheduler:
             total_pending_nodes = pending_launches_nodes.get(
                 node_type, 0) + pending_nodes[node_type]
 
-            # Allow more nodes if this is to respect min_workers constraint.
             nodes_to_add = max(
                 max_allowed_pending_nodes - total_pending_nodes,
+
+                # Allow more nodes if this is to respect min_workers.
                 self.node_types[node_type].get("min_workers", 0) -
-                total_pending_nodes - running_nodes[node_type])
+                total_pending_nodes - running_nodes[node_type],
+
+                # Allow more nodes from request_resources API.
+                nodes_to_add_based_on_requests.get(node_type,
+                                                   0) - total_pending_nodes)
 
             if nodes_to_add > 0:
                 updated_nodes_to_launch[node_type] = min(
-                    max(nodes_to_add,
-                        nodes_to_add_based_on_requests.get(node_type, 0)),
-                    to_launch[node_type])
+                    nodes_to_add, to_launch[node_type])
 
         return updated_nodes_to_launch
 
