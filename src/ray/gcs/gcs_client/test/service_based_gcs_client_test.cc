@@ -188,10 +188,18 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
           .AsyncRegisterActor(task_spec, [](Status status) {})
           .ok();
     }
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegisterActor(
-        task_spec, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+
+    // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
+    // client will register the actor again and promise may be set twice.
+    auto promise = std::make_shared<std::promise<bool>>();
+    RAY_CHECK_OK(
+        gcs_client_->Actors().AsyncRegisterActor(task_spec, [promise](Status status) {
+          try {
+            promise->set_value(status.ok());
+          } catch (...) {
+          }
+        }));
+    return WaitReady(promise->get_future(), timeout_ms_);
   }
 
   rpc::ActorTableData GetActor(const ActorID &actor_id) {
@@ -208,14 +216,22 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return actor_table_data;
   }
 
-  std::vector<rpc::ActorTableData> GetAllActors() {
+  std::vector<rpc::ActorTableData> GetAllActors(bool filter_non_dead_actor = false) {
     std::promise<bool> promise;
     std::vector<rpc::ActorTableData> actors;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
-        [&actors, &promise](Status status,
-                            const std::vector<rpc::ActorTableData> &result) {
+        [filter_non_dead_actor, &actors, &promise](
+            Status status, const std::vector<rpc::ActorTableData> &result) {
           if (!result.empty()) {
-            actors.assign(result.begin(), result.end());
+            if (filter_non_dead_actor) {
+              for (auto &iter : result) {
+                if (iter.state() == gcs::ActorTableData::DEAD) {
+                  actors.emplace_back(iter);
+                }
+              }
+            } else {
+              actors.assign(result.begin(), result.end());
+            }
           }
           promise.set_value(true);
         }));
@@ -1353,14 +1369,16 @@ TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
     actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
   }
 
-  // Get all actors.
+  // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
+  // client will register the actor again and the status of the actor may be
+  // `DEPENDENCIES_UNREADY` or `DEAD`. We should get all dead actors.
   auto condition = [this]() {
-    return GetAllActors().size() ==
+    return GetAllActors(true).size() ==
            RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
-  auto actors = GetAllActors();
+  auto actors = GetAllActors(true);
   for (const auto &actor : actors) {
     EXPECT_TRUE(actor_ids.contains(ActorID::FromBinary(actor.actor_id())));
   }
