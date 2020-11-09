@@ -87,6 +87,13 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_long_pull",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
 
 py_test(
     name = "test_standalone",

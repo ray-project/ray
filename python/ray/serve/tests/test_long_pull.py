@@ -83,30 +83,6 @@ async def test_async_client(ray_start_regular_shared):
     assert 1999 in values
 
 
-def test_watched_object(ray_start_regular_shared):
-    host = ray.remote(LongPullerHost).remote()
-
-    # Write two values
-    ray.get(host.notify_on_changed.remote("key_1", 100))
-    ray.get(host.notify_on_changed.remote("key_2", 999))
-
-    client = LongPullerSyncClient(host, ["key_1", "key_2"])
-    key_1 = client.watch_object("key_1")
-    key_2 = client.watch_object("key_2")
-    assert key_1.get() == 100
-    assert key_2.get() == 999
-
-    ray.get(host.notify_on_changed.remote("key_2", 1999))
-
-    values = set()
-    for _ in range(3):
-        values.add(key_2.get())
-        if 1999 in values:
-            break
-        time.sleep(1)
-    assert 1999 in values
-
-
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
