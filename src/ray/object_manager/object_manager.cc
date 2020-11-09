@@ -71,7 +71,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   main_service_ = &main_service;
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
-      1L,
+      static_cast<int64_t>(1L),
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
 
   if (plasma::plasma_store_runner) {
