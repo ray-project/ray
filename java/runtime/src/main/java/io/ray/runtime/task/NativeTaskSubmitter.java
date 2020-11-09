@@ -43,7 +43,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       if (options.group != null) {
         PlacementGroupImpl group = (PlacementGroupImpl)options.group;
         Preconditions.checkArgument(options.bundleIndex >= 0
-                && options.bundleIndex < group.getBundleCount(),
+                && options.bundleIndex < group.getBundles().size(),
             String.format("Bundle index %s is invalid", options.bundleIndex));
       }
 
@@ -78,10 +78,12 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+  public PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    byte[] bytes = nativeCreatePlacementGroup(bundles, strategy.value());
-    return new PlacementGroupImpl(PlacementGroupId.fromBytes(bytes), bundles.size());
+    byte[] bytes = nativeCreatePlacementGroup(name, bundles, strategy.value());
+    return new PlacementGroupImpl.Builder()
+      .setId(PlacementGroupId.fromBytes(bytes))
+      .setName(name).setBundles(bundles).setStrategy(strategy).build();
   }
 
   private static native List<byte[]> nativeSubmitTask(FunctionDescriptor functionDescriptor,
@@ -95,6 +97,6 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       FunctionDescriptor functionDescriptor, int functionDescriptorHash, List<FunctionArg> args,
       int numReturns, CallOptions callOptions);
 
-  private static native byte[] nativeCreatePlacementGroup(List<Map<String, Double>> bundles,
-      int strategy);
+  private static native byte[] nativeCreatePlacementGroup(String name,
+      List<Map<String, Double>> bundles, int strategy);
 }

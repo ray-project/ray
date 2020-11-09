@@ -268,3 +268,31 @@ Ray Serve exposes important system metrics like the number of successful and
 errored requests through the Ray metrics monitoring infrastructure. By default,
 the metrics are exposed in Prometheus format on each node. See the
 `Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
+
+Dependency Management
+=====================
+
+Ray Serve supports serving backends with different (possibly conflicting)
+python dependencies.  For example, you can simultaneously serve one backend
+that uses legacy Tensorflow 1 and another backend that uses Tensorflow 2.
+
+Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_.
+You must have a conda environment set up for each set of
+dependencies you want to isolate.  If using a multi-node cluster, the
+conda configuration must be identical across all nodes.
+
+Here's an example script.  For it to work, first create a conda
+environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
+and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
+python versions must be the same in both environments.  To specify
+an environment for a backend to use, simply pass the environment name in to
+:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
+as shown below.  Be sure to run the script in an activated conda environment
+(not required to be ``ray-tf1`` or ``ray-tf2``).
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
+
+Alternatively, you may omit the argument ``env`` and call
+:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
+from a script running in the conda environment you want the backend to run in.
+

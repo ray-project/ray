@@ -1053,8 +1053,6 @@ class AutoscalingTest(unittest.TestCase):
 
     def testReportsConfigFailures(self):
         config = copy.deepcopy(SMALL_CLUSTER)
-        config["provider"]["type"] = "external"
-        config = prepare_config(config)
         config["provider"]["type"] = "mock"
         config_path = self.write_config(config)
         self.provider = MockProvider()

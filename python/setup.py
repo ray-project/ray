@@ -192,7 +192,6 @@ def bazel_invoke(invoker, cmdline, *args, **kwargs):
             result = invoker([cmd] + cmdline, *args, **kwargs)
             break
         except IOError:
-            raise
             if i >= len(candidates) - 1:
                 raise
     return result
