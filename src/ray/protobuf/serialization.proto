@@ -45,8 +45,9 @@ package ray.serialization;
 //     PythonObject protobuf defined as below.
 // buffers | aligned(64)
 //     Raw data of buffers, this section is 64-byte aligned.
-//     Inside the section, large buffers (>=2048 bytes) are aligned to 64 bytes for faster SIMD,
-//     small buffers (<2048 bytes) are aligned to 8 bytes.
+//     Inside the section, large buffers (>=2048 bytes) are aligned
+//     to 64 bytes for faster SIMD, small buffers (<2048 bytes) are
+//     aligned to 8 bytes.
 
 // ---------------------
 

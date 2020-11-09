@@ -200,11 +200,13 @@ def split_buffer(Buffer buf):
                        kMessagePackOffset + msgpack_bytes_length],
             bufferview[kMessagePackOffset + msgpack_bytes_length:])
 
+
 # Note [Pickle5 serialization layout & alignment]
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # To ensure efficient data access, our serialize enforces alignment
 # when writing data to a buffer. See 'serialization.proto' for
 # the detail memory layout and alignment.
+
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
