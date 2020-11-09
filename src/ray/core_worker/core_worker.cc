@@ -60,19 +60,26 @@ void BuildCommonTaskSpec(
 }
 
 ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
+  if (options.worker_type == ray::WorkerType::DRIVER) {
+    RAY_CHECK(!options.job_id.IsNil());
+  } else {
+    RAY_CHECK(options.job_id.IsNil());
+  }
+
   if (options.worker_type == ray::WorkerType::WORKER) {
     // For workers, the job ID is assigned by Raylet via an environment variable.
     const char *job_id_env = std::getenv("RAY_JOB_ID");
-    // NOTE(kfstorm): We can't check `RayConfig::instance().enable_multi_tenancy()` here.
-    // TODO(kfstorm): Use `RAY_CHECK` instead.
+    // TODO(kfstorm): Use `RAY_CHECK` instead once the `enable_multi_tenancy` flag is removed.
     // RAY_CHECK(job_id_env);
     if (!job_id_env) {
+      // Multi-tenancy is disabled.
+      // NOTE(kfstorm): We can't read `RayConfig::instance().enable_multi_tenancy()` here
+      // because `RayConfig` is not initialized yet.
       return ray::JobID::Nil();
     }
     return ray::JobID::FromHex(job_id_env);
-  } else {
-    return options.job_id;
   }
+  return options.job_id;
 }
 
 }  // namespace

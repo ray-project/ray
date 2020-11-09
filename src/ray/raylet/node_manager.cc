@@ -1173,7 +1173,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
-  if (RayConfig::instance().enable_multi_tenancy() ||
+  if ((RayConfig::instance().enable_multi_tenancy() &&
+       worker_type != rpc::WorkerType::IO_WORKER) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
   } else {
