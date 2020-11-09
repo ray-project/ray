@@ -50,9 +50,10 @@ class _EventSystem:
         self.callback_map = {}
 
     def add_callback_handler(
-        self,
-        event: str,
-        callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
+            self,
+            event: str,
+            callback: Union[Callable[[Dict], None], List[Callable[[Dict],
+                                                                  None]]],
     ):
         """Stores callback handler for event.
 
@@ -64,13 +65,12 @@ class _EventSystem:
                 when specified event occurs.
         """
         if event not in CreateClusterEvent.__members__.values():
-            cli_logger.warning(
-                f"{event} is not currently tracked, and this callback will not be invoked."
-            )
+            cli_logger.warning(f"{event} is not currently tracked, and this"
+                               " callback will not be invoked.")
 
-        self.callback_map.setdefault(event, []).extend(
-            [callback] if type(callback) is not list else callback
-        )
+        self.callback_map.setdefault(
+            event,
+            []).extend([callback] if type(callback) is not list else callback)
 
     def execute_callback(self, event: str, event_data: Dict[str, Any] = {}):
         """Executes all callbacks for event.
