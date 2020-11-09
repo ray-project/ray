@@ -1,6 +1,8 @@
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Union
 
+from ray.autoscaler._private.cli_logger import cli_logger
+
 
 class CreateClusterEvent(Enum):
     """Events to track in ray.autoscaler.sdk.create_or_update_cluster.
@@ -48,10 +50,9 @@ class _EventSystem:
         self.callback_map = {}
 
     def add_callback_handler(
-            self,
-            event: str,
-            callback: Union[Callable[[Dict], None], List[Callable[[Dict],
-                                                                  None]]],
+        self,
+        event: str,
+        callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
     ):
         """Stores callback handler for event.
 
@@ -62,12 +63,14 @@ class _EventSystem:
             callback (Callable[[Dict], None]): Callable object that is invoked
                 when specified event occurs.
         """
-        if type(callback) is not list:
-            callback = [callback]
-        if event in self.callback_map:
-            self.callback_map[event].extend(callback)
-        else:
-            self.callback_map[event] = callback
+        if event not in CreateClusterEvent.__members__.values():
+            cli_logger.warning(
+                f"{event} is not currently tracked, and this callback will not be invoked."
+            )
+
+        self.callback_map.setdefault(event, []).extend(
+            [callback] if type(callback) is not list else callback
+        )
 
     def execute_callback(self, event: str, event_data: Dict[str, Any] = {}):
         """Executes all callbacks for event.
