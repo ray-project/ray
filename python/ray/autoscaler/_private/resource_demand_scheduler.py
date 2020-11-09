@@ -277,7 +277,7 @@ class ResourceDemandScheduler:
             total_pending_nodes = pending_launches_nodes.get(
                 node_type, 0) + pending_nodes[node_type]
 
-            nodes_to_add = max(
+            upper_bound = max(
                 max_allowed_pending_nodes - total_pending_nodes,
 
                 # Allow more nodes if this is to respect min_workers.
@@ -288,9 +288,9 @@ class ResourceDemandScheduler:
                 nodes_to_add_based_on_requests.get(node_type,
                                                    0) - total_pending_nodes)
 
-            if nodes_to_add > 0:
+            if upper_bound > 0:
                 updated_nodes_to_launch[node_type] = min(
-                    nodes_to_add, to_launch[node_type])
+                    upper_bound, to_launch[node_type])
 
         return updated_nodes_to_launch
 
