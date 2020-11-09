@@ -290,10 +290,19 @@ def address_to_ip(address):
             address.
     """
     address_parts = address.split(":")
-    ip_address = socket.gethostbyname(address_parts[0])
     # Make sure localhost isn't resolved to the loopback ip
-    if ip_address == "127.0.0.1":
+    if address_parts[0] == "localhost":
+        # Ray treats "localhost" differently than every other utility.
+        # "localhost" is interpreted to mean the *external* IP address of the
+        # local node.
         ip_address = get_node_ip_address()
+    else:
+        ip_address = socket.gethostbyname(address_parts[0])
+    if address_parts[0] == "127.0.0.1":
+        if ip_address != address_parts[0]:
+            raise RuntimeError("address_to_ip was passed a numerical IP "
+                               "address {} but somehow changed it to {}."
+                               "".format(address_parts[0], ip_address))
     return ":".join([ip_address] + address_parts[1:])
 
 
