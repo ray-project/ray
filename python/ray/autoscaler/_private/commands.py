@@ -522,10 +522,16 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
     head_node_config = copy.deepcopy(config["head_node"])
+    head_node_resources = None
     if "head_node_type" in config:
-        head_node_tags[TAG_RAY_USER_NODE_TYPE] = config["head_node_type"]
-        head_node_config.update(config["available_node_types"][config[
-            "head_node_type"]]["node_config"])
+        head_node_type = config["head_node_type"]
+        head_node_tags[TAG_RAY_USER_NODE_TYPE] = head_node_type
+        head_config = config["available_node_types"][head_node_type]
+        head_node_config.update(head_config["node_config"])
+
+        # Not necessary to keep in sync with node_launcher.py
+        # Keep in sync with autoscaler.py _node_resources
+        head_node_resources = head_config.get("resources")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
     if head_node is None or provider.node_tags(head_node).get(
@@ -643,6 +649,7 @@ def get_or_create_head_node(config: Dict[str, Any],
             runtime_hash=runtime_hash,
             file_mounts_contents_hash=file_mounts_contents_hash,
             is_head_node=True,
+            node_resources=head_node_resources,
             rsync_options={
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter")
