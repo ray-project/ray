@@ -303,7 +303,7 @@ class ResourceDemandScheduler:
                     # We lift the max concurrency launch to respect
                     # aggressiveness only if we do not have "too many" pending
                     # or launching nodes. If we ignore nodes_to_add we might
-                    # end up launchign a lot of nodes that end up failing in
+                    # end up launching a lot of nodes that end up failing in
                     # aggressive mode.
                     updated_nodes_to_launch[node_type] = to_launch[node_type]
                 else:
