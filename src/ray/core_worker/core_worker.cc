@@ -68,7 +68,7 @@ ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
 
   if (options.worker_type == ray::WorkerType::WORKER) {
     // For workers, the job ID is assigned by Raylet via an environment variable.
-    const char *job_id_env = std::getenv("RAY_JOB_ID");
+    const char *job_id_env = std::getenv(kEnvVarKeyJobId);
     // TODO(kfstorm): Use `RAY_CHECK` instead once the `enable_multi_tenancy` flag is removed.
     // RAY_CHECK(job_id_env);
     if (!job_id_env) {
