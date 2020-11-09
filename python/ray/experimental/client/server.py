@@ -6,6 +6,7 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
+from ray.experimental.client.core_ray_api import set_client_api_as_ray
 
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
@@ -46,7 +47,9 @@ def serve(connection_str):
 
 if __name__ == "__main__":
     logging.basicConfig()
+    # TODO(barakmich): Perhaps wrap ray init
     ray.init()
+    set_client_api_as_ray()
     server = serve("0.0.0.0:50051")
     try:
         while True:

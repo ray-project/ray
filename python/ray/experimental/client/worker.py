@@ -30,7 +30,7 @@ class Worker:
             single = True
         else:
             raise Exception(
-                "Can't get something that's not a list of IDs or just an ID")
+                "Can't get something that's not a list of IDs or just an ID: %s" % type(ids))
 
         out = [self._get(x) for x in to_get]
         if single:
@@ -63,7 +63,7 @@ class Worker:
         return ObjectID(resp.id)
 
     def remote(self, func):
-        return RemoteFunc(self, func)
+        return ClientRemoteFunc(func)
 
     def schedule(self, task):
         return self.server.Schedule(task)
@@ -72,17 +72,17 @@ class Worker:
         self.channel.close()
 
 
-class RemoteFunc:
-    def __init__(self, worker, f):
+class ClientRemoteFunc:
+    def __init__(self, f):
         self._func = f
         self._name = f.__name__
         self.id = None
 
     def __call__(self, *args, **kwargs):
-        raise Exception("Matching the old API")
+        raise Exception("Matching the old API -- use %s.remote()" % self._name)
 
     def remote(self, *args):
         pass
 
     def __repr__(self):
-        return "RemoteFunc(%s, %s)" % (self._name, self.id)
+        return "ClientRemoteFunc(%s, %s)" % (self._name, self.id)
