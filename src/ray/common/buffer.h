@@ -19,6 +19,9 @@
 
 #include "arrow/buffer.h"
 #include "ray/common/status.h"
+#include "ray/thirdparty/aligned_alloc.h"
+
+#define BUFFER_ALIGNMENT 64
 
 namespace ray {
 
@@ -48,6 +51,7 @@ class Buffer {
 };
 
 /// Represents a byte buffer in local memory.
+/// TODO(suquark): In C++17, we can use std::aligned_alloc
 class LocalMemoryBuffer : public Buffer {
  public:
   /// Constructor.
@@ -65,10 +69,10 @@ class LocalMemoryBuffer : public Buffer {
       : has_data_copy_(copy_data) {
     if (copy_data) {
       RAY_CHECK(data != nullptr);
-      buffer_.resize(size);
-      std::copy(data, data + size, buffer_.begin());
-      data_ = buffer_.data();
-      size_ = buffer_.size();
+      buffer_ = (uint8_t*)aligned_malloc(size, BUFFER_ALIGNMENT);
+      std::copy(data, data + size, buffer_);
+      data_ = buffer_;
+      size_ = size;
     } else {
       data_ = data;
       size_ = size;
@@ -77,9 +81,9 @@ class LocalMemoryBuffer : public Buffer {
 
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
   LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
-    buffer_.resize(size, 0);
-    data_ = buffer_.data();
-    size_ = buffer_.size();
+    buffer_ = (uint8_t*)aligned_malloc(size, BUFFER_ALIGNMENT);
+    data_ = buffer_;
+    size_ = size;
   }
 
   uint8_t *Data() const override { return data_; }
@@ -90,7 +94,12 @@ class LocalMemoryBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
-  ~LocalMemoryBuffer() { size_ = 0; }
+  ~LocalMemoryBuffer() {
+    size_ = 0;
+    if (buffer_ != NULL) {
+      aligned_free(buffer_);
+    }
+  }
 
  private:
   /// Disable copy constructor and assignment, as default copy will
@@ -105,7 +114,7 @@ class LocalMemoryBuffer : public Buffer {
   /// Whether this buffer holds a copy of data.
   bool has_data_copy_;
   /// This is only valid when `should_copy` is true.
-  std::vector<uint8_t> buffer_;
+  uint8_t* buffer_ = NULL;
 };
 
 /// Represents a byte buffer for plasma object. This can be used to hold the
