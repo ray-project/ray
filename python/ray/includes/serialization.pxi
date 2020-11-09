@@ -48,12 +48,8 @@ cdef extern from "src/ray/protobuf/serialization.pb.h" nogil:
         int strides_size()
 
     cdef cppclass CPythonObject "ray::serialization::PythonObject":
-        uint64_t inband_data_offset() const
-        void set_inband_data_offset(uint64_t value)
         uint64_t inband_data_size() const
         void set_inband_data_size(uint64_t value)
-        uint64_t raw_buffers_offset() const
-        void set_raw_buffers_offset(uint64_t value)
         uint64_t raw_buffers_size() const
         void set_raw_buffers_size(uint64_t value)
         CPythonBuffer* add_buffer()
@@ -68,12 +64,10 @@ cdef extern from "src/ray/protobuf/serialization.pb.h" nogil:
 cdef int64_t padded_length(int64_t offset, int64_t alignment):
     return ((offset + alignment - 1) // alignment) * alignment
 
+
 cdef uint8_t* aligned_address(uint8_t* addr, uint64_t alignment) nogil:
     cdef uintptr_t u_addr = <uintptr_t>addr
     return <uint8_t*>(((u_addr + alignment - 1) // alignment) * alignment)
-
-cdef int64_t padded_length_u64(uint64_t offset, uint64_t alignment):
-    return ((offset + alignment - 1) // alignment) * alignment
 
 
 cdef class SubBuffer:
@@ -318,11 +312,7 @@ cdef class Pickle5Writer:
         cdef:
             size_t protobuf_bytes = 0
             uint64_t inband_data_offset = sizeof(int64_t) * 2
-            uint64_t raw_buffers_offset = padded_length_u64(
-                inband_data_offset + len(inband), kMajorBufferAlign)
-        self.python_object.set_inband_data_offset(inband_data_offset)
         self.python_object.set_inband_data_size(len(inband))
-        self.python_object.set_raw_buffers_offset(raw_buffers_offset)
         self.python_object.set_raw_buffers_size(self._curr_buffer_addr)
         # Since calculating the output size is expensive, we will
         # reuse the cached size.

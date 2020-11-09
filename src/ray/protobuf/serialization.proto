@@ -36,7 +36,7 @@ package ray.serialization;
 // This section describes the memory layout in the Plasma store buffer.
 // ---------------------
 // i64 len(inband_data):
-//     Offset of the PythonObject relative to the start of this buffer.
+//     Length of the inband data.
 // i64 len(PythonObject):
 //     Length of the PythonObject.
 // inband_data
@@ -82,16 +82,12 @@ message PythonBuffer {
 
 // The message for pickle5 serialized python object.
 message PythonObject {
-  // The offset of the inband data section relative to the beginning of the Plasma buffer.
-  uint64 inband_data_offset = 1;
   // The size of the inband data section.
-  uint64 inband_data_size = 2;
-  // The offset of the raw buffers section relative to the beginning of the Plasma buffer.
-  uint64 raw_buffers_offset = 3;
+  uint64 inband_data_size = 1;
   // The size of the buffers section. It is not used in deserialization
   // because we already have the length and address of every buffer. However, it could
   // be useful for debugging or future adjustment, so we just keep it.
-  uint64 raw_buffers_size = 4;
+  uint64 raw_buffers_size = 2;
   // The metadata of python buffer objects.
-  repeated PythonBuffer buffer = 5;
+  repeated PythonBuffer buffer = 3;
 }
