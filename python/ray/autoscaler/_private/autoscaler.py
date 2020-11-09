@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List
 import copy
 import logging
 import math
@@ -113,8 +113,6 @@ class StandardAutoscaler:
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
-        # Aggregate resources the user is requesting of the cluster.
-        self.resource_requests = defaultdict(int)
         # List of resource bundles the user is requesting of the cluster.
         self.resource_demand_vector = []
 
@@ -162,10 +160,15 @@ class StandardAutoscaler:
 
         nodes_to_terminate = []
         node_type_counts = collections.defaultdict(int)
-        for node_id in nodes:
+        # Sort based on last used to make sure to keep min_workers that
+        # were most recently used. Otherwise, _keep_min_workers_of_node_type
+        # might keep a node that should be terminated.
+        for node_id in self._sort_based_on_last_used(nodes, last_used):
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type.
-            if self._keep_min_worker_of_node_type(node_id, node_type_counts):
+            if self._keep_min_worker_of_node_type(
+                    node_id,
+                    node_type_counts) and self.launch_config_ok(node_id):
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
@@ -255,6 +258,25 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
+    def _sort_based_on_last_used(self, nodes: List[NodeID],
+                                 last_used: Dict[str, float]) -> List[NodeID]:
+        """Sort the nodes based on the last time they were used.
+
+        The first item in the return list is the least recently used.
+        """
+        updated_last_used = copy.deepcopy(last_used)
+        now = time.time()
+        for node_id in nodes:
+            node_ip = self.provider.internal_ip(node_id)
+            if node_ip not in updated_last_used:
+                updated_last_used[node_ip] = now
+
+        def last_time_used(node_id: NodeID):
+            node_ip = self.provider.internal_ip(node_id)
+            return updated_last_used[node_ip]
+
+        return sorted(nodes, key=last_time_used, reverse=True)
+
     def _keep_min_worker_of_node_type(self, node_id: NodeID,
                                       node_type_counts: Dict[NodeType, int]):
         """Returns if workers of node_type should be terminated.
@@ -275,7 +297,9 @@ class StandardAutoscaler:
             node_type_counts[node_type] += 1
             min_workers = self.available_node_types[node_type].get(
                 "min_workers", 0)
-            if node_type_counts[node_type] <= min_workers:
+            max_workers = self.available_node_types[node_type].get(
+                "max_workers", 0)
+            if node_type_counts[node_type] <= min(min_workers, max_workers):
                 return True
 
         return False
@@ -326,16 +350,13 @@ class StandardAutoscaler:
                                                    self.config["cluster_name"])
 
             self.available_node_types = self.config["available_node_types"]
-            if hasattr(self, "resource_demand_scheduler"
-                       ) and self.resource_demand_scheduler.is_legacy_yaml():
-                # The node types are autofilled internally, overwriting the
-                # class will remove the inferred node resources for legacy
-                # yamls.
-                node_types = copy.deepcopy(self.available_node_types)
-                node_types.update(
-                    self.resource_demand_scheduler.get_node_types())
-                self.resource_demand_scheduler = ResourceDemandScheduler(
-                    self.provider, node_types, self.config["max_workers"],
+            if hasattr(self, "resource_demand_scheduler"):
+                # The node types are autofilled internally for legacy yamls,
+                # overwriting the class will remove the inferred node resources
+                # for legacy yamls.
+                self.resource_demand_scheduler.update(
+                    self.provider, self.available_node_types,
+                    self.config["max_workers"],
                     self.config["autoscaling_mode"] == "aggressive",
                     self.config["target_utilization_fraction"])
             else:
@@ -564,9 +585,18 @@ class StandardAutoscaler:
         if isinstance(resources, list):
             self.resource_demand_vector = resources
         else:
+            self.resource_demand_vector = []
             for resource, count in resources.items():
-                self.resource_requests[resource] = max(
-                    self.resource_requests[resource], count)
+                try:
+                    resource_per_worker = self.config["worker_nodes"][
+                        "Resources"][resource]
+                except KeyError:
+                    resource_per_worker = 1  # Assume the worst
+                workers_to_add = int(count / resource_per_worker)
+                if workers_to_add > 0:
+                    self.resource_demand_vector.extend([{
+                        resource: resource_per_worker
+                    }] * workers_to_add)
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
