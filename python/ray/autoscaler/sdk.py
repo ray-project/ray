@@ -180,13 +180,21 @@ def request_resources(num_cpus: Optional[int] = None,
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
 
-    This function is EXPERIMENTAL.
-
     Args:
-        num_cpus: int -- the number of CPU cores to request
-        bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
-            only has an effect if you've configured `available_node_types`
-            if your cluster config.
+        num_cpus (int): Scale the cluster to ensure this number of CPUs are
+            available. This request is persistent until another call to
+            request_resources() is made.
+        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
+            resource shapes can fit. This request is persistent until another
+            call to request_resources() is made.
+
+    Examples:
+        >>> # Request 1000 CPUs.
+        >>> request_resources(num_cpus=1000)
+        >>> # Request 64 CPUs and also fit a 1-GPU/4-CPU task.
+        >>> request_resources(num_cpus=64, bundles=[{"GPU": 1, "CPU": 4}])
+        >>> # Same as requesting num_cpus=3.
+        >>> request_resources(bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
     return commands.request_resources(num_cpus, bundles)
 

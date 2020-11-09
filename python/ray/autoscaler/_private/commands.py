@@ -19,6 +19,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
+import ray
 from ray.experimental.internal_kv import _internal_kv_get
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
@@ -104,22 +105,23 @@ def request_resources(num_cpus: Optional[int] = None,
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
 
-    This function is EXPERIMENTAL.
-
     Args:
-        num_cpus: int -- the number of CPU cores to request
-        bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
-            only has an effect if you've configured `available_node_types`
-            if your cluster config.
+        num_cpus (int): Scale the cluster to ensure this number of CPUs are
+            available. This request is persistent until another call to
+            request_resources() is made.
+        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
+            resource shapes can fit. This request is persistent until another
+            call to request_resources() is made.
     """
+    if not ray.is_initialized():
+        raise RuntimeError("Ray is not initialized yet")
     r = _redis()
-    if num_cpus is not None and num_cpus > 0:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-                  json.dumps({
-                      "CPU": num_cpus
-                  }))
+    to_request = []
+    if num_cpus:
+        to_request += [{"CPU": 1}] * num_cpus
     if bundles:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
+        to_request += bundles
+    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request))
 
 
 def create_or_update_cluster(config_file: str,
