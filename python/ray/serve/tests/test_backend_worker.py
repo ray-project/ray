@@ -11,6 +11,7 @@ from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Router, RequestMetadata
 from ray.serve.config import BackendConfig, BackendMetadata
 from ray.serve.exceptions import RayServeException
+from ray.serve.utils import get_random_letters
 
 pytestmark = pytest.mark.asyncio
 
@@ -59,7 +60,10 @@ async def add_servable_to_router(servable, router, **kwargs):
 
 def make_request_param(call_method="__call__"):
     return RequestMetadata(
-        "endpoint", context.TaskContext.Python, call_method=call_method)
+        get_random_letters(10),
+        "endpoint",
+        context.TaskContext.Python,
+        call_method=call_method)
 
 
 @pytest.fixture
