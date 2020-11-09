@@ -16,6 +16,14 @@ class APIImpl(ABC):
     def remote(self, *args, **kwargs):
         pass
 
+    @abstractmethod
+    def call_remote(self, f, *args, **kwargs):
+        pass
+
+    @abstractmethod
+    def close(self, *args, **kwargs):
+        pass
+
 
 class ClientAPI(APIImpl):
     def __init__(self, worker):
@@ -29,3 +37,9 @@ class ClientAPI(APIImpl):
 
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)
+
+    def call_remote(self, f, *args, **kwargs):
+        return self.worker.call_remote(f, *args, **kwargs)
+
+    def close(self, *args, **kwargs):
+        return self.worker.close()

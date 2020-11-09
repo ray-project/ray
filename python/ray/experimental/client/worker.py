@@ -2,6 +2,7 @@ import cloudpickle
 import grpc
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.experimental.client import call_remote
 
 
 class ObjectID:
@@ -65,7 +66,16 @@ class Worker:
     def remote(self, func):
         return ClientRemoteFunc(func)
 
-    def schedule(self, task):
+    def call_remote(self, func, *args, **kwargs):
+        if not isinstance(func, ClientRemoteFunc):
+            raise Exception("Client not passing a ClientRemoteFunc stub")
+        func_ref = self.put(func._func)
+        task = ray_client_pb2.ClientTask()
+        task.name = func._name
+        task.payload_id = func_ref.id
+        for arg in args:
+            pb_arg = convert_to_arg(arg)
+            task.args.append(pb_arg)
         return self.server.Schedule(task)
 
     def close(self):
@@ -81,8 +91,19 @@ class ClientRemoteFunc:
     def __call__(self, *args, **kwargs):
         raise Exception("Matching the old API -- use %s.remote()" % self._name)
 
-    def remote(self, *args):
-        pass
+    def remote(self, *args, **kwargs):
+        call_remote(self, *args, **kwargs)
 
     def __repr__(self):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self.id)
+
+
+def convert_to_arg(val) -> ray_client_pb2.Arg:
+    out = ray_client_pb2.Arg()
+    if isinstance(val, ObjectID):
+        out.local = ray_client_pb2.Arg.Locality.REFERENCE
+        out.reference_id = val.id
+    else:
+        out.local = ray_client_pb2.Arg.Locality.INTERNED
+        out.data = cloudpickle.dumps(val)
+    return out

@@ -13,6 +13,12 @@ class CoreRayAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return ray.remote(*args, **kwargs)
 
+    def call_remote(self, f, *args, **kwargs):
+        return f.remote(*args, **kwargs)
+
+    def close(self, *args, **kwargs):
+        return None
+
 
 def set_client_api_as_ray():
     ray_api = CoreRayAPI()

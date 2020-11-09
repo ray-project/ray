@@ -27,6 +27,13 @@ def remote(*args, **kwargs):
     return _client_api.remote(*args, **kwargs)
 
 
+def call_remote(f, *args, **kwargs):
+    global _client_api
+    if _client_api is None:
+        raise Exception("No client API initialized")
+    return _client_api.call_remote(*args, **kwargs)
+
+
 def connect(conn_str):
     global _client_api
     _client_worker = Worker(conn_str)
@@ -35,7 +42,7 @@ def connect(conn_str):
 
 def disconnect():
     global _client_api
-    _client_api.worker.close()
+    _client_api.close()
     _client_api = None
 
 
