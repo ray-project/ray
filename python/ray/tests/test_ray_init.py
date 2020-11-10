@@ -23,7 +23,7 @@ class TestRedisPassword:
         # Check that AuthenticationError is raised if the wrong password is
         # provided.
         with pytest.raises(redis.exceptions.AuthenticationError):
-            ray.init(_redis_password='wrong password')
+            ray.init(_redis_password='wrongpassword')
 
         info = ray.init(_redis_password=password)
         address = info["redis_address"]
