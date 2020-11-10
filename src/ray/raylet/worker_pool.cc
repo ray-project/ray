@@ -327,8 +327,7 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   ProcessEnvironment env;
-  if (RayConfig::instance().enable_multi_tenancy() &&
-      !IsIOWorkerType(worker_type)) {
+  if (RayConfig::instance().enable_multi_tenancy() && !IsIOWorkerType(worker_type)) {
     // We pass the job ID to worker processes via an environment variable, so we don't
     // need to add a new CLI parameter for both Python and Java workers.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());

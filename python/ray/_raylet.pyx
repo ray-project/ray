@@ -606,7 +606,10 @@ cdef c_vector[c_string] spill_objects_handler(
     with gil:
         object_refs = VectorToObjectRefs(object_ids_to_spill)
         try:
-            urls = external_storage.spill_objects(object_refs)
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
+                urls = external_storage.spill_objects(object_refs)
             for url in urls:
                 return_urls.push_back(url)
         except Exception:
@@ -630,7 +633,10 @@ cdef void restore_spilled_objects_handler(
         for i in range(size):
             urls.append(object_urls[i])
         try:
-            external_storage.restore_spilled_objects(urls)
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
+                external_storage.restore_spilled_objects(urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "

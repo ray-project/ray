@@ -1188,9 +1188,11 @@ def connect(node,
     if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
         if mode is SPILL_WORKER_MODE:
-            process_name = ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER
+            process_name = (
+                ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE)
         elif mode is RESTORE_WORKER_MODE:
-            process_name = ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER
+            process_name = (
+                ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE)
         setproctitle.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):

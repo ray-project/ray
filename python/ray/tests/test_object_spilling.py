@@ -151,7 +151,8 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
         x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
         if is_worker(x.info["cmdline"])
     ]
-    assert ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER in processes
+    assert (
+        ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE in processes)
 
     # Spill 2 more objects so we will always have enough space for
     # restoring objects back.
@@ -169,7 +170,8 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
         x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
         if is_worker(x.info["cmdline"])
     ]
-    assert ray.ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER in processes
+    assert (
+        ray.ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE in processes)
 
 
 @pytest.mark.skipif(

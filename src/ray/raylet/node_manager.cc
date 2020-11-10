@@ -1173,7 +1173,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   if ((RayConfig::instance().enable_multi_tenancy() &&
-       (worker_type != rpc::WorkerType::SPILL_WORKER && worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
+       (worker_type != rpc::WorkerType::SPILL_WORKER &&
+        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
   } else {
