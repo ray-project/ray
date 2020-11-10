@@ -551,7 +551,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password)
     # Wait for the Redis server to start.
-    num_retries = 12
+    num_retries = ray_constants.START_REDIS_WAIT_RETRIES
     delay = 0.001
     for _ in range(num_retries):
         try:
@@ -567,9 +567,13 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         else:
             break
     else:
-        raise RuntimeError("Unable to connect to Redis. If the Redis instance "
-                           "is on a different machine, check that your "
-                           "firewall is configured properly.")
+        raise RuntimeError(
+            f"Unable to connect to Redis (after {num_retries} retries). "
+            "If the Redis instance is on a different machine, check that "
+            "your firewall and relevant Ray ports are configured properly. "
+            "You can also set the environment variable "
+            "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of "
+            "attempts to ping the Redis server.")
 
 
 def _compute_version_info():
