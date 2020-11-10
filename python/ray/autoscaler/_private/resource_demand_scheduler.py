@@ -44,7 +44,7 @@ class ResourceDemandScheduler:
                  provider: NodeProvider,
                  node_types: Dict[NodeType, NodeTypeConfigDict],
                  max_workers: int,
-                 upscaling_speed: float = 1):
+                 upscaling_speed: float = 1) -> None:
         self.provider = provider
         self.node_types = copy.deepcopy(node_types)
         self.max_workers = max_workers
@@ -83,7 +83,10 @@ class ResourceDemandScheduler:
                 _update_based_on_node_config(NODE_TYPE_LEGACY_WORKER)
                 final_node_types = self.node_types
 
-        self.__init__(provider, final_node_types, max_workers, upscaling_speed)
+        self.provider = provider
+        self.node_types = copy.deepcopy(final_node_types)
+        self.max_workers = max_workers
+        self.upscaling_speed = upscaling_speed
 
     def is_legacy_yaml(self,
                        node_types: Dict[NodeType, NodeTypeConfigDict] = None

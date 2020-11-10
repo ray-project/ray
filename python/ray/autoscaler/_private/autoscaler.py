@@ -70,6 +70,7 @@ class StandardAutoscaler:
         # Keep this before self.reset (self.provider needs to be created
         # exactly once).
         self.provider = None
+        self.resource_demand_scheduler = None
         self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
 
@@ -357,7 +358,7 @@ class StandardAutoscaler:
                 upscaling_speed = 1 / max(target_utilization_fraction, 0.001)
             else:
                 upscaling_speed = 1.0
-            if hasattr(self, "resource_demand_scheduler"):
+            if self.resource_demand_scheduler:
                 # The node types are autofilled internally for legacy yamls,
                 # overwriting the class will remove the inferred node resources
                 # for legacy yamls.
