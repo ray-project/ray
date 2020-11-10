@@ -515,8 +515,8 @@ class AWSNodeProvider(NodeProvider):
                         available_node_types[node_type].get("resources", {}):
                     available_node_types[node_type][
                         "resources"] = autodetected_resources
-                    cli_logger.print("Updating the resources of {} to {}.",
-                                     node_type, autodetected_resources)
+                    logger.debug("Updating the resources of {} to {}.".format(
+                        node_type, autodetected_resources))
             else:
                 raise ValueError("Instance type " + instance_type +
                                  " is not available in AWS region: " +
