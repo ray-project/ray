@@ -38,8 +38,8 @@ class TestRedisPassword:
         try:
             ray._private.services.wait_for_redis_to_start(
                 redis_ip, redis_port, password='wrong password')
-        except RuntimeError as runtimeError:
-            if not isinstance(runtimeError.__cause__, redis.AuthenticationError):
+        except RuntimeError as runtimeEx:
+            if not isinstance(runtimeEx.__cause__, redis.AuthenticationError):
                 raise
 
         # Check that we can connect to Redis using the provided password
