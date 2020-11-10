@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -47,6 +48,55 @@ using ray::object_manager::protocol::ObjectInfoT;
 using flatbuf::PlasmaError;
 
 struct GetRequest;
+
+using CreateObjectCallback = std::function<Status(
+                  const std::shared_ptr<Client> &client,
+                  const std::vector<uint8_t> &message,
+                  bool reply_on_oom)>;
+
+class CreateRequestQueue {
+ public:
+  CreateRequestQueue(CreateObjectCallback create_object_callback,
+      int32_t max_retries, uint32_t delay_on_oom)
+    : create_object_callback_(create_object_callback),
+      max_retries_(max_retries),
+      delay_on_oom_(delay_on_oom) {}
+
+  void AddRequest(const std::shared_ptr<Client> &client,
+                  const std::vector<uint8_t> &message) {
+    queue_.push_back({client, message});
+    ProcessRequests();
+  }
+
+  void ProcessRequests();
+
+  void RemoveDisconnectedClientRequests(const std::shared_ptr<Client> &client);
+
+ private:
+  bool ProcessRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message);
+
+  CreateObjectCallback create_object_callback_;
+
+  /// Queue of object creation requests to respond to. Requests will be placed
+  /// on this queue if the object store does not have enough room at the time
+  /// that the client made the creation request, but space may be made through
+  /// object spilling. Once the raylet notifies us that objects have been
+  /// spilled, we will attempt to process these requests again and respond to
+  /// the client if successful or out of memory. If more objects must be
+  /// spilled, the request will be replaced at the head of the queue.
+  /// TODO(swang): We should also queue objects here even if there is no room
+  /// in the object store. Then, the client does not need to poll on an
+  /// OutOfMemory error and we can just respond to them once there is enough
+  /// space made, or after a timeout.
+  std::list<std::pair<const std::shared_ptr<Client>,
+    const std::vector<uint8_t>>> queue_;
+
+  const int32_t max_retries_;
+
+  const uint32_t delay_on_oom_;
+
+  int32_t num_retries_ = 0;
+};
 
 class PlasmaStore {
  public:
@@ -99,11 +149,14 @@ class PlasmaStore {
   ///  - PlasmaError::TransientOutOfMemory, if the store is temporarily out of
   ///    memory but there may be space soon to create the object.  In this
   ///    case, the client should not call plasma_release.
-  PlasmaError CreateObject(const ObjectID& object_id, const NodeID& owner_raylet_id,
-                           const std::string& owner_ip_address, int owner_port,
-                           const WorkerID& owner_worker_id, bool evict_if_full,
-                           int64_t data_size, int64_t metadata_size, int device_num,
-                           const std::shared_ptr<Client> &client, PlasmaObject* result);
+  PlasmaError CreateObject(const ObjectID& object_id,
+                                      const NodeID& owner_raylet_id,
+                                      const std::string& owner_ip_address,
+                                      int owner_port, const WorkerID& owner_worker_id,
+                                      bool evict_if_full, int64_t data_size,
+                                      int64_t metadata_size, int device_num,
+                                      const std::shared_ptr<Client> &client,
+                                      PlasmaObject* result);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -206,10 +259,12 @@ class PlasmaStore {
   /// \param num_bytes_space A lower bound on the number of bytes of space that
   /// have been made newly available, since the last time this method was
   /// called.
-  void ProcessCreateRequests();
+  void ProcessCreateRequests() {
+    create_request_queue_.ProcessRequests();
+  }
 
  private:
-  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message);
+  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool reply_on_oom);
 
   void PushNotification(ObjectInfoT* object_notification);
 
@@ -284,19 +339,8 @@ class PlasmaStore {
   /// complete.
   ray::SpillObjectsCallback spill_objects_callback_;
 
-  /// Queue of object creation requests to respond to. Requests will be placed
-  /// on this queue if the object store does not have enough room at the time
-  /// that the client made the creation request, but space may be made through
-  /// object spilling. Once the raylet notifies us that objects have been
-  /// spilled, we will attempt to process these requests again and respond to
-  /// the client if successful or out of memory. If more objects must be
-  /// spilled, the request will be replaced at the head of the queue.
-  /// TODO(swang): We should also queue objects here even if there is no room
-  /// in the object store. Then, the client does not need to poll on an
-  /// OutOfMemory error and we can just respond to them once there is enough
-  /// space made, or after a timeout.
-  std::list<std::pair<const std::shared_ptr<Client>,
-    const std::vector<uint8_t>>> create_request_queue_;
+  /// Queue of object creation requests.
+  CreateRequestQueue create_request_queue_;
 };
 
 }  // namespace plasma

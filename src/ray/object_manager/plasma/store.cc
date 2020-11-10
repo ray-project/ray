@@ -113,7 +113,12 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       socket_(main_service),
       eviction_policy_(&store_info_, PlasmaAllocator::GetFootprintLimit()),
       external_store_(external_store),
-      spill_objects_callback_(spill_objects_callback) {
+      spill_objects_callback_(spill_objects_callback),
+      create_request_queue_([this](const std::shared_ptr<Client> &client,
+                  const std::vector<uint8_t> &message,
+                  bool reply_on_oom) {
+          return HandleCreateObjectRequest(client, message, reply_on_oom);
+          }, RayConfig::instance().object_store_full_max_retries(), RayConfig::instance().object_store_full_initial_delay_ms()) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
 #ifdef PLASMA_CUDA
@@ -253,7 +258,7 @@ Status PlasmaStore::FreeCudaMemory(int device_num, int64_t size, uint8_t* pointe
 }
 #endif
 
-Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message) {
+Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool reply_on_oom) {
   uint8_t* input = (uint8_t*)message.data();
   size_t input_size = message.size();
   ObjectID object_id;
@@ -278,13 +283,27 @@ Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &cli
   if (error_code == PlasmaError::TransientOutOfMemory) {
     RAY_LOG(DEBUG) << "Create object " << object_id << " failed, waiting for object spill";
     status = Status::TransientObjectStoreFull("Object store full, queueing creation request");
+  } else if (error_code == PlasmaError::OutOfMemory) {
+    if (reply_on_oom) {
+      RAY_LOG(ERROR) << "Not enough memory to create the object " << object_id
+                       << ", data_size=" << data_size
+                       << ", metadata_size=" << metadata_size
+                       << ", will send a reply of PlasmaError::OutOfMemory";
+      RAY_RETURN_NOT_OK(SendCreateReply(client, object_id, &object, error_code, /*mmap_size=*/0));
+    } else {
+      RAY_LOG(ERROR) << "Not enough memory to create the object " << object_id
+                       << ", data_size=" << data_size
+                       << ", metadata_size=" << metadata_size
+                       << ", retrying after a timeout";
+      status = Status::ObjectStoreFull("Object store full, should retry on timeout");
+    }
   } else {
     int64_t mmap_size = 0;
-    if (error_code == PlasmaError::OK && device_num == 0) {
+    if (device_num == 0) {
       mmap_size = GetMmapSize(object.store_fd);
     }
     RAY_RETURN_NOT_OK(SendCreateReply(client, object_id, &object, error_code, mmap_size));
-    if (error_code == PlasmaError::OK && device_num == 0) {
+    if (device_num == 0) {
       RAY_RETURN_NOT_OK(client->SendFd(object.store_fd));
     }
   }
@@ -321,12 +340,6 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id,
     pointer =
         AllocateMemory(total_size, evict_if_full, &fd, &map_size, &offset, client, true, &error);
     if (!pointer) {
-      if (error == PlasmaError::OutOfMemory) {
-        RAY_LOG(ERROR) << "Not enough memory to create the object " << object_id.Hex()
-                         << ", data_size=" << data_size
-                         << ", metadata_size=" << metadata_size
-                         << ", will send a reply of PlasmaError::OutOfMemory";
-      }
       return error;
     }
   } else {
@@ -859,13 +872,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
     notification_clients_.erase(client);
   }
 
-  for (auto it = create_request_queue_.begin(); it != create_request_queue_.end(); ) {
-    if (it->first == client) {
-      it = create_request_queue_.erase(it);
-    } else {
-      it++;
-    }
-  }
+  create_request_queue_.RemoveDisconnectedClientRequests(client);
 }
 
 /// Send notifications about sealed objects to the subscribers. This is called
@@ -963,8 +970,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   // Process the different types of requests.
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
-      create_request_queue_.push_back({client, message});
-      ProcessCreateRequests();
+      create_request_queue_.AddRequest(client, message);
     } break;
     case fb::MessageType::PlasmaAbortRequest: {
       RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
@@ -1058,19 +1064,50 @@ void PlasmaStore::DoAccept() {
                                               boost::asio::placeholders::error));
 }
 
-void PlasmaStore::ProcessCreateRequests() {
-  for (auto request_it = create_request_queue_.begin();
-      request_it != create_request_queue_.end(); ) {
-    auto status = HandleCreateObjectRequest(request_it->first, request_it->second);
-    if (status.IsTransientObjectStoreFull()) {
-      // The object store is still full.
-      // NOTE(swang): There could be other requests behind this one that are
-      // actually serviceable. This may be inefficient, but eventually this
-      // request will get served and unblock the following requests, once
-      // enough objects have been spilled.
+bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message) {
+  auto status = create_object_callback_(client, message, num_retries_ < max_retries_);
+  bool request_fulfilled = false;
+
+  if (status.IsTransientObjectStoreFull()) {
+    // The object store is full, but we should wait for space to be made, so
+    // do nothing. The caller must guarantee that ProcessRequests is called
+    // again so that we can try this request again.
+    // NOTE(swang): There could be other requests behind this one that are
+    // actually serviceable. This may be inefficient, but eventually this
+    // request will get served and unblock the following requests, once
+    // enough objects have been spilled.
+    num_retries_ = 0;
+  } else if (status.IsObjectStoreFull()) {
+    RAY_LOG(DEBUG) << "Not enough memory to create the object, " << (max_retries_ - num_retries_) << " retries left";
+    // Try the request again later.
+    num_retries_++;
+  } else {
+    // We have replied to the client.
+    num_retries_ = 0;
+    request_fulfilled = true;
+  }
+
+  return request_fulfilled;
+}
+
+void CreateRequestQueue::ProcessRequests() {
+  for (auto request_it = queue_.begin();
+      request_it != queue_.end(); ) {
+    if (!ProcessRequest(request_it->first, request_it->second)) {
       break;
     }
-    request_it = create_request_queue_.erase(request_it);
+    request_it = queue_.erase(request_it);
+  }
+}
+
+
+void CreateRequestQueue::RemoveDisconnectedClientRequests(const std::shared_ptr<Client> &client) {
+  for (auto it = queue_.begin(); it != queue_.end(); ) {
+    if (it->first == client) {
+      it = queue_.erase(it);
+    } else {
+      it++;
+    }
   }
 }
 
