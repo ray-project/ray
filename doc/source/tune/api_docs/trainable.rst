@@ -364,6 +364,8 @@ Ray offers lightweight integrations to distribute your PyTorch training on Ray T
 .. autofunction:: ray.tune.integration.torch.is_distributed_trainable
    :noindex:
 
+.. _tune-dist-tf-doc:
+
 Distributed TensorFlow
 ----------------------
 

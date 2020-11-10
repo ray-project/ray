@@ -87,7 +87,7 @@ See :ref:`limiter` for more details.
 Distributed Tuning
 ~~~~~~~~~~~~~~~~~~
 
-.. tip:: This section covers how to run Tune in a cluster, not how to tune distributed training jobs.
+.. tip:: This section covers how to run Tune across multiple machines. See :ref:`Distributed Training <tune-dist-training>` for guidance in tuning distributed training jobs.
 
 To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :ref:`start-ray-cli` for more information about ``ray.init``:
 
@@ -98,6 +98,8 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :re
     tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
 
 Read more in the Tune :ref:`distributed experiments guide <tune-distributed>`.
+
+.. _tune-dist-training:
 
 Tune Distributed Training
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -116,7 +118,7 @@ Below is an example for tuning distributed TensorFlow jobs:
     tune.run(tf_trainable,
              num_samples=1)
 
-Read more about tuning distributed PyTorch, TensorFlow and Horovod jobs here :ref:`tune distributed training <trainable>`
+Read more about tuning :ref:`distributed PyTorch <tune-ddp-doc>`, :ref:`TensorFlow <tune-dist-tf-doc>` and :ref:`Horovod <tune-integration-horovod>` jobs.
 
 
 .. _tune-default-search-space:

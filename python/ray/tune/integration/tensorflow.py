@@ -36,8 +36,7 @@ def setup_address():
 
 
 class _TensorFlowTrainable(tune.Trainable):
-    """Base class for distributed training on Tune.
-    """
+    """Base class for distributed training on Tune."""
     _function = None
     _num_workers = None
     _use_gpu = None
@@ -113,10 +112,10 @@ def DistributedTrainableCreator(
 
     This function wraps and sets resources for a TF distributed training
     function to be used with Tune. It generates a TensorFlow Trainable
-    which can be a distributed
-    training job.
+    which can be a distributed training job.
 
     Note: there is no fault tolerance at the moment.
+
     Args:
         func (Callable[[dict], None]): A training function that takes in
             a config dict for hyperparameters and should initialize
@@ -127,9 +126,10 @@ def DistributedTrainableCreator(
         num_workers (int): Number of hosts that each trial is expected
             to use.
 
-        Returns:
-            Trainable class that can be passed into `tune.run`.
-        .. versionadded:: 1.1.0
+    Returns:
+        Trainable class that can be passed into `tune.run`.
+
+    .. versionadded:: 1.1.0
 
     Example:
 
@@ -164,6 +164,7 @@ def DistributedTrainableCreator(
 
 
 def get_num_workers():
+    """Retrieve the number of workers in the training job."""
     tf_config = json.loads(os.environ["TF_CONFIG"])
     num_workers = len(tf_config["cluster"]["worker"])
     return num_workers
