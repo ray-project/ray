@@ -534,9 +534,6 @@ class AutoscalingTest(unittest.TestCase):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
         config["max_workers"] = 50
-        # TODO(ameer): remove the next line when the request_resources PR
-        # is merged which makes it bypass max launch concurrency.
-        config["autoscaling_mode"] = "aggressive"
         cores_per_node = 2
         config["worker_nodes"] = {"Resources": {"CPU": cores_per_node}}
         config_path = self.write_config(config)
@@ -873,7 +870,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # Synchronization: wait for launchy thread to be blocked on rtc1
         waiters = rtc1._cond._waiters
-        self.waitFor(lambda: len(waiters) == 1)
+        self.waitFor(lambda: len(waiters) == 2)
         assert autoscaler.pending_launches.value == 10
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()

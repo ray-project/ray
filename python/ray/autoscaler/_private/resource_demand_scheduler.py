@@ -147,7 +147,7 @@ class ResourceDemandScheduler:
         else:
             resource_requests = []
 
-        if self.is_legacy_yaml:
+        if self.is_legacy_yaml():
             # When using legacy yaml files we need to infer the head & worker
             # node resources from the static node resources from LoadMetrics.
             self._infer_legacy_node_resources_if_needed(max_resources_by_ip)
