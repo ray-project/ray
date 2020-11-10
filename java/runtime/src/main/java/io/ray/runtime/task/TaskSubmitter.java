@@ -3,6 +3,7 @@ package io.ray.runtime.task;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
@@ -60,6 +61,12 @@ public interface TaskSubmitter {
    */
   PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
       PlacementStrategy strategy);
+
+  /**
+   * Remove a Placement Group by id.
+   * @param id Id of the Placement Group.
+   */
+  void removePlacementGroup(PlacementGroupId id);
 
   BaseActorHandle getActor(ActorId actorId);
 

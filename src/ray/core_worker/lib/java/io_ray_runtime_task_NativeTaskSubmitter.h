@@ -62,6 +62,15 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(JNIEnv *
                                                                         jstring, jobject,
                                                                         jint);
 
+/*
+ * Class:     io_ray_runtime_task_NativeTaskSubmitter
+ * Method:    nativeRemovePlacementGroup
+ * Signature: ([B)V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeRemovePlacementGroup(JNIEnv *, jclass,
+                                                                        jbyteArray);
+
 #ifdef __cplusplus
 }
 #endif

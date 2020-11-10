@@ -215,4 +215,10 @@ public interface RayRuntime {
    * @return All Placement Groups.
    */
   List<PlacementGroup> getAllPlacementGroup();
+
+  /**
+   * Remove a Placement Group by id.
+   * @param id Id of the Placement Group.
+   */
+  void removePlacementGroup(PlacementGroupId id);
 }

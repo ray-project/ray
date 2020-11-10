@@ -76,6 +76,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private final Map<ActorId, TaskExecutor.ActorContext> actorContexts = new ConcurrentHashMap<>();
 
+  private final Map<PlacementGroupId, PlacementGroup> placementGroups = new ConcurrentHashMap<>();
+
   public LocalModeTaskSubmitter(RayRuntimeInternal runtime, TaskExecutor taskExecutor,
                                 LocalModeObjectStore objectStore) {
     this.runtime = runtime;
@@ -226,8 +228,16 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return new PlacementGroupImpl.Builder().setId(PlacementGroupId.fromRandom())
-      .setName(name).setBundles(bundles).setStrategy(strategy).build();
+    PlacementGroupImpl placementGroup = new PlacementGroupImpl.Builder()
+        .setId(PlacementGroupId.fromRandom()).setName(name)
+        .setBundles(bundles).setStrategy(strategy).build();
+    placementGroups.put(placementGroup.getId(), placementGroup);
+    return placementGroup;
+  }
+
+  @Override
+  public void removePlacementGroup(PlacementGroupId id) {
+    placementGroups.remove(id);
   }
 
   @Override

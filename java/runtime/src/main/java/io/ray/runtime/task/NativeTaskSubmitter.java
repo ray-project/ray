@@ -86,6 +86,11 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       .setName(name).setBundles(bundles).setStrategy(strategy).build();
   }
 
+  @Override
+  public void removePlacementGroup(PlacementGroupId id) {
+    nativeRemovePlacementGroup(id.getBytes());
+  }
+
   private static native List<byte[]> nativeSubmitTask(FunctionDescriptor functionDescriptor,
       int functionDescriptorHash, List<FunctionArg> args, int numReturns, CallOptions callOptions);
 
@@ -99,4 +104,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
 
   private static native byte[] nativeCreatePlacementGroup(String name,
       List<Map<String, Double>> bundles, int strategy);
+
+  private static native void nativeRemovePlacementGroup(byte[] placementGroupId);
+
 }

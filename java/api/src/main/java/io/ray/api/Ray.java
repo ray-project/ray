@@ -289,4 +289,13 @@ public final class Ray extends RayCall {
   public static List<PlacementGroup> getAllPlacementGroup() {
     return internal().getAllPlacementGroup();
   }
+
+  /**
+   * Remove a Placement Group by id.
+   * Throw RayException if remove failed.
+   * @param id Id of the Placement Group.
+   */
+  public static void removePlacementGroup(PlacementGroupId id) {
+    internal().removePlacementGroup(id);
+  }
 }

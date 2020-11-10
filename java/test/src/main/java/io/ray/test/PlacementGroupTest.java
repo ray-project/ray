@@ -4,6 +4,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.util.List;
@@ -76,6 +77,24 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(placementGroupRes.getBundles().size(),
         expectPlacementGroup.getBundles().size());
     Assert.assertEquals(placementGroupRes.getStrategy(), expectPlacementGroup.getStrategy());
+  }
+
+  public void testRemovePlacementGroup() {
+    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup("CPU",
+        1, PlacementStrategy.PACK, 1.0, "first_placement_group");
+
+    PlacementGroupImpl secondPlacementGroup = (PlacementGroupImpl)PlacementGroupTestUtils
+        .createNameSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK,
+        1.0, "second_placement_group");
+
+    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroup();
+    Assert.assertEquals(allPlacementGroup.size(), 2);
+
+    Ray.removePlacementGroup(secondPlacementGroup.getId());
+
+    PlacementGroupImpl removedPlacementGroup =
+        (PlacementGroupImpl)Ray.getPlacementGroup((secondPlacementGroup).getId());
+    Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
   }
 
   public void testCheckBundleIndex() {

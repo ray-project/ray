@@ -210,6 +210,14 @@ extern JavaVM *jvm;
     }                                                                        \
   }
 
+/// Throw a Java RuntimeException if the status is not OK.
+#define THROW_RUNTIME_EXCEPTION_IF_NOT_OK(env, status)                       \
+  {                                                                          \
+    if (!(status).ok()) {                                                    \
+      (env)->ThrowNew(java_ray_exception_class, (status).message().c_str()); \
+    }                                                                        \
+  }
+
 #define RAY_CHECK_JAVA_EXCEPTION(env)                                                 \
   {                                                                                   \
     jthrowable throwable = env->ExceptionOccurred();                                  \

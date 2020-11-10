@@ -186,6 +186,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
+  public void removePlacementGroup(PlacementGroupId id) {
+    taskSubmitter.removePlacementGroup(id);
+  }
+
+  @Override
   public PlacementGroup getPlacementGroup(PlacementGroupId id) {
     return gcsClient.getPlacementGroupInfo(id);
   }
