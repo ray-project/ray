@@ -19,13 +19,14 @@ from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
-    DiagGaussian, SquashedGaussian, TFActionDistribution
+    DiagGaussian, Dirichlet, SquashedGaussian, TFActionDistribution
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf, \
     try_import_tfp
+from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
 
@@ -154,6 +155,8 @@ def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
     """
     if isinstance(action_space, Discrete):
         return Categorical
+    elif isinstance(action_space, Simplex):
+        return Dirichlet
     else:
         if config["normalize_actions"]:
             return SquashedGaussian if \
@@ -655,12 +658,14 @@ def validate_spaces(policy: Policy, observation_space: gym.spaces.Space,
         UnsupportedSpaceException: If one of the spaces is not supported.
     """
     # Only support single Box or single Discreete spaces.
-    if not isinstance(action_space, (Box, Discrete)):
+    if not isinstance(action_space, (Box, Discrete, Simplex)):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
-            "SAC.".format(action_space, policy))
+            "SAC. Must be [Box|Discrete|Simplex].".format(action_space,
+                                                          policy))
     # If Box, make sure it's a 1D vector space.
-    elif isinstance(action_space, Box) and len(action_space.shape) > 1:
+    elif isinstance(action_space, (Box, Simplex)) and len(
+            action_space.shape) > 1:
         raise UnsupportedSpaceException(
             "Action space ({}) of {} has multiple dimensions "
             "{}. ".format(action_space, policy, action_space.shape) +
