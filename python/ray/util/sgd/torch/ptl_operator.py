@@ -62,7 +62,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         returns scheduler objects.
 
         See
-        https://pytorch-lightning.readthedocs.io/en/latest/lightning_module.html#configure-optimizers
+        https://pytorch-lightning.readthedocs.io/en/master/lightning_module.html#configure-optimizers
         """
         return self._scheduler_dicts
 

@@ -52,7 +52,7 @@ A good start is to look at the papers that introduced the algorithms, and also
 to see what other people are using.
 
 Most algorithms also have sensible defaults for some of their parameters.
-For instance, `XGBoost's parameter overview <https://xgboost.readthedocs.io/en/latest/parameter.html>`_
+For instance, `XGBoost's parameter overview <https://xgboost.readthedocs.io/en/master/parameter.html>`_
 reports to use ``max_depth=6`` for the maximum decision tree depth. Here, anything
 between 2 and 10 might make sense (though that naturally depends on your problem).
 

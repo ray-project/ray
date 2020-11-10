@@ -75,7 +75,7 @@ class HTTPProxy:
 
     async def __call__(self, scope, receive, send):
         # NOTE: This implements ASGI protocol specified in
-        #       https://asgi.readthedocs.io/en/latest/specs/index.html
+        #       https://asgi.readthedocs.io/en/master/specs/index.html
 
         error_sender = self._make_error_sender(scope, receive, send)
 

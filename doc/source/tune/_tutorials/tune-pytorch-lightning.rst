@@ -90,7 +90,7 @@ First, we need some additional imports:
 Talking to Tune with a PyTorch Lightning callback
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-PyTorch Lightning introduced `Callbacks <https://pytorch-lightning.readthedocs.io/en/latest/callbacks.html>`_
+PyTorch Lightning introduced `Callbacks <https://pytorch-lightning.readthedocs.io/en/master/callbacks.html>`_
 that can be used to plug custom functions into the training loop. This way the original
 ``LightningModule`` does not have to be altered at all. Also, we could use the same
 callback for multiple modules.

@@ -57,7 +57,7 @@ burden and speedup review process.
 
     pytest ray/python/ray/tune/tests/
 
-Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
+Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/master/example_google.html>`__ format.
 
 We also have tests for code formatting and linting that need to pass before merge. You can run the following locally:
 

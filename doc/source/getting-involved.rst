@@ -74,7 +74,7 @@ burden and speedup review process.
 
     pytest ray/python/ray/tests/
 
-Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
+Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/master/example_google.html>`__ format.
 
 
 Testing for Python development
@@ -128,7 +128,7 @@ We also have tests for code formatting and linting that need to pass before merg
 Install ``yapf==0.23, flake8, flake8-quotes``.
 
 * `yapf <https://github.com/google/yapf>`_ version ``0.23.0`` (``pip install yapf==0.23.0``)
-* `flake8 <https://flake8.pycqa.org/en/latest/>`_ version ``3.7.7`` (``pip install flake8==3.7.7``)
+* `flake8 <https://flake8.pycqa.org/en/master/>`_ version ``3.7.7`` (``pip install flake8==3.7.7``)
 * `flake8-quotes <https://github.com/zheller/flake8-quotes>`_ (``pip install flake8-quotes``)
 * If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``7.0.0`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 

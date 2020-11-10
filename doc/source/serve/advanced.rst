@@ -295,7 +295,7 @@ Ray Serve supports serving backends with different (possibly conflicting)
 python dependencies.  For example, you can simultaneously serve one backend
 that uses legacy Tensorflow 1 and another backend that uses Tensorflow 2.
 
-Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_.
+Currently this is supported using `conda <https://docs.conda.io/en/master/>`_.
 You must have a conda environment set up for each set of
 dependencies you want to isolate.  If using a multi-node cluster, the
 conda configuration must be identical across all nodes.

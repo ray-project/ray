@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
-    # TD3: https://spinningup.openai.com/en/latest/algorithms/td3.html
+    # TD3: https://spinningup.openai.com/en/master/algorithms/td3.html
     # In addition to settings below, you can use "exploration_noise_type" and
     # "exploration_gauss_act_noise" to get IID Gaussian exploration noise
     # instead of OU exploration noise.
