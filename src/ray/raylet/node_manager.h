@@ -172,6 +172,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
 
+  /// Trigger global GC across the cluster to free up references to actors or
+  /// object ids.
+  void TriggerGlobalGC();
+
  private:
   /// Methods for handling clients.
 
@@ -643,10 +647,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleRequestObjectSpillage(const rpc::RequestObjectSpillageRequest &request,
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Trigger global GC across the cluster to free up references to actors or
-  /// object ids.
-  void TriggerGlobalGC();
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();

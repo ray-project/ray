@@ -117,8 +117,9 @@ GetRequest::GetRequest(boost::asio::io_service& io_context, const std::shared_pt
 
 PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
                          const std::string& socket_name,
-                         std::shared_ptr<ExternalStore> external_store,
-                         ray::SpillObjectsCallback spill_objects_callback, uint32_t delay_on_oom_ms)
+                         std::shared_ptr<ExternalStore> external_store, uint32_t delay_on_oom_ms,
+                         ray::SpillObjectsCallback spill_objects_callback,
+                    std::function<void()> object_store_full_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
@@ -127,7 +128,9 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       external_store_(external_store),
       spill_objects_callback_(spill_objects_callback),
       delay_on_oom_ms_(delay_on_oom_ms),
-      create_request_queue_(RayConfig::instance().object_store_full_max_retries()) {
+      create_request_queue_(RayConfig::instance().object_store_full_max_retries(),
+      /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
+      object_store_full_callback) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
 #ifdef PLASMA_CUDA
@@ -267,7 +270,7 @@ Status PlasmaStore::FreeCudaMemory(int device_num, int64_t size, uint8_t* pointe
 }
 #endif
 
-Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool reply_on_oom) {
+Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool reply_on_oom, bool evict_if_full) {
   uint8_t* input = (uint8_t*)message.data();
   size_t input_size = message.size();
   ObjectID object_id;
@@ -277,13 +280,12 @@ Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &cli
   std::string owner_ip_address;
   int owner_port;
   WorkerID owner_worker_id;
-  bool evict_if_full;
   int64_t data_size;
   int64_t metadata_size;
   int device_num;
   RAY_RETURN_NOT_OK(ReadCreateRequest(
     input, input_size, &object_id, &owner_raylet_id, &owner_ip_address, &owner_port,
-    &owner_worker_id, &evict_if_full, &data_size, &metadata_size, &device_num));
+    &owner_worker_id, &data_size, &metadata_size, &device_num));
   PlasmaError error_code = CreateObject(object_id, owner_raylet_id, owner_ip_address,
                                         owner_port, owner_worker_id, evict_if_full,
                                         data_size, metadata_size, device_num, client,
@@ -981,8 +983,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
       RAY_LOG(DEBUG) << "Received create request for object " << GetCreateRequestObjectId(message);
-      create_request_queue_.AddRequest(client, [this, message](const std::shared_ptr<Client> &client, bool reply_on_oom) {
-            return HandleCreateObjectRequest(client, message, reply_on_oom);
+      create_request_queue_.AddRequest(client, [this, message](const std::shared_ptr<Client> &client, bool reply_on_oom, bool evict_if_full) {
+            return HandleCreateObjectRequest(client, message, reply_on_oom, evict_if_full);
           });
       ProcessCreateRequests();
     } break;
@@ -1110,7 +1112,15 @@ void PlasmaStore::ProcessCreateRequests() {
 
 bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {
   bool reply_on_oom = num_retries_ >= max_retries_;
-  auto status = request_callback(client, reply_on_oom);
+  bool evict_if_full = evict_if_full_;
+  if (max_retries_ == 0) {
+    // If we cannot retry, then always evict on the first attempt.
+    evict_if_full = true;
+  } else if (num_retries_ > 0) {
+    // Always try to evict after the first attempt.
+    evict_if_full = true;
+  }
+  auto status = request_callback(client, reply_on_oom, evict_if_full);
   bool request_fulfilled = false;
 
   if (status.IsTransientObjectStoreFull()) {
@@ -1125,8 +1135,11 @@ bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, c
     // at once, instead of just the head of the queue.
     num_retries_ = 0;
   } else if (status.IsObjectStoreFull()) {
-    RAY_LOG(DEBUG) << "Not enough memory to create the object, " << (max_retries_ - num_retries_) << " retries left";
     num_retries_++;
+    RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_ << " tries";
+    if (on_store_full_) {
+      on_store_full_();
+    }
   } else {
     // We have replied to the client.
     num_retries_ = 0;
