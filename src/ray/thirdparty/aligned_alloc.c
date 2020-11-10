@@ -16,14 +16,14 @@ void aligned_free(void *pointer) {
 
 #elif defined(_WIN32)
 
-#include <crtdbg.h>
+#include <malloc.h>
 
 void *aligned_malloc(size_t size, size_t alignment) {
-	return _aligned_malloc_dbg(size, alignment, __FILE__, __LINE__); // This is reduced to a call to `_aligned_malloc` when _DEBUG is not defined
+	return _aligned_malloc(size, alignment);
 }
 
 void aligned_free(void *pointer) {
-	_aligned_free_dbg(pointer); // This is reduced to a call to `_aligned_free` when _DEBUG is not defined
+	_aligned_free(pointer);
 }
 
 #else
