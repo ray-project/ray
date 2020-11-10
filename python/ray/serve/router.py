@@ -281,12 +281,9 @@ class Router:
         assert self.flush_lock.locked()
         if endpoint not in self.traffic:
             return
-        if len(self.endpoint_queues[endpoint]):
-            query = self.endpoint_queues[endpoint].pop()
-            backends_to_flush = self.traffic[endpoint].flush(query)
-            for b in backends_to_flush:
-                self.backend_queues[b].appendleft(query)
-            self.flush_backend_queues(backends_to_flush)
+        backends_to_flush = self.traffic[endpoint].flush(
+            self.endpoint_queues[endpoint], self.backend_queues)
+        self.flush_backend_queues(backends_to_flush)
 
     # Flushes the specified backend queues and assigns work to workers.
     def flush_backend_queues(self, backends_to_flush):

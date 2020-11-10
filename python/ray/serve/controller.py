@@ -873,13 +873,8 @@ class ServeController:
             await self.actor_reconciler._start_pending_replicas(
                 self.configuration_store)
 
-            logger.error(f"REPLCIAS: {self.actor_reconciler.replicas}")
-
             self.long_pull_host.notify_on_changed(
-                "worker_handles", {
-                    tag: self.actor_reconciler.get_replica_actors(tag)
-                    for tag in self.configuration_store.backends.keys()
-                })
+                "worker_handles", self.get_all_worker_handles())
             self.long_pull_host.notify_on_changed(
                 "backend_configs",
                 self.configuration_store.get_backend_configs())
