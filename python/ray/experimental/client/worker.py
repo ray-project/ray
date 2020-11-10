@@ -2,15 +2,8 @@ import cloudpickle
 import grpc
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.experimental.client import call_remote
-
-
-class ObjectID:
-    def __init__(self, id):
-        self.id = id
-
-    def __repr__(self):
-        return "ObjectID(%s)" % self.id.hex()
+from ray.experimental.client.common import convert_to_arg
+from ray.experimental.client.common import ObjectID
 
 
 class Worker:
@@ -41,6 +34,9 @@ class Worker:
     def _get(self, id: bytes):
         req = ray_client_pb2.GetRequest(id=id)
         data = self.server.GetObject(req)
+        if not data.valid:
+            raise Exception(
+                "Client GetObject returned invalid data: id invalid?")
         return cloudpickle.loads(data.data)
 
     def put(self, vals):
@@ -76,34 +72,11 @@ class Worker:
         for arg in args:
             pb_arg = convert_to_arg(arg)
             task.args.append(pb_arg)
-        return self.server.Schedule(task)
+        ticket = self.server.Schedule(task)
+        return ObjectID(ticket.return_id)
+
 
     def close(self):
         self.channel.close()
 
 
-class ClientRemoteFunc:
-    def __init__(self, f):
-        self._func = f
-        self._name = f.__name__
-        self.id = None
-
-    def __call__(self, *args, **kwargs):
-        raise Exception("Matching the old API -- use %s.remote()" % self._name)
-
-    def remote(self, *args, **kwargs):
-        call_remote(self, *args, **kwargs)
-
-    def __repr__(self):
-        return "ClientRemoteFunc(%s, %s)" % (self._name, self.id)
-
-
-def convert_to_arg(val) -> ray_client_pb2.Arg:
-    out = ray_client_pb2.Arg()
-    if isinstance(val, ObjectID):
-        out.local = ray_client_pb2.Arg.Locality.REFERENCE
-        out.reference_id = val.id
-    else:
-        out.local = ray_client_pb2.Arg.Locality.INTERNED
-        out.data = cloudpickle.dumps(val)
-    return out

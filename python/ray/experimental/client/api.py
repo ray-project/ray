@@ -1,5 +1,7 @@
 from abc import ABC
 from abc import abstractmethod
+
+
 class APIImpl(ABC):
     @abstractmethod
     def get(self, *args, **kwargs):
