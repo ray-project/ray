@@ -39,7 +39,7 @@ auth:
 # Provider-specific config for the head node, e.g. instance type. By default
 # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
 # For more documentation on available fields, see:
-# http://boto3.readthedocs.io/en/master/reference/services/ec2.html#EC2.ServiceResource.create_instances
+# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: g3.8xlarge
     ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19

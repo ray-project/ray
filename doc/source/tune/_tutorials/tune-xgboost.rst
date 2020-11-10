@@ -11,7 +11,7 @@ competitions.
   :width: 200px
   :alt: XGBoost
   :align: center
-  :target: https://xgboost.readthedocs.io/en/master/
+  :target: https://xgboost.readthedocs.io/en/latest/
 
 
 This tutorial will give you a quick introduction to XGBoost, show you how
@@ -121,7 +121,7 @@ is a ``dict`` in which you can specify parameters for the XGBoost algorithm. In 
 simple example, the only parameters we passed are the ``objective`` and ``eval_metric`` parameters.
 The value ``binary:logistic`` tells XGBoost that we aim to train a logistic regression model for
 a binary classification task. You can find an overview over all valid objectives
-`here in the XGBoost documentation <https://xgboost.readthedocs.io/en/master/parameter.html#learning-task-parameters>`_.
+`here in the XGBoost documentation <https://xgboost.readthedocs.io/en/latest/parameter.html#learning-task-parameters>`_.
 
 XGBoost Hyperparameters
 -----------------------
@@ -485,5 +485,5 @@ Further References
 ------------------
 
 * `XGBoost Hyperparameter Tuning - A Visual Guide <https://kevinvecmanis.io/machine%20learning/hyperparameter%20tuning/dataviz/python/2019/05/11/XGBoost-Tuning-Visual-Guide.html>`_
-* `Notes on XGBoost Parameter Tuning <https://xgboost.readthedocs.io/en/master/tutorials/param_tuning.html>`_
+* `Notes on XGBoost Parameter Tuning <https://xgboost.readthedocs.io/en/latest/tutorials/param_tuning.html>`_
 * `Doing XGBoost Hyperparameter Tuning the smart way <https://towardsdatascience.com/doing-xgboost-hyper-parameter-tuning-the-smart-way-part-1-of-2-f6d255a45dde>`_
