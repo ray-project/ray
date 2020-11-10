@@ -131,7 +131,8 @@ def create_or_update_cluster(config_file: str,
                              override_cluster_name: Optional[str] = None,
                              no_config_cache: bool = False,
                              redirect_command_output: Optional[bool] = False,
-                             use_login_shells: bool = True) -> None:
+                             use_login_shells: bool = True,
+                             separate_commands: bool = False) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
@@ -207,8 +208,14 @@ def create_or_update_cluster(config_file: str,
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     try_logging_config(config)
-    get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
-                            override_cluster_name)
+    get_or_create_head_node(
+        config,
+        config_file,
+        no_restart,
+        restart_only,
+        yes,
+        override_cluster_name,
+        separate_commands=separate_commands)
 
 
 CONFIG_CACHE_VERSION = 1
@@ -469,7 +476,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                             yes: bool,
                             override_cluster_name: Optional[str],
                             _provider: Optional[NodeProvider] = None,
-                            _runner: ModuleType = subprocess) -> None:
+                            _runner: ModuleType = subprocess,
+                            separate_commands: bool = True) -> None:
     """Create the cluster head node, which in turn creates the workers."""
     provider = (_provider or _get_node_provider(config["provider"],
                                                 config["cluster_name"]))
@@ -647,7 +655,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter")
             },
-            docker_config=config.get("docker"))
+            docker_config=config.get("docker"),
+            separate_commands=separate_commands)
         updater.start()
         updater.join()
 

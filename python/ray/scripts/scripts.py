@@ -820,10 +820,17 @@ def stop(force, verbose, log_style, log_color):
     help=("Ray uses login shells (bash --login -i) to run cluster commands "
           "by default. If your workflow is compatible with normal shells, "
           "this can be disabled for a better user experience."))
+@click.option(
+    "--separate-commands",
+    is_flag=True,
+    default=False,
+    help=
+    ("If False, this call creates a script that runs all setup/initialization commands, reducing"
+     "the roundtrips to complete cluster stand up."))
 @add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
        yes, cluster_name, no_config_cache, redirect_command_output,
-       use_login_shells, log_style, log_color, verbose):
+       use_login_shells, separate_commands, log_style, log_color, verbose):
     """Create or update a Ray cluster."""
     cli_logger.configure(log_style, log_color, verbose)
 
@@ -856,7 +863,8 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
         override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,
         redirect_command_output=redirect_command_output,
-        use_login_shells=use_login_shells)
+        use_login_shells=use_login_shells,
+        separate_commands=separate_commands)
 
 
 @cli.command()

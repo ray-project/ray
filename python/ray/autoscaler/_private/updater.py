@@ -2,7 +2,9 @@ import click
 import logging
 import os
 import subprocess
+import tempfile
 import time
+from typing import List
 
 from threading import Thread
 
@@ -65,7 +67,8 @@ class NodeUpdater:
                  rsync_options=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
-                 docker_config=None):
+                 docker_config=None,
+                 separate_commands=True):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
@@ -103,6 +106,21 @@ class NodeUpdater:
         self.auth_config = auth_config
         self.is_head_node = is_head_node
         self.docker_config = docker_config
+        self.separate_commands = separate_commands
+
+    def _combine_commands(self, command_list,
+                          command_file_prefix="") -> List[str]:
+        if self.separate_commands:
+            return command_list
+        script = "set -x\n"
+        script += ";\n".join(command_list)
+        assert len(command_file_prefix) > 0
+        remote_file_name = f"/tmp/_{command_file_prefix}.sh"
+        with tempfile.NamedTemporaryFile(mode="w") as fl:
+            fl.write(script)
+            fl.flush()
+            self.rsync_up(fl.name, remote_file_name)
+        return [f"chmod +x {remote_file_name}; bash {remote_file_name}"]
 
     def run(self):
         if cmd_output_util.does_allow_interactive(
@@ -355,9 +373,10 @@ class NodeUpdater:
                         with LogTimer(
                                 self.log_prefix + "Setup commands",
                                 show_status=True):
-
-                            total = len(self.setup_commands)
-                            for i, cmd in enumerate(self.setup_commands):
+                            internal_setup_commands = self._combine_commands(
+                                self.setup_commands, "setup_commands_file")
+                            total = len(internal_setup_commands)
+                            for i, cmd in enumerate(internal_setup_commands):
                                 if cli_logger.verbosity == 0 and len(cmd) > 30:
                                     cmd_to_print = cf.bold(cmd[:30]) + "..."
                                 else:
