@@ -31,8 +31,11 @@ SOFTWARE.
 #include <stdlib.h>
 
 void *aligned_malloc(size_t size, size_t alignment) {
-	void *pointer;
-	(void)posix_memalign(&pointer, alignment, size);
+	void *pointer = NULL;
+	int rv = posix_memalign(&pointer, alignment, size);
+	if (rv != 0) {
+	  pointer = NULL;
+	}
 	return pointer;
 }
 
