@@ -136,7 +136,15 @@ class ActorStateReconciler:
             ]))
 
     def get_replica_actors(self, backend_tag: BackendTag) -> List[ActorHandle]:
-        return list(self.workers[backend_tag].values())
+        return_list = []
+        for replica_tag in self.replicas.get(backend_tag, []):
+            try:
+                replica_name = format_actor_name(replica_tag,
+                                                 self.controller_name)
+                return_list.append(ray.get_actor(replica_name))
+            except ValueError:
+                pass
+        return return_list
 
     async def _start_pending_replicas(
             self, config_store: ConfigurationStore) -> None:

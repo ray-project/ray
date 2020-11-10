@@ -158,13 +158,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Register a new driver.
   ///
   /// \param[in] worker The driver to be registered.
-  /// \param[in] job_id The job ID of the driver.
   /// \param[in] job_config The config of the job.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
   /// \return If the registration is successful.
   Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
-                        const JobID &job_id, const rpc::JobConfig &job_config,
+                        const rpc::JobConfig &job_config,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// Get the client connection's registered worker.
@@ -266,9 +265,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return string.
   std::string DebugString() const;
 
-  /// Record metrics.
-  void RecordMetrics() const;
-
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
@@ -337,8 +333,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
     std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
-    /// A map for looking up the owner JobId by the pid of worker.
-    std::unordered_map<pid_t, JobID> worker_pids_to_assigned_jobs;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;

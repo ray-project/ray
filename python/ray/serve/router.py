@@ -22,6 +22,7 @@ REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
 
 @dataclass
 class RequestMetadata:
+    request_id: str
     endpoint: str
     request_context: TaskContext
 
@@ -176,7 +177,9 @@ class Router:
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
         endpoint = request_meta.endpoint
-        logger.debug("Received a request for endpoint {}".format(endpoint))
+        logger.debug("Received request {} for endpoint {}.".format(
+            request_meta.request_id, endpoint))
+        request_start = time.time()
         self.num_router_requests.record(1, tags={"endpoint": endpoint})
 
         request_context = request_meta.request_context
@@ -196,6 +199,10 @@ class Router:
             self.num_error_endpoint_requests.record(
                 1, tags={"endpoint": endpoint})
             result = e
+
+        request_time_ms = (time.time() - request_start) * 1000
+        logger.debug("Finished request {} in {:.2f}ms".format(
+            request_meta.request_id, request_time_ms))
         return result
 
     async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
@@ -309,7 +316,6 @@ class Router:
         # If the worker died, this will be a RayActorError. Just return it and
         # let the HTTP proxy handle the retry logic.
         logger.debug("Sending query to replica:" + backend_replica_tag)
-        start = time.time()
         worker = self.replicas[backend_replica_tag]
         try:
             object_ref = worker.handle_request.remote(req.ray_serialize())
@@ -326,7 +332,6 @@ class Router:
             result = error
         self.queries_counter[backend][backend_replica_tag] -= 1
         await self.mark_worker_idle(backend, backend_replica_tag)
-        logger.debug("Got result in {:.2f}s".format(time.time() - start))
         return result
 
     def _assign_query_to_worker(self, backend, buffer_queue, worker_queue):
@@ -359,6 +364,8 @@ class Router:
                 continue
 
             request = buffer_queue.pop()
+            logger.debug("Assigning request {} to replica {}.".format(
+                request.metadata.request_id, backend_replica_tag))
             self.queries_counter[backend][backend_replica_tag] += 1
             future = asyncio.get_event_loop().create_task(
                 self._do_query(backend, backend_replica_tag, request))

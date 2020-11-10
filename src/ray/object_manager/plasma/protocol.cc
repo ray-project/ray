@@ -128,8 +128,6 @@ Status PlasmaErrorStatus(fb::PlasmaError plasma_error) {
       return Status::ObjectNotFound("object does not exist in the plasma store");
     case fb::PlasmaError::OutOfMemory:
       return Status::ObjectStoreFull("object does not fit in the plasma store");
-    case fb::PlasmaError::TransientOutOfMemory:
-      return Status::TransientObjectStoreFull("object does not currently fit in the plasma store, try again soon");
     default:
       RAY_LOG(FATAL) << "unknown plasma error code " << static_cast<int>(plasma_error);
   }

@@ -16,6 +16,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/stats.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -44,8 +45,7 @@ void GcsNodeManager::NodeFailureDetector::AddNode(const ray::NodeID &node_id) {
   heartbeats_.emplace(node_id, num_heartbeats_timeout_);
 }
 
-void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
-    const NodeID &node_id, const rpc::HeartbeatTableData &heartbeat_data) {
+void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(const NodeID &node_id) {
   auto iter = heartbeats_.find(node_id);
   if (iter == heartbeats_.end()) {
     // Ignore this heartbeat as the node is not registered.
@@ -207,9 +207,8 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
 
   // Note: To avoid heartbeats being delayed by main thread, make sure heartbeat is always
   // handled by its own IO service.
-  node_failure_detector_service_.post([this, node_id, heartbeat_data] {
-    node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
-  });
+  node_failure_detector_service_.post(
+      [this, node_id] { node_failure_detector_->HandleHeartbeat(node_id); });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -445,6 +444,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     removed_node = std::move(iter->second);
+    // Record stats that there's a new removed node.
+    stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     // Remove from cluster resources.
@@ -557,6 +558,7 @@ void GcsNodeManager::SendBatchedHeartbeat() {
     for (auto &heartbeat : heartbeat_buffer_) {
       batch->add_batch()->Swap(&heartbeat.second);
     }
+    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));

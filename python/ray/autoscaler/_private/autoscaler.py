@@ -209,17 +209,14 @@ class StandardAutoscaler:
 
         # First let the resource demand scheduler launch nodes, if enabled.
         if self.resource_demand_scheduler:
-            resource_demand_vector = self.resource_demand_vector + \
-                self.load_metrics.get_resource_demand_vector()
-            pending_placement_groups = \
-                self.load_metrics.get_pending_placement_groups()
             to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
                 self.provider.non_terminated_nodes(tag_filters={}),
                 self.pending_launches.breakdown(),
-                resource_demand_vector,
+                self.load_metrics.get_resource_demand_vector(),
                 self.load_metrics.get_resource_utilization(),
-                pending_placement_groups,
-                self.load_metrics.get_static_node_resources_by_ip())
+                self.load_metrics.get_pending_placement_groups(),
+                self.load_metrics.get_static_node_resources_by_ip(),
+                ensure_min_cluster_size=self.resource_demand_vector)
             for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
 
@@ -563,7 +560,11 @@ class StandardAutoscaler:
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count, node_type))
+        # Split into individual launch requests of the max batch size.
+        while count > 0:
+            self.launch_queue.put((config, min(count, self.max_launch_batch),
+                                   node_type))
+            count -= self.max_launch_batch
 
     def all_workers(self):
         return self.workers() + self.unmanaged_workers()
