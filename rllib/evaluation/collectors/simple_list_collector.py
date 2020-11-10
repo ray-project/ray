@@ -507,7 +507,6 @@ class _SimpleListCollector(_SampleCollector):
                 post_batch, policy.view_requirements)
 
         env_steps = self.episode_steps[episode_id]
-        print("adding {} env_steps after postprocessing to policy-colletors count".format(env_steps))
         self.policy_collectors_env_steps += env_steps
 
         if is_done:
@@ -526,7 +525,6 @@ class _SimpleListCollector(_SampleCollector):
                 if collector.count > 0
             },
             env_steps=env_steps)
-        print("ENV-STEPS={}".format(env_steps))#TODO
         self.policy_collectors_env_steps = 0
         return ma_batch
 
@@ -540,10 +538,8 @@ class _SimpleListCollector(_SampleCollector):
         # what's already in the policy collectors reaches the fragment-len.
         for episode_id, count in episode_steps.items():
             env_steps = self.policy_collectors_env_steps + count
-            print("episode={} steps={} all={}".format(episode_id, count, env_steps))
             # Reached the fragment-len -> We should build an MA-Batch.
             if env_steps >= self.rollout_fragment_length:
-                print("> fragment-len -> build batch")
                 # If we reached the fragment-len only because of `episode_id`
                 # (still ongoing) -> postprocess `episode_id` first.
                 if self.policy_collectors_env_steps < \
