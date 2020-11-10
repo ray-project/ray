@@ -38,6 +38,12 @@ The basic autoscaling config settings are as follows:
     # considered idle if there are no tasks or actors running on it.
     idle_timeout_minutes: 5
 
+Programmatically Scaling a Cluster
+----------------------------------
+
+You can from within a Ray program command the autoscaler to scale the cluster up to a desired size with ``request_resources()`` call. The cluster will immediately attempt to scale to accomodate the requested resources, bypassing normal upscaling delay.
+
+.. autofunction:: ray.autoscaler.sdk.request_resources
 
 Manually Adding Nodes without Resources (Unmanaged Nodes)
 ---------------------------------------------------------

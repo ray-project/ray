@@ -138,7 +138,9 @@ class ActorStateReconciler:
         return_list = []
         for replica_tag in self.replicas.get(backend_tag, []):
             try:
-                return_list.append(ray.get_actor(replica_tag))
+                replica_name = format_actor_name(replica_tag,
+                                                 self.controller_name)
+                return_list.append(ray.get_actor(replica_name))
             except ValueError:
                 pass
         return return_list

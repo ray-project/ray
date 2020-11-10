@@ -45,8 +45,7 @@ void GcsNodeManager::NodeFailureDetector::AddNode(const ray::NodeID &node_id) {
   heartbeats_.emplace(node_id, num_heartbeats_timeout_);
 }
 
-void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
-    const NodeID &node_id, const rpc::HeartbeatTableData &heartbeat_data) {
+void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(const NodeID &node_id) {
   auto iter = heartbeats_.find(node_id);
   if (iter == heartbeats_.end()) {
     // Ignore this heartbeat as the node is not registered.
@@ -208,9 +207,8 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
 
   // Note: To avoid heartbeats being delayed by main thread, make sure heartbeat is always
   // handled by its own IO service.
-  node_failure_detector_service_.post([this, node_id, heartbeat_data] {
-    node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
-  });
+  node_failure_detector_service_.post(
+      [this, node_id] { node_failure_detector_->HandleHeartbeat(node_id); });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
