@@ -54,9 +54,13 @@ using CreateObjectCallback = std::function<Status(const std::shared_ptr<Client> 
 class CreateRequestQueue {
  public:
   CreateRequestQueue(int32_t max_retries,
+      uint32_t delay_on_oom_ms,
+      uint32_t delay_on_transient_oom_ms,
       bool evict_if_full,
-      std::function<void()> on_store_full = nullptr)
+      std::function<void()> on_store_full)
     : max_retries_(max_retries),
+      delay_on_oom_ms_(delay_on_oom_ms),
+      delay_on_transient_oom_ms_(delay_on_transient_oom_ms),
       evict_if_full_(evict_if_full),
       on_store_full_(on_store_full) {}
 
@@ -73,7 +77,13 @@ class CreateRequestQueue {
   /// This will try to process as many requests in the queue as possible, in
   /// FIFO order. If the first request is not serviceable, this will break and
   /// the caller should try again later.
-  bool ProcessRequests();
+  ///
+  /// \param[out] retry_after_ms The amount of time after which the first
+  /// request should be retried. It is okay to retry earlier, but this gives
+  /// some time to make space in the object store. This is set if the method
+  /// returns false.
+  /// \return True if all requests in the queue have been fulfilled.
+  bool ProcessRequests(uint32_t *retry_after_ms);
 
   /// Remove all requests that were made by a client that is now disconnected.
   ///
@@ -82,14 +92,24 @@ class CreateRequestQueue {
 
  private:
   /// Process a single request. Returns true if the request was fulfilled and
-  /// can be dropped from the queue.
-  bool ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback);
+  /// can be dropped from the queue. If false, then the retry_after_ms
+  /// parameter will be set with the time after which the request should be
+  /// retried.
+  bool ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback, uint32_t *retry_after_ms);
 
   /// The maximum number of times to retry each request upon OOM.
   const int32_t max_retries_;
 
   /// The number of times the request at the head of the queue has been tried.
   int32_t num_retries_ = 0;
+
+  /// The amount of time to wait before retrying a creation request after an
+  /// OOM error.
+  const uint32_t delay_on_oom_ms_;
+
+  /// The amount of time to wait before retrying a creation request after a
+  /// transient OOM error.
+  const uint32_t delay_on_transient_oom_ms_;
 
   /// On the first attempt to create an object, whether to evict from the
   /// object store to make space. If the first attempt fails, then we will
@@ -346,8 +366,6 @@ class PlasmaStore {
   /// callback returns the amount of space still needed after the spilling is
   /// complete.
   ray::SpillObjectsCallback spill_objects_callback_;
-
-  const uint32_t delay_on_oom_ms_;
 
   bool create_timer_set_ = false;
 

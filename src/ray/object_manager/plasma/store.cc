@@ -127,8 +127,9 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       eviction_policy_(&store_info_, PlasmaAllocator::GetFootprintLimit()),
       external_store_(external_store),
       spill_objects_callback_(spill_objects_callback),
-      delay_on_oom_ms_(delay_on_oom_ms),
       create_request_queue_(RayConfig::instance().object_store_full_max_retries(),
+      delay_on_oom_ms,
+      /*delay_on_transient_oom_ms=*/100,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
       object_store_full_callback) {
   store_info_.directory = directory;
@@ -1089,10 +1090,12 @@ void PlasmaStore::ProcessCreateRequests() {
     return;
   }
 
-  bool finished = create_request_queue_.ProcessRequests();
+  uint32_t retry_after_ms = 0;
+  bool finished = create_request_queue_.ProcessRequests(&retry_after_ms);
   if (!finished) {
     // Try to process requests later, after space has been made.
-    auto delay = boost::posix_time::milliseconds(delay_on_oom_ms_);
+    RAY_CHECK(retry_after_ms > 0);
+    auto delay = boost::posix_time::milliseconds(retry_after_ms);
     create_timer_.reset(new boost::asio::deadline_timer(io_context_));
     create_timer_->expires_from_now(delay);
     create_timer_->async_wait(
@@ -1110,7 +1113,7 @@ void CreateRequestQueue::AddRequest(const std::shared_ptr<Client> &client, const
   queue_.push_back({client, request_callback});
 }
 
-bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {
+bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback, uint32_t *retry_after_ms) {
   bool reply_on_oom = num_retries_ >= max_retries_;
   bool evict_if_full = evict_if_full_;
   if (max_retries_ == 0) {
@@ -1134,12 +1137,14 @@ bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, c
     // TODO(swang): Ask the raylet to spill enough space for multiple requests
     // at once, instead of just the head of the queue.
     num_retries_ = 0;
+    *retry_after_ms = delay_on_transient_oom_ms_;
   } else if (status.IsObjectStoreFull()) {
     num_retries_++;
     RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_ << " tries";
     if (on_store_full_) {
       on_store_full_();
     }
+    *retry_after_ms = delay_on_oom_ms_;
   } else {
     // We have replied to the client.
     num_retries_ = 0;
@@ -1149,10 +1154,10 @@ bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, c
   return request_fulfilled;
 }
 
-bool CreateRequestQueue::ProcessRequests() {
+bool CreateRequestQueue::ProcessRequests(uint32_t *retry_after_ms) {
   for (auto request_it = queue_.begin();
       request_it != queue_.end(); ) {
-    if (!ProcessRequest(request_it->first, request_it->second)) {
+    if (!ProcessRequest(request_it->first, request_it->second, retry_after_ms)) {
       return false;
     }
     request_it = queue_.erase(request_it);
