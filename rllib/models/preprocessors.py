@@ -53,6 +53,8 @@ class Preprocessor:
     def check_shape(self, observation: Any) -> None:
         """Checks the shape of the given observation."""
         if self._i % VALIDATION_INTERVAL == 0:
+            if type(observation) in [float, int]:
+                observation = [observation]
             if type(observation) is list and isinstance(
                     self._obs_space, gym.spaces.Box):
                 observation = np.array(observation)

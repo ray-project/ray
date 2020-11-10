@@ -71,6 +71,8 @@ class ARSTFPolicy(Policy):
         # Batch is given as list of one.
         if isinstance(observation, list) and len(observation) == 1:
             observation = observation[0]
+        if type(observation) in [float, int]:
+            observation = np.array([observation])
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
 

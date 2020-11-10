@@ -356,6 +356,8 @@ class ESTrainer(Trainer):
             ]
             # Get the results of the rollouts.
             for result in ray.get(rollout_ids):
+                if type(result) in [float, int]:
+                    result = np.array([result])
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,
