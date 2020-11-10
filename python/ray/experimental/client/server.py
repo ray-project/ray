@@ -11,29 +11,31 @@ from ray.experimental.client.core_ray_api import set_client_api_as_ray
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def __init__(self):
-        self.realref = {}
+        self.object_refs = {}
+        self.function_refs = {}
 
     def GetObject(self, request, context=None):
-        objectref = self.realref[request.id]
+        objectref = self.object_refs[request.id]
         print("get: %s" % objectref)
         item = ray.get(objectref)
         if item is None:
             return ray_client_pb2.GetResponse(valid=False)
-        data = cloudpickle.loads(item)
-        return ray_client_pb2.GetResponse(valid=True, data=data)
+        return ray_client_pb2.GetResponse(valid=True, data=item)
 
     def PutObject(self, request, context=None):
-        data = cloudpickle.dumps(request.data)
-        objectref = ray.put(data)
-        self.realref[objectref.binary()] = objectref
+        objectref = ray.put(request.data)
+        self.object_refs[objectref.binary()] = objectref
         print("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary())
 
     def Schedule(self, task, context=None):
         print("Got Schedule: ", task)
+        funcref = self.object_refs[task.payload_id]
+        func = cloudpickle.loads(ray.get(funcref))
+        print("Got function back: ", func, type(func))
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details("Unimplemented")
-        return ray_client_pb2.TaskTicket()
+        return ray_client_pb2.ClientTaskTicket()
 
 
 def serve(connection_str):

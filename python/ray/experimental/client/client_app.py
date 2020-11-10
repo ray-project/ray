@@ -11,7 +11,7 @@ print(objectref)
 
 print(ray.get(objectref))
 
-# ref2 = plus2.remote(234)
-# print(ref2)
+ref2 = plus2.remote(234)
+print(ref2)
 
 # print(ray.get(ref2))

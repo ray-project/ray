@@ -69,7 +69,7 @@ class Worker:
     def call_remote(self, func, *args, **kwargs):
         if not isinstance(func, ClientRemoteFunc):
             raise Exception("Client not passing a ClientRemoteFunc stub")
-        func_ref = self.put(func._func)
+        func_ref = self._put(func._func)
         task = ray_client_pb2.ClientTask()
         task.name = func._name
         task.payload_id = func_ref.id
