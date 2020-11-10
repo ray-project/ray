@@ -129,7 +129,19 @@ def DistributedTrainableCreator(
 
         Returns:
             Trainable class that can be passed into `tune.run`.
-        .. versionadded:: 1.0.0
+        .. versionadded:: 1.1.0
+
+    Example:
+
+    .. code-block:: python
+
+        # Please refer to full example in tf_distributed_keras_example.py
+        tf_trainable = DistributedTrainableCreator(
+            train_mnist,
+            use_gpu=args.use_gpu,
+            num_workers=2)
+        tune.run(tf_trainable,
+                 num_samples=1)
     """
     class WrappedDistributedTensorFlowTrainable(_TensorFlowTrainable):
         _function = func
