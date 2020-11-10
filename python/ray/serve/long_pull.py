@@ -2,7 +2,7 @@ import asyncio
 import random
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, DefaultDict, Dict, Generic, Set, Tuple, List, TypeVar, Optional
+from typing import Any, Awaitable, Callable, DefaultDict, Dict, Generic, Set, Tuple, List, TypeVar, Optional
 
 import ray
 from ray.serve.utils import logger
@@ -14,32 +14,26 @@ class UpdatedObject:
     snapshot_id: int
 
 
-class BaseClient:
-    def __init__(self,
-                 host_actor,
-                 keys: List[str],
-                 callback: Optional[Callable] = None) -> None:
-        self.host_actor = host_actor
-        self.keys = keys
-        self.snapshot_ids: DefaultDict[str, int] = defaultdict(lambda: -1)
-        self.object_snapshots: Dict[str, Any] = dict()
-        self.callback = callback
+UpdateStateCallable = Callable[[Dict[str, Any], List[str]], None]
+UpdateStateAsyncCallable = Callable[[Dict[str, Any], List[str]], Awaitable[
+    None]]
 
-        # Perform one blocking update
-        self._update(ray.get(self._pull_once()))
+
+class BaseClient:
+    def __init__(self, host_actor, keys: List[str]) -> None:
+        self.host_actor = host_actor
+        self.snapshot_ids: Dict[str, int] = {key: -1 for key in keys}
+        self.object_snapshots: Dict[str, Any] = dict()
 
     def _pull_once(self) -> ray.ObjectRef:
-        key_to_snapshot_ids = {k: self.snapshot_ids[k] for k in self.keys}
         object_ref = self.host_actor.listen_on_changed.remote(
-            key_to_snapshot_ids)
+            self.snapshot_ids)
         return object_ref
 
     def _update(self, updates: Dict[str, UpdatedObject]):
         for key, update in updates.items():
             self.object_snapshots[key] = update.object_snapshot
             self.snapshot_ids[key] = update.snapshot_id
-        if self.callback:
-            self.callback(self.object_snapshots, list(updates.keys()))
 
     def get_object_snapshot(self, object_key: str) -> Any:
         return self.object_snapshots[object_key]
@@ -49,19 +43,26 @@ class LongPullerSyncClient(BaseClient):
     def __init__(self,
                  host_actor,
                  keys: List[str],
-                 callback: Optional[Callable] = None) -> None:
-        super().__init__(host_actor, keys, callback)
+                 callback: Optional[UpdateStateCallable] = None) -> None:
+        super().__init__(host_actor, keys)
         self.in_flight_request_ref: ray.ObjectRef = self._pull_once()
+        self.callback = callback
+        self.refresh(block=True)
 
     def refresh(self, block=False):
+        """Check the inflight request once and update internal state."""
         done, _ = ray.wait([self.in_flight_request_ref], timeout=0)
         if len(done) == 1 or block:
-            self._update(ray.get(self.in_flight_request_ref))
+            updates = ray.get(self.in_flight_request_ref)
+            self._update(updates)
+            if self.callback:
+                self.callback(self.object_snapshots, list(updates.keys()))
         self.in_flight_request_ref = self._pull_once()
 
     def get_object_snapshot(self, object_key: str) -> Any:
         # NOTE(simon): Performing one ray.wait on get still has too high
-        # overhead. Consider a batch submission scenario.
+        # overhead. Consider a batch submission scenario and how to amortize
+        # the cost.
         self.refresh()
         return self.object_snapshots[object_key]
 
@@ -70,15 +71,19 @@ class LongPullerAsyncClient(BaseClient):
     def __init__(self,
                  host_actor,
                  keys: List[str],
-                 callback: Optional[Callable] = None) -> None:
+                 callback: Optional[UpdateStateAsyncCallable] = None) -> None:
         assert asyncio.get_event_loop().is_running
-        super().__init__(host_actor, keys, callback)
+        super().__init__(host_actor, keys)
         asyncio.get_event_loop().create_task(self._do_long_pull())
+        self.callback = callback
 
     async def _do_long_pull(self):
         while True:
             updates = await self._pull_once()
             self._update(updates)
+            if self.callback:
+                await self.callback(self.object_snapshots,
+                                    list(updates.keys()))
 
 
 class LongPullerHost:
@@ -96,12 +101,14 @@ class LongPullerHost:
 
     async def listen_on_changed(self, keys_to_snapshot_ids: Dict[str, int]
                                 ) -> Dict[str, UpdatedObject]:
-        # 1. Figure out which keys do we care about, and whether any of those are outdated
+        # 1. Figure out which keys do we care about
         watched_keys = set(self.snapshot_ids.keys()).intersection(
             keys_to_snapshot_ids.keys())
         if len(watched_keys) == 0:
             raise ValueError("Keys not found.")
 
+        # 2. If there are any outdated keys (by comparing snapshot ids)
+        #    return immediately.
         client_outdated_keys = {
             key: UpdatedObject(self.object_snapshots[key],
                                self.snapshot_ids[key])
@@ -111,6 +118,7 @@ class LongPullerHost:
         if len(client_outdated_keys) > 0:
             return client_outdated_keys
 
+        # 3. Otherwise, register asyncio event to be waited.
         to_be_awaited = set()
         task_to_key = {}
         for key in watched_keys:
@@ -131,7 +139,7 @@ class LongPullerHost:
     def notify_on_changed(self, object_key: str, updated_object: Any):
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object
-        logger.error(
+        logger.debug(
             f"LongPullerHost: Updated object_snapshot to {self.object_snapshots}"
         )
 

@@ -1,18 +1,14 @@
-import asyncio
 from typing import Optional, Dict, Any, Union
 
-import ray
 from ray.serve.context import TaskContext
-from ray.serve.router import LongPullRouter, RequestMetadata
-from ray.serve.constants import SERVE_CONTROLLER_NAME
+from ray.serve.router import RequestMetadata
+from ray.serve.utils import get_random_letters
 
 
-class BaseServeHandle:
+class RayServeHandle:
     """A handle to a service endpoint.
-
     Invoking this endpoint with .remote is equivalent to pinging
     an HTTP endpoint.
-
     Example:
        >>> handle = serve.get_handle("my_endpoint")
        >>> handle
@@ -30,7 +26,7 @@ class BaseServeHandle:
 
     def __init__(
             self,
-            router,
+            router_handle,
             endpoint_name,
             *,
             method_name=None,
@@ -38,7 +34,7 @@ class BaseServeHandle:
             http_method=None,
             http_headers=None,
     ):
-        self.router = router
+        self.router_handle = router_handle
         self.endpoint_name = endpoint_name
 
         self.method_name = method_name
@@ -49,10 +45,8 @@ class BaseServeHandle:
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
         """Issue an asynchrounous request to the endpoint.
-
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get, respectively.
-
         Returns:
             ray.ObjectRef
         Args:
@@ -62,7 +56,17 @@ class BaseServeHandle:
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
-        raise NotImplementedError()
+        request_metadata = RequestMetadata(
+            get_random_letters(10),  # Used for debugging.
+            self.endpoint_name,
+            TaskContext.Python,
+            call_method=self.method_name or "__call__",
+            shard_key=self.shard_key,
+            http_method=self.http_method or "GET",
+            http_headers=self.http_headers or dict(),
+        )
+        return self.router_handle.enqueue_request.remote(
+            request_metadata, request_data, **kwargs)
 
     def options(self,
                 method_name: Optional[str] = None,
@@ -71,7 +75,6 @@ class BaseServeHandle:
                 http_method: Optional[str] = None,
                 http_headers: Optional[Dict[str, str]] = None):
         """Set options for this handle.
-
         Args:
             method_name(str): The method to invoke on the backend.
             http_method(str): The HTTP method to use for the request.
@@ -90,31 +93,3 @@ class BaseServeHandle:
 
     def __repr__(self):
         return f"RayServeHandle(endpoint='{self.endpoint_name}')"
-
-
-class SyncServeHandle(BaseServeHandle):
-    def remote(self, request_data, **kwargs):
-        request_metadata = RequestMetadata(
-            self.endpoint_name,
-            TaskContext.Python,
-            call_method=self.method_name or "__call__",
-            shard_key=self.shard_key,
-            http_method=self.http_method or "GET",
-            http_headers=self.http_headers or dict(),
-        )
-        return self.router.enqueue_request_blocking.remote(
-            request_metadata, request_data, **kwargs)
-
-
-class AsyncServeHandle(BaseServeHandle):
-    async def remote(self, request_data, **kwargs):
-        request_metadata = RequestMetadata(
-            self.endpoint_name,
-            TaskContext.Python,
-            call_method=self.method_name or "__call__",
-            shard_key=self.shard_key,
-            http_method=self.http_method or "GET",
-            http_headers=self.http_headers or dict(),
-        )
-        return await self.router.enqueue_request_async.remote(
-            request_metadata, request_data, **kwargs)

@@ -1,23 +1,14 @@
 from abc import ABCMeta, abstractmethod
 import copy
 from hashlib import sha256
-from functools import lru_cache
 
 import numpy as np
 
 from ray.serve.utils import logger
 
 
-@lru_cache(maxsize=128)
-def deterministic_hash(key: str) -> float:
-    sha256_seed = sha256(key)
-    seed = np.frombuffer(sha256_seed.digest(), dtype=np.uint32)
-    return np.random.RandomState(seed).random()
-
-
 class EndpointPolicy:
     """Defines the interface for a routing policy for a single endpoint.
-
     To add a new routing policy, a class should be defined that provides this
     interface. The class may be stateful, in which case it may also want to
     provide a non-default constructor. However, this state will be lost when
@@ -26,23 +17,21 @@ class EndpointPolicy:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def flush(self, query):
+    def flush(self, endpoint_queue, backend_queues):
         """Flush the endpoint queue into the given backend queues.
-
         This method should assign each query in the endpoint_queue to a
         backend in the backend_queues. Queries are assigned by popping them
         from the endpoint queue and pushing them onto a backend queue. The
         method must also return a set of all backend tags so that the caller
         knows which backend_queues to flush.
-
         Arguments:
-            query: pass
-
+            endpoint_queue: deque containing queries to assign.
+            backend_queues: Dict(str, deque) mapping backend tags to
+            their corresponding query queues.
         Returns:
-            List of backend tags that had queries added to their queues. Ordered
-            by importance.
+            Set of backend tags that had queries added to their queues.
         """
-        assigned_backends = []
+        assigned_backends = set()
         return assigned_backends
 
 
@@ -50,7 +39,6 @@ class RandomEndpointPolicy(EndpointPolicy):
     """
     A stateless policy that makes a weighted random decision to map each query
     to a backend using the specified weights.
-
     If a shard key is provided in a query, the weighted random selection will
     be made deterministically based on the hash of the shard key.
     """
@@ -76,16 +64,33 @@ class RandomEndpointPolicy(EndpointPolicy):
 
         return chosen_backend, shadow_backends
 
-    def flush(self, query):
+    def flush(self, endpoint_queue, backend_queues):
         if len(self.backends) == 0:
             logger.info("No backends to assign traffic to.")
             return set()
 
-        if query.metadata.shard_key is None:
-            value = np.random.random()
-        else:
-            value = deterministic_hash(
-                query.metadata.shard_key.encode("utf-8"))
+        assigned_backends = set()
+        while len(endpoint_queue) > 0:
+            query = endpoint_queue.pop()
+            if query.metadata.shard_key is None:
+                rstate = np.random
+            else:
+                sha256_seed = sha256(query.metadata.shard_key.encode("utf-8"))
+                seed = np.frombuffer(sha256_seed.digest(), dtype=np.uint32)
+                # Note(simon): This constructor takes 100+us, maybe cache this?
+                rstate = np.random.RandomState(seed)
 
-        chosen_backend, shadow_backends = self._select_backends(value)
-        return [chosen_backend] + shadow_backends
+            chosen_backend, shadow_backends = self._select_backends(
+                rstate.random())
+
+            assigned_backends.add(chosen_backend)
+            backend_queues[chosen_backend].appendleft(query)
+            if len(shadow_backends) > 0:
+                shadow_query = copy.copy(query)
+                shadow_query.async_future = None
+                shadow_query.metadata.is_shadow_query = True
+                for shadow_backend in shadow_backends:
+                    assigned_backends.add(shadow_backend)
+                    backend_queues[shadow_backend].appendleft(shadow_query)
+
+        return assigned_backends
