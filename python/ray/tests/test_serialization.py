@@ -556,13 +556,13 @@ def test_buffer_alignment():
     for y in ys:
         assert y.ctypes.data % 8 == 0
 
-    xs = [np.random.normal(size=i * (1,)) for i in range(20)]
+    xs = [np.random.normal(size=i * (1, )) for i in range(20)]
     ys = ray.get(ray.put(xs))
     for y in ys:
         assert y.ctypes.data % 8 == 0
 
-    xs = [np.random.normal(size=i * (5,)) for i in range(1, 8)]
-    xs = [xs[i][(i + 1) * (slice(1, 3),)] for i in range(len(xs))]
+    xs = [np.random.normal(size=i * (5, )) for i in range(1, 8)]
+    xs = [xs[i][(i + 1) * (slice(1, 3), )] for i in range(len(xs))]
     ys = ray.get(ray.put(xs))
     for y in ys:
         assert y.ctypes.data % 8 == 0
