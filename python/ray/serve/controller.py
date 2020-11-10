@@ -184,13 +184,6 @@ class ActorStateReconciler:
         self.replicas[backend_tag].append(replica_tag)
         self.workers[backend_tag][replica_tag] = worker_handle
 
-        # Register the worker with the router.
-        await asyncio.gather(*[
-            router.add_new_worker.remote(backend_tag, replica_tag,
-                                         worker_handle)
-            for router in self.router_handles()
-        ])
-
     def _scale_replicas(self, backends: Dict[BackendTag, BackendInfo],
                         backend_tag: BackendTag, num_replicas: int) -> None:
         """Scale the given backend to the number of replicas.
@@ -411,38 +404,6 @@ class ActorStateReconciler:
     ) -> Dict[BackendTag, BasicAutoscalingPolicy]:
         self._recover_actor_handles()
         autoscaling_policies = dict()
-        # Push configuration state to the router.
-        # TODO(edoakes): should we make this a pull-only model for simplicity?
-        for endpoint, traffic_policy in config_store.traffic_policies.items():
-            await asyncio.gather(*[
-                router.set_traffic.remote(endpoint, traffic_policy)
-                for router in self.router_handles()
-            ])
-
-        for backend_tag, replica_dict in self.workers.items():
-            for replica_tag, worker in replica_dict.items():
-                await asyncio.gather(*[
-                    router.add_new_worker.remote(backend_tag, replica_tag,
-                                                 worker)
-                    for router in self.router_handles()
-                ])
-
-        for backend, info in config_store.backends.items():
-            await asyncio.gather(*[
-                router.set_backend_config.remote(backend, info.backend_config)
-                for router in self.router_handles()
-            ])
-            await controller.broadcast_backend_config(backend)
-            metadata = info.backend_config.internal_metadata
-            if metadata.autoscaling_config is not None:
-                autoscaling_policies[backend] = BasicAutoscalingPolicy(
-                    backend, metadata.autoscaling_config)
-
-        # Push configuration state to the routers.
-        await asyncio.gather(*[
-            router.set_route_table.remote(config_store.routes)
-            for router in self.router_handles()
-        ])
 
         # Start/stop any pending backend replicas.
         await self._start_pending_replicas(config_store)
@@ -487,6 +448,28 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
+    class StateNotifier:
+        def __init__(self, controller: "ServeController"):
+            self.controller = controller
+            self.long_pull_host = controller.long_pull_host
+            self.long_pull_host.notify_on_changed("traffic_policies", dict())
+            self.long_pull_host.notify_on_changed("worker_handles", dict())
+            self.long_pull_host.notify_on_changed("backend_configs", dict())
+
+        def on_replica_handles_changed(self):
+            self.long_pull_host.notify_on_changed(
+                "worker_handles", self.controller.get_all_worker_handles())
+
+        def on_traffic_policies_changed(self):
+            self.long_pull_host.notify_on_changed(
+                "traffic_policies",
+                self.controller.configuration_store.traffic_policies)
+
+        def on_backend_configs_change(self):
+            self.long_pull_host.notify_on_changed(
+                "backend_configs",
+                self.controller.configuration_store.get_backend_configs())
+
     async def __init__(self,
                        controller_name: str,
                        http_host: str,
@@ -509,6 +492,9 @@ class ServeController:
         # Used to ensure that only a single state-changing operation happens
         # at any given time.
         self.write_lock = asyncio.Lock()
+
+        self.long_pull_host = LongPullerHost()
+        self.long_pull_notifier = ServeController.StateNotifier(self)
 
         self.http_host = http_host
         self.http_port = http_port
@@ -539,14 +525,10 @@ class ServeController:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
-        self.long_pull_host = LongPullerHost()
-        self.long_pull_host.notify_on_changed("traffic_policies", dict())
-        self.long_pull_host.notify_on_changed("worker_handles", dict())
-        self.long_pull_host.notify_on_changed("backend_configs", dict())
-
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     async def listen_on_changed(self, keys_to_snapshot_ids: Dict[str, int]):
+        """Proxy long pull client's listen request."""
         return await self.long_pull_host.listen_on_changed(keys_to_snapshot_ids
                                                            )
 
@@ -607,6 +589,11 @@ class ServeController:
             "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
 
         self.write_lock.release()
+
+        # Notify all listener about state updates.
+        self.long_pull_notifier.on_backend_configs_change()
+        self.long_pull_notifier.on_replica_handles_changed()
+        self.long_pull_notifier.on_traffic_policies_changed()
 
     async def do_autoscale(self) -> None:
         for backend, info in self.configuration_store.backends.items():
@@ -701,12 +688,8 @@ class ServeController:
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
-        self.long_pull_host.notify_on_changed(
-            "traffic_policies", self.configuration_store.traffic_policies)
-        await asyncio.gather(*[
-            router.set_traffic.remote(endpoint_name, traffic_policy)
-            for router in self.actor_reconciler.router_handles()
-        ])
+
+        self.long_pull_notifier.on_traffic_policies_changed()
 
     async def set_traffic(self, endpoint_name: str,
                           traffic_dict: Dict[str, float]) -> None:
@@ -735,12 +718,7 @@ class ServeController:
             # update to avoid inconsistent state if we crash after pushing the
             # update.
             self._checkpoint()
-            await asyncio.gather(*[
-                router.set_traffic.remote(
-                    endpoint_name,
-                    self.configuration_store.traffic_policies[endpoint_name],
-                ) for router in self.actor_reconciler.router_handles()
-            ])
+            self.long_pull_notifier.on_traffic_policies_changed()
 
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
     async def create_endpoint(self, endpoint: str,
@@ -873,18 +851,11 @@ class ServeController:
             await self.actor_reconciler._start_pending_replicas(
                 self.configuration_store)
 
-            self.long_pull_host.notify_on_changed(
-                "worker_handles", self.get_all_worker_handles())
-            self.long_pull_host.notify_on_changed(
-                "backend_configs",
-                self.configuration_store.get_backend_configs())
+            self.long_pull_notifier.on_replica_handles_changed()
 
             # Set the backend config inside the router
-            # (particularly for max-batch-size).
-            await asyncio.gather(*[
-                router.set_backend_config.remote(backend_tag, backend_config)
-                for router in self.actor_reconciler.router_handles()
-            ])
+            # (particularly for max_concurrent_queries).
+            self.long_pull_notifier.on_backend_configs_change()
             await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag: BackendTag) -> None:
@@ -924,6 +895,8 @@ class ServeController:
             self._checkpoint()
             await self.actor_reconciler._stop_pending_replicas()
             await self.actor_reconciler._remove_pending_backends()
+
+            self.long_pull_notifier.on_replica_handles_changed()
 
     async def update_backend_config(
             self, backend_tag: BackendTag,
@@ -967,6 +940,9 @@ class ServeController:
             await self.actor_reconciler._start_pending_replicas(
                 self.configuration_store)
             await self.actor_reconciler._stop_pending_replicas()
+
+            self.long_pull_notifier.on_replica_handles_changed()
+            self.long_pull_notifier.on_backend_configs_change()
 
             await self.broadcast_backend_config(backend_tag)
 
