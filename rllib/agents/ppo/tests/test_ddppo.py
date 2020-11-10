@@ -19,6 +19,7 @@ class TestDDPPO(unittest.TestCase):
         """Test whether a DDPPOTrainer can be built with both frameworks."""
         config = ppo.ddppo.DEFAULT_CONFIG.copy()
         config["num_gpus_per_worker"] = 0
+        config["num_envs_per_worker"] = 2#TODO : remove
         num_iterations = 2
 
         for _ in framework_iterator(config, "torch"):

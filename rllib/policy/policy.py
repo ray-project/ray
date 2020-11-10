@@ -592,7 +592,7 @@ class Policy(metaclass=ABCMeta):
                 TensorType]]]): An optional stats function to be called after
                 the loss.
         """
-        sample_batch_size = max(self.batch_divisibility_req, 32)
+        sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         B = 2  # For RNNs, have B=2, T=[depends on sample_batch_size]
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
