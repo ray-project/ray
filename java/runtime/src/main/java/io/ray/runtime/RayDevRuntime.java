@@ -90,16 +90,16 @@ public class RayDevRuntime extends AbstractRayRuntime {
   @Override
   public PlacementGroup getPlacementGroup(
       PlacementGroupId id) {
-    //@TODO: We need a LocalGcsClient before implements this.
+    //@TODO(clay4444): We need a LocalGcsClient before implements this.
     throw new UnsupportedOperationException(
-      "Ray local running mode not support get Placement Group operation now.");
+      "Ray doesn't support placement group operations in local mode.");
   }
 
   @Override
-  public List<PlacementGroup> getAllPlacementGroup() {
-    //@TODO: We need a LocalGcsClient before implements this.
+  public List<PlacementGroup> getAllPlacementGroups() {
+    //@TODO(clay4444): We need a LocalGcsClient before implements this.
     throw new UnsupportedOperationException(
-      "Ray local running mode not support get all Placement Groups operation now.");
+      "Ray local running mode not support get all placement groups operation now.");
   }
 
   @Override

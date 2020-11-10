@@ -11,14 +11,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Utils for Placement Group.
+ * Utils for placement group.
  */
 public class PlacementGroupUtils {
 
   private static List<Map<String, Double>> covertToUserSpecifiedBundles(List<Bundle> bundles) {
     List<Map<String, Double>> result = new ArrayList<>();
 
-    //@NOTICE: We need to guarantee the order here.
+    // NOTE(clay4444): We need to guarantee the order here.
     for (int i = 0; i < bundles.size(); i++) {
       Bundle bundle = bundles.get(i);
       result.add(bundle.getUnitResourcesMap());
@@ -61,9 +61,9 @@ public class PlacementGroupUtils {
   /**
    * Generate a PlacementGroupImpl from placementGroupTableData protobuf data.
    * @param placementGroupTableData protobuf data.
-   * @return Placement Group info {@link PlacementGroupImpl}
+   * @return placement group info {@link PlacementGroupImpl}
    */
-  public static PlacementGroupImpl genPlacementGroupFromPbData(
+  public static PlacementGroupImpl generatePlacementGroupFromPbData(
       PlacementGroupTableData placementGroupTableData) {
 
     PlacementGroupState state = covertToUserSpecifiedState(

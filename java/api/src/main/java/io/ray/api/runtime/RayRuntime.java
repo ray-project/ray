@@ -204,21 +204,21 @@ public interface RayRuntime {
   void exitActor();
 
   /**
-   * Get a Placement Group by id.
-   * @param id Placement Group id.
-   * @return The Placement Group.
+   * Get a placement group by id.
+   * @param id placement group id.
+   * @return The placement group.
    */
   PlacementGroup getPlacementGroup(PlacementGroupId id);
 
   /**
-   * Get all Placement Groups in this cluster.
-   * @return All Placement Groups.
+   * Get all placement groups in this cluster.
+   * @return All placement groups.
    */
-  List<PlacementGroup> getAllPlacementGroup();
+  List<PlacementGroup> getAllPlacementGroups();
 
   /**
-   * Remove a Placement Group by id.
-   * @param id Id of the Placement Group.
+   * Remove a placement group by id.
+   * @param id Id of the placement group.
    */
   void removePlacementGroup(PlacementGroupId id);
 }

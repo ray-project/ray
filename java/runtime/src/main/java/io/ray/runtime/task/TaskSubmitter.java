@@ -54,7 +54,7 @@ public interface TaskSubmitter {
   /**
    * Create a placement group.
    *
-   * @param name Name of the Placement Group.
+   * @param name Name of the placement group.
    * @param bundles Pre-allocated resource list.
    * @param strategy Actor placement strategy.
    * @return A handle to the created placement group.
@@ -63,8 +63,8 @@ public interface TaskSubmitter {
       PlacementStrategy strategy);
 
   /**
-   * Remove a Placement Group by id.
-   * @param id Id of the Placement Group.
+   * Remove a placement group by id.
+   * @param id Id of the placement group.
    */
   void removePlacementGroup(PlacementGroupId id);
 

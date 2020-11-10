@@ -65,7 +65,7 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(firstPlacementGroupRes.getBundles().size(), 1);
     Assert.assertEquals(firstPlacementGroupRes.getStrategy(), PlacementStrategy.PACK);
 
-    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroup();
+    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
     Assert.assertEquals(allPlacementGroup.size(), 2);
 
     PlacementGroupImpl placementGroupRes = (PlacementGroupImpl)allPlacementGroup.get(0);
@@ -87,7 +87,7 @@ public class PlacementGroupTest extends BaseTest {
         .createNameSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK,
         1.0, "second_placement_group");
 
-    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroup();
+    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
     Assert.assertEquals(allPlacementGroup.size(), 2);
 
     Ray.removePlacementGroup(secondPlacementGroup.getId());

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A utils class for Placement Group test.
+ * A utils class for placement group test.
  */
 public class PlacementGroupTestUtils {
 

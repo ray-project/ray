@@ -34,13 +34,17 @@ public class GlobalStateAccessor {
   private GlobalStateAccessor(String redisAddress, String redisPassword) {
     globalStateAccessorNativePointer =
       nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
-    Preconditions.checkState(globalStateAccessorNativePointer != 0,
-          "Global state accessor native pointer must not be 0.");
+    checkGlobalStateAccessorPointerValid();
     connect();
   }
 
   private boolean connect() {
     return this.nativeConnect(globalStateAccessorNativePointer);
+  }
+
+  private void checkGlobalStateAccessorPointerValid() {
+    Preconditions.checkState(globalStateAccessorNativePointer != 0,
+        "Global state accessor native pointer must not be 0.");
   }
 
   /**
@@ -49,8 +53,7 @@ public class GlobalStateAccessor {
   public List<byte[]> getAllJobInfo() {
     // Fetch a job list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0,
-          "Get all job info when global state accessor have been destroyed.");
+      checkGlobalStateAccessorPointerValid();
       return this.nativeGetAllJobInfo(globalStateAccessorNativePointer);
     }
   }
@@ -61,8 +64,7 @@ public class GlobalStateAccessor {
   public List<byte[]> getAllNodeInfo() {
     // Fetch a node list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0,
-          "Get all node info when global state accessor have been destroyed.");
+      checkGlobalStateAccessorPointerValid();
       return this.nativeGetAllNodeInfo(globalStateAccessorNativePointer);
     }
   }
@@ -73,8 +75,7 @@ public class GlobalStateAccessor {
    */
   public byte[] getNodeResourceInfo(UniqueId nodeId) {
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0,
-          "Get resource info by node id when global state accessor have been destroyed.");
+      checkGlobalStateAccessorPointerValid();
       return nativeGetNodeResourceInfo(globalStateAccessorNativePointer, nodeId.getBytes());
     }
   }
@@ -82,7 +83,7 @@ public class GlobalStateAccessor {
   public byte[] getPlacementGroupInfo(PlacementGroupId placementGroupId) {
     synchronized (GlobalStateAccessor.class) {
       Preconditions.checkNotNull(placementGroupId,
-          "PlacementGroupId can't be null when get Placement Group info.");
+          "PlacementGroupId can't be null when get placement group info.");
       return nativeGetPlacementGroupInfo(globalStateAccessorNativePointer,
         placementGroupId.getBytes());
     }
@@ -90,16 +91,14 @@ public class GlobalStateAccessor {
 
   public List<byte[]> getAllPlacementGroupInfo() {
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0,
-          "Get all Placement Group info when global state accessor have been destroyed.");
+      checkGlobalStateAccessorPointerValid();
       return this.nativeGetAllPlacementGroupInfo(globalStateAccessorNativePointer);
     }
   }
 
   public byte[] getInternalConfig() {
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0,
-          "Get internal config when global state accessor have been destroyed.");
+      checkGlobalStateAccessorPointerValid();
       return nativeGetInternalConfig(globalStateAccessorNativePointer);
     }
   }
@@ -110,7 +109,7 @@ public class GlobalStateAccessor {
   public List<byte[]> getAllActorInfo() {
     // Fetch a actor list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      checkGlobalStateAccessorPointerValid();
       return this.nativeGetAllActorInfo(globalStateAccessorNativePointer);
     }
   }
@@ -121,7 +120,7 @@ public class GlobalStateAccessor {
   public byte[] getActorInfo(ActorId actorId) {
     // Fetch an actor with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      checkGlobalStateAccessorPointerValid();
       return this.nativeGetActorInfo(globalStateAccessorNativePointer, actorId.getBytes());
     }
   }
@@ -132,7 +131,7 @@ public class GlobalStateAccessor {
   public byte[] getActorCheckpointId(ActorId actorId) {
     // Fetch an actor checkpoint id with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkState(globalStateAccessorNativePointer != 0);
+      checkGlobalStateAccessorPointerValid();
       return this.nativeGetActorCheckpointId(globalStateAccessorNativePointer, actorId.getBytes());
     }
   }

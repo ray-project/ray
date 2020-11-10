@@ -196,7 +196,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public List<PlacementGroup> getAllPlacementGroup() {
+  public List<PlacementGroup> getAllPlacementGroups() {
     return gcsClient.getAllPlacementGroupInfo();
   }
 

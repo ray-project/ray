@@ -50,7 +50,7 @@ public class PlacementGroupImpl implements PlacementGroup {
   }
 
   /**
-   * A help class for create the Placement Group.
+   * A help class for create the placement group.
    */
   public static class Builder {
     private PlacementGroupId id;
@@ -60,8 +60,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     private PlacementGroupState state;
 
     /**
-     * Set the Id of the Placement Group.
-     * @param id Id of the Placement Group.
+     * Set the Id of the placement group.
+     * @param id Id of the placement group.
      * @return self.
      */
     public Builder setId(PlacementGroupId id) {
@@ -70,8 +70,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     }
 
     /**
-     * Set the name of the Placement Group.
-     * @param name Name of the Placement Group.
+     * Set the name of the placement group.
+     * @param name Name of the placement group.
      * @return self.
      */
     public Builder setName(String name) {
@@ -80,8 +80,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     }
 
     /**
-     * Set the bundles of the Placement Group.
-     * @param bundles the bundles of the Placement Group.
+     * Set the bundles of the placement group.
+     * @param bundles the bundles of the placement group.
      * @return self.
      */
     public Builder setBundles(List<Map<String, Double>> bundles) {
@@ -90,8 +90,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     }
 
     /**
-     * Set the placement strategy of the Placement Group.
-     * @param strategy the placement strategy of the Placement Group.
+     * Set the placement strategy of the placement group.
+     * @param strategy the placement strategy of the placement group.
      * @return self.
      */
     public Builder setStrategy(PlacementStrategy strategy) {
@@ -100,8 +100,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     }
 
     /**
-     * Set the placement state of the Placement Group.
-     * @param state the state of the Placement Group.
+     * Set the placement state of the placement group.
+     * @param state the state of the placement group.
      * @return self.
      */
     public Builder setState(PlacementGroupState state) {

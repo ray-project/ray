@@ -1,7 +1,7 @@
 package io.ray.api.placementgroup;
 
 /**
- * State of Placement Group.
+ * State of placement group.
  */
 public enum PlacementGroupState {
 
@@ -11,22 +11,22 @@ public enum PlacementGroupState {
   PENDING(0),
 
   /**
-   * The Placement Group has created on some node.
+   * The placement group has created on some node.
    */
   CREATED(1),
 
   /**
-   * The Placement Group has removed.
+   * The placement group has removed.
    */
   REMOVED(2),
 
   /**
-   * The Placement Group are rescheduling.
+   * The placement group is rescheduling.
    */
   RESCHEDULING(3),
 
   /**
-   * Unrecognized State.
+   * Unrecognized state.
    */
   UNRECOGNIZED(-1);
 

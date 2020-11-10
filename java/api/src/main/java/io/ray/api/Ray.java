@@ -246,7 +246,7 @@ public final class Ray extends RayCall {
    * to be updated and rescheduled.
    * This function only works when gcs actor manager is turned on.
    *
-   * @param name Name of the Placement Group.
+   * @param name Name of the placement group.
    * @param bundles Pre-allocated resource list.
    * @param strategy Actor placement strategy.
    * @return A handle to the created placement group.
@@ -274,26 +274,26 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get a Placement Group by Placement Group Id.
-   * @param id Placement Group id.
-   * @return The Placement Group.
+   * Get a placement group by placement group Id.
+   * @param id placement group id.
+   * @return The placement group.
    */
   public static PlacementGroup getPlacementGroup(PlacementGroupId id) {
     return internal().getPlacementGroup(id);
   }
 
   /**
-   * Get all Placement Groups in this cluster.
-   * @return All Placement Groups.
+   * Get all placement groups in this cluster.
+   * @return All placement groups.
    */
-  public static List<PlacementGroup> getAllPlacementGroup() {
-    return internal().getAllPlacementGroup();
+  public static List<PlacementGroup> getAllPlacementGroups() {
+    return internal().getAllPlacementGroups();
   }
 
   /**
-   * Remove a Placement Group by id.
+   * Remove a placement group by id.
    * Throw RayException if remove failed.
-   * @param id Id of the Placement Group.
+   * @param id Id of the placement group.
    */
   public static void removePlacementGroup(PlacementGroupId id) {
     internal().removePlacementGroup(id);
