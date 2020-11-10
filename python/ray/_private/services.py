@@ -570,7 +570,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         # redis.AuthenticationError isn't trapped here.
         except redis.AuthenticationError as authEx:
             raise RuntimeError("Unable to connect to Redis at {}:{}.".format(
-                                   redis_ip_address, redis_port)) from authEx
+                redis_ip_address, redis_port)) from authEx
         except redis.ConnectionError:
             # Wait a little bit.
             time.sleep(delay)
