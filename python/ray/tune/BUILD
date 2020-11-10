@@ -377,7 +377,7 @@ py_test(
 )
 
 py_test(
-    name = "ddp_mnist_torch",
+    name = "tf_distributed_keras_example",
     size = "small",
     srcs = ["examples/tf_distributed_keras_example.py"],
     deps = [":tune_lib"],
