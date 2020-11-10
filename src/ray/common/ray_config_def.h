@@ -346,7 +346,7 @@ RAY_CONFIG(std::string, object_spilling_config, "")
 RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
 /// The maximum number of I/O worker that raylet starts.
 RAY_CONFIG(int, max_io_workers, 1)
-/// The string template of python executable interpreter path
+/// The string template of python executable path
 RAY_CONFIG(std::string, job_python_path_template, "")
 /// The string template of job dir
 RAY_CONFIG(std::string, job_dir_template, "")
