@@ -371,7 +371,9 @@ void NodeManager::HandleJobSubmitted(const JobID &job_id, const JobTableData &jo
 
   // If the namespace of the node is match with the job's namespace then int the job
   // env.
-  // InitializeJobEnv(job_data);
+  auto job_table_data = std::make_shared<rpc::JobTableData>(job_data);
+  const bool start_driver = job_data.raylet_id() == self_node_id_.Binary();
+  agent_manager_->InitializeJobEnv(job_table_data, start_driver);
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
