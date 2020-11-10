@@ -9,6 +9,9 @@ import time
 from ray.experimental.client.core_ray_api import set_client_api_as_ray
 from ray.experimental.client.common import convert_from_arg
 from ray.experimental.client.common import ObjectID
+from ray.experimental.client.common import ClientRemoteFunc
+
+logger = logging.getLogger(__name__)
 
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
@@ -20,7 +23,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         if request.id not in self.object_refs:
             return ray_client_pb2.GetResponse(valid=False)
         objectref = self.object_refs[request.id]
-        print("get: %s" % objectref)
+        logger.info("get: %s" % objectref)
         item = ray.get(objectref)
         item_ser = cloudpickle.dumps(item)
         return ray_client_pb2.GetResponse(valid=True, data=item_ser)
@@ -29,22 +32,22 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         obj = cloudpickle.loads(request.data)
         objectref = ray.put(obj)
         self.object_refs[objectref.binary()] = objectref
-        print("put: %s" % objectref)
+        logger.info("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary())
 
     def Schedule(self, task, context=None):
-        print("Got Schedule: ", task)
+        logger.info("schedule: %s" % task)
         if task.payload_id not in self.function_refs:
             funcref = self.object_refs[task.payload_id]
-            print("funcref: ", funcref)
             func = ray.get(funcref)
-            self.function_refs[task.payload_id] = ray.remote(func)
+            if not isinstance(func, ClientRemoteFunc):
+                raise Exception("Attempting to schedule something that isn't a ClientRemoteFunc")
+            ray_remote = ray.remote(func._func)
+            func.set_remote_func(ray_remote)
+            self.function_refs[task.payload_id] = func
         remote_func = self.function_refs[task.payload_id]
-        print("Wrapped func:", remote_func)
-        # TODO(barakmich): decode args
         arglist = _convert_args(task.args)
         output = remote_func.remote(*arglist)
-        print("Call Object", output)
         self.object_refs[output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
@@ -71,7 +74,7 @@ def serve(connection_str):
 
 
 if __name__ == "__main__":
-    logging.basicConfig()
+    logging.basicConfig(level="INFO")
     # TODO(barakmich): Perhaps wrap ray init
     ray.init()
     set_client_api_as_ray()

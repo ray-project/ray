@@ -4,6 +4,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
 from ray.experimental.client.common import ObjectID
+from ray.experimental.client.common import ClientRemoteFunc
 
 
 class Worker:
@@ -65,7 +66,7 @@ class Worker:
     def call_remote(self, func, *args, **kwargs):
         if not isinstance(func, ClientRemoteFunc):
             raise Exception("Client not passing a ClientRemoteFunc stub")
-        func_ref = self._put(func._func)
+        func_ref = self._put(func)
         task = ray_client_pb2.ClientTask()
         task.name = func._name
         task.payload_id = func_ref.id
@@ -75,8 +76,5 @@ class Worker:
         ticket = self.server.Schedule(task)
         return ObjectID(ticket.return_id)
 
-
     def close(self):
         self.channel.close()
-
-
