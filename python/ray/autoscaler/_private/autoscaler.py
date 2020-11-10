@@ -209,7 +209,6 @@ class StandardAutoscaler:
         for node_type, count in to_launch.items():
             self.launch_new_node(count, node_type=node_type)
 
-        num_pending = self.pending_launches.value
         nodes = self.workers()
 
         # Process any completed updates
