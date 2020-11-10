@@ -48,6 +48,18 @@ bool RemoveWorker(
   return worker_pool.erase(worker) > 0;
 }
 
+// A helper function to fill job id for string.
+std::string FillJobId(std::string path_tmpl, const ray::JobID &job_id) {
+  // replace job_id
+  auto pos = path_tmpl.find(kWorkerCommandJobIdPlaceholder);
+  if (pos == std::string::npos) {
+    return path_tmpl;
+  } else {
+    path_tmpl.replace(pos, strlen(kWorkerCommandJobIdPlaceholder), job_id.Hex());
+    return path_tmpl;
+  }
+}
+
 }  // namespace
 
 namespace ray {
@@ -326,6 +338,14 @@ Process WorkerPool::StartWorkerProcess(
                   << RayConfig::instance().object_spilling_config();
     worker_command_args.push_back("--object-spilling-config=" +
                                   RayConfig::instance().object_spilling_config());
+  }
+
+  if (language == Language::PYTHON) {
+    if (job_id.IsSubmittedFromDashboard()) {
+      std::string path_tmpl = RayConfig::instance().per_job_python_env_path();
+      std::string path = FillJobId(path_tmpl, job_id);
+      worker_command_args[0] = path;
+    }
   }
 
   ProcessEnvironment env;

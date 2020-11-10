@@ -59,6 +59,20 @@ void BuildCommonTaskSpec(
   }
 }
 
+/// A helper to set job resource
+///
+/// \param job_id The job id
+/// \param resource The original task resource
+///
+/// \return The task resource updated with job resource
+inline std::unordered_map<std::string, double> WithJobResource(
+    const JobID &job_id, const std::unordered_map<std::string, double> &resource) {
+  std::unordered_map<std::string, double> new_resource(resource);
+  auto resource_name = JOB_RESOURCE_PREFIX + absl::AsciiStrToUpper(job_id.Hex());
+  new_resource[resource_name] = 0.001;
+  return new_resource;
+}
+
 ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
   if (options.worker_type == ray::WorkerType::DRIVER) {
     RAY_CHECK(!options.job_id.IsNil());
@@ -1306,12 +1320,16 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             bool placement_group_capture_child_tasks) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
+  const JobID job_id = worker_context_.GetCurrentJobID();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
   auto constrained_resources = AddPlacementGroupConstraint(
       task_options.resources, placement_options.first, placement_options.second);
   const std::unordered_map<std::string, double> required_resources;
+  auto task_resource = job_id.IsSubmittedFromDashboard()
+                           ? WithJobResource(job_id, constrained_resources)
+                           : constrained_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
@@ -1324,10 +1342,10 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   override_environment_variables.insert(current_override_environment_variables.begin(),
                                         current_override_environment_variables.end());
   // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
+  BuildCommonTaskSpec(builder, job_id, task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      constrained_resources, required_resources, return_ids,
+                      task_resource, required_resources, return_ids,
                       placement_options.first, placement_group_capture_child_tasks,
                       override_environment_variables);
   TaskSpecification task_spec = builder.Build();
@@ -1374,6 +1392,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   auto new_resource = AddPlacementGroupConstraint(
       actor_creation_options.resources, actor_creation_options.placement_options.first,
       actor_creation_options.placement_options.second);
+  if (job_id.IsSubmittedFromDashboard()) {
+    new_resource = WithJobResource(job_id, new_resource);
+    new_placement_resources = WithJobResource(job_id, new_placement_resources);
+  }
   const auto actor_name = actor_creation_options.name;
   const auto task_name =
       actor_name.empty()

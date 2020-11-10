@@ -1893,6 +1893,7 @@ cc_binary(
 filegroup(
     name = "all_py_proto",
     srcs = [
+        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",

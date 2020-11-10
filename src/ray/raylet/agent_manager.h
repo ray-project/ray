@@ -88,7 +88,6 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
   DelayExecutorFn delay_executor_;
 
-  absl::flat_hash_map<JobID, std::shared_ptr<rpc::JobTableData>> registered_jobs_;
   absl::flat_hash_map<JobID, std::shared_ptr<DriverMonitorInfo>> starting_drivers_;
 };
 

@@ -37,6 +37,8 @@ constexpr char kTaskTablePrefix[] = "TaskTable";
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
 
+constexpr char kWorkerCommandJobIdPlaceholder[] = "{job_id}";
+
 constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER";
 
 /// Public DNS address which is is used to connect and get local IP.

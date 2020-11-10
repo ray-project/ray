@@ -151,6 +151,10 @@ int main(int argc, char *argv[]) {
           }
         }
 
+        // initialize per_job_python_env_path default value
+        std::string path_tmpl = temp_dir + "/job/{job_id}/pyenv/bin/python";
+        raylet_config["per_job_python_env_path"] = path_tmpl;
+
         RayConfig::instance().initialize(raylet_config);
 
         // Parse the worker port list.

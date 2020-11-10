@@ -28,6 +28,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/agent_manager.h"
+#include "ray/raylet/job_manager.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -750,6 +751,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 
   std::unique_ptr<AgentManager> agent_manager_;
+
+  /// The job manager.
+  JobManager job_manager_;
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
