@@ -9,6 +9,7 @@ from ray.serve.utils import logger
 
 class EndpointPolicy:
     """Defines the interface for a routing policy for a single endpoint.
+
     To add a new routing policy, a class should be defined that provides this
     interface. The class may be stateful, in which case it may also want to
     provide a non-default constructor. However, this state will be lost when
@@ -19,15 +20,18 @@ class EndpointPolicy:
     @abstractmethod
     def flush(self, endpoint_queue, backend_queues):
         """Flush the endpoint queue into the given backend queues.
+
         This method should assign each query in the endpoint_queue to a
         backend in the backend_queues. Queries are assigned by popping them
         from the endpoint queue and pushing them onto a backend queue. The
         method must also return a set of all backend tags so that the caller
         knows which backend_queues to flush.
+
         Arguments:
             endpoint_queue: deque containing queries to assign.
             backend_queues: Dict(str, deque) mapping backend tags to
             their corresponding query queues.
+
         Returns:
             Set of backend tags that had queries added to their queues.
         """

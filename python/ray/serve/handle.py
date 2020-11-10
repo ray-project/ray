@@ -7,8 +7,10 @@ from ray.serve.utils import get_random_letters
 
 class RayServeHandle:
     """A handle to a service endpoint.
+
     Invoking this endpoint with .remote is equivalent to pinging
     an HTTP endpoint.
+
     Example:
        >>> handle = serve.get_handle("my_endpoint")
        >>> handle
@@ -45,8 +47,10 @@ class RayServeHandle:
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
         """Issue an asynchrounous request to the endpoint.
+
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get, respectively.
+
         Returns:
             ray.ObjectRef
         Args:
@@ -75,6 +79,7 @@ class RayServeHandle:
                 http_method: Optional[str] = None,
                 http_headers: Optional[Dict[str, str]] = None):
         """Set options for this handle.
+
         Args:
             method_name(str): The method to invoke on the backend.
             http_method(str): The HTTP method to use for the request.
