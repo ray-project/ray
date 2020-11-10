@@ -56,18 +56,24 @@ using CreateObjectCallback = std::function<Status(
 
 class CreateRequestQueue {
  public:
-  CreateRequestQueue(CreateObjectCallback create_object_callback,
-      int32_t max_retries, uint32_t delay_on_oom)
-    : create_object_callback_(create_object_callback),
+  CreateRequestQueue(boost::asio::io_service &io_service,
+      CreateObjectCallback create_object_callback,
+      int32_t max_retries, uint32_t delay_on_oom_ms)
+    : io_context_(io_service),
+      retry_timer_(nullptr),
+      create_object_callback_(create_object_callback),
       max_retries_(max_retries),
-      delay_on_oom_(delay_on_oom) {}
+      delay_on_oom_ms_(delay_on_oom_ms) {}
 
   void AddRequest(const std::shared_ptr<Client> &client,
                   const std::vector<uint8_t> &message) {
     queue_.push_back({client, message});
-    ProcessRequests();
+    if (!timer_set) {
+      ProcessRequests();
+    }
   }
 
+  /// Process requests in the queue in FIFO order.
   void ProcessRequests();
 
   void RemoveDisconnectedClientRequests(const std::shared_ptr<Client> &client);
@@ -75,7 +81,20 @@ class CreateRequestQueue {
  private:
   bool ProcessRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message);
 
+  // A reference to the asio io context.
+  boost::asio::io_service& io_context_;
+
+  bool timer_set = false;
+
+  std::unique_ptr<boost::asio::deadline_timer> retry_timer_;
+
   CreateObjectCallback create_object_callback_;
+
+  const int32_t max_retries_;
+
+  const uint32_t delay_on_oom_ms_;
+
+  int32_t num_retries_ = 0;
 
   /// Queue of object creation requests to respond to. Requests will be placed
   /// on this queue if the object store does not have enough room at the time
@@ -90,12 +109,6 @@ class CreateRequestQueue {
   /// space made, or after a timeout.
   std::list<std::pair<const std::shared_ptr<Client>,
     const std::vector<uint8_t>>> queue_;
-
-  const int32_t max_retries_;
-
-  const uint32_t delay_on_oom_;
-
-  int32_t num_retries_ = 0;
 };
 
 class PlasmaStore {
@@ -253,12 +266,6 @@ class PlasmaStore {
   }
 
   /// Process queued requests to create an object.
-  ///
-  /// The queue is processed FIFO.
-  ///
-  /// \param num_bytes_space A lower bound on the number of bytes of space that
-  /// have been made newly available, since the last time this method was
-  /// called.
   void ProcessCreateRequests() {
     create_request_queue_.ProcessRequests();
   }

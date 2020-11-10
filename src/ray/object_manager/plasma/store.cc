@@ -637,6 +637,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID& object_id,
     // If no more clients are using this object, notify the eviction policy
     // that the object is no longer being used.
     if (entry->ref_count == 0) {
+      RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
       if (deletion_cache_.count(object_id) == 0) {
         // Tell the eviction policy that this object is no longer being used.
         eviction_policy_.EndObjectAccess(object_id);
@@ -1065,7 +1066,13 @@ void PlasmaStore::DoAccept() {
 }
 
 bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message) {
-  auto status = create_object_callback_(client, message, num_retries_ < max_retries_);
+  if (timer_set) {
+    retry_timer_.reset();
+    timer_set = false;
+  }
+
+  bool reply_on_oom = num_retries_ >= max_retries_;
+  auto status = create_object_callback_(client, message, reply_on_oom);
   bool request_fulfilled = false;
 
   if (status.IsTransientObjectStoreFull()) {
@@ -1079,8 +1086,24 @@ bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, c
     num_retries_ = 0;
   } else if (status.IsObjectStoreFull()) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object, " << (max_retries_ - num_retries_) << " retries left";
-    // Try the request again later.
     num_retries_++;
+
+    // Try the request again later.
+    auto delay = boost::posix_time::milliseconds(delay_on_oom_ms_);
+    retry_timer_.reset(new boost::asio::deadline_timer(io_context_));
+    retry_timer_->expires_from_now(delay);
+    retry_timer_->async_wait(
+        [this](const boost::system::error_code &error) {
+          if (!error) {
+            RAY_LOG(DEBUG) << "OOM timer finished, retrying create requests";
+            ProcessRequests();
+          } else {
+            RAY_LOG(DEBUG) << "OOM timer canceled";
+            // Check that the error was due to the timer being canceled.
+            RAY_CHECK(error == boost::asio::error::operation_aborted);
+          }
+        });
+    timer_set = true;
   } else {
     // We have replied to the client.
     num_retries_ = 0;
