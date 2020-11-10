@@ -23,7 +23,7 @@ namespace stats {
 /// Stdout Exporter
 ///
 void StdoutExporterClient::ReportMetrics(const std::vector<MetricPoint> &points) {
-  // RAY_LOG(DEBUG) << "Metric point size : " << points.size();
+  RAY_LOG(DEBUG) << "Metric point size : " << points.size();
 }
 
 ///

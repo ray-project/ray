@@ -355,7 +355,7 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 4,
+            "max_io_workers": 1,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
@@ -367,20 +367,18 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
     # Wait raylet for starting an IO worker.
     time.sleep(1)
 
-    # Create objects of more than 800 MiB.
-    for _ in range(100):
+    # Create objects of more than 400 MiB.
+    for _ in range(50):
         ref = None
         while ref is None:
             ref = ray.put(arr)
             replay_buffer.append(ref)
-
-    print("-----------------------------------")
-
-    # randomly sample objects
-    for _ in range(1000):
-        ref = random.choice(replay_buffer)
-        sample = ray.get(ref, timeout=0)
-        assert np.array_equal(sample, arr)
+        # This is doing random sampling with 50% prob.
+        if random.randint(0, 9) < 5:
+            for _ in range(5):
+                ref = random.choice(replay_buffer)
+                sample = ray.get(ref, timeout=0)
+                assert np.array_equal(sample, arr)
 
 
 if __name__ == "__main__":
