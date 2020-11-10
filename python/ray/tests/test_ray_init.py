@@ -3,6 +3,7 @@ import pytest
 import redis
 
 import ray
+import ray._private.services
 from ray.cluster_utils import Cluster
 
 
@@ -33,6 +34,13 @@ class TestRedisPassword:
             host=redis_ip, port=redis_port, password=None)
         with pytest.raises(redis.exceptions.AuthenticationError):
             redis_client.ping()
+        # We want to simulate how this is called by ray.scripts.start().
+        try:
+            ray._private.services.wait_for_redis_to_start(
+                redis_ip, redis_port, password='wrong password')
+        except RuntimeError as runtimeError:
+            if not isinstance(ex.__cause__, redis.AuthenticationError):
+                raise
 
         # Check that we can connect to Redis using the provided password
         redis_client = redis.StrictRedis(
