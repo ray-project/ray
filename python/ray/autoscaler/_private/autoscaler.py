@@ -144,10 +144,7 @@ class StandardAutoscaler:
 
         self.last_update_time = now
         nodes = self.workers()
-        # Check pending nodes immediately after fetching the number of running
-        # nodes to minimize chance number of pending nodes changing after
-        # additional nodes (managed and unmanaged) are launched.
-        num_pending = self.pending_launches.value
+
         self.load_metrics.prune_active_ips([
             self.provider.internal_ip(node_id)
             for node_id in self.all_workers()
@@ -198,23 +195,22 @@ class StandardAutoscaler:
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
+
             self.log_info_string(nodes)
 
-        resource_demand_vector = self.resource_demand_vector + \
-            self.load_metrics.get_resource_demand_vector()
-        pending_placement_groups = \
-            self.load_metrics.get_pending_placement_groups()
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
             self.provider.non_terminated_nodes(tag_filters={}),
             self.pending_launches.breakdown(),
-            resource_demand_vector,
+            self.load_metrics.get_resource_demand_vector(),
             self.load_metrics.get_resource_utilization(),
-            pending_placement_groups,
-            self.load_metrics.get_static_node_resources_by_ip())
+            self.load_metrics.get_pending_placement_groups(),
+            self.load_metrics.get_static_node_resources_by_ip(),
+            ensure_min_cluster_size=self.resource_demand_vector)
         for node_type, count in to_launch.items():
             self.launch_new_node(count, node_type=node_type)
 
-            nodes = self.workers()
+        num_pending = self.pending_launches.value
+        nodes = self.workers()
 
         # Process any completed updates
         completed = []
@@ -350,21 +346,29 @@ class StandardAutoscaler:
                                                    self.config["cluster_name"])
 
             self.available_node_types = self.config["available_node_types"]
+            upscaling_speed = self.config.get("upscaling_speed")
+            aggressive = self.config.get("autoscaling_mode") == "aggressive"
+            target_utilization_fraction = self.config.get(
+                "target_utilization_fraction")
+            if upscaling_speed:
+                upscaling_speed = float(upscaling_speed)
+            elif aggressive:
+                upscaling_speed = float(self.config["max_workers"])
+            elif target_utilization_fraction:
+                upscaling_speed = 1 / max(target_utilization_fraction, 0.001)
+            else:
+                upscaling_speed = 1.0
             if hasattr(self, "resource_demand_scheduler"):
                 # The node types are autofilled internally for legacy yamls,
                 # overwriting the class will remove the inferred node resources
                 # for legacy yamls.
-                self.resource_demand_scheduler.update(
+                self.resource_demand_scheduler.reset_config(
                     self.provider, self.available_node_types,
-                    self.config["max_workers"],
-                    self.config["autoscaling_mode"] == "aggressive",
-                    self.config["target_utilization_fraction"])
+                    self.config["max_workers"], upscaling_speed)
             else:
                 self.resource_demand_scheduler = ResourceDemandScheduler(
                     self.provider, self.available_node_types,
-                    self.config["max_workers"],
-                    self.config["autoscaling_mode"] == "aggressive",
-                    self.config["target_utilization_fraction"])
+                    self.config["max_workers"], upscaling_speed)
 
         except Exception as e:
             if errors_fatal:
@@ -536,7 +540,11 @@ class StandardAutoscaler:
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count, node_type))
+        # Split into individual launch requests of the max batch size.
+        while count > 0:
+            self.launch_queue.put((config, min(count, self.max_launch_batch),
+                                   node_type))
+            count -= self.max_launch_batch
 
     def all_workers(self):
         return self.workers() + self.unmanaged_workers()
