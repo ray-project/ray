@@ -394,7 +394,7 @@ message JobTableData {
   JobConfig config = 9;
   // Job state.
   JobState state = 10;
-  // job payload.
+  // Job payload (The original job request json from dashboard).
   string job_payload = 12;
   // The reason for the job failure.
   string fail_error_message = 15;

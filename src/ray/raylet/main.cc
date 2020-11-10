@@ -151,9 +151,10 @@ int main(int argc, char *argv[]) {
           }
         }
 
-        // initialize per_job_python_env_path default value
+        // initialize job_python_path_template default value
         std::string path_tmpl = temp_dir + "/job/{job_id}/pyenv/bin/python";
-        raylet_config["per_job_python_env_path"] = path_tmpl;
+        raylet_config["job_python_path_template"] = path_tmpl;
+        raylet_config["job_dir_template"] = temp_dir + "/job/{job_id}/package/";
 
         RayConfig::instance().initialize(raylet_config);
 

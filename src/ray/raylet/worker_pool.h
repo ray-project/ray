@@ -291,9 +291,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param worker_command_args The command arguments of new worker process.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
+  /// \param[in] cwd Current working directory.
   /// \return An object representing the started worker process.
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
-                               const ProcessEnvironment &env);
+                               const ProcessEnvironment &env, const std::string &cwd);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();

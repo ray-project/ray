@@ -79,14 +79,13 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
  private:
   Options options_;
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+  std::unique_ptr<rpc::JobClient> job_client_;
+  JobClientFactoryFn job_client_factory_;
+  DelayExecutorFn delay_executor_;
 
   pid_t agent_pid_ = 0;
   int agent_port_ = 0;
   std::string agent_ip_address_;
-  std::unique_ptr<rpc::JobClient> job_client_;
-  JobClientFactoryFn job_client_factory_;
-
-  DelayExecutorFn delay_executor_;
 
   absl::flat_hash_map<JobID, std::shared_ptr<DriverMonitorInfo>> starting_drivers_;
 };

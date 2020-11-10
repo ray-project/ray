@@ -64,7 +64,7 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFailed(const JobID &job_id,
                                                     const std::string &error_message,
                                                     const std::string &driver_cmdline,
                                                     const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Marking job state, job id = " << job_id;
+  RAY_LOG(DEBUG) << "Marking job failed, job id = " << job_id;
   rpc::MarkJobFailedRequest request;
   request.set_job_id(job_id.Binary());
   request.set_error_message(error_message);
@@ -75,7 +75,7 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFailed(const JobID &job_id,
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished marking job state, status = " << status
+        RAY_LOG(DEBUG) << "Finished marking job failed, status = " << status
                        << ", job id = " << job_id;
       });
   return Status::OK();

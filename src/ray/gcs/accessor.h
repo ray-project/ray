@@ -196,9 +196,9 @@ class JobInfoAccessor {
       const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
       const StatusCallback &done) = 0;
 
-  /// Mark job as finished in GCS asynchronously.
+  /// Mark job as failed in GCS asynchronously.
   ///
-  /// \param job_id ID of the job that will be make finished to GCS.
+  /// \param job_id ID of the job that will be make failed to GCS.
   /// \param error_message The root cause of job failed.
   /// \param driver_cmdline The cmdline of driver.
   /// \param callback Callback that will be called after update finished.
