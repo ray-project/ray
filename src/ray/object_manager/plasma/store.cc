@@ -1080,10 +1080,6 @@ void PlasmaStore::DoAccept() {
                                               boost::asio::placeholders::error));
 }
 
-void CreateRequestQueue::AddRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {
-  queue_.push_back({client, request_callback});
-}
-
 void PlasmaStore::ProcessCreateRequests() {
   // Only try to process requests if the timer is not set. If the timer is set,
   // that means that the first request is currently not serviceable because
@@ -1108,6 +1104,10 @@ void PlasmaStore::ProcessCreateRequests() {
         });
     create_timer_set_ = true;
   }
+}
+
+void CreateRequestQueue::AddRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {
+  queue_.push_back({client, request_callback});
 }
 
 bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {

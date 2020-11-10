@@ -93,16 +93,13 @@ class RAY_EXPORT PlasmaClient {
   ///        device_num = 0 corresponds to the host,
   ///        device_num = 1 corresponds to GPU0,
   ///        device_num = 2 corresponds to GPU1, etc.
-  /// \param evict_if_full Whether to evict other objects to make space for
-  ///        this object.
   /// \return The return status.
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
   Status Create(const ObjectID& object_id, const ray::rpc::Address& owner_address,
                 int64_t data_size, const uint8_t* metadata, int64_t metadata_size,
-                std::shared_ptr<Buffer>* data, int device_num = 0,
-                bool evict_if_full = true);
+                std::shared_ptr<Buffer>* data, int device_num = 0);
 
   /// Get some objects from the Plasma Store. This function will block until the
   /// objects have all been created and sealed in the Plasma Store or the

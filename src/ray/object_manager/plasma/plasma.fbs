@@ -141,8 +141,6 @@ table PlasmaCreateRequest {
   owner_port: int;
   // Unique id for the owner worker.
   owner_worker_id: string;
-  // Whether to evict other objects to make room for this one.
-  evict_if_full: bool;
   // The size of the object's data in bytes.
   data_size: ulong;
   // The size of the object's metadata in bytes.

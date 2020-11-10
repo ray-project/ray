@@ -192,7 +192,7 @@ Status ReadGetDebugStringReply(uint8_t* data, size_t size, std::string* debug_st
 // Create messages.
 
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
-                         const ray::rpc::Address& owner_address, bool evict_if_full,
+                         const ray::rpc::Address& owner_address,
                          int64_t data_size, int64_t metadata_size, int device_num) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
@@ -201,7 +201,7 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID 
                                     fbb.CreateString(owner_address.ip_address()),
                                     owner_address.port(),
                                     fbb.CreateString(owner_address.worker_id()),
-                                    evict_if_full, data_size, metadata_size, device_num);
+                                    data_size, metadata_size, device_num);
   return PlasmaSend(store_conn, MessageType::PlasmaCreateRequest, &fbb, message);
 }
 

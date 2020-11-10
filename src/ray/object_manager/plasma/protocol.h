@@ -81,7 +81,7 @@ Status ReadGetDebugStringReply(uint8_t* data, size_t size, std::string* debug_st
 /* Plasma Create message functions. */
 
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
-                         const ray::rpc::Address &owner_address, bool evict_if_full,
+                         const ray::rpc::Address &owner_address,
                          int64_t data_size, int64_t metadata_size, int device_num);
 
 Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
