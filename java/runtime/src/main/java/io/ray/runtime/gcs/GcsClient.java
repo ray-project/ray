@@ -14,7 +14,6 @@ import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
-import io.ray.runtime.generated.Gcs.PlacementGroupTableData;
 import io.ray.runtime.generated.Gcs.TablePrefix;
 import io.ray.runtime.placementgroup.PlacementGroupUtils;
 import io.ray.runtime.util.IdUtil;
@@ -63,18 +62,7 @@ public class GcsClient {
    */
   public PlacementGroup getPlacementGroupInfo(PlacementGroupId placementGroupId) {
     byte[] result = globalStateAccessor.getPlacementGroupInfo(placementGroupId);
-    Preconditions.checkNotNull(result,
-        "Get placement group table data from GlobalStateAccessor failed.");
-
-    PlacementGroupTableData placementGroupTableData;
-    try {
-      placementGroupTableData = PlacementGroupTableData.parseFrom(result);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException(
-          "Received invalid placement group table protobuf data from GCS.", e);
-    }
-
-    return PlacementGroupUtils.generatePlacementGroupFromPbData(placementGroupTableData);
+    return PlacementGroupUtils.generatePlacementGroupFromByteArray(result);
   }
 
   /**
@@ -86,19 +74,7 @@ public class GcsClient {
 
     List<PlacementGroup> placementGroups = new ArrayList<>();
     for (byte[] result : results) {
-      Preconditions.checkNotNull(result,
-          "Get placement group table data from GlobalStateAccessor failed.");
-
-      PlacementGroupTableData placementGroupTableData;
-      try {
-        placementGroupTableData = PlacementGroupTableData.parseFrom(result);
-      } catch (InvalidProtocolBufferException e) {
-        throw new RuntimeException(
-          "Received invalid placement group table protobuf data from GCS.", e);
-      }
-
-      placementGroups.add(
-          PlacementGroupUtils.generatePlacementGroupFromPbData(placementGroupTableData));
+      placementGroups.add(PlacementGroupUtils.generatePlacementGroupFromByteArray(result));
     }
     return placementGroups;
   }

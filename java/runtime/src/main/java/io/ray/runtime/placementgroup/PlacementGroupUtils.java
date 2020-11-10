@@ -1,5 +1,7 @@
 package io.ray.runtime.placementgroup;
 
+import com.google.common.base.Preconditions;
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
@@ -63,7 +65,7 @@ public class PlacementGroupUtils {
    * @param placementGroupTableData protobuf data.
    * @return placement group info {@link PlacementGroupImpl}
    */
-  public static PlacementGroupImpl generatePlacementGroupFromPbData(
+  private static PlacementGroupImpl generatePlacementGroupFromPbData(
       PlacementGroupTableData placementGroupTableData) {
 
     PlacementGroupState state = covertToUserSpecifiedState(
@@ -81,5 +83,26 @@ public class PlacementGroupUtils {
       .setId(placementGroupId).setName(placementGroupTableData.getName())
       .setState(state).setStrategy(strategy).setBundles(bundles)
       .build();
+  }
+
+  /**
+   * Generate a PlacementGroupImpl from byte array.
+   * @param placementGroupByteArray bytes array from native method.
+   * @return placement group info {@link PlacementGroupImpl}
+   */
+  public static PlacementGroupImpl generatePlacementGroupFromByteArray(
+      byte[] placementGroupByteArray) {
+    Preconditions.checkNotNull(placementGroupByteArray,
+        "Can't generate a placement group from empty byte array.");
+
+    PlacementGroupTableData placementGroupTableData;
+    try {
+      placementGroupTableData = PlacementGroupTableData.parseFrom(placementGroupByteArray);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException(
+        "Received invalid placement group table protobuf data from GCS.", e);
+    }
+
+    return generatePlacementGroupFromPbData(placementGroupTableData);
   }
 }
