@@ -1,4 +1,3 @@
-from ray.experimental.client.worker import Worker
 from ray.experimental.client.api import ClientAPI
 from ray.experimental.client.api import APIImpl
 from typing import Optional
@@ -36,6 +35,7 @@ def call_remote(f, *args, **kwargs):
 
 def connect(conn_str):
     global _client_api
+    from ray.experimental.client.worker import Worker
     _client_worker = Worker(conn_str)
     _client_api = ClientAPI(_client_worker)
 

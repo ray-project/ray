@@ -30,6 +30,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.PutResponse(id=objectref.binary())
 
     def Schedule(self, task, context=None):
+        print("Got Schedule: ", task)
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details("Unimplemented")
         return ray_client_pb2.TaskTicket()

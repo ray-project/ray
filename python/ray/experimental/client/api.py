@@ -1,8 +1,5 @@
 from abc import ABC
 from abc import abstractmethod
-from ray.experimental.client.worker import Worker
-
-
 class APIImpl(ABC):
     @abstractmethod
     def get(self, *args, **kwargs):
@@ -27,7 +24,7 @@ class APIImpl(ABC):
 
 class ClientAPI(APIImpl):
     def __init__(self, worker):
-        self.worker: Worker = worker
+        self.worker = worker
 
     def get(self, *args, **kwargs):
         return self.worker.get(*args, **kwargs)
