@@ -635,9 +635,18 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_CLUSTER_SSH_KEY**: SSH key used by the Tune driver process to connect
   to remote cluster machines for checkpoint syncing. If this is not set,
   ``~/ray_bootstrap_key.pem`` will be used.
+* **TUNE_DISABLE_AUTO_CALLBACK_LOGGERS**: Ray Tune automatically adds a CSV and
+  JSON logger callback if they haven't been passed. Setting this variable to
+  `1` disables this automatic creation. Please note that this will most likely
+  affect analyzing your results after the tuning run.
+* **TUNE_DISABLE_AUTO_CALLBACK_SYNCER**: Ray Tune automatically adds a
+  Syncer callback to sync logs and checkpoints between different nodes if none
+  has been passed. Setting this variable to `1` disables this automatic creation.
+  Please note that this will most likely affect advanced scheduling algorithms
+  like PopulationBasedTraining.
 * **TUNE_DISABLE_AUTO_INIT**: Disable automatically calling ``ray.init()`` if
   not attached to a Ray session.
-* **TUNE_DISABLE_DATED_SUBDIR**: Tune automatically adds a date string to experiment
+* **TUNE_DISABLE_DATED_SUBDIR**: Ray Tune automatically adds a date string to experiment
   directories when the name is not specified explicitly or the trainable isn't passed
   as a string. Setting this environment variable to ``1`` disables adding these date strings.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via

@@ -329,6 +329,12 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   ProcessEnvironment env;
+  if (RayConfig::instance().enable_multi_tenancy() &&
+      worker_type != rpc::WorkerType::IO_WORKER) {
+    // We pass the job ID to worker processes via an environment variable, so we don't
+    // need to add a new CLI parameter for both Python and Java workers.
+    env.emplace(kEnvVarKeyJobId, job_id.Hex());
+  }
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
@@ -338,12 +344,6 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   Process proc = StartProcess(worker_command_args, env);
-  if (RayConfig::instance().enable_multi_tenancy() && job_config) {
-    // If the pid is reused between processes, the old process must have exited.
-    // So it's safe to bind the pid with another job ID.
-    RAY_LOG(DEBUG) << "Worker process " << proc.GetId() << " is bound to job " << job_id;
-    state.worker_pids_to_assigned_jobs[proc.GetId()] = job_id;
-  }
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
@@ -486,27 +486,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   state.registered_workers.insert(worker);
 
-  if (RayConfig::instance().enable_multi_tenancy() &&
-      worker->GetWorkerType() != rpc::WorkerType::IO_WORKER) {
-    auto dedicated_workers_it = state.worker_pids_to_assigned_jobs.find(pid);
-    RAY_CHECK(dedicated_workers_it != state.worker_pids_to_assigned_jobs.end());
-    auto job_id = dedicated_workers_it->second;
-
-    // If the job is unknown to Raylet, we don't allow new registrations.
-    if (!all_jobs_.contains(job_id)) {
-      auto process = Process::FromPid(pid);
-      state.starting_worker_processes.erase(process);
-      Status status =
-          Status::Invalid("The provided job ID is unknown. Reject registration.");
-      send_reply_callback(status, /*port=*/0);
-      return status;
-    }
-
-    worker->AssignJobId(job_id);
-    // We don't call state.worker_pids_to_assigned_jobs.erase(job_id) here
-    // because we allow multi-workers per worker process.
-  }
-
   // Send the reply immediately for worker registrations.
   send_reply_callback(Status::OK(), port);
   return Status::OK();
@@ -549,7 +528,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 }
 
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
-                                  const JobID &job_id, const rpc::JobConfig &job_config,
+                                  const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
   int port;
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
@@ -561,7 +540,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   driver->SetAssignedPort(port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
-  driver->AssignJobId(job_id);
+  const auto job_id = driver->GetAssignedJobId();
   all_jobs_[job_id] = job_config;
 
   // This is a workaround to start initial workers on this node if and only if Raylet is
@@ -893,10 +872,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
 
-  stats::CurrentWorker().Record(
-      0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
-
   MarkPortAsFree(worker->AssignedPort());
   return RemoveWorker(state.idle, worker);
 }
@@ -904,9 +879,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
-  stats::CurrentDriver().Record(
-      0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
   MarkPortAsFree(driver->AssignedPort());
 }
 
@@ -1058,26 +1030,6 @@ std::string WorkerPool::DebugString() const {
   }
   result << "\n- num idle workers: " << idle_of_all_languages_.size();
   return result.str();
-}
-
-void WorkerPool::RecordMetrics() const {
-  for (const auto &entry : states_by_lang_) {
-    // Record worker.
-    for (auto worker : entry.second.registered_workers) {
-      stats::CurrentWorker().Record(
-          worker->GetProcess().GetId(),
-          {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
-    }
-
-    // Record driver.
-    for (auto driver : entry.second.registered_drivers) {
-      stats::CurrentDriver().Record(
-          driver->GetProcess().GetId(),
-          {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
-    }
-  }
 }
 
 }  // namespace raylet

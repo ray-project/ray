@@ -5,6 +5,7 @@ from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.tune.utils import flatten_dict
+from ray.tune.utils.util import is_nan_or_inf
 
 try:
     import pandas as pd
@@ -495,7 +496,8 @@ class ExperimentAnalysis(Analysis):
     def get_best_trial(self,
                        metric: Optional[str] = None,
                        mode: Optional[str] = None,
-                       scope: str = "last") -> Optional[Trial]:
+                       scope: str = "last",
+                       filter_nan_and_inf: bool = True) -> Optional[Trial]:
         """Retrieve the best trial object.
 
         Compares all trials' scores on ``metric``.
@@ -518,6 +520,9 @@ class ExperimentAnalysis(Analysis):
                 `metric` and compare across trials based on `mode=[min,max]`.
                 If `scope=all`, find each trial's min/max score for `metric`
                 based on `mode`, and compare trials based on `mode=[min,max]`.
+            filter_nan_and_inf (bool): If True (default), NaN or infinite
+                values are disregarded and these trials are never selected as
+                the best trial.
         """
         metric = self._validate_metric(metric)
         mode = self._validate_mode(mode)
@@ -541,6 +546,9 @@ class ExperimentAnalysis(Analysis):
             else:
                 metric_score = trial.metric_analysis[metric][mode]
 
+            if filter_nan_and_inf and is_nan_or_inf(metric_score):
+                continue
+
             if best_metric_score is None:
                 best_metric_score = metric_score
                 best_trial = trial
@@ -555,7 +563,7 @@ class ExperimentAnalysis(Analysis):
 
         if not best_trial:
             logger.warning(
-                "Could not find best trial. Did you pass the correct `metric`"
+                "Could not find best trial. Did you pass the correct `metric` "
                 "parameter?")
         return best_trial
 

@@ -8,12 +8,15 @@ import ray
 from ray.exceptions import RayTaskError
 from ray.serve.context import TaskContext
 from ray.util import metrics
+from ray.serve.utils import _get_logger, get_random_letters
 from ray.serve.http_util import Response
 from ray.serve.router import Router, RequestMetadata
 
 # The maximum number of times to retry a request due to actor failure.
 # TODO(edoakes): this should probably be configurable.
 MAX_ACTOR_DEAD_RETRIES = 10
+
+logger = _get_logger()
 
 
 class HTTPProxy:
@@ -108,6 +111,7 @@ class HTTPProxy:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_metadata = RequestMetadata(
+            get_random_letters(10),  # Used for debugging.
             endpoint_name,
             TaskContext.Web,
             http_method=scope["method"].upper(),

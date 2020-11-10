@@ -193,7 +193,12 @@ RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000)
 /// In the object manager, no single thread is permitted to transfer more
 /// data than what is specified by the chunk size unless the number of object
 /// chunks exceeds the number of available sending threads.
-RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
+/// NOTE(ekl): this has been raised to lower broadcast overheads.
+RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
+
+/// The maximum number of outbound bytes to allow to be outstanding. This avoids
+/// excessive memory usage during object broadcast to many receivers.
+RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 2L * 1024 * 1024 * 1024)
 
 /// Number of workers per Python worker process
 RAY_CONFIG(int, num_workers_per_process_python, 1)
@@ -238,6 +243,8 @@ RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
+/// The interval at which the gcs server will print debug info.
+RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.

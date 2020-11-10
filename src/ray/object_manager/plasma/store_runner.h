@@ -22,6 +22,14 @@ class PlasmaStoreRunner {
     store_->SetNotificationListener(notification_listener);
   }
 
+  ray::SpaceReleasedCallback OnSpaceReleased() {
+    return [this]() {
+      main_service_.post([this]() {
+          store_->ProcessCreateRequests();
+        });
+    };
+  }
+
  private:
   void Shutdown();
   absl::Mutex store_runner_mutex_;

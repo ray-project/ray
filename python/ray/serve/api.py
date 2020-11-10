@@ -1,6 +1,7 @@
 import atexit
 from functools import wraps
 import random
+import os
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -8,9 +9,11 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger, get_node_id_for_actor)
+                             get_random_letters, logger, get_node_id_for_actor,
+                             get_conda_env_dir)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
+from ray.serve.env import CondaEnv
 from ray.actor import ActorHandle
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
@@ -173,6 +176,9 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries
                 that will be sent to a replica of this backend
                 without receiving a response.
+                - "user_config" (experimental): Arguments to pass to the
+                reconfigure method of the backend. The reconfigure method is
+                called if "user_config" is not None.
         """
 
         if not isinstance(config_options, (BackendConfig, dict)):
@@ -198,8 +204,8 @@ class Client:
             func_or_class: Union[Callable, Type[Callable]],
             *actor_init_args: Any,
             ray_actor_options: Optional[Dict] = None,
-            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
-    ) -> None:
+            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
+            env: Optional[CondaEnv] = None) -> None:
         """Create a backend with the provided tag.
 
         The backend will serve requests with func_or_class.
@@ -225,6 +231,15 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries that
                 will be sent to a replica of this backend without receiving a
                 response.
+                - "user_config" (experimental): Arguments to pass to the
+                reconfigure method of the backend. The reconfigure method is
+                called if "user_config" is not None.
+            env (serve.CondaEnv, optional): conda environment to run this
+                backend in.  Requires the caller to be running in an activated
+                conda environment (not necessarily ``env``), and requires
+                ``env`` to be an existing conda environment on all nodes.  If
+                ``env`` is not provided but conda is activated, the backend
+                will run in the conda environment of the caller.
         """
         if backend_tag in self.list_backends().keys():
             raise ValueError(
@@ -233,6 +248,20 @@ class Client:
 
         if config is None:
             config = {}
+        if ray_actor_options is None:
+            ray_actor_options = {}
+        if env is None:
+            # If conda is activated, default to conda env of this process.
+            if os.environ.get("CONDA_PREFIX"):
+                if "override_environment_variables" not in ray_actor_options:
+                    ray_actor_options["override_environment_variables"] = {}
+                ray_actor_options["override_environment_variables"].update({
+                    "PYTHONHOME": os.environ.get("CONDA_PREFIX")
+                })
+        else:
+            conda_env_dir = get_conda_env_dir(env.name)
+            ray_actor_options.update(
+                override_environment_variables={"PYTHONHOME": conda_env_dir})
         replica_config = ReplicaConfig(
             func_or_class,
             *actor_init_args,
@@ -240,6 +269,7 @@ class Client:
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
             is_blocking=replica_config.is_blocking)
+
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
                 **config, "internal_metadata": metadata
@@ -249,6 +279,7 @@ class Client:
                 update={"internal_metadata": metadata})
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
+
         backend_config._validate_complete()
         ray.get(
             self._controller.create_backend.remote(backend_tag, backend_config,

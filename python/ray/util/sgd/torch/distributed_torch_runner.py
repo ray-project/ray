@@ -87,7 +87,6 @@ class DistributedTorchRunner(TorchRunner):
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
-            apex_args=self.apex_args,
             wrap_ddp=self.wrap_ddp,
             add_dist_sampler=self.add_dist_sampler,
             scheduler_step_freq=self.scheduler_step_freq)

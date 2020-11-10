@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 namespace gcs {
@@ -31,7 +32,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
     RAY_LOG(INFO) << log_stream.str();
   } else {
     RAY_LOG(WARNING) << log_stream.str()
-                     << ". If there are lots of this logs, that might indicate there are "
+                     << ". Unintentional worker failures have been reported. If there "
+                        "are lots of this logs, that might indicate there are "
                         "unexpected failures in the cluster.";
   }
   auto worker_failure_data = std::make_shared<WorkerTableData>();
@@ -51,6 +53,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                          << ", node id = " << node_id
                          << ", address = " << worker_address.ip_address();
         } else {
+          stats::UnintentionalWorkerFailures.Record(1);
           RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
                                              worker_failure_data->SerializeAsString(),
                                              nullptr));
