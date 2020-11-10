@@ -194,7 +194,6 @@ void LocalObjectManager::SpillObjectsInternal(
                                << status.ToString();
                 if (callback) {
                   callback(status);
-                  on_objects_spilled_();
                 }
               } else {
                 AddSpilledUrls(objects_to_spill, r, callback);
@@ -230,7 +229,6 @@ void LocalObjectManager::AddSpilledUrls(
           (*num_remaining)--;
           if (*num_remaining == 0 && callback) {
             callback(status);
-            on_objects_spilled_();
           }
         }));
   }

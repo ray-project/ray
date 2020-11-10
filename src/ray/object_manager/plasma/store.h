@@ -49,51 +49,42 @@ using flatbuf::PlasmaError;
 
 struct GetRequest;
 
-using CreateObjectCallback = std::function<Status(
-                  const std::shared_ptr<Client> &client,
-                  const std::vector<uint8_t> &message,
-                  bool reply_on_oom)>;
+using CreateObjectCallback = std::function<Status(const std::shared_ptr<Client> &client, bool reply_on_oom)>;
 
 class CreateRequestQueue {
  public:
-  CreateRequestQueue(boost::asio::io_service &io_service,
-      CreateObjectCallback create_object_callback,
-      int32_t max_retries, uint32_t delay_on_oom_ms)
-    : io_context_(io_service),
-      retry_timer_(nullptr),
-      create_object_callback_(create_object_callback),
-      max_retries_(max_retries),
-      delay_on_oom_ms_(delay_on_oom_ms) {}
+  CreateRequestQueue(int32_t max_retries)
+    : max_retries_(max_retries) {}
 
-  void AddRequest(const std::shared_ptr<Client> &client,
-                  const std::vector<uint8_t> &message) {
-    queue_.push_back({client, message});
-    if (!timer_set) {
-      ProcessRequests();
-    }
-  }
+  /// Add a request to the queue.
+  ///
+  /// The request may not get tried immediately if the head of the queue is not
+  /// serviceable.
+  ///
+  /// \param client The client that sent the request.
+  void AddRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback);
 
-  /// Process requests in the queue in FIFO order.
-  void ProcessRequests();
+  /// Process requests in the queue.
+  ///
+  /// This will try to process as many requests in the queue as possible, in
+  /// FIFO order. If the first request is not serviceable, this will break and
+  /// the caller should try again later.
+  bool ProcessRequests();
 
+  /// Remove all requests that were made by a client that is now disconnected.
+  ///
+  /// \param client The client that was disconnected.
   void RemoveDisconnectedClientRequests(const std::shared_ptr<Client> &client);
 
  private:
-  bool ProcessRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message);
+  /// Process a single request. Returns true if the request was fulfilled and
+  /// can be dropped from the queue.
+  bool ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback);
 
-  // A reference to the asio io context.
-  boost::asio::io_service& io_context_;
-
-  bool timer_set = false;
-
-  std::unique_ptr<boost::asio::deadline_timer> retry_timer_;
-
-  CreateObjectCallback create_object_callback_;
-
+  /// The maximum number of times to retry each request upon OOM.
   const int32_t max_retries_;
 
-  const uint32_t delay_on_oom_ms_;
-
+  /// The number of times the request at the head of the queue has been tried.
   int32_t num_retries_ = 0;
 
   /// Queue of object creation requests to respond to. Requests will be placed
@@ -107,8 +98,7 @@ class CreateRequestQueue {
   /// in the object store. Then, the client does not need to poll on an
   /// OutOfMemory error and we can just respond to them once there is enough
   /// space made, or after a timeout.
-  std::list<std::pair<const std::shared_ptr<Client>,
-    const std::vector<uint8_t>>> queue_;
+  std::list<std::pair<const std::shared_ptr<Client>, const CreateObjectCallback>> queue_;
 };
 
 class PlasmaStore {
@@ -117,7 +107,7 @@ class PlasmaStore {
   PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
               const std::string& socket_name,
               std::shared_ptr<ExternalStore> external_store,
-              ray::SpillObjectsCallback spill_objects_callback);
+              ray::SpillObjectsCallback spill_objects_callback, uint32_t delay_on_oom_ms);
 
   ~PlasmaStore();
 
@@ -266,9 +256,7 @@ class PlasmaStore {
   }
 
   /// Process queued requests to create an object.
-  void ProcessCreateRequests() {
-    create_request_queue_.ProcessRequests();
-  }
+  void ProcessCreateRequests();
 
  private:
   Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool reply_on_oom);
@@ -345,6 +333,12 @@ class PlasmaStore {
   /// callback returns the amount of space still needed after the spilling is
   /// complete.
   ray::SpillObjectsCallback spill_objects_callback_;
+
+  const uint32_t delay_on_oom_ms_;
+
+  bool create_timer_set_ = false;
+
+  std::unique_ptr<boost::asio::deadline_timer> create_timer_;
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_;

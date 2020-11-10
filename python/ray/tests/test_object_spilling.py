@@ -314,6 +314,7 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "automatic_object_spilling_enabled": True,
+            "object_store_full_initial_delay_ms": 100,
             # This test will deadlock if only one IO worker is allowed because
             # the IO worker will try to restore an object, but this requires
             # another object to be spilled, which also requires an IO worker.

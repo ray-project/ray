@@ -95,7 +95,8 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback) 
     absl::MutexLock lock(&store_runner_mutex_);
     store_.reset(new PlasmaStore(main_service_, plasma_directory_, hugepages_enabled_,
                                 socket_name_, external_store,
-                                spill_objects_callback));
+                                spill_objects_callback,
+                                RayConfig::instance().object_store_full_initial_delay_ms()));
     plasma_config = store_->GetPlasmaStoreInfo();
 
     // We are using a single memory-mapped file by mallocing and freeing a single

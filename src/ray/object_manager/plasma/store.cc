@@ -61,6 +61,18 @@ using arrow::cuda::CudaDeviceManager;
 
 namespace fb = plasma::flatbuf;
 
+namespace {
+
+ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
+  uint8_t* input = (uint8_t*)message.data();
+  size_t input_size = message.size();
+  auto request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
+  RAY_DCHECK(plasma::VerifyFlatbuffer(request, input, input_size));
+  return ray::ObjectID::FromBinary(request->object_id()->str());
+}
+
+}
+
 namespace plasma {
 
 struct GetRequest {
@@ -106,7 +118,7 @@ GetRequest::GetRequest(boost::asio::io_service& io_context, const std::shared_pt
 PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
                          const std::string& socket_name,
                          std::shared_ptr<ExternalStore> external_store,
-                         ray::SpillObjectsCallback spill_objects_callback)
+                         ray::SpillObjectsCallback spill_objects_callback, uint32_t delay_on_oom_ms)
     : io_context_(main_service),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
@@ -114,11 +126,8 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       eviction_policy_(&store_info_, PlasmaAllocator::GetFootprintLimit()),
       external_store_(external_store),
       spill_objects_callback_(spill_objects_callback),
-      create_request_queue_([this](const std::shared_ptr<Client> &client,
-                  const std::vector<uint8_t> &message,
-                  bool reply_on_oom) {
-          return HandleCreateObjectRequest(client, message, reply_on_oom);
-          }, RayConfig::instance().object_store_full_max_retries(), RayConfig::instance().object_store_full_initial_delay_ms()) {
+      delay_on_oom_ms_(delay_on_oom_ms),
+      create_request_queue_(RayConfig::instance().object_store_full_max_retries()) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
 #ifdef PLASMA_CUDA
@@ -971,7 +980,11 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   // Process the different types of requests.
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
-      create_request_queue_.AddRequest(client, message);
+      RAY_LOG(DEBUG) << "Received create request for object " << GetCreateRequestObjectId(message);
+      create_request_queue_.AddRequest(client, [this, message](const std::shared_ptr<Client> &client, bool reply_on_oom) {
+            return HandleCreateObjectRequest(client, message, reply_on_oom);
+          });
+      ProcessCreateRequests();
     } break;
     case fb::MessageType::PlasmaAbortRequest: {
       RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
@@ -1065,45 +1078,55 @@ void PlasmaStore::DoAccept() {
                                               boost::asio::placeholders::error));
 }
 
-bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message) {
-  if (timer_set) {
-    retry_timer_.reset();
-    timer_set = false;
+void CreateRequestQueue::AddRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {
+  queue_.push_back({client, request_callback});
+}
+
+void PlasmaStore::ProcessCreateRequests() {
+  // Only try to process requests if the timer is not set. If the timer is set,
+  // that means that the first request is currently not serviceable because
+  // there is not enough memory. In that case, we should wait for the timer to
+  // expire before trying any requests again.
+  if (create_timer_set_) {
+    return;
   }
 
+  bool finished = create_request_queue_.ProcessRequests();
+  if (!finished) {
+    // Try to process requests later, after space has been made.
+    auto delay = boost::posix_time::milliseconds(delay_on_oom_ms_);
+    create_timer_.reset(new boost::asio::deadline_timer(io_context_));
+    create_timer_->expires_from_now(delay);
+    create_timer_->async_wait(
+        [this](const boost::system::error_code &error) {
+          RAY_CHECK(!error);
+          create_timer_set_ = false;
+          RAY_LOG(DEBUG) << "OOM timer finished, retrying create requests";
+          ProcessCreateRequests();
+        });
+    create_timer_set_ = true;
+  }
+}
+
+bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {
   bool reply_on_oom = num_retries_ >= max_retries_;
-  auto status = create_object_callback_(client, message, reply_on_oom);
+  auto status = request_callback(client, reply_on_oom);
   bool request_fulfilled = false;
 
   if (status.IsTransientObjectStoreFull()) {
-    // The object store is full, but we should wait for space to be made, so
-    // do nothing. The caller must guarantee that ProcessRequests is called
-    // again so that we can try this request again.
+    // The object store is full, but we should wait for space to be made
+    // through spilling, so do nothing. The caller must guarantee that
+    // ProcessRequests is called again so that we can try this request again.
     // NOTE(swang): There could be other requests behind this one that are
     // actually serviceable. This may be inefficient, but eventually this
     // request will get served and unblock the following requests, once
     // enough objects have been spilled.
+    // TODO(swang): Ask the raylet to spill enough space for multiple requests
+    // at once, instead of just the head of the queue.
     num_retries_ = 0;
   } else if (status.IsObjectStoreFull()) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object, " << (max_retries_ - num_retries_) << " retries left";
     num_retries_++;
-
-    // Try the request again later.
-    auto delay = boost::posix_time::milliseconds(delay_on_oom_ms_);
-    retry_timer_.reset(new boost::asio::deadline_timer(io_context_));
-    retry_timer_->expires_from_now(delay);
-    retry_timer_->async_wait(
-        [this](const boost::system::error_code &error) {
-          if (!error) {
-            RAY_LOG(DEBUG) << "OOM timer finished, retrying create requests";
-            ProcessRequests();
-          } else {
-            RAY_LOG(DEBUG) << "OOM timer canceled";
-            // Check that the error was due to the timer being canceled.
-            RAY_CHECK(error == boost::asio::error::operation_aborted);
-          }
-        });
-    timer_set = true;
   } else {
     // We have replied to the client.
     num_retries_ = 0;
@@ -1113,14 +1136,15 @@ bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, c
   return request_fulfilled;
 }
 
-void CreateRequestQueue::ProcessRequests() {
+bool CreateRequestQueue::ProcessRequests() {
   for (auto request_it = queue_.begin();
       request_it != queue_.end(); ) {
     if (!ProcessRequest(request_it->first, request_it->second)) {
-      break;
+      return false;
     }
     request_it = queue_.erase(request_it);
   }
+  return true;
 }
 
 
