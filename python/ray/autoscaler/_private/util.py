@@ -105,7 +105,7 @@ def rewrite_legacy_yaml_to_available_node_types(
     if "available_node_types" not in config:
         # TODO(ameer/ekl/alex): we can also rewrite here many other fields
         # that include initialization/setup/start commands and ImageId.
-        logger.info("Converting legacy cluster config to multi node types.")
+        logger.debug("Converting legacy cluster config to multi node types.")
         config["available_node_types"] = {
             NODE_TYPE_LEGACY_HEAD: {
                 "node_config": config["head_node"],
