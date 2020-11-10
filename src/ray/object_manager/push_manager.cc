@@ -61,10 +61,10 @@ void PushManager::ScheduleRemainingPushes() {
         info->chunk_send_fn(info->next_chunk_id++);
         chunks_in_flight_ += 1;
         keep_looping = true;
-        RAY_LOG(DEBUG) << "Sending chunk " << info->next_chunk_id << " of " << info->num_chunks
-                       << " for push " << push_id.first << ", " << push_id.second
-                       << ", chunks in flight " << NumChunksInFlight() << " / "
-                       << max_chunks_in_flight_
+        RAY_LOG(DEBUG) << "Sending chunk " << info->next_chunk_id << " of "
+                       << info->num_chunks << " for push " << push_id.first << ", "
+                       << push_id.second << ", chunks in flight " << NumChunksInFlight()
+                       << " / " << max_chunks_in_flight_
                        << " max, remaining chunks: " << NumChunksRemaining();
       }
       it++;
