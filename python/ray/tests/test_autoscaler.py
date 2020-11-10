@@ -654,7 +654,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 20
         config["initial_workers"] = 10
         config["idle_timeout_minutes"] = 0
-        config["autoscaling_mode"] = "aggressive"
+        config["upscaling_speed"] = config["max_workers"]
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
@@ -1132,7 +1132,7 @@ class AutoscalingTest(unittest.TestCase):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
         config["max_workers"] = 20
-        config["target_utilization_fraction"] = 0.1
+        config["upscaling_speed"] = 10
         config_path = self.write_config(config)
         self.provider = MockProvider()
         lm = LoadMetrics()
