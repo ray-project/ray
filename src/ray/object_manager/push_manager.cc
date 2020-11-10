@@ -29,19 +29,14 @@ void PushManager::StartPush(const NodeID &dest_id, const ObjectID &obj_id,
     return;
   }
   RAY_CHECK(num_chunks > 0);
-  push_info_[push_id] = std::make_pair(num_chunks, send_chunk_fn);
-  next_chunk_id_[push_id] = 0;
-  chunks_remaining_[push_id] += num_chunks;
+  push_info_[push_id].reset(new PushState(num_chunks, send_chunk_fn));
   ScheduleRemainingPushes();
-  RAY_CHECK(push_info_.size() == next_chunk_id_.size());
 }
 
 void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id) {
   auto push_id = std::make_pair(dest_id, obj_id);
   chunks_in_flight_ -= 1;
-  if (--chunks_remaining_[push_id] <= 0) {
-    next_chunk_id_.erase(push_id);
-    chunks_remaining_.erase(push_id);
+  if (--push_info_[push_id]->chunks_remaining <= 0) {
     push_info_.erase(push_id);
     RAY_LOG(DEBUG) << "Push for " << push_id.first << ", " << push_id.second
                    << " completed, remaining: " << NumPushesInFlight();
@@ -60,17 +55,16 @@ void PushManager::ScheduleRemainingPushes() {
     remaining = false;
     while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
       auto push_id = it->first;
-      auto max_chunks = it->second.first;
-      auto send_chunk_fn = it->second.second;
-      if (next_chunk_id_[push_id] < max_chunks) {
+      auto &info = it->second;
+      if (info->next_chunk_id < info->num_chunks) {
         // Send the next chunk for this push.
-        send_chunk_fn(next_chunk_id_[push_id]++);
+        info->chunk_send_fn(info->next_chunk_id++);
         chunks_in_flight_ += 1;
         remaining = true;
-        RAY_LOG(DEBUG) << "Sending chunk " << next_chunk_id_[push_id] << " of "
-                       << max_chunks << " for push " << push_id.first << ", "
-                       << push_id.second << ", chunks in flight " << NumChunksInFlight()
-                       << " / " << max_chunks_in_flight_
+        RAY_LOG(DEBUG) << "Sending chunk " << info->next_chunk_id << " of " << info->num_chunks
+                       << " for push " << push_id.first << ", " << push_id.second
+                       << ", chunks in flight " << NumChunksInFlight() << " / "
+                       << max_chunks_in_flight_
                        << " max, remaining chunks: " << NumChunksRemaining();
       }
       it++;

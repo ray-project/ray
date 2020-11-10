@@ -25,10 +25,28 @@
 
 namespace ray {
 
+/// Tracks the state of an active object push to another node.
+struct PushState {
+  /// The number of chunks total to send.
+  const int64_t num_chunks;
+  /// The function to send chunks with.
+  const std::function<void(int64_t)> chunk_send_fn;
+  /// The index of the next chunk to send.
+  int64_t next_chunk_id;
+  /// The number of chunks remaining to send. Once this number drops
+  /// to zero, the push is considered complete.
+  int64_t chunks_remaining;
+
+  PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn)
+      : num_chunks(num_chunks),
+        chunk_send_fn(chunk_send_fn),
+        next_chunk_id(0),
+        chunks_remaining(num_chunks) {}
+};
+
+/// Manages rate limiting and deduplication of outbound object pushes.
 class PushManager {
  public:
-  /// Manages rate limiting and deduplication of outbound object pushes.
-
   /// Create a push manager.
   ///
   /// \param max_chunks_in_flight Max number of chunks allowed to be in flight
@@ -61,8 +79,8 @@ class PushManager {
   /// Return the number of chunks remaining. For testing only.
   int64_t NumChunksRemaining() const {
     int total = 0;
-    for (const auto &pair : chunks_remaining_) {
-      total += pair.second;
+    for (const auto &pair : push_info_) {
+      total += pair.second->chunks_remaining;
     }
     return total;
   }
@@ -87,9 +105,6 @@ class PushManager {
   /// Pair of (destination, object_id).
   typedef std::pair<NodeID, ObjectID> PushID;
 
-  /// Info about the pushed object: (num_chunks_total, chunk_send_fn).
-  typedef std::pair<int64_t, std::function<void(int64_t)>> PushInfo;
-
   /// Max number of chunks in flight allowed.
   const int64_t max_chunks_in_flight_;
 
@@ -97,13 +112,7 @@ class PushManager {
   int64_t chunks_in_flight_ = 0;
 
   /// Tracks all pushes with chunk transfers in flight.
-  absl::flat_hash_map<PushID, PushInfo> push_info_;
-
-  /// Tracks progress of in flight pushes.
-  absl::flat_hash_map<PushID, int64_t> next_chunk_id_;
-
-  /// Tracks number of unfinished chunk sends.
-  absl::flat_hash_map<PushID, int64_t> chunks_remaining_;
+  absl::flat_hash_map<PushID, std::unique_ptr<PushState>> push_info_;
 };
 
 }  // namespace ray
