@@ -440,7 +440,7 @@ def rollout(agent,
 
             if multiagent:
                 done = done["__all__"]
-                reward_total += sum(reward.values())
+                reward_total += sum(r for r in reward.values() if r is not None)
             else:
                 reward_total += reward
             if not no_render:
