@@ -1,6 +1,7 @@
 import argparse
 import base64
 import json
+import logging
 import time
 import sys
 import os
@@ -11,6 +12,104 @@ import ray.node
 import ray.ray_constants as ray_constants
 import ray.utils
 from ray.parameter import RayParams
+
+def main(args):
+    ray.utils.setup_logger(args.logging_level, args.logging_format)
+
+    if args.worker_type == "WORKER":
+        mode = ray.WORKER_MODE
+    elif args.worker_type == "IO_WORKER":
+        mode = ray.IO_WORKER_MODE
+    else:
+        raise ValueError("Unknown worker type: " + args.worker_type)
+
+    # NOTE(suquark): We must initialize the external storage before we
+    # connect to raylet. Otherwise we may receive requests before the
+    # external storage is intialized.
+    if mode == ray.IO_WORKER_MODE:
+        from ray import external_storage
+        if args.object_spilling_config:
+            object_spilling_config = base64.b64decode(
+                args.object_spilling_config)
+            object_spilling_config = json.loads(object_spilling_config)
+        else:
+            object_spilling_config = {}
+        external_storage.setup_external_storage(object_spilling_config)
+
+    raylet_ip_address = args.raylet_ip_address
+    if raylet_ip_address is None:
+        raylet_ip_address = args.node_ip_address
+
+    code_search_path = args.code_search_path
+    if code_search_path is not None:
+        for p in code_search_path.split(":"):
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.append(p)
+
+    ray_params = RayParams(
+        node_ip_address=args.node_ip_address,
+        raylet_ip_address=raylet_ip_address,
+        node_manager_port=args.node_manager_port,
+        redis_address=args.redis_address,
+        redis_password=args.redis_password,
+        plasma_store_socket_name=args.object_store_name,
+        raylet_socket_name=args.raylet_name,
+        temp_dir=args.temp_dir,
+        load_code_from_local=args.load_code_from_local,
+        metrics_agent_port=args.metrics_agent_port,
+    )
+
+    node = ray.node.Node(
+        ray_params,
+        head=False,
+        shutdown_at_exit=False,
+        spawn_reaper=False,
+        connect_only=True)
+    ray.worker._global_node = node
+
+    ray.worker.connect(node, mode=mode)
+    def setup_logger(logging_level, logging_format):
+        logger = logging.getLogger("ray_worker")
+        if type(logging_level) is str:
+            logging_level = logging.getLevelName(logging_level.upper())
+        logger.setLevel(logging_level)
+        job_id = os.getenv("RAY_JOB_ID")
+        from logging.handlers import RotatingFileHandler
+        worker_name = "worker" if args.worker_type == "WORKER" else "io_worker"
+        handler = RotatingFileHandler(f"{node.get_session_dir_path()}/logs/{worker_name}-{ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)}-{job_id}-{os.getpid()}.err")
+        logger.addHandler(handler)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.propagate = False
+        return logger
+    logger = setup_logger(args.logging_level, args.logging_format)
+
+    class LoggerWriter:
+        def __init__(self, logger):
+            self.logger = logger
+
+        def write(self, message):
+            if message != '\n':
+                self.logger.info(f"{0} {message}")
+        
+        def flush(self):
+            # flush method can be empty because logger will handle flush
+            pass
+
+    from contextlib import redirect_stdout, redirect_stderr
+    logger_writer = LoggerWriter(logger)
+    with redirect_stderr(logger_writer):
+        with redirect_stdout(logger_writer):
+            if mode == ray.WORKER_MODE:
+                ray.worker.global_worker.main_loop()
+            elif mode == ray.IO_WORKER_MODE:
+                # It is handled by another thread in the C++ core worker.
+                # We just need to keep the worker alive.
+                while True:
+                    time.sleep(100000)
+            else:
+                raise ValueError(f"Unexcepted worker mode: {mode}")
+
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -110,68 +209,4 @@ parser.add_argument(
     "Java and `PYTHONPATH` in Python.")
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    ray.utils.setup_logger(args.logging_level, args.logging_format)
-
-    if args.worker_type == "WORKER":
-        mode = ray.WORKER_MODE
-    elif args.worker_type == "IO_WORKER":
-        mode = ray.IO_WORKER_MODE
-    else:
-        raise ValueError("Unknown worker type: " + args.worker_type)
-
-    # NOTE(suquark): We must initialize the external storage before we
-    # connect to raylet. Otherwise we may receive requests before the
-    # external storage is intialized.
-    if mode == ray.IO_WORKER_MODE:
-        from ray import external_storage
-        if args.object_spilling_config:
-            object_spilling_config = base64.b64decode(
-                args.object_spilling_config)
-            object_spilling_config = json.loads(object_spilling_config)
-        else:
-            object_spilling_config = {}
-        external_storage.setup_external_storage(object_spilling_config)
-
-    raylet_ip_address = args.raylet_ip_address
-    if raylet_ip_address is None:
-        raylet_ip_address = args.node_ip_address
-
-    code_search_path = args.code_search_path
-    if code_search_path is not None:
-        for p in code_search_path.split(":"):
-            if os.path.isfile(p):
-                p = os.path.dirname(p)
-            sys.path.append(p)
-
-    ray_params = RayParams(
-        node_ip_address=args.node_ip_address,
-        raylet_ip_address=raylet_ip_address,
-        node_manager_port=args.node_manager_port,
-        redis_address=args.redis_address,
-        redis_password=args.redis_password,
-        plasma_store_socket_name=args.object_store_name,
-        raylet_socket_name=args.raylet_name,
-        temp_dir=args.temp_dir,
-        load_code_from_local=args.load_code_from_local,
-        metrics_agent_port=args.metrics_agent_port,
-    )
-
-    node = ray.node.Node(
-        ray_params,
-        head=False,
-        shutdown_at_exit=False,
-        spawn_reaper=False,
-        connect_only=True)
-    ray.worker._global_node = node
-
-    ray.worker.connect(node, mode=mode)
-    if mode == ray.WORKER_MODE:
-        ray.worker.global_worker.main_loop()
-    elif mode == ray.IO_WORKER_MODE:
-        # It is handled by another thread in the C++ core worker.
-        # We just need to keep the worker alive.
-        while True:
-            time.sleep(100000)
-    else:
-        raise ValueError(f"Unexcepted worker mode: {mode}")
+    main(args)

@@ -1227,17 +1227,17 @@ def connect(node,
         # worker output and error to their own files.
         # This key is set in services.py when Redis is started.
         redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
-        if (redirect_worker_output_val is not None
-                and int(redirect_worker_output_val) == 1):
-            log_stdout_file_name, log_stderr_file_name = (
-                node.get_job_redirected_log_file(worker.worker_id))
-            try:
-                log_stdout_file_path, log_stderr_file_path = \
-                    set_log_file(log_stdout_file_name, log_stderr_file_name)
-            except IOError:
-                raise IOError(
-                    "Workers must be able to redirect their output at"
-                    "the file descriptor level.")
+        # if (redirect_worker_output_val is not None
+        #         and int(redirect_worker_output_val) == 1):
+        #     log_stdout_file_name, log_stderr_file_name = (
+        #         node.get_job_redirected_log_file(worker.worker_id))
+        #     try:
+        #         log_stdout_file_path, log_stderr_file_path = \
+        #             set_log_file(log_stdout_file_name, log_stderr_file_name)
+        #     except IOError:
+        #         raise IOError(
+        #             "Workers must be able to redirect their output at"
+        #             "the file descriptor level.")
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")

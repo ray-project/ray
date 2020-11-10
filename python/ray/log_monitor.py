@@ -30,7 +30,8 @@ class LogFileInfo:
                  file_position=None,
                  file_handle=None,
                  is_err_file=False,
-                 job_id=None):
+                 job_id=None,
+                 worker_pid=None):
         assert (filename is not None and size_when_last_opened is not None
                 and file_position is not None)
         self.filename = filename
@@ -39,7 +40,7 @@ class LogFileInfo:
         self.file_handle = file_handle
         self.is_err_file = is_err_file
         self.job_id = job_id
-        self.worker_pid = None
+        self.worker_pid = worker_pid
 
 
 class LogMonitor:
@@ -130,8 +131,10 @@ class LogMonitor:
                 job_match = JOB_LOG_PATTERN.match(file_path)
                 if job_match:
                     job_id = job_match.group(2)
+                    worker_pid = job_match.group(3)
                 else:
                     job_id = None
+                    worker_pid = None
 
                 is_err_file = file_path.endswith("err")
 
@@ -143,7 +146,8 @@ class LogMonitor:
                         file_position=0,
                         file_handle=None,
                         is_err_file=is_err_file,
-                        job_id=job_id))
+                        job_id=job_id,
+                        worker_pid=worker_pid))
                 log_filename = os.path.basename(file_path)
                 logger.info(f"Beginning to track file {log_filename}")
 
@@ -236,18 +240,20 @@ class LogMonitor:
                     raise
 
             if file_info.file_position == 0:
-                if (len(lines_to_publish) > 0 and
-                        lines_to_publish[0].startswith("Ray worker pid: ")):
-                    file_info.worker_pid = int(
-                        lines_to_publish[0].split(" ")[-1])
-                    lines_to_publish = lines_to_publish[1:]
-                elif "/raylet" in file_info.filename:
+                # SANG-TODO Delete it.
+                # if (len(lines_to_publish) > 0 and
+                #         lines_to_publish[0].startswith("Ray worker pid: ")):
+                #     file_info.worker_pid = int(
+                #         lines_to_publish[0].split(" ")[-1])
+                #     lines_to_publish = lines_to_publish[1:]
+                if "/raylet" in file_info.filename:
                     file_info.worker_pid = "raylet"
                 elif "/gcs_server" in file_info.filename:
                     file_info.worker_pid = "gcs_server"
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
+            print(file_info.worker_pid)
 
             if len(lines_to_publish) > 0:
                 self.redis_client.publish(

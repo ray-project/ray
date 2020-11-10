@@ -472,7 +472,7 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    switch_worker_log_if_needed(worker, job_id)
+                    # switch_worker_log_if_needed(worker, job_id)
                     with ray.worker._changeproctitle(title, next_title):
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
