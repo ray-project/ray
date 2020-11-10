@@ -229,23 +229,24 @@ class DataOrganizer:
         # TODO(fyrestone): remove this, give a link from actor
         # info to worker info in front-end.
         node_id = actor["address"]["rayletId"]
-        pid = core_worker_stats["pid"]
+        pid = core_worker_stats.get("pid")
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
-
         actor_process_stats = None
-        for process_stats in node_physical_stats.get("workers"):
-            if process_stats["pid"] == pid:
-                actor_process_stats = process_stats
-                break
-
         actor_process_gpu_stats = None
-        for gpu_stats in node_physical_stats.get("gpus"):
-            for process in gpu_stats.get("processes", []):
-                if process["pid"] == pid:
-                    actor_process_gpu_stats = gpu_stats
+        if pid:
+            for process_stats in node_physical_stats.get("workers"):
+                if process_stats["pid"] == pid:
+                    actor_process_stats = process_stats
                     break
-            if actor_process_gpu_stats is not None:
-                break
+
+            for gpu_stats in node_physical_stats.get("gpus"):
+                for process in gpu_stats.get("processes", []):
+                    if process["pid"] == pid:
+                        actor_process_gpu_stats = gpu_stats
+                        break
+                if actor_process_gpu_stats is not None:
+                    break
+
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
 
