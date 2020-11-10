@@ -45,14 +45,14 @@ void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id)
 }
 
 void PushManager::ScheduleRemainingPushes() {
-  bool remaining = true;
+  bool keep_looping = true;
   // Loop over all active pushes for approximate round-robin prioritization.
   // TODO(ekl) this isn't the best implementation of round robin, we should
   // consider tracking the number of chunks active per-push and balancing those.
-  while (chunks_in_flight_ < max_chunks_in_flight_ && remaining) {
+  while (chunks_in_flight_ < max_chunks_in_flight_ && keep_looping) {
     // Loop over each active push and try to send another chunk.
     auto it = push_info_.begin();
-    remaining = false;
+    keep_looping = false;
     while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
       auto push_id = it->first;
       auto &info = it->second;
@@ -60,7 +60,7 @@ void PushManager::ScheduleRemainingPushes() {
         // Send the next chunk for this push.
         info->chunk_send_fn(info->next_chunk_id++);
         chunks_in_flight_ += 1;
-        remaining = true;
+        keep_looping = true;
         RAY_LOG(DEBUG) << "Sending chunk " << info->next_chunk_id << " of " << info->num_chunks
                        << " for push " << push_id.first << ", " << push_id.second
                        << ", chunks in flight " << NumChunksInFlight() << " / "
