@@ -70,8 +70,8 @@ class _TensorFlowTrainable(tune.Trainable):
         ]
 
         from functools import partial
-        setup_on_worker = partial(setup_process_group,
-                                  worker_addresses=addresses)
+        setup_on_worker = partial(
+            setup_process_group, worker_addresses=addresses)
         ray.get([
             w.execute.remote(lambda _: setup_on_worker(index=index))
             for index, w in enumerate(self.workers)
@@ -143,6 +143,7 @@ def DistributedTrainableCreator(
         tune.run(tf_trainable,
                  num_samples=1)
     """
+
     class WrappedDistributedTensorFlowTrainable(_TensorFlowTrainable):
         _function = func
         _num_workers = num_workers
@@ -155,10 +156,11 @@ def DistributedTrainableCreator(
             num_worker_cpus = int(
                 config.get("num_cpus_per_worker", num_cpus_per_worker))
             use_gpu_ = config.get("use_gpu", use_gpu)
-            return Resources(cpu=0,
-                             gpu=0,
-                             extra_cpu=num_workers * num_worker_cpus,
-                             extra_gpu=num_workers_ if use_gpu_ else 0)
+            return Resources(
+                cpu=0,
+                gpu=0,
+                extra_cpu=num_workers * num_worker_cpus,
+                extra_gpu=num_workers_ if use_gpu_ else 0)
 
     return WrappedDistributedTensorFlowTrainable
 
