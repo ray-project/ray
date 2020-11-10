@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 
 import ray
 from ray.rllib.evaluation.postprocessing import Postprocessing
@@ -331,10 +330,6 @@ def maml_loss(policy, model, dist_class, train_batch):
     else:
         policy.var_list = tf1.get_collection(tf1.GraphKeys.TRAINABLE_VARIABLES,
                                              tf1.get_variable_scope().name)
-        # `split` may not exist yet (during test-loss call), use a dummy value.
-        # Cannot use get here due to train_batch being a TrackingDict.
-        #split = train_batch["split"] if "split" in train_batch else \
-        #    np.array([[1, 1], [1, 1]])
         policy.loss_obj = MAMLLoss(
             model=model,
             dist_class=dist_class,

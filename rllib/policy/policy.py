@@ -606,7 +606,7 @@ class Policy(metaclass=ABCMeta):
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
-        batch_for_postproc = UsageTrackingDict(self._dummy_batch)  #self._lazy_numpy_dict(self._dummy_batch)
+        batch_for_postproc = UsageTrackingDict(self._dummy_batch)
         batch_for_postproc.count = self._dummy_batch.count
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
