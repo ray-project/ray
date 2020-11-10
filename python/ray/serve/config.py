@@ -45,6 +45,10 @@ class BackendConfig(BaseModel):
         sent to a replica of this backend without receiving a response.
         Defaults to None (no maximum).
     :type max_concurrent_queries: int, optional
+    :param user_config: Arguments to pass to the reconfigure method of the
+        backend. The reconfigure method is called if user_config is not
+        None.
+    :type user_config: Any, optional
     """
 
     internal_metadata: BackendMetadata = BackendMetadata()
@@ -52,6 +56,7 @@ class BackendConfig(BaseModel):
     max_batch_size: Optional[PositiveInt] = None
     batch_wait_timeout: float = 0
     max_concurrent_queries: Optional[int] = None
+    user_config: Any = None
 
     class Config:
         validate_assignment = True
