@@ -36,6 +36,8 @@ from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
+from ray.autoscaler._private.event_system import (CreateClusterEvent,
+                                                  global_event_system)
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
@@ -167,6 +169,8 @@ def create_or_update_cluster(config_file: str,
     except yaml.scanner.ScannerError as e:
         handle_yaml_error(e)
         raise
+    global_event_system.execute_callback(CreateClusterEvent.up_started,
+                                         {"cluster_config": config})
 
     # todo: validate file_mounts, ssh keys, etc.
 
@@ -476,6 +480,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                             _provider: Optional[NodeProvider] = None,
                             _runner: ModuleType = subprocess) -> None:
     """Create the cluster head node, which in turn creates the workers."""
+    global_event_system.execute_callback(
+        CreateClusterEvent.cluster_booting_started)
     provider = (_provider or _get_node_provider(config["provider"],
                                                 config["cluster_name"]))
 
@@ -536,6 +542,8 @@ def get_or_create_head_node(config: Dict[str, Any],
     if head_node is None or provider.node_tags(head_node).get(
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
         with cli_logger.group("Acquiring an up-to-date head node"):
+            global_event_system.execute_callback(
+                CreateClusterEvent.acquiring_new_head_node)
             if head_node is not None:
                 cli_logger.print(
                     "Currently running head node is out-of-date with "
@@ -570,6 +578,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                         break
                     time.sleep(POLL_INTERVAL)
             cli_logger.newline()
+
+    global_event_system.execute_callback(CreateClusterEvent.head_node_acquired)
 
     with cli_logger.group(
             "Setting up head node",
@@ -663,6 +673,11 @@ def get_or_create_head_node(config: Dict[str, Any],
             # todo: this does not follow the mockup and is not good enough
             cli_logger.abort("Failed to setup head node.")
             sys.exit(1)
+
+    global_event_system.execute_callback(
+        CreateClusterEvent.cluster_booting_completed, {
+            "head_node_id": head_node,
+        })
 
     monitor_str = "tail -n 100 -f /tmp/ray/session_latest/logs/monitor*"
     if override_cluster_name:
