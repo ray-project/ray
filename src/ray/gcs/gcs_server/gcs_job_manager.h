@@ -40,6 +40,10 @@ class GcsJobManager : public rpc::JobInfoHandler {
                              rpc::MarkJobFinishedReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleMarkJobFailed(const rpc::MarkJobFailedRequest &request,
+                           rpc::MarkJobFailedReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
                            rpc::GetAllJobInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;

@@ -117,6 +117,9 @@ class GcsRpcClient {
   /// Mark job as finished to gcs server.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, job_info_grpc_client_, )
 
+  /// Mark job as failed to gcs server.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFailed, job_info_grpc_client_, )
+
   /// Get information of all jobs from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetAllJobInfo, job_info_grpc_client_, )
 

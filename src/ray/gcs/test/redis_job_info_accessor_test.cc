@@ -29,9 +29,10 @@ class RedisJobInfoAccessorTest : public AccessorTestBase<JobID, JobTableData> {
   virtual void GenTestData() {
     for (size_t i = 0; i < total_job_number_; ++i) {
       JobID job_id = JobID::FromInt(i);
-      std::shared_ptr<JobTableData> job_data_ptr =
-          CreateJobTableData(job_id, /*is_dead*/ false, /*timestamp*/ 1,
-                             /*driver_ip_address*/ "", /*driver_pid*/ i);
+      std::shared_ptr<JobTableData> job_data_ptr = CreateJobTableData(
+          job_id, /*is_dead*/ false, /*timestamp*/ 1,
+          /*driver_ip_address*/ "", /*driver hostname*/ "",
+          /*driver_pid*/ i, rpc::Language::PYTHON, NodeID::FromRandom());
       id_to_data_[job_id] = job_data_ptr;
     }
   }

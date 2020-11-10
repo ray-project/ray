@@ -43,6 +43,10 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback) override;
 
+  Status AsyncMarkFailed(const JobID &job_id, const std::string &error_message,
+                         const std::string &driver_cmdline,
+                         const StatusCallback &callback) override;
+
   Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData> &subscribe,
                            const StatusCallback &done) override;
 

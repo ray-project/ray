@@ -262,8 +262,16 @@ Status RedisJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
                                                const StatusCallback &callback) {
   std::shared_ptr<JobTableData> data_ptr =
       CreateJobTableData(job_id, /*is_dead*/ true, /*time_stamp*/ std::time(nullptr),
-                         /*driver_ip_address*/ "", /*driver_pid*/ -1);
+                         /*driver_ip_address*/ "", /*driver hostname*/ "",
+                         /*driver_pid*/ -1, rpc::Language::PYTHON, NodeID::FromRandom());
   return DoAsyncAppend(data_ptr, callback);
+}
+
+Status RedisJobInfoAccessor::AsyncMarkFailed(const JobID &job_id,
+                                             const std::string &error_message,
+                                             const std::string &driver_cmdline,
+                                             const StatusCallback &callback) {
+  return Status::Invalid("Unsupported");
 }
 
 Status RedisJobInfoAccessor::DoAsyncAppend(const std::shared_ptr<JobTableData> &data_ptr,

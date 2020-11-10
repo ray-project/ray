@@ -196,6 +196,17 @@ class JobInfoAccessor {
       const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
       const StatusCallback &done) = 0;
 
+  /// Mark job as finished in GCS asynchronously.
+  ///
+  /// \param job_id ID of the job that will be make finished to GCS.
+  /// \param error_message The root cause of job failed.
+  /// \param driver_cmdline The cmdline of driver.
+  /// \param callback Callback that will be called after update finished.
+  /// \return Status
+  virtual Status AsyncMarkFailed(const JobID &job_id, const std::string &error_message,
+                                 const std::string &driver_cmdline,
+                                 const StatusCallback &callback) = 0;
+
   /// Get all job info from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finished.

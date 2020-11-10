@@ -72,7 +72,8 @@ class Process {
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
   explicit Process(const char *argv[], void *io_service, std::error_code &ec,
-                   bool decouple = false, const ProcessEnvironment &env = {});
+                   bool decouple = false, const ProcessEnvironment &env = {},
+                   const std::string &cwd = "");
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
@@ -94,6 +95,9 @@ class Process {
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;
+
+  /// Check a process is alive by pid.
+  static bool IsAlive(pid_t pid);
 };
 
 // Get the Process ID of the parent process. If the parent process exits, the PID

@@ -49,26 +49,55 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
                                           rpc::MarkJobFinishedReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.job_id());
-  RAY_LOG(INFO) << "Marking job state, job id = " << job_id;
-  auto job_table_data =
-      gcs::CreateJobTableData(job_id, /*is_dead*/ true, std::time(nullptr), "", -1);
-  auto on_done = [this, job_id, job_table_data, reply,
-                  send_reply_callback](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
-    } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
-                                         job_table_data->SerializeAsString(), nullptr));
-      ClearJobInfos(job_id);
-      RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status = gcs_table_storage_->JobTable().Put(job_id, *job_table_data, on_done);
-  if (!status.ok()) {
-    on_done(status);
+  RAY_LOG(INFO) << "Received driver exit notification, job id = " << job_id;
+  auto iter = jobs_.find(job_id);
+  if (iter == jobs_.end()) {
+    RAY_LOG(WARNING) << "Failed to handle the notification of driver exit. job id = "
+                     << job_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Invalid job id."));
+    return;
   }
+  auto job_table_data = iter->second;
+  if (job_table_data->is_dead()) {
+    RAY_LOG(INFO) << "Job is already dead, just ignore this notification, job id = "
+                  << job_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    return;
+  }
+
+  RAY_CHECK_OK(UpdateJobStateToDead(
+      job_table_data, [send_reply_callback, reply](const Status &status) {
+        RAY_CHECK_OK(status);
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      }));
+}
+
+void GcsJobManager::HandleMarkJobFailed(const rpc::MarkJobFailedRequest &request,
+                                        rpc::MarkJobFailedReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  JobID job_id = JobID::FromBinary(request.job_id());
+  RAY_LOG(INFO) << "Marking job as failed, job id = " << job_id;
+  auto iter = jobs_.find(job_id);
+  if (iter == jobs_.end()) {
+    RAY_LOG(WARNING) << "Failed to mark job as failed, job id = " << job_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Invalid job id."));
+    return;
+  }
+
+  auto job_table_data = iter->second;
+  if (job_table_data->is_dead()) {
+    RAY_LOG(INFO) << "Job is already dead, just ignore this event, job id = " << job_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    return;
+  }
+
+  job_table_data->set_fail_error_message(request.error_message());
+  job_table_data->set_driver_cmdline(request.driver_cmdline());
+  RAY_CHECK_OK(UpdateJobStateToDead(
+      job_table_data, [send_reply_callback, reply](const Status &status) {
+        RAY_CHECK_OK(status);
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      }));
 }
 
 void GcsJobManager::ClearJobInfos(const JobID &job_id) {

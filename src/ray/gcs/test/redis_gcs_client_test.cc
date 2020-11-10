@@ -995,7 +995,9 @@ class LogSubscribeTestHelper {
     auto subscribe_callback = [job_ids](gcs::RedisGcsClient *client) {
       // We have subscribed. Do the writes to the table.
       for (size_t i = 0; i < job_ids.size(); i++) {
-        auto job_info_ptr = CreateJobTableData(job_ids[i], false, 0, "localhost", 1);
+        auto job_info_ptr =
+            CreateJobTableData(job_ids[i], false, 0, "127.0.0.1", "localhost", 1,
+                               rpc::Language::PYTHON, NodeID::FromRandom());
         RAY_CHECK_OK(
             client->job_table().Append(job_ids[i], job_ids[i], job_info_ptr, nullptr));
       }

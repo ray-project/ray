@@ -43,4 +43,8 @@ constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLAC
 constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;
 
+constexpr double kMaxResourceCapacity = 512.0;
+
+constexpr char JOB_RESOURCE_PREFIX[] = "RAY_JOB_RESOURCE_";
+
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";

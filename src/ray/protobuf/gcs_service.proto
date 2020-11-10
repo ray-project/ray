@@ -40,6 +40,16 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
+message MarkJobFailedRequest {
+  bytes job_id = 1;
+  string error_message = 2;
+  string driver_cmdline = 3;
+}
+
+message MarkJobFailedReply {
+  GcsStatus status = 1;
+}
+
 message GetAllJobInfoRequest {
 }
 
@@ -78,6 +88,8 @@ service JobInfoGcsService {
   rpc AddJob(AddJobRequest) returns (AddJobReply);
   // Mark job as finished to GCS Service.
   rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
+  // Mark job as failed to GCS Service.
+  rpc MarkJobFailed(MarkJobFailedRequest) returns (MarkJobFailedReply);
   // Get information of all jobs from GCS Service.
   rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
   // Submit job.

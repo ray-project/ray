@@ -60,6 +60,27 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
   return Status::OK();
 }
 
+Status ServiceBasedJobInfoAccessor::AsyncMarkFailed(const JobID &job_id,
+                                                    const std::string &error_message,
+                                                    const std::string &driver_cmdline,
+                                                    const StatusCallback &callback) {
+  RAY_LOG(DEBUG) << "Marking job state, job id = " << job_id;
+  rpc::MarkJobFailedRequest request;
+  request.set_job_id(job_id.Binary());
+  request.set_error_message(error_message);
+  request.set_driver_cmdline(driver_cmdline);
+  client_impl_->GetGcsRpcClient().MarkJobFailed(
+      request,
+      [job_id, callback](const Status &status, const rpc::MarkJobFailedReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished marking job state, status = " << status
+                       << ", job id = " << job_id;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);

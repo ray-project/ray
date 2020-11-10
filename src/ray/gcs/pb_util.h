@@ -34,7 +34,8 @@ namespace gcs {
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
     const ray::JobID &job_id, bool is_dead, int64_t timestamp,
-    const std::string &driver_ip_address, int64_t driver_pid,
+    const std::string &driver_ip_address, const std::string &driver_hostname,
+    int64_t driver_pid, rpc::Language language, NodeID raylet_id,
     const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
@@ -42,6 +43,9 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
   job_info_ptr->set_timestamp(timestamp);
   job_info_ptr->set_driver_ip_address(driver_ip_address);
   job_info_ptr->set_driver_pid(driver_pid);
+  job_info_ptr->set_driver_hostname(driver_hostname);
+  job_info_ptr->set_language(language);
+  job_info_ptr->set_raylet_id(raylet_id.Binary());
   *job_info_ptr->mutable_config() = job_config;
   return job_info_ptr;
 }
