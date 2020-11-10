@@ -310,11 +310,11 @@ Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &cli
     }
   } else {
     int64_t mmap_size = 0;
-    if (device_num == 0) {
+    if (error_code == PlasmaError::OK && device_num == 0) {
       mmap_size = GetMmapSize(object.store_fd);
     }
     RAY_RETURN_NOT_OK(SendCreateReply(client, object_id, &object, error_code, mmap_size));
-    if (device_num == 0) {
+    if (error_code == PlasmaError::OK && device_num == 0) {
       RAY_RETURN_NOT_OK(client->SendFd(object.store_fd));
     }
   }
