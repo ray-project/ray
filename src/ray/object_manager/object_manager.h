@@ -53,6 +53,8 @@ struct ObjectManagerConfig {
   unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
+  /// Max object push bytes in flight.
+  uint64_t max_bytes_in_flight;
   /// The store socket name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
@@ -95,6 +97,75 @@ class ObjectManagerInterface {
                            const rpc::Address &owner_address) = 0;
   virtual void CancelPull(const ObjectID &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
+};
+
+class PushManager {
+ public:
+  /// Manages rate limiting of outbound object pushes.
+
+  /// Create a push manager.
+  ///
+  /// \param max_chunks_in_flight Max number of chunks allowed to be in flight
+  ///                             from this PushManager (this raylet).
+  PushManager(int64_t max_chunks_in_flight)
+      : max_chunks_in_flight_(max_chunks_in_flight) {
+    RAY_CHECK(max_chunks_in_flight_ > 0) << max_chunks_in_flight_;
+  };
+
+  /// Start pushing an object subject to max chunks in flight limit.
+  ///
+  /// \param push_id Unique identifier for this push.
+  /// \param num_chunks The total number of chunks to send.
+  /// \param send_chunk_fn This function will be called with args 0...{num_chunks-1}.
+  ///                      The caller promises to call PushManager::OnChunkComplete()
+  ///                      once a call to send_chunk_fn finishes.
+  void StartPush(const UniqueID &push_id, int64_t num_chunks,
+                 std::function<void(int64_t)> send_chunk_fn);
+
+  /// Called every time a chunk completes to trigger additional sends.
+  /// TODO(ekl) maybe we should cancel the entire push on error.
+  void OnChunkComplete();
+
+  /// Return the number of chunks currently in flight. For testing only.
+  int64_t NumChunksInFlight() const { return chunks_in_flight_; };
+
+  /// Return the number of chunks remaining. For testing only.
+  int64_t NumChunksRemaining() const { return chunks_remaining_; };
+
+  /// Return the number of pushes currently in flight. For testing only.
+  int64_t NumPushesInFlight() const { return push_info_.size(); };
+
+  std::string DebugString() const {
+    std::stringstream result;
+    result << "PushManager:";
+    result << "\n- num pushes in flight: " << NumPushesInFlight();
+    result << "\n- num chunks in flight: " << NumChunksInFlight();
+    result << "\n- num chunks remaining: " << NumChunksRemaining();
+    result << "\n- max chunks allowed: " << max_chunks_in_flight_;
+    return result.str();
+  }
+
+ private:
+  /// Called on completion events to trigger additional pushes.
+  void ScheduleRemainingPushes();
+
+  /// Info about the pushed object: (num_chunks total, chunk_send_fn).
+  typedef std::pair<int64_t, std::function<void(int64_t)>> PushInfo;
+
+  /// Max number of chunks in flight allowed.
+  const int64_t max_chunks_in_flight_;
+
+  /// Running count of chunks remaining to send.
+  int64_t chunks_remaining_ = 0;
+
+  /// Running count of chunks in flight, used to limit progress of in_flight_pushes_.
+  int64_t chunks_in_flight_ = 0;
+
+  /// Tracks all pushes with chunk transfers in flight.
+  absl::flat_hash_map<UniqueID, PushInfo> push_info_;
+
+  /// Tracks progress of in flight pushes.
+  absl::flat_hash_map<UniqueID, int64_t> next_chunk_id_;
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
@@ -141,15 +212,17 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
   /// \param owner_address The address of the object's owner
+  /// \param client_id The id of the receiver.
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
   /// \param rpc_client Rpc client used to send message to remote object manager
-  ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
-                              const rpc::Address &owner_address, const NodeID &client_id,
-                              uint64_t data_size, uint64_t metadata_size,
-                              uint64_t chunk_index,
-                              std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
+  /// \param on_complete Callback to run on completion.
+  void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                       const rpc::Address &owner_address, const NodeID &client_id,
+                       uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
+                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+                       std::function<void(const Status &)> on_complete);
 
   /// Receive object chunk from remote object manager, small object may contain one chunk
   ///
@@ -473,6 +546,9 @@ class ObjectManager : public ObjectManagerInterface,
       remote_object_manager_clients_;
 
   const RestoreSpilledObjectCallback restore_spilled_object_;
+
+  /// Object push manager.
+  std::unique_ptr<PushManager> push_manager_;
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;

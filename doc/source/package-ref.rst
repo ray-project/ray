@@ -196,6 +196,13 @@ Histogram
 .. autoclass:: ray.util.metrics.Histogram
    :members:
 
+.. _package-ref-debugging-apis:
+
+Debugger APIs
+-------------
+
+.. autofunction:: ray.util.pdb.set_trace
+
 Experimental APIs
 -----------------
 
@@ -270,4 +277,8 @@ The Ray Command Line API
 
 .. click:: ray.scripts.scripts:timeline
    :prog: ray timeline
+   :show-nested:
+
+.. click:: ray.scripts.scripts:debug
+   :prog: ray debug
    :show-nested:

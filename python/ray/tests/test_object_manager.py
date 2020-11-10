@@ -157,9 +157,8 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     # Make sure that each object was transferred a reasonable number of times.
     for x_id in object_refs:
         relevant_events = [
-            event for event in transfer_events
-            if event["cat"] == "transfer_send"
-            and event["args"][0] == x_id.hex() and event["args"][2] == 1
+            event for event in transfer_events if
+            event["cat"] == "transfer_send" and event["args"][0] == x_id.hex()
         ]
 
         # NOTE: Each event currently appears twice because we duplicate the

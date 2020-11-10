@@ -574,7 +574,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_executor.restore(
                     trial, new_state.last_checkpoint, block=True)
             else:
-                trial_executor.stop_trial(trial, stop_logger=False)
+                trial_executor.stop_trial(trial)
                 trial.config = new_config
                 trial.experiment_tag = new_tag
                 trial_executor.start_trial(

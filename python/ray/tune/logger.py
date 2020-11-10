@@ -5,10 +5,11 @@ import numpy as np
 import os
 import yaml
 
-from typing import TYPE_CHECKING, Dict, List, Optional, Type
+from typing import Iterable, TYPE_CHECKING, Dict, List, Optional, Type
 
 import ray.cloudpickle as cloudpickle
 
+from ray.tune.callback import Callback
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
 from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
@@ -129,7 +130,8 @@ class JsonLogger(Logger):
         self.local_out.write(b)
 
     def flush(self):
-        self.local_out.flush()
+        if not self.local_out.closed:
+            self.local_out.flush()
 
     def close(self):
         self.local_out.close()
@@ -181,7 +183,8 @@ class CSVLogger(Logger):
         self._file.flush()
 
     def flush(self):
-        self._file.flush()
+        if not self._file.closed:
+            self._file.flush()
 
     def close(self):
         self._file.close()
@@ -359,6 +362,97 @@ class UnifiedLogger(Logger):
     def flush(self):
         for _logger in self._loggers:
             _logger.flush()
+
+
+class ExperimentLogger(Callback):
+    def log_trial_start(self, trial: "Trial"):
+        raise NotImplementedError
+
+    def log_trial_restore(self, trial: "Trial"):
+        raise NotImplementedError
+
+    def log_trial_save(self, trial: "Trial"):
+        raise NotImplementedError
+
+    def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        raise NotImplementedError
+
+    def log_trial_end(self, trial: "Trial", failed: bool = False):
+        raise NotImplementedError
+
+    def on_trial_result(self, iteration: int, trials: List["Trial"],
+                        trial: "Trial", result: Dict, **info):
+        self.log_trial_result(iteration, trial, result)
+
+    def on_trial_start(self, iteration: int, trials: List["Trial"],
+                       trial: "Trial", **info):
+        self.log_trial_start(trial)
+
+    def on_trial_restore(self, iteration: int, trials: List["Trial"],
+                         trial: "Trial", **info):
+        self.log_trial_restore(trial)
+
+    def on_trial_save(self, iteration: int, trials: List["Trial"],
+                      trial: "Trial", **info):
+        self.log_trial_save(trial)
+
+    def on_trial_complete(self, iteration: int, trials: List["Trial"],
+                          trial: "Trial", **info):
+        self.log_trial_end(trial, failed=False)
+
+    def on_trial_error(self, iteration: int, trials: List["Trial"],
+                       trial: "Trial", **info):
+        self.log_trial_end(trial, failed=True)
+
+
+class LegacyExperimentLogger(ExperimentLogger):
+    """Supports logging to trial-specific `Logger` classes.
+
+    Previously, Ray Tune logging was handled via `Logger` classes that have
+    been instantiated per-trial. This callback is a fallback to these
+    `Logger`-classes, instantiating each `Logger` class for each trial
+    and logging to them.
+
+    Args:
+        logger_classes (Iterable[Type[Logger]]): Logger classes that should
+            be instantiated for each trial.
+
+    """
+
+    def __init__(self, logger_classes: Iterable[Type[Logger]]):
+        self.logger_classes = list(logger_classes)
+        self._class_trial_loggers: Dict[Type[Logger], Dict["Trial",
+                                                           Logger]] = {}
+
+    def log_trial_start(self, trial: "Trial"):
+        trial.init_logdir()
+
+        for logger_class in self.logger_classes:
+            trial_loggers = self._class_trial_loggers.get(logger_class, {})
+            if trial not in trial_loggers:
+                logger = logger_class(trial.config, trial.logdir, trial)
+                trial_loggers[trial] = logger
+            self._class_trial_loggers[logger_class] = trial_loggers
+
+    def log_trial_restore(self, trial: "Trial"):
+        for logger_class, trial_loggers in self._class_trial_loggers.items():
+            if trial in trial_loggers:
+                trial_loggers[trial].flush()
+
+    def log_trial_save(self, trial: "Trial"):
+        for logger_class, trial_loggers in self._class_trial_loggers.items():
+            if trial in trial_loggers:
+                trial_loggers[trial].flush()
+
+    def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        for logger_class, trial_loggers in self._class_trial_loggers.items():
+            if trial in trial_loggers:
+                trial_loggers[trial].on_result(result)
+
+    def log_trial_end(self, trial: "Trial", failed: bool = False):
+        for logger_class, trial_loggers in self._class_trial_loggers.items():
+            if trial in trial_loggers:
+                trial_loggers[trial].close()
 
 
 def pretty_print(result):
