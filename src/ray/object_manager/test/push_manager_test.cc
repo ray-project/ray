@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/object_manager/object_manager.h"
+#include "ray/object_manager/push_manager.h"
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
