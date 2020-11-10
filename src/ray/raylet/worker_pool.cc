@@ -320,8 +320,8 @@ Process WorkerPool::StartWorkerProcess(
 
   if (IsIOWorkerType(worker_type)) {
     RAY_CHECK(!RayConfig::instance().object_spilling_config().empty());
-    RAY_LOG(INFO) << "Adding object spill config "
-                  << RayConfig::instance().object_spilling_config();
+    RAY_LOG(DEBUG) << "Adding object spill config "
+                   << RayConfig::instance().object_spilling_config();
     worker_command_args.push_back("--object-spilling-config=" +
                                   RayConfig::instance().object_spilling_config());
   }
