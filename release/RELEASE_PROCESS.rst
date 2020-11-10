@@ -1,0 +1,1 @@
+../doc/dev/RELEASE_PROCESS.rst

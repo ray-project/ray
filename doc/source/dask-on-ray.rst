@@ -17,7 +17,7 @@ Scheduler
 =========
 
 The Dask-Ray scheduler can execute any valid Dask graph, and can be used with
-any Dask `.compute() <https://docs.dask.org/en/master/api.html#dask.compute>`__
+any Dask `.compute() <https://docs.dask.org/en/latest/api.html#dask.compute>`__
 call.
 Here's an example:
 
@@ -61,7 +61,7 @@ Why use Dask on Ray?
       :ref:`shared-memory store <memory>`.
 
 Note that for execution on a Ray cluster, you should *not* use the
-`Dask.distributed <https://distributed.dask.org/en/master/quickstart.html>`__
+`Dask.distributed <https://distributed.dask.org/en/latest/quickstart.html>`__
 client; simply use plain Dask and its collections, and pass ``ray_dask_get``
 to ``.compute()`` calls. Follow the instructions for
 :ref:`using Ray on a cluster <using-ray-on-a-cluster>` to modify the
@@ -73,7 +73,7 @@ Dask-on-Ray is an ongoing project and is not expected to achieve the same perfor
 Callbacks
 =========
 
-Dask's `custom callback abstraction <https://docs.dask.org/en/master/diagnostics-local.html#custom-callbacks>`__
+Dask's `custom callback abstraction <https://docs.dask.org/en/latest/diagnostics-local.html#custom-callbacks>`__
 is extended with Ray-specific callbacks, allowing the user to hook into the
 Ray task submission and execution lifecycles.
 With these hooks, implementing Dask-level scheduler and task introspection,
