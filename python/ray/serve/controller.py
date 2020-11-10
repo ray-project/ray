@@ -11,7 +11,7 @@ from pydantic import BaseModel
 import ray
 import ray.cloudpickle as pickle
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
-from ray.serve.backend_worker import create_backend_worker
+from ray.serve.backend_worker import create_backend_replica
 from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_PROXY_NAME
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
@@ -73,7 +73,7 @@ class TrafficPolicy:
 
 class BackendInfo(BaseModel):
     # TODO(architkulkarni): Add type hint for worker_class after upgrading
-    # cloudpickle and adding types to RayServeWrappedWorker
+    # cloudpickle and adding types to RayServeWrappedReplica
     worker_class: Any
     backend_config: BackendConfig
     replica_config: ReplicaConfig
@@ -112,92 +112,94 @@ class ActorStateReconciler:
     detached: bool = field(init=True)
 
     routers_cache: Dict[NodeId, ActorHandle] = field(default_factory=dict)
-    replicas: Dict[BackendTag, List[ReplicaTag]] = field(
+    backend_replicas: Dict[BackendTag, Dict[ReplicaTag, ActorHandle]] = field(
+        default_factory=lambda: defaultdict(dict))
+    backend_replicas_to_start: Dict[BackendTag, List[ReplicaTag]] = field(
         default_factory=lambda: defaultdict(list))
-    replicas_to_start: Dict[BackendTag, List[ReplicaTag]] = field(
-        default_factory=lambda: defaultdict(list))
-    replicas_to_stop: Dict[BackendTag, List[ReplicaTag]] = field(
+    backend_replicas_to_stop: Dict[BackendTag, List[ReplicaTag]] = field(
         default_factory=lambda: defaultdict(list))
     backends_to_remove: List[BackendTag] = field(default_factory=list)
     endpoints_to_remove: List[EndpointTag] = field(default_factory=list)
+
     # TODO(edoakes): consider removing this and just using the names.
-    workers: Dict[BackendTag, Dict[ReplicaConfig, ActorHandle]] = field(
-        default_factory=lambda: defaultdict(dict))
 
     def router_handles(self) -> List[ActorHandle]:
         return list(self.routers_cache.values())
 
-    def worker_handles(self) -> List[ActorHandle]:
+    def get_replica_handles(self) -> List[ActorHandle]:
         return list(
             chain.from_iterable([
                 replica_dict.values()
-                for replica_dict in self.workers.values()
+                for replica_dict in self.backend_replicas.values()
             ]))
 
-    def get_replica_actors(self, backend_tag: BackendTag) -> List[ActorHandle]:
-        return_list = []
-        for replica_tag in self.replicas.get(backend_tag, []):
-            try:
-                return_list.append(ray.get_actor(replica_tag))
-            except ValueError:
-                pass
-        return return_list
+    def get_replica_tags(self) -> List[ReplicaTag]:
+        return list(
+            chain.from_iterable([
+                replica_dict.keys()
+                for replica_dict in self.backend_replicas.values()
+            ]))
 
-    async def _start_pending_replicas(
+    def get_replica_handles_for_backend(
+            self, backend_tag: BackendTag) -> List[ActorHandle]:
+        return list(self.backend_replicas.get(backend_tag, {}).values())
+
+    async def _start_pending_backend_replicas(
             self, config_store: ConfigurationStore) -> None:
-        """Starts the pending backend replicas in self.replicas_to_start.
+        """Starts the pending backend replicas in self.backend_replicas_to_start.
 
-        Starts the worker, then pushes an update to the router to add it to
-        the proper backend. If the worker has already been started, only
+        Starts the replica, then pushes an update to the router to add it to
+        the proper backend. If the replica has already been started, only
         updates the router.
 
-        Clears self.replicas_to_start.
+        Clears self.backend_replicas_to_start.
         """
         replica_started_futures = []
-        for backend_tag, replicas_to_create in self.replicas_to_start.items():
+        for backend_tag, replicas_to_create in self.backend_replicas_to_start.\
+                items():
             for replica_tag in replicas_to_create:
                 replica_started_futures.append(
-                    self._start_replica(config_store, backend_tag,
-                                        replica_tag))
+                    self._start_backend_replicas(config_store, backend_tag,
+                                                 replica_tag))
 
         # Wait on all creation task futures together.
         await asyncio.gather(*replica_started_futures)
 
-        self.replicas_to_start.clear()
+        self.backend_replicas_to_start.clear()
 
-    async def _start_replica(self, config_store: ConfigurationStore,
-                             backend_tag: BackendTag,
-                             replica_tag: ReplicaTag) -> None:
+    async def _start_backend_replicas(self, config_store: ConfigurationStore,
+                                      backend_tag: BackendTag,
+                                      replica_tag: ReplicaTag) -> None:
         # NOTE(edoakes): the replicas may already be created if we
         # failed after creating them but before writing a
         # checkpoint.
         replica_name = format_actor_name(replica_tag, self.controller_name)
         try:
-            worker_handle = ray.get_actor(replica_name)
+            replica_handle = ray.get_actor(replica_name)
         except ValueError:
-            worker_handle = await self._start_backend_worker(
+            replica_handle = await self._start_single_replica(
                 config_store, backend_tag, replica_tag, replica_name)
 
-        self.replicas[backend_tag].append(replica_tag)
-        self.workers[backend_tag][replica_tag] = worker_handle
+        self.backend_replicas[backend_tag][replica_tag] = replica_handle
 
-        # Register the worker with the router.
+        # Register the replica with the router.
         await asyncio.gather(*[
-            router.add_new_worker.remote(backend_tag, replica_tag,
-                                         worker_handle)
+            router.add_new_replica.remote(backend_tag, replica_tag,
+                                          replica_handle)
             for router in self.router_handles()
         ])
 
-    def _scale_replicas(self, backends: Dict[BackendTag, BackendInfo],
-                        backend_tag: BackendTag, num_replicas: int) -> None:
+    def _scale_backend_replicas(self, backends: Dict[BackendTag, BackendInfo],
+                                backend_tag: BackendTag,
+                                num_replicas: int) -> None:
         """Scale the given backend to the number of replicas.
 
         NOTE: this does not actually start or stop the replicas, but instead
-        adds the intention to start/stop them to self.workers_to_start and
-        self.workers_to_stop. The caller is responsible for then first writing
-        a checkpoint and then actually starting/stopping the intended replicas.
-        This avoids inconsistencies with starting/stopping a worker and then
-        crashing before writing a checkpoint.
+        adds the intention to start/stop them to self.backend_replicas_to_start
+        and self.backend_replicas_to_stop. The caller is responsible for then
+        first writing a checkpoint and then actually starting/stopping the
+        intended replicas. This avoids inconsistencies with starting/stopping a
+        replica and then crashing before writing a checkpoint.
         """
         logger.debug("Scaling backend '{}' to {} replicas".format(
             backend_tag, num_replicas))
@@ -206,7 +208,7 @@ class ActorStateReconciler:
         assert num_replicas >= 0, ("Number of replicas must be"
                                    " greater than or equal to 0.")
 
-        current_num_replicas = len(self.replicas[backend_tag])
+        current_num_replicas = len(self.backend_replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
         backend_info = backends[backend_tag]
@@ -231,30 +233,28 @@ class ActorStateReconciler:
                 delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
-                self.replicas_to_start[backend_tag].append(replica_tag)
+                self.backend_replicas_to_start[backend_tag].append(replica_tag)
 
         elif delta_num_replicas < 0:
             logger.debug("Removing {} replicas from backend '{}'".format(
                 -delta_num_replicas, backend_tag))
-            assert len(self.replicas[backend_tag]) >= delta_num_replicas
+            assert len(
+                self.backend_replicas[backend_tag]) >= delta_num_replicas
             for _ in range(-delta_num_replicas):
-                replica_tag = self.replicas[backend_tag].pop()
-                if len(self.replicas[backend_tag]) == 0:
-                    del self.replicas[backend_tag]
+                replica_tag, _ = self.backend_replicas[backend_tag].popitem()
+                if len(self.backend_replicas[backend_tag]) == 0:
+                    del self.backend_replicas[backend_tag]
 
-                del self.workers[backend_tag][replica_tag]
-                if len(self.workers[backend_tag]) == 0:
-                    del self.workers[backend_tag]
+                self.backend_replicas_to_stop[backend_tag].append(replica_tag)
 
-                self.replicas_to_stop[backend_tag].append(replica_tag)
+    async def _stop_pending_backend_replicas(self) -> None:
+        """Stops the pending backend replicas in self.backend_replicas_to_stop.
 
-    async def _stop_pending_replicas(self) -> None:
-        """Stops the pending backend replicas in self.replicas_to_stop.
-
-        Removes workers from the router, kills them, and clears
-        self.replicas_to_stop.
+        Removes backend_replicas from the router, kills them, and clears
+        self.backend_replicas_to_stop.
         """
-        for backend_tag, replicas_list in self.replicas_to_stop.items():
+        for backend_tag, replicas_list in self.backend_replicas_to_stop.items(
+        ):
             for replica_tag in replicas_list:
                 # NOTE(edoakes): the replicas may already be stopped if we
                 # failed after stopping them but before writing a checkpoint.
@@ -267,7 +267,7 @@ class ActorStateReconciler:
 
                 # Remove the replica from router. This call is idempotent.
                 await asyncio.gather(*[
-                    router.remove_worker.remote(backend_tag, replica_tag)
+                    router.remove_replica.remote(backend_tag, replica_tag)
                     for router in self.router_handles()
                 ])
 
@@ -278,7 +278,7 @@ class ActorStateReconciler:
                 # successfully killed the worker or not.
                 ray.kill(replica, no_restart=True)
 
-        self.replicas_to_stop.clear()
+        self.backend_replicas_to_stop.clear()
 
     async def _remove_pending_backends(self) -> None:
         """Removes the pending backends in self.backends_to_remove.
@@ -292,19 +292,19 @@ class ActorStateReconciler:
             ])
         self.backends_to_remove.clear()
 
-    async def _start_backend_worker(
+    async def _start_single_replica(
             self, config_store: ConfigurationStore, backend_tag: BackendTag,
             replica_tag: ReplicaTag, replica_name: str) -> ActorHandle:
-        """Creates a backend worker and waits for it to start up.
+        """Creates a backend replica and waits for it to start up.
 
         Assumes that the backend configuration has already been registered
         in the ConfigurationStore.
         """
-        logger.debug("Starting worker '{}' for backend '{}'.".format(
+        logger.debug("Starting replica '{}' for backend '{}'.".format(
             replica_tag, backend_tag))
         backend_info = config_store.get_backend(backend_tag)
 
-        worker_handle = ray.remote(backend_info.worker_class).options(
+        replica_handle = ray.remote(backend_info.worker_class).options(
             name=replica_name,
             lifetime="detached" if self.detached else None,
             max_restarts=-1,
@@ -314,8 +314,8 @@ class ActorStateReconciler:
                 backend_info.replica_config.actor_init_args,
                 backend_info.backend_config, self.controller_name)
         # TODO(edoakes): we should probably have a timeout here.
-        await worker_handle.ready.remote()
-        return worker_handle
+        await replica_handle.ready.remote()
+        return replica_handle
 
     def _start_routers_if_needed(self, http_host: str, http_port: str,
                                  http_middlewares: List[Any]) -> None:
@@ -392,15 +392,15 @@ class ActorStateReconciler:
             self.routers_cache[node_id] = ray.get_actor(router_name)
 
         # Fetch actor handles for all of the backend replicas in the system.
-        # All of these workers are guaranteed to already exist because they
-        # would not be written to a checkpoint in self.workers until they were
-        # created.
-        for backend_tag, replica_tags in self.replicas.items():
-            for replica_tag in replica_tags:
+        # All of these backend_replicas are guaranteed to already exist because
+        #  they would not be written to a checkpoint in self.backend_replicas
+        # until they were created.
+        for backend_tag, replica_dict in self.backend_replicas.items():
+            for replica_tag in replica_dict.keys():
                 replica_name = format_actor_name(replica_tag,
                                                  self.controller_name)
-                self.workers[backend_tag][replica_tag] = ray.get_actor(
-                    replica_name)
+                self.backend_replicas[backend_tag][
+                    replica_tag] = ray.get_actor(replica_name)
 
     async def _recover_from_checkpoint(
             self, config_store: ConfigurationStore,
@@ -416,11 +416,11 @@ class ActorStateReconciler:
                 for router in self.router_handles()
             ])
 
-        for backend_tag, replica_dict in self.workers.items():
-            for replica_tag, worker in replica_dict.items():
+        for backend_tag, replica_dict in self.backend_replicas.items():
+            for replica_tag, replica_handle in replica_dict.items():
                 await asyncio.gather(*[
-                    router.add_new_worker.remote(backend_tag, replica_tag,
-                                                 worker)
+                    router.add_new_replica.remote(backend_tag, replica_tag,
+                                                  replica_handle)
                     for router in self.router_handles()
                 ])
 
@@ -442,8 +442,8 @@ class ActorStateReconciler:
         ])
 
         # Start/stop any pending backend replicas.
-        await self._start_pending_replicas(config_store)
-        await self._stop_pending_replicas()
+        await self._start_pending_backend_replicas(config_store)
+        await self._stop_pending_backend_replicas()
 
         # Remove any pending backends and endpoints.
         await self._remove_pending_backends()
@@ -570,7 +570,7 @@ class ServeController:
             1) Deserializes the internal state from the checkpoint.
             2) Pushes the latest configuration to the routers
                in case we crashed before updating them.
-            3) Starts/stops any worker replicas that are pending creation or
+            3) Starts/stops any replicas that are pending creation or
                deletion.
 
         NOTE: this requires that self.write_lock is already acquired and will
@@ -628,17 +628,17 @@ class ServeController:
         """Fetched by the router on startup."""
         return self.configuration_store.traffic_policies
 
-    def _list_replicas(self, backend_tag: BackendTag) -> List[str]:
+    def _list_replicas(self, backend_tag: BackendTag) -> List[ReplicaTag]:
         """Used only for testing."""
-        return self.actor_reconciler.replicas[backend_tag]
+        return list(self.actor_reconciler.backend_replicas[backend_tag].keys())
 
     def get_traffic_policy(self, endpoint: str) -> TrafficPolicy:
         """Fetched by serve handles."""
         return self.configuration_store.traffic_policies[endpoint]
 
-    def get_all_worker_handles(self) -> Dict[str, Dict[str, ActorHandle]]:
+    def get_all_replica_handles(self) -> Dict[str, Dict[str, ActorHandle]]:
         """Fetched by the router on startup."""
-        return self.actor_reconciler.workers
+        return self.actor_reconciler.backend_replicas
 
     def get_all_backends(self) -> Dict[str, BackendConfig]:
         """Returns a dictionary of backend tag to backend config."""
@@ -827,7 +827,7 @@ class ServeController:
                         and backend_info.replica_config == replica_config):
                     return
 
-            backend_worker = create_backend_worker(
+            backend_replica = create_backend_replica(
                 replica_config.func_or_class)
 
             # Save creator that starts replicas, the arguments to be passed in,
@@ -835,7 +835,7 @@ class ServeController:
             self.configuration_store.add_backend(
                 backend_tag,
                 BackendInfo(
-                    worker_class=backend_worker,
+                    worker_class=backend_replica,
                     backend_config=backend_config,
                     replica_config=replica_config))
             metadata = backend_config.internal_metadata
@@ -845,7 +845,7 @@ class ServeController:
                         backend_tag, metadata.autoscaling_config)
 
             try:
-                self.actor_reconciler._scale_replicas(
+                self.actor_reconciler._scale_backend_replicas(
                     self.configuration_store.backends, backend_tag,
                     backend_config.num_replicas)
             except RayServeException as e:
@@ -856,7 +856,7 @@ class ServeController:
             # or pushing the updated config to avoid inconsistent state if we
             # crash while making the change.
             self._checkpoint()
-            await self.actor_reconciler._start_pending_replicas(
+            await self.actor_reconciler._start_pending_backend_replicas(
                 self.configuration_store)
 
             # Set the backend config inside the router
@@ -886,8 +886,8 @@ class ServeController:
 
             # Scale its replicas down to 0. This will also remove the backend
             # from self.configuration_store.backends and
-            # self.actor_reconciler.replicas.
-            self.actor_reconciler._scale_replicas(
+            # self.actor_reconciler.backend_replicas.
+            self.actor_reconciler._scale_backend_replicas(
                 self.configuration_store.backends, backend_tag, 0)
 
             # Remove the backend's metadata.
@@ -902,7 +902,7 @@ class ServeController:
             # backend from the router to avoid inconsistent state if we crash
             # after pushing the update.
             self._checkpoint()
-            await self.actor_reconciler._stop_pending_replicas()
+            await self.actor_reconciler._stop_pending_backend_replicas()
             await self.actor_reconciler._remove_pending_backends()
 
     async def update_backend_config(
@@ -928,7 +928,7 @@ class ServeController:
                 backend_tag).backend_config = backend_config
 
             # Scale the replicas with the new configuration.
-            self.actor_reconciler._scale_replicas(
+            self.actor_reconciler._scale_backend_replicas(
                 self.configuration_store.backends, backend_tag,
                 backend_config.num_replicas)
 
@@ -944,9 +944,9 @@ class ServeController:
                 for router in self.actor_reconciler.router_handles()
             ])
 
-            await self.actor_reconciler._start_pending_replicas(
+            await self.actor_reconciler._start_pending_backend_replicas(
                 self.configuration_store)
-            await self.actor_reconciler._stop_pending_replicas()
+            await self.actor_reconciler._stop_pending_backend_replicas()
 
             await self.broadcast_backend_config(backend_tag)
 
@@ -954,8 +954,9 @@ class ServeController:
         backend_config = self.configuration_store.get_backend(
             backend_tag).backend_config
         broadcast_futures = [
-            replica.update_config.remote(backend_config).as_future() for
-            replica in self.actor_reconciler.get_replica_actors(backend_tag)
+            replica.update_config.remote(backend_config).as_future()
+            for replica in
+            self.actor_reconciler.get_replica_handles_for_backend(backend_tag)
         ]
         await asyncio.gather(*broadcast_futures)
 
@@ -970,7 +971,7 @@ class ServeController:
         async with self.write_lock:
             for router in self.actor_reconciler.router_handles():
                 ray.kill(router, no_restart=True)
-            for replica in self.actor_reconciler.worker_handles():
+            for replica in self.actor_reconciler.get_replica_handles():
                 ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
 

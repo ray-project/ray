@@ -70,6 +70,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   main_service_ = &main_service;
 
+  push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
+      static_cast<int64_t>(1L),
+      static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
+
   if (plasma::plasma_store_runner) {
     store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
     plasma::plasma_store_runner->SetNotificationListener(store_notification_);
@@ -400,6 +404,56 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
   profile_events_.push_back(profile_event);
 }
 
+void PushManager::StartPush(const UniqueID &push_id, int64_t num_chunks,
+                            std::function<void(int64_t)> send_chunk_fn) {
+  RAY_LOG(DEBUG) << "Start push for " << push_id << ", num chunks " << num_chunks;
+  RAY_CHECK(num_chunks > 0);
+  push_info_[push_id] = std::make_pair(num_chunks, send_chunk_fn);
+  next_chunk_id_[push_id] = 0;
+  chunks_remaining_ += num_chunks;
+  ScheduleRemainingPushes();
+  RAY_CHECK(push_info_.size() == next_chunk_id_.size());
+}
+
+void PushManager::OnChunkComplete() {
+  chunks_in_flight_ -= 1;
+  ScheduleRemainingPushes();
+}
+
+void PushManager::ScheduleRemainingPushes() {
+  // Loop over all active pushes for approximate round-robin prioritization.
+  // TODO(ekl) this isn't the best implementation of round robin, we should
+  // consider tracking the number of chunks active per-push and balancing those.
+  while (chunks_in_flight_ < max_chunks_in_flight_ && push_info_.size() > 0) {
+    // Loop over each active push and try to send another chunk.
+    auto it = push_info_.begin();
+    while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
+      auto push_id = it->first;
+      auto max_chunks = it->second.first;
+      auto send_chunk_fn = it->second.second;
+
+      // Send the next chunk for this push.
+      send_chunk_fn(next_chunk_id_[push_id]);
+      chunks_in_flight_ += 1;
+      chunks_remaining_ -= 1;
+      RAY_LOG(DEBUG) << "Sending chunk " << next_chunk_id_[push_id] << " of "
+                     << max_chunks << " for push " << push_id << ", chunks in flight "
+                     << NumChunksInFlight() << " / " << max_chunks_in_flight_
+                     << " max, remaining chunks: " << NumChunksRemaining();
+
+      // It is the last chunk and we don't need to track it any more.
+      if (++next_chunk_id_[push_id] >= max_chunks) {
+        next_chunk_id_.erase(push_id);
+        push_info_.erase(it++);
+        RAY_LOG(DEBUG) << "Push for " << push_id
+                       << " completed, remaining: " << NumPushesInFlight();
+      } else {
+        it++;
+      }
+    }
+  }
+}
+
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &client_id) {
   RAY_LOG(DEBUG) << "Push on " << self_node_id_ << " to " << client_id << " of object "
                  << object_id;
@@ -478,17 +532,11 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &client_id) {
                    << ", total data size: " << data_size;
 
     UniqueID push_id = UniqueID::FromRandom();
-    for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
-      rpc_service_.post([this, push_id, object_id, owner_address, client_id, data_size,
-                         metadata_size, chunk_index, rpc_client]() {
-        auto st = SendObjectChunk(push_id, object_id, owner_address, client_id, data_size,
-                                  metadata_size, chunk_index, rpc_client);
-        if (!st.ok()) {
-          RAY_LOG(WARNING) << "Send object " << object_id << " chunk failed due to "
-                           << st.message() << ", chunk index " << chunk_index;
-        }
-      });
-    }
+    push_manager_->StartPush(push_id, num_chunks, [=](int64_t chunk_id) {
+      SendObjectChunk(push_id, object_id, owner_address, client_id, data_size,
+                      metadata_size, chunk_id, rpc_client,
+                      [=](const Status &status) { push_manager_->OnChunkComplete(); });
+    });
   } else {
     // Push is best effort, so do nothing here.
     RAY_LOG(ERROR)
@@ -496,10 +544,12 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &client_id) {
   }
 }
 
-ray::Status ObjectManager::SendObjectChunk(
-    const UniqueID &push_id, const ObjectID &object_id, const rpc::Address &owner_address,
-    const NodeID &client_id, uint64_t data_size, uint64_t metadata_size,
-    uint64_t chunk_index, std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
+void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                                    const rpc::Address &owner_address,
+                                    const NodeID &client_id, uint64_t data_size,
+                                    uint64_t metadata_size, uint64_t chunk_index,
+                                    std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+                                    std::function<void(const Status &)> on_complete) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
@@ -522,30 +572,31 @@ ray::Status ObjectManager::SendObjectChunk(
   if (!chunk_status.second.ok()) {
     RAY_LOG(WARNING) << "Attempting to push object " << object_id
                      << " which is not local. It may have been evicted.";
-    RAY_RETURN_NOT_OK(status);
+    on_complete(status);
+    return;
   }
 
   push_request.set_data(chunk_info.data, chunk_info.buffer_length);
 
   // record the time cost between send chunk and receive reply
-  rpc::ClientCallback<rpc::PushReply> callback = [this, start_time, object_id, client_id,
-                                                  chunk_index](
-                                                     const Status &status,
-                                                     const rpc::PushReply &reply) {
-    // TODO: Just print warning here, should we try to resend this chunk?
-    if (!status.ok()) {
-      RAY_LOG(WARNING) << "Send object " << object_id << " chunk to client " << client_id
-                       << " failed due to" << status.message()
-                       << ", chunk index: " << chunk_index;
-    }
-    double end_time = absl::GetCurrentTimeNanos() / 1e9;
-    HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time, status);
-  };
+  rpc::ClientCallback<rpc::PushReply> callback =
+      [this, start_time, object_id, client_id, chunk_index, owner_address, rpc_client,
+       on_complete](const Status &status, const rpc::PushReply &reply) {
+        // TODO: Just print warning here, should we try to resend this chunk?
+        if (!status.ok()) {
+          RAY_LOG(WARNING) << "Send object " << object_id << " chunk to client "
+                           << client_id << " failed due to" << status.message()
+                           << ", chunk index: " << chunk_index;
+        }
+        double end_time = absl::GetCurrentTimeNanos() / 1e9;
+        HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time,
+                           status);
+        on_complete(status);
+      };
   rpc_client->Push(push_request, callback);
 
   // Do this regardless of whether it failed or succeeded.
   buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
-  return Status::OK();
 }
 
 void ObjectManager::CancelPull(const ObjectID &object_id) {
@@ -920,6 +971,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_requests_.size();
   result << "\n- num buffered profile events: " << profile_events_.size();
+  result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_->DebugString();
   result << "\n" << buffer_pool_.DebugString();

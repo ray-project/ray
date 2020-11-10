@@ -8,12 +8,15 @@ import ray
 from ray.exceptions import RayTaskError
 from ray.serve.context import TaskContext
 from ray.util import metrics
+from ray.serve.utils import _get_logger, get_random_letters
 from ray.serve.http_util import Response
 from ray.serve.router import Router, RequestMetadata
 
 # The maximum number of times to retry a request due to actor failure.
 # TODO(edoakes): this should probably be configurable.
 MAX_ACTOR_DEAD_RETRIES = 10
+
+logger = _get_logger()
 
 
 class HTTPProxy:
@@ -108,6 +111,7 @@ class HTTPProxy:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_metadata = RequestMetadata(
+            get_random_letters(10),  # Used for debugging.
             endpoint_name,
             TaskContext.Web,
             http_method=scope["method"].upper(),
@@ -182,9 +186,9 @@ class HTTPProxyActor:
         self.app.set_route_table(route_table)
 
     # ------ Proxy router logic ------ #
-    async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
-        return await self.app.router.add_new_worker(backend_tag, replica_tag,
-                                                    worker_handle)
+    async def add_new_replica(self, backend_tag, replica_tag, worker_handle):
+        return await self.app.router.add_new_replica(backend_tag, replica_tag,
+                                                     worker_handle)
 
     async def set_traffic(self, endpoint, traffic_policy):
         return await self.app.router.set_traffic(endpoint, traffic_policy)
@@ -198,8 +202,8 @@ class HTTPProxyActor:
     async def remove_endpoint(self, endpoint):
         return await self.app.router.remove_endpoint(endpoint)
 
-    async def remove_worker(self, backend_tag, replica_tag):
-        return await self.app.router.remove_worker(backend_tag, replica_tag)
+    async def remove_replica(self, backend_tag, replica_tag):
+        return await self.app.router.remove_replica(backend_tag, replica_tag)
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):

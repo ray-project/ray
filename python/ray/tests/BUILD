@@ -42,6 +42,7 @@ py_test_module_list(
     "test_dynres.py",
     "test_global_gc.py",
     "test_global_state.py",
+    "test_joblib.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
