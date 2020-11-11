@@ -84,8 +84,7 @@ class CoreWorkerDirectTaskSubmitter {
   Status CancelTask(TaskSpecification task_spec, bool force_kill);
 
   Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
-                          bool force_kill);
-
+                          bool force_kill, bool recursive);
   /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
   /// CheckNoSchedulingKeyEntries function after acquiring the lock.
   bool CheckNoSchedulingKeyEntriesPublic() {

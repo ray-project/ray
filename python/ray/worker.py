@@ -1648,7 +1648,7 @@ def kill(actor, *, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
-def cancel(object_ref, *, force=False):
+def cancel(object_ref, *, force=False, recursive=False):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -1668,6 +1668,8 @@ def cancel(object_ref, *, force=False):
             that should be canceled.
         force (boolean): Whether to force-kill a running task by killing
             the worker that is running the task.
+        recursive (boolean): Whether to try to cancel tasks submitted by the
+            task specified.
     Raises:
         TypeError: This is also raised for actor tasks.
     """
@@ -1678,7 +1680,7 @@ def cancel(object_ref, *, force=False):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
             f"Got: {type(object_ref)}.")
-    return worker.core_worker.cancel_task(object_ref, force)
+    return worker.core_worker.cancel_task(object_ref, force, recursive)
 
 
 def _mode(worker=global_worker):

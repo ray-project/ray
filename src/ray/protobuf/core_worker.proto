@@ -217,6 +217,8 @@ message RemoteCancelTaskRequest {
   bytes remote_object_id = 1;
   // Whether to kill the worker.
   bool force_kill = 2;
+  // Whether to recursively cancel tasks. 
+  bool recursive = 3;
 }
 
 message RemoteCancelTaskReply {

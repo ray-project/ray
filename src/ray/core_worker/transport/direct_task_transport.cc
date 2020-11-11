@@ -495,7 +495,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
 Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
                                                        const rpc::Address &worker_addr,
-                                                       bool force_kill) {
+                                                       bool force_kill, bool recursive) {
   auto maybe_client = client_cache_->GetByID(rpc::WorkerAddress(worker_addr).worker_id);
 
   if (!maybe_client.has_value()) {
@@ -504,6 +504,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   auto client = maybe_client.value();
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
+  request.set_recursive(recursive);
   request.set_remote_object_id(object_id.Binary());
   client->RemoteCancelTask(request, nullptr);
   return Status::OK();
