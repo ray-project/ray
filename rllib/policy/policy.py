@@ -79,8 +79,6 @@ class Policy(metaclass=ABCMeta):
         # View requirements will be automatically filtered out later based
         # on the postprocessing and loss functions to ensure optimal data
         # collection and transfer performance.
-        # If child classes must override this behavior, they need to specify
-        # the `view_requirements_fn` arg.
         view_reqs = self._get_default_view_requirements()
         if not hasattr(self, "view_requirements"):
             self.view_requirements = view_reqs

@@ -23,6 +23,12 @@ class UsageTrackingDict(dict):
         copy.set_get_interceptor(self.get_interceptor)
         return copy
 
+    @property
+    def data(self):
+        # Make sure, if we use UsageTrackingDict wrapping a SampleBatch,
+        # one can still do: sample_batch.data[some_key].
+        return self
+
     def __getitem__(self, key):
         self.accessed_keys.add(key)
         value = dict.__getitem__(self, key)
