@@ -48,7 +48,7 @@ class TestRedisPassword:
             # the exact error from the Redis library.
             # https://github.com/andymccurdy/redis-py/blob/master/
             # redis/connection.py#L132
-            if 'invalid password' not in str(ex.__cause__):
+            if "invalid password" not in str(ex.__cause__):
                 raise
 
         # Check that we can connect to Redis using the provided password
