@@ -432,20 +432,20 @@ class GTrXLNet(RecurrentNetwork):
             if k.startswith("state_in_"):
                 state_keys.append(k)
             elif not k.startswith(
-                    "state_out_") and k != "infos" and isinstance(v,
+                    "state_out_") and k != "infos" and k != "seq_lens" and isinstance(v,
                                                                   np.ndarray):
                 feature_keys_.append(k)
     
         feature_sequences, initial_states, seq_lens = \
             chop_into_sequences(
-                train_batch[SampleBatch.EPS_ID],
-                train_batch[SampleBatch.UNROLL_ID],
-                train_batch[SampleBatch.AGENT_INDEX],
-                [train_batch[k] for k in feature_keys_],
-                [train_batch[k] for k in state_keys],
-                self.model_config["max_seq_len"],
+                episode_ids=None,#train_batch[SampleBatch.EPS_ID],
+                unroll_ids=None,#train_batch[SampleBatch.UNROLL_ID],
+                agent_indices=None,#train_batch[SampleBatch.AGENT_INDEX],
+                feature_columns=[train_batch[k] for k in feature_keys_],
+                state_columns=[train_batch[k] for k in state_keys],
+                max_seq_len=self.model_config["max_seq_len"],
                 dynamic_max=False,
-                states_already_reduced_to_init=True,
+                seq_lens=train_batch.seq_lens,
                 shuffle=False)
         for i, k in enumerate(feature_keys_):
             train_batch[k] = feature_sequences[i]

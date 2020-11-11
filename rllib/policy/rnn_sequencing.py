@@ -161,15 +161,16 @@ def add_time_dimension(padded_inputs: TensorType,
 #  correctly chopped from the _SampleCollector object (in time-major fashion
 #  or not). It is already no longer user iff `_use_trajectory_view_api` = True.
 @DeveloperAPI
-def chop_into_sequences(episode_ids,
-                        unroll_ids,
-                        agent_indices,
+def chop_into_sequences(*,
                         feature_columns,
                         state_columns,
                         max_seq_len,
+                        episode_ids=None,
+                        unroll_ids=None,
+                        agent_indices=None,
                         dynamic_max=True,
                         shuffle=False,
-                        states_already_reduced_to_init=False,
+                        seq_lens=None,
                         _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
@@ -213,23 +214,26 @@ def chop_into_sequences(episode_ids,
         [2, 3, 1]
     """
 
-    prev_id = None
-    seq_lens = []
-    seq_len = 0
-    unique_ids = np.add(
-        np.add(episode_ids, agent_indices),
-        np.array(unroll_ids, dtype=np.int64) << 32)
-    for uid in unique_ids:
-        if (prev_id is not None and uid != prev_id) or \
-                seq_len >= max_seq_len:
+    states_already_reduced_to_init = seq_lens is not None
+
+    if seq_lens is None:
+        prev_id = None
+        seq_lens = []
+        seq_len = 0
+        unique_ids = np.add(
+            np.add(episode_ids, agent_indices),
+            np.array(unroll_ids, dtype=np.int64) << 32)
+        for uid in unique_ids:
+            if (prev_id is not None and uid != prev_id) or \
+                    seq_len >= max_seq_len:
+                seq_lens.append(seq_len)
+                seq_len = 0
+            seq_len += 1
+            prev_id = uid
+        if seq_len:
             seq_lens.append(seq_len)
-            seq_len = 0
-        seq_len += 1
-        prev_id = uid
-    if seq_len:
-        seq_lens.append(seq_len)
-    assert sum(seq_lens) == len(unique_ids)
-    seq_lens = np.array(seq_lens, dtype=np.int32)
+        seq_lens = np.array(seq_lens, dtype=np.int32)
+    assert sum(seq_lens) == len(feature_columns[0])
 
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
@@ -253,7 +257,7 @@ def chop_into_sequences(episode_ids,
                 f_pad[seq_base + seq_offset] = f[i]
                 i += 1
             seq_base += max_seq_len
-        assert i == len(unique_ids), f
+        assert i == len(f), f
         feature_sequences.append(f_pad)
 
     if states_already_reduced_to_init:
@@ -267,7 +271,10 @@ def chop_into_sequences(episode_ids,
             s_init = []
             i = 0
             for len_ in seq_lens:
-                s_init.append(s[i])
+                try:#TODO
+                    s_init.append(s[i])
+                except Exception as e:
+                    raise e
                 i += len_
             initial_states.append(np.array(s_init))
 

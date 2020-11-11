@@ -112,7 +112,7 @@ def minibatches(samples, sgd_minibatch_size):
     random.shuffle(slices)
 
     for i, j in slices:
-        yield samples.slice(i, j)
+        yield samples.slice(0, 128)#TOD: i, j
 
 
 def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,

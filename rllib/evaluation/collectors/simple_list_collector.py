@@ -349,7 +349,6 @@ class _PolicyCollector:
         """
         # Create batch from our buffers.
         batch = SampleBatch(self.buffers, _seq_lens=self.seq_lens, _dont_check_lens=True)
-        assert SampleBatch.UNROLL_ID in batch.data
         # Clear buffers for future samples.
         self.buffers.clear()
         # Reset count to 0 and seq-lens to empty list.

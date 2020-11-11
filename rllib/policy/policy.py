@@ -593,8 +593,7 @@ class Policy(metaclass=ABCMeta):
                 TensorType]]]): An optional stats function to be called after
                 the loss.
         """
-        sample_batch_size = max(self.batch_divisibility_req, 4)
-        B = 2  # For RNNs, have B=2, T=[depends on sample_batch_size]
+        sample_batch_size = max(self.batch_divisibility_req, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
         input_dict = self._lazy_tensor_dict(self._dummy_batch)
@@ -612,6 +611,7 @@ class Policy(metaclass=ABCMeta):
         batch_for_postproc.count = self._dummy_batch.count
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
+            B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
             # TODO: (sven) This hack will not work for attention net traj.
             #  view setup.
             i = 0
@@ -622,13 +622,14 @@ class Policy(metaclass=ABCMeta):
                     postprocessed_batch["state_out_{}".format(i)] = \
                         postprocessed_batch["state_out_{}".format(i)][:B]
                 i += 1
-            seq_len = (self.batch_divisibility_req // B) or 2
+            seq_len = sample_batch_size // B
             postprocessed_batch.seq_lens = \
                 np.array([seq_len for _ in range(B)], dtype=np.int32)
         # Remove the UsageTrackingDict wrap to prep for wrapping the
         # train batch with a to-tensor UsageTrackingDict.
-        train_batch = {k: v for k, v in postprocessed_batch.items()}
-        train_batch = self.model.preprocess_train_batch(train_batch)
+        #train_batch = {k: v for k, v in postprocessed_batch.items()}
+        #train_batch.seq_lens = postprocessed_batch.seq_lens
+        train_batch = self.model.preprocess_train_batch(postprocessed_batch)
         train_batch = self._lazy_tensor_dict(train_batch)
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.

@@ -114,12 +114,12 @@ class RecurrentNetwork(TFModelV2):
     
         feature_sequences, initial_states, seq_lens = \
             chop_into_sequences(
-                train_batch[SampleBatch.EPS_ID],
-                train_batch[SampleBatch.UNROLL_ID],
-                train_batch[SampleBatch.AGENT_INDEX],
-                [train_batch[k] for k in feature_keys_],
-                [train_batch[k] for k in state_keys],
-                self.model_config["max_seq_len"],
+                episode_ids=train_batch[SampleBatch.EPS_ID],
+                unroll_ids=train_batch[SampleBatch.UNROLL_ID],
+                agent_indices=train_batch[SampleBatch.AGENT_INDEX],
+                feature_columns=[train_batch[k] for k in feature_keys_],
+                state_columns=[train_batch[k] for k in state_keys],
+                max_seq_len=self.model_config["max_seq_len"],
                 dynamic_max=True,
                 shuffle=False)
         for i, k in enumerate(feature_keys_):

@@ -255,7 +255,7 @@ class SampleBatch:
             for i, seq_len in enumerate(self.seq_lens):
                 count += seq_len
                 if count >= end:
-                    state_end = i
+                    state_end = i + 1
                     break
                 elif state_start is None and count >= start:
                     state_start = i
