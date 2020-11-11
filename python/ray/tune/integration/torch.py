@@ -84,8 +84,8 @@ class _TorchTrainable(tune.Trainable):
         return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
 
     def get_remote_worker_options(self) -> Dict[str, Any]:
-        options = dict(num_cpus=self.worker_cpus,
-                       num_gpus=self._num_gpus_per_worker)
+        options = dict(
+            num_cpus=self.worker_cpus, num_gpus=self._num_gpus_per_worker)
         if self.should_colocate:
             cpus_per_node = self.worker_cpus * self._num_workers_per_host
             gpus_per_node = \
@@ -97,8 +97,8 @@ class _TorchTrainable(tune.Trainable):
                 bundle["GPU"] = gpus_per_node
 
             all_bundles = [bundle] * self.num_hosts
-            self._placement_group = placement_group(all_bundles,
-                                                    strategy="STRICT_SPREAD")
+            self._placement_group = placement_group(
+                all_bundles, strategy="STRICT_SPREAD")
             logger.info("Waiting for placement_group to start.")
             ray.get(self._placement_group.ready(), timeout=self._timeout_s)
             logger.info("Placement_group started.")
@@ -131,10 +131,11 @@ class _TorchTrainable(tune.Trainable):
 
         pgroup_params = self.default_process_group_parameters()
         from functools import partial
-        setup_on_worker = partial(setup_process_group,
-                                  url=address,
-                                  world_size=num_workers,
-                                  **pgroup_params)
+        setup_on_worker = partial(
+            setup_process_group,
+            url=address,
+            world_size=num_workers,
+            **pgroup_params)
         ray.get([
             w.execute.remote(lambda _: setup_on_worker(world_rank=rank))
             for rank, w in enumerate(self.workers)
@@ -243,18 +244,18 @@ def DistributedTrainableCreator(
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:
 
-            return Resources(cpu=0,
-                             gpu=0,
-                             extra_cpu=num_cpus_per_worker * num_workers,
-                             extra_gpu=num_gpus_per_worker * num_workers)
+            return Resources(
+                cpu=0,
+                gpu=0,
+                extra_cpu=num_cpus_per_worker * num_workers,
+                extra_gpu=num_gpus_per_worker * num_workers)
 
     return WrappedDistributedTorchTrainable
 
 
 @contextmanager
-def distributed_checkpoint_dir(step: int,
-                               disable: bool = False
-                               ) -> Generator[str, None, None]:
+def distributed_checkpoint_dir(
+        step: int, disable: bool = False) -> Generator[str, None, None]:
     """ContextManager for creating a distributed checkpoint.
 
     Only checkpoints a file on the "main" training actor, avoiding

@@ -70,8 +70,8 @@ class _TensorFlowTrainable(tune.Trainable):
                 bundles["GPU"] = gpus_per_node
             num_hosts = int(self._num_workers / self._num_workers_per_host)
             all_bundles = [bundles] * num_hosts
-            self._placement_group = placement_group(all_bundles,
-                                                    strategy="STRICT_SPREAD")
+            self._placement_group = placement_group(
+                all_bundles, strategy="STRICT_SPREAD")
             logger.info("Waiting for placement group to get ready..")
             ray.get(self._placement_group.ready(), timeout=self._timeout_s)
             logger.info("Placement group ready.")
@@ -98,8 +98,8 @@ class _TensorFlowTrainable(tune.Trainable):
         ]
 
         from functools import partial
-        setup_on_worker = partial(setup_process_group,
-                                  worker_addresses=addresses)
+        setup_on_worker = partial(
+            setup_process_group, worker_addresses=addresses)
         ray.get([
             w.execute.remote(lambda _: setup_on_worker(index=index))
             for index, w in enumerate(self.workers)
@@ -195,10 +195,11 @@ def DistributedTrainableCreator(
 
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:
-            return Resources(cpu=0,
-                             gpu=0,
-                             extra_cpu=num_workers * num_cpus_per_worker,
-                             extra_gpu=num_workers * num_gpus_per_worker)
+            return Resources(
+                cpu=0,
+                gpu=0,
+                extra_cpu=num_workers * num_cpus_per_worker,
+                extra_gpu=num_workers * num_gpus_per_worker)
 
     return WrappedDistributedTensorFlowTrainable
 

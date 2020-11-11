@@ -46,23 +46,27 @@ def train_mnist(config, checkpoint_dir=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num-workers",
-                        "-n",
-                        type=int,
-                        default=2,
-                        help="Sets number of workers for training.")
-    parser.add_argument("--num-gpus-per-worker",
-                        action="store_true",
-                        default=False,
-                        help="enables CUDA training")
-    parser.add_argument("--cluster",
-                        action="store_true",
-                        default=False,
-                        help="enables multi-node tuning")
-    parser.add_argument("--workers-per-node",
-                        type=int,
-                        default=2,
-                        help="Sets number of workers for training.")
+    parser.add_argument(
+        "--num-workers",
+        "-n",
+        type=int,
+        default=2,
+        help="Sets number of workers for training.")
+    parser.add_argument(
+        "--num-gpus-per-worker",
+        action="store_true",
+        default=False,
+        help="enables CUDA training")
+    parser.add_argument(
+        "--cluster",
+        action="store_true",
+        default=False,
+        help="enables multi-node tuning")
+    parser.add_argument(
+        "--workers-per-node",
+        type=int,
+        default=2,
+        help="Sets number of workers for training.")
 
     args = parser.parse_args()
 

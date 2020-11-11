@@ -96,9 +96,8 @@ def test_validation(ray_start_2_cpus):  # noqa: F811
 
 def test_colocated(ray_4_node):  # noqa: F811
     assert ray.available_resources()["CPU"] == 4
-    trainable_cls = DistributedTrainableCreator(_train_check_global,
-                                                num_workers=4,
-                                                num_workers_per_host=1)
+    trainable_cls = DistributedTrainableCreator(
+        _train_check_global, num_workers=4, num_workers_per_host=1)
     trainable = trainable_cls()
     assert ray.available_resources().get("CPU", 0) == 0
     trainable.train()
@@ -107,10 +106,11 @@ def test_colocated(ray_4_node):  # noqa: F811
 
 def test_colocated_gpu(ray_4_node_gpu):  # noqa: F811
     assert ray.available_resources()["GPU"] == 8
-    trainable_cls = DistributedTrainableCreator(_train_check_global,
-                                                num_workers=4,
-                                                num_gpus_per_worker=2,
-                                                num_workers_per_host=1)
+    trainable_cls = DistributedTrainableCreator(
+        _train_check_global,
+        num_workers=4,
+        num_gpus_per_worker=2,
+        num_workers_per_host=1)
     trainable = trainable_cls()
     assert ray.available_resources().get("GPU", 0) == 0
     trainable.train()
@@ -119,11 +119,12 @@ def test_colocated_gpu(ray_4_node_gpu):  # noqa: F811
 
 def test_colocated_gpu_double(ray_4_node_gpu):  # noqa: F811
     assert ray.available_resources()["GPU"] == 8
-    trainable_cls = DistributedTrainableCreator(_train_check_global,
-                                                num_workers=8,
-                                                num_gpus_per_worker=1,
-                                                num_cpus_per_worker=1,
-                                                num_workers_per_host=2)
+    trainable_cls = DistributedTrainableCreator(
+        _train_check_global,
+        num_workers=8,
+        num_gpus_per_worker=1,
+        num_cpus_per_worker=1,
+        num_workers_per_host=2)
     trainable = trainable_cls()
     assert ray.available_resources().get("GPU", 0) == 0
     trainable.train()

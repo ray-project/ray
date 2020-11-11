@@ -36,6 +36,7 @@ class UtilMonitor(Thread):
     Requires psutil and GPUtil to be installed. Can be enabled with
     tune.run(config={"log_sys_usage": True}).
     """
+
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
         if GPUtil is None and start:
