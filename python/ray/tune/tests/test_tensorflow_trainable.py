@@ -3,6 +3,7 @@ from typing import Dict, Optional
 import pytest
 import ray
 from ray import tune
+from ray.cluster_utils import Cluster
 from ray.tune.integration.tensorflow import DistributedTrainableCreator
 from ray.tune.examples.tf_distributed_keras_example import train_mnist
 
@@ -22,6 +23,32 @@ def ray_start_4_cpus():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+@pytest.fixture
+def ray_4_node():
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=1)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.fixture
+def ray_4_node_gpu():
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=1, num_gpus=2)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 @pytest.fixture
 def ray_connect_cluster():
@@ -61,9 +88,8 @@ def test_validation(ray_start_2_cpus):  # noqa: F811
     def bad_func(a, b, c):
         return 1
 
-    t_cls = DistributedTrainableCreator(bad_func)
     with pytest.raises(ValueError):
-        t_cls()
+        DistributedTrainableCreator(bad_func)
 
 
 def test_colocated(ray_4_node):  # noqa: F811

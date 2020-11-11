@@ -49,6 +49,7 @@ class _TensorFlowTrainable(tune.Trainable):
     _num_cpus_per_worker = None
     _num_workers_per_host = None
     __placement_group = None
+    _timeout_s = None
 
     __slots__ = ["workers", "_finished"]
 
@@ -72,7 +73,7 @@ class _TensorFlowTrainable(tune.Trainable):
             self._placement_group = placement_group(all_bundles,
                                                     strategy="STRICT_SPREAD")
             logger.info("Waiting for placement group to get ready.")
-            ray.get(self._placement_group.ready())
+            ray.get(self._placement_group.ready(), timeout=self._timeout_s)
             logger.info("Placement group ready.")
             options["placement_group"] = self._placement_group
         return options
@@ -135,7 +136,8 @@ def DistributedTrainableCreator(
         num_workers: int = 2,
         num_gpus_per_worker: int = 0,
         num_cpus_per_worker: int = 1,
-        num_workers_per_host: int = 0) -> Type[_TensorFlowTrainable]:
+        num_workers_per_host: int = 0,
+        timeout_s: int = 15 * 60) -> Type[_TensorFlowTrainable]:
     """Converts TensorFlow MultiWorkerMirror training to be executable by Tune.
 
     Requires TensorFlow > 2.0 to work, recommends TensorFlow > 2.2.
@@ -157,6 +159,9 @@ def DistributedTrainableCreator(
         num_workers (int): Number of hosts that each trial is expected
             to use.
         num_workers_per_host (int): Number of workers to colocate per host.
+        timeout_s (float): Seconds before triggering
+            placement timeouts if forcing colocation.
+
 
     Returns:
         Trainable class that can be passed into `tune.run`.
@@ -174,18 +179,19 @@ def DistributedTrainableCreator(
         tune.run(tf_trainable,
                  num_samples=1)
     """
+    detect_checkpoint_function(func, abort=True)
+    if num_workers_per_host:
+        if num_workers % num_workers_per_host:
+            raise ValueError("`num_workers` must be an integer multiple "
+                             "of num_workers_per_host.")
+
     class WrappedDistributedTensorFlowTrainable(_TensorFlowTrainable):
         _function = func
         _num_workers = num_workers
         _num_cpus_per_worker = num_cpus_per_worker
         _num_workers_per_host = num_workers_per_host
         _num_gpus_per_worker = num_gpus_per_worker
-
-        detect_checkpoint_function(func, abort=True)
-        if num_workers_per_host:
-            if num_workers % num_workers_per_host:
-                raise ValueError("`num_workers` must be an integer multiple "
-                                 "of num_workers_per_host.")
+        _timeout_s = timeout_s
 
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:

@@ -99,9 +99,9 @@ class _TorchTrainable(tune.Trainable):
             all_bundles = [bundle] * self.num_hosts
             self._placement_group = placement_group(all_bundles,
                                                     strategy="STRICT_SPREAD")
-            logger.debug("Waiting for placement_group to start.")
+            logger.info("Waiting for placement_group to start.")
             ray.get(self._placement_group.ready(), timeout=self._timeout_s)
-            logger.debug("Placement_group started.")
+            logger.info("Placement_group started.")
             options["placement_group"] = self._placement_group
 
         return options
@@ -231,8 +231,8 @@ def DistributedTrainableCreator(
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func
         _num_workers = num_workers
-        _use_gpu = use_gpu
         _num_cpus_per_worker = num_cpus_per_worker
+        _num_gpus_per_worker = num_gpus_per_worker
         _num_workers_per_host = num_workers_per_host
         _timeout_s = timeout_s
 

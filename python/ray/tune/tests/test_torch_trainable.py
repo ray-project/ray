@@ -118,7 +118,7 @@ def ray_4_node():
 def ray_4_node_gpu():
     cluster = Cluster()
     for _ in range(4):
-        cluster.add_node(num_cpus=1, num_gpus=2)
+        cluster.add_node(num_cpus=2, num_gpus=2)
 
     ray.init(address=cluster.address)
 
@@ -147,7 +147,6 @@ def test_colocated_gpu(ray_4_node_gpu):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(_train_check_global,
                                                 num_workers=4,
                                                 num_gpus_per_worker=2,
-                                                use_gpu=True,
                                                 num_workers_per_host=1)
     trainable = trainable_cls()
     assert ray.available_resources().get("GPU", 0) == 0
@@ -160,10 +159,11 @@ def test_colocated_gpu_double(ray_4_node_gpu):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(_train_check_global,
                                                 num_workers=8,
                                                 num_gpus_per_worker=1,
-                                                num_cpus_per_worker=1,
-                                                use_gpu=True,
-                                                num_workers_per_host=2)
+                                                num_workers_per_host=2,
+                                                timeout_s=30)
     trainable = trainable_cls()
+    print("?????")
+    print(ray.available_resources().get("GPU"))
     assert ray.available_resources().get("GPU", 0) == 0
     trainable.train()
     trainable.stop()
