@@ -13,6 +13,7 @@ import ray.ray_constants as ray_constants
 import ray.utils
 from ray.parameter import RayParams
 
+
 def main(args):
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
@@ -69,6 +70,7 @@ def main(args):
     ray.worker._global_node = node
 
     ray.worker.connect(node, mode=mode)
+
     def setup_logger(logging_level, logging_format):
         logger = logging.getLogger("ray_worker")
         if type(logging_level) is str:
@@ -77,11 +79,16 @@ def main(args):
         job_id = os.getenv("RAY_JOB_ID")
         from logging.handlers import RotatingFileHandler
         worker_name = "worker" if args.worker_type == "WORKER" else "io_worker"
-        handler = RotatingFileHandler(f"{node.get_session_dir_path()}/logs/{worker_name}-{ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)}-{job_id}-{os.getpid()}.err")
+        handler = RotatingFileHandler(
+            f"{node.get_session_dir_path()}/logs/"
+            f"{worker_name}-"
+            f"{ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)}"
+            f"-{job_id}-{os.getpid()}.err")
         logger.addHandler(handler)
         handler.setFormatter(logging.Formatter("%(message)s"))
         logger.propagate = False
         return logger
+
     logger = setup_logger(args.logging_level, args.logging_format)
 
     class LoggerWriter:
@@ -89,12 +96,13 @@ def main(args):
             self.logger = logger
 
         def write(self, message):
-            if message != '\n':
-                self.logger.info(f"{0} {message}")
-        
+            if message != "\n":
+                self.logger.info(f"{message}")
+
         def flush(self):
             # flush method can be empty because logger will handle flush
-            pass
+            for handler in self.logger.handlers:
+                handler.flush()
 
     from contextlib import redirect_stdout, redirect_stderr
     logger_writer = LoggerWriter(logger)
