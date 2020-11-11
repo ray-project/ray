@@ -404,8 +404,8 @@ class RayTrialExecutor(TrialExecutor):
         Returns:
             True if `reset_config` is successful else False.
         """
-        trial.experiment_tag = new_experiment_tag
-        trial.config = new_config
+        trial.set_experiment_tag(new_experiment_tag)
+        trial.set_config(new_config)
         trainable = trial.runner
         with self._change_working_directory(trial):
             with warn_if_slow("reset"):
