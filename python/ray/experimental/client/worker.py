@@ -24,9 +24,8 @@ class Worker:
             to_get = [ids.id]
             single = True
         else:
-            raise Exception(
-                "Can't get something that's not a list of IDs or just an ID: %s" % type(ids))
-
+            raise Exception("Can't get something that's not a "
+                            "list of IDs or just an ID: %s" % type(ids))
         out = [self._get(x) for x in to_get]
         if single:
             out = out[0]

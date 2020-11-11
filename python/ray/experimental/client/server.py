@@ -41,7 +41,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             funcref = self.object_refs[task.payload_id]
             func = ray.get(funcref)
             if not isinstance(func, ClientRemoteFunc):
-                raise Exception("Attempting to schedule something that isn't a ClientRemoteFunc")
+                raise Exception("Attempting to schedule something that "
+                                "isn't a ClientRemoteFunc")
             ray_remote = ray.remote(func._func)
             func.set_remote_func(ray_remote)
             self.function_refs[task.payload_id] = func
