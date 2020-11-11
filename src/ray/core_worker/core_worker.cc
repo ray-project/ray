@@ -59,30 +59,6 @@ void BuildCommonTaskSpec(
   }
 }
 
-ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
-  if (options.worker_type == ray::WorkerType::DRIVER) {
-    RAY_CHECK(!options.job_id.IsNil());
-  } else {
-    RAY_CHECK(options.job_id.IsNil());
-  }
-
-  if (options.worker_type == ray::WorkerType::WORKER) {
-    // For workers, the job ID is assigned by Raylet via an environment variable.
-    const char *job_id_env = std::getenv(kEnvVarKeyJobId);
-    // TODO(kfstorm): Use `RAY_CHECK` instead once the `enable_multi_tenancy` flag is
-    // removed.
-    // RAY_CHECK(job_id_env);
-    if (!job_id_env) {
-      // Multi-tenancy is disabled.
-      // NOTE(kfstorm): We can't read `RayConfig::instance().enable_multi_tenancy()` here
-      // because `RayConfig` is not initialized yet.
-      return ray::JobID::Nil();
-    }
-    return ray::JobID::FromHex(job_id_env);
-  }
-  return options.job_id;
-}
-
 }  // namespace
 
 namespace ray {
@@ -297,7 +273,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
-      worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
+      worker_context_(options_.worker_type, worker_id, options_.job_id),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),

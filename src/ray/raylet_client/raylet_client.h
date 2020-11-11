@@ -180,7 +180,7 @@ class RayletClient : public PinObjectsInterface,
   /// \param worker_id A unique ID to represent the worker.
   /// \param worker_type The type of the worker. If it is a certain worker type, an
   /// additional message will be sent to register as one.
-  /// \param job_id The job ID of the driver or worker.
+  /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
   /// \param status This will be populated with the result of connection attempt.
