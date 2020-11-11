@@ -122,7 +122,6 @@ class LoadMetrics:
 
     def _get_resource_usage(self):
         num_nodes = 0
-        nodes_used = 0.0
         num_nonidle = 0
         has_saturated_node = False
         resources_used = {}
@@ -151,17 +150,10 @@ class LoadMetrics:
                     frac = used / float(amount)
                     if frac > max_frac:
                         max_frac = frac
-            nodes_used += max_frac
             if max_frac > 0:
                 num_nonidle += 1
 
-        # If any nodes have a queue buildup, assume all non-idle nodes are 100%
-        # busy, plus the head node. This guards against the case of not scaling
-        # up due to poor task packing.
-        if has_saturated_node:
-            nodes_used = min(num_nonidle + 1.0, num_nodes)
-
-        return nodes_used, resources_used, resources_total
+        return resources_used, resources_total
 
     def get_resource_demand_vector(self):
         return self.waiting_bundles + self.infeasible_bundles
@@ -174,8 +166,7 @@ class LoadMetrics:
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
 
     def _info(self):
-        nodes_used, resources_used, resources_total = self._get_resource_usage(
-        )
+        resources_used, resources_total = self._get_resource_usage()
 
         now = time.time()
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
@@ -205,8 +196,6 @@ class LoadMetrics:
                 for rid in sorted(resources_used)
                 if not rid.startswith("node:")
             ]),
-            "NumNodesConnected": len(self.static_resources_by_ip),
-            "NumNodesUsed": round(nodes_used, 2),
             "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,

@@ -116,8 +116,8 @@ def rewrite_legacy_yaml_to_available_node_types(
             NODE_TYPE_LEGACY_WORKER: {
                 "node_config": config["worker_nodes"],
                 "resources": config["worker_nodes"].get("Resources") or {},
-                "min_workers": config["min_workers"],
-                "max_workers": config["max_workers"],
+                "min_workers": config.get("min_workers", 0),
+                "max_workers": config.get("max_workers", 0),
             },
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD

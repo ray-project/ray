@@ -352,10 +352,23 @@ class StandardAutoscaler:
                 "target_utilization_fraction")
             if upscaling_speed:
                 upscaling_speed = float(upscaling_speed)
+            # TODO(ameer): consider adding (if users ask) an option of
+            # initial_upscaling_num_workers.
             elif aggressive:
-                upscaling_speed = float(self.config["max_workers"])
+                upscaling_speed = float(self.config.get("max_workers", 0))
+                logger.warning(
+                    "Legacy aggressive autoscaling mode" +
+                    " detected. Replacing it by setting upscaling_speed to" +
+                    " max_workers. This will scale up the cluster to the" +
+                    " desired demand based size immediately.")
             elif target_utilization_fraction:
                 upscaling_speed = 1 / max(target_utilization_fraction, 0.001)
+                logger.warning(
+                    "Legacy target_utilization_fraction" +
+                    " detected. Replacing it by setting upscaling_speed to" +
+                    " 1/target_utilization_fraction. This will scale up the" +
+                    " cluster to the desired demand based size in chunks of" +
+                    " currently_running_nodes/target_utilization_fraction.")
             else:
                 upscaling_speed = 1.0
             if self.resource_demand_scheduler:
@@ -568,7 +581,7 @@ class StandardAutoscaler:
             self.load_metrics.get_resource_utilization())
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
-        logger.info(tmp)
+        logger.debug(tmp)
 
     def info_string(self, nodes):
         suffix = ""
@@ -593,6 +606,8 @@ class StandardAutoscaler:
         if isinstance(resources, list):
             self.resource_demand_vector = resources
         else:
+            # Translate the legacy single resource demand dictionary
+            # to a resource_demand_vector.
             self.resource_demand_vector = []
             for resource, count in resources.items():
                 try:
