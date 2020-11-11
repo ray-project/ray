@@ -4,7 +4,6 @@ It also checks that it is usable with a separate scheduler.
 """
 import time
 
-import ray
 from ray import tune
 from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
@@ -35,7 +34,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
 
     # The config will be automatically converted to Nevergrad's search space
     tune_kwargs = {

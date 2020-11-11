@@ -2,7 +2,6 @@
 
 It also checks that it is usable with a separate scheduler.
 """
-import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.automl import GeneticSearch
@@ -30,7 +29,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
 
     space = SearchSpace({
         ContinuousSpace("x1", 0, 4, 100),

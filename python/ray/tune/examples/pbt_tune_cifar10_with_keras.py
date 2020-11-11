@@ -22,7 +22,6 @@ from tensorflow.python.keras.layers import Convolution2D, MaxPooling2D
 from tensorflow.python.keras.models import Model, load_model
 from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
-import ray
 from ray.tune import grid_search, run, sample_from
 from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
@@ -206,8 +205,6 @@ if __name__ == "__main__":
     if args.smoke_test:
         train_spec["config"]["lr"] = 10**-4
         train_spec["config"]["dropout"] = 0.5
-
-    ray.init()
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",

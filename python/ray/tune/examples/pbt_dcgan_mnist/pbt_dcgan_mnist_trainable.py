@@ -102,7 +102,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
 
     import urllib.request
     # Download a pre-trained MNIST model for inception score calculation.

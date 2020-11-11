@@ -5,7 +5,6 @@ It also checks that it is usable with a separate scheduler.
 import numpy as np
 import time
 
-import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.ax import AxSearch
@@ -51,8 +50,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-
-    ray.init()
 
     tune_kwargs = {
         "num_samples": 10 if args.smoke_test else 50,

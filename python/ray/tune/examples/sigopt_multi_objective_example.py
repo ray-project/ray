@@ -1,10 +1,7 @@
-"""This test checks that SigOpt is functional.
+"""Example using Sigopt's multi-objective functionality."""
 
-It also checks that it is usable with a separate scheduler.
-"""
 import time
 
-import ray
 import numpy as np
 from ray import tune
 from ray.tune.schedulers import FIFOScheduler
@@ -41,7 +38,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
 
     space = [
         {

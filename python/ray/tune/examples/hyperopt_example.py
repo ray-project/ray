@@ -12,6 +12,7 @@ from ray.tune.suggest.hyperopt import HyperOptSearch
 
 
 def evaluation_fn(step, width, height):
+    time.sleep(0.1)
     return (0.1 + width * step / 100)**(-1) + height * 0.1
 
 
@@ -24,7 +25,6 @@ def easy_objective(config):
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
         tune.report(iterations=step, mean_loss=intermediate_score)
-        time.sleep(0.1)
 
 
 if __name__ == "__main__":

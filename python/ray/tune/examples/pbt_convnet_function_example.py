@@ -10,7 +10,6 @@ from torchvision import datasets
 from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
     get_data_loaders
 
-import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.trial import ExportFormat
@@ -66,7 +65,6 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    ray.init()
     datasets.MNIST("~/data", train=True, download=True)
 
     # __pbt_begin__

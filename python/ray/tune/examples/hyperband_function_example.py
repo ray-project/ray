@@ -21,6 +21,8 @@ def train(config, checkpoint_dir=None):
         v = np.tanh(float(timestep) / config.get("width", 1))
         v *= config.get("height", 1)
 
+        # Checkpoint the state of the training every 3 steps
+        # Note that this is only required for certain schedulers
         if timestep % 3 == 0:
             with tune.checkpoint_dir(step=timestep) as checkpoint_dir:
                 path = os.path.join(checkpoint_dir, "checkpoint")
