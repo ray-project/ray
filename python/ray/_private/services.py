@@ -298,8 +298,7 @@ def address_to_ip(address):
 
 
 def get_node_ip_address(address="8.8.8.8:53"):
-    """Determine the IP address by which the local node can be reached from the
-    given address.
+    """IP address by which the local node can be reached *from* the `address`.
 
     Args:
         address (str): The IP address and port of any known live service on the
