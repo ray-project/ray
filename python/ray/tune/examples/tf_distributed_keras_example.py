@@ -5,6 +5,7 @@ https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras
 import argparse
 import tensorflow as tf
 import numpy as np
+import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.integration.keras import TuneReportCheckpointCallback
@@ -34,9 +35,9 @@ def build_and_compile_cnn_model(config):
     ])
     model.compile(
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        optimizer=tf.keras.optimizers.SGD(
-            learning_rate=config.get("lr", 0.05),
-            momentum=config.get("momentum", 0.5)),
+        optimizer=tf.keras.optimizers.SGD(learning_rate=config.get("lr", 0.05),
+                                          momentum=config.get("momentum",
+                                                              0.5)),
         metrics=["accuracy"])
     return model
 
@@ -50,48 +51,60 @@ def train_mnist(config, checkpoint_dir=None):
     with strategy.scope():
         multi_worker_model = build_and_compile_cnn_model(config)
 
-    multi_worker_model.fit(
-        multi_worker_dataset,
-        epochs=2,
-        steps_per_epoch=70,
-        callbacks=[
-            TuneReportCheckpointCallback(
-                {
-                    "mean_accuracy": "accuracy"
-                }, filename="checkpoint")
-        ])
+    multi_worker_model.fit(multi_worker_dataset,
+                           epochs=2,
+                           steps_per_epoch=70,
+                           callbacks=[
+                               TuneReportCheckpointCallback(
+                                   {"mean_accuracy": "accuracy"},
+                                   filename="checkpoint")
+                           ])
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--num-workers",
-        "-n",
-        type=int,
-        default=2,
-        help="Sets number of workers for training.")
-    parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="enables CUDA training")
-    parser.add_argument(
-        "--cluster",
-        action="store_true",
-        default=False,
-        help="enables multi-node tuning")
+    parser.add_argument("--num-workers",
+                        "-n",
+                        type=int,
+                        default=2,
+                        help="Sets number of workers for training.")
+    parser.add_argument("--num-workers-per-host",
+                        "-w",
+                        type=int,
+                        default=0,
+                        help="Sets number of workers for training.")
+    parser.add_argument("--num-cpus-per-worker",
+                        "-c",
+                        type=int,
+                        default=2,
+                        help="number of CPUs for this worker")
+    parser.add_argument("--num-gpus-per-worker",
+                        "-g",
+                        type=int,
+                        default=0,
+                        help="number of GPUs for this worker")
+    parser.add_argument("--cluster",
+                        action="store_true",
+                        default=False,
+                        help="enables multi-node tuning")
     args = parser.parse_args()
+    if args.cluster:
+        options = dict(address="auto")
+    else:
+        options = dict(num_cpus=2)
+    ray.init(**options)
     tf_trainable = DistributedTrainableCreator(
         train_mnist,
-        use_gpu=args.use_gpu,
-        num_workers=2,
+        num_workers=args.num_workers,
+        num_workers_per_host=args.num_workers_per_host,
+        num_cpus_per_worker=args.num_cpus_per_worker,
+        num_gpus_per_worker=args.num_gpus_per_worker,
     )
-    sched = AsyncHyperBandScheduler(
-        time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
-        max_t=400,
-        grace_period=20)
+    sched = AsyncHyperBandScheduler(time_attr="training_iteration",
+                                    metric="mean_accuracy",
+                                    mode="max",
+                                    max_t=400,
+                                    grace_period=20)
     tune.run(
         tf_trainable,
         name="exp",

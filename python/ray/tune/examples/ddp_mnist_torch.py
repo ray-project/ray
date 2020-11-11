@@ -46,22 +46,23 @@ def train_mnist(config, checkpoint_dir=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--num-workers",
-        "-n",
-        type=int,
-        default=2,
-        help="Sets number of workers for training.")
-    parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="enables CUDA training")
-    parser.add_argument(
-        "--cluster",
-        action="store_true",
-        default=False,
-        help="enables multi-node tuning")
+    parser.add_argument("--num-workers",
+                        "-n",
+                        type=int,
+                        default=2,
+                        help="Sets number of workers for training.")
+    parser.add_argument("--num-gpus-per-worker",
+                        action="store_true",
+                        default=False,
+                        help="enables CUDA training")
+    parser.add_argument("--cluster",
+                        action="store_true",
+                        default=False,
+                        help="enables multi-node tuning")
+    parser.add_argument("--workers-per-node",
+                        type=int,
+                        default=2,
+                        help="Sets number of workers for training.")
 
     args = parser.parse_args()
 
@@ -71,5 +72,8 @@ if __name__ == "__main__":
         options = dict(num_cpus=2)
     ray.init(**options)
     trainable_cls = DistributedTrainableCreator(
-        train_mnist, num_workers=args.num_workers, use_gpu=args.use_gpu)
+        train_mnist,
+        num_workers=args.num_workers,
+        num_gpus_per_worker=args.num_gpus_per_worker,
+        num_workers_per_host=args.workers_per_node)
     tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 10})

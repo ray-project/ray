@@ -1,5 +1,8 @@
+from typing import Dict, Optional
+
 import pytest
 import ray
+from ray import tune
 from ray.tune.integration.tensorflow import DistributedTrainableCreator
 from ray.tune.examples.tf_distributed_keras_example import train_mnist
 
@@ -31,6 +34,14 @@ def ray_connect_cluster():
     ray.shutdown()
 
 
+def _train_check_global(config: Dict, checkpoint_dir: Optional[str] = None):
+    """For testing only. Putting this here because Ray has problems
+    serializing within the test file."""
+    import time
+    time.sleep(0.1)
+    tune.report(is_distributed=True)
+
+
 def test_single_step(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(train_mnist)
     trainer = trainable_cls()
@@ -53,6 +64,42 @@ def test_validation(ray_start_2_cpus):  # noqa: F811
     t_cls = DistributedTrainableCreator(bad_func)
     with pytest.raises(ValueError):
         t_cls()
+
+
+def test_colocated(ray_4_node):  # noqa: F811
+    assert ray.available_resources()["CPU"] == 4
+    trainable_cls = DistributedTrainableCreator(_train_check_global,
+                                                num_workers=4,
+                                                num_workers_per_host=1)
+    trainable = trainable_cls()
+    assert ray.available_resources().get("CPU", 0) == 0
+    trainable.train()
+    trainable.stop()
+
+
+def test_colocated_gpu(ray_4_node_gpu):  # noqa: F811
+    assert ray.available_resources()["GPU"] == 8
+    trainable_cls = DistributedTrainableCreator(_train_check_global,
+                                                num_workers=4,
+                                                num_gpus_per_worker=2,
+                                                num_workers_per_host=1)
+    trainable = trainable_cls()
+    assert ray.available_resources().get("GPU", 0) == 0
+    trainable.train()
+    trainable.stop()
+
+
+def test_colocated_gpu_double(ray_4_node_gpu):  # noqa: F811
+    assert ray.available_resources()["GPU"] == 8
+    trainable_cls = DistributedTrainableCreator(_train_check_global,
+                                                num_workers=8,
+                                                num_gpus_per_worker=1,
+                                                num_cpus_per_worker=1,
+                                                num_workers_per_host=2)
+    trainable = trainable_cls()
+    assert ray.available_resources().get("GPU", 0) == 0
+    trainable.train()
+    trainable.stop()
 
 
 if __name__ == "__main__":

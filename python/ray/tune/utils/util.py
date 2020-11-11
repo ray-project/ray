@@ -36,7 +36,6 @@ class UtilMonitor(Thread):
     Requires psutil and GPUtil to be installed. Can be enabled with
     tune.run(config={"log_sys_usage": True}).
     """
-
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
         if GPUtil is None and start:
@@ -223,7 +222,7 @@ def deep_update(original,
         if isinstance(original.get(k), dict) and isinstance(value, dict):
             # Check old type vs old one. If different, override entire value.
             if k in override_all_if_type_changes and \
-                    "type" in value and "type" in original[k] and \
+                "type" in value and "type" in original[k] and \
                     value["type"] != original[k]["type"]:
                 original[k] = value
             # Allowed key -> ok to add new subkeys.

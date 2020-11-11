@@ -5,7 +5,7 @@ import os
 import logging
 import shutil
 import tempfile
-from typing import Callable, Dict, Generator, Optional, Type
+from typing import Callable, Dict, Generator, Optional, Type, Any
 
 import torch
 from datetime import timedelta
@@ -19,6 +19,7 @@ from ray.tune.resources import Resources
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import detect_checkpoint_function
 from ray.util.sgd.torch.utils import setup_process_group, setup_address
+from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
@@ -51,19 +52,59 @@ class _TorchTrainable(tune.Trainable):
     _function = None
     _num_workers = None
     _use_gpu = None
+    _num_gpus_per_worker = None
     _num_cpus_per_worker = None
+    _num_workers_per_host = None
+    _placement_group = None
+    _timeout_s = None
 
     __slots__ = ["workers", "_finished"]
 
-    @classmethod
-    def default_process_group_parameters(self) -> Dict:
-        return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
+    @property
+    def worker_gpus(self) -> int:
+        if not self._use_gpu:
+            return 0
+        return self._num_gpus_per_worker
+
+    @property
+    def worker_cpus(self) -> float:
+        return self._num_cpus_per_worker
+
+    @property
+    def should_colocate(self) -> bool:
+        return bool(self._num_workers_per_host)
+
+    @property
+    def num_hosts(self) -> Optional[int]:
+        if self.should_colocate:
+            return int(self._num_workers / self._num_workers_per_host)
 
     @classmethod
-    def get_remote_worker_options(self) -> Dict[str, int]:
-        num_gpus = 1 if self._use_gpu else 0
-        num_cpus = int(self._num_cpus_per_worker or 1)
-        return dict(num_cpus=num_cpus, num_gpus=num_gpus)
+    def default_process_group_parameters(cls) -> Dict:
+        return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
+
+    def get_remote_worker_options(self) -> Dict[str, Any]:
+        options = dict(num_cpus=self.worker_cpus,
+                       num_gpus=self._num_gpus_per_worker)
+        if self.should_colocate:
+            cpus_per_node = self.worker_cpus * self._num_workers_per_host
+            gpus_per_node = \
+                self._num_gpus_per_worker * self._num_workers_per_host
+            bundle = {}
+            if cpus_per_node:
+                bundle["CPU"] = cpus_per_node
+            if gpus_per_node:
+                bundle["GPU"] = gpus_per_node
+
+            all_bundles = [bundle] * self.num_hosts
+            self._placement_group = placement_group(all_bundles,
+                                                    strategy="STRICT_SPREAD")
+            logger.debug("Waiting for placement_group to start.")
+            ray.get(self._placement_group.ready(), timeout=self._timeout_s)
+            logger.debug("Placement_group started.")
+            options["placement_group"] = self._placement_group
+
+        return options
 
     def setup(self, config: Dict):
         self._finished = False
@@ -90,11 +131,10 @@ class _TorchTrainable(tune.Trainable):
 
         pgroup_params = self.default_process_group_parameters()
         from functools import partial
-        setup_on_worker = partial(
-            setup_process_group,
-            url=address,
-            world_size=num_workers,
-            **pgroup_params)
+        setup_on_worker = partial(setup_process_group,
+                                  url=address,
+                                  world_size=num_workers,
+                                  **pgroup_params)
         ray.get([
             w.execute.remote(lambda _: setup_on_worker(world_rank=rank))
             for rank, w in enumerate(self.workers)
@@ -127,6 +167,8 @@ class _TorchTrainable(tune.Trainable):
 
     def stop(self):
         ray.get([worker.stop.remote() for worker in self.workers])
+        if self.should_colocate:
+            remove_placement_group(self._placement_group)
 
 
 def DistributedTrainableCreator(
@@ -134,6 +176,8 @@ def DistributedTrainableCreator(
         use_gpu: bool = False,
         num_workers: int = 1,
         num_cpus_per_worker: int = 1,
+        num_gpus_per_worker: int = 0,
+        num_workers_per_host: Optional[int] = None,
         backend: str = "gloo",
         timeout_s: int = NCCL_TIMEOUT_S) -> Type[_TorchTrainable]:
     """Creates a class that executes distributed training.
@@ -155,10 +199,15 @@ def DistributedTrainableCreator(
             world.
         num_cpus_per_worker (int): Number of CPU resources to reserve
             per training worker.
+        num_gpus_per_worker (int): Number of GPU resources to reserve
+            per training worker.
+        num_workers_per_host: Optional[int]: Number of workers to
+            colocate per host.
         backend (str): One of "gloo", "nccl".
         timeout_s (float): Seconds before the torch process group
             times out. Useful when machines are unreliable. Defaults
-            to 60 seconds.
+            to 60 seconds. This value is also reused for triggering
+            placement timeouts if forcing colocation.
 
     Returns:
         type(Trainable): A trainable class object that can be passed
@@ -174,12 +223,18 @@ def DistributedTrainableCreator(
         analysis = tune.run(trainable_cls)
     """
     detect_checkpoint_function(func, abort=True)
+    if num_workers_per_host:
+        if num_workers % num_workers_per_host:
+            raise ValueError("`num_workers` must be an integer multiple "
+                             "of workers_per_node.")
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func
         _num_workers = num_workers
         _use_gpu = use_gpu
         _num_cpus_per_worker = num_cpus_per_worker
+        _num_workers_per_host = num_workers_per_host
+        _timeout_s = timeout_s
 
         @classmethod
         def default_process_group_parameters(self) -> Dict:
@@ -187,23 +242,19 @@ def DistributedTrainableCreator(
 
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:
-            num_workers_ = int(config.get("num_workers", num_workers))
-            num_cpus = int(
-                config.get("num_cpus_per_worker", num_cpus_per_worker))
-            use_gpu_ = config.get("use_gpu", use_gpu)
 
-            return Resources(
-                cpu=0,
-                gpu=0,
-                extra_cpu=num_cpus * num_workers_,
-                extra_gpu=num_workers_ if use_gpu_ else 0)
+            return Resources(cpu=0,
+                             gpu=0,
+                             extra_cpu=num_cpus_per_worker * num_workers,
+                             extra_gpu=num_gpus_per_worker * num_workers)
 
     return WrappedDistributedTorchTrainable
 
 
 @contextmanager
-def distributed_checkpoint_dir(
-        step: int, disable: bool = False) -> Generator[str, None, None]:
+def distributed_checkpoint_dir(step: int,
+                               disable: bool = False
+                               ) -> Generator[str, None, None]:
     """ContextManager for creating a distributed checkpoint.
 
     Only checkpoints a file on the "main" training actor, avoiding
