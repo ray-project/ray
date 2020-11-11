@@ -119,7 +119,7 @@ CONV_FILTERS = [[16, [11, 11], 3], [32, [9, 9], 3], [64, [5, 5], 3]]
 class TestCuriosity(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=3, local_mode=True)
+        ray.init(num_cpus=3, local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -149,13 +149,13 @@ class TestCuriosity(unittest.TestCase):
         config["callbacks"] = MyCallBack
         # Limit horizon to make it really hard for non-curious agent to reach
         # the goal state.
-        config["horizon"] = 23
+        config["horizon"] = 22
         # Local only.
         config["num_workers"] = 0
         config["lr"] = 0.001
 
         num_iterations = 10
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             # W/ Curiosity. Expect to learn something.
             config["exploration_config"] = {
                 "type": "Curiosity",

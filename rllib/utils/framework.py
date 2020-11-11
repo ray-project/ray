@@ -225,11 +225,12 @@ def get_variable(value,
 
 
 # TODO: (sven) move to models/utils.py
-def get_activation_fn(name, framework="tf"):
+def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (str): One of "relu" (default), "tanh", "swish", or "linear".
+        name (Optional[str]): One of "relu" (default), "tanh", "swish", or
+            "linear" or None.
         framework (str): One of "tf" or "torch".
 
     Returns:

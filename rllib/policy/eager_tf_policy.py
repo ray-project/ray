@@ -12,7 +12,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import add_mixins
+from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
@@ -279,9 +279,17 @@ def build_eager_tf_policy(name,
             self._loss_initialized = True
 
             if optimizer_fn:
-                self._optimizer = optimizer_fn(self, config)
+                optimizers = optimizer_fn(self, config)
             else:
-                self._optimizer = tf.keras.optimizers.Adam(config["lr"])
+                optimizers = tf.keras.optimizers.Adam(config["lr"])
+            optimizers = force_list(optimizers)
+            if getattr(self, "exploration", None):
+                optimizers = self.exploration.get_exploration_optimizer(
+                    optimizers)
+            # TODO: (sven) Allow tf policy to have more than 1 optimizer.
+            #  Just like torch Policy does.
+            assert len(optimizers) == 1
+            self._optimizer = optimizers[0]
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
@@ -571,7 +579,7 @@ def build_eager_tf_policy(name,
             if apply_gradients_fn:
                 apply_gradients_fn(self, self._optimizer, grads_and_vars)
             else:
-                self._optimizer.apply_gradients(grads_and_vars)
+                self._optimizer.apply_gradients([(g, v) for g, v in grads_and_vars if g is not None])
 
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""

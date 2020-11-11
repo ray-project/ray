@@ -157,7 +157,8 @@ class Exploration:
         return sample_batch
 
     @DeveloperAPI
-    def get_exploration_optimizer(self, optimizers: List[LocalOptimizer]):
+    def get_exploration_optimizer(self, optimizers: List[LocalOptimizer]) -> \
+            List[LocalOptimizer]:
         """May add optimizer(s) to the Policy's own `optimizers`.
 
         The number of optimizers (Policy's plus Exploration's optimizers) must
@@ -176,7 +177,7 @@ class Exploration:
 
     @DeveloperAPI
     def get_exploration_loss(self, policy_loss: List[TensorType],
-                             train_batch: SampleBatch):
+                             train_batch: SampleBatch) -> List[TensorType]:
         """May add loss term(s) to the Policy's own loss(es).
 
         Args:

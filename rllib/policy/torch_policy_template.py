@@ -314,7 +314,7 @@ def build_torch_policy(
             else:
                 optimizers = TorchPolicy.optimizer(self)
             optimizers = force_list(optimizers)
-            if hasattr(self, "exploration"):
+            if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
             return optimizers
