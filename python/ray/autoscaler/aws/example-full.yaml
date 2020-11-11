@@ -13,7 +13,7 @@ max_workers: 2
 # E.g., if the task requires adding more nodes then autoscaler will gradually
 # scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
 # This number should be > 0.
-upscaling_speed: 1.0
+upscaling_fraction: 0.2
 
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
