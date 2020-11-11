@@ -9,7 +9,7 @@ import torch
 from pandas import DataFrame
 from torch.utils.data import IterableDataset
 
-from ray.util.data.distributed_dataset import PandasDistributedDataset
+from ray.util.data.dataset import MLDataset
 
 
 def convert_to_tensor(df, feature_columns: List[str],
@@ -45,7 +45,7 @@ def convert_to_tensor(df, feature_columns: List[str],
 
 class TorchDataset:
     def __init__(self,
-                 pandas_ds: PandasDistributedDataset = None,
+                 ds: MLDataset = None,
                  feature_columns: List[str] = None,
                  feature_shapes: Optional[List[Any]] = None,
                  feature_types: Optional[List[torch.dtype]] = None,
@@ -62,7 +62,7 @@ class TorchDataset:
 
         self._check_and_convert()
 
-        self._ds = pandas_ds
+        self._ds = ds
 
     def _check_and_convert(self):
         # convert to list for convenience
@@ -113,8 +113,8 @@ class TorchDataset:
                   shuffle_buffer_size: int = 1,
                   seed: int = None) -> torch.utils.data.IterableDataset:
 
-        it = self._ds.get_shard(shard_index, batch_ms, num_async, shuffle,
-                                shuffle_buffer_size, seed)
+        it = self._ds.get_repeat_shard(shard_index, batch_ms, num_async,
+                                       shuffle, shuffle_buffer_size, seed)
         convert_fn = functools.partial(
             convert_to_tensor,
             feature_columns=self._feature_columns,

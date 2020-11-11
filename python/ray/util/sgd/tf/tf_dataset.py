@@ -3,11 +3,11 @@ from typing import List
 
 import tensorflow as tf
 
-from ray.util.data.distributed_dataset import PandasDistributedDataset
+from ray.util.data.dataset import MLDataset
 
 
 class TFDataset:
-    def __init__(self, pandas_ds: PandasDistributedDataset,
+    def __init__(self, pandas_ds: MLDataset,
                  feature_columns: List[str],
                  feature_shapes: List[tf.TensorShape],
                  feature_types: List[tf.DType], label_column: str,
@@ -77,8 +77,8 @@ class TFDataset:
                   shuffle_buffer_size: int = 1,
                   seed: int = None) -> "tf.data.Dataset":
         def make_generator():
-            it = self._ds.get_shard(shard_index, batch_ms, num_async, shuffle,
-                                    shuffle_buffer_size, seed)
+            it = self._ds.get_repeat_shard(shard_index, batch_ms, num_async,
+                                           shuffle, shuffle_buffer_size, seed)
             for df in iter(it):
                 num_rows = df.shape[0]
                 feature_columns = [
