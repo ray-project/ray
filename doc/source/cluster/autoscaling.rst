@@ -15,7 +15,7 @@ To avoid launching too many nodes at once, the number of nodes allowed to be pen
 In more detail, the autoscaler implements the following control loop:
 
  1. It calculates the number of nodes required to satisfy all currently pending tasks, actor, and placement group requests.
- 2. If the number of nodes required divided by the number of current nodes exceeds ``1 + upscaling_speed``, then the number of nodes launched will be limited by that threshold.
+ 2. If the number of nodes required total divided by the number of current nodes exceeds ``1 + upscaling_speed``, then the number of nodes launched will be limited by that threshold.
  3. If a node is idle for a timeout (5 minutes by default), it is removed from the cluster.
 
 The basic autoscaling config settings are as follows:
