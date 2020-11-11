@@ -8,7 +8,10 @@ from gym import wrappers as gym_wrappers
 import json
 import os
 from pathlib import Path
-import pickle
+try:
+    import pickle5 as pickle
+except (ModuleNotFoundError, ImportError):
+    import pickle
 import shelve
 
 import ray
