@@ -14,12 +14,13 @@ import shelve
 import ray
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.tune.utils import merge_dicts
-from ray.tune.registry import get_trainable_cls
+from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:
@@ -365,7 +366,15 @@ def rollout(agent,
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
     else:
-        env = gym.make(env_name)
+        from gym import envs
+        if envs.registry.env_specs.get(agent.config["env"]):
+            # if environment is gym environment, load from gym
+            env = gym.make(agent.config["env"])
+        else:
+            # if environment registered ray environment, load from ray
+            env_creator = _global_registry.get(ENV_CREATOR, agent.config["env"])
+            env_context = EnvContext(agent.config["env_config"] or {}, worker_index=0)
+            env = env_creator(env_context)
         multiagent = False
         try:
             policy_map = {DEFAULT_POLICY_ID: agent.policy}
