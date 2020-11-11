@@ -98,6 +98,8 @@ class JobInfoGrpcService : public GrpcService {
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFailed);
     JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
+    JOB_INFO_SERVICE_RPC_HANDLER(SubmitJob);
+    JOB_INFO_SERVICE_RPC_HANDLER(DropJob);
   }
 
  private:

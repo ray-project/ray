@@ -231,7 +231,8 @@ void AgentManager::MonitorStartingDriver(
     starting_drivers_.erase(driver_monitor_info->job_id);
     std::ostringstream ostr;
     ostr << "Failed to start driver " << driver_monitor_info->driver_pid << " of job "
-         << driver_monitor_info->job_id;
+         << driver_monitor_info->job_id
+         << ", please check the detailed error information in the driver log.";
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFailed(
         driver_monitor_info->job_id, ostr.str(), driver_monitor_info->driver_cmdline,
         nullptr));
