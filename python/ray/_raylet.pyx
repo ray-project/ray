@@ -54,7 +54,6 @@ from ray.includes.common cimport (
     CTaskType,
     CPlacementStrategy,
     CRayFunction,
-    LocalMemoryBuffer,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,

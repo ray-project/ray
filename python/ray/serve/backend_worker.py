@@ -87,8 +87,8 @@ class BatchQueue:
         return batch
 
 
-def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
-    """Creates a worker class wrapping the provided function or class."""
+def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
+    """Creates a replica class wrapping the provided function or class."""
 
     if inspect.isfunction(func_or_class):
         is_function = True
@@ -98,7 +98,7 @@ def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
         assert False, "func_or_class must be function or class."
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
-    class RayServeWrappedWorker(object):
+    class RayServeWrappedReplica(object):
         def __init__(self, backend_tag, replica_tag, init_args,
                      backend_config: BackendConfig, controller_name: str):
             # Set the controller name so that serve.connect() will connect to
@@ -109,8 +109,8 @@ def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
             else:
                 _callable = func_or_class(*init_args)
 
-            self.backend = RayServeWorker(backend_tag, replica_tag, _callable,
-                                          backend_config, is_function)
+            self.backend = RayServeReplica(backend_tag, replica_tag, _callable,
+                                           backend_config, is_function)
 
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
@@ -121,8 +121,9 @@ def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
         def ready(self):
             pass
 
-    RayServeWrappedWorker.__name__ = "RayServeWorker_" + func_or_class.__name__
-    return RayServeWrappedWorker
+    RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
+        func_or_class.__name__)
+    return RayServeWrappedReplica
 
 
 def wrap_to_ray_error(exception: Exception) -> RayTaskError:
@@ -140,7 +141,7 @@ def ensure_async(func: Callable) -> Callable:
     return sync_to_async(func)
 
 
-class RayServeWorker:
+class RayServeReplica:
     """Handles requests with the provided callable."""
 
     def __init__(self, backend_tag: str, replica_tag: str, _callable: Callable,
@@ -172,8 +173,8 @@ class RayServeWorker:
         self.error_counter.set_default_tags({"backend": self.backend_tag})
 
         self.restart_counter = metrics.Count(
-            "backend_worker_starts",
-            description=("The number of time this replica workers "
+            "backend_replica_starts",
+            description=("The number of time this replica "
                          "has been restarted due to failure."),
             tag_keys=("backend", "replica_tag"))
         self.restart_counter.set_default_tags({
@@ -288,7 +289,7 @@ class RayServeWorker:
             if not isinstance(result_list, Iterable) or isinstance(
                     result_list, (dict, set)):
                 error_message = ("RayServe expects an ordered iterable object "
-                                 "but the worker returned a {}".format(
+                                 "but the replica returned a {}".format(
                                      type(result_list)))
                 raise RayServeException(error_message)
 
