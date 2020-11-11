@@ -191,7 +191,10 @@ def get_address_info_from_redis_helper(redis_address,
             break
     if relevant_client is None:
         raise RuntimeError(
-            "Redis has started but no raylets have registered yet.")
+            "Connected to Redis at {} and found raylets at {} but none of these"
+            " match this node's IP {}.".format(redis_address,
+                ", ".join(c["NodeManagerAddress"] for c in client_table),
+                node_ip_address))
 
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
