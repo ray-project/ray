@@ -29,10 +29,10 @@ The basic autoscaling config settings are as follows:
     # node. This number should be >= 0.
     min_workers: 0
 
-    # The cluster will grow in size by at most this fraction of nodes at a time. For
-    # example, if a cluster has 4 nodes and `upscaling_speed = 1.0`, then at most
-    # 4 nodes will be added on upscaling. This value should be between (0.2, 99999],
-    # where the high value of 99999 means unlimited upscaling speed.
+    # The autoscaler will scale up the cluster faster with higher upscaling speed.
+    # E.g., if the task requires adding more nodes then autoscaler will gradually
+    # scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+    # This number should be > 0.
     upscaling_speed: 1.0
 
     # If a node is idle for this many minutes, it will be removed. A node is
