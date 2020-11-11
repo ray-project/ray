@@ -91,7 +91,7 @@ class TestNodeManager : public ::testing::Test {
     node_manager_config_.node_manager_port = 5566;
     node_manager_.reset(new NodeManager(
         *server_io_service_, node_id, node_manager_config_, *object_manager_, gcs_client_,
-        std::make_shared<ObjectDirectory>(*server_io_service_, gcs_client_)));
+        std::make_shared<ObjectDirectory>(*server_io_service_, gcs_client_), []() {}));
 
     // Create node manager rpc client.
     client_call_manager_.reset(new rpc::ClientCallManager(*client_io_service_));
