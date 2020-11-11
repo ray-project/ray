@@ -93,8 +93,7 @@ starting Ray. For example, you can do:
  ray start
 
 This will print any ``RAY_LOG(DEBUG)`` lines in the source code to the
-``raylet.err`` file, which you can find in the `Temporary Files`_.
+``raylet.err`` file, which you can find in :ref:`temp-dir-log-files`.
 
 
 .. _`issues`: https://github.com/ray-project/ray/issues
-.. _`Temporary Files`: http://docs.ray.io/en/latest/tempfile.html
