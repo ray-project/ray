@@ -38,8 +38,17 @@ class TestRedisPassword:
         try:
             ray._private.services.wait_for_redis_to_start(
                 redis_ip, redis_port, password="wrong password")
-        except RuntimeError as runtimeEx:
-            if not isinstance(runtimeEx.__cause__, redis.AuthenticationError):
+        # We catch a generic Exception here in case someone later changes the
+        # type of the exception.
+        except Exception as ex:
+            if not isinstance(ex.__cause__, redis.AuthenticationError):
+                raise
+            # By contrast, we may be fairly confident the exact string
+            # 'invalid password' won't go away, because redis-py simply wraps
+            # the exact error from the Redis library.
+            # https://github.com/andymccurdy/redis-py/blob/master/
+            # redis/connection.py#L132
+            if 'invalid password' not in str(ex.__cause__):
                 raise
 
         # Check that we can connect to Redis using the provided password
