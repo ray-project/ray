@@ -38,6 +38,7 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/object_manager/plasma/store_runner.h"
+#include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 
@@ -53,6 +54,8 @@ struct ObjectManagerConfig {
   unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
+  /// Max object push bytes in flight.
+  uint64_t max_bytes_in_flight;
   /// The store socket name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
@@ -74,14 +77,12 @@ struct ObjectManagerConfig {
 struct LocalObjectInfo {
   /// Information from the object store about the object.
   object_manager::protocol::ObjectInfoT object_info;
-  /// A map from the ID of a remote object manager to the timestamp of when
-  /// the object was last pushed to that object manager (if a push took place).
-  std::unordered_map<NodeID, int64_t> recent_pushes;
 };
 
 class ObjectStoreRunner {
  public:
-  ObjectStoreRunner(const ObjectManagerConfig &config);
+  ObjectStoreRunner(const ObjectManagerConfig &config,
+                    SpillObjectsCallback spill_objects_callback);
   ~ObjectStoreRunner();
 
  private:
@@ -140,15 +141,17 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
   /// \param owner_address The address of the object's owner
+  /// \param client_id The id of the receiver.
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
   /// \param rpc_client Rpc client used to send message to remote object manager
-  ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
-                              const rpc::Address &owner_address, const NodeID &client_id,
-                              uint64_t data_size, uint64_t metadata_size,
-                              uint64_t chunk_index,
-                              std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
+  /// \param on_complete Callback to run on completion.
+  void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                       const rpc::Address &owner_address, const NodeID &client_id,
+                       uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
+                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+                       std::function<void(const Status &)> on_complete);
 
   /// Receive object chunk from remote object manager, small object may contain one chunk
   ///
@@ -190,7 +193,8 @@ class ObjectManager : public ObjectManagerInterface,
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const NodeID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         RestoreSpilledObjectCallback restore_spilled_object);
+                         RestoreSpilledObjectCallback restore_spilled_object,
+                         SpillObjectsCallback spill_objects_callback = nullptr);
 
   ~ObjectManager();
 
@@ -471,6 +475,9 @@ class ObjectManager : public ObjectManagerInterface,
       remote_object_manager_clients_;
 
   const RestoreSpilledObjectCallback restore_spilled_object_;
+
+  /// Object push manager.
+  std::unique_ptr<PushManager> push_manager_;
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;

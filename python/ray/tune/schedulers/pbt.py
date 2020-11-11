@@ -11,7 +11,7 @@ from ray.tune import trial_runner
 from ray.tune import trial_executor
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.logger import _SafeFallbackEncoder
+from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
@@ -503,13 +503,13 @@ class PopulationBasedTraining(FIFOScheduler):
         ]
         # Log to global file.
         with open(os.path.join(trial.local_dir, "pbt_global.txt"), "a+") as f:
-            print(json.dumps(policy, cls=_SafeFallbackEncoder), file=f)
+            print(json.dumps(policy, cls=SafeFallbackEncoder), file=f)
         # Overwrite state in target trial from trial_to_clone.
         if os.path.exists(trial_to_clone_path):
             shutil.copyfile(trial_to_clone_path, trial_path)
         # Log new exploit in target trial log.
         with open(trial_path, "a+") as f:
-            f.write(json.dumps(policy, cls=_SafeFallbackEncoder) + "\n")
+            f.write(json.dumps(policy, cls=SafeFallbackEncoder) + "\n")
 
     def _get_new_config(self, trial, trial_to_clone):
         """Gets new config for trial by exploring trial_to_clone's config."""
@@ -574,7 +574,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_executor.restore(
                     trial, new_state.last_checkpoint, block=True)
             else:
-                trial_executor.stop_trial(trial, stop_logger=False)
+                trial_executor.stop_trial(trial)
                 trial.config = new_config
                 trial.experiment_tag = new_tag
                 trial_executor.start_trial(

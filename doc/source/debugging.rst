@@ -97,4 +97,4 @@ This will print any ``RAY_LOG(DEBUG)`` lines in the source code to the
 
 
 .. _`issues`: https://github.com/ray-project/ray/issues
-.. _`Temporary Files`: http://docs.ray.io/en/latest/tempfile.html
+.. _`Temporary Files`: http://docs.ray.io/en/master/tempfile.html

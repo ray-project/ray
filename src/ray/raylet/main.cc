@@ -127,7 +127,7 @@ int main(int argc, char *argv[]) {
     std::string config_value;
 
     while (std::getline(config_string, config_name, ',')) {
-      RAY_CHECK(std::getline(config_string, config_value, ','));
+      RAY_CHECK(std::getline(config_string, config_value, ';'));
       // TODO(rkn): The line below could throw an exception. What should we do about this?
       raylet_config[config_name] = config_value;
     }
@@ -236,6 +236,8 @@ int main(int argc, char *argv[]) {
         object_manager_config.push_timeout_ms =
             RayConfig::instance().object_manager_push_timeout_ms();
         object_manager_config.object_store_memory = object_store_memory;
+        object_manager_config.max_bytes_in_flight =
+            RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;
         object_manager_config.huge_pages = huge_pages;
 

@@ -3,7 +3,7 @@
 set -x
 
 # Cause the script to exit if a single command fails.
-set -e
+set -euo pipefail
 
 cat << EOF > "/usr/bin/nproc"
 #!/bin/bash
@@ -22,18 +22,26 @@ NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5")
 
-sudo apt-get install unzip
-/ray/ci/travis/install-bazel.sh
+yum -y install unzip zip sudo
+yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
+yum -y install openssl
 
-# Put bazel into the PATH
-export PATH=$PATH:/root/bin
+/ray/ci/travis/install-bazel.sh
+# Put bazel into the PATH if building Bazel from source
+# export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
+
+# If converting down to manylinux2010, the following configuration should
+# be set for bazel
+#echo "build --config=manylinux2010" >> /root/.bazelrc
+echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
+
 
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
 source "$HOME"/.nvm/nvm.sh
-nvm install $NODE_VERSION
-nvm use node
+nvm install "$NODE_VERSION"
+nvm use "$NODE_VERSION"
 
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
@@ -66,7 +74,8 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
       exit 1
     fi
 
-    PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
+    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
+    /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
   popd
@@ -76,6 +85,6 @@ done
 # hack, we should use auditwheel instead.
 for path in .whl/*.whl; do
   if [ -f "${path}" ]; then
-    mv "${path}" "${path//linux/manylinux1}"
+    mv "${path}" "${path//linux/manylinux2014}"
   fi
 done

@@ -26,14 +26,16 @@ smart_open_object_spilling_config = {
 
 
 @pytest.fixture(
-    scope="module",
+    scope="function",
     params=[
         file_system_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
         # smart_open_object_spilling_config,
     ])
-def object_spilling_config(request):
-    yield request.param
+def object_spilling_config(request, tmpdir):
+    if request.param["type"] == "filesystem":
+        request.param["params"]["directory_path"] = str(tmpdir)
+    yield json.dumps(request.param)
 
 
 @pytest.mark.skip("This test is for local benchmark.")
@@ -48,10 +50,10 @@ def test_sample_benchmark(object_spilling_config, shutdown_only):
     # Limit our object store to 200 MiB of memory.
     ray.init(
         object_store_memory=object_store_limit,
-        _object_spilling_config=object_spilling_config,
         _system_config={
             "object_store_full_max_retries": 0,
             "max_io_workers": max_io_workers,
+            "object_spilling_config": object_spilling_config,
         })
     arr = np.random.rand(object_size)
     replay_buffer = []
@@ -91,18 +93,26 @@ def test_invalid_config_raises_exception(shutdown_only):
     # it starts processes when invalid object spilling
     # config is given.
     with pytest.raises(ValueError):
-        ray.init(_object_spilling_config={"type": "abc"})
+        ray.init(_system_config={
+            "object_spilling_config": json.dumps({
+                "type": "abc"
+            }),
+        })
 
     with pytest.raises(Exception):
         copied_config = copy.deepcopy(file_system_object_spilling_config)
         # Add invalid params to the config.
         copied_config["params"].update({"random_arg": "abc"})
-        ray.init(_object_spilling_config=copied_config)
+        ray.init(_system_config={
+            "object_spilling_config": json.dumps(copied_config),
+        })
 
     with pytest.raises(ValueError):
         copied_config = copy.deepcopy(file_system_object_spilling_config)
         copied_config["params"].update({"directory_path": "not_exist_path"})
-        ray.init(_object_spilling_config=copied_config)
+        ray.init(_system_config={
+            "object_spilling_config": json.dumps(copied_config),
+        })
 
 
 @pytest.mark.skipif(
@@ -111,10 +121,11 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
-        _object_spilling_config=object_spilling_config,
         _system_config={
             "object_store_full_max_retries": 0,
+            "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
+            "object_spilling_config": object_spilling_config,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -161,10 +172,11 @@ def test_spill_objects_manually_from_workers(object_spilling_config,
     # Limit our object store to 100 MiB of memory.
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        _object_spilling_config=object_spilling_config,
         _system_config={
             "object_store_full_max_retries": 0,
+            "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
+            "object_spilling_config": object_spilling_config,
         })
 
     @ray.remote
@@ -190,10 +202,11 @@ def test_spill_objects_manually_with_workers(object_spilling_config,
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        _object_spilling_config=object_spilling_config,
         _system_config={
             "object_store_full_max_retries": 0,
+            "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
+            "object_spilling_config": object_spilling_config,
         })
     arrays = [np.random.rand(100 * 1024) for _ in range(50)]
     objects = [ray.put(arr) for arr in arrays]
@@ -210,23 +223,27 @@ def test_spill_objects_manually_with_workers(object_spilling_config,
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_remote_object(object_spilling_config, ray_start_cluster):
-    cluster = ray_start_cluster
-    # # Head node.
-    cluster.add_node(
-        num_cpus=0,
-        object_store_memory=75 * 1024 * 1024,
-        object_spilling_config=object_spilling_config,
-        _system_config={
-            "object_store_full_max_retries": 0,
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "object_store_memory": 75 * 1024 * 1024,
+        "_system_config": {
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
             "max_io_workers": 4,
-        })
-    # Worker nodes.
-    cluster.add_node(
-        object_store_memory=75 * 1024 * 1024,
-        object_spilling_config=object_spilling_config)
-    cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": "/tmp"
+                }
+            }),
+        },
+    }],
+    indirect=True)
+def test_spill_remote_object(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(object_store_memory=75 * 1024 * 1024)
 
     @ray.remote
     def put():
@@ -240,11 +257,7 @@ def test_spill_remote_object(object_spilling_config, ray_start_cluster):
     copy = np.copy(ray.get(ref))
     # Evict local copy.
     ray.put(np.random.rand(5 * 1024 * 1024))  # 40 MB data
-    # Remote copy should not fit.
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(put.remote())
-    # Spill 1 object. The second should now fit.
-    ray.experimental.force_spill_objects([ref])
+    # Remote copy should cause first remote object to get spilled.
     ray.get(put.remote())
 
     sample = ray.get(ref)
@@ -258,17 +271,19 @@ def test_spill_remote_object(object_spilling_config, ray_start_cluster):
     ray.get(depends.remote(ref))
 
 
-@pytest.mark.skip(reason="Not implemented yet.")
-def test_spill_objects_automatically(shutdown_only):
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
-        _system_config=json.dumps({
+        _system_config={
             "max_io_workers": 4,
-            "object_store_full_max_retries": 2,
-            "object_store_full_initial_delay_ms": 10,
-            "auto_object_spilling": True,
-        }))
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+        })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
 
@@ -289,6 +304,41 @@ def test_spill_objects_automatically(shutdown_only):
         ref = random.choice(replay_buffer)
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, arr)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skip(
+    "Temporarily disabled until OutOfMemory retries can be moved "
+    "into the plasma store")
+def test_spill_during_get(object_spilling_config, shutdown_only):
+    ray.init(
+        num_cpus=4,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "automatic_object_spilling_enabled": True,
+            # This test will deadlock if only one IO worker is allowed because
+            # the IO worker will try to restore an object, but this requires
+            # another object to be spilled, which also requires an IO worker.
+            "max_io_workers": 2,
+            "object_spilling_config": object_spilling_config,
+        },
+    )
+
+    @ray.remote
+    def f():
+        return np.zeros(10 * 1024 * 1024)
+
+    ids = []
+    for i in range(10):
+        x = f.remote()
+        print(i, x)
+        ids.append(x)
+
+    # Concurrent gets, which require restoring from external storage, while
+    # objects are being created.
+    for x in ids:
+        print(ray.get(x).shape)
 
 
 if __name__ == "__main__":

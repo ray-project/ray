@@ -55,11 +55,12 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(JNIEnv *, jcl
 /*
  * Class:     io_ray_runtime_task_NativeTaskSubmitter
  * Method:    nativeCreatePlacementGroup
- * Signature: (Ljava/util/List;I)[B
+ * Signature: (Ljava/lang/String;Ljava/util/List;I)[B
  */
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(JNIEnv *, jclass,
-                                                                        jobject, jint);
+                                                                        jstring, jobject,
+                                                                        jint);
 
 #ifdef __cplusplus
 }

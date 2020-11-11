@@ -18,6 +18,7 @@ import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
+import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
                             wait_for_condition, wait_for_num_actors)
@@ -153,7 +154,7 @@ def test_global_state_api(shutdown_only):
         def __init__(self):
             pass
 
-    _ = Actor.remote()  # noqa: F841
+    _ = Actor.options(name="test_actor").remote()  # noqa: F841
     # Wait for actor to be created
     wait_for_num_actors(1)
 
@@ -162,6 +163,7 @@ def test_global_state_api(shutdown_only):
 
     actor_info, = actor_table.values()
     assert actor_info["JobID"] == job_id.hex()
+    assert actor_info["Name"] == "test_actor"
     assert "IPAddress" in actor_info["Address"]
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
@@ -520,6 +522,12 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
+
+
+def test_ray_start_and_stop():
+    for i in range(10):
+        subprocess.check_call(["ray", "start", "--head"])
+        subprocess.check_call(["ray", "stop"])
 
 
 def test_invalid_unicode_in_worker_log(shutdown_only):

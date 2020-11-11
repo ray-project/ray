@@ -359,8 +359,9 @@ class Worker:
                                    "function", self)
 
             # Run the function on all workers.
-            self.redis_client.hmset(
-                key, {
+            self.redis_client.hset(
+                key,
+                mapping={
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
@@ -368,7 +369,7 @@ class Worker:
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
-            # successfully completes the hmset and rpush, then the program will
+            # successfully completes the hset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
             # operations into a transaction (or by implementing a custom
             # command that does all three things).
@@ -510,7 +511,6 @@ def init(
         _load_code_from_local=False,
         _lru_evict=False,
         _metrics_export_port=None,
-        _object_spilling_config=None,
         _system_config=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
@@ -609,8 +609,6 @@ def init(
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
-        _object_spilling_config (str): The configuration json string for object
-            spilling I/O worker.
         _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -727,8 +725,7 @@ def init(
             _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
-            metrics_export_port=_metrics_export_port,
-            object_spilling_config=_object_spilling_config)
+            metrics_export_port=_metrics_export_port)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -1187,7 +1184,7 @@ def connect(node,
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
 
-    if mode is not SCRIPT_MODE and setproctitle:
+    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
         if mode is IO_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_IO_WORKER
@@ -1371,11 +1368,13 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    setproctitle.setproctitle(title)
+    if _mode() is not LOCAL_MODE:
+        setproctitle.setproctitle(title)
     try:
         yield
     finally:
-        setproctitle.setproctitle(next_title)
+        if _mode() is not LOCAL_MODE:
+            setproctitle.setproctitle(next_title)
 
 
 def show_in_dashboard(message, key="", dtype="text"):

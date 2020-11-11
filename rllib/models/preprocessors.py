@@ -58,7 +58,6 @@ class Preprocessor:
                 observation = np.array(observation)
             try:
                 if not self._obs_space.contains(observation):
-                    print()
                     raise ValueError(
                         "Observation ({}) outside given space ({})!",
                         observation, self._obs_space)

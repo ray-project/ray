@@ -262,7 +262,7 @@ Deep Deterministic Policy Gradients (DDPG, TD3)
 -----------------------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ddpg/ddpg.py>`__
-DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
+DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/master/algorithms/td3.html>`__ are available as ``TD3``.
 
 .. figure:: dqn-arch.svg
 

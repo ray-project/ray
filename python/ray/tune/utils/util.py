@@ -1,9 +1,12 @@
 import copy
+import json
 import logging
+import numbers
 import os
 import inspect
 import threading
 import time
+import uuid
 from collections import defaultdict, deque, Mapping, Sequence
 from datetime import datetime
 from threading import Thread
@@ -156,6 +159,10 @@ class Tee(object):
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def is_nan_or_inf(value):
+    return np.isnan(value) or np.isinf(value)
 
 
 def env_integer(key, default):
@@ -536,6 +543,55 @@ def detect_config_single(func):
         logger.debug(str(e))
         use_config_single = False
     return use_config_single
+
+
+def create_logdir(dirname: str, local_dir: str):
+    """Create an empty logdir with name `dirname` in `local_dir`.
+
+    If `local_dir`/`dirname` already exists, a unique string is appended
+    to the dirname.
+
+    Args:
+        dirname (str): Dirname to create in `local_dir`
+        local_dir (str): Root directory for the log dir
+
+    Returns: full path to the newly created logdir.
+    """
+    local_dir = os.path.expanduser(local_dir)
+    logdir = os.path.join(local_dir, dirname)
+    if os.path.exists(logdir):
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
+        logdir = os.path.join(local_dir, dirname)
+    os.makedirs(logdir, exist_ok=True)
+    return logdir
+
+
+class SafeFallbackEncoder(json.JSONEncoder):
+    def __init__(self, nan_str="null", **kwargs):
+        super(SafeFallbackEncoder, self).__init__(**kwargs)
+        self.nan_str = nan_str
+
+    def default(self, value):
+        try:
+            if np.isnan(value):
+                return self.nan_str
+
+            if (type(value).__module__ == np.__name__
+                    and isinstance(value, np.ndarray)):
+                return value.tolist()
+
+            if issubclass(type(value), numbers.Integral):
+                return int(value)
+            if issubclass(type(value), numbers.Number):
+                return float(value)
+
+            return super(SafeFallbackEncoder, self).default(value)
+
+        except Exception:
+            return str(value)  # give up, just stringify it (ok for logs)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
     const std::shared_ptr<ReferenceCounter> reference_counter,
-    std::function<Status()> check_signals, bool evict_if_full,
+    std::function<Status()> check_signals, bool evict_if_full, bool warmup,
     std::function<void()> on_store_full,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
@@ -40,7 +40,9 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_CHECK_OK(store_client_.Connect(store_socket));
-  RAY_CHECK_OK(WarmupStore());
+  if (warmup) {
+    RAY_CHECK_OK(WarmupStore());
+  }
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {

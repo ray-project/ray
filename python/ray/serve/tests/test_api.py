@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 import time
-
+import os
 import pytest
 import requests
 
@@ -46,6 +46,42 @@ def test_e2e(serve_instance):
 
     resp = requests.post("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "POST"
+
+
+def test_backend_user_config(serve_instance):
+    client = serve_instance
+
+    class Counter:
+        def __init__(self):
+            self.count = 10
+
+        def __call__(self, flask_request):
+            return self.count, os.getpid()
+
+        def reconfigure(self, config):
+            self.count = config["count"]
+
+    config = BackendConfig(num_replicas=2, user_config={"count": 123, "b": 2})
+    client.create_backend("counter", Counter, config=config)
+    client.create_endpoint("counter", backend="counter", route="/counter")
+    handle = client.get_handle("counter")
+
+    def check(val, num_replicas):
+        pids_seen = set()
+        for i in range(100):
+            result = ray.get(handle.remote())
+            assert (str(result[0]) == val), result[0]
+            pids_seen.add(result[1])
+        assert (len(pids_seen) == num_replicas)
+
+    check("123", 2)
+
+    client.update_backend_config("counter", BackendConfig(num_replicas=3))
+    check("123", 3)
+
+    config = BackendConfig(user_config={"count": 456})
+    client.update_backend_config("counter", config)
+    check("456", 3)
 
 
 def test_call_method(serve_instance):
@@ -302,7 +338,7 @@ def test_updating_config(serve_instance, use_legacy_config):
         controller._list_replicas.remote("bsimple:v1"))
     new_all_tag_list = []
     for worker_dict in ray.get(
-            controller.get_all_worker_handles.remote()).values():
+            controller.get_all_replica_handles.remote()).values():
         new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the old and new replica tag list should be identical
@@ -567,7 +603,7 @@ def test_list_backends(serve_instance, use_legacy_config):
     backends = client.list_backends()
     assert len(backends) == 1
     assert "backend" in backends
-    assert backends["backend"]["max_batch_size"] == 10
+    assert backends["backend"].max_batch_size == 10
 
     config2 = {
         "num_replicas": 10
@@ -575,7 +611,7 @@ def test_list_backends(serve_instance, use_legacy_config):
     client.create_backend("backend2", f, config=config2)
     backends = client.list_backends()
     assert len(backends) == 2
-    assert backends["backend2"]["num_replicas"] == 10
+    assert backends["backend2"].num_replicas == 10
 
     client.delete_backend("backend")
     backends = client.list_backends()
@@ -751,13 +787,13 @@ def test_connect(serve_instance):
     client.create_endpoint("endpoint", backend="connect_in_backend")
     handle = client.get_handle("endpoint")
     assert ray.get(handle.remote()) == client._controller_name
-    assert "backend-ception" in client.list_backends()
+    assert "backend-ception" in client.list_backends().keys()
 
     client3.create_backend("connect_in_backend", connect_in_backend)
     client3.create_endpoint("endpoint", backend="connect_in_backend")
     handle = client3.get_handle("endpoint")
     assert ray.get(handle.remote()) == client3._controller_name
-    assert "backend-ception" in client3.list_backends()
+    assert "backend-ception" in client3.list_backends().keys()
 
 
 def test_serve_metrics(serve_instance):
@@ -774,7 +810,11 @@ def test_serve_metrics(serve_instance):
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
 
     def verify_metrics(do_assert=False):
-        resp = requests.get("http://127.0.0.1:9999").text
+        try:
+            resp = requests.get("http://127.0.0.1:9999").text
+        # Requests will fail if we are crashing the controller
+        except requests.ConnectionError:
+            return False
 
         expected_metrics = [
             # counter

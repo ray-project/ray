@@ -3,7 +3,7 @@ RLlib: Scalable Reinforcement Learning
 
 RLlib is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications.
 
-For an overview of RLlib, see the [documentation](http://docs.ray.io/en/latest/rllib.html).
+For an overview of RLlib, see the [documentation](http://docs.ray.io/en/master/rllib.html).
 
 If you've found RLlib useful for your research, you can cite the [paper](https://arxiv.org/abs/1712.09381) as follows:
 

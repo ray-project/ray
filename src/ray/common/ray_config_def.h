@@ -185,15 +185,16 @@ RAY_CONFIG(int, object_manager_pull_timeout_ms, 10000)
 /// 0: giving up retrying immediately.
 RAY_CONFIG(int, object_manager_push_timeout_ms, 10000)
 
-/// The period of time that an object manager will wait before pushing the
-/// same object again to a specific object manager.
-RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000)
-
 /// Default chunk size for multi-chunk transfers to use in the object manager.
 /// In the object manager, no single thread is permitted to transfer more
 /// data than what is specified by the chunk size unless the number of object
 /// chunks exceeds the number of available sending threads.
-RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
+/// NOTE(ekl): this has been raised to lower broadcast overheads.
+RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
+
+/// The maximum number of outbound bytes to allow to be outstanding. This avoids
+/// excessive memory usage during object broadcast to many receivers.
+RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 2L * 1024 * 1024 * 1024)
 
 /// Number of workers per Python worker process
 RAY_CONFIG(int, num_workers_per_process_python, 1)
@@ -238,6 +239,8 @@ RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
+/// The interval at which the gcs server will print debug info.
+RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -291,7 +294,7 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
 /// If true, the worker's queue backlog size will be propagated to the heartbeat batch
 /// data.
-RAY_CONFIG(bool, report_worker_backlog, false)
+RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
@@ -314,9 +317,6 @@ RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
-/// The maximum number of I/O worker that raylet starts.
-RAY_CONFIG(int, max_io_workers, 1)
-
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
 RAY_CONFIG(bool, enable_timeline, true)
@@ -324,3 +324,15 @@ RAY_CONFIG(bool, enable_timeline, true)
 /// The maximum number of pending placement group entries that are reported to monitor to
 /// autoscale the cluster.
 RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+
+/* Configuration parameters for object spilling. */
+/// JSON configuration that describes the external storage. This is passed to
+/// Python IO workers to determine how to store/restore an object to/from
+/// external storage.
+RAY_CONFIG(std::string, object_spilling_config, "")
+/// Whether to enable automatic object spilling. If enabled, then
+/// Ray will choose objects to spill when the object store is out of
+/// memory.
+RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
+/// The maximum number of I/O worker that raylet starts.
+RAY_CONFIG(int, max_io_workers, 1)
