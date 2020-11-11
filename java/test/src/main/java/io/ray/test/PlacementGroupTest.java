@@ -43,6 +43,7 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(Integer.valueOf(1), actor.task(Counter::getValue).remote().get());
   }
 
+  @Test(groups = {"cluster"})
   public void testGetPlacementGroup() {
     PlacementGroupImpl firstPlacementGroup = (PlacementGroupImpl)PlacementGroupTestUtils
         .createNameSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK,
@@ -79,6 +80,7 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(placementGroupRes.getStrategy(), expectPlacementGroup.getStrategy());
   }
 
+  @Test(groups = {"cluster"})
   public void testRemovePlacementGroup() {
     PlacementGroupTestUtils.createNameSpecifiedSimpleGroup("CPU",
         1, PlacementStrategy.PACK, 1.0, "first_placement_group");
