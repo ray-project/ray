@@ -23,6 +23,7 @@ def ray_start_4_cpus():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+
 @pytest.fixture
 def ray_4_node():
     cluster = Cluster()
@@ -41,7 +42,7 @@ def ray_4_node():
 def ray_4_node_gpu():
     cluster = Cluster()
     for _ in range(4):
-        cluster.add_node(num_cpus=1, num_gpus=2)
+        cluster.add_node(num_cpus=2, num_gpus=2)
 
     ray.init(address=cluster.address)
 
@@ -49,6 +50,7 @@ def ray_4_node_gpu():
 
     ray.shutdown()
     cluster.shutdown()
+
 
 @pytest.fixture
 def ray_connect_cluster():

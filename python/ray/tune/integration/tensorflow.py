@@ -45,8 +45,8 @@ class _TensorFlowTrainable(tune.Trainable):
     """Base class for distributed training on Tune."""
     _function = None
     _num_workers = None
-    _use_gpu = None
     _num_cpus_per_worker = None
+    _num_gpus_per_worker = None
     _num_workers_per_host = None
     __placement_group = None
     _timeout_s = None
@@ -58,7 +58,7 @@ class _TensorFlowTrainable(tune.Trainable):
         return bool(self._num_workers_per_host)
 
     def get_remote_worker_options(self) -> Dict[str, Any]:
-        num_gpus = 1 if self._use_gpu else 0
+        num_gpus = int(self._num_gpus_per_worker or 1)
         num_cpus = int(self._num_cpus_per_worker or 1)
         options = dict(num_cpus=num_cpus, num_gpus=num_gpus)
         if self.should_colocate:
