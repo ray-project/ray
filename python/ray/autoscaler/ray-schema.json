@@ -237,6 +237,11 @@
                     "type": "boolean",
                     "description": "disable Ray from automatically using the NVIDIA runtime if available",
                     "default": false
+                },
+                "disable_shm_size_detection" : {
+                    "type": "boolean",
+                    "description": "disable Ray from automatically detecting /dev/shm size for the container",
+                    "default": false
                 }
             }
         },

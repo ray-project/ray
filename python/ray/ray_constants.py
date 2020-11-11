@@ -24,6 +24,8 @@ ID_SIZE = 20
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
+# The default proportion of available memory allocated to the object store
+DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
