@@ -123,7 +123,6 @@ class LoadMetrics:
     def _get_resource_usage(self):
         num_nodes = 0
         num_nonidle = 0
-        has_saturated_node = False
         resources_used = {}
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
@@ -136,7 +135,6 @@ class LoadMetrics:
             max_frac = 0.0
             for resource_id, amount in resource_load.items():
                 if amount > 0:
-                    has_saturated_node = True
                     max_frac = 1.0  # the resource is saturated
             for resource_id, amount in max_resources.items():
                 used = amount - avail_resources[resource_id]
