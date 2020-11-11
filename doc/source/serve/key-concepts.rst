@@ -24,7 +24,7 @@ A backend is defined using :mod:`client.create_backend <ray.serve.api.Client.cre
 Use a function when your response is stateless and a class when you might need to maintain some state (like a model).
 When using a class, you can specify arguments to be passed to the constructor in :mod:`client.create_backend <ray.serve.api.Client.create_backend>`, shown below.
 
-A backend consists of a number of *replicas*, which are individual copies of the function or class that are started in separate worker processes.
+A backend consists of a number of *replicas*, which are individual copies of the function or class that are started in separate Ray Workers (processes).
 
 .. code-block:: python
 

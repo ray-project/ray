@@ -161,6 +161,10 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
+def is_nan_or_inf(value):
+    return np.isnan(value) or np.isinf(value)
+
+
 def env_integer(key, default):
     # TODO(rliaw): move into ray.constants
     if key in os.environ:
