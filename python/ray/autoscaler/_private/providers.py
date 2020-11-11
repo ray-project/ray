@@ -161,7 +161,8 @@ def _get_node_provider(provider_config: Dict[str, Any],
     Args:
         provider_config: provider section of the autoscaler config.
         cluster_name: cluster name from the autoscaler config.
-        use_cache: whether or not to use a cached definition if available.
+        use_cache: whether or not to use a cached definition if available. If
+            False, the returned object will also not be stored in the cache.
 
     Returns:
         NodeProvider
