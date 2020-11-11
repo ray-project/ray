@@ -1,4 +1,4 @@
-"""This test checks that BayesOpt is functional.
+"""This example demonstrates the usage of BayesOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """

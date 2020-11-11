@@ -1,4 +1,4 @@
-"""This test checks that HyperOpt is functional.
+"""This example demonstrates the usage of HyperOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """

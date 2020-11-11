@@ -34,16 +34,16 @@ Though it is preferable to use the Function API, Tune also supports a Class-base
 Search Algorithm Examples
 -------------------------
 
-- :doc:`/tune/examples/ax_example`: Example script showing usage of :ref:`AxSearch <tune-ax>` [Framework website: `Ax <https://ax.dev/>`__
-- :doc:`/tune/examples/dragonfly_example`: Example script showing usage of :ref:`DragonflySearch <Dragonfly>` [Framework website: `Dragonfly <https://dragonfly-opt.readthedocs.io/>`__
-- :doc:`/tune/examples/skopt_example`: Example script showing usage of :ref:`SkoptSearch <skopt>` [Framework website: `Scikit-Optimize <https://scikit-optimize.github.io>`__
-- :doc:`/tune/examples/hyperopt_example`: Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [Framework website: `HyperOpt <http://hyperopt.github.io/hyperopt>`__
-- :doc:`/tune/examples/bayesopt_example`: Example script showing usage of :ref:`BayesOptSearch <bayesopt>` [Framework website: `BayesianOptimization <https://github.com/fmfn/BayesianOptimization>`__
-- :doc:`/tune/examples/bohb_example`: Example script showing usage of :ref:`TuneBOHB <suggest-TuneBOHB>` [Framework website: `BOHB <https://github.com/automl/HpBandSter>`__
-- :doc:`/tune/examples/nevergrad_example`: Example script showing usage of :ref:`NevergradSearch <nevergrad>` [Framework website: `Nevergrad <https://github.com/facebookresearch/nevergrad>`__
-- :doc:`/tune/examples/optuna_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [Framework website: `Optuna <https://optuna.org/>`__
-- :doc:`/tune/examples/zoopt_example`: Example script showing usage of :ref:`ZOOptSearch <zoopt>` [Framework website: `ZOOpt <https://github.com/polixir/ZOOpt>`__
-- :doc:`/tune/examples/sigopt_example`: Example script showing usage of :ref:`SigOptSearch <sigopt>` [Framework website: `SigOpt <https://sigopt.com/>`__
+- :doc:`/tune/examples/ax_example`: Example script showing usage of :ref:`AxSearch <tune-ax>` [`Ax website <https://ax.dev/>`__]
+- :doc:`/tune/examples/dragonfly_example`: Example script showing usage of :ref:`DragonflySearch <Dragonfly>` [`Dragonfly website <https://dragonfly-opt.readthedocs.io/>`__]
+- :doc:`/tune/examples/skopt_example`: Example script showing usage of :ref:`SkoptSearch <skopt>` [`Scikit-Optimize website <https://scikit-optimize.github.io>`__]
+- :doc:`/tune/examples/hyperopt_example`: Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__]
+- :doc:`/tune/examples/bayesopt_example`: Example script showing usage of :ref:`BayesOptSearch <bayesopt>` [`BayesianOptimization website <https://github.com/fmfn/BayesianOptimization>`__]
+- :doc:`/tune/examples/bohb_example`: Example script showing usage of :ref:`TuneBOHB <suggest-TuneBOHB>` [`BOHB website <https://github.com/automl/HpBandSter>`__]
+- :doc:`/tune/examples/nevergrad_example`: Example script showing usage of :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
+- :doc:`/tune/examples/optuna_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
+- :doc:`/tune/examples/zoopt_example`: Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
+- :doc:`/tune/examples/sigopt_example`: Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__]
 
 
 **Sigopt (Contributed)**
@@ -55,12 +55,12 @@ Search Algorithm Examples
 tune-sklearn examples
 ---------------------
 
+See the `ray-project/tune-sklearn examples <https://github.com/ray-project/tune-sklearn/tree/master/examples>`__ for a comprehensive list of examples leveraging Tune's sklearn interface.
 
 - `tune-sklearn with xgboost <https://github.com/ray-project/tune-sklearn/blob/master/examples/xgbclassifier.py>`__
 - `tune-sklearn with sklearn pipelines <https://github.com/ray-project/tune-sklearn/blob/master/examples/sklearn_pipeline.py>`__
 - `tune-sklearn with Bayesian Optimization <https://github.com/ray-project/tune-sklearn/blob/master/examples/hyperopt_sgd.py>`__
 
-See the `ray-project/tune-sklearn examples <https://github.com/ray-project/tune-sklearn/tree/master/examples>`__ for a comprehensive list of examples leveraging Tune's sklearn interface.
 
 Framework-specific Examples
 ---------------------------

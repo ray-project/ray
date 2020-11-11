@@ -1,4 +1,4 @@
-"""This test checks that ZOOptSearch is functional.
+"""This example demonstrates the usage of ZOOptSearch.
 
 It also checks that it is usable with a separate scheduler.
 """

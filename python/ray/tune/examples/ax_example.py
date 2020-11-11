@@ -1,4 +1,4 @@
-"""This test checks that AxSearch is functional.
+"""This example demonstrates the usage of AxSearch with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
