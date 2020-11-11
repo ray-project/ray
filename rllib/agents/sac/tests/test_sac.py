@@ -27,9 +27,9 @@ torch, _ = try_import_torch()
 class SimpleEnv(Env):
     def __init__(self, config):
         if config.get("simplex_actions", False):
-            self.action_space = Simplex((2,))
+            self.action_space = Simplex((2, ))
         else:
-            self.action_space = Box(0.0, 1.0, (1,))
+            self.action_space = Box(0.0, 1.0, (1, ))
         self.observation_space = Box(0.0, 1.0, (1, ))
         self.max_steps = config.get("max_steps", 100)
         self.state = None

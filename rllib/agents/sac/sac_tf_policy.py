@@ -661,11 +661,11 @@ def validate_spaces(policy: Policy, observation_space: gym.spaces.Space,
     if not isinstance(action_space, (Box, Discrete, Simplex)):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
-            "SAC. Must be [Box|Discrete|Simplex].".format(action_space,
-                                                          policy))
+            "SAC. Must be [Box|Discrete|Simplex].".format(
+                action_space, policy))
     # If Box, make sure it's a 1D vector space.
-    elif isinstance(action_space, (Box, Simplex)) and len(
-            action_space.shape) > 1:
+    elif isinstance(action_space,
+                    (Box, Simplex)) and len(action_space.shape) > 1:
         raise UnsupportedSpaceException(
             "Action space ({}) of {} has multiple dimensions "
             "{}. ".format(action_space, policy, action_space.shape) +

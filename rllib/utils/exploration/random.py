@@ -101,11 +101,12 @@ class Random(Exploration):
                     assert isinstance(component, Simplex), \
                         "Unsupported distribution component '{}' for random " \
                         "sampling!".format(component)
-                    return tf.nn.softmax(tf.random.uniform(
-                        shape=(batch_size, ) + component.shape,
-                        minval=0.0,
-                        maxval=1.0,
-                        dtype=component.dtype))
+                    return tf.nn.softmax(
+                        tf.random.uniform(
+                            shape=(batch_size, ) + component.shape,
+                            minval=0.0,
+                            maxval=1.0,
+                            dtype=component.dtype))
 
             actions = tree.map_structure(random_component,
                                          self.action_space_struct)
