@@ -468,7 +468,8 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli",
+            "ray-operator=ray.operator:main"
         ]
     },
     include_package_data=True,

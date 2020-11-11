@@ -75,7 +75,7 @@ def get_logs():
     return open_log(err_path), open_log(out_path)
 
 
-if __name__ == "__main__":
+def main():
     kubernetes.config.load_incluster_config()
     cluster_config_path = prepare_ray_cluster_config()
 
@@ -102,3 +102,7 @@ if __name__ == "__main__":
         stderr_file=stderr_file,
         autoscaling_config=cluster_config_path,
         redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
+
+
+if __name__ == "__main__":
+    main()
