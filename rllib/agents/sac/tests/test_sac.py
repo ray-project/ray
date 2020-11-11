@@ -26,7 +26,10 @@ torch, _ = try_import_torch()
 
 class SimpleEnv(Env):
     def __init__(self, config):
-        self.action_space = Simplex((2, ))
+        if config.get("simplex_actions", False):
+            self.action_space = Simplex((2,))
+        else:
+            self.action_space = Box(0.0, 1.0, (1,))
         self.observation_space = Box(0.0, 1.0, (1, ))
         self.max_steps = config.get("max_steps", 100)
         self.state = None
@@ -96,6 +99,8 @@ class TestSAC(unittest.TestCase):
         config["policy_model"]["fcnet_hiddens"] = [10]
         # Make sure, timing differences do not affect trainer.train().
         config["min_iter_time_s"] = 0
+        # Test SAC with Simplex action space.
+        config["env_config"] = {"simplex_actions": True}
 
         map_ = {
             # Normal net.
