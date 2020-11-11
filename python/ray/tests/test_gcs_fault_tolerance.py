@@ -185,7 +185,8 @@ def test_create_pg_after_gcs_server_restart(ray_start_cluster_head):
     placement_group2 = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
     ray.get(placement_group2.ready(), timeout=2)
 
-    # Create placement group 3, because the cluster resource is insufficient, its status is `PENDING`.
+    # Create placement group 3.
+    # Status is `PENDING` because the cluster resource is insufficient.
     placement_group3 = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(placement_group3.ready(), timeout=2)
