@@ -222,7 +222,7 @@ class HyperOptSearch(Searcher):
 
             # Get new suggestion from Hyperopt
             new_trials = self.algo(new_ids, self.domain, self._hpopt_trials,
-                                   self.rstate.randint(2**31 - 1))
+                                   self.rstate.randint(0, 2**31 - 1))
             self._hpopt_trials.insert_trial_docs(new_trials)
             self._hpopt_trials.refresh()
             new_trial = new_trials[0]
