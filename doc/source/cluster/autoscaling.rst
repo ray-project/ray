@@ -8,7 +8,7 @@ Cluster Autoscaling
 Basics
 ------
 
-The Ray Cluster Launcher will automatically enable a load-based autoscaler. The scheduler will look at the queue of resource shape demands from the cluster (e.g., there might be 10 tasks queued each requesting ``{"GPU": 4, "CPU": 16}``), and tries to add the minimum set of nodes that can fulfill these resource demands. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
+The Ray Cluster Launcher will automatically enable a load-based autoscaler. The scheduler will look at the task, actor, and placement group resource demands from the cluster, and tries to add the minimum set of nodes that can fulfill these demands. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
 
 To avoid launching too many nodes at once, the number of nodes allowed to be pending is limited by the ``upscaling_speed`` setting. By default it is set to ``1.0``, which means the cluster can grow in size by at most ``100%`` at a time (doubling in size each time). This fraction can be set to as high as needed, e.g., ``99999`` to allow the cluster to quickly grow to its max size.
 
