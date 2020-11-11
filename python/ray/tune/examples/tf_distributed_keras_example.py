@@ -98,7 +98,7 @@ if __name__ == "__main__":
     if args.cluster:
         options = dict(address="auto")
     else:
-        options = dict(num_cpus=2)
+        options = dict(num_cpus=4)
     ray.init(**options)
     tf_trainable = DistributedTrainableCreator(
         train_mnist,
