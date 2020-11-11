@@ -268,12 +268,13 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
 
 def unflatten_dict(dt, delimiter="/"):
     """Unflatten dict. Does not support unflattening lists."""
-    out = defaultdict(dict)
+    dict_type = type(dt)
+    out = dict_type()
     for key, val in dt.items():
         path = key.split(delimiter)
         item = out
         for k in path[:-1]:
-            item = item[k]
+            item = item.setdefault(k, dict_type())
         item[path[-1]] = val
     return dict(out)
 
