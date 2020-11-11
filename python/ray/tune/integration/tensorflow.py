@@ -58,7 +58,7 @@ class _TensorFlowTrainable(tune.Trainable):
         return bool(self._num_workers_per_host)
 
     def get_remote_worker_options(self) -> Dict[str, Any]:
-        num_gpus = int(self._num_gpus_per_worker or 1)
+        num_gpus = int(self._num_gpus_per_worker or 0)
         num_cpus = int(self._num_cpus_per_worker or 1)
         options = dict(num_cpus=num_cpus, num_gpus=num_gpus)
         if self.should_colocate:
@@ -72,7 +72,7 @@ class _TensorFlowTrainable(tune.Trainable):
             all_bundles = [bundles] * num_hosts
             self._placement_group = placement_group(all_bundles,
                                                     strategy="STRICT_SPREAD")
-            logger.info("Waiting for placement group to get ready.")
+            logger.info("Waiting for placement group to get ready..")
             ray.get(self._placement_group.ready(), timeout=self._timeout_s)
             logger.info("Placement group ready.")
             options["placement_group"] = self._placement_group

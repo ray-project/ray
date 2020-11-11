@@ -72,7 +72,7 @@ def _train_check_global(config: Dict, checkpoint_dir: Optional[str] = None):
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
-    trainable_cls = DistributedTrainableCreator(train_mnist)
+    trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=2)
     trainer = trainable_cls()
     trainer.train()
     trainer.stop()
