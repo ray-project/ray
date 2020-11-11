@@ -12,7 +12,7 @@ import time
 import warnings
 
 from ray.autoscaler.command_runner import CommandRunnerInterface
-from ray.autoscaler.constants import DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,\
+from ray.autoscaler._private.constants import DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,\
                                      DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
 from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
