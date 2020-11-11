@@ -40,6 +40,7 @@ if __name__ == "__main__":
     RAY_CI_SERVE_AFFECTED = 0
     RAY_CI_JAVA_AFFECTED = 0
     RAY_CI_PYTHON_AFFECTED = 0
+    RAY_CI_CPP_AFFECTED = 0
     RAY_CI_LINUX_WHEELS_AFFECTED = 0
     RAY_CI_MACOS_WHEELS_AFFECTED = 0
     RAY_CI_STREAMING_CPP_AFFECTED = 0
@@ -112,6 +113,8 @@ if __name__ == "__main__":
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
+            elif changed_file.startswith("cpp/"):
+                RAY_CI_CPP_AFFECTED = 1
             elif changed_file.startswith("docker/"):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -130,6 +133,7 @@ if __name__ == "__main__":
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
+                RAY_CI_CPP_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_STREAMING_CPP_AFFECTED = 1
@@ -152,6 +156,7 @@ if __name__ == "__main__":
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
+                RAY_CI_CPP_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -166,6 +171,7 @@ if __name__ == "__main__":
         RAY_CI_SERVE_AFFECTED = 1
         RAY_CI_JAVA_AFFECTED = 1
         RAY_CI_PYTHON_AFFECTED = 1
+        RAY_CI_CPP_AFFECTED = 1
         RAY_CI_DOC_AFFECTED = 1
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -175,7 +181,7 @@ if __name__ == "__main__":
 
     if not RAY_CI_TUNE_AFFECTED and not RAY_CI_SERVE_AFFECTED and \
             not RAY_CI_JAVA_AFFECTED and not RAY_CI_PYTHON_AFFECTED and not \
-            RAY_CI_STREAMING_CPP_AFFECTED and \
+            RAY_CI_CPP_AFFECTED and not RAY_CI_STREAMING_CPP_AFFECTED and \
             not RAY_CI_STREAMING_PYTHON_AFFECTED and \
             not RAY_CI_STREAMING_JAVA_AFFECTED and \
             not RAY_CI_SGD_AFFECTED:
@@ -193,6 +199,7 @@ if __name__ == "__main__":
         "RAY_CI_DOC_AFFECTED={}".format(RAY_CI_DOC_AFFECTED),
         "RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED),
         "RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED),
+        "RAY_CI_CPP_AFFECTED={}".format(RAY_CI_CPP_AFFECTED),
         "RAY_CI_LINUX_WHEELS_AFFECTED={}".format(RAY_CI_LINUX_WHEELS_AFFECTED),
         "RAY_CI_MACOS_WHEELS_AFFECTED={}".format(RAY_CI_MACOS_WHEELS_AFFECTED),
         "RAY_CI_STREAMING_CPP_AFFECTED={}".format(

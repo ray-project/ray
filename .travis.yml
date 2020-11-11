@@ -477,7 +477,7 @@ matrix:
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
       install:
-        - . ./ci/travis/ci.sh init
+        - . ./ci/travis/ci.sh init RAY_CI_CPP_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
