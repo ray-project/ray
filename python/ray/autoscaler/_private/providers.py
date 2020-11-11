@@ -86,6 +86,9 @@ def _import_external(provider_config):
     return provider_cls
 
 
+# NOTE(edoakes): this map may be used by private node providers that proxy
+# requests to a builtin node provider. We should avoid breaking backwards
+# compatibility here.
 _NODE_PROVIDERS = {
     "local": _import_local,
     "aws": _import_aws,
