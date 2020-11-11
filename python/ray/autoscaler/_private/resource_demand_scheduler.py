@@ -75,7 +75,7 @@ class ResourceDemandScheduler:
                         if self.node_types[node_type]["resources"]:
                             # If we already know the resources, do not
                             # overwrite them. This helps also if in legacy
-                            # yamls the user provides "Resources" field.
+                            # yamls the user provides "resources" field.
                             del new_node_types[node_type]["resources"]
                         self.node_types[node_type].update(
                             new_node_types[node_type])

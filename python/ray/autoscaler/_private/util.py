@@ -109,13 +109,13 @@ def rewrite_legacy_yaml_to_available_node_types(
         config["available_node_types"] = {
             NODE_TYPE_LEGACY_HEAD: {
                 "node_config": config["head_node"],
-                "resources": config["head_node"].get("Resources") or {},
+                "resources": config["head_node"].get("resources") or {},
                 "min_workers": 0,
                 "max_workers": 0,
             },
             NODE_TYPE_LEGACY_WORKER: {
                 "node_config": config["worker_nodes"],
-                "resources": config["worker_nodes"].get("Resources") or {},
+                "resources": config["worker_nodes"].get("resources") or {},
                 "min_workers": config.get("min_workers", 0),
                 "max_workers": config.get("max_workers", 0),
             },
