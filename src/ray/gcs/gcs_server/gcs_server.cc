@@ -209,7 +209,8 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   auto actor_schedule_strategy =
       std::make_shared<GcsRandomActorScheduleStrategy>(gcs_node_manager_);
   auto scheduler = std::make_shared<GcsActorScheduler>(
-      main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
+      main_service_, gcs_table_storage_->ActorTable(),
+      gcs_table_storage_->ActorTaskSpecTable(), *gcs_node_manager_, gcs_pub_sub_,
       /*schedule_failure_handler=*/
       [this](std::shared_ptr<GcsActor> actor) {
         // When there are no available nodes to schedule the actor the

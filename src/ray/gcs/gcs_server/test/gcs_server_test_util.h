@@ -318,6 +318,23 @@ struct GcsServerMocker {
         std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
   };
 
+  class MockedGcsActorTaskSpecTable : public gcs::GcsActorTaskSpecTable {
+   public:
+    MockedGcsActorTaskSpecTable(std::shared_ptr<gcs::StoreClient> store_client)
+        : GcsActorTaskSpecTable(store_client) {}
+    Status Put(const ActorID &key, const rpc::TaskSpec &value,
+               const gcs::StatusCallback &callback) override {
+      auto status = Status::OK();
+      callback(status);
+      return status;
+    }
+
+   private:
+    boost::asio::io_service main_io_service_;
+    std::shared_ptr<gcs::StoreClient> store_client_ =
+        std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
+  };
+
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
    public:
     Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,

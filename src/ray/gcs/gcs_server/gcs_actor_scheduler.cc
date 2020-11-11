@@ -25,6 +25,7 @@ namespace gcs {
 
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
+    gcs::GcsActorTaskSpecTable &gcs_actor_task_spec_table,
     const gcs::GcsNodeManager &gcs_node_manager,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
@@ -34,6 +35,7 @@ GcsActorScheduler::GcsActorScheduler(
     rpc::ClientFactoryFn client_factory)
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
+      gcs_actor_task_spec_table_(gcs_actor_task_spec_table),
       gcs_node_manager_(gcs_node_manager),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
@@ -349,11 +351,16 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320
     core_worker_clients_.GetOrConnect(leased_worker->GetAddress());
-    RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(), actor->GetActorTableData(),
-                                      [this, actor, leased_worker](Status status) {
-                                        RAY_CHECK_OK(status);
-                                        CreateActorOnWorker(actor, leased_worker);
-                                      }));
+    RAY_CHECK_OK(gcs_actor_task_spec_table_.Put(
+        actor->GetActorID(), actor->GetCreationTaskSpecification().GetMessage(),
+        [this, actor, leased_worker](const Status &status) {
+          RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(),
+                                            actor->GetActorTableData(),
+                                            [this, actor, leased_worker](Status status) {
+                                              RAY_CHECK_OK(status);
+                                              CreateActorOnWorker(actor, leased_worker);
+                                            }));
+        }));
   }
 }
 

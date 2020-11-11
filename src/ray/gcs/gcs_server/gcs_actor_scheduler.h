@@ -98,6 +98,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// will be used if not set.
   explicit GcsActorScheduler(
       instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
+      gcs::GcsActorTaskSpecTable &gcs_actor_task_spec_table,
       const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
@@ -269,6 +270,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   instrumented_io_context &io_context_;
   /// The actor info accessor.
   gcs::GcsActorTable &gcs_actor_table_;
+  /// The actor task spec accessor.
+  gcs::GcsActorTaskSpecTable &gcs_actor_task_spec_table_;
   /// Map from node ID to the set of actors for whom we are trying to acquire a lease from
   /// that node. This is needed so that we can retry lease requests from the node until we
   /// receive a reply or the node is removed.

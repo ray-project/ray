@@ -73,10 +73,11 @@ bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
-  return TaskSpecification(task_spec_);
+  RAY_CHECK(task_spec_);
+  return TaskSpecification(*task_spec_);
 }
 
-void GcsActor::ClearCreationTaskSpecification() { task_spec_.Clear(); }
+void GcsActor::ClearCreationTaskSpecification() { task_spec_.reset(); }
 
 const rpc::ActorTableData &GcsActor::GetActorTableData() const {
   return actor_table_data_;
@@ -884,18 +885,21 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
   auto on_done = [this,
                   job_id](const std::unordered_map<ActorID, ActorTableData> &result) {
     if (!result.empty()) {
-      std::vector<ActorID> non_detached_actors;
+      auto non_detached_actors = std::make_shared<std::vector<ActorID>>();
       std::unordered_set<ActorID> non_detached_actors_set;
       for (auto &item : result) {
         if (!item.second.is_detached()) {
-          non_detached_actors.push_back(item.first);
+          non_detached_actors->emplace_back(item.first);
           non_detached_actors_set.insert(item.first);
         }
       }
-      RAY_CHECK_OK(
-          gcs_table_storage_->ActorTable().BatchDelete(non_detached_actors, nullptr));
-      RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().BatchDelete(
-          non_detached_actors, nullptr));
+      auto actor_batch_delete_callback = [this,
+                                          non_detached_actors](const Status &status) {
+        RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().BatchDelete(
+            *non_detached_actors, nullptr));
+      };
+      RAY_CHECK_OK(gcs_table_storage_->ActorTable().BatchDelete(
+          *non_detached_actors, actor_batch_delete_callback));
 
       for (auto iter = destroyed_actors_.begin(); iter != destroyed_actors_.end();) {
         if (iter->first.JobId() == job_id && !iter->second->IsDetached()) {

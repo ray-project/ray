@@ -1284,36 +1284,6 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   }
 }
 
-// This UT is only used to test the query actor info performance.
-// We disable it by default.
-TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
-  // Register actors.
-  JobID job_id = JobID::FromInt(1);
-  int actor_count = 5000;
-  rpc::TaskSpec task_spec;
-  rpc::TaskArg task_arg;
-  task_arg.set_data("0123456789");
-  for (int index = 0; index < 10000; ++index) {
-    task_spec.add_args()->CopyFrom(task_arg);
-  }
-  for (int index = 0; index < actor_count; ++index) {
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
-    actor_table_data->mutable_task_spec()->CopyFrom(task_spec);
-    RegisterActor(actor_table_data, false, true);
-  }
-
-  // Get all actors.
-  auto condition = [this, actor_count]() {
-    return (int)GetAllActors().size() == actor_count;
-  };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-
-  int64_t start_time = current_time_ms();
-  auto actors = GetAllActors();
-  RAY_LOG(INFO) << "It takes " << current_time_ms() - start_time << "ms to query "
-                << actor_count << " actors.";
-}
-
 TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   // Register actors and the actors will be destroyed.
   JobID job_id = JobID::FromInt(1);
