@@ -302,12 +302,6 @@ class AWSNodeProvider(NodeProvider):
         tags = to_aws_format(tags)
         conf = node_config.copy()
 
-        # Delete unsupported keys from the node config
-        try:
-            del conf["Resources"]
-        except KeyError:
-            pass
-
         tag_pairs = [{
             "Key": TAG_RAY_CLUSTER_NAME,
             "Value": self.cluster_name,
