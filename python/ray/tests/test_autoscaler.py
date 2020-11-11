@@ -528,40 +528,6 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
 
-    def testManualAutoscaling(self):
-        config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 0
-        config["max_workers"] = 50
-        cores_per_node = 2
-        config["worker_nodes"] = {"Resources": {"CPU": cores_per_node}}
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            lm,
-            max_launch_batch=5,
-            max_concurrent_launches=5,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        self.waitForNodes(0)
-        autoscaler.request_resources({"CPU": cores_per_node * 10})
-        autoscaler.update()
-        self.waitForNodes(10)
-        # They have to show up as connected nodes before the aggressiveness
-        # continues.
-        worker_ips = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, )
-        for worker_ip in worker_ips:
-            lm.update(worker_ip, {"CPU": 2}, {"CPU": 2}, {})
-        autoscaler.request_resources({"CPU": cores_per_node * 30})
-        autoscaler.update()
-        self.waitForNodes(30)
-
     def testTerminateOutdatedNodesGracefully(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 5

@@ -593,33 +593,17 @@ class StandardAutoscaler:
 
         return "{} nodes{}".format(len(nodes), suffix)
 
-    def request_resources(self, resources):
-        """Called by monitor to request resources (EXPERIMENTAL).
+    def request_resources(self, resources: List[dict]):
+        """Called by monitor to request resources.
 
         Args:
-            resources: Either a list of resource bundles or a single resource
-                demand dictionary.
+            resources: A list of resource bundles.
         """
         if resources:
             logger.info(
                 "StandardAutoscaler: resource_requests={}".format(resources))
-        if isinstance(resources, list):
-            self.resource_demand_vector = resources
-        else:
-            # Translate the legacy single resource demand dictionary
-            # to a resource_demand_vector.
-            self.resource_demand_vector = []
-            for resource, count in resources.items():
-                try:
-                    resource_per_worker = self.config["worker_nodes"][
-                        "Resources"][resource]
-                except KeyError:
-                    resource_per_worker = 1  # Assume the worst
-                workers_to_add = int(count / resource_per_worker)
-                if workers_to_add > 0:
-                    self.resource_demand_vector.extend([{
-                        resource: resource_per_worker
-                    }] * workers_to_add)
+        assert isinstance(resources, list), resources
+        self.resource_demand_vector = resources
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
