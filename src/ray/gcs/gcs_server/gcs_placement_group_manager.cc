@@ -137,6 +137,8 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
       // 2. The GCS server flushes the placement group to the storage and restarts before
       // replying to the GCS client.
       // 3. The GCS client resends the `RegisterPlacementGroup` request to the GCS server.
+      RAY_LOG(INFO) << "Placement group " << placement_group_id
+                    << " is already registered.";
       callback(Status::OK());
     }
     return;
@@ -149,7 +151,24 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
                                        placement_group);
   pending_placement_groups_.emplace_back(placement_group);
-  SchedulePendingPlacementGroups();
+
+  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
+      placement_group_id, placement_group->GetPlacementGroupTableData(),
+      [this, placement_group_id, placement_group](Status status) {
+        RAY_CHECK_OK(status);
+        if (!registered_placement_groups_.contains(placement_group_id)) {
+          auto iter = placement_group_to_register_callback_.find(placement_group_id);
+          if (iter != placement_group_to_register_callback_.end()) {
+            std::stringstream stream;
+            stream << "Placement group of id " << placement_group_id
+                   << " has been removed before registration.";
+            iter->second(Status::NotFound(stream.str()));
+            placement_group_to_register_callback_.erase(iter);
+          }
+        } else {
+          SchedulePendingPlacementGroups();
+        }
+      }));
 }
 
 PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
@@ -237,41 +256,19 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     const ray::rpc::CreatePlacementGroupRequest &request,
     ray::rpc::CreatePlacementGroupReply *reply,
     ray::rpc::SendReplyCallback send_reply_callback) {
-  auto placement_group_id =
-      PlacementGroupID::FromBinary(request.placement_group_spec().placement_group_id());
   auto placement_group = std::make_shared<GcsPlacementGroup>(request);
-
   RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
-  // We need this call here because otherwise, if placement group is removed right after
-  // here, it can cause inconsistent states.
-  registered_placement_groups_.emplace(placement_group_id, placement_group);
-
-  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
-      placement_group_id, placement_group->GetPlacementGroupTableData(),
-      [this, request, reply, send_reply_callback, placement_group_id,
-       placement_group](Status status) {
-        RAY_CHECK_OK(status);
-        if (!registered_placement_groups_.contains(placement_group_id)) {
-          std::stringstream stream;
-          stream << "Placement group of id " << placement_group_id
-                 << " has been removed before registration.";
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::NotFound(stream.str()));
-          return;
-        }
-
-        RegisterPlacementGroup(placement_group, [reply, send_reply_callback,
-                                                 placement_group](Status status) {
-          if (status.ok()) {
-            RAY_LOG(INFO) << "Finished registering placement group, "
-                          << placement_group->DebugString();
-          } else {
-            RAY_LOG(INFO) << "Failed to register placement group, "
-                          << placement_group->DebugString()
-                          << ", cause: " << status.message();
-          }
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-        });
-      }));
+  RegisterPlacementGroup(placement_group, [reply, send_reply_callback,
+                                           placement_group](Status status) {
+    if (status.ok()) {
+      RAY_LOG(INFO) << "Finished registering placement group, "
+                    << placement_group->DebugString();
+    } else {
+      RAY_LOG(INFO) << "Failed to register placement group, "
+                    << placement_group->DebugString() << ", cause: " << status.message();
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  });
 }
 
 void GcsPlacementGroupManager::HandleRemovePlacementGroup(
