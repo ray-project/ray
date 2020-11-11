@@ -22,56 +22,91 @@
 namespace ray {
 namespace gcs {
 
+/// `GcsInitData` is used to initialize all modules which need to recovery status when GCS
+/// server restarts.
+/// It loads all required metadata from the store into memory at once, so that the next
+/// initialization process can be synchronized.
 class GcsInitData {
  public:
+  /// Create a GcsInitData.
+  ///
+  /// \param gcs_table_storage The storage from which the metadata will be loaded.
   explicit GcsInitData(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
       : gcs_table_storage_(std::move(gcs_table_storage)) {}
 
+  /// Load all required metadata from the store into memory at once asynchronously.
+  ///
+  /// \param on_done The callback when all metadatas are loaded successfully.
   void AsyncLoad(const EmptyCallback &on_done);
 
+  /// Get job metadata.
   const std::unordered_map<JobID, rpc::JobTableData> &Jobs() const {
     return job_table_data_;
   }
 
+  /// Get node metadata.
   const std::unordered_map<NodeID, rpc::GcsNodeInfo> &Nodes() const {
     return node_table_data_;
   }
 
+  /// Get object location metadata.
   const std::unordered_map<ObjectID, rpc::ObjectLocationInfo> &Objects() const {
     return object_table_data_;
   }
 
+  /// Get resource metadata.
   const std::unordered_map<NodeID, rpc::ResourceMap> &ClusterResources() const {
     return resource_table_data_;
   }
 
+  /// Get actor metadata.
   const std::unordered_map<ActorID, rpc::ActorTableData> &Actors() const {
     return actor_table_data_;
   }
 
  private:
+  /// Load job metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when job metadata is loaded successfully.
   void AsyncLoadJobTableData(const EmptyCallback &on_done);
 
+  /// Load node metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when node metadata is loaded successfully.
   void AsyncLoadNodeTableData(const EmptyCallback &on_done);
 
+  /// Load object locations metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when object location metadata is loaded successfully.
   void AsyncLoadObjectTableData(const EmptyCallback &on_done);
 
+  /// Load resource metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when resource metadata is loaded successfully.
   void AsyncLoadResourceTableData(const EmptyCallback &on_done);
 
+  /// Load actor metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when actor metadata is loaded successfully.
   void AsyncLoadActorTableData(const EmptyCallback &on_done);
 
  protected:
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
+  /// Job metadata.
   std::unordered_map<JobID, rpc::JobTableData> job_table_data_;
 
+  /// Node metadata.
   std::unordered_map<NodeID, rpc::GcsNodeInfo> node_table_data_;
 
+  /// Object location metadata.
   std::unordered_map<ObjectID, rpc::ObjectLocationInfo> object_table_data_;
 
+  /// Resource metadata.
   std::unordered_map<NodeID, rpc::ResourceMap> resource_table_data_;
 
+  /// Actor metadata.
   std::unordered_map<ActorID, rpc::ActorTableData> actor_table_data_;
 };
 
