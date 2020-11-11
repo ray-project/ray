@@ -355,20 +355,17 @@ class StandardAutoscaler:
             # TODO(ameer): consider adding (if users ask) an option of
             # initial_upscaling_num_workers.
             elif aggressive:
-                upscaling_speed = float(self.config.get("max_workers", 0))
+                upscaling_speed = 99999
                 logger.warning(
-                    "Legacy aggressive autoscaling mode" +
-                    " detected. Replacing it by setting upscaling_speed to" +
-                    " max_workers. This will scale up the cluster to the" +
-                    " desired demand based size immediately.")
+                    "Legacy aggressive autoscaling mode "
+                    "detected. Replacing it by setting upscaling_speed to "
+                    "99999.")
             elif target_utilization_fraction:
                 upscaling_speed = 1 / max(target_utilization_fraction, 0.001)
                 logger.warning(
-                    "Legacy target_utilization_fraction" +
-                    " detected. Replacing it by setting upscaling_speed to" +
-                    " 1/target_utilization_fraction. This will scale up the" +
-                    " cluster to the desired demand based size in chunks of" +
-                    " currently_running_nodes/target_utilization_fraction.")
+                    "Legacy target_utilization_fraction config "
+                    "detected. Replacing it by setting upscaling_speed to " +
+                    "1 / target_utilization_fraction.")
             else:
                 upscaling_speed = 1.0
             if self.resource_demand_scheduler:
