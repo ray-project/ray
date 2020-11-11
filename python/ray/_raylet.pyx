@@ -644,7 +644,7 @@ cdef void restore_spilled_objects_handler(
             logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
-                "retore_spilled_objects_error",
+                "restore_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
 

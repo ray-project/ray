@@ -566,7 +566,7 @@ TEST_P(WorkerPoolTest, HandleIOWorkersPushPop) {
   for (const auto &worker : spill_workers) {
     worker_pool_->PushSpillWorker(worker);
   }
-  for (int i = 0; i < spill_workers.size(); i++) {
+  for (auto i = 0; i < spill_workers.size(); i++) {
     worker_pool_->PopSpillWorker(spill_worker_callback);
   }
   ASSERT_EQ(spill_pushed_worker.size(), 3);
