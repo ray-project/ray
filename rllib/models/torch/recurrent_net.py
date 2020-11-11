@@ -59,7 +59,7 @@ class RecurrentNetwork(TorchModelV2):
     """
 
     @override(ModelV2)
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict, state, seq_lens, return_values=False):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
@@ -76,6 +76,8 @@ class RecurrentNetwork(TorchModelV2):
         )
         output, new_state = self.forward_rnn(inputs, state, seq_lens)
         output = torch.reshape(output, [-1, self.num_outputs])
+        if return_values:
+            return output, new_state, self.value_function()
         return output, new_state
 
     def forward_rnn(self, inputs, state, seq_lens):

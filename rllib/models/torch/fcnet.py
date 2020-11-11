@@ -111,7 +111,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         self._last_flat_in = None
 
     @override(TorchModelV2)
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict, state, seq_lens, return_values=False):
         obs = input_dict["obs_flat"].float()
         self._last_flat_in = obs.reshape(obs.shape[0], -1)
         self._features = self._hidden_layers(self._last_flat_in)
@@ -119,7 +119,11 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             self._features
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
-        return logits, state
+
+        if return_values:
+            return logits, state, self.value_function()
+        else:
+            return logits, state
 
     @override(TorchModelV2)
     def value_function(self):

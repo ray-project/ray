@@ -14,8 +14,8 @@ torch, nn = try_import_torch()
 
 
 def actor_critic_loss(policy, model, dist_class, train_batch):
-    logits, _ = model.from_batch(train_batch)
-    values = model.value_function()
+    logits, _, values = model.from_batch(train_batch, return_values=True)
+    #values = model.value_function()
     dist = dist_class(logits, model)
     log_probs = dist.logp(train_batch[SampleBatch.ACTIONS])
     policy.entropy = dist.entropy().sum()
@@ -85,8 +85,10 @@ def torch_optimizer(policy, config):
 
 class ValueNetworkMixin:
     def _value(self, obs):
-        _ = self.model({"obs": torch.Tensor([obs]).to(self.device)}, [], [1])
-        return self.model.value_function()[0]
+        _, _, values = self.model(
+            {SampleBatch.OBS: torch.Tensor([obs]).to(self.device)}, [], [1],
+            return_values=True)
+        return values[0]
 
 
 def view_requirements_fn(policy: Policy) -> Dict[str, ViewRequirement]:
