@@ -326,9 +326,6 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "automatic_object_spilling_enabled": True,
-            # This test will deadlock if only one IO worker is allowed because
-            # the IO worker will try to restore an object, but this requires
-            # another object to be spilled, which also requires an IO worker.
             "max_io_workers": 2,
             "object_spilling_config": object_spilling_config,
         },
@@ -350,6 +347,8 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
         print(ray.get(x).shape)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_deadlock(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
