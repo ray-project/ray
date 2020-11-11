@@ -279,8 +279,6 @@ class LoadMetricsTest(unittest.TestCase):
         assert ("ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU, "
                 "1.05 GiB/1.05 GiB memory, "
                 "1.05 GiB/2.1 GiB object_store_memory") in debug
-        assert "NumNodesConnected: 3" in debug
-        assert "NumNodesUsed: 2.88" in debug
 
 
 class AutoscalingTest(unittest.TestCase):

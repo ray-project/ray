@@ -23,6 +23,9 @@ from ray.autoscaler.tags import (
 
 logger = logging.getLogger(__name__)
 
+# The minimum number of nodes to launch concurrently.
+UPSCALING_INITIAL_NUM_NODES = 5
+
 # e.g., cpu_4_ondemand.
 NodeType = str
 
@@ -241,8 +244,8 @@ class ResourceDemandScheduler:
             unfulfilled, _ = get_bin_pack_residual(node_resources,
                                                    resource_demands)
             workers_to_add = min(
-                self.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"],
-                self.node_types[NODE_TYPE_LEGACY_WORKER]["max_workers"])
+                self.node_types[NODE_TYPE_LEGACY_WORKER].get("min_workers", 0),
+                self.node_types[NODE_TYPE_LEGACY_WORKER].get("max_workers", 0))
             if workers_to_add > 0 or unfulfilled:
                 return {NODE_TYPE_LEGACY_WORKER: max(1, workers_to_add)}
             else:
@@ -326,7 +329,8 @@ class ResourceDemandScheduler:
             # Enforce here max allowed pending nodes to be frac of total
             # running nodes.
             max_allowed_pending_nodes = max(
-                5, int(self.upscaling_speed * running_nodes[node_type]))
+                UPSCALING_INITIAL_NUM_NODES,
+                int(self.upscaling_speed * running_nodes[node_type]))
             total_pending_nodes = pending_launches_nodes.get(
                 node_type, 0) + pending_nodes[node_type]
 
@@ -555,7 +559,8 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
         utilization_scores = []
         for node_type in node_types:
             if (existing_nodes.get(node_type, 0) + nodes_to_add.get(
-                    node_type, 0) >= node_types[node_type]["max_workers"]):
+                    node_type, 0) >= node_types[node_type].get(
+                        "max_workers", 0)):
                 continue
             node_resources = node_types[node_type]["resources"]
             if strict_spread:
