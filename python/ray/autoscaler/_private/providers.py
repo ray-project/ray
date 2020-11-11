@@ -134,14 +134,14 @@ def _load_class(path):
 def _get_node_provider_cls(provider_config: Dict[str, Any]):
     """Get the node provider class for a given provider config.
 
+    Note that this may be used by private node providers that proxy methods to
+    built-in node providers, so we should maintain backwards compatibility.
+
     Args:
         provider_config: provider section of the autoscaler config.
 
     Returns:
         NodeProvider class
-
-    Note that this may be used by private node providers that proxy methods to
-    built-in node providers, so we should maintain backwards compatibility.
     """
     importer = _NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
