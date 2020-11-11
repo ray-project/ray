@@ -276,7 +276,7 @@ def unflatten_dict(dt, delimiter="/"):
         for k in path[:-1]:
             item = item.setdefault(k, dict_type())
         item[path[-1]] = val
-    return dict(out)
+    return out
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):

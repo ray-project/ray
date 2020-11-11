@@ -1,9 +1,16 @@
+from collections import OrderedDict
+
 import unittest
 
 from .util import unflatten_dict
 
 
 class UnflattenDictTest(unittest.TestCase):
+    def test_output_type(self):
+        in_ = OrderedDict({'a/b': 1, 'c/d': 2, 'e': 3})
+        out = unflatten_dict(in_)
+        assert type(in_) is type(out)
+
     def test_one_level_nested(self):
         result = unflatten_dict({'a/b': 1, 'c/d': 2, 'e': 3})
         assert result == {'a': {'b': 1}, 'c': {'d': 2}, 'e': 3}
