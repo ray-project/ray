@@ -96,12 +96,18 @@ raylet::RayletClient::RayletClient(
   conn_ = std::unique_ptr<raylet::RayletConnection>(
       new raylet::RayletConnection(io_service, raylet_socket, -1, -1));
 
+  // Get cmdline.
+  const char *cmdline = std::getenv("CMDLINE");
+  if (cmdline == nullptr) {
+    cmdline = "";
+  }
+
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
       to_flatbuf(fbb, job_id), language, fbb.CreateString(ip_address), /*port=*/0,
-      fbb.CreateString(job_config_));
+      fbb.CreateString(job_config_), fbb.CreateString(cmdline));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.

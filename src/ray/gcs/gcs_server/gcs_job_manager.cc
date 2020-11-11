@@ -19,6 +19,8 @@
 namespace ray {
 namespace gcs {
 
+// TODO(fyrestone): Recover jobs from Redis.
+
 void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                                  rpc::AddJobReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {

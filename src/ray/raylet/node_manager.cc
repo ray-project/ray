@@ -1282,7 +1282,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Register the new driver.
     RAY_CHECK(pid >= 0);
     worker->SetProcess(Process::FromPid(pid));
-    const JobID job_id = from_flatbuf<JobID>(*message->job_id());
     if (job_id.IsSubmittedFromDashboard()) {
       // Invoke this to avoid agent manager misreporting some errors.
       agent_manager_->OnDriverRegistered(job_id, pid);
