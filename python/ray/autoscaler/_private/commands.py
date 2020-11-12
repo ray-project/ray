@@ -19,6 +19,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
+import ray
 from ray.experimental.internal_kv import _internal_kv_get
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
@@ -35,6 +36,8 @@ from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
+from ray.autoscaler._private.event_system import (CreateClusterEvent,
+                                                  global_event_system)
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
@@ -104,22 +107,23 @@ def request_resources(num_cpus: Optional[int] = None,
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
 
-    This function is EXPERIMENTAL.
-
     Args:
-        num_cpus: int -- the number of CPU cores to request
-        bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
-            only has an effect if you've configured `available_node_types`
-            if your cluster config.
+        num_cpus (int): Scale the cluster to ensure this number of CPUs are
+            available. This request is persistent until another call to
+            request_resources() is made.
+        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
+            resource shapes can fit. This request is persistent until another
+            call to request_resources() is made.
     """
+    if not ray.is_initialized():
+        raise RuntimeError("Ray is not initialized yet")
     r = _redis()
-    if num_cpus is not None and num_cpus > 0:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-                  json.dumps({
-                      "CPU": num_cpus
-                  }))
+    to_request = []
+    if num_cpus:
+        to_request += [{"CPU": 1}] * num_cpus
     if bundles:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
+        to_request += bundles
+    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request))
 
 
 def create_or_update_cluster(config_file: str,
@@ -165,6 +169,8 @@ def create_or_update_cluster(config_file: str,
     except yaml.scanner.ScannerError as e:
         handle_yaml_error(e)
         raise
+    global_event_system.execute_callback(CreateClusterEvent.up_started,
+                                         {"cluster_config": config})
 
     # todo: validate file_mounts, ssh keys, etc.
 
@@ -384,7 +390,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
 
 def kill_node(config_file: str, yes: bool, hard: bool,
-              override_cluster_name: Optional[str]) -> str:
+              override_cluster_name: Optional[str]) -> Optional[str]:
     """Kills a random Raylet worker."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -398,6 +404,9 @@ def kill_node(config_file: str, yes: bool, hard: bool,
     nodes = provider.non_terminated_nodes({
         TAG_RAY_NODE_KIND: NODE_KIND_WORKER
     })
+    if not nodes:
+        cli_logger.print("No worker nodes detected.")
+        return None
     node = random.choice(nodes)
     cli_logger.print("Shutdown " + cf.bold("{}"), node)
     if hard:
@@ -471,6 +480,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                             _provider: Optional[NodeProvider] = None,
                             _runner: ModuleType = subprocess) -> None:
     """Create the cluster head node, which in turn creates the workers."""
+    global_event_system.execute_callback(
+        CreateClusterEvent.cluster_booting_started)
     provider = (_provider or _get_node_provider(config["provider"],
                                                 config["cluster_name"]))
 
@@ -531,6 +542,8 @@ def get_or_create_head_node(config: Dict[str, Any],
     if head_node is None or provider.node_tags(head_node).get(
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
         with cli_logger.group("Acquiring an up-to-date head node"):
+            global_event_system.execute_callback(
+                CreateClusterEvent.acquiring_new_head_node)
             if head_node is not None:
                 cli_logger.print(
                     "Currently running head node is out-of-date with "
@@ -565,6 +578,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                         break
                     time.sleep(POLL_INTERVAL)
             cli_logger.newline()
+
+    global_event_system.execute_callback(CreateClusterEvent.head_node_acquired)
 
     with cli_logger.group(
             "Setting up head node",
@@ -658,6 +673,11 @@ def get_or_create_head_node(config: Dict[str, Any],
             # todo: this does not follow the mockup and is not good enough
             cli_logger.abort("Failed to setup head node.")
             sys.exit(1)
+
+    global_event_system.execute_callback(
+        CreateClusterEvent.cluster_booting_completed, {
+            "head_node_id": head_node,
+        })
 
     monitor_str = "tail -n 100 -f /tmp/ray/session_latest/logs/monitor*"
     if override_cluster_name:

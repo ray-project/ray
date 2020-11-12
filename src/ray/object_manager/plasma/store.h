@@ -199,7 +199,18 @@ class PlasmaStore {
     }
   }
 
+  /// Process queued requests to create an object.
+  ///
+  /// The queue is processed FIFO.
+  ///
+  /// \param num_bytes_space A lower bound on the number of bytes of space that
+  /// have been made newly available, since the last time this method was
+  /// called.
+  void ProcessCreateRequests();
+
  private:
+  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message);
+
   void PushNotification(ObjectInfoT* object_notification);
 
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
@@ -273,6 +284,19 @@ class PlasmaStore {
   /// complete.
   ray::SpillObjectsCallback spill_objects_callback_;
 
+  /// Queue of object creation requests to respond to. Requests will be placed
+  /// on this queue if the object store does not have enough room at the time
+  /// that the client made the creation request, but space may be made through
+  /// object spilling. Once the raylet notifies us that objects have been
+  /// spilled, we will attempt to process these requests again and respond to
+  /// the client if successful or out of memory. If more objects must be
+  /// spilled, the request will be replaced at the head of the queue.
+  /// TODO(swang): We should also queue objects here even if there is no room
+  /// in the object store. Then, the client does not need to poll on an
+  /// OutOfMemory error and we can just respond to them once there is enough
+  /// space made, or after a timeout.
+  std::list<std::pair<const std::shared_ptr<Client>,
+    const std::vector<uint8_t>>> create_request_queue_;
 };
 
 }  // namespace plasma

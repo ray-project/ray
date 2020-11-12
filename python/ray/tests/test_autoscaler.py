@@ -18,10 +18,12 @@ from ray.autoscaler._private import commands
 from ray.autoscaler.sdk import get_docker_host_mount_location
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
-from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
-                                               _clear_provider_cache)
+from ray.autoscaler._private.providers import (
+    _NODE_PROVIDERS, _clear_provider_cache, _DEFAULT_CONFIGS)
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE, \
+    NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
+    NODE_KIND_WORKER
 from ray.autoscaler.node_provider import NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
@@ -254,60 +256,6 @@ SMALL_CLUSTER = {
 
 
 class LoadMetricsTest(unittest.TestCase):
-    def testUpdate(self):
-        lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
-        assert lm.approx_workers_used() == 0.5
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
-        assert lm.approx_workers_used() == 1.0
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
-        assert lm.approx_workers_used() == 2.0
-
-    def testLoadMessages(self):
-        lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
-        self.assertEqual(lm.approx_workers_used(), 0.5)
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {"CPU": 1})
-        self.assertEqual(lm.approx_workers_used(), 1.0)
-
-        # Both nodes count as busy since there is a queue on one.
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 2}, {})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-
-        # No queue anymore, so we're back to exact accounting.
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
-        self.assertEqual(lm.approx_workers_used(), 1.5)
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {"GPU": 1})
-        self.assertEqual(lm.approx_workers_used(), 2.0)
-
-        lm.update("3.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("4.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("5.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("6.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("7.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        lm.update("8.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
-        self.assertEqual(lm.approx_workers_used(), 8.0)
-
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})  # no queue anymore
-        self.assertEqual(lm.approx_workers_used(), 4.5)
-
-    def testPruneByNodeIp(self):
-        lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 1}, {"CPU": 0}, {})
-        lm.update("2.2.2.2", {"CPU": 1}, {"CPU": 0}, {})
-        lm.prune_active_ips({"1.1.1.1", "4.4.4.4"})
-        assert lm.approx_workers_used() == 1.0
-
-    def testBottleneckResource(self):
-        lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
-        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
-        assert lm.approx_workers_used() == 1.88
-
     def testHeartbeat(self):
         lm = LoadMetrics()
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
@@ -331,14 +279,13 @@ class LoadMetricsTest(unittest.TestCase):
         assert ("ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU, "
                 "1.05 GiB/1.05 GiB memory, "
                 "1.05 GiB/2.1 GiB object_store_memory") in debug
-        assert "NumNodesConnected: 3" in debug
-        assert "NumNodesUsed: 2.88" in debug
 
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
         _NODE_PROVIDERS["mock"] = \
             lambda config: self.create_provider
+        _DEFAULT_CONFIGS["mock"] = _DEFAULT_CONFIGS["local"]
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
 
@@ -375,10 +322,13 @@ class AutoscalingTest(unittest.TestCase):
         assert self.provider
         return self.provider
 
-    def write_config(self, config):
+    def write_config(self, config, call_prepare_config=True):
+        new_config = copy.deepcopy(config)
+        if call_prepare_config:
+            new_config = prepare_config(new_config)
         path = os.path.join(self.tmpdir, "simple.yaml")
         with open(path, "w") as f:
-            f.write(yaml.dump(config))
+            f.write(yaml.dump(new_config))
         return path
 
     def testAutoscalerConfigValidationFailNotFatal(self):
@@ -386,7 +336,6 @@ class AutoscalingTest(unittest.TestCase):
         # First check that this config is actually invalid
         with pytest.raises(ValidationError):
             validate_config(invalid_config)
-
         config_path = self.write_config(invalid_config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -579,37 +528,6 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
 
-    def testManualAutoscaling(self):
-        config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 0
-        config["max_workers"] = 50
-        cores_per_node = 2
-        config["worker_nodes"] = {"Resources": {"CPU": cores_per_node}}
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_launch_batch=5,
-            max_concurrent_launches=5,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        self.waitForNodes(0)
-        autoscaler.request_resources({"CPU": cores_per_node * 10})
-        for _ in range(5):  # Maximum launch batch is 5
-            time.sleep(0.01)
-            autoscaler.update()
-        self.waitForNodes(10)
-        autoscaler.request_resources({"CPU": cores_per_node * 30})
-        for _ in range(4):  # Maximum launch batch is 5
-            time.sleep(0.01)
-            autoscaler.update()
-        self.waitForNodes(30)
-
     def testTerminateOutdatedNodesGracefully(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 5
@@ -639,9 +557,10 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
-            LoadMetrics(),
+            lm,
             max_launch_batch=5,
             max_concurrent_launches=5,
             max_failures=0,
@@ -663,11 +582,17 @@ class AutoscalingTest(unittest.TestCase):
         new_config["max_workers"] = 10
         self.write_config(new_config)
         autoscaler.update()
-        self.waitForNodes(6)
+        # Because one worker already started, the scheduler waits for its
+        # resources to be updated before it launches the remaining min_workers.
+        self.waitForNodes(1)
+        worker_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, )[0]
+        lm.update(worker_ip, {"CPU": 1}, {"CPU": 1}, {})
         autoscaler.update()
         self.waitForNodes(10)
 
     def testInitialWorkers(self):
+        """initial_workers is deprecated, this tests that it is ignored."""
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
         config["max_workers"] = 20
@@ -685,10 +610,7 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         self.waitForNodes(0)
         autoscaler.update()
-        self.waitForNodes(5)  # expected due to batch sizes and concurrency
-        autoscaler.update()
-        self.waitForNodes(10)
-        autoscaler.update()
+        self.waitForNodes(0)
 
     def testAggressiveAutoscaling(self):
         config = SMALL_CLUSTER.copy()
@@ -696,13 +618,16 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 20
         config["initial_workers"] = 10
         config["idle_timeout_minutes"] = 0
-        config["autoscaling_mode"] = "aggressive"
+        config["upscaling_speed"] = config["max_workers"]
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
+        }, 1)
         head_ip = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_HEAD}, )[0]
         runner = MockProcessRunner()
 
         lm = LoadMetrics()
@@ -718,32 +643,45 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
 
         self.waitForNodes(1)
+        lm.update(
+            head_ip, {"CPU": 1}, {"CPU": 0}, {},
+            waiting_bundles=[{
+                "CPU": 1
+            }] * 7,
+            infeasible_bundles=[{
+                "CPU": 1
+            }] * 3)
         autoscaler.update()
-        self.waitForNodes(6)  # expected due to batch sizes and concurrency
-        autoscaler.update()
-        self.waitForNodes(11)
-
-        # Connect the head and workers to end the bringup phase
-        addrs = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_KIND: "worker"}, )
-        addrs += head_ip
-        for addr in addrs:
-            lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})
-            lm.update(addr, {"CPU": 2}, {"CPU": 2}, {})
-        assert autoscaler.bringup
-        autoscaler.update()
-
-        assert not autoscaler.bringup
-        autoscaler.update()
-        self.waitForNodes(1)
-
-        # All of the nodes are down. Simulate some load on the head node
-        lm.update(head_ip, {"CPU": 2}, {"CPU": 0}, {})
-
-        autoscaler.update()
-        self.waitForNodes(6)  # expected due to batch sizes and concurrency
+        self.waitForNodes(2)  # launches a single node to get its resources
+        worker_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, )[0]
+        lm.update(
+            worker_ip, {"CPU": 1}, {"CPU": 1}, {},
+            waiting_bundles=[{
+                "CPU": 1
+            }] * 7,
+            infeasible_bundles=[{
+                "CPU": 1
+            }] * 3)
+        # Otherwise the worker is immediately terminated due to being idle.
+        lm.last_used_time_by_ip[worker_ip] = time.time() + 5
         autoscaler.update()
         self.waitForNodes(11)
+        worker_ips = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, )
+        for ip in worker_ips:
+            lm.last_used_time_by_ip[ip] = 0
+        autoscaler.update()
+        self.waitForNodes(1)  # only the head node
+        # Make sure they don't get overwritten.
+        assert autoscaler.resource_demand_scheduler.node_types[
+            NODE_TYPE_LEGACY_HEAD]["resources"] == {
+                "CPU": 1
+            }
+        assert autoscaler.resource_demand_scheduler.node_types[
+            NODE_TYPE_LEGACY_WORKER]["resources"] == {
+                "CPU": 1
+            }
 
     def testUnmanagedNodes(self):
         config = SMALL_CLUSTER.copy()
@@ -786,7 +724,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         # 1 CPU task cannot be scheduled.
-        lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {"CPU": 1})
+        lm.update(
+            unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {},
+            waiting_bundles=[{
+                "CPU": 1
+            }])
         autoscaler.update()
         self.waitForNodes(3)
 
@@ -868,7 +810,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         assert len(self.provider.non_terminated_nodes({})) == 1
 
-    def testDelayedLaunchWithFailure(self):
+    def testDelayedLaunchWithMinWorkers(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 10
         config["max_workers"] = 10
@@ -892,33 +834,16 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # Synchronization: wait for launchy thread to be blocked on rtc1
         waiters = rtc1._cond._waiters
-        self.waitFor(lambda: len(waiters) == 1)
-        assert autoscaler.pending_launches.value == 5
+        self.waitFor(lambda: len(waiters) == 2)
+        assert autoscaler.pending_launches.value == 10
         assert len(self.provider.non_terminated_nodes({})) == 0
-
-        # Call update() to launch a second wave of 3 nodes,
-        # as 5 + 3 = 8 = max_concurrent_launches.
-        # Make this wave complete immediately.
-        rtc2 = threading.Event()
-        self.provider.ready_to_create = rtc2
-        rtc2.set()
         autoscaler.update()
-        self.waitForNodes(3)
-        assert autoscaler.pending_launches.value == 5
-
-        # The first wave of 5 will now tragically fail
-        self.provider.fail_creates = True
+        self.waitForNodes(0)  # Nodes are not added on top of pending.
         rtc1.set()
         self.waitFor(lambda: autoscaler.pending_launches.value == 0)
-        assert len(self.provider.non_terminated_nodes({})) == 3
-
-        # Retry the first wave, allowing it to succeed this time
-        self.provider.fail_creates = False
-        autoscaler.update()
-        self.waitForNodes(8)
+        assert len(self.provider.non_terminated_nodes({})) == 10
+        self.waitForNodes(10)
         assert autoscaler.pending_launches.value == 0
-
-        # Final wave of 2 nodes
         autoscaler.update()
         self.waitForNodes(10)
         assert autoscaler.pending_launches.value == 0
@@ -971,9 +896,10 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
-            LoadMetrics(),
+            lm,
             max_launch_batch=10,
             max_concurrent_launches=10,
             process_runner=runner,
@@ -983,7 +909,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
 
         # Write a corrupted config
-        self.write_config("asdf")
+        self.write_config("asdf", call_prepare_config=False)
         for _ in range(10):
             autoscaler.update()
         time.sleep(0.1)
@@ -995,6 +921,11 @@ class AutoscalingTest(unittest.TestCase):
         new_config["min_workers"] = 10
         new_config["max_workers"] = 10
         self.write_config(new_config)
+        worker_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, )[0]
+        # Because one worker already started, the scheduler waits for its
+        # resources to be updated before it launches the remaining min_workers.
+        lm.update(worker_ip, {"CPU": 1}, {"CPU": 1}, {})
         autoscaler.update()
         self.waitForNodes(10)
 
@@ -1053,8 +984,6 @@ class AutoscalingTest(unittest.TestCase):
 
     def testReportsConfigFailures(self):
         config = copy.deepcopy(SMALL_CLUSTER)
-        config["provider"]["type"] = "external"
-        config = prepare_config(config)
         config["provider"]["type"] = "mock"
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -1122,11 +1051,24 @@ class AutoscalingTest(unittest.TestCase):
 
         # Scales up as nodes are reported as used
         local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
-        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0}, {})  # worker 1
+        lm.update(
+            local_ip, {"CPU": 2}, {"CPU": 0}, {},
+            waiting_bundles=2 * [{
+                "CPU": 2
+            }])  # head
+        autoscaler.update()
+        lm.update(
+            "172.0.0.0", {"CPU": 2}, {"CPU": 0}, {},
+            waiting_bundles=2 * [{
+                "CPU": 2
+            }])
         autoscaler.update()
         self.waitForNodes(3)
-        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update(
+            "172.0.0.1", {"CPU": 2}, {"CPU": 0}, {},
+            waiting_bundles=3 * [{
+                "CPU": 2
+            }])
         autoscaler.update()
         self.waitForNodes(5)
 
@@ -1141,6 +1083,7 @@ class AutoscalingTest(unittest.TestCase):
         lm.last_used_time_by_ip["172.0.0.0"] = 0
         lm.last_used_time_by_ip["172.0.0.1"] = 0
         autoscaler.update()
+
         assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 3
         lm.last_used_time_by_ip["172.0.0.2"] = 0
@@ -1149,11 +1092,11 @@ class AutoscalingTest(unittest.TestCase):
         assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 1
 
-    def testDontScaleBelowTarget(self):
+    def testTargetUtilizationFraction(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
-        config["max_workers"] = 2
-        config["target_utilization_fraction"] = 0.5
+        config["max_workers"] = 20
+        config["upscaling_speed"] = 10
         config_path = self.write_config(config)
         self.provider = MockProvider()
         lm = LoadMetrics()
@@ -1168,25 +1111,49 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 0
-
-        # Scales up as nodes are reported as used
-        local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
-        # 1.0 nodes used => target nodes = 2 => target workers = 1
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
+        }, 1)
+        head_ip = self.provider.non_terminated_node_ips({})[0]
+        lm.local_ip = head_ip
+        lm.update(
+            head_ip, {"CPU": 2}, {"CPU": 1}, {}, waiting_bundles=[{
+                "CPU": 1
+            }])  # head
+        # The headnode should be sufficient for now
         autoscaler.update()
         self.waitForNodes(1)
 
-        # Make new node idle, and never used.
-        # Should hold steady as target is still 2.
-        lm.update("172.0.0.0", {"CPU": 0}, {"CPU": 0}, {})
-        lm.last_used_time_by_ip["172.0.0.0"] = 0
+        # Requires 1 more worker as the head node is fully used.
+        lm.update(
+            head_ip, {"CPU": 2}, {"CPU": 0}, {}, waiting_bundles=[{
+                "CPU": 1
+            }])
         autoscaler.update()
-        assert len(self.provider.non_terminated_nodes({})) == 1
+        self.waitForNodes(2)  # 1 worker is added to get its resources.
+        worker_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, )[0]
+        lm.update(
+            worker_ip, {"CPU": 1}, {"CPU": 1}, {},
+            waiting_bundles=[{
+                "CPU": 1
+            }] * 7,
+            infeasible_bundles=[{
+                "CPU": 1
+            }] * 4)
+        # Add another 10 workers (frac=1/0.1=10, 1 worker running, 10*1=10)
+        # and bypass constraint of 5 due to target utiization fraction.
+        autoscaler.update()
+        self.waitForNodes(12)
 
-        # Reduce load on head => target nodes = 1 => target workers = 0
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 1}, {})
+        worker_ips = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, )
+        for ip in worker_ips:
+            lm.last_used_time_by_ip[ip] = 0
         autoscaler.update()
-        assert len(self.provider.non_terminated_nodes({})) == 0
+        self.waitForNodes(1)  # only the head node
+        assert len(self.provider.non_terminated_nodes({})) == 1
 
     def testRecoverUnhealthyWorkers(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -1245,7 +1212,10 @@ class AutoscalingTest(unittest.TestCase):
             "type": "external",
             "module": "does-not-exist",
         }
-        invalid_provider = self.write_config(config)
+        with pytest.raises(ValueError):
+            invalid_provider = self.write_config(
+                config, call_prepare_config=True)
+        invalid_provider = self.write_config(config, call_prepare_config=False)
         with pytest.raises(ValueError):
             StandardAutoscaler(
                 invalid_provider, LoadMetrics(), update_interval_s=0)

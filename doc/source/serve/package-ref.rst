@@ -15,6 +15,8 @@ Backend Configuration
 ---------------------
 .. autoclass:: ray.serve.BackendConfig
 
+.. autoclass:: ray.serve.CondaEnv
+
 Handle API
 ----------
 .. autoclass:: ray.serve.handle.RayServeHandle

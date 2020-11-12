@@ -64,12 +64,8 @@ void MetricPointExporter::ExportToPoints(
   points.push_back(std::move(mean_point));
   points.push_back(std::move(max_point));
   points.push_back(std::move(min_point));
-  RAY_LOG(DEBUG) << "Metric name " << metric_name << ", mean value : " << mean_point.value
-                 << " max value : " << max_point.value
-                 << "  min value : " << min_point.value;
 
   if (points.size() >= report_batch_size_) {
-    RAY_LOG(DEBUG) << "Point size : " << points.size();
     metric_exporter_client_->ReportMetrics(points);
     points.clear();
   }
@@ -106,7 +102,6 @@ void MetricPointExporter::ExportViewData(
       break;
     }
   }
-  RAY_LOG(DEBUG) << "Point size : " << points.size();
   metric_exporter_client_->ReportMetrics(points);
 }
 

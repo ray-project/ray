@@ -40,7 +40,7 @@ void ProcessCallback(int64_t callback_index,
   if (!callback_item->is_subscription_) {
     // Record the redis latency for non-subscription redis operations.
     auto end_time = absl::GetCurrentTimeNanos() / 1000;
-    ray::stats::RedisLatency().Record(end_time - callback_item->start_time_);
+    ray::stats::GcsLatency().Record(end_time - callback_item->start_time_);
   }
 
   // Dispatch the callback.
@@ -301,7 +301,14 @@ Status ConnectWithRetries(const std::string &address, int port,
       }
       break;
     }
-    RAY_LOG(WARNING) << "Failed to connect to Redis, retrying.";
+    if (*context == nullptr) {
+      RAY_LOG(WARNING) << "Could not allocate Redis context, retrying.";
+    }
+    if ((*context)->err) {
+      RAY_LOG(WARNING) << "Could not establish connection to Redis " << address << ":"
+                       << port << " (context.err = " << (*context)->err << ")"
+                       << ", retrying.";
+    }
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));

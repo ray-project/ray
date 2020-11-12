@@ -132,7 +132,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              SpaceReleasedCallback on_objects_spilled);
 
   /// Process a new client connection.
   ///
@@ -764,9 +765,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// copies), freed, and/or spilled.
   LocalObjectManager local_object_manager_;
 
-  /// Map from node ids to clients of the remote node managers.
-  std::unordered_map<NodeID, std::unique_ptr<rpc::NodeManagerClient>>
-      remote_node_manager_clients_;
+  /// Map from node ids to addresses of the remote node managers.
+  absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
+      remote_node_manager_addresses_;
 
   /// Map of workers leased out to direct call clients.
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;

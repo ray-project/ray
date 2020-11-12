@@ -1,9 +1,8 @@
 from collections import defaultdict, namedtuple
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List
 import copy
 import logging
 import math
-import numpy as np
 import os
 import subprocess
 import threading
@@ -56,7 +55,7 @@ class StandardAutoscaler:
     cluster size.
 
     StandardAutoscaler is also used to bootstrap clusters (by adding workers
-    until the target cluster size is met).
+    until the cluster size that can handle the resource demand is met).
     """
 
     def __init__(self,
@@ -71,6 +70,7 @@ class StandardAutoscaler:
         # Keep this before self.reset (self.provider needs to be created
         # exactly once).
         self.provider = None
+        self.resource_demand_scheduler = None
         self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
 
@@ -86,7 +86,6 @@ class StandardAutoscaler:
         self.num_failures = 0
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
-        self.bringup = True
 
         # Node launchers
         self.launch_queue = queue.Queue()
@@ -115,8 +114,6 @@ class StandardAutoscaler:
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
-        # Aggregate resources the user is requesting of the cluster.
-        self.resource_requests = defaultdict(int)
         # List of resource bundles the user is requesting of the cluster.
         self.resource_demand_vector = []
 
@@ -148,21 +145,12 @@ class StandardAutoscaler:
 
         self.last_update_time = now
         nodes = self.workers()
-        # Check pending nodes immediately after fetching the number of running
-        # nodes to minimize chance number of pending nodes changing after
-        # additional nodes (managed and unmanaged) are launched.
-        num_pending = self.pending_launches.value
+
         self.load_metrics.prune_active_ips([
             self.provider.internal_ip(node_id)
             for node_id in self.all_workers()
         ])
-        target_workers = self.target_num_workers()
-
-        if len(nodes) >= target_workers:
-            if "CPU" in self.resource_requests:
-                del self.resource_requests["CPU"]
-
-        self.log_info_string(nodes, target_workers)
+        self.log_info_string(nodes)
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
@@ -170,16 +158,19 @@ class StandardAutoscaler:
 
         nodes_to_terminate = []
         node_type_counts = collections.defaultdict(int)
-        for node_id in nodes:
+        # Sort based on last used to make sure to keep min_workers that
+        # were most recently used. Otherwise, _keep_min_workers_of_node_type
+        # might keep a node that should be terminated.
+        for node_id in self._sort_based_on_last_used(nodes, last_used):
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type.
-            if self._keep_min_worker_of_node_type(node_id, node_type_counts):
+            if self._keep_min_worker_of_node_type(
+                    node_id,
+                    node_type_counts) and self.launch_config_ok(node_id):
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
-            if (node_ip in last_used and last_used[node_ip] < horizon) and \
-                    (len(nodes) - len(nodes_to_terminate)
-                     > target_workers):
+            if node_ip in last_used and last_used[node_ip] < horizon:
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node".format(node_id))
                 nodes_to_terminate.append(node_id)
@@ -191,7 +182,7 @@ class StandardAutoscaler:
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
-            self.log_info_string(nodes, target_workers)
+            self.log_info_string(nodes)
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
@@ -205,40 +196,21 @@ class StandardAutoscaler:
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
-            self.log_info_string(nodes, target_workers)
 
-        # First let the resource demand scheduler launch nodes, if enabled.
-        if self.resource_demand_scheduler:
-            resource_demand_vector = self.resource_demand_vector + \
-                self.load_metrics.get_resource_demand_vector()
-            pending_placement_groups = \
-                self.load_metrics.get_pending_placement_groups()
-            to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
-                self.provider.non_terminated_nodes(tag_filters={}),
-                self.pending_launches.breakdown(),
-                resource_demand_vector,
-                self.load_metrics.get_resource_utilization(),
-                pending_placement_groups)
-            for node_type, count in to_launch.items():
-                self.launch_new_node(count, node_type=node_type)
+            self.log_info_string(nodes)
 
-            num_pending = self.pending_launches.value
-            nodes = self.workers()
+        to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
+            self.provider.non_terminated_nodes(tag_filters={}),
+            self.pending_launches.breakdown(),
+            self.load_metrics.get_resource_demand_vector(),
+            self.load_metrics.get_resource_utilization(),
+            self.load_metrics.get_pending_placement_groups(),
+            self.load_metrics.get_static_node_resources_by_ip(),
+            ensure_min_cluster_size=self.resource_demand_vector)
+        for node_type, count in to_launch.items():
+            self.launch_new_node(count, node_type=node_type)
 
-        # Launch additional nodes of the default type, if still needed.
-        num_workers = len(nodes) + num_pending
-        if num_workers < target_workers:
-            max_allowed = min(self.max_launch_batch,
-                              self.max_concurrent_launches - num_pending)
-
-            num_launches = min(max_allowed, target_workers - num_workers)
-            self.launch_new_node(num_launches,
-                                 self.config.get("worker_default_node_type"))
-            nodes = self.workers()
-            self.log_info_string(nodes, target_workers)
-        elif self.load_metrics.num_workers_connected() >= target_workers:
-            self.bringup = False
-            self.log_info_string(nodes, target_workers)
+        nodes = self.workers()
 
         # Process any completed updates
         completed = []
@@ -256,7 +228,7 @@ class StandardAutoscaler:
             # immediately trying to restart Ray on the new node.
             self.load_metrics.mark_active(self.provider.internal_ip(node_id))
             nodes = self.workers()
-            self.log_info_string(nodes, target_workers)
+            self.log_info_string(nodes)
 
         # Update nodes with out-of-date files.
         # TODO(edoakes): Spawning these threads directly seems to cause
@@ -282,6 +254,25 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
+    def _sort_based_on_last_used(self, nodes: List[NodeID],
+                                 last_used: Dict[str, float]) -> List[NodeID]:
+        """Sort the nodes based on the last time they were used.
+
+        The first item in the return list is the least recently used.
+        """
+        updated_last_used = copy.deepcopy(last_used)
+        now = time.time()
+        for node_id in nodes:
+            node_ip = self.provider.internal_ip(node_id)
+            if node_ip not in updated_last_used:
+                updated_last_used[node_ip] = now
+
+        def last_time_used(node_id: NodeID):
+            node_ip = self.provider.internal_ip(node_id)
+            return updated_last_used[node_ip]
+
+        return sorted(nodes, key=last_time_used, reverse=True)
+
     def _keep_min_worker_of_node_type(self, node_id: NodeID,
                                       node_type_counts: Dict[NodeType, int]):
         """Returns if workers of node_type should be terminated.
@@ -296,15 +287,16 @@ class StandardAutoscaler:
         Returns:
             bool: if workers of node_types should be terminated or not.
         """
-        if self.resource_demand_scheduler:
-            tags = self.provider.node_tags(node_id)
-            if TAG_RAY_USER_NODE_TYPE in tags:
-                node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                node_type_counts[node_type] += 1
-                if node_type_counts[node_type] <= \
-                        self.available_node_types[node_type].get(
-                            "min_workers", 0):
-                    return True
+        tags = self.provider.node_tags(node_id)
+        if TAG_RAY_USER_NODE_TYPE in tags:
+            node_type = tags[TAG_RAY_USER_NODE_TYPE]
+            node_type_counts[node_type] += 1
+            min_workers = self.available_node_types[node_type].get(
+                "min_workers", 0)
+            max_workers = self.available_node_types[node_type].get(
+                "max_workers", 0)
+            if node_type_counts[node_type] <= min(min_workers, max_workers):
+                return True
 
         return False
 
@@ -352,15 +344,41 @@ class StandardAutoscaler:
             if not self.provider:
                 self.provider = _get_node_provider(self.config["provider"],
                                                    self.config["cluster_name"])
-            # Check whether we can enable the resource demand scheduler.
-            if "available_node_types" in self.config:
-                self.available_node_types = self.config["available_node_types"]
+
+            self.available_node_types = self.config["available_node_types"]
+            upscaling_speed = self.config.get("upscaling_speed")
+            aggressive = self.config.get("autoscaling_mode") == "aggressive"
+            target_utilization_fraction = self.config.get(
+                "target_utilization_fraction")
+            if upscaling_speed:
+                upscaling_speed = float(upscaling_speed)
+            # TODO(ameer): consider adding (if users ask) an option of
+            # initial_upscaling_num_workers.
+            elif aggressive:
+                upscaling_speed = 99999
+                logger.warning(
+                    "Legacy aggressive autoscaling mode "
+                    "detected. Replacing it by setting upscaling_speed to "
+                    "99999.")
+            elif target_utilization_fraction:
+                upscaling_speed = 1 / max(target_utilization_fraction, 0.001)
+                logger.warning(
+                    "Legacy target_utilization_fraction config "
+                    "detected. Replacing it by setting upscaling_speed to " +
+                    "1 / target_utilization_fraction.")
+            else:
+                upscaling_speed = 1.0
+            if self.resource_demand_scheduler:
+                # The node types are autofilled internally for legacy yamls,
+                # overwriting the class will remove the inferred node resources
+                # for legacy yamls.
+                self.resource_demand_scheduler.reset_config(
+                    self.provider, self.available_node_types,
+                    self.config["max_workers"], upscaling_speed)
+            else:
                 self.resource_demand_scheduler = ResourceDemandScheduler(
                     self.provider, self.available_node_types,
-                    self.config["max_workers"])
-            else:
-                self.available_node_types = None
-                self.resource_demand_scheduler = None
+                    self.config["max_workers"], upscaling_speed)
 
         except Exception as e:
             if errors_fatal:
@@ -368,37 +386,6 @@ class StandardAutoscaler:
             else:
                 logger.exception("StandardAutoscaler: "
                                  "Error parsing config.")
-
-    def target_num_workers(self):
-        target_frac = self.config["target_utilization_fraction"]
-        cur_used = self.load_metrics.approx_workers_used()
-        ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
-        ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
-
-        initial_workers = self.config["initial_workers"]
-        aggressive = self.config["autoscaling_mode"] == "aggressive"
-        if self.bringup:
-            ideal_num_workers = max(ideal_num_workers, initial_workers)
-        elif aggressive and cur_used > 0:
-            # If we want any workers, we want at least initial_workers
-            ideal_num_workers = max(ideal_num_workers, initial_workers)
-
-        # Other resources are not supported at present.
-        if "CPU" in self.resource_requests:
-            try:
-                cores_per_worker = self.config["worker_nodes"]["Resources"][
-                    "CPU"]
-            except KeyError:
-                cores_per_worker = 1  # Assume the worst
-
-            cores_desired = self.resource_requests["CPU"]
-
-            ideal_num_workers = max(
-                ideal_num_workers,
-                int(np.ceil(cores_desired / cores_per_worker)))
-
-        return min(self.config["max_workers"],
-                   max(self.config["min_workers"], ideal_num_workers))
 
     def launch_config_ok(self, node_id):
         node_tags = self.provider.node_tags(node_id)
@@ -563,7 +550,11 @@ class StandardAutoscaler:
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count, node_type))
+        # Split into individual launch requests of the max batch size.
+        while count > 0:
+            self.launch_queue.put((config, min(count, self.max_launch_batch),
+                                   node_type))
+            count -= self.max_launch_batch
 
     def all_workers(self):
         return self.workers() + self.unmanaged_workers()
@@ -576,50 +567,40 @@ class StandardAutoscaler:
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
-    def log_info_string(self, nodes, target):
+    def log_info_string(self, nodes):
         tmp = "Cluster status: "
-        tmp += self.info_string(nodes, target)
+        tmp += self.info_string(nodes)
         tmp += "\n"
         tmp += self.load_metrics.info_string()
         tmp += "\n"
-        if self.resource_demand_scheduler:
-            tmp += self.resource_demand_scheduler.debug_string(
-                nodes, self.pending_launches.breakdown(),
-                self.load_metrics.get_resource_utilization())
+        tmp += self.resource_demand_scheduler.debug_string(
+            nodes, self.pending_launches.breakdown(),
+            self.load_metrics.get_resource_utilization())
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
-        logger.info(tmp)
+        logger.debug(tmp)
 
-    def info_string(self, nodes, target):
+    def info_string(self, nodes):
         suffix = ""
-        if self.pending_launches:
-            suffix += " ({} pending)".format(self.pending_launches.value)
         if self.updaters:
             suffix += " ({} updating)".format(len(self.updaters))
         if self.num_failed_updates:
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
-        if self.bringup:
-            suffix += " (bringup=True)"
 
-        return "{}/{} target nodes{}".format(len(nodes), target, suffix)
+        return "{} nodes{}".format(len(nodes), suffix)
 
-    def request_resources(self, resources):
-        """Called by monitor to request resources (EXPERIMENTAL).
+    def request_resources(self, resources: List[dict]):
+        """Called by monitor to request resources.
 
         Args:
-            resources: Either a list of resource bundles or a single resource
-                demand dictionary.
+            resources: A list of resource bundles.
         """
         if resources:
             logger.info(
                 "StandardAutoscaler: resource_requests={}".format(resources))
-        if isinstance(resources, list):
-            self.resource_demand_vector = resources
-        else:
-            for resource, count in resources.items():
-                self.resource_requests[resource] = max(
-                    self.resource_requests[resource], count)
+        assert isinstance(resources, list), resources
+        self.resource_demand_vector = resources
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")

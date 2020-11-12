@@ -3,7 +3,7 @@
 set -x
 
 # Cause the script to exit if a single command fails.
-set -e
+set -euo pipefail
 
 cat << EOF > "/usr/bin/nproc"
 #!/bin/bash
@@ -24,6 +24,7 @@ NUMPY_VERSIONS=("1.14.5"
 
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
+yum -y install openssl
 
 /ray/ci/travis/install-bazel.sh
 # Put bazel into the PATH if building Bazel from source
