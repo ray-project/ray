@@ -164,6 +164,14 @@ py_test(
 )
 
 py_test(
+    name = "test_searchers",
+    size = "medium",
+    srcs = ["tests/test_searchers.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_sync",
     size = "medium",
     srcs = ["tests/test_sync.py"],
@@ -352,6 +360,14 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_trainable",
+    size = "medium",
+    srcs = ["tests/test_tensorflow_trainable.py"],
+    tags = ["exclusive", "example", "tensorflow"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "test_horovod",
     size = "medium",
     srcs = ["tests/test_horovod.py"],
@@ -366,6 +382,14 @@ py_test(
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
     args = ["--num-workers=2"]
+)
+
+py_test(
+    name = "tf_distributed_keras_example",
+    size = "small",
+    srcs = ["examples/tf_distributed_keras_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "tensorflow"],
 )
 
 py_test(

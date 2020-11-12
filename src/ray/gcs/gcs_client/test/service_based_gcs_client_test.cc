@@ -971,14 +971,14 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   auto worker_data = Mocker::GenWorkerTableData();
   worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
   ASSERT_TRUE(ReportWorkerFailure(worker_data));
-  WaitForExpectedCount(worker_failure_count, 0);
+  WaitForExpectedCount(worker_failure_count, 1);
 
   // Add a worker to GCS.
   ASSERT_TRUE(AddWorker(worker_data));
 
   // Report a worker failure to GCS when this worker is actually exist.
   ASSERT_TRUE(ReportWorkerFailure(worker_data));
-  WaitForExpectedCount(worker_failure_count, 1);
+  WaitForExpectedCount(worker_failure_count, 2);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {

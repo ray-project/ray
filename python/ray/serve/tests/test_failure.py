@@ -113,7 +113,7 @@ def test_http_proxy_failure(serve_instance):
 
 def _get_worker_handles(client, backend):
     controller = client._controller
-    backend_dict = ray.get(controller.get_all_worker_handles.remote())
+    backend_dict = ray.get(controller.get_all_replica_handles.remote())
 
     return list(backend_dict[backend].values())
 
