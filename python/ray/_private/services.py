@@ -203,7 +203,9 @@ def find_redis_address(address=None):
     return redis_addresses
 
 
-def find_redis_address_or_die():
+def find_redis_address_or_die(check_environ=True):
+    if check_environ and "RAY_ADDRESS" in os.environ:
+        return None
     redis_addresses = find_redis_address()
     if len(redis_addresses) > 1:
         raise ConnectionError(
@@ -305,7 +307,7 @@ def validate_redis_address(address):
     """
 
     if address == "auto":
-        address = find_redis_address_or_die()
+        address = find_redis_address_or_die(check_environ=False)
     redis_address = address_to_ip(address)
 
     redis_address_parts = redis_address.split(":")
