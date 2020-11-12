@@ -361,11 +361,12 @@ class StandardAutoscaler:
                     "detected. Replacing it by setting upscaling_speed to "
                     "99999.")
             elif target_utilization_fraction:
-                upscaling_speed = 1 / max(target_utilization_fraction, 0.001)
+                upscaling_speed = (
+                    1 / max(target_utilization_fraction, 0.001) - 1)
                 logger.warning(
                     "Legacy target_utilization_fraction config "
                     "detected. Replacing it by setting upscaling_speed to " +
-                    "1 / target_utilization_fraction.")
+                    "1 / target_utilization_fraction - 1.")
             else:
                 upscaling_speed = 1.0
             if self.resource_demand_scheduler:
