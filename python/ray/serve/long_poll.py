@@ -36,7 +36,7 @@ class BaseClient:
         self.object_snapshots: Dict[str, Any] = dict()
 
     def _pull_once(self) -> ray.ObjectRef:
-        object_ref = self.host_actor.listen_on_changed.remote(
+        object_ref = self.host_actor.listen_for_change.remote(
             self.snapshot_ids)
         return object_ref
 
@@ -121,13 +121,13 @@ class LongPollerHost:
     """The server side object that manages long pulling requests.
 
     The desired use case is to embed this in an Ray actor. Client will be
-    expected to call actor.listen_on_changed.remote(...). On the host side,
-    you can call host.notify_on_changed(key, object) to update the state and
+    expected to call actor.listen_for_change.remote(...). On the host side,
+    you can call host.notify_changed(key, object) to update the state and
     potentially notify whoever is polling for these values.
 
     Internally, we use snapshot_ids for each object to identify client with
     outdated object and immediately return the result. If the client has the
-    up-to-date verison, then the listen_on_changed call will only return when
+    up-to-date verison, then the listen_for_change call will only return when
     the object is updated.
     """
 
@@ -141,8 +141,14 @@ class LongPollerHost:
         self.notifier_events: DefaultDict[str, Set[
             asyncio.Event]] = defaultdict(set)
 
-    async def listen_on_changed(self, keys_to_snapshot_ids: Dict[str, int]
+    async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]
                                 ) -> Dict[str, UpdatedObject]:
+        """Listen for changed objects.
+
+        This method will returns a dictionary of updated objects. It returns
+        immediately if the snapshot_ids are outdated, otherwise it will block
+        until there's one updates.
+        """
         # 1. Figure out which keys do we care about
         watched_keys = set(self.snapshot_ids.keys()).intersection(
             keys_to_snapshot_ids.keys())
@@ -168,14 +174,14 @@ class LongPollerHost:
             task = asyncio.get_event_loop().create_task(event.wait())
             async_task_to_watched_keys[task] = key
 
-            # Make sure future caller of notify_on_changed will unblock this
+            # Make sure future caller of notify_changed will unblock this
             # asyncio Event.
             self.notifier_events[key].add(event)
 
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
             return_when=asyncio.FIRST_COMPLETED)
-        [task.cancel for task in not_done]
+        [task.cancel() for task in not_done]
 
         updated_object_key: str = async_task_to_watched_keys[done.pop()]
         return {
@@ -184,7 +190,7 @@ class LongPollerHost:
                 self.snapshot_ids[updated_object_key])
         }
 
-    def notify_on_changed(self, object_key: str, updated_object: Any):
+    def notify_changed(self, object_key: str, updated_object: Any):
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object
         logger.debug(
