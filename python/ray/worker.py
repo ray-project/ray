@@ -124,7 +124,7 @@ class Worker:
         # Functions to run to process the values returned by ray.get. Each
         # postprocessor must take two arguments ("object_refs", and "values").
         self._post_get_hooks = []
-        self.drop_into_debugger = False
+        self.debugger_breakpoint = ""
 
     @property
     def connected(self):

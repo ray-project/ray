@@ -92,7 +92,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int max_retries,
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
-            c_bool drop_into_debugger)
+            c_string debugger_breakpoint)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -227,7 +227,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[shared_ptr[CRayObject]] &args,
             const c_vector[CObjectID] &arg_reference_ids,
             const c_vector[CObjectID] &return_ids,
-            c_bool drop_into_debugger,
+            const c_string debugger_breakpoint,
             c_vector[shared_ptr[CRayObject]] *returns) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown

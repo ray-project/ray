@@ -192,8 +192,8 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 
-bool TaskSpecification::GetDropIntoDebugger() const {
-  return message_->drop_into_debugger();
+std::string TaskSpecification::GetDebuggerBreakpoint() const {
+  return message_->debugger_breakpoint();
 }
 
 std::unordered_map<std::string, std::string>

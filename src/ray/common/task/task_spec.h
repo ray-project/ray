@@ -131,7 +131,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The recomputed dependencies for the task.
   std::vector<rpc::ObjectReference> GetDependencies() const;
 
-  bool GetDropIntoDebugger() const;
+  std::string GetDebuggerBreakpoint() const;
 
   std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
 

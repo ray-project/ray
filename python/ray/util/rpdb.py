@@ -145,15 +145,15 @@ class RemotePdb(Pdb):
         Skip into the next remote call.
         """
         # Tell the next task to drop into the debugger.
-        ray.worker.global_worker.drop_into_debugger = True
+        ray.worker.global_worker.debugger_breakpoint = self._breakpoint_uuid
         # Tell the debug loop to connect to the next task.
-        _internal_kv_put("RAY_CONTINUE_PDB_{}".format(self._breakpoint_uuid), "continue")
+        _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid), "continue")
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
 
 
-def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
+def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None, breakpoint_uuid=None):
     """
     Opens a remote PDB on first available port.
     """
@@ -163,7 +163,8 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
         port = int(os.environ.get("REMOTE_PDB_PORT", "0"))
     if quiet is None:
         quiet = bool(os.environ.get("REMOTE_PDB_QUIET", ""))
-    breakpoint_uuid = uuid.uuid4()
+    if not breakpoint_uuid:
+        breakpoint_uuid = uuid.uuid4().hex
     rdb = RemotePdb(
         breakpoint_uuid=breakpoint_uuid, host=host, port=port, patch_stdstreams=patch_stdstreams, quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
@@ -184,9 +185,9 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None):
     return rdb
 
 
-def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None):
+def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None, breakpoint_uuid=None):
     frame = sys._getframe().f_back
-    rdb = connect_ray_pdb(host, port, patch_stdstreams, quiet)
+    rdb = connect_ray_pdb(host, port, patch_stdstreams, quiet, breakpoint_uuid.decode() if breakpoint_uuid else None)
     rdb.set_trace(frame=frame)
 
 

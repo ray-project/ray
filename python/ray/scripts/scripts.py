@@ -166,6 +166,20 @@ def debug(address):
     while True:
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
+
+        for active_session in active_sessions:
+            if active_session.startswith(b"RAY_PDB_CONTINUE"):
+                print("Continuing pdb session in different process...")
+                key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
+                while True:
+                    data = ray.experimental.internal_kv._internal_kv_get(key)
+                    if data:
+                        session = json.loads(data)
+                        host, port = session["pdb_address"].split(":")
+                        with Telnet(host, int(port)) as tn:
+                            tn.interact()
+                    time.sleep(1.0)
+
         print("Active breakpoints:")
         for i, active_session in enumerate(active_sessions):
             data = json.loads(
