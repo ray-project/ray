@@ -77,6 +77,8 @@ ScheduleMap GcsPackStrategy::Schedule(
   // First fill up a node. If the node resource is insufficient, select a new node.
   // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
   ScheduleMap schedule_map;
+  // TODO(WangTao): This copy might take too much space once cluster grows very large.
+  // Would find better solution.
   absl::flat_hash_map<NodeID, ResourceSet> alive_nodes(
       context->node_manager_.GetClusterRealtimeResources());
   for (const auto &bundle : bundles) {
@@ -103,6 +105,8 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   // bundles will be deployed to the previous nodes. So we start with the next node of the
   // last selected node.
   ScheduleMap schedule_map;
+  // TODO(WangTao): This copy might take too much space once cluster grows very large.
+  // Would find better solution.
   absl::flat_hash_map<NodeID, ResourceSet> candidate_nodes(
       context->node_manager_.GetClusterRealtimeResources());
   if (candidate_nodes.empty()) {
