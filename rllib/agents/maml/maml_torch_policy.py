@@ -348,7 +348,7 @@ def maml_loss(policy, model, dist_class, train_batch):
         # `split` may not exist yet (during test-loss call), use a dummy value.
         # Cannot use get here due to train_batch being a TrackingDict.
         split = train_batch["split"] if "split" in train_batch else \
-            torch.tensor([[1, 1], [1, 1]])
+            torch.tensor([[8, 8], [8, 8]])
         policy.loss_obj = MAMLLoss(
             model=model,
             dist_class=dist_class,
