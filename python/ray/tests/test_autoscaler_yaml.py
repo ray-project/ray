@@ -20,6 +20,15 @@ CONFIG_PATHS += recursive_fnmatch(
     os.path.join(RAY_PATH, "tune", "examples"), "*.yaml")
 
 
+def ignore_k8s_operator_configs(paths):
+    return [
+        path for path in paths if "kubernetes/operator_configs" not in path
+    ]
+
+
+CONFIG_PATHS = ignore_k8s_operator_configs(CONFIG_PATHS)
+
+
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:

@@ -68,9 +68,9 @@ class ARSTFPolicy(Policy):
                         add_noise=False,
                         update=True,
                         **kwargs):
-        # Batch is given as list of one.
-        if isinstance(observation, list) and len(observation) == 1:
-            observation = observation[0]
+        # Squeeze batch dimension (we always calculate actions for only a
+        # single obs).
+        observation = observation[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
 
