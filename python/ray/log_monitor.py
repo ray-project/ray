@@ -240,12 +240,6 @@ class LogMonitor:
                     raise
 
             if file_info.file_position == 0:
-                # SANG-TODO Delete it.
-                # if (len(lines_to_publish) > 0 and
-                #         lines_to_publish[0].startswith("Ray worker pid: ")):
-                #     file_info.worker_pid = int(
-                #         lines_to_publish[0].split(" ")[-1])
-                #     lines_to_publish = lines_to_publish[1:]
                 if "/raylet" in file_info.filename:
                     file_info.worker_pid = "raylet"
                 elif "/gcs_server" in file_info.filename:
@@ -253,7 +247,6 @@ class LogMonitor:
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
-            print(file_info.worker_pid)
 
             if len(lines_to_publish) > 0:
                 self.redis_client.publish(

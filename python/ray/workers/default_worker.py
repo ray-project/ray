@@ -16,11 +16,12 @@ import ray.utils
 from ray.parameter import RayParams
 from ray.ray_logging import StandardStreamInterceptor
 
+
 def setup_and_get_worker_interceptor_logger(is_for_stdout: bool):
     """Setup a logger to be used to intercept worker log messages.
 
     NOTE: The method is not idempotent.
-    
+
     Ray worker logs should be treated in a special way because
     there's a need to intercept stdout and stderr to support various
     ray features. For example, ray will prepend 0 or 1 in the beggining
@@ -34,8 +35,10 @@ def setup_and_get_worker_interceptor_logger(is_for_stdout: bool):
                              False otherwise.
     """
     file_extension = "out" if is_for_stdout else "err"
-    logger = logging.getLogger("")
+    logger = logging.getLogger(f"ray_default_worker_{file_extension}")
     logger.setLevel(logging.INFO)
+    # TODO(sang): This is how the job id is propagated to workers now.
+    # But eventually, it will be clearer to just pass the job id.
     job_id = os.environ.get("RAY_JOB_ID")
     assert job_id is not None, (
         "RAY_JOB_ID should be set as an env "
@@ -55,7 +58,7 @@ def setup_and_get_worker_interceptor_logger(is_for_stdout: bool):
     # or not logs are streamed to drivers.
     handler.setFormatter(logging.Formatter("%(message)s"))
     logger.propagate = False
-    # handler.terminator = ""
+    handler.terminator = ""
     return logger
 
 
@@ -116,14 +119,16 @@ def main(args):
 
     ray.worker.connect(node, mode=mode)
 
+    # Redirect stdout and stderr to the default worker interceptor logger.
+    # NOTE: We deprecated redirect_worker_output arg,
+    # so we don't need to handle here.
     stdout_interceptor = StandardStreamInterceptor(
         setup_and_get_worker_interceptor_logger(True))
-    # stderr_interceptor = StandardStreamInterceptor(
-    #     setup_and_get_worker_interceptor_logger(False))
-
-    # Redirect stdout and stderr to the default worker interceptor logger.
+    stderr_interceptor = StandardStreamInterceptor(
+        setup_and_get_worker_interceptor_logger(False))
     with redirect_stdout(stdout_interceptor):
-        with redirect_stderr(stdout_interceptor):
+        with redirect_stderr(stderr_interceptor):
+            # Run the main loop if it is a worker.
             if mode == ray.WORKER_MODE:
                 ray.worker.global_worker.main_loop()
             elif mode == ray.IO_WORKER_MODE:

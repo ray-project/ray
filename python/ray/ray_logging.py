@@ -36,6 +36,7 @@ class StandardStreamInterceptor:
         logger: Python logger that will receive messages streamed to
                 the standard out/err and delegate writes.
     """
+
     def __init__(self, logger):
         self.logger = logger
 

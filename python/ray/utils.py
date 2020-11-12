@@ -430,32 +430,6 @@ def open_log(path, unbuffered=False, **kwargs):
         return stream
 
 
-def create_and_init_new_worker_log(path, worker_pid):
-    """Opens or creates and sets up a new worker log file. Note that because we
-    expect to dup the underlying file descriptor, then fdopen it, the python
-    level metadata is not important.
-
-    Args:
-        path (str): The name/path of the file to be opened.
-        worker_pid (int): The pid of the worker process.
-
-    Returns:
-        A file-like object which can be written to.
-
-    """
-    # TODO (Alex): We should eventually be able to replace this with
-    # named-pipes.
-    f = open_log(path)
-    # Check to see if we're creating this file. No one else should ever write
-    # to this file, so we don't have to worry about TOCTOU.
-    if f.tell() == 0:
-        # This should always be the first message to appear in the worker's
-        # stdout and stderr log files. The string "Ray worker pid:" is
-        # parsed in the log monitor process.
-        print(f"Ray worker pid: {worker_pid}", file=f)
-    return f
-
-
 def get_system_memory():
     """Return the total amount of system memory in bytes.
 
