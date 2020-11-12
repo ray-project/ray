@@ -5,7 +5,7 @@ import numpy as np
 import os
 import yaml
 
-from typing import Iterable, TYPE_CHECKING, Dict, List, Optional, Type
+from typing import Iterable, TYPE_CHECKING, Dict, List, Optional, TextIO, Type
 
 import ray.cloudpickle as cloudpickle
 
@@ -453,6 +453,117 @@ class LegacyExperimentLogger(ExperimentLogger):
         for logger_class, trial_loggers in self._class_trial_loggers.items():
             if trial in trial_loggers:
                 trial_loggers[trial].close()
+
+
+class JsonExperimentLogger(ExperimentLogger):
+    """Logs trial results in json format.
+
+    Also writes to a results file and param.json file when results or
+    configurations are updated. Experiments must be executed with the
+    JsonLogger to be compatible with the ExperimentAnalysis tool.
+    """
+
+    def __init__(self):
+        self._trial_configs: Dict["Trial", Dict] = {}
+        self._trial_files: Dict["Trial", TextIO] = {}
+
+    def log_trial_start(self, trial: "Trial"):
+        if trial in self._trial_files:
+            self._trial_files[trial].close()
+
+        # Update config
+        self.update_config(trial, trial.config)
+
+        # Make sure logdir exists
+        trial.init_logdir()
+        local_file = os.path.join(trial.logdir, EXPR_RESULT_FILE)
+        self._trial_files[trial] = open(local_file, "at")
+
+    def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        if trial not in self._trial_files:
+            self.log_trial_start(trial)
+        json.dump(result, self._trial_files[trial], cls=SafeFallbackEncoder)
+        self._trial_files[trial].write("\n")
+        self._trial_files[trial].flush()
+
+    def log_trial_end(self, trial: "Trial", failed: bool = False):
+        if trial not in self._trial_files:
+            return
+
+        self._trial_files[trial].close()
+        del self._trial_files[trial]
+
+    def update_config(self, trial: "Trial", config: Dict):
+        self._trial_configs[trial] = config
+
+        config_out = os.path.join(trial.logdir, EXPR_PARAM_FILE)
+        with open(config_out, "w") as f:
+            json.dump(
+                self._trial_configs[trial],
+                f,
+                indent=2,
+                sort_keys=True,
+                cls=SafeFallbackEncoder)
+
+        config_pkl = os.path.join(trial.logdir, EXPR_PARAM_PICKLE_FILE)
+        with open(config_pkl, "wb") as f:
+            cloudpickle.dump(self._trial_configs[trial], f)
+
+
+class CSVExperimentLogger(ExperimentLogger):
+    """Logs results to progress.csv under the trial directory.
+
+    Automatically flattens nested dicts in the result dict before writing
+    to csv:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    """
+
+    def __init__(self):
+        self._trial_continue: Dict["Trial", bool] = {}
+        self._trial_files: Dict["Trial", TextIO] = {}
+        self._trial_csv: Dict["Trial", csv.DictWriter] = {}
+
+    def log_trial_start(self, trial: "Trial"):
+        if trial in self._trial_files:
+            self._trial_files[trial].close()
+
+        # Make sure logdir exists
+        trial.init_logdir()
+        local_file = os.path.join(trial.logdir, EXPR_PROGRESS_FILE)
+        self._trial_continue[trial] = os.path.exists(local_file)
+        self._trial_files[trial] = open(local_file, "at")
+        self._trial_csv[trial] = None
+
+    def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        if trial not in self._trial_files:
+            self.log_trial_start(trial)
+
+        tmp = result.copy()
+        tmp.pop("config", None)
+        result = flatten_dict(tmp, delimiter="/")
+
+        if not self._trial_csv[trial]:
+            self._trial_csv[trial] = csv.DictWriter(self._trial_files[trial],
+                                                    result.keys())
+            if not self._trial_continue[trial]:
+                self._trial_csv[trial].writeheader()
+
+        self._trial_csv[trial].writerow({
+            k: v
+            for k, v in result.items()
+            if k in self._trial_csv[trial].fieldnames
+        })
+        self._trial_files[trial].flush()
+
+    def log_trial_end(self, trial: "Trial", failed: bool = False):
+        if trial not in self._trial_files:
+            return
+
+        del self._trial_csv[trial]
+        self._trial_files[trial].close()
+        del self._trial_files[trial]
 
 
 def pretty_print(result):
