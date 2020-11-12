@@ -130,7 +130,8 @@ def rsync(cluster_config: Union[dict, str],
             public or private.
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
-        all_nodes (bool): whether to sync worker nodes in addition to the head node
+        all_nodes (bool): whether to sync worker nodes in addition to the head
+            node
 
     Raises:
         RuntimeError if the cluster head node is not found.
