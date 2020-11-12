@@ -645,6 +645,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReleaseUnusedPlacementGroups` request.
+  void HandleReleaseUnusedPlacementGroups(
+      const rpc::ReleaseUnusedPlacementGroupsRequest &request,
+      rpc::ReleaseUnusedPlacementGroupsReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
   void TriggerGlobalGC();

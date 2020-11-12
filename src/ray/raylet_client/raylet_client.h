@@ -118,6 +118,10 @@ class ResourceReserveInterface {
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
+  virtual void ReleaseUnusedPlacementGroups(
+      const std::vector<PlacementGroupID> &placement_groups_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedPlacementGroupsReply> &callback) = 0;
+
   virtual ~ResourceReserveInterface(){};
 };
 
@@ -378,6 +382,12 @@ class RayletClient : public PinObjectsInterface,
   void CancelResourceReserve(
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
+      override;
+
+  /// Implements ReleaseUnusedPlacementGroupsInterface.
+  void ReleaseUnusedPlacementGroups(
+      const std::vector<PlacementGroupID> &placement_groups_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedPlacementGroupsReply> &callback)
       override;
 
   void PinObjectIDs(

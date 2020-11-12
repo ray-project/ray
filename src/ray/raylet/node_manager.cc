@@ -556,6 +556,22 @@ void NodeManager::HandleRequestObjectSpillage(
       });
 }
 
+void NodeManager::HandleReleaseUnusedPlacementGroups(
+    const rpc::ReleaseUnusedPlacementGroupsRequest &request,
+    rpc::ReleaseUnusedPlacementGroupsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  std::unordered_set<PlacementGroupID> in_use_placement_group_ids;
+  for (int index = 0; index < request.placement_group_ids_in_use_size(); ++index) {
+    auto worker_id =
+        PlacementGroupID::FromBinary(request.placement_group_ids_in_use(index));
+    in_use_placement_group_ids.emplace(worker_id);
+  }
+
+  std::vector<PlacementGroupID> unused_placement_group_ids;
+  // TODO(ffbin)
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
 // under normal conditions and sometimes doesn't send a warning under actual deadlock
 // conditions. The current logic is to push a warning when: all running tasks are

@@ -402,6 +402,25 @@ void raylet::RayletClient::CancelResourceReserve(
   grpc_client_->CancelResourceReserve(request, callback);
 }
 
+void raylet::RayletClient::ReleaseUnusedPlacementGroups(
+    const std::vector<PlacementGroupID> &placement_groups_in_use,
+    const rpc::ClientCallback<rpc::ReleaseUnusedPlacementGroupsReply> &callback) {
+  rpc::ReleaseUnusedPlacementGroupsRequest request;
+  for (auto &placement_group_id : placement_groups_in_use) {
+    request.add_placement_group_ids_in_use(placement_group_id.Binary());
+  }
+  grpc_client_->ReleaseUnusedPlacementGroups(
+      request, [callback](const Status &status,
+                          const rpc::ReleaseUnusedPlacementGroupsReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Error releasing placement groups from raylet, the raylet may have died:"
+              << status;
+        }
+        callback(status, reply);
+      });
+}
+
 void raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {

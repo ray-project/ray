@@ -40,6 +40,10 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
 
   MOCK_METHOD1(MarkScheduleCancelled, void(const PlacementGroupID &placement_group_id));
 
+  MOCK_METHOD1(ReleaseUnusedPlacementGroups,
+               void(const std::unordered_map<NodeID, std::vector<PlacementGroupID>>
+                        &node_to_placement_groups));
+
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
       const NodeID &node_id) override {
     absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles;
