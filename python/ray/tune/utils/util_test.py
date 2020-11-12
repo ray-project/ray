@@ -16,7 +16,7 @@ class UnflattenDictTest(unittest.TestCase):
         assert result == {'a': {'b': 1}, 'c': {'d': 2}, 'e': 3}
 
     def test_multi_level_nested(self):
-        result = unflatten_dict({'a/b/c/d': 1, 'a/b/c': 2, 'c/d': 3, 'e': 4})
+        result = unflatten_dict({'a/b/c/d': 1, 'b/c/d': 2, 'c/d': 3, 'e': 4})
         assert result == {
             'a': {
                 'b': {
@@ -25,9 +25,9 @@ class UnflattenDictTest(unittest.TestCase):
                     },
                 },
             },
-            'a': {
-                'b': {
-                    'c': 2,
+            'b': {
+                'c': {
+                    'd': 2,
                 },
             },
             'c': {
