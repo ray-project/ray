@@ -1,12 +1,15 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 import json
 import os
 import tempfile
 
 from ray.autoscaler._private import commands
+from ray.autoscaler._private.event_system import (  # noqa: F401
+    CreateClusterEvent,  # noqa: F401
+    global_event_system)
 
 
 def create_or_update_cluster(cluster_config: Union[dict, str],
@@ -180,13 +183,21 @@ def request_resources(num_cpus: Optional[int] = None,
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
 
-    This function is EXPERIMENTAL.
-
     Args:
-        num_cpus: int -- the number of CPU cores to request
-        bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
-            only has an effect if you've configured `available_node_types`
-            if your cluster config.
+        num_cpus (int): Scale the cluster to ensure this number of CPUs are
+            available. This request is persistent until another call to
+            request_resources() is made.
+        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
+            resource shapes can fit. This request is persistent until another
+            call to request_resources() is made.
+
+    Examples:
+        >>> # Request 1000 CPUs.
+        >>> request_resources(num_cpus=1000)
+        >>> # Request 64 CPUs and also fit a 1-GPU/4-CPU task.
+        >>> request_resources(num_cpus=64, bundles=[{"GPU": 1, "CPU": 4}])
+        >>> # Same as requesting num_cpus=3.
+        >>> request_resources(bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
     return commands.request_resources(num_cpus, bundles)
 
@@ -214,6 +225,22 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     """Fillout default values for a cluster_config based on the provider."""
     from ray.autoscaler._private.util import fillout_defaults
     return fillout_defaults(config)
+
+
+def register_callback_handler(
+        event_name: str,
+        callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
+) -> None:
+    """Registers a callback handler for autoscaler events.
+
+    Args:
+        event_name (str): Event that callback should be called on. See
+            CreateClusterEvent for details on the events available to be
+            registered against.
+        callback (Callable): Callable object that is invoked
+            when specified event occurs.
+    """
+    global_event_system.add_callback_handler(event_name, callback)
 
 
 def get_docker_host_mount_location(cluster_name: str) -> str:

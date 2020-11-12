@@ -513,12 +513,16 @@ class Dirichlet(TFActionDistribution):
         """
         self.epsilon = 1e-7
         concentration = tf.exp(inputs) + self.epsilon
-        self.dist = tf.distributions.Dirichlet(
+        self.dist = tf1.distributions.Dirichlet(
             concentration=concentration,
             validate_args=True,
             allow_nan_stats=False,
         )
         super().__init__(concentration, model)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self) -> TensorType:
+        return tf.nn.softmax(self.dist.concentration)
 
     @override(ActionDistribution)
     def logp(self, x):

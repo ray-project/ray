@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
+#include "ray/util/asio_util.h"
 
 namespace ray {
 namespace gcs {
@@ -125,6 +126,9 @@ void GcsServer::Start() {
   };
   gcs_object_manager_->LoadInitialData(on_done);
   gcs_node_manager_->LoadInitialData(on_done);
+
+  // Print debug info periodically.
+  PrintDebugInfo();
 }
 
 void GcsServer::Stop() {
@@ -285,6 +289,28 @@ std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
 std::unique_ptr<GcsWorkerManager> GcsServer::InitGcsWorkerManager() {
   return std::unique_ptr<GcsWorkerManager>(
       new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
+}
+
+void GcsServer::CollectStats() {
+  gcs_actor_manager_->CollectStats();
+  gcs_placement_group_manager_->CollectStats();
+  execute_after(
+      main_service_, [this] { CollectStats(); },
+      (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
+}
+
+void GcsServer::PrintDebugInfo() {
+  std::ostringstream stream;
+  stream << gcs_node_manager_->DebugString() << "\n"
+         << gcs_actor_manager_->DebugString() << "\n"
+         << gcs_object_manager_->DebugString() << "\n"
+         << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
+  // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
+  // gcs_debug_state.txt.
+  RAY_LOG(INFO) << stream.str();
+  execute_after(main_service_, [this] { PrintDebugInfo(); },
+                (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
+                 60000) /* milliseconds */);
 }
 
 }  // namespace gcs

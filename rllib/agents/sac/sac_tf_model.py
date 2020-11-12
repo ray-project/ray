@@ -1,10 +1,11 @@
 import gym
-from gym.spaces import Discrete
+from gym.spaces import Box, Discrete
 import numpy as np
 from typing import Optional, Tuple
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -64,10 +65,16 @@ class SACTFModel(TFModelV2):
             self.action_dim = action_space.n
             self.discrete = True
             action_outs = q_outs = self.action_dim
-        else:
+        elif isinstance(action_space, Box):
             self.action_dim = np.product(action_space.shape)
             self.discrete = False
             action_outs = 2 * self.action_dim
+            q_outs = 1
+        else:
+            assert isinstance(action_space, Simplex)
+            self.action_dim = np.product(action_space.shape)
+            self.discrete = False
+            action_outs = self.action_dim
             q_outs = 1
 
         self.model_out = tf.keras.layers.Input(
