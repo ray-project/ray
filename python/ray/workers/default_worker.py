@@ -63,7 +63,7 @@ def setup_and_get_worker_interceptor_logger(is_for_stdout: bool):
 
 
 def main(args):
-    ray.utils.setup_logger(args.logging_level, args.logging_format)
+    ray.ray_logging.setup_logger(args.logging_level, args.logging_format)
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
@@ -124,9 +124,11 @@ def main(args):
     # NOTE: We deprecated redirect_worker_output arg,
     # so we don't need to handle here.
     stdout_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(True))
+        setup_and_get_worker_interceptor_logger(True),
+        intercept_stdout=True)
     stderr_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(False))
+        setup_and_get_worker_interceptor_logger(False),
+        intercept_stdout=False)
     with redirect_stdout(stdout_interceptor):
         with redirect_stderr(stderr_interceptor):
             if mode == ray.WORKER_MODE:

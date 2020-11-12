@@ -1,4 +1,5 @@
 import logging
+import os
 
 _default_handler = None
 
@@ -35,10 +36,13 @@ class StandardStreamInterceptor:
     Args:
         logger: Python logger that will receive messages streamed to
                 the standard out/err and delegate writes.
+        intercept_stdout(bool): True if the class intercepts stdout. False
+                         if stderr is intercepted.
     """
 
-    def __init__(self, logger):
+    def __init__(self, logger, intercept_stdout=True):
         self.logger = logger
+        self.intercept_stdout = intercept_stdout
 
     def write(self, message):
         """Redirect the original message to the logger."""
@@ -49,3 +53,8 @@ class StandardStreamInterceptor:
         # flush method can be empty because logger will handle flush
         for handler in self.logger.handlers:
             handler.flush()
+    
+    def isatty(self):
+        # Return the standard out isatty. This is used by colorful.
+        fd = 1 if self.intercept_stdout else 2
+        return os.isatty(1)
