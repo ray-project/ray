@@ -56,7 +56,7 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
       actor_table_data.function_descriptor());
   auto actor_id = ActorID::FromBinary(actor_table_data.actor_id());
   auto task_id = TaskID::ForActorCreationTask(actor_id);
-  inner.set_actor_cursor(ObjectID::ForTaskReturn(task_id, 1).Binary());
+  inner.set_actor_cursor(ObjectID::FromIndex(task_id, 1).Binary());
   inner.set_extension_data(actor_table_data.extension_data());
   inner.set_max_task_retries(actor_table_data.max_task_retries());
   return inner;

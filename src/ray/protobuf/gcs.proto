@@ -149,7 +149,12 @@ message ActorTableData {
   uint32 pid = 16;
   // The exception thrown in creation task. This field is set if this actor died because
   // of exception thrown in creation task. Only applies when state=DEAD.
-  RayException creation_task_exception = 18;
+  RayException creation_task_exception = 17;
+  // The function descriptor of the actor creation task.
+  FunctionDescriptor function_descriptor = 18;
+  // Field used for storing application-level extensions to the actor definition.
+  // See ActorCreationTaskSpec.
+  string extension_data = 19;
 }
 
 message ErrorTableData {
