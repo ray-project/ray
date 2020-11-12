@@ -779,9 +779,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             shm_output = self.ssh_command_runner.run(
                 "cat /proc/meminfo || true",
                 with_output=True).decode().strip()
-            available_memory = [
+            available_memory = int([
                 ln for ln in shm_output.split("\n") if "MemAvailable" in ln
-            ][0].split()[1]
+            ][0].split()[1])
             available_memory_bytes = available_memory * 1024
             # Overestimate SHM size by 10%
             shm_size = min((available_memory_bytes *
