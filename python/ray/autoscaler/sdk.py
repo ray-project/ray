@@ -70,6 +70,8 @@ def run_on_cluster(cluster_config: Union[dict, str],
                    *,
                    cmd: Optional[str] = None,
                    run_env: str = "auto",
+                   tmux: bool = False,
+                   stop: bool = False,
                    no_config_cache: bool = False,
                    port_forward: Optional[commands.Port_forward] = None,
                    with_output: bool = False) -> Optional[str]:
@@ -81,6 +83,8 @@ def run_on_cluster(cluster_config: Union[dict, str],
         cmd (str): the command to run, or None for a no-op command.
         run_env (str): whether to run the command on the host or in a
             container. Select between "auto", "host" and "docker".
+        tmux (bool): whether to run in a tmux session
+        stop (bool): whether to stop the cluster after command run
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
         port_forward ( (int,int) or list[(int,int)]): port(s) to forward.
@@ -95,8 +99,8 @@ def run_on_cluster(cluster_config: Union[dict, str],
             cmd=cmd,
             run_env=run_env,
             screen=False,
-            tmux=False,
-            stop=False,
+            tmux=tmux,
+            stop=stop,
             start=False,
             override_cluster_name=None,
             no_config_cache=no_config_cache,
@@ -106,12 +110,13 @@ def run_on_cluster(cluster_config: Union[dict, str],
 
 def rsync(cluster_config: Union[dict, str],
           *,
-          source: str,
-          target: str,
+          source: Optional[str],
+          target: Optional[str],
           down: bool,
           ip_address: str = None,
           use_internal_ip: bool = False,
-          no_config_cache: bool = False):
+          no_config_cache: bool = False,
+          all_nodes: bool = False):
     """Rsyncs files to or from the cluster.
 
     Args:
@@ -125,6 +130,7 @@ def rsync(cluster_config: Union[dict, str],
             public or private.
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
+        all_nodes (bool): whether to sync worker nodes in addition to the head node
 
     Raises:
         RuntimeError if the cluster head node is not found.
@@ -139,7 +145,7 @@ def rsync(cluster_config: Union[dict, str],
             ip_address=ip_address,
             use_internal_ip=use_internal_ip,
             no_config_cache=no_config_cache,
-            all_nodes=False)
+            all_nodes=all_nodes)
 
 
 def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
