@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import gym
 from gym.spaces import Box
+import logging
 import numpy as np
 import tree
 from typing import Dict, List, Optional
@@ -19,6 +20,8 @@ from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
 torch, _ = try_import_torch()
+
+logger = logging.getLogger(__name__)
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
@@ -642,12 +645,15 @@ class Policy(metaclass=ABCMeta):
                                 batch_for_postproc.accessed_keys | \
                                 batch_for_postproc.added_keys
             for key in all_accessed_keys:
-                if key not in self.view_requirements:
+                if key not in self.view_requirements:# and \
+                        #key not in ["accessed_keys", "data", "deleted_keys",
+                        #            "added_keys", "intercepted_values"]:
                     self.view_requirements[key] = ViewRequirement()
             if self._loss:
                 # Tag those only needed for post-processing.
                 for key in batch_for_postproc.accessed_keys:
-                    if key not in train_batch.accessed_keys:
+                    if key not in train_batch.accessed_keys and \
+                            key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
@@ -656,7 +662,18 @@ class Policy(metaclass=ABCMeta):
                         SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID, SampleBatch.DONES] and \
                             key not in self.model.inference_view_requirements:
-                        del self.view_requirements[key]
+                        # If user deleted this key manually in postprocessing
+                        # fn, warn about it and do not remove from
+                        # view-requirements.
+                        if key in batch_for_postproc.deleted_keys:
+                            logger.warning(
+                                "SampleBatch key '{}' was deleted manually in "
+                                "postprocessing function! RLlib will "
+                                "automatically remove non-used items from the "
+                                "data stream. Remove the `del` from your "
+                                "postprocessing function.".format(key))
+                        else:
+                            del self.view_requirements[key]
             # Add those data_cols (again) that are missing and have
             # dependencies by view_cols.
             for key in list(self.view_requirements.keys()):
