@@ -47,8 +47,9 @@ from ray.exceptions import (
     ObjectStoreFullError,
 )
 from ray.function_manager import FunctionActorManager
+from ray.ray_logging import setup_logger
 from ray.utils import (_random_string, check_oversized_pickle, is_cython,
-                       setup_logger, create_and_init_new_worker_log, open_log)
+                       create_and_init_new_worker_log, open_log)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1

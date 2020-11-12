@@ -5,6 +5,8 @@ import logging
 import time
 import sys
 import os
+from contextlib import redirect_stdout, redirect_stderr
+from logging.handlers import RotatingFileHandler
 
 import ray
 import ray.actor
@@ -12,10 +14,53 @@ import ray.node
 import ray.ray_constants as ray_constants
 import ray.utils
 from ray.parameter import RayParams
+from ray.ray_logging import StandardStreamInterceptor
+
+def setup_and_get_worker_interceptor_logger(is_for_stdout: bool):
+    """Setup a logger to be used to intercept worker log messages.
+
+    NOTE: The method is not idempotent.
+    
+    Ray worker logs should be treated in a special way because
+    there's a need to intercept stdout and stderr to support various
+    ray features. For example, ray will prepend 0 or 1 in the beggining
+    of each log message to decide if logs should be streamed to driveres.
+
+    This logger will also setup the RotatingFileHandler for
+    ray workers processes.
+
+    Args:
+        is_for_stdout(bool): True if logger will be used to intercept stdout.
+                             False otherwise.
+    """
+    file_extension = "out" if is_for_stdout else "err"
+    logger = logging.getLogger("")
+    logger.setLevel(logging.INFO)
+    job_id = os.environ.get("RAY_JOB_ID")
+    assert job_id is not None, (
+        "RAY_JOB_ID should be set as an env "
+        "variable within default_worker.py. If you see this error, "
+        "please report it to Ray's Github issue.")
+    worker_name = "worker" if args.worker_type == "WORKER" else "io_worker"
+    # Make sure these values are set already.
+    assert ray.worker._global_node is not None
+    assert ray.worker.global_worker is not None
+    handler = RotatingFileHandler(
+        f"{ray.worker._global_node.get_session_dir_path()}/logs/"
+        f"{worker_name}-"
+        f"{ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)}-"
+        f"{job_id}-{os.getpid()}.{file_extension}")
+    logger.addHandler(handler)
+    # TODO(sang): Add 0 or 1 to decide whether
+    # or not logs are streamed to drivers.
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.propagate = False
+    # handler.terminator = ""
+    return logger
 
 
 def main(args):
-    ray.utils.setup_logger(args.logging_level, args.logging_format)
+    ray.ray_logging.setup_logger(args.logging_level, args.logging_format)
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
@@ -71,43 +116,14 @@ def main(args):
 
     ray.worker.connect(node, mode=mode)
 
-    def setup_logger(logging_level, logging_format):
-        logger = logging.getLogger("ray_worker")
-        if type(logging_level) is str:
-            logging_level = logging.getLevelName(logging_level.upper())
-        logger.setLevel(logging_level)
-        job_id = os.getenv("RAY_JOB_ID")
-        from logging.handlers import RotatingFileHandler
-        worker_name = "worker" if args.worker_type == "WORKER" else "io_worker"
-        handler = RotatingFileHandler(
-            f"{node.get_session_dir_path()}/logs/"
-            f"{worker_name}-"
-            f"{ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)}"
-            f"-{job_id}-{os.getpid()}.err")
-        logger.addHandler(handler)
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        logger.propagate = False
-        return logger
+    stdout_interceptor = StandardStreamInterceptor(
+        setup_and_get_worker_interceptor_logger(True))
+    # stderr_interceptor = StandardStreamInterceptor(
+    #     setup_and_get_worker_interceptor_logger(False))
 
-    logger = setup_logger(args.logging_level, args.logging_format)
-
-    class LoggerWriter:
-        def __init__(self, logger):
-            self.logger = logger
-
-        def write(self, message):
-            if message != "\n":
-                self.logger.info(f"{message}")
-
-        def flush(self):
-            # flush method can be empty because logger will handle flush
-            for handler in self.logger.handlers:
-                handler.flush()
-
-    from contextlib import redirect_stdout, redirect_stderr
-    logger_writer = LoggerWriter(logger)
-    with redirect_stderr(logger_writer):
-        with redirect_stdout(logger_writer):
+    # Redirect stdout and stderr to the default worker interceptor logger.
+    with redirect_stdout(stdout_interceptor):
+        with redirect_stderr(stdout_interceptor):
             if mode == ray.WORKER_MODE:
                 ray.worker.global_worker.main_loop()
             elif mode == ray.IO_WORKER_MODE:

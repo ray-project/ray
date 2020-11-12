@@ -321,7 +321,7 @@ if __name__ == "__main__":
         help="Specify the path of the temporary directory used by Ray "
         "processes.")
     args = parser.parse_args()
-    ray.utils.setup_logger(args.logging_level, args.logging_format)
+    ray.ray_logging.setup_logger(args.logging_level, args.logging_format)
 
     log_monitor = LogMonitor(
         args.logs_dir, args.redis_address, redis_password=args.redis_password)
