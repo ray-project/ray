@@ -19,7 +19,7 @@ kubectl -n raytest create configmap ray-operator-configmap --from-file=python/ra
 kubectl -n raytest apply -f python/ray/autoscaler/kubernetes/operator_configs/operator_config.yaml
 """ # noqa
 import os
-from typing import Any, Dict
+from typing import Any, Dict, IO, Tuple
 
 import kubernetes
 import yaml
@@ -63,7 +63,7 @@ def get_ray_head_pod_ip(config: Dict[str, Any]) -> str:
     return head_pod.status.pod_ip
 
 
-def get_logs():
+def get_logs() -> Tuple[IO, IO]:
     try:
         os.makedirs(LOG_DIR)
     except OSError:
