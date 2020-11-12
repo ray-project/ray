@@ -897,22 +897,3 @@ def get_user():
         return pwd.getpwuid(os.getuid()).pw_name
     except Exception:
         return ""
-
-
-def insert_local_code_search_path(job_id):
-    """Insert job path for loading object from local code."""
-    if not job_id.is_submitted_from_dashboard():
-        return
-    _global_node = ray.worker._global_node
-    if not _global_node:
-        logger.error("inject_job_local_path: no ray.worker._global_node")
-        return
-    if not getattr(_global_node, "_ray_params", None):
-        logger.error(
-            "inject_job_local_path: no ray.worker._global_node._ray_params")
-        return
-    temp_dir = _global_node._ray_params.temp_dir
-    job_dir = f"{temp_dir}/job/{job_id.hex()}/package"
-    if job_dir not in sys.path:
-        logger.info("insert_local_code_search_path: %s", job_dir)
-        sys.path.insert(0, job_dir)

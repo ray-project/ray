@@ -260,7 +260,6 @@ class FunctionActorManager:
         if (job_id in self._function_execution_info
                 and function_id in self._function_execution_info[job_id]):
             return
-        ray.utils.insert_local_code_search_path(job_id)
         module_name, function_name = (
             function_descriptor.module_name,
             function_descriptor.function_name,
@@ -437,7 +436,6 @@ class FunctionActorManager:
                                      actor_creation_function_descriptor):
         """Load actor class from local code."""
         assert isinstance(job_id, ray.JobID)
-        ray.utils.insert_local_code_search_path(job_id)
         module_name, class_name = (
             actor_creation_function_descriptor.module_name,
             actor_creation_function_descriptor.class_name)

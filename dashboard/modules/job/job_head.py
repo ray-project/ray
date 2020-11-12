@@ -12,7 +12,11 @@ import ray.new_dashboard.utils as dashboard_utils
 from ray.core.generated import common_pb2
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource, DataOrganizer, GlobalSignals
+from ray.new_dashboard.datacenter import (
+    DataSource,
+    DataOrganizer,
+    GlobalSignals,
+)
 from ray.utils import binary_to_hex, hex_to_binary
 
 logger = logging.getLogger(__name__)
@@ -185,8 +189,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                             jobs[data["jobId"]] = data
                         else:
                             logger.info(
-                                "Ignore job %s which is not submitted from dashboard.",
-                                job_id.hex())
+                                "Ignore job %s which is not "
+                                "submitted from dashboard.", job_id.hex())
                     # Update jobs.
                     DataSource.jobs.reset(jobs)
                     logger.info("Received %d job info from GCS.", len(jobs))

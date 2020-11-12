@@ -1,3 +1,4 @@
+import os
 import sys
 import copy
 import logging
@@ -21,22 +22,22 @@ logger = logging.getLogger(__name__)
 
 JOB_ROOT_DIR = "/tmp/ray/job"
 TEST_PYTHON_JOB = {
-    'name': 'Test job',
-    'owner': 'abc.xyz',
-    'language': 'PYTHON',
-    'url': 'http://xxx/yyy.zip',
-    'driverEntry': 'python_file_name_without_ext',
-    'driverArgs': [],
-    'customConfig': {
-        'k1': 'v1',
-        'k2': 'v2'
+    "name": "Test job",
+    "owner": "abc.xyz",
+    "language": "PYTHON",
+    "url": "http://xxx/yyy.zip",
+    "driverEntry": "python_file_name_without_ext",
+    "driverArgs": [],
+    "customConfig": {
+        "k1": "v1",
+        "k2": "v2"
     },
-    'jvmOptions': '-Dabc=123 -Daaa=xxx',
-    'dependencies': {
-        'python': [
-            'py-spy >= 0.2.0',
+    "jvmOptions": "-Dabc=123 -Daaa=xxx",
+    "dependencies": {
+        "python": [
+            "py-spy >= 0.2.0",
         ],
-        'java': [{
+        "java": [{
             "name": "spark",
             "version": "2.1",
             "url": "http://xxx/yyy.jar",

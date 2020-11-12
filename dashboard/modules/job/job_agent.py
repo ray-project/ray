@@ -26,7 +26,6 @@ except AttributeError:
     create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
-DEBUG = False
 
 COMMON_JVM_OPTIONS = [
     "-Xloggc:${RAY_LOG_DIR}/jvm_gc_%p.log",
@@ -138,15 +137,6 @@ class JobInfo:
     def num_java_workers_per_process(self):
         return self._job_info.get("numJavaWorkersPerProcess")
 
-    def java_worker_process_default_memory_mb(self):
-        return self._job_info.get("javaWorkerProcessDefaultMemoryMb")
-
-    def num_initial_java_worker_processes(self):
-        return self._job_info.get("numInitialJavaWorkerProcesses")
-
-    def total_memory_mb(self):
-        return self._job_info.get("totalMemoryMb")
-
     def jvm_options(self):
         options = self._job_info.get("jvmOptions", [])
         if isinstance(options, str):
@@ -156,12 +146,6 @@ class JobInfo:
                 options = []
         assert isinstance(options, list)
         return options
-
-    def long_running(self):
-        return self._job_info.get("longRunning")
-
-    def logging_level(self):
-        return self._job_info.get("loggingLevel")
 
     def mark_environ_ready(self):
         mark_file = job_consts.JOB_MARK_ENVIRON_READY_FILE.format(
@@ -201,7 +185,7 @@ class JobProcessor:
             cmd_index = self._get_next_cmd_index()
             logger.info("[%s] Start download[%s] %s to %s", job_id, cmd_index,
                         url, filename)
-            with open(filename, 'wb') as f:
+            with open(filename, "wb") as f:
                 while True:
                     chunk = await response.content.read(
                         job_consts.DOWNLOAD_RESOURCE_BUFFER_SIZE)
@@ -301,16 +285,19 @@ class JobProcessor:
 
     @staticmethod
     def _is_in_virtualenv():
-        return (hasattr(sys, 'real_prefix')
-                or (hasattr(sys, 'base_prefix')
+        return (hasattr(sys, "real_prefix")
+                or (hasattr(sys, "base_prefix")
                     and sys.base_prefix != sys.prefix))
 
     @staticmethod
     def _new_log_files(log_dir, filename):
         if log_dir is None:
             return None, None
-        return open(os.path.join(log_dir, filename + ".out"), "a", buffering=1), \
-               open(os.path.join(log_dir, filename + ".err"), "a", buffering=1)
+        stdout = open(
+            os.path.join(log_dir, filename + ".out"), "a", buffering=1)
+        stderr = open(
+            os.path.join(log_dir, filename + ".err"), "a", buffering=1)
+        return stdout, stderr
 
     def _force_hardlink(self, src, dst):
         logger.info("[%s] Link %s to %s", self._job_info.job_id(), src, dst)
@@ -350,14 +337,16 @@ class PreparePythonEnviron(JobProcessor):
             try:
                 import clonevirtualenv
             except ImportError:
-                raise Exception("We can't create a virtualenv from virtualenv, "
-                                "please `pip install virtualenv-clone` then try again.")
+                raise Exception(
+                    "We can't create a virtualenv from virtualenv, "
+                    "please `pip install virtualenv-clone` then try again.")
             python_dir = os.path.abspath(
                 os.path.join(os.path.dirname(python), ".."))
             clonevirtualenv = clonevirtualenv.__file__
             create_venv_cmd = f"{python} {clonevirtualenv} {python_dir} {path}"
         else:
-            create_venv_cmd = f"{python} -m virtualenv --system-site-packages --no-download {path}"
+            create_venv_cmd = f"{python} -m virtualenv " \
+                              f"--system-site-packages --no-download {path}"
         await self._check_call_cmd(create_venv_cmd)
 
     async def _install_python_requirements(self, path, requirements_file):
@@ -367,16 +356,20 @@ class PreparePythonEnviron(JobProcessor):
             pypi = f" -i {job_consts.PYTHON_PACKAGE_INDEX}"
         pip_cache_dir = job_consts.PYTHON_PIP_CACHE.format(
             temp_dir=self._job_info.temp_dir())
-        pip_download_cmd = f"{python} -m pip download --destination-directory {pip_cache_dir}{pypi} -r {requirements_file}"
-        pip_install_cmd = f"{python} -m pip install --no-index --find-links={pip_cache_dir} -r {requirements_file}"
+        pip_download_cmd = f"{python} -m pip download " \
+                           f"--destination-directory {pip_cache_dir}{pypi} " \
+                           f"-r {requirements_file}"
+        pip_install_cmd = f"{python} -m pip install " \
+                          f"--no-index --find-links={pip_cache_dir} " \
+                          f"-r {requirements_file}"
         await self._check_call_cmd(pip_download_cmd)
         await self._check_call_cmd(pip_install_cmd)
 
     async def _ray_mark_internal(self, path):
         python = self._get_virtualenv_python(path)
         output = await self._check_output_cmd(
-            f"{python} -c \"import ray; print(ray.__version__, ray.__path__[0])\""
-        )
+            f"{python} -c \"import ray; "
+            f"print(ray.__version__, ray.__path__[0])\"")
         ray_version, ray_path = [s.strip() for s in output.split()]
         pathlib.Path(os.path.join(ray_path, ".internal_ray")).touch()
         return ray_version, ray_path
@@ -384,8 +377,8 @@ class PreparePythonEnviron(JobProcessor):
     async def _check_ray_is_internal(self, path, ray_version, ray_path):
         python = self._get_virtualenv_python(path)
         output = await self._check_output_cmd(
-            f"{python} -c \"import ray; print(ray.__version__, ray.__path__[0])\""
-        )
+            f"{python} -c \"import ray; "
+            f"print(ray.__version__, ray.__path__[0])\"")
         actual_ray_version, actual_ray_path = [
             s.strip() for s in output.split()
         ]
@@ -429,7 +422,7 @@ class PreparePythonEnviron(JobProcessor):
 
 
 class StartPythonDriver(JobProcessor):
-    _template = '''import sys
+    _template = """import sys
 sys.path.append({import_path})
 import ray
 from ray.utils import hex_to_binary
@@ -442,10 +435,10 @@ ray.init(ignore_reinit_error=True,
 )
 import {driver_entry}
 {driver_entry}.main({driver_args})
-# If the driver exits normally, we invoke Ray.shutdown() again here, in case the
-# user code forgot to invoke it.
+# If the driver exits normally, we invoke Ray.shutdown() again
+# here, in case the user code forgot to invoke it.
 ray.shutdown()
-'''
+"""
 
     def __init__(self, job_info, redis_address, redis_password):
         super().__init__(job_info)
@@ -466,14 +459,8 @@ ray.shutdown()
             "worker_env": self._job_info.env(),
             "num_java_workers_per_process": self._job_info.
             num_java_workers_per_process(),
-            "java_worker_process_default_memory_mb": self._job_info.
-            java_worker_process_default_memory_mb(),
-            "num_initial_java_worker_processes": self._job_info.
-            num_initial_java_worker_processes(),
-            "total_memory_mb": self._job_info.total_memory_mb(),
             "jvm_options": COMMON_JVM_OPTIONS + self._job_info.jvm_options(),
-            "long_running": self._job_info.long_running(),
-            "logging_level": self._job_info.logging_level(),
+            "code_search_path": package_dir,
         }
 
         # User may set the config in ray.conf, in this case,
@@ -536,8 +523,9 @@ class PrepareJavaEnviron(JobProcessor):
         for d in dependencies:
             url_path = urlparse(d.url).path
             temp_dir = self._job_info.temp_dir()
-            java_shared_library_dir = job_consts.JAVA_SHARED_LIBRARY_DIR.format(
-                temp_dir=temp_dir)
+            java_shared_library_dir = \
+                job_consts.JAVA_SHARED_LIBRARY_DIR.format(
+                    temp_dir=temp_dir)
             os.makedirs(java_shared_library_dir, exist_ok=True)
             basename_from_url = os.path.basename(url_path)
             basename_with_md5 = basename_from_url + "." + d.md5.lower()
@@ -556,9 +544,9 @@ class PrepareJavaEnviron(JobProcessor):
                     output = await self._check_output_cmd(calc_md5_cmd)
                     calc_md5 = output.split()[0]
                     if calc_md5.lower() != d.md5.lower():
-                        raise Exception(
-                            f"Downloaded file {download_filename} is corrupted: "
-                            f"{calc_md5} != {d.md5}(expected)")
+                        raise Exception(f"Downloaded file {download_filename} "
+                                        f"is corrupted: "
+                                        f"{calc_md5} != {d.md5}(expected)")
                     self._force_hardlink(download_filename, cached_filename)
                 else:
                     logger.info(
@@ -622,29 +610,10 @@ class StartJavaDriver(JobProcessor):
         if self._job_info.num_java_workers_per_process() is not None:
             pairs.append(("ray.job.num-java-workers-per-process",
                           self._job_info.num_java_workers_per_process()))
-        if self._job_info.java_worker_process_default_memory_mb() is not None:
-            pairs.append(
-                ("ray.job.java-worker-process-default-memory-mb",
-                 self._job_info.java_worker_process_default_memory_mb()))
-        if self._job_info.num_initial_java_worker_processes() is not None:
-            pairs.append(("ray.job.num-initial-java-worker-processes",
-                          self._job_info.num_initial_java_worker_processes()))
-        if self._job_info.total_memory_mb() is not None:
-            pairs.append(("ray.job.total-memory-mb",
-                          self._job_info.total_memory_mb()))
         for i, jvm_option in enumerate(COMMON_JVM_OPTIONS +
                                        self._job_info.jvm_options()):
             pairs.append(("ray.job.jvm-options." + str(i), jvm_option))
-        # User may set the config in ray.conf, in this case,
-        # the value will be None.
-        if self._job_info.long_running() is not None:
-            pairs.append(("ray.job.long-running", "true"
-                          if self._job_info.long_running() else "false"))
-        if self._job_info.logging_level() is not None:
-            pairs.append(("ray.job.logging-level",
-                          self._job_info.logging_level()))
-        pairs.append(("ray.job.code-search-path",
-                      os.path.join(job_dir, "*")))
+        pairs.append(("ray.job.code-search-path", os.path.join(job_dir, "*")))
 
         command = ["java"] + COMMON_JVM_OPTIONS + [
             "-D{}={}".format(*pair) for pair in pairs
