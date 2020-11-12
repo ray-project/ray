@@ -1,13 +1,11 @@
 import random
-from dataclasses import is_dataclass
-from functools import wraps
 from typing import Callable, List, Union, Iterable, Iterator
 
 import pandas as pd
 from pandas import DataFrame
 
-from ray.util.iter import (_ActorSet, _NextValueNotReady, LocalIterator, ParallelIterator,
-                           T, U)
+from ray.util.iter import (_ActorSet, _NextValueNotReady, LocalIterator,
+                           ParallelIterator, T, U)
 
 
 class MLDataset(ParallelIterator[DataFrame]):
@@ -24,13 +22,16 @@ class MLDataset(ParallelIterator[DataFrame]):
                  actor_sets: List["_ActorSet"],
                  name: str,
                  parent_iterators: List[ParallelIterator[DataFrame]],
-                 batch_size: int):
+                 batch_size: int,
+                 repeated: bool):
         super(MLDataset, self).__init__(actor_sets, name, parent_iterators)
         self._batch_size = batch_size
+        self._repeated = repeated
 
     @staticmethod
     def from_parallel_it(para_it: ParallelIterator[DataFrame],
-                         batch_size: int) -> "MLDataset":
+                         batch_size: int,
+                         repeated: bool) -> "MLDataset":
         """
         Create a MLDataset from an existing parallel iterator and each
         object is a pandas.DataFrame
@@ -39,11 +40,12 @@ class MLDataset(ParallelIterator[DataFrame]):
                 should be a list like object or dataclass instance.
             batch_size (int): The batch size of the current dataset. It should be
                 larger than zero, and 0 means unknown.
+            repeated (bool): whether the para_it is repeated.
         Returns:
             A MLDataset
         """
         return MLDataset(para_it.actor_sets, para_it.name,
-                         para_it.parent_iterators, batch_size)
+                         para_it.parent_iterators, batch_size, repeated)
 
     def __iter__(self):
         raise TypeError(
@@ -59,7 +61,8 @@ class MLDataset(ParallelIterator[DataFrame]):
     def _with_transform(self, local_it_fn, name) -> "MLDataset":
         """Helper function to create new MLDataset"""
         para_it = super()._with_transform(local_it_fn, name)
-        return MLDataset.from_parallel_it(para_it, self._batch_size)
+        return MLDataset.from_parallel_it(
+            para_it, self._batch_size, self._repeated)
 
     def transform(self, fn: Callable[[Iterable[DataFrame]], Iterable[DataFrame]]
                   ) -> "MLDataset":
@@ -131,6 +134,9 @@ class MLDataset(ParallelIterator[DataFrame]):
     def combine(self, fn: Callable[[T], List[U]]) -> "MLDataset":
         raise Exception("Unsupported operation")
 
+    def repeated(self) -> bool:
+        return self._repeated
+
     def local_shuffle(self, shuffle_buffer_size: int,
                       seed: int = None) -> "MLDataset":
         """
@@ -154,6 +160,8 @@ class MLDataset(ParallelIterator[DataFrame]):
     def repartition(self, num_partitions: int,
                     batch_ms: int = 0) -> "MLDataset":
         """see ParallelIterator.repartition"""
+        if num_partitions == self.num_shards():
+            return self
         para_it = super().repartition(num_partitions, batch_ms)
         return MLDataset.from_parallel_it(para_it, self._batch_size)
 
@@ -162,6 +170,18 @@ class MLDataset(ParallelIterator[DataFrame]):
         if not isinstance(other, MLDataset):
             raise TypeError(
                 f"other must be of type MLDataset, got {type(other)}")
+
+        if self._repeated != other.repeated():
+            raise TypeError(
+                f"want to union two MLDataset which have different repeated "
+                f"type, self repeated: {self._repeated}, other repeated: "
+                f"{other.repeated()}"
+            )
+
+        batch_size = 0
+        if self._batch_size == other._batch_size:
+            batch_size = self._batch_size
+
         actor_sets = []
         actor_sets.extend(self.actor_sets)
         actor_sets.extend(other.actor_sets)
@@ -170,12 +190,15 @@ class MLDataset(ParallelIterator[DataFrame]):
         return MLDataset(
             actor_sets,
             f"ParallelUnion[{self}, {other}]",
-            parent_iterators=self.parent_iterators + other.parent_iterators)
+            parent_iterators=self.parent_iterators + other.parent_iterators,
+            batch_size=batch_size,
+            repeated=self._repeated)
 
     def select_shards(self,
                       shards_to_keep: List[int]) -> "MLDataset":
         para_it = super().select_shards(shards_to_keep)
-        return MLDataset.from_parallel_it(para_it, self._batch_size)
+        return MLDataset.from_parallel_it(
+            para_it, self._batch_size, self._repeated)
 
     def get_repeat_shard(self,
                          index: int,

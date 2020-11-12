@@ -58,11 +58,12 @@ def read_parquet(paths: Union[str, List[str]],
     if rowgroup_split:
         # split base on rowgroup
         for piece in pieces:
-            for number in pieces.get_metadata().to_dict()["num_row_groups"]:
+            num_row_groups = piece.get_metadata().to_dict()["num_row_groups"]
+            for i in range(num_row_groups):
                 data_pieces.append(
                     pq.ParquetDatasetPiece(
                         piece.path, piece.open_file_func, piece.file_options,
-                        number, piece.partition_keys))
+                        i, piece.partition_keys))
     else:
         # split base on file pieces
         data_pieces = pieces.copy()
