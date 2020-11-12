@@ -5,15 +5,6 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
-from ray.experimental.client import call_remote
-
-
-class ClientObjectRef:
-    def __init__(self, id):
-        self.id = id
-
-    def __repr__(self):
-        return "ClientObjectRef(%s)" % self.id.hex()
 
 
 class Worker:
