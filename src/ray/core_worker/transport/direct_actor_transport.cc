@@ -403,13 +403,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
-  // Run actor creation task immediately on the main thread, without going
-  // through a scheduling queue.
-  if (task_spec.IsActorCreationTask()) {
-    accept_callback();
-    return;
-  }
-
   auto reject_callback = [send_reply_callback]() {
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
