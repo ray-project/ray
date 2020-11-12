@@ -1315,7 +1315,7 @@ class AutoscalingTest(unittest.TestCase):
         assert self.provider.non_terminated_cpu({}) == 0
 
         local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 10}, {"CPU": 9}, {})  # head
+        lm.update(local_ip, {"CPU": 10}, True, {"CPU": 9}, True, {})  # head
         # Usage of 1, which should two CPUs worth of worker to come up.
         self.provider.add_launch_spec_to_launch('ls-t1.micro', 1)
         self.provider.add_launch_spec_to_launch('ls-t1.micro', 1)
