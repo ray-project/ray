@@ -62,7 +62,8 @@ class ModelV2:
         self.time_major = self.model_config.get("_time_major")
         # Basic view requirement for all models: Use the observation as input.
         self.inference_view_requirements = {
-            SampleBatch.OBS: ViewRequirement(data_rel_pos=0, space=self.obs_space),
+            SampleBatch.OBS: ViewRequirement(
+                data_rel_pos=0, space=self.obs_space),
         }
 
     # TODO: (sven): Get rid of `get_initial_state` once Trajectory

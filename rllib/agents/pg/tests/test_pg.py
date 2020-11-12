@@ -41,8 +41,8 @@ class TestPG(unittest.TestCase):
 
         # Fake CartPole episode of n time steps.
         train_batch = {
-            SampleBatch.OBS: np.array([[0.1, 0.2, 0.3, 0.4],
-                                       [0.5, 0.6, 0.7, 0.8],
+            SampleBatch.OBS: np.array([[0.1, 0.2, 0.3,
+                                        0.4], [0.5, 0.6, 0.7, 0.8],
                                        [0.9, 1.0, 1.1, 1.2]]),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
             SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),

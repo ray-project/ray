@@ -79,7 +79,8 @@ class SampleBatch:
             raise ValueError("Empty sample batch")
         if not self.dont_check_lens:
             assert len(set(lengths)) == 1, \
-                "Data columns must be same length, but lens are {}".format(lengths)
+                "Data columns must be same length, but lens are " \
+                "{}".format(lengths)
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
@@ -117,7 +118,10 @@ class SampleBatch:
                 [s[k] for s in concat_samples],
                 time_major=concat_samples[0].time_major)
         return SampleBatch(
-            out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major, _dont_check_lens=True)
+            out,
+            _seq_lens=seq_lens,
+            _time_major=concat_samples[0].time_major,
+            _dont_check_lens=True)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -261,16 +265,10 @@ class SampleBatch:
                     state_start = i
             data["state_in_0"] = self.data["state_in_0"][state_start:state_end]
             return SampleBatch(
-                data, _seq_lens=self.seq_lens[state_start:state_end],
+                data,
+                _seq_lens=self.seq_lens[state_start:state_end],
                 _time_major=self.time_major,
-                _dont_check_lens=True
-            )
-        #elif self.time_major is not None:
-        #    return SampleBatch(
-        #        {k: v[:, start:end]
-        #         for k, v in self.data.items()},
-        #        _seq_lens=self.seq_lens[start:end],
-        #        _time_major=self.time_major)
+                _dont_check_lens=True)
         else:
             return SampleBatch(
                 {k: v[start:end]

@@ -93,11 +93,7 @@ class TestAttentionNets(unittest.TestCase):
         # that the model is learning from the training data.
         self.assertLess(final_loss / init_loss, 0.5)
 
-    def train_tf_model(self,
-                       model,
-                       inputs,
-                       labels,
-                       num_epochs=250):
+    def train_tf_model(self, model, inputs, labels, num_epochs=250):
         optim = tf.keras.optimizers.Adam(lr=0.0001)
         init_loss = final_loss = None
         for _ in range(num_epochs):
@@ -170,8 +166,6 @@ class TestAttentionNets(unittest.TestCase):
         memory_training = max_seq_len
         # Number of transformer units.
         num_transformer_units = 2
-        # Memory size.
-        #tau = 10
         # Input dim.
         observation_dim = 8
         # Head dim.
@@ -184,8 +178,8 @@ class TestAttentionNets(unittest.TestCase):
         for fw, sess in framework_iterator(session=True):
 
             # Create random Tensors to hold inputs and labels.
-            x = np.random.random((B, max_seq_len, observation_dim)).astype(
-                np.float32)
+            x = np.random.random((B, max_seq_len,
+                                  observation_dim)).astype(np.float32)
             y = np.random.random((B, max_seq_len, action_dim))
 
             # Create a single attention layer with 2 heads
@@ -195,7 +189,9 @@ class TestAttentionNets(unittest.TestCase):
 
                 attention_net = TorchGTrXLNet(
                     observation_space=gym.spaces.Box(
-                        low=float("-inf"), high=float("inf"), shape=(observation_dim, )),
+                        low=float("-inf"),
+                        high=float("inf"),
+                        shape=(observation_dim, )),
                     action_space=gym.spaces.Discrete(action_dim),
                     num_outputs=action_dim,
                     model_config={"max_seq_len": 2},
@@ -214,7 +210,7 @@ class TestAttentionNets(unittest.TestCase):
                 # Get initial state and add a batch dimension.
                 init_state = [np.expand_dims(s, 0) for s in init_state]
                 seq_lens_init = torch.full(
-                    size=(B, ), fill_value=L, dtype=torch.int32)
+                    size=(B, ), fill_value=max_seq_len, dtype=torch.int32)
 
                 # Torch implementation expects a formatted input_dict instead
                 # of a numpy array as input.
@@ -229,12 +225,15 @@ class TestAttentionNets(unittest.TestCase):
             else:
                 value_labels = np.random.random((B, max_seq_len))
                 memory_labels = [
-                    np.random.random((B, memory_size, attention_dim)) for _ in
-                    range(num_transformer_units)]
+                    np.random.random((B, memory_size, attention_dim))
+                    for _ in range(num_transformer_units)
+                ]
 
                 attention_net = GTrXLNet(
                     observation_space=gym.spaces.Box(
-                        low=float("-inf"), high=float("inf"), shape=(observation_dim, )),
+                        low=float("-inf"),
+                        high=float("inf"),
+                        shape=(observation_dim, )),
                     action_space=gym.spaces.Discrete(action_dim),
                     num_outputs=action_dim,
                     model_config={"max_seq_len": max_seq_len},
@@ -251,8 +250,9 @@ class TestAttentionNets(unittest.TestCase):
 
                 # Get initial state (for training!) and add a batch dimension.
                 init_state = [
-                    np.zeros((memory_training, attention_dim), np.float32) for
-                    _ in range(num_transformer_units)]
+                    np.zeros((memory_training, attention_dim), np.float32)
+                    for _ in range(num_transformer_units)
+                ]
                 init_state = [np.tile(s, (B, 1, 1)) for s in init_state]
 
                 self.train_tf_model(

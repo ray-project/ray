@@ -1,11 +1,8 @@
 import gym
 import numpy as np
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import List, Optional, Union
 
 from ray.rllib.utils.framework import try_import_torch
-
-if TYPE_CHECKING:
-    from ray.rllib.policy.policy import Policy
 
 torch, _ = try_import_torch()
 
@@ -35,7 +32,6 @@ class ViewRequirement:
                  space: gym.Space = None,
                  data_rel_pos: Union[int, str, List[int]] = 0,
                  abs_pos: Optional[int] = None,
-                 #batch_repeat_type: str = "repeat",
                  batch_repeat_value: int = 1,
                  used_for_training: bool = True,
                  is_input_dict: bool = False):
@@ -48,8 +44,9 @@ class ViewRequirement:
             space (gym.Space): The gym Space used in case we need to pad data
                 in inaccessible areas of the trajectory (t<0 or t>H).
                 Default: Simple box space, e.g. rewards.
-            data_rel_pos (Union[int, str, List[int]]): Single shift value or list of
-                shift values to use relative to the underlying `data_col`.
+            data_rel_pos (Union[int, str, List[int]]): Single shift value or
+                list of relative positions to use (relative to the underlying
+                `data_col`).
                 Example: For a view column "prev_actions", you can set
                 `data_col="actions"` and `data_rel_pos=-1`.
                 Example: For a view column "obs" in an Atari framestacking
@@ -62,11 +59,6 @@ class ViewRequirement:
                 used e.g. for the location of a requested inference dict within
                 the trajectory. Negative values refer to counting from the end
                 of a trajectory.
-            #batch_repeat_type (str): The mode of repeating the view on the time
-            #    axis. Allowed values are:
-            #    once: Only provide the view once (at ts=`batch_repeat_value`).
-            #    repeat: Repeat the view on the time axis every
-            #        `batch_repeat_value` timesteps, starting from 0.
             used_for_training (bool): Whether the data will be used for
                 training. If False, the column will not be copied into the
                 final train batch.
@@ -79,7 +71,6 @@ class ViewRequirement:
             float("-inf"), float("inf"), shape=())
 
         self.abs_pos = abs_pos
-        #self.batch_repeat_type = batch_repeat_type
         self.batch_repeat_value = batch_repeat_value
 
         self.data_rel_pos = data_rel_pos

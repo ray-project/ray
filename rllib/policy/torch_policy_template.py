@@ -1,5 +1,4 @@
 import gym
-import numpy as np
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog

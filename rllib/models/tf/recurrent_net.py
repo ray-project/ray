@@ -115,9 +115,10 @@ class RecurrentNetwork(TFModelV2):
         for k, v in train_batch.items():
             if k.startswith("state_in_"):
                 state_keys.append(k)
-            elif not k.startswith("state_out_") and k != "infos" and isinstance(v, np.ndarray):
+            elif not k.startswith("state_out_") and k != "infos" and \
+                    isinstance(v, np.ndarray):
                 feature_keys_.append(k)
-    
+
         feature_sequences, initial_states, seq_lens = \
             chop_into_sequences(
                 episode_ids=train_batch[SampleBatch.EPS_ID],
@@ -134,7 +135,7 @@ class RecurrentNetwork(TFModelV2):
             train_batch[k] = initial_states[i]
         train_batch["seq_lens"] = seq_lens
         return train_batch
-    
+
 
 class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.

@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional
 
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
@@ -16,12 +16,11 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
                  out_dim: int,
                  num_heads: int,
                  head_dim: int,
-                 rel_pos_encoder_inference: Any,
-                 rel_pos_encoder_training: Any,
+                 rel_pos_encoder_inference: "tf.Operation",
+                 rel_pos_encoder_training: "tf.Operation",
                  input_layernorm: bool = False,
-                 output_activation: Optional[Any] = None,
+                 output_activation: Optional["tf.nn.activation"] = None,
                  **kwargs):
-        #TODO: docstring
         """Initializes a RelativeMultiHeadAttention keras Layer object.
 
         Args:
@@ -30,8 +29,12 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
                 Denoted `H` in [2].
             head_dim (int): The dimension of a single(!) attention head
                 Denoted `D` in [2].
-            rel_pos_encoder (List["TfOps"]): List of 2 tf ops to be used as
-                relative positional encoders of the input sequence(s).
+            rel_pos_encoder_inference (tf.Operation): TF op to be used as
+                relative positional encoders of the inference (action
+                computation) input sequence(s).
+            rel_pos_encoder_training (tf.Operation): TF op to be used as
+                relative positional encoders of the train batch input
+                sequence(s).
             input_layernorm (bool): Whether to prepend a LayerNorm before
                 everything else. Should be True for building a GTrXL.
             output_activation (Optional[tf.nn.activation]): Optional tf.nn
@@ -62,7 +65,9 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         if input_layernorm:
             self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
-    def call(self, inputs: TensorType, memory: Optional[TensorType] = None,
+    def call(self,
+             inputs: TensorType,
+             memory: Optional[TensorType] = None,
              is_training: bool = False) -> TensorType:
         T = tf.shape(inputs)[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads
@@ -70,7 +75,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
 
         # Add previous memory chunk (as const, w/o gradient) to input.
         # Tau (number of (prev) time slices in each memory chunk).
-        Tau = tf.shape(memory)[1]  #if memory is not None else 0
+        Tau = tf.shape(memory)[1]
         inputs = tf.concat([tf.stop_gradient(memory), inputs], axis=1)
 
         # Apply the Layer-Norm.
@@ -88,10 +93,11 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         keys = tf.reshape(keys, [-1, Tau + T, H, d])
         values = tf.reshape(values, [-1, Tau + T, H, d])
 
-        R = tf.cond(is_training, true_fn=lambda: self._rel_pos_encoder_training, false_fn=lambda: self._rel_pos_encoder_inference)
+        R = tf.cond(
+            is_training,
+            true_fn=lambda: self._rel_pos_encoder_training,
+            false_fn=lambda: self._rel_pos_encoder_inference)
         R = self._pos_proj(R)
-            #self._rel_pos_encoder_training if
-            #else self._rel_pos_encoder_inference)
         R = tf.reshape(R, [Tau + T, H, d])
 
         # b=batch

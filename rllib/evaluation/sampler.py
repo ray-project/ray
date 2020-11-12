@@ -1055,13 +1055,10 @@ def _process_observations_w_trajectory_view_api(
                               agent_done),
                     # Next observation.
                     "new_obs": filtered_obs,
-                    ## Env infos for this agent.
-                    #"infos": agent_infos,
                 }
                 # Add extra-action-fetches to collectors.
                 pol = policies[policy_id]
                 for key, value in episode.last_pi_info_for(agent_id).items():
-                    #if key in pol.view_requirements:
                     values_dict[key] = value
                 # Env infos for this agent.
                 if "infos" in pol.view_requirements:

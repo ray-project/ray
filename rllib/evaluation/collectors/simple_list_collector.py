@@ -50,11 +50,11 @@ class _AgentCollector:
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
     def __init__(self, view_reqs):
-        self.shift_before = -min([(int(vr.data_rel_pos.split(":")[0]) if isinstance(
-            vr.data_rel_pos, str) else vr.data_rel_pos) + (-1 if vr.data_col in _INIT_COLS or k in _INIT_COLS else 0) for k, vr in view_reqs.items()])
-        #self.shift_before = -min([(int(vr.data_rel_pos.split(":")[0]) if isinstance(
-        #    vr.data_rel_pos, str) else vr.data_rel_pos) for k, vr in view_reqs.items()])
-        #self.shift_before = max(shift_before, 1)
+        self.shift_before = -min(
+            [(int(vr.data_rel_pos.split(":")[0])
+              if isinstance(vr.data_rel_pos, str) else vr.data_rel_pos) +
+             (-1 if vr.data_col in _INIT_COLS or k in _INIT_COLS else 0)
+             for k, vr in view_reqs.items()])
         self.buffers: Dict[str, List] = {}
         # The simple timestep count for this agent. Gets increased by one
         # each time a (non-initial!) observation is added.
@@ -105,8 +105,7 @@ class _AgentCollector:
             self.buffers[k].append(v)
         self.count += 1
 
-    def build(self,
-              view_requirements: Dict[str, ViewRequirement],
+    def build(self, view_requirements: Dict[str, ViewRequirement],
               inference_view_requirements: Dict[str, ViewRequirement]
               ) -> SampleBatch:
         """Builds a SampleBatch from the thus-far collected agent data.
@@ -158,21 +157,28 @@ class _AgentCollector:
             # Range of indices on time-axis, make sure to create
             if view_req.data_rel_pos_from is not None:
                 if view_req.batch_repeat_value > 1:
-                    count = int(math.ceil((len(np_data[data_col]) - self.shift_before) / view_req.batch_repeat_value))
-                    repeat_count = view_req.data_rel_pos_to - view_req.data_rel_pos_from + 1
-                    #block_count = d.itemsize * np.prod(d.shape[1:])
-                    data = np.asarray([np_data[data_col][
-                           self.shift_before + (i * repeat_count) + view_req.data_rel_pos_from + obs_shift:self.shift_before + (i * repeat_count) + view_req.data_rel_pos_to + 1 + obs_shift] for i in range(count)])
-                        #np.lib.stride_tricks.as_strided(d, (count, repeat_count) + d.shape[1:],
-                        #                                (block_count * view_req.batch_repeat_value * repeat_count, d.itemsize * view_req.batch_repeat_value * repeat_count))
-
-                    #data = np_data[data_col][self.shift_before + view_req.data_rel_pos_from + obs_shift:self.shift_before + view_req.data_rel_pos_to + 1 + obs_shift]
+                    count = int(
+                        math.ceil((len(np_data[data_col]) - self.shift_before)
+                                  / view_req.batch_repeat_value))
+                    repeat_count = (view_req.data_rel_pos_to -
+                                    view_req.data_rel_pos_from + 1)
+                    data = np.asarray([
+                        np_data[data_col]
+                        [self.shift_before + (i * repeat_count) +
+                         view_req.data_rel_pos_from +
+                         obs_shift:self.shift_before + (i * repeat_count) +
+                         view_req.data_rel_pos_to + 1 + obs_shift]
+                        for i in range(count)
+                    ])
                 else:
                     data = np_data[data_col][
-                           self.shift_before + view_req.data_rel_pos_from + obs_shift:self.shift_before + view_req.data_rel_pos_to + 1 + obs_shift]
+                        self.shift_before + view_req.data_rel_pos_from +
+                        obs_shift:self.shift_before +
+                        view_req.data_rel_pos_to + 1 + obs_shift]
             # Set of (probably non-consecutive) indices.
             elif isinstance(view_req.data_rel_pos, np.ndarray):
-                data = np_data[data_col][self.shift_before + obs_shift + view_req.data_rel_pos]
+                data = np_data[data_col][self.shift_before + obs_shift +
+                                         view_req.data_rel_pos]
             # Single index.
             else:
                 shift = view_req.data_rel_pos + obs_shift
@@ -180,16 +186,6 @@ class _AgentCollector:
                     data = np_data[data_col][self.shift_before:]
                 else:
                     data = np_data[data_col][self.shift_before + shift:shift]
-            #try:
-            #    shift = view_req.shift - \
-            #        (1 if data_col == SampleBatch.OBS else 0)
-            #except Exception as e:
-            #    raise e#TODO
-
-            #if shift == 0:
-            #    data = np_data[data_col][self.shift_before:]
-            #else:
-            #    data = np_data[data_col][self.shift_before + shift:shift]
 
             if len(data) > 0:
                 batch_data[view_col] = data
@@ -262,7 +258,8 @@ class _AgentCollector:
             data_col = view_req.data_col or view_col
             # Range of shifts, e.g. "-100:0". Note: This includes index 0!
             if view_req.data_rel_pos_from is not None:
-                time_indices = (abs_pos + view_req.data_rel_pos_from, abs_pos + view_req.data_rel_pos_to)
+                time_indices = (abs_pos + view_req.data_rel_pos_from,
+                                abs_pos + view_req.data_rel_pos_to)
             # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
             else:
                 time_indices = abs_pos + view_req.data_rel_pos
@@ -271,8 +268,8 @@ class _AgentCollector:
                 if time_indices[1] == -1:
                     data_list.append(self.buffers[data_col][time_indices[0]:])
                 else:
-                    data_list.append(self.buffers[data_col][
-                                     time_indices[0]:time_indices[1] + 1])
+                    data_list.append(self.buffers[data_col][time_indices[
+                        0]:time_indices[1] + 1])
             else:
                 data_list.append(self.buffers[data_col][time_indices])
             input_dict[view_col] = np.array(data_list)
@@ -348,7 +345,8 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        batch = SampleBatch(self.buffers, _seq_lens=self.seq_lens, _dont_check_lens=True)
+        batch = SampleBatch(
+            self.buffers, _seq_lens=self.seq_lens, _dont_check_lens=True)
         # Clear buffers for future samples.
         self.buffers.clear()
         # Reset count to 0 and seq-lens to empty list.
@@ -506,12 +504,14 @@ class _SimpleListCollector(_SampleCollector):
 
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
-            delta = -1 if data_col in [SampleBatch.OBS, "t", "env_id",
-                                       SampleBatch.EPS_ID,
-                                       SampleBatch.AGENT_INDEX] else 0
+            delta = -1 if data_col in [
+                SampleBatch.OBS, "t", "env_id", SampleBatch.EPS_ID,
+                SampleBatch.AGENT_INDEX
+            ] else 0
             # Range of shifts, e.g. "-100:0". Note: This includes index 0!
             if view_req.data_rel_pos_from is not None:
-                time_indices = (view_req.data_rel_pos_from + delta, view_req.data_rel_pos_to + delta)
+                time_indices = (view_req.data_rel_pos_from + delta,
+                                view_req.data_rel_pos_to + delta)
             # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
             else:
                 time_indices = view_req.data_rel_pos + delta
@@ -524,10 +524,11 @@ class _SimpleListCollector(_SampleCollector):
                     })
                 if isinstance(time_indices, tuple):
                     if time_indices[1] == -1:
-                        data_list.append(buffers[k][data_col][time_indices[0]:])
+                        data_list.append(
+                            buffers[k][data_col][time_indices[0]:])
                     else:
-                        data_list.append(buffers[k][data_col][
-                                         time_indices[0]:time_indices[1] + 1])
+                        data_list.append(buffers[k][data_col][time_indices[
+                            0]:time_indices[1] + 1])
                 else:
                     data_list.append(buffers[k][data_col][time_indices])
             input_dict[view_col] = np.array(data_list)

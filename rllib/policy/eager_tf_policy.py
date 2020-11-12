@@ -304,11 +304,6 @@ def build_eager_tf_policy(name,
         @override(Policy)
         def learn_on_batch(self, samples):
             # Get batch ready for RNNs, if applicable.
-            #pad_batch_to_sequences_of_same_size(
-            #    samples,
-            #    shuffle=False,
-            #    max_seq_len=self._max_seq_len,
-            #    batch_divisibility_req=self.batch_divisibility_req)
             if getattr(self, "model", None):
                 self.model.preprocess_train_batch(samples)
             return self._learn_on_batch_eager(samples)

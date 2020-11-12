@@ -652,7 +652,8 @@ class Policy(metaclass=ABCMeta):
                 # Tag those only needed for post-processing.
                 for key in batch_for_postproc.accessed_keys:
                     if key not in train_batch.accessed_keys and \
-                            key in self.view_requirements and key not in self.model.inference_view_requirements:
+                            key in self.view_requirements and \
+                            key not in self.model.inference_view_requirements:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
@@ -675,18 +676,6 @@ class Policy(metaclass=ABCMeta):
                                 "postprocessing function.".format(key))
                         else:
                             del self.view_requirements[key]
-            # Add those data_cols (again) that are missing and have
-            # dependencies by view_cols.
-            #for key in list(self.view_requirements.keys()):
-            #    vr = self.view_requirements[key]
-            #    if vr.data_col is not None and \
-            #            vr.data_col not in self.view_requirements:
-            #        used_for_training = \
-            #            vr.data_col in train_batch.accessed_keys
-            #        self.view_requirements[vr.data_col] = \
-            #            ViewRequirement(
-            #                space=vr.space,
-            #                used_for_training=used_for_training)
 
     def _get_dummy_batch_from_view_requirements(
             self, batch_size: int = 1) -> SampleBatch:
@@ -710,12 +699,17 @@ class Policy(metaclass=ABCMeta):
             else:
                 # Range of indices on time-axis, make sure to create
                 if view_req.data_rel_pos_from is not None:
-                    ret[view_col] = np.zeros_like(
-                        [[view_req.space.sample() for _ in range(view_req.data_rel_pos_to - view_req.data_rel_pos_from + 1)]  for b in range(batch_size)])
+                    ret[view_col] = np.zeros_like([[
+                        view_req.space.sample()
+                        for _ in range(view_req.data_rel_pos_to -
+                                       view_req.data_rel_pos_from + 1)
+                    ] for b in range(batch_size)])
                 # Set of (probably non-consecutive) indices.
                 elif isinstance(view_req.data_rel_pos, (list, tuple)):
-                    ret[view_col] = np.zeros_like(
-                        [[view_req.space.sample() for t in range(len(view_req.data_rel_pos))] for b in range(batch_size)])
+                    ret[view_col] = np.zeros_like([[
+                        view_req.space.sample()
+                        for t in range(len(view_req.data_rel_pos))
+                    ] for b in range(batch_size)])
                 # Single index.
                 else:
                     ret[view_col] = np.zeros_like(
@@ -726,7 +720,8 @@ class Policy(metaclass=ABCMeta):
         for view_col, view_req in self.view_requirements.items():
             if view_req.is_input_dict:
                 ret[view_col] = _input_dict
-                ret[view_col]["seq_lens"] = np.array([1 for _ in range(batch_size)])
+                ret[view_col]["seq_lens"] = np.array(
+                    [1 for _ in range(batch_size)])
 
         return SampleBatch(ret, _dont_check_lens=True)
 

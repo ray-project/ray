@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     assert not args.torch, "PyTorch not supported for AttentionNets yet!"
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)  #TODO
 
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     registry.register_env("RepeatInitialObsEnv",
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", 0)),
         "num_workers": 0,
-        "num_envs_per_worker": 1,#TODO:20
+        "num_envs_per_worker": 1,  #TODO:20
         "entropy_coeff": 0.001,
         "num_sgd_iter": 5,
         "vf_loss_coeff": 1e-5,
@@ -63,7 +63,7 @@ if __name__ == "__main__":
                 "ff_hidden_dim": 32,
             },
         },
-        "framework": "torch" if args.torch else "tf2",#TODO tf
+        "framework": "torch" if args.torch else "tf2",  #TODO tf
     }
 
     stop = {

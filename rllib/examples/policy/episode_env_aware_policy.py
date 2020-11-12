@@ -35,7 +35,9 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
         for i in range(2):
             self.model.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
-                    "state_out_{}".format(i), data_rel_pos=-1, space=self.state_space)
+                    "state_out_{}".format(i),
+                    data_rel_pos=-1,
+                    space=self.state_space)
             self.model.inference_view_requirements[
                 "state_out_{}".format(i)] = \
                 ViewRequirement(space=self.state_space)

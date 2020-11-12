@@ -74,11 +74,10 @@ def minibatches(samples, sgd_minibatch_size):
     slices = []
     if samples.seq_lens:
         start_pos = 0
-        #end_pos = 0
         minibatch_size = 0
-        l = 0
-        while l < len(samples.seq_lens):
-            seq_len = samples.seq_lens[l]
+        idx = 0
+        while idx < len(samples.seq_lens):
+            seq_len = samples.seq_lens[idx]
             minibatch_size += seq_len
             # Complete minibatch -> Append to slices.
             if minibatch_size >= sgd_minibatch_size:
@@ -87,24 +86,9 @@ def minibatches(samples, sgd_minibatch_size):
                 if minibatch_size > sgd_minibatch_size:
                     overhead = minibatch_size - sgd_minibatch_size
                     start_pos -= (seq_len - overhead)
-                    l -= 1
-                #end_pos = start_pos
+                    idx -= 1
                 minibatch_size = 0
-            #else:
-                #end_pos += seq_len
-            l += 1
-
-        #seq_no = 0
-        #while i < samples.count:
-        #    seq_no_end = seq_no
-        #    actual_count = 0
-        #    while actual_count < sgd_minibatch_size and len(
-        #            samples.seq_lens) > seq_no_end:
-        #        actual_count += samples.seq_lens[seq_no_end]
-        #        seq_no_end += 1
-        #    slices.append((seq_no, seq_no_end))
-        #    i += actual_count
-        #    seq_no = seq_no_end
+            idx += 1
     else:
         while i < samples.count:
             slices.append((i, i + sgd_minibatch_size))
@@ -112,7 +96,7 @@ def minibatches(samples, sgd_minibatch_size):
     random.shuffle(slices)
 
     for i, j in slices:
-        yield samples.slice(0, 128)#TOD: i, j
+        yield samples.slice(0, 128)  #TODO: i, j
 
 
 def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,

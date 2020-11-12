@@ -1,4 +1,3 @@
-from gym.spaces import Box
 import numpy as np
 import pickle
 

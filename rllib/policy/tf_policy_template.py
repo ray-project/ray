@@ -1,5 +1,4 @@
 import gym
-import numpy as np
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -9,10 +8,8 @@ from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.tf_ops import get_placeholder
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
 

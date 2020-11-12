@@ -45,9 +45,10 @@ class CentralizedCriticModel(TFModelV2):
 
     def central_value_function(self, obs, opponent_obs, opponent_actions):
         return tf.reshape(
-            self.central_vf(
-                [obs, opponent_obs,
-                 tf.one_hot(tf.cast(opponent_actions, tf.int32), 2)]), [-1])
+            self.central_vf([
+                obs, opponent_obs,
+                tf.one_hot(tf.cast(opponent_actions, tf.int32), 2)
+            ]), [-1])
 
     @override(ModelV2)
     def value_function(self):

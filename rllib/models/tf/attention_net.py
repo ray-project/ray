@@ -17,8 +17,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
-from ray.rllib.policy.rnn_sequencing import add_time_dimension, \
-    chop_into_sequences
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -230,8 +229,8 @@ class GTrXLNet(RecurrentNetwork):
         # (use different ones for inference and training due to the different
         # memory sizes used).
         # For inference, we prepend the memory to the current timestep's input.
-        Phi_inf = relative_position_embedding(
-            self.memory_inference + 1, self.attn_dim)
+        Phi_inf = relative_position_embedding(self.memory_inference + 1,
+                                              self.attn_dim)
         # For training, we prepend the memory to the input sequence.
         Phi_train = relative_position_embedding(
             self.memory_training + self.max_seq_len, self.attn_dim)
@@ -307,38 +306,13 @@ class GTrXLNet(RecurrentNetwork):
         # current one (0))
         # 1 to `num_transformer_units`: Memory data (one per transformer unit).
         for i in range(self.num_transformer_units):
-            #self.inference_view_requirements["state_out_{}".format(i)] = \
-            #    ViewRequirement(
-            #        data_rel_pos="-{}:-1".format(self.memory_inference),
-            #        space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
-                   "state_out_{}".format(i),
+                    "state_out_{}".format(i),
                     data_rel_pos="-{}:-1".format(self.memory_inference),
                     # Repeat the incoming state every max-seq-len times.
-                    #batch_repeat_type="repeat",
                     batch_repeat_value=self.max_seq_len,
-                    space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
-
-        #self.inference_view_requirements.update({
-        #    SampleBatch.OBS: ViewRequirement(
-        #        data_rel_pos="-{}:0".format(self.memory_inference),
-        #        space=self.obs_space)
-        #})
-        # Setup additional view requirements for attention net inference calls.
-        # 0: The last `max_seq_len` observations.
-        #self.inference_view_requirements["state_in_0"] = ViewRequirement(
-        #    "state_out_0",
-        #    data_rel_pos=-1,
-        #    space=Box(-1.0, 1.0, shape=(self.max_seq_len, self.obs_dim)))
-        ## 1 to `num_transformer_units`: Memory data (one per transformer unit).
-        #for i in range(1, self.num_transformer_units + 1):
-        #    self.inference_view_requirements["state_in_{}".format(i)] = \
-        #        ViewRequirement(
-        #            "state_out_{}".format(i),
-        #            data_rel_pos=-1,
-        #            space=Box(-1.0, 1.0,
-        #                      shape=(self.memory_tau, self.attn_dim)))
+                    space=Box(-1.0, 1.0, shape=(self.attn_dim,)))
 
     @override(ModelV2)
     def forward(self, input_dict, state: List[TensorType],
@@ -351,72 +325,18 @@ class GTrXLNet(RecurrentNetwork):
         B = len(seq_lens)
         shape = tf.shape(observations)
         T = shape[0] // B
-        observations = tf.reshape(observations, tf.concat([[-1, T], shape[1:]], axis=0))
+        observations = tf.reshape(observations,
+                                  tf.concat([[-1, T], shape[1:]], axis=0))
 
-        #padded_inputs = input_dict["obs_flat"]
-        #max_seq_len = tf.shape(observations)[0] // tf.shape(seq_lens)[0]
         all_out = self.trxl_model([observations] + state + [is_training])
-        #return tf.reshape(output, [-1, self.num_outputs]), new_state
 
-        #all_out = self.trxl_model([observations] + state + [is_training])
         logits = all_out[0]
         self._value_out = all_out[1]
         memory_outs = all_out[2:]
-        ## If memory_tau > max_seq_len -> overlap w/ previous `memory` input.
-        #if self.memory_tau > self.max_seq_len:
-        #    memory_outs = [
-        #        tf.concat(
-        #            [memory[i][:, -(self.memory_tau - self.max_seq_len):], m],
-        #            axis=1) for i, m in enumerate(memory_outs)
-        #    ]
-        #else:
-        #memory_outs = [m[:, -self.memory_tau:] for m in memory_outs]
-        #logits = logits[:, -T:]
-        #self._value_out = self._value_out[:, -T:]
 
-        return tf.reshape(logits, [-1, self.num_outputs]), [tf.reshape(m, [-1, self.attn_dim]) for m in memory_outs]
-
-    #@override(RecurrentNetwork)
-    #def forward_rnn(self, observations, states, seq_lens):
-        #T = tf.shape(observations)[1]  # Length of input segment (time).
-
-        #TODO: make work with traj. view API.
-        #observations = state[0]
-        #memory = state[1:]
-
-        #observations = tf.concat(
-        #    (observations, inputs), axis=1)[:, -self.max_seq_len:]
-    #    all_out = self.trxl_model([observations] + states + [])
-    #    logits = all_out[0]
-    #    self._value_out = all_out[1]
-    #    memory_outs = all_out[2:]
-        ## If memory_tau > max_seq_len -> overlap w/ previous `memory` input.
-        #if self.memory_tau > self.max_seq_len:
-        #    memory_outs = [
-        #        tf.concat(
-        #            [memory[i][:, -(self.memory_tau - self.max_seq_len):], m],
-        #            axis=1) for i, m in enumerate(memory_outs)
-        #    ]
-        #else:
-        #memory_outs = [m[:, -self.memory_tau:] for m in memory_outs]
-        #logits = logits[:, -T:]
-        #self._value_out = self._value_out[:, -T:]
-
-    #    return logits, memory_outs
-
-    #@override(ModelV2)
-    #def update_view_requirements_from_init_state(self):
-    #    # 1 to `num_transformer_units`: Memory data (one per transformer unit).
-    #    for i in range(self.num_transformer_units):
-    #        self.inference_view_requirements["state_out_{}".format(i)] = \
-    #            ViewRequirement(
-    #                data_rel_pos="-{}:-1".format(self.memory_inference),
-    #                space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
-    #        self.inference_view_requirements["state_in_{}".format(i)] = \
-    #            ViewRequirement(
-    #               "state_out_{}".format(i),
-    #                data_rel_pos="-{}:-1".format(self.memory_inference),
-    #                space=Box(-1.0, 1.0, shape=(self.attn_dim, )))
+        return tf.reshape(logits, [-1, self.num_outputs]), [
+            tf.reshape(m, [-1, self.attn_dim]) for m in memory_outs
+        ]
 
     # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
@@ -424,10 +344,7 @@ class GTrXLNet(RecurrentNetwork):
         # State is the tau last observations concat'd together into one Tensor.
         # Plus all Transformer blocks' E(l) outputs concat'd together (up to
         # tau timesteps). Tau=memory size in inference mode.
-        #return #[np.zeros((self.memory_inference, self.obs_dim), np.float32)] + \
         return []
-        #return [np.zeros((self.memory_inference, self.attn_dim), np.float32)
-        #        for _ in range(self.num_transformer_units)]
 
     @override(ModelV2)
     def value_function(self) -> TensorType:
@@ -443,15 +360,16 @@ class GTrXLNet(RecurrentNetwork):
             if k.startswith("state_in_"):
                 state_keys.append(k)
             elif not k.startswith(
-                    "state_out_") and k != "infos" and k != "seq_lens" and isinstance(v,
-                                                                  np.ndarray):
+                    "state_out_"
+            ) and k != "infos" and k != "seq_lens" and isinstance(
+                    v, np.ndarray):
                 feature_keys_.append(k)
-    
+
         feature_sequences, initial_states, seq_lens = \
             chop_into_sequences(
-                episode_ids=None,#train_batch[SampleBatch.EPS_ID],
-                unroll_ids=None,#train_batch[SampleBatch.UNROLL_ID],
-                agent_indices=None,#train_batch[SampleBatch.AGENT_INDEX],
+                episode_ids=None,
+                unroll_ids=None,
+                agent_indices=None,
                 feature_columns=[train_batch[k] for k in feature_keys_],
                 state_columns=[train_batch[k] for k in state_keys],
                 max_seq_len=self.model_config["max_seq_len"],

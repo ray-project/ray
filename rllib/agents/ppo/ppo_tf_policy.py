@@ -49,7 +49,7 @@ def ppo_surrogate_loss(
     # RNN case: Mask away 0-padded chunks at end of time axis.
     if state:
         B = tf.shape(train_batch["seq_lens"])[0]
-        max_seq_len = tf.shape(logits)[0] // B #tf.reduce_max(train_batch["seq_lens"])
+        max_seq_len = tf.shape(logits)[0] // B
         mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
 
@@ -296,7 +296,8 @@ class ValueNetworkMixin:
 
                 @make_tf_callable(self.get_session())
                 def value(input_dict):
-                    model_out, _ = self.model.from_batch(input_dict, is_training=False)
+                    model_out, _ = self.model.from_batch(
+                        input_dict, is_training=False)
                     # [0] = remove the batch dim.
                     return self.model.value_function()[0]
 
