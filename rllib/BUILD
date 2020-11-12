@@ -223,6 +223,7 @@ py_test(
 )
 
 # Working, but takes a long time to learn (>15min).
+# Removed due to Higher API conflicts with Pytorch-Import tests
 ## MB-MPO
 #py_test(
 #    name = "run_regression_tests_pendulum_mbmpo_torch",
@@ -499,7 +500,7 @@ py_test(
 )
 
 # MBMPOTrainer
-# MBMPO depends on MAML, MAML Pytorch not tested
+# Removed due to Higher API conflicts with Pytorch-Import tests
 #py_test(
 #    name = "test_mbmpo",
 #    tags = ["agents_dir"],
