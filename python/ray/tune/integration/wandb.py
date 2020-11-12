@@ -228,6 +228,9 @@ class WandbExperimentLogger(ExperimentLogger):
     visualization.
 
     Args:
+        project (str): Name of the Wandb project. Mandatory.
+        group (str): Name of the Wandb group. Defaults to the trainable
+            name.
         api_key_file (str): Path to file containing the Wandb API KEY. This
             file only needs to be present on the node running the Tune script
             if using the WandbLogger.
@@ -238,6 +241,7 @@ class WandbExperimentLogger(ExperimentLogger):
             the ``results`` dict should be logged. This makes sense if
             parameters will change during training, e.g. with
             PopulationBasedTraining. Defaults to False.
+        **kwargs: The keyword arguments will be pased to ``wandb.init()``.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
     by Tune, but can be overwritten by filling out the respective configuration
@@ -251,7 +255,7 @@ class WandbExperimentLogger(ExperimentLogger):
     .. code-block:: python
 
         from ray.tune.logger import DEFAULT_LOGGERS
-        from ray.tune.integration.wandb import WandbLogger
+        from ray.tune.integration.wandb import WandbExperimentLogger
         tune.run(
             train_fn,
             config={
