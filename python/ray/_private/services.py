@@ -191,10 +191,9 @@ def get_address_info_from_redis_helper(redis_address,
             break
     if relevant_client is None:
         raise RuntimeError(
-            "Connected to Redis at {} and found raylets at {} but none of these"
-            " match this node's IP {}.".format(redis_address,
-                ", ".join(c["NodeManagerAddress"] for c in client_table),
-                node_ip_address))
+            f"Connected to Redis at {redis_address} and found raylets at "
+             "{', '.join(c['NodeManagerAddress'] for c in client_table)} but "
+             "none of these match this node's IP {node_ip_address}.")
 
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
