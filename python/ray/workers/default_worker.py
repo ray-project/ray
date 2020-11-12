@@ -124,17 +124,15 @@ def main(args):
     # NOTE: We deprecated redirect_worker_output arg,
     # so we don't need to handle here.
     stdout_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(True),
-        intercept_stdout=True)
+        setup_and_get_worker_interceptor_logger(True), intercept_stdout=True)
     stderr_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(False),
-        intercept_stdout=False)
+        setup_and_get_worker_interceptor_logger(False), intercept_stdout=False)
     with redirect_stdout(stdout_interceptor):
         with redirect_stderr(stderr_interceptor):
             if mode == ray.WORKER_MODE:
                 ray.worker.global_worker.main_loop()
             elif (mode == ray.RESTORE_WORKER_MODE
-                    or mode == ray.SPILL_WORKER_MODE):
+                  or mode == ray.SPILL_WORKER_MODE):
                 # It is handled by another thread in the C++ core worker.
                 # We just need to keep the worker alive.
                 while True:

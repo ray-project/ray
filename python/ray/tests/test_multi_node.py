@@ -738,8 +738,6 @@ ray.get(main_wait.release.remote())
     if sys.platform == "win32":
         driver1_out = driver1_out.replace("\r", "")
         driver2_out = driver2_out.replace("\r", "")
-    print(driver1_out)
-    print(driver2_out)
     driver1_out_split = driver1_out.split("\n")
     driver2_out_split = driver2_out.split("\n")
 

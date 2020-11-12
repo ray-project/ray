@@ -46,15 +46,14 @@ class StandardStreamInterceptor:
 
     def write(self, message):
         """Redirect the original message to the logger."""
-        if message != "\n":
-            self.logger.info("{}".format(message))
+        self.logger.info("{}".format(message))
 
     def flush(self):
         # flush method can be empty because logger will handle flush
         for handler in self.logger.handlers:
             handler.flush()
-    
+
     def isatty(self):
         # Return the standard out isatty. This is used by colorful.
         fd = 1 if self.intercept_stdout else 2
-        return os.isatty(1)
+        return os.isatty(fd)
