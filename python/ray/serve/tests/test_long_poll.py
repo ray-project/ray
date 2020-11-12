@@ -6,13 +6,13 @@ from typing import Dict
 import pytest
 
 import ray
-from ray.serve.long_pull import (LongPullerAsyncClient, LongPullerHost,
-                                 UpdatedObject, LongPullerSyncClient)
+from ray.serve.long_poll import (LongPollerAsyncClient, LongPollerHost,
+                                 UpdatedObject, LongPollerSyncClient)
 from ray.tests.conftest import ray_start_regular_shared
 
 
 def test_host_standalone(ray_start_regular_shared):
-    host = ray.remote(LongPullerHost).remote()
+    host = ray.remote(LongPollerHost).remote()
 
     # Write two values
     ray.get(host.notify_on_changed.remote("key_1", 999))
@@ -39,7 +39,7 @@ def test_host_standalone(ray_start_regular_shared):
 
 
 def test_sync_client(ray_start_regular_shared):
-    host = ray.remote(LongPullerHost).remote()
+    host = ray.remote(LongPollerHost).remote()
 
     # Write two values
     ray.get(host.notify_on_changed.remote("key_1", 100))
@@ -51,7 +51,7 @@ def test_sync_client(ray_start_regular_shared):
         for key in updated_keys:
             callback_results[key] = snapshots[key]
 
-    client = LongPullerSyncClient(host, ["key_1", "key_2"], callback)
+    client = LongPollerSyncClient(host, ["key_1", "key_2"], callback)
     assert client.get_object_snapshot("key_1") == 100
     assert client.get_object_snapshot("key_2") == 999
 
@@ -70,7 +70,7 @@ def test_sync_client(ray_start_regular_shared):
 
 @pytest.mark.asyncio
 async def test_async_client(ray_start_regular_shared):
-    host = ray.remote(LongPullerHost).remote()
+    host = ray.remote(LongPollerHost).remote()
 
     # Write two values
     ray.get(host.notify_on_changed.remote("key_1", 100))
@@ -82,7 +82,7 @@ async def test_async_client(ray_start_regular_shared):
         for key in updated_keys:
             callback_results[key] = snapshots[key]
 
-    client = LongPullerAsyncClient(host, ["key_1", "key_2"], callback)
+    client = LongPollerAsyncClient(host, ["key_1", "key_2"], callback)
     while len(client.object_snapshots) == 0:
         # Yield the loop for client to get the result
         await asyncio.sleep(0.2)

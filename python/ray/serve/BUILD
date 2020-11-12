@@ -88,7 +88,7 @@ py_test(
 )
 
 py_test(
-    name = "test_long_pull",
+    name = "test_long_poll",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],

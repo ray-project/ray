@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve.long_pull import LongPullerAsyncClient, LongPullerSyncClient
+from ray.serve.long_poll import LongPollerAsyncClient, LongPollerSyncClient
 from ray.util import metrics
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
@@ -151,7 +151,7 @@ class Router:
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
-        self.long_pull_client = LongPullerAsyncClient(
+        self.long_poll_client = LongPollerAsyncClient(
             self.controller,
             ["traffic_policies", "worker_handles", "backend_configs"],
             self.update_state)

@@ -39,7 +39,7 @@ class BaseClient:
         return self.object_snapshots[object_key]
 
 
-class LongPullerSyncClient(BaseClient):
+class LongPollerSyncClient(BaseClient):
     def __init__(self,
                  host_actor,
                  keys: List[str],
@@ -67,17 +67,17 @@ class LongPullerSyncClient(BaseClient):
         return self.object_snapshots[object_key]
 
 
-class LongPullerAsyncClient(BaseClient):
+class LongPollerAsyncClient(BaseClient):
     def __init__(self,
                  host_actor,
                  keys: List[str],
                  callback: Optional[UpdateStateAsyncCallable] = None) -> None:
         assert asyncio.get_event_loop().is_running
         super().__init__(host_actor, keys)
-        asyncio.get_event_loop().create_task(self._do_long_pull())
+        asyncio.get_event_loop().create_task(self._do_long_poll())
         self.callback = callback
 
-    async def _do_long_pull(self):
+    async def _do_long_poll(self):
         while True:
             updates = await self._pull_once()
             self._update(updates)
@@ -86,7 +86,7 @@ class LongPullerAsyncClient(BaseClient):
                                     list(updates.keys()))
 
 
-class LongPullerHost:
+class LongPollerHost:
     """The server side object that manages long pulling requests."""
 
     def __init__(self):
@@ -140,7 +140,7 @@ class LongPullerHost:
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object
         logger.debug(
-            f"LongPullerHost: Updated object_snapshot to {self.object_snapshots}"
+            f"LongPollerHost: Updated object_snapshot to {self.object_snapshots}"
         )
 
         if object_key in self.notifier_events:

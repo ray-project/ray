@@ -19,7 +19,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
 from ray.serve.config import BackendConfig, ReplicaConfig
-from ray.serve.long_pull import LongPullerHost
+from ray.serve.long_poll import LongPollerHost
 from ray.actor import ActorHandle
 
 import numpy as np
@@ -455,22 +455,22 @@ class ServeController:
     class StateNotifier:
         def __init__(self, controller: "ServeController"):
             self.controller = controller
-            self.long_pull_host = controller.long_pull_host
-            self.long_pull_host.notify_on_changed("traffic_policies", dict())
-            self.long_pull_host.notify_on_changed("worker_handles", dict())
-            self.long_pull_host.notify_on_changed("backend_configs", dict())
+            self.long_poll_host = controller.long_poll_host
+            self.long_poll_host.notify_on_changed("traffic_policies", dict())
+            self.long_poll_host.notify_on_changed("worker_handles", dict())
+            self.long_poll_host.notify_on_changed("backend_configs", dict())
 
         def on_replica_handles_changed(self):
-            self.long_pull_host.notify_on_changed(
+            self.long_poll_host.notify_on_changed(
                 "worker_handles", self.controller.get_all_worker_handles())
 
         def on_traffic_policies_changed(self):
-            self.long_pull_host.notify_on_changed(
+            self.long_poll_host.notify_on_changed(
                 "traffic_policies",
                 self.controller.configuration_store.traffic_policies)
 
         def on_backend_configs_change(self):
-            self.long_pull_host.notify_on_changed(
+            self.long_poll_host.notify_on_changed(
                 "backend_configs",
                 self.controller.configuration_store.get_backend_configs())
 
@@ -497,8 +497,8 @@ class ServeController:
         # at any given time.
         self.write_lock = asyncio.Lock()
 
-        self.long_pull_host = LongPullerHost()
-        self.long_pull_notifier = ServeController.StateNotifier(self)
+        self.long_poll_host = LongPollerHost()
+        self.long_poll_notifier = ServeController.StateNotifier(self)
 
         self.http_host = http_host
         self.http_port = http_port
@@ -533,7 +533,7 @@ class ServeController:
 
     async def listen_on_changed(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request."""
-        return await self.long_pull_host.listen_on_changed(keys_to_snapshot_ids
+        return await self.long_poll_host.listen_on_changed(keys_to_snapshot_ids
                                                            )
 
     def get_routers(self) -> Dict[str, ActorHandle]:
@@ -595,9 +595,9 @@ class ServeController:
         self.write_lock.release()
 
         # Notify all listener about state updates.
-        self.long_pull_notifier.on_backend_configs_change()
-        self.long_pull_notifier.on_replica_handles_changed()
-        self.long_pull_notifier.on_traffic_policies_changed()
+        self.long_poll_notifier.on_backend_configs_change()
+        self.long_poll_notifier.on_replica_handles_changed()
+        self.long_poll_notifier.on_traffic_policies_changed()
 
     async def do_autoscale(self) -> None:
         for backend, info in self.configuration_store.backends.items():
@@ -693,7 +693,7 @@ class ServeController:
         # update.
         self._checkpoint()
 
-        self.long_pull_notifier.on_traffic_policies_changed()
+        self.long_poll_notifier.on_traffic_policies_changed()
 
     async def set_traffic(self, endpoint_name: str,
                           traffic_dict: Dict[str, float]) -> None:
@@ -722,7 +722,7 @@ class ServeController:
             # update to avoid inconsistent state if we crash after pushing the
             # update.
             self._checkpoint()
-            self.long_pull_notifier.on_traffic_policies_changed()
+            self.long_poll_notifier.on_traffic_policies_changed()
 
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
     async def create_endpoint(self, endpoint: str,
@@ -855,11 +855,11 @@ class ServeController:
             await self.actor_reconciler._start_pending_backend_replicas(
                 self.configuration_store)
 
-            self.long_pull_notifier.on_replica_handles_changed()
+            self.long_poll_notifier.on_replica_handles_changed()
 
             # Set the backend config inside the router
             # (particularly for max_concurrent_queries).
-            self.long_pull_notifier.on_backend_configs_change()
+            self.long_poll_notifier.on_backend_configs_change()
             await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag: BackendTag) -> None:
@@ -900,7 +900,7 @@ class ServeController:
             await self.actor_reconciler._stop_pending_backend_replicas()
             await self.actor_reconciler._remove_pending_backends()
 
-            self.long_pull_notifier.on_replica_handles_changed()
+            self.long_poll_notifier.on_replica_handles_changed()
 
     async def update_backend_config(
             self, backend_tag: BackendTag,
@@ -945,8 +945,8 @@ class ServeController:
                 self.configuration_store)
             await self.actor_reconciler._stop_pending_backend_replicas()
 
-            self.long_pull_notifier.on_replica_handles_changed()
-            self.long_pull_notifier.on_backend_configs_change()
+            self.long_poll_notifier.on_replica_handles_changed()
+            self.long_poll_notifier.on_backend_configs_change()
 
             await self.broadcast_backend_config(backend_tag)
 
