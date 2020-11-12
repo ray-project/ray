@@ -109,11 +109,10 @@ extras = {
         "dataclasses; python_version < '3.7'"
     ],
     "tune": [
-        "dataclasses; python_version < '3.7'",
-        "pandas",
-        "tabulate",
-        "tensorboardX",
-    ]
+        "dataclasses; python_version < '3.7'", "pandas", "tabulate",
+        "tensorboardX"
+    ],
+    "k8s": ["kubernetes"]
 }
 
 extras["rllib"] = extras["tune"] + [
