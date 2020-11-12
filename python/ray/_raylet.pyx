@@ -347,6 +347,7 @@ cdef execute_task(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
+        c_bool drop_into_debugger,
         c_vector[shared_ptr[CRayObject]] *returns):
 
     worker = ray.worker.global_worker
@@ -474,6 +475,8 @@ cdef execute_task(
                 try:
                     switch_worker_log_if_needed(worker, job_id)
                     with ray.worker._changeproctitle(title, next_title):
+                        if drop_into_debugger:
+                            ray.util.pdb.set_trace()
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
                 except KeyboardInterrupt as e:
@@ -540,6 +543,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
+        c_bool drop_into_debugger,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
@@ -549,7 +553,7 @@ cdef CRayStatus task_execution_handler(
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_reference_ids, c_return_ids,
-                             returns)
+                             drop_into_debugger, returns)
             except Exception:
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
@@ -1006,6 +1010,7 @@ cdef class CoreWorker:
                     PlacementGroupID placement_group_id,
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
+                    c_bool drop_into_debugger,
                     override_environment_variables):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1032,7 +1037,8 @@ cdef class CoreWorker:
                     &return_ids, max_retries,
                     c_pair[CPlacementGroupID, int64_t](
                         c_placement_group_id, placement_group_bundle_index),
-                    placement_group_capture_child_tasks)
+                    placement_group_capture_child_tasks,
+                    drop_into_debugger)
 
             return VectorToObjectRefs(return_ids)
 

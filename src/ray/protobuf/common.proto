@@ -192,6 +192,8 @@ message TaskSpec {
   bool placement_group_capture_child_tasks = 19;
   // Environment variables to override for this task
   map<string, string> override_environment_variables = 20;
+  // Whether or not this task should drop into the debugger when it starts executing.
+  bool drop_into_debugger = 21;
 }
 
 message Bundle {

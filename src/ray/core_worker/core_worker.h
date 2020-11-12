@@ -62,6 +62,7 @@ struct CoreWorkerOptions {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids,
+      bool drop_into_debugger,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerOptions()
@@ -648,7 +649,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
                   int max_retries, PlacementOptions placement_options,
-                  bool placement_group_capture_child_tasks);
+                  bool placement_group_capture_child_tasks,
+                  bool drop_into_debugger);
 
   /// Create an actor.
   ///

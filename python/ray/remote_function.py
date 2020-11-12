@@ -275,6 +275,7 @@ class RemoteFunction:
                 placement_group.id,
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
+                worker.drop_into_debugger,
                 override_environment_variables=override_environment_variables
                 or dict())
             if len(object_refs) == 1:
