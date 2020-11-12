@@ -337,7 +337,7 @@ void GcsNodeManager::HandleGetAllAvailableResources(
   for (const auto &iter : GetClusterRealtimeResources()) {
     rpc::AvailableResources resource;
     resource.set_node_id(iter.first.Binary());
-    for (const auto &res : iter.second->GetResourceAmountMap()) {
+    for (const auto &res : iter.second.GetResourceAmountMap()) {
       (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
     }
     reply->add_resources_list()->CopyFrom(resource);
@@ -534,13 +534,12 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
     const NodeID &node_id, const rpc::HeartbeatTableData &heartbeat) {
   if (!RayConfig::instance().light_heartbeat_enabled() ||
       heartbeat.resources_available_changed()) {
-    auto resources_available = MapFromProtobuf(heartbeat.resources_available());
     cluster_realtime_resources_[node_id] =
-        std::make_shared<ResourceSet>(resources_available);
+        ResourceSet(MapFromProtobuf(heartbeat.resources_available()));
   }
 }
 
-const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
+const absl::flat_hash_map<NodeID, ResourceSet>
     &GcsNodeManager::GetClusterRealtimeResources() const {
   return cluster_realtime_resources_;
 }
