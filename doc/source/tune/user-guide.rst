@@ -87,6 +87,8 @@ See :ref:`limiter` for more details.
 Distributed Tuning
 ~~~~~~~~~~~~~~~~~~
 
+.. tip:: This section covers how to run Tune across multiple machines. See :ref:`Distributed Training <tune-dist-training>` for guidance in tuning distributed training jobs.
+
 To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :ref:`start-ray-cli` for more information about ``ray.init``:
 
 .. code-block:: python
@@ -96,6 +98,28 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :re
     tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
 
 Read more in the Tune :ref:`distributed experiments guide <tune-distributed>`.
+
+.. _tune-dist-training:
+
+Tune Distributed Training
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To tune distributed training jobs, Tune provides a set of ``DistributedTrainableCreator`` for different training frameworks.
+Below is an example for tuning distributed TensorFlow jobs:
+
+.. code-block:: python
+
+    # Please refer to full example in tf_distributed_keras_example.py
+    from ray.tune.integration.tensorflow import DistributedTrainableCreator
+    tf_trainable = DistributedTrainableCreator(
+        train_mnist,
+        use_gpu=args.use_gpu,
+        num_workers=2)
+    tune.run(tf_trainable,
+             num_samples=1)
+
+Read more about tuning :ref:`distributed PyTorch <tune-ddp-doc>`, :ref:`TensorFlow <tune-dist-tf-doc>` and :ref:`Horovod <tune-integration-horovod>` jobs.
+
 
 .. _tune-default-search-space:
 
@@ -635,9 +659,18 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_CLUSTER_SSH_KEY**: SSH key used by the Tune driver process to connect
   to remote cluster machines for checkpoint syncing. If this is not set,
   ``~/ray_bootstrap_key.pem`` will be used.
+* **TUNE_DISABLE_AUTO_CALLBACK_LOGGERS**: Ray Tune automatically adds a CSV and
+  JSON logger callback if they haven't been passed. Setting this variable to
+  `1` disables this automatic creation. Please note that this will most likely
+  affect analyzing your results after the tuning run.
+* **TUNE_DISABLE_AUTO_CALLBACK_SYNCER**: Ray Tune automatically adds a
+  Syncer callback to sync logs and checkpoints between different nodes if none
+  has been passed. Setting this variable to `1` disables this automatic creation.
+  Please note that this will most likely affect advanced scheduling algorithms
+  like PopulationBasedTraining.
 * **TUNE_DISABLE_AUTO_INIT**: Disable automatically calling ``ray.init()`` if
   not attached to a Ray session.
-* **TUNE_DISABLE_DATED_SUBDIR**: Tune automatically adds a date string to experiment
+* **TUNE_DISABLE_DATED_SUBDIR**: Ray Tune automatically adds a date string to experiment
   directories when the name is not specified explicitly or the trainable isn't passed
   as a string. Setting this environment variable to ``1`` disables adding these date strings.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via

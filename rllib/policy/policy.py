@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import gym
 from gym.spaces import Box
+import logging
 import numpy as np
 import tree
 from typing import Dict, List, Optional
@@ -19,6 +20,8 @@ from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
 torch, _ = try_import_torch()
+
+logger = logging.getLogger(__name__)
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
@@ -79,8 +82,6 @@ class Policy(metaclass=ABCMeta):
         # View requirements will be automatically filtered out later based
         # on the postprocessing and loss functions to ensure optimal data
         # collection and transfer performance.
-        # If child classes must override this behavior, they need to specify
-        # the `view_requirements_fn` arg.
         view_reqs = self._get_default_view_requirements()
         if not hasattr(self, "view_requirements"):
             self.view_requirements = view_reqs
@@ -592,8 +593,7 @@ class Policy(metaclass=ABCMeta):
                 TensorType]]]): An optional stats function to be called after
                 the loss.
         """
-        sample_batch_size = max(self.batch_divisibility_req, 4)
-        B = 2  # For RNNs, have B=2, T=[depends on sample_batch_size]
+        sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
         input_dict = self._lazy_tensor_dict(self._dummy_batch)
@@ -607,10 +607,11 @@ class Policy(metaclass=ABCMeta):
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
-        batch_for_postproc = UsageTrackingDict(self._dummy_batch)  #self._lazy_numpy_dict(self._dummy_batch)
+        batch_for_postproc = UsageTrackingDict(self._dummy_batch)
         batch_for_postproc.count = self._dummy_batch.count
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
+            B = 4  # For RNNs, have B=2, T=[depends on sample_batch_size]
             # TODO: (sven) This hack will not work for attention net traj.
             #  view setup.
             i = 0
@@ -621,7 +622,7 @@ class Policy(metaclass=ABCMeta):
                     postprocessed_batch["state_out_{}".format(i)] = \
                         postprocessed_batch["state_out_{}".format(i)][:B]
                 i += 1
-            seq_len = (self.batch_divisibility_req // B) or 2
+            seq_len = sample_batch_size // B
             postprocessed_batch["seq_lens"] = \
                 np.array([seq_len for _ in range(B)], dtype=np.int32)
         # Remove the UsageTrackingDict wrap to prep for wrapping the
@@ -649,16 +650,30 @@ class Policy(metaclass=ABCMeta):
             if self._loss:
                 # Tag those only needed for post-processing.
                 for key in batch_for_postproc.accessed_keys:
-                    if key not in train_batch.accessed_keys:
+                    if key not in train_batch.accessed_keys and \
+                            key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
+                # Also always leave DONES and REWARDS, no matter what.
                 for key in list(self.view_requirements.keys()):
                     if key not in all_accessed_keys and key not in [
                         SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                        SampleBatch.UNROLL_ID, SampleBatch.DONES] and \
+                        SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                        SampleBatch.REWARDS] and \
                             key not in self.model.inference_view_requirements:
-                        del self.view_requirements[key]
+                        # If user deleted this key manually in postprocessing
+                        # fn, warn about it and do not remove from
+                        # view-requirements.
+                        if key in batch_for_postproc.deleted_keys:
+                            logger.warning(
+                                "SampleBatch key '{}' was deleted manually in "
+                                "postprocessing function! RLlib will "
+                                "automatically remove non-used items from the "
+                                "data stream. Remove the `del` from your "
+                                "postprocessing function.".format(key))
+                        else:
+                            del self.view_requirements[key]
             # Add those data_cols (again) that are missing and have
             # dependencies by view_cols.
             for key in list(self.view_requirements.keys()):

@@ -12,6 +12,7 @@ import ray._private.services as services
 from ray.autoscaler._private.providers import _get_default_config, \
     _NODE_PROVIDERS
 from ray.autoscaler._private.docker import validate_docker_config
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
@@ -98,15 +99,46 @@ def prepare_config(config):
     return with_defaults
 
 
+def rewrite_legacy_yaml_to_available_node_types(
+        config: Dict[str, Any]) -> Dict[str, Any]:
+
+    if "available_node_types" not in config:
+        # TODO(ameer/ekl/alex): we can also rewrite here many other fields
+        # that include initialization/setup/start commands and ImageId.
+        logger.debug("Converting legacy cluster config to multi node types.")
+        config["available_node_types"] = {
+            NODE_TYPE_LEGACY_HEAD: {
+                "node_config": config["head_node"],
+                "resources": config["head_node"].get("resources") or {},
+                "min_workers": 0,
+                "max_workers": 0,
+            },
+            NODE_TYPE_LEGACY_WORKER: {
+                "node_config": config["worker_nodes"],
+                "resources": config["worker_nodes"].get("resources") or {},
+                "min_workers": config.get("min_workers", 0),
+                "max_workers": config.get("max_workers", 0),
+            },
+        }
+        config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
+        config["worker_default_node_type"] = NODE_TYPE_LEGACY_WORKER
+
+    return config
+
+
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
+    defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
     try:
         defaults = _fillout_available_node_types_resources(defaults)
-    except Exception:
-        logger.exception("Failed to autodetect node resources.")
+    except ValueError:
+        # When the user uses a wrong instance type.
         raise
+    except Exception:
+        # When the user is using e.g., staroid, but it is not installed.
+        logger.exception("Failed to autodetect node resources.")
     return defaults
 
 

@@ -6,6 +6,8 @@ import numpy as np
 import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES
 from ray.gcs_utils import PlacementGroupTableData
+from ray.autoscaler._private.resource_demand_scheduler import \
+    NodeIP, ResourceDict
 
 logger = logging.getLogger(__name__)
 
@@ -97,14 +99,8 @@ class LoadMetrics:
         prune(self.resource_load_by_ip)
         prune(self.last_heartbeat_time_by_ip)
 
-    def approx_workers_used(self):
-        return self._info()["NumNodesUsed"]
-
-    def num_workers_connected(self):
-        return self._info()["NumNodesConnected"]
-
     def get_node_resources(self):
-        """Return a list of node resources (static resource sizes.
+        """Return a list of node resources (static resource sizes).
 
         Example:
             >>> metrics.get_node_resources()
@@ -112,14 +108,21 @@ class LoadMetrics:
         """
         return self.static_resources_by_ip.values()
 
+    def get_static_node_resources_by_ip(self) -> Dict[NodeIP, ResourceDict]:
+        """Return a dict of node resources for every node ip.
+
+        Example:
+            >>> lm.get_static_node_resources_by_ip()
+            {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "GPU": 8}}
+        """
+        return self.static_resources_by_ip
+
     def get_resource_utilization(self):
         return self.dynamic_resources_by_ip
 
     def _get_resource_usage(self):
         num_nodes = 0
-        nodes_used = 0.0
         num_nonidle = 0
-        has_saturated_node = False
         resources_used = {}
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
@@ -132,7 +135,6 @@ class LoadMetrics:
             max_frac = 0.0
             for resource_id, amount in resource_load.items():
                 if amount > 0:
-                    has_saturated_node = True
                     max_frac = 1.0  # the resource is saturated
             for resource_id, amount in max_resources.items():
                 used = amount - avail_resources[resource_id]
@@ -146,17 +148,10 @@ class LoadMetrics:
                     frac = used / float(amount)
                     if frac > max_frac:
                         max_frac = frac
-            nodes_used += max_frac
             if max_frac > 0:
                 num_nonidle += 1
 
-        # If any nodes have a queue buildup, assume all non-idle nodes are 100%
-        # busy, plus the head node. This guards against the case of not scaling
-        # up due to poor task packing.
-        if has_saturated_node:
-            nodes_used = min(num_nonidle + 1.0, num_nodes)
-
-        return nodes_used, resources_used, resources_total
+        return resources_used, resources_total
 
     def get_resource_demand_vector(self):
         return self.waiting_bundles + self.infeasible_bundles
@@ -169,8 +164,7 @@ class LoadMetrics:
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
 
     def _info(self):
-        nodes_used, resources_used, resources_total = self._get_resource_usage(
-        )
+        resources_used, resources_total = self._get_resource_usage()
 
         now = time.time()
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
@@ -200,8 +194,6 @@ class LoadMetrics:
                 for rid in sorted(resources_used)
                 if not rid.startswith("node:")
             ]),
-            "NumNodesConnected": len(self.static_resources_by_ip),
-            "NumNodesUsed": round(nodes_used, 2),
             "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,

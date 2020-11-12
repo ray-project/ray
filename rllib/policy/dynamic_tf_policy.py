@@ -80,8 +80,6 @@ class DynamicTFPolicy(TFPolicy):
             ], Tuple[TensorType, type, List[TensorType]]]] = None,
             existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
             existing_model: Optional[ModelV2] = None,
-            view_requirements_fn: Optional[Callable[[Policy], Dict[
-                str, ViewRequirement]]] = None,
             get_batch_divisibility_req: Optional[Callable[[Policy],
                                                           int]] = None,
             obs_include_prev_action_reward: bool = True):
@@ -135,9 +133,6 @@ class DynamicTFPolicy(TFPolicy):
                 placeholders to use instead of defining new ones.
             existing_model (Optional[ModelV2]): When copying a policy, this
                 specifies an existing model to clone and share weights with.
-            view_requirements_fn (Callable[[Policy],
-                Dict[str, ViewRequirement]]): An optional callable to retrieve
-                additional train view requirements for this policy.
             get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
                 Optional callable that returns the divisibility requirement for
                 sample batches. If None, will assume a value of 1.
@@ -200,13 +195,9 @@ class DynamicTFPolicy(TFPolicy):
                     for s in self.model.get_initial_state()
                 ]
 
-        # Update this Policy's ViewRequirements (if function given).
-        if callable(view_requirements_fn):
-            self.view_requirements.update(view_requirements_fn(self))
-        # If no view-requirements given, use default settings.
+        # Use default settings.
         # Add NEXT_OBS, STATE_IN_0.., and others.
-        else:
-            self.view_requirements = self._get_default_view_requirements()
+        self.view_requirements = self._get_default_view_requirements()
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.inference_view_requirements)
 
@@ -346,7 +337,7 @@ class DynamicTFPolicy(TFPolicy):
         # Loss initialization and model/postprocessing test calls.
         if not existing_inputs:
             self._initialize_loss_from_dummy_batch(
-                auto_remove_unneeded_view_reqs=view_requirements_fn is None)
+                auto_remove_unneeded_view_reqs=True)
 
     @override(TFPolicy)
     @DeveloperAPI
@@ -529,16 +520,15 @@ class DynamicTFPolicy(TFPolicy):
                             dtype=batch_for_postproc[key].dtype))
 
         if not self.config["_use_trajectory_view_api"]:
-            train_batch = UsageTrackingDict(dict({
-                SampleBatch.CUR_OBS: self._obs_input,
-            }, **self._loss_input_dict))
+            train_batch = UsageTrackingDict(
+                dict({
+                    SampleBatch.CUR_OBS: self._obs_input,
+                }, **self._loss_input_dict))
             if self._obs_include_prev_action_reward:
                 train_batch.update({
                     SampleBatch.PREV_ACTIONS: self._prev_action_input,
                     SampleBatch.PREV_REWARDS: self._prev_reward_input,
-                    #SampleBatch.CUR_OBS: self._obs_input,
                 })
-            #else:
 
             for k, v in postprocessed_batch.items():
                 if k in train_batch:
@@ -607,7 +597,18 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.UNROLL_ID, SampleBatch.DONES,
                     SampleBatch.REWARDS] and \
                         key not in self.model.inference_view_requirements:
-                    del self.view_requirements[key]
+                    # If user deleted this key manually in postprocessing
+                    # fn, warn about it and do not remove from
+                    # view-requirements.
+                    if key in batch_for_postproc.deleted_keys:
+                        logger.warning(
+                            "SampleBatch key '{}' was deleted manually in "
+                            "postprocessing function! RLlib will "
+                            "automatically remove non-used items from the "
+                            "data stream. Remove the `del` from your "
+                            "postprocessing function.".format(key))
+                    else:
+                        del self.view_requirements[key]
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
             # Add those data_cols (again) that are missing and have

@@ -101,9 +101,16 @@ class MockIOWorker : public MockWorker {
 
 class MockIOWorkerPool : public IOWorkerPoolInterface {
  public:
-  MOCK_METHOD1(PushIOWorker, void(const std::shared_ptr<WorkerInterface> &worker));
+  MOCK_METHOD1(PushSpillWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
-  void PopIOWorker(
+  MOCK_METHOD1(PushRestoreWorker, void(const std::shared_ptr<WorkerInterface> &worker));
+
+  void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    callback(io_worker);
+  }
+
+  void PopRestoreWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
     callback(io_worker);
   }
@@ -196,7 +203,8 @@ class LocalObjectManagerTest : public ::testing::Test {
                   for (const auto &object_id : object_ids) {
                     freed.insert(object_id);
                   }
-                }),
+                },
+                [&]() { num_callbacks_fired++; }),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
     RayConfig::instance().initialize({{"object_spilling_config", "mock_config"}});
   }
@@ -212,6 +220,7 @@ class LocalObjectManagerTest : public ::testing::Test {
   // This hashmap is incremented when objects are unpinned by destroying their
   // unique_ptr.
   std::shared_ptr<std::unordered_map<ObjectID, int>> unpins;
+  size_t num_callbacks_fired = 0;
 };
 
 TEST_F(LocalObjectManagerTest, TestPin) {
@@ -240,18 +249,20 @@ TEST_F(LocalObjectManagerTest, TestPin) {
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
+  ASSERT_EQ(num_callbacks_fired, 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   ObjectID object_id = ObjectID::FromRandom();
   std::string object_url("url");
   int num_times_fired = 0;
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushRestoreWorker(_));
   manager.AsyncRestoreSpilledObject(object_id, object_url, [&](const Status &status) {
     ASSERT_TRUE(status.ok());
     num_times_fired++;
   });
   ASSERT_EQ(num_times_fired, 1);
+  ASSERT_EQ(num_callbacks_fired, 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
@@ -278,7 +289,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids.size(); i++) {
     urls.push_back("url" + std::to_string(i));
@@ -294,6 +305,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 1);
   }
+  ASSERT_TRUE(num_callbacks_fired > 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
@@ -332,7 +344,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   for (size_t i = 0; i < object_ids.size(); i++) {
     urls.push_back("url" + std::to_string(i));
   }
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < object_ids.size(); i++) {
     ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
@@ -345,6 +357,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 1);
   }
+  ASSERT_TRUE(num_callbacks_fired > 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
@@ -383,7 +396,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   for (size_t i = 0; i < object_ids.size() / 2 + 1; i++) {
     urls.push_back("url" + std::to_string(i));
   }
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   // Objects should get freed even though we didn't wait for the owner's notice
   // to evict.
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
@@ -400,6 +413,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   // Check that this returns the total number of bytes currently being spilled.
   num_bytes_required = manager.SpillObjectsOfSize(0);
   ASSERT_EQ(num_bytes_required, 0);
+  ASSERT_TRUE(num_callbacks_fired > 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillError) {
@@ -424,7 +438,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   });
 
   // Return an error from the IO worker during spill.
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(
       worker_pool.io_worker_client->ReplySpillObjects({}, Status::IOError("error")));
   ASSERT_FALSE(object_table.ReplyAsyncAddSpilledUrl());
@@ -437,12 +451,13 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
     num_times_fired++;
   });
   std::string url = "url";
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
   ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
   ASSERT_EQ(num_times_fired, 2);
   ASSERT_EQ(object_table.object_urls[object_id], url);
   ASSERT_EQ((*unpins)[object_id], 1);
+  ASSERT_TRUE(num_callbacks_fired > 0);
 }
 
 }  // namespace raylet

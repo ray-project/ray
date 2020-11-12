@@ -6,11 +6,12 @@ import numpy as np
 import ray
 from ray import serve
 import ray.serve.context as context
-from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
+from ray.serve.backend_worker import create_backend_replica, wrap_to_ray_error
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Router, RequestMetadata
 from ray.serve.config import BackendConfig, BackendMetadata
 from ray.serve.exceptions import RayServeException
+from ray.serve.utils import get_random_letters
 
 pytestmark = pytest.mark.asyncio
 
@@ -26,7 +27,7 @@ def setup_worker(name,
     @ray.remote
     class WorkerActor:
         def __init__(self):
-            self.worker = create_backend_worker(func_or_class)(
+            self.worker = create_backend_replica(func_or_class)(
                 name, name + ":tag", init_args, backend_config,
                 controller_name)
 
@@ -46,7 +47,7 @@ def setup_worker(name,
 
 async def add_servable_to_router(servable, router, **kwargs):
     worker = setup_worker("backend", servable, **kwargs)
-    await router.add_new_worker.remote("backend", "replica", worker)
+    await router.add_new_replica.remote("backend", "replica", worker)
     await router.set_traffic.remote("endpoint", TrafficPolicy({
         "backend": 1.0
     }))
@@ -59,7 +60,10 @@ async def add_servable_to_router(servable, router, **kwargs):
 
 def make_request_param(call_method="__call__"):
     return RequestMetadata(
-        "endpoint", context.TaskContext.Python, call_method=call_method)
+        get_random_letters(10),
+        "endpoint",
+        context.TaskContext.Python,
+        call_method=call_method)
 
 
 @pytest.fixture
