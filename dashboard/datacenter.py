@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class GlobalSignals:
     node_info_fetched = Signal(dashboard_consts.SIGNAL_NODE_INFO_FETCHED)
     node_summary_fetched = Signal(dashboard_consts.SIGNAL_NODE_SUMMARY_FETCHED)
+    job_info_fetched = Signal(dashboard_consts.SIGNAL_JOB_INFO_FETCHED)
     worker_info_fetched = Signal(dashboard_consts.SIGNAL_WORKER_INFO_FETCHED)
 
 
@@ -22,6 +23,8 @@ class DataSource:
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
     actors = Dict()
+    # {job id hex(str): job table data(dict of JobTableData in gcs.proto)}
+    jobs = Dict()
     # {node id hex(str): dashboard agent [http port(int), grpc port(int)]}
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}

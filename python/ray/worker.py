@@ -492,6 +492,7 @@ def init(
         include_dashboard=None,
         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+        job_id=None,
         job_config=None,
         configure_logging=True,
         logging_level=logging.INFO,
@@ -567,6 +568,7 @@ def init(
             external machines.
         dashboard_port: The port to bind the dashboard server to. Defaults to
             8265.
+        job_id (ray.JobID): The job id.
         job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -784,7 +786,7 @@ def init(
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
-        job_id=None,
+        job_id=job_id,
         job_config=job_config)
 
     for hook in _post_init_hooks:
