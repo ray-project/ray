@@ -259,12 +259,6 @@ class ActorStateReconciler:
                 except ValueError:
                     continue
 
-                # Remove the replica from router. This call is idempotent.
-                await asyncio.gather(*[
-                    router.remove_replica.remote(backend_tag, replica_tag)
-                    for router in self.router_handles()
-                ])
-
                 # TODO(edoakes): this logic isn't ideal because there may be
                 # pending tasks still executing on the replica. However, if we
                 # use replica.__ray_terminate__, we may send it while the
@@ -279,12 +273,7 @@ class ActorStateReconciler:
 
         Clears self.backends_to_remove.
         """
-        for backend_tag in self.backends_to_remove:
-            await asyncio.gather(*[
-                router.remove_backend.remote(backend_tag)
-                for router in self.router_handles()
-            ])
-        self.backends_to_remove.clear()
+        pass
 
     async def _start_single_replica(
             self, config_store: ConfigurationStore, backend_tag: BackendTag,
@@ -371,12 +360,7 @@ class ActorStateReconciler:
 
         Clears self.endpoints_to_remove.
         """
-        for endpoint_tag in self.endpoints_to_remove:
-            await asyncio.gather(*[
-                router.remove_endpoint.remote(endpoint_tag)
-                for router in self.router_handles()
-            ])
-        self.endpoints_to_remove.clear()
+        pass
 
     def _recover_actor_handles(self) -> None:
         # Refresh the RouterCache
@@ -455,21 +439,29 @@ class ServeController:
     class StateNotifier:
         def __init__(self, controller: "ServeController"):
             self.controller = controller
+
+            # NOTE(simon): Currently we do all-to-all broadcast. This means
+            # any listeners will receive notification for all changes. This
+            # can be problem at scale, e.g. updating a single backend config
+            # will send over the entire configs. In the future, we should
+            # optimize the logic to support subscription by key.
             self.long_poll_host = controller.long_poll_host
-            self.long_poll_host.notify_on_changed("traffic_policies", dict())
-            self.long_poll_host.notify_on_changed("worker_handles", dict())
-            self.long_poll_host.notify_on_changed("backend_configs", dict())
+
+            self.on_backend_configs_changed()
+            self.on_replica_handles_changed()
+            self.on_traffic_policies_changed()
 
         def on_replica_handles_changed(self):
             self.long_poll_host.notify_on_changed(
-                "worker_handles", self.controller.get_all_worker_handles())
+                "worker_handles",
+                self.controller.actor_reconciler.backend_replicas)
 
         def on_traffic_policies_changed(self):
             self.long_poll_host.notify_on_changed(
                 "traffic_policies",
                 self.controller.configuration_store.traffic_policies)
 
-        def on_backend_configs_change(self):
+        def on_backend_configs_changed(self):
             self.long_poll_host.notify_on_changed(
                 "backend_configs",
                 self.controller.configuration_store.get_backend_configs())
@@ -496,9 +488,6 @@ class ServeController:
         # Used to ensure that only a single state-changing operation happens
         # at any given time.
         self.write_lock = asyncio.Lock()
-
-        self.long_poll_host = LongPollerHost()
-        self.long_poll_notifier = ServeController.StateNotifier(self)
 
         self.http_host = http_host
         self.http_port = http_port
@@ -529,12 +518,21 @@ class ServeController:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
+        self.long_poll_host = LongPollerHost()
+        self.long_poll_notifier = ServeController.StateNotifier(self)
+
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     async def listen_on_changed(self, keys_to_snapshot_ids: Dict[str, int]):
-        """Proxy long pull client's listen request."""
-        return await self.long_poll_host.listen_on_changed(keys_to_snapshot_ids
-                                                           )
+        """Proxy long pull client's listen request.
+
+        Args:
+            keys_to_snapshot_ids (Dict[str, int]): Snapshot IDs are used to
+              determine whether or not the host should immediately return the
+              data or wait for the value to be changed.
+        """
+        return await (
+            self.long_poll_host.listen_on_changed(keys_to_snapshot_ids))
 
     def get_routers(self) -> Dict[str, ActorHandle]:
         """Returns a dictionary of node ID to router actor handles."""
@@ -593,11 +591,6 @@ class ServeController:
             "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
 
         self.write_lock.release()
-
-        # Notify all listener about state updates.
-        self.long_poll_notifier.on_backend_configs_change()
-        self.long_poll_notifier.on_replica_handles_changed()
-        self.long_poll_notifier.on_traffic_policies_changed()
 
     async def do_autoscale(self) -> None:
         for backend, info in self.configuration_store.backends.items():
@@ -859,7 +852,7 @@ class ServeController:
 
             # Set the backend config inside the router
             # (particularly for max_concurrent_queries).
-            self.long_poll_notifier.on_backend_configs_change()
+            self.long_poll_notifier.on_backend_configs_changed()
             await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag: BackendTag) -> None:
@@ -936,17 +929,13 @@ class ServeController:
 
             # Inform the router about change in configuration
             # (particularly for setting max_batch_size).
-            await asyncio.gather(*[
-                router.set_backend_config.remote(backend_tag, backend_config)
-                for router in self.actor_reconciler.router_handles()
-            ])
 
             await self.actor_reconciler._start_pending_backend_replicas(
                 self.configuration_store)
             await self.actor_reconciler._stop_pending_backend_replicas()
 
             self.long_poll_notifier.on_replica_handles_changed()
-            self.long_poll_notifier.on_backend_configs_change()
+            self.long_poll_notifier.on_backend_configs_changed()
 
             await self.broadcast_backend_config(backend_tag)
 

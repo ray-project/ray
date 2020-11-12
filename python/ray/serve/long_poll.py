@@ -1,4 +1,5 @@
 import asyncio
+from asyncio.tasks import Task
 import random
 from collections import defaultdict
 from dataclasses import dataclass
@@ -11,15 +12,24 @@ from ray.serve.utils import logger
 @dataclass
 class UpdatedObject:
     object_snapshot: Any
+    # The identifier for the object's version. There is not sequential relation
+    # among different object's snapshot_ids.
     snapshot_id: int
 
 
+# Type signature for the update state callbacks. E.g.
+# def update_state(updated_objects: Dict[str, Any], updated_keys: List[str]):
+#     if "my_key" in updated_keys: do_something(updated_objects["my_key"])
 UpdateStateCallable = Callable[[Dict[str, Any], List[str]], None]
 UpdateStateAsyncCallable = Callable[[Dict[str, Any], List[str]], Awaitable[
     None]]
 
 
 class BaseClient:
+    """Shared functionality between LongPollerSyncClient and AsyncClient.
+       This class is not expected to use this directly.
+    """
+
     def __init__(self, host_actor, keys: List[str]) -> None:
         self.host_actor = host_actor
         self.snapshot_ids: Dict[str, int] = {key: -1 for key in keys}
@@ -40,6 +50,13 @@ class BaseClient:
 
 
 class LongPollerSyncClient(BaseClient):
+    """The synchronous long polling client.
+
+    Internally, it uses ray.wait(timeout=0) to check if the object notification
+    has arrived. When a object notification arrived, the client will invoke
+    callback if supplied.
+    """
+
     def __init__(self,
                  host_actor,
                  keys: List[str],
@@ -50,7 +67,12 @@ class LongPollerSyncClient(BaseClient):
         self.refresh(block=True)
 
     def refresh(self, block=False):
-        """Check the inflight request once and update internal state."""
+        """Check the inflight request once and update internal state.
+
+        Args:
+            block(bool): If block=True, then calls ray.get to wait and ensure
+              the object notificaiton is received and updated.
+        """
         done, _ = ray.wait([self.in_flight_request_ref], timeout=0)
         if len(done) == 1 or block:
             updates = ray.get(self.in_flight_request_ref)
@@ -68,11 +90,20 @@ class LongPollerSyncClient(BaseClient):
 
 
 class LongPollerAsyncClient(BaseClient):
+    """The asynchronous long polling client.
+
+    Internally, it runs `await object_ref` in a `while True` loop. When a
+    object notification arrived, the client will invoke callback if supplied.
+    Note that this client will wait the callback to be completed before issuing
+    the next poll.
+    """
+
     def __init__(self,
                  host_actor,
                  keys: List[str],
                  callback: Optional[UpdateStateAsyncCallable] = None) -> None:
-        assert asyncio.get_event_loop().is_running
+        assert asyncio.get_event_loop(
+        ).is_running, "The client is only available in async context."
         super().__init__(host_actor, keys)
         asyncio.get_event_loop().create_task(self._do_long_poll())
         self.callback = callback
@@ -87,7 +118,18 @@ class LongPollerAsyncClient(BaseClient):
 
 
 class LongPollerHost:
-    """The server side object that manages long pulling requests."""
+    """The server side object that manages long pulling requests.
+
+    The desired use case is to embed this in an Ray actor. Client will be
+    expected to call actor.listen_on_changed.remote(...). On the host side,
+    you can call host.notify_on_changed(key, object) to update the state and
+    potentially notify whoever is polling for these values.
+
+    Internally, we use snapshot_ids for each object to identify client with
+    outdated object and immediately return the result. If the client has the
+    up-to-date verison, then the listen_on_changed call will only return when
+    the object is updated.
+    """
 
     def __init__(self):
         # Map object_key -> int
@@ -118,18 +160,24 @@ class LongPollerHost:
         if len(client_outdated_keys) > 0:
             return client_outdated_keys
 
-        # 3. Otherwise, register asyncio event to be waited.
-        to_be_awaited = set()
-        task_to_key = {}
+        # 3. Otherwise, register asyncio events to be waited.
+        async_task_to_watched_keys = {}
         for key in watched_keys:
+            # Create a new asyncio event for this key
             event = asyncio.Event()
             task = asyncio.get_event_loop().create_task(event.wait())
+            async_task_to_watched_keys[task] = key
+
+            # Make sure future caller of notify_on_changed will unblock this
+            # asyncio Event.
             self.notifier_events[key].add(event)
-            task_to_key[task] = key
-            to_be_awaited.add(task)
-        done, _ = await asyncio.wait(
-            to_be_awaited, return_when=asyncio.FIRST_COMPLETED)
-        updated_object_key: str = task_to_key[done.pop()]
+
+        done, not_done = await asyncio.wait(
+            async_task_to_watched_keys.keys(),
+            return_when=asyncio.FIRST_COMPLETED)
+        [task.cancel for task in not_done]
+
+        updated_object_key: str = async_task_to_watched_keys[done.pop()]
         return {
             updated_object_key: UpdatedObject(
                 self.object_snapshots[updated_object_key],
