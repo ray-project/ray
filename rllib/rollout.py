@@ -372,8 +372,10 @@ def rollout(agent,
             env = gym.make(agent.config["env"])
         else:
             # if environment registered ray environment, load from ray
-            env_creator = _global_registry.get(ENV_CREATOR, agent.config["env"])
-            env_context = EnvContext(agent.config["env_config"] or {}, worker_index=0)
+            env_creator = _global_registry.get(ENV_CREATOR,
+                                               agent.config["env"])
+            env_context = EnvContext(
+                agent.config["env_config"] or {}, worker_index=0)
             env = env_creator(env_context)
         multiagent = False
         try:
