@@ -11,7 +11,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.types import ModelConfigDict, TensorType
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 

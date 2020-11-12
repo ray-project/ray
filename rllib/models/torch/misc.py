@@ -3,7 +3,7 @@ import numpy as np
 from typing import Union, Tuple, Any, List
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
-from ray.rllib.utils.types import TensorType
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
