@@ -1,11 +1,16 @@
+import logging
 import os
 from typing import List, Optional
 
 from ray.tune.callback import Callback
 from ray.tune.syncer import SyncConfig
-from ray.tune.logger import CSVLogger, DEFAULT_LOGGERS, ExperimentLogger, \
-    JsonLogger, LegacyExperimentLogger, Logger
+from ray.tune.logger import CSVExperimentLogger, CSVLogger, \
+    ExperimentLogger, \
+    JsonExperimentLogger, JsonLogger, LegacyExperimentLogger, Logger, \
+    TBXExperimentLogger, TBXLogger
 from ray.tune.syncer import SyncerCallback
+
+logger = logging.getLogger(__name__)
 
 
 def create_default_callbacks(callbacks: Optional[List[Callback]],
@@ -16,22 +21,17 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
     has_syncer_callback = False
     has_csv_logger = False
     has_json_logger = False
+    has_tbx_logger = False
 
     # Track syncer obj/index to move callback after loggers
     last_logger_index = None
     syncer_index = None
 
-    if not loggers:
-        # If no logger callback and no `loggers` have been provided,
-        # add DEFAULT_LOGGERS.
-        if not any(
-                isinstance(callback, ExperimentLogger)
-                for callback in callbacks):
-            loggers = DEFAULT_LOGGERS
-
     # Create LegacyExperimentLogger for passed Logger classes
     if loggers:
         # Todo(krfricke): Deprecate `loggers` argument, print warning here.
+        # Add warning as soon as we ported all loggers to ExperimentLogger
+        # classes.
         add_loggers = []
         for trial_logger in loggers:
             if isinstance(trial_logger, ExperimentLogger):
@@ -54,21 +54,31 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
                 has_csv_logger = True
             if JsonLogger in callback.logger_classes:
                 has_json_logger = True
-        # Todo(krfricke): add checks for new ExperimentLogger classes
+            if TBXLogger in callback.logger_classes:
+                has_tbx_logger = True
+        elif isinstance(callback, CSVExperimentLogger):
+            has_csv_logger = True
+            last_logger_index = i
+        elif isinstance(callback, JsonExperimentLogger):
+            has_json_logger = True
+            last_logger_index = i
+        elif isinstance(callback, TBXExperimentLogger):
+            has_tbx_logger = True
+            last_logger_index = i
         elif isinstance(callback, SyncerCallback):
             syncer_index = i
             has_syncer_callback = True
 
     # If CSV or JSON logger is missing, add
     if os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_LOGGERS", "0") != "1":
-        # Todo(krfricke): Switch to new ExperimentLogger classes
-        add_loggers = []
         if not has_csv_logger:
-            add_loggers.append(CSVLogger)
+            callbacks.append(CSVExperimentLogger())
+            last_logger_index = len(callbacks) - 1
         if not has_json_logger:
-            add_loggers.append(JsonLogger)
-        if add_loggers:
-            callbacks.append(LegacyExperimentLogger(add_loggers))
+            callbacks.append(JsonExperimentLogger())
+            last_logger_index = len(callbacks) - 1
+        if not has_tbx_logger:
+            callbacks.append(TBXExperimentLogger())
             last_logger_index = len(callbacks) - 1
 
     # If no SyncerCallback was found, add
@@ -79,10 +89,10 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
         callbacks.append(syncer_callback)
         syncer_index = len(callbacks) - 1
 
-    # Todo(krfricke): Maybe check if syncer comes after all loggers
     if syncer_index is not None and last_logger_index is not None and \
        syncer_index < last_logger_index:
-        if (not has_csv_logger or not has_json_logger) and not loggers:
+        if (not has_csv_logger or not has_json_logger or not has_tbx_logger) \
+           and not loggers:
             # Only raise the warning if the loggers were passed by the user.
             # (I.e. don't warn if this was automatic behavior and they only
             # passed a customer SyncerCallback).
