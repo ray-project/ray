@@ -99,7 +99,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           for (NodeInfo nodeInfo : tempGcsClient.getAllNodeInfo()) {
             if (rayConfig.nodeIp.equals(nodeInfo.nodeAddress) ||
                 (nodeInfo.nodeAddress.equals("127.0.0.1") &&
-                    rayConfig.nodeIp.equals(rayConfig.getRedisAddress()))) {
+                    rayConfig.nodeIp.equals(rayConfig.getRedisAddress())) ||
+                nodeInfo.nodeAddress.equals(rayConfig.getRedisAddress())) {
               rayConfig.objectStoreSocketName = nodeInfo.objectStoreSocketName;
               rayConfig.rayletSocketName = nodeInfo.rayletSocketName;
               rayConfig.nodeManagerPort = nodeInfo.nodeManagerPort;
