@@ -1,11 +1,15 @@
 import numpy as np
+import gym
+from typing import Dict, List
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -49,7 +53,9 @@ class RecurrentNetwork(TFModelV2):
     """
 
     @override(ModelV2)
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
@@ -62,7 +68,8 @@ class RecurrentNetwork(TFModelV2):
             seq_lens)
         return tf.reshape(output, [-1, self.num_outputs]), new_state
 
-    def forward_rnn(self, inputs, state, seq_lens):
+    def forward_rnn(self, inputs: TensorType, state: List[TensorType],
+                    seq_lens: TensorType) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         Args:
@@ -83,7 +90,7 @@ class RecurrentNetwork(TFModelV2):
         """
         raise NotImplementedError("You must implement this for a RNN model")
 
-    def get_initial_state(self):
+    def get_initial_state(self) -> List[TensorType]:
         """Get the initial recurrent state values for the model.
 
         Returns:
@@ -104,8 +111,9 @@ class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
     """
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
 
         super(LSTMWrapper, self).__init__(obs_space, action_space, None,
                                           model_config, name)
@@ -156,8 +164,18 @@ class LSTMWrapper(RecurrentNetwork):
         self.register_variables(self._rnn_model.variables)
         self._rnn_model.summary()
 
+        # Add prev-a/r to this model's view, if required.
+        if model_config["lstm_use_prev_action_reward"]:
+            self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
+                ViewRequirement(SampleBatch.REWARDS, shift=-1)
+            self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
+                ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
+                                shift=-1)
+
     @override(RecurrentNetwork)
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
@@ -181,18 +199,19 @@ class LSTMWrapper(RecurrentNetwork):
         return super().forward(input_dict, state, seq_lens)
 
     @override(RecurrentNetwork)
-    def forward_rnn(self, inputs, state, seq_lens):
+    def forward_rnn(self, inputs: TensorType, state: List[TensorType],
+                    seq_lens: TensorType) -> (TensorType, List[TensorType]):
         model_out, self._value_out, h, c = self._rnn_model([inputs, seq_lens] +
                                                            state)
         return model_out, [h, c]
 
     @override(ModelV2)
-    def get_initial_state(self):
+    def get_initial_state(self) -> List[np.ndarray]:
         return [
             np.zeros(self.cell_size, np.float32),
             np.zeros(self.cell_size, np.float32),
         ]
 
     @override(ModelV2)
-    def value_function(self):
+    def value_function(self) -> TensorType:
         return tf.reshape(self._value_out, [-1])

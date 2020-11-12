@@ -76,6 +76,8 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
         "vf_loss_coeff": 0.5,
         "entropy_coeff": 0.01,
         "entropy_coeff_schedule": None,
+        # Trajectory View API not supported for DD-PPO yet.
+        "_use_trajectory_view_api": False,
     },
     _allow_unknown_configs=True,
 )
