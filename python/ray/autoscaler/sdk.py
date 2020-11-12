@@ -1,19 +1,22 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 import json
 import os
 import tempfile
 
 from ray.autoscaler._private import commands
+from ray.autoscaler._private.event_system import (  # noqa: F401
+    CreateClusterEvent,  # noqa: F401
+    global_event_system)
 
 
 def create_or_update_cluster(cluster_config: Union[dict, str],
                              *,
                              no_restart: bool = False,
                              restart_only: bool = False,
-                             no_config_cache: bool = False) -> None:
+                             no_config_cache: bool = False) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json.
 
     Args:
@@ -222,6 +225,22 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     """Fillout default values for a cluster_config based on the provider."""
     from ray.autoscaler._private.util import fillout_defaults
     return fillout_defaults(config)
+
+
+def register_callback_handler(
+        event_name: str,
+        callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
+) -> None:
+    """Registers a callback handler for autoscaler events.
+
+    Args:
+        event_name (str): Event that callback should be called on. See
+            CreateClusterEvent for details on the events available to be
+            registered against.
+        callback (Callable): Callable object that is invoked
+            when specified event occurs.
+    """
+    global_event_system.add_callback_handler(event_name, callback)
 
 
 def get_docker_host_mount_location(cluster_name: str) -> str:

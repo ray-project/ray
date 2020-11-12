@@ -146,6 +146,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
   };
   RAY_CHECK_OK(
       gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
 void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
@@ -172,6 +173,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     // Update node state to DEAD instead of deleting it.
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
   }
+  ++counts_[CountType::UNREGISTER_NODE_REQUEST];
 }
 
 void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
@@ -184,6 +186,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
     reply->add_node_info_list()->CopyFrom(*entry.second);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
 void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
@@ -210,6 +213,7 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   node_failure_detector_service_.post(
       [this, node_id] { node_failure_detector_->HandleHeartbeat(node_id); });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::REPORT_HEARTBEAT_REQUEST];
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -223,6 +227,7 @@ void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
     }
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_RESOURCES_REQUEST];
 }
 
 void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
@@ -260,6 +265,7 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
     RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
                    << " is not registered.";
   }
+  ++counts_[CountType::UPDATE_RESOURCES_REQUEST];
 }
 
 void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
@@ -293,6 +299,7 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
   }
+  ++counts_[CountType::DELETE_RESOURCES_REQUEST];
 }
 
 void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
@@ -304,6 +311,7 @@ void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest
   };
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),
                                                              request.config(), on_done));
+  ++counts_[CountType::SET_INTERNAL_CONFIG_REQUEST];
 }
 
 void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
@@ -319,6 +327,7 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
   };
   RAY_CHECK_OK(
       gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
+  ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
 }
 
 void GcsNodeManager::HandleGetAllAvailableResources(
@@ -328,12 +337,13 @@ void GcsNodeManager::HandleGetAllAvailableResources(
   for (const auto &iter : GetClusterRealtimeResources()) {
     rpc::AvailableResources resource;
     resource.set_node_id(iter.first.Binary());
-    for (const auto &res : iter.second->GetResourceAmountMap()) {
+    for (const auto &res : iter.second.GetResourceAmountMap()) {
       (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
     }
     reply->add_resources_list()->CopyFrom(resource);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
 void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &request,
@@ -383,6 +393,7 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_HEARTBEAT_REQUEST];
 }
 
 void GcsNodeManager::UpdateNodeHeartbeat(const NodeID node_id,
@@ -523,13 +534,12 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
     const NodeID &node_id, const rpc::HeartbeatTableData &heartbeat) {
   if (!RayConfig::instance().light_heartbeat_enabled() ||
       heartbeat.resources_available_changed()) {
-    auto resources_available = MapFromProtobuf(heartbeat.resources_available());
     cluster_realtime_resources_[node_id] =
-        std::make_shared<ResourceSet>(resources_available);
+        ResourceSet(MapFromProtobuf(heartbeat.resources_available()));
   }
 }
 
-const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
+const absl::flat_hash_map<NodeID, ResourceSet>
     &GcsNodeManager::GetClusterRealtimeResources() const {
   return cluster_realtime_resources_;
 }
@@ -578,6 +588,31 @@ void GcsNodeManager::SendBatchedHeartbeat() {
                       << error.message();
     SendBatchedHeartbeat();
   });
+}
+
+std::string GcsNodeManager::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsNodeManager: {RegisterNode request count: "
+         << counts_[CountType::REGISTER_NODE_REQUEST]
+         << ", UnregisterNode request count: "
+         << counts_[CountType::UNREGISTER_NODE_REQUEST]
+         << ", GetAllNodeInfo request count: "
+         << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
+         << ", ReportHeartbeat request count: "
+         << counts_[CountType::REPORT_HEARTBEAT_REQUEST]
+         << ", GetHeartbeat request count: " << counts_[CountType::GET_HEARTBEAT_REQUEST]
+         << ", GetAllHeartbeat request count: "
+         << counts_[CountType::GET_ALL_HEARTBEAT_REQUEST]
+         << ", GetResources request count: " << counts_[CountType::GET_RESOURCES_REQUEST]
+         << ", UpdateResources request count: "
+         << counts_[CountType::UPDATE_RESOURCES_REQUEST]
+         << ", DeleteResources request count: "
+         << counts_[CountType::DELETE_RESOURCES_REQUEST]
+         << ", SetInternalConfig request count: "
+         << counts_[CountType::SET_INTERNAL_CONFIG_REQUEST]
+         << ", GetInternalConfig request count: "
+         << counts_[CountType::GET_INTERNAL_CONFIG_REQUEST] << "}";
+  return stream.str();
 }
 
 }  // namespace gcs

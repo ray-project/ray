@@ -151,7 +151,8 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
         x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
         if is_worker(x.info["cmdline"])
     ]
-    assert ray.ray_constants.WORKER_PROCESS_TYPE_IO_WORKER in processes
+    assert (
+        ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE in processes)
 
     # Spill 2 more objects so we will always have enough space for
     # restoring objects back.
@@ -163,6 +164,14 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
         ref = random.choice(replay_buffer)
         sample = ray.get(ref)
         assert np.array_equal(sample, arr)
+
+    # Make sure io workers are spawned with proper name.
+    processes = [
+        x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
+        if is_worker(x.info["cmdline"])
+    ]
+    assert (
+        ray.ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE in processes)
 
 
 @pytest.mark.skipif(
@@ -315,10 +324,7 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
         _system_config={
             "automatic_object_spilling_enabled": True,
             "object_store_full_initial_delay_ms": 100,
-            # This test will deadlock if only one IO worker is allowed because
-            # the IO worker will try to restore an object, but this requires
-            # another object to be spilled, which also requires an IO worker.
-            "max_io_workers": 2,
+            "max_io_workers": 1,
             "object_spilling_config": object_spilling_config,
         },
     )
@@ -337,6 +343,39 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
     # objects are being created.
     for x in ids:
         print(ray.get(x).shape)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_spill_deadlock(object_spilling_config, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 1,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+        })
+    arr = np.random.rand(1024 * 1024)  # 8 MB data
+    replay_buffer = []
+
+    # Wait raylet for starting an IO worker.
+    time.sleep(1)
+
+    # Create objects of more than 400 MiB.
+    for _ in range(50):
+        ref = None
+        while ref is None:
+            ref = ray.put(arr)
+            replay_buffer.append(ref)
+        # This is doing random sampling with 50% prob.
+        if random.randint(0, 9) < 5:
+            for _ in range(5):
+                ref = random.choice(replay_buffer)
+                sample = ray.get(ref, timeout=0)
+                assert np.array_equal(sample, arr)
 
 
 if __name__ == "__main__":
