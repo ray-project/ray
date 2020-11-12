@@ -185,10 +185,6 @@ RAY_CONFIG(int, object_manager_pull_timeout_ms, 10000)
 /// 0: giving up retrying immediately.
 RAY_CONFIG(int, object_manager_push_timeout_ms, 10000)
 
-/// The period of time that an object manager will wait before pushing the
-/// same object again to a specific object manager.
-RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000)
-
 /// Default chunk size for multi-chunk transfers to use in the object manager.
 /// In the object manager, no single thread is permitted to transfer more
 /// data than what is specified by the chunk size unless the number of object
@@ -243,6 +239,8 @@ RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
+/// The interval at which the gcs server will print debug info.
+RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.

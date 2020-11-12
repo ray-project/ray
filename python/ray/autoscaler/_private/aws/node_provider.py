@@ -302,12 +302,6 @@ class AWSNodeProvider(NodeProvider):
         tags = to_aws_format(tags)
         conf = node_config.copy()
 
-        # Delete unsupported keys from the node config
-        try:
-            del conf["Resources"]
-        except KeyError:
-            pass
-
         tag_pairs = [{
             "Key": TAG_RAY_CLUSTER_NAME,
             "Value": self.cluster_name,
@@ -515,8 +509,8 @@ class AWSNodeProvider(NodeProvider):
                         available_node_types[node_type].get("resources", {}):
                     available_node_types[node_type][
                         "resources"] = autodetected_resources
-                    cli_logger.print("Updating the resources of {} to {}.",
-                                     node_type, autodetected_resources)
+                    logger.debug("Updating the resources of {} to {}.".format(
+                        node_type, autodetected_resources))
             else:
                 raise ValueError("Instance type " + instance_type +
                                  " is not available in AWS region: " +

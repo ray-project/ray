@@ -63,19 +63,21 @@ def setup_and_get_worker_interceptor_logger(is_for_stdout: bool):
 
 
 def main(args):
-    ray.ray_logging.setup_logger(args.logging_level, args.logging_format)
+    ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
-    elif args.worker_type == "IO_WORKER":
-        mode = ray.IO_WORKER_MODE
+    elif args.worker_type == "SPILL_WORKER":
+        mode = ray.SPILL_WORKER_MODE
+    elif args.worker_type == "RESTORE_WORKER":
+        mode = ray.RESTORE_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
     # NOTE(suquark): We must initialize the external storage before we
     # connect to raylet. Otherwise we may receive requests before the
     # external storage is intialized.
-    if mode == ray.IO_WORKER_MODE:
+    if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         from ray import external_storage
         if args.object_spilling_config:
             object_spilling_config = base64.b64decode(
@@ -116,7 +118,6 @@ def main(args):
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
-
     ray.worker.connect(node, mode=mode)
 
     # Redirect stdout and stderr to the default worker interceptor logger.
@@ -128,10 +129,10 @@ def main(args):
         setup_and_get_worker_interceptor_logger(False))
     with redirect_stdout(stdout_interceptor):
         with redirect_stderr(stderr_interceptor):
-            # Run the main loop if it is a worker.
             if mode == ray.WORKER_MODE:
                 ray.worker.global_worker.main_loop()
-            elif mode == ray.IO_WORKER_MODE:
+            elif (mode == ray.RESTORE_WORKER_MODE
+                    or mode == ray.SPILL_WORKER_MODE):
                 # It is handled by another thread in the C++ core worker.
                 # We just need to keep the worker alive.
                 while True:

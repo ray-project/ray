@@ -338,7 +338,7 @@ def test_updating_config(serve_instance, use_legacy_config):
         controller._list_replicas.remote("bsimple:v1"))
     new_all_tag_list = []
     for worker_dict in ray.get(
-            controller.get_all_worker_handles.remote()).values():
+            controller.get_all_replica_handles.remote()).values():
         new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the old and new replica tag list should be identical

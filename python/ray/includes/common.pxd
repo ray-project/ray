@@ -162,7 +162,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
-    cdef CWorkerType WORKER_TYPE_IO_WORKER "ray::WorkerType::IO_WORKER"
+    cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::WorkerType::SPILL_WORKER"
+    cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::WorkerType::RESTORE_WORKER"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
