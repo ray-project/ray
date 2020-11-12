@@ -566,6 +566,133 @@ class CSVExperimentLogger(ExperimentLogger):
         del self._trial_files[trial]
 
 
+class TBXExperimentLogger(ExperimentLogger):
+    """TensorBoardX Logger.
+
+    Note that hparams will be written only after a trial has terminated.
+    This logger automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+    """
+
+    # NoneType is not supported on the last TBX release yet.
+    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
+
+    def __init__(self):
+        try:
+            from tensorboardX import SummaryWriter
+            self._summary_writer_cls = SummaryWriter
+        except ImportError:
+            if log_once("tbx-install"):
+                logger.info(
+                    "pip install 'ray[tune]' to see TensorBoard files.")
+            raise
+        self._trial_writer: Dict["Trial", SummaryWriter] = {}
+        self._trial_result: Dict["Trial", Dict] = {}
+
+    def log_trial_start(self, trial: "Trial"):
+        trial.init_logdir()
+        self._trial_writer[trial] = self._summary_writer_cls(
+            trial.logdir, flush_secs=30)
+        self._trial_result[trial] = {}
+
+    def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        if trial not in self._trial_writer:
+            self.log_trial_start(trial)
+
+        step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+
+        tmp = result.copy()
+        for k in [
+                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
+        ]:
+            if k in tmp:
+                del tmp[k]  # not useful to log these
+
+        flat_result = flatten_dict(tmp, delimiter="/")
+        path = ["ray", "tune"]
+        valid_result = {}
+
+        for attr, value in flat_result.items():
+            full_attr = "/".join(path + [attr])
+            if (isinstance(value, tuple(VALID_SUMMARY_TYPES))
+                    and not np.isnan(value)):
+                valid_result[full_attr] = value
+                self._trial_writer[trial].add_scalar(
+                    full_attr, value, global_step=step)
+            elif ((isinstance(value, list) and len(value) > 0)
+                  or (isinstance(value, np.ndarray) and value.size > 0)):
+                valid_result[full_attr] = value
+
+                # Must be video
+                if isinstance(value, np.ndarray) and value.ndim == 5:
+                    self._trial_writer[trial].add_video(
+                        full_attr, value, global_step=step, fps=20)
+                    continue
+
+                try:
+                    self._trial_writer[trial].add_histogram(
+                        full_attr, value, global_step=step)
+                # In case TensorboardX still doesn't think it's a valid value
+                # (e.g. `[[]]`), warn and move on.
+                except (ValueError, TypeError):
+                    if log_once("invalid_tbx_value"):
+                        logger.warning(
+                            "You are trying to log an invalid value ({}={}) "
+                            "via {}!".format(full_attr, value,
+                                             type(self).__name__))
+
+        self._trial_result[trial] = valid_result
+        self._trial_writer[trial].flush()
+
+    def log_trial_end(self, trial: "Trial", failed: bool = False):
+        if trial in self._trial_writer:
+            if trial and trial.evaluated_params and self._trial_result[trial]:
+                flat_result = flatten_dict(
+                    self._trial_result[trial], delimiter="/")
+                scrubbed_result = {
+                    k: value
+                    for k, value in flat_result.items()
+                    if isinstance(value, tuple(VALID_SUMMARY_TYPES))
+                }
+                self._try_log_hparams(trial, scrubbed_result)
+            self._trial_writer[trial].close()
+            del self._trial_writer[trial]
+            del self._trial_result[trial]
+
+    def _try_log_hparams(self, trial: "Trial", result: Dict):
+        # TBX currently errors if the hparams value is None.
+        flat_params = flatten_dict(trial.evaluated_params)
+        scrubbed_params = {
+            k: v
+            for k, v in flat_params.items()
+            if isinstance(v, self.VALID_HPARAMS)
+        }
+
+        removed = {
+            k: v
+            for k, v in flat_params.items()
+            if not isinstance(v, self.VALID_HPARAMS)
+        }
+        if removed:
+            logger.info(
+                "Removed the following hyperparameter values when "
+                "logging to tensorboard: %s", str(removed))
+
+        from tensorboardX.summary import hparams
+        try:
+            experiment_tag, session_start_tag, session_end_tag = hparams(
+                hparam_dict=scrubbed_params, metric_dict=result)
+            self._trial_writer[trial].file_writer.add_summary(experiment_tag)
+            self._trial_writer[trial].file_writer.add_summary(
+                session_start_tag)
+            self._trial_writer[trial].file_writer.add_summary(session_end_tag)
+        except Exception:
+            logger.exception("TensorboardX failed to log hparams. "
+                             "This may be due to an unsupported type "
+                             "in the hyperparameter values.")
+
+
 def pretty_print(result):
     result = result.copy()
     result.update(config=None)  # drop config from pretty print
