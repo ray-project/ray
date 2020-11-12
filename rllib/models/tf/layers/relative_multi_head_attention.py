@@ -1,4 +1,7 @@
+from typing import Optional, Any
+
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -10,13 +13,13 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
     """
 
     def __init__(self,
-                 out_dim,
-                 num_heads,
-                 head_dim,
-                 rel_pos_encoder_inference,
-                 rel_pos_encoder_training,
-                 input_layernorm=False,
-                 output_activation=None,
+                 out_dim: int,
+                 num_heads: int,
+                 head_dim: int,
+                 rel_pos_encoder_inference: Any,
+                 rel_pos_encoder_training: Any,
+                 input_layernorm: bool = False,
+                 output_activation: Optional[Any] = None,
                  **kwargs):
         #TODO: docstring
         """Initializes a RelativeMultiHeadAttention keras Layer object.
@@ -59,7 +62,8 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         if input_layernorm:
             self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
-    def call(self, inputs, memory, is_training=False):
+    def call(self, inputs: TensorType, memory: Optional[TensorType] = None,
+             is_training: bool = False) -> TensorType:
         T = tf.shape(inputs)[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads
         d = self._head_dim  # attention head dimension
@@ -112,7 +116,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         return self._linear_layer(out)
 
     @staticmethod
-    def rel_shift(x):
+    def rel_shift(x: TensorType) -> TensorType:
         # Transposed version of the shift approach described in [3].
         # https://github.com/kimiyoung/transformer-xl/blob/
         # 44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31

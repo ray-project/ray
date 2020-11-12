@@ -240,21 +240,15 @@ class ModelV2:
         """
 
         input_dict = train_batch.copy()
-        #input_dict = {
-        #    "obs": train_batch[SampleBatch.CUR_OBS],
-        #    "is_training": is_training,
-        #}
         input_dict["is_training"] = is_training
-        #if SampleBatch.PREV_ACTIONS in train_batch:
-        #    input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
-        #if SampleBatch.PREV_REWARDS in train_batch:
-        #    input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
         states = []
         i = 0
         while "state_in_{}".format(i) in input_dict:
             states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        return self.__call__(input_dict, states, input_dict.get("seq_lens"))
+        ret = self.__call__(input_dict, states, input_dict.get("seq_lens"))
+        del train_batch["is_training"]
+        return ret
 
     # TODO: (sven) Experimental method.
     def preprocess_train_batch(self, train_batch):
@@ -430,7 +424,9 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                     prep.shape[0], obs.shape))
         offset = 0
         if tensorlib == tf:
-            batch_dims = [v.value for v in obs.shape[:-1]]
+            batch_dims = [
+                v if isinstance(v, int) else v.value for v in obs.shape[:-1]
+            ]
             batch_dims = [-1 if v is None else v for v in batch_dims]
         else:
             batch_dims = list(obs.shape[:-1])

@@ -48,7 +48,7 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
   const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
   std::vector<std::pair<int64_t, NodeID>> candidate_nodes;
   for (auto &node : alive_nodes) {
-    if (required_resources.IsSubset(*node.second)) {
+    if (required_resources.IsSubset(node.second)) {
       candidate_nodes.emplace_back((*context->node_to_bundles_)[node.first], node.first);
     }
   }
@@ -77,12 +77,15 @@ ScheduleMap GcsPackStrategy::Schedule(
   // First fill up a node. If the node resource is insufficient, select a new node.
   // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
   ScheduleMap schedule_map;
-  const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
+  // TODO(WangTao): This copy might take too much space once cluster grows very large.
+  // Would find better solution.
+  absl::flat_hash_map<NodeID, ResourceSet> alive_nodes(
+      context->node_manager_.GetClusterRealtimeResources());
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
     for (auto &node : alive_nodes) {
-      if (required_resources.IsSubset(*node.second)) {
-        node.second->SubtractResourcesStrict(required_resources);
+      if (required_resources.IsSubset(node.second)) {
+        node.second.SubtractResourcesStrict(required_resources);
         schedule_map[bundle->BundleId()] = node.first;
         break;
       }
@@ -102,7 +105,10 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   // bundles will be deployed to the previous nodes. So we start with the next node of the
   // last selected node.
   ScheduleMap schedule_map;
-  const auto &candidate_nodes = context->node_manager_.GetClusterRealtimeResources();
+  // TODO(WangTao): This copy might take too much space once cluster grows very large.
+  // Would find better solution.
+  absl::flat_hash_map<NodeID, ResourceSet> candidate_nodes(
+      context->node_manager_.GetClusterRealtimeResources());
   if (candidate_nodes.empty()) {
     return schedule_map;
   }
@@ -115,8 +121,8 @@ ScheduleMap GcsSpreadStrategy::Schedule(
     // meets the resource requirements. `iter_begin` is the next node of the last selected
     // node.
     for (; iter != candidate_nodes.end(); ++iter) {
-      if (required_resources.IsSubset(*iter->second)) {
-        iter->second->SubtractResourcesStrict(required_resources);
+      if (required_resources.IsSubset(iter->second)) {
+        iter->second.SubtractResourcesStrict(required_resources);
         schedule_map[bundle->BundleId()] = iter->first;
         break;
       }
@@ -132,8 +138,8 @@ ScheduleMap GcsSpreadStrategy::Schedule(
       if (iter_begin != candidate_nodes.begin()) {
         // Traverse all the nodes from `candidate_nodes.begin()` to `iter_begin`.
         for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
-          if (required_resources.IsSubset(*iter->second)) {
-            iter->second->SubtractResourcesStrict(required_resources);
+          if (required_resources.IsSubset(iter->second)) {
+            iter->second.SubtractResourcesStrict(required_resources);
             schedule_map[bundle->BundleId()] = iter->first;
             break;
           }
@@ -175,7 +181,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     const auto &required_resources = bundle->GetRequiredResources();
     auto iter = candidate_nodes.begin();
     for (; iter != candidate_nodes.end(); ++iter) {
-      if (required_resources.IsSubset(*iter->second)) {
+      if (required_resources.IsSubset(iter->second)) {
         schedule_map[bundle->BundleId()] = iter->first;
         candidate_nodes.erase(iter);
         break;

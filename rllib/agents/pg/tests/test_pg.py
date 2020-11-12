@@ -63,8 +63,8 @@ class TestPG(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 1.0 + 0.99 * 1.0 + 1.0, 0.99 * 1.0 + 1.0, 1.0] =
             # [2.9701, 1.99, 1.0]
-            train_batch_ = pg.post_process_advantages(
-                policy, train_batch.copy())
+            train_batch_ = pg.post_process_advantages(policy,
+                                                      train_batch.copy())
             if fw == "torch":
                 train_batch_ = policy._lazy_tensor_dict(train_batch_)
 

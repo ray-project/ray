@@ -52,8 +52,8 @@ class TestSimpleQ(unittest.TestCase):
                 SampleBatch.EPS_ID: np.array([1234, 1234]),
                 SampleBatch.AGENT_INDEX: np.array([0, 0]),
                 SampleBatch.ACTION_LOGP: np.array([-0.1, -0.1]),
-                SampleBatch.ACTION_DIST_INPUTS: np.array(
-                    [[0.1, 0.2], [-0.1, -0.2]]),
+                SampleBatch.ACTION_DIST_INPUTS: np.array([[0.1, 0.2],
+                                                          [-0.1, -0.2]]),
                 SampleBatch.ACTION_PROB: np.array([0.1, 0.2]),
                 "q_values": np.array([[0.1, 0.2], [0.2, 0.1]]),
             }

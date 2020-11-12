@@ -147,7 +147,7 @@ class TFPolicy(Policy):
         self.model = model
         # Auto-update model's inference view requirements, if recurrent.
         if self.model is not None:
-            self.model.update_view_requirements_from_init_state()
+            self._update_model_inference_view_requirements_from_init_state()
 
         self.exploration = self._create_exploration()
         self._sess = sess
@@ -203,7 +203,7 @@ class TFPolicy(Policy):
         # The loss tf-op.
         self._loss = None
         # A batch dict passed into loss function as input.
-        self._loss_input_dict = None
+        self._loss_input_dict = {}
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
 
@@ -239,8 +239,9 @@ class TFPolicy(Policy):
         elif name == SampleBatch.PREV_REWARDS:
             return self._prev_reward_input
 
-        assert self._loss_input_dict is not None, \
-            "Should have set this before get_placeholder can be called"
+        assert self._loss_input_dict, \
+            "You need to populate `self._loss_input_dict` before " \
+            "`get_placeholder()` can be called"
         return self._loss_input_dict[name]
 
     def get_session(self) -> "tf1.Session":
@@ -260,8 +261,6 @@ class TFPolicy(Policy):
             loss_inputs (List[Tuple[str, TensorType]]): The list of Tuples:
                 (name, tf1.placeholders) needed for calculating the loss.
         """
-        #self._loss_inputs = loss_inputs
-        #self._loss_input_dict = dict(self._loss_inputs)
         self._loss_input_dict = dict(loss_inputs)
         for i, ph in enumerate(self._state_inputs):
             self._loss_input_dict["state_in_{}".format(i)] = ph
@@ -748,7 +747,6 @@ class TFPolicy(Policy):
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
-        #builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
         fetches = builder.add_fetches(
@@ -770,7 +768,6 @@ class TFPolicy(Policy):
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
-        #builder.add_feed_dict({self._is_training: True})
         fetches = builder.add_fetches([
             self._apply_op,
             self._get_grad_and_stats_fetches(),
@@ -807,7 +804,8 @@ class TFPolicy(Policy):
             max_seq_len=self._max_seq_len,
             batch_divisibility_req=self._batch_divisibility_req,
             feature_keys=[
-                k for k in self._loss_input_dict.keys() if k != "seq_lens"],
+                k for k in self._loss_input_dict.keys() if k != "seq_lens"
+            ],
         )
         batch["is_training"] = True
 

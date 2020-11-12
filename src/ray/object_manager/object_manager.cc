@@ -404,56 +404,6 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
   profile_events_.push_back(profile_event);
 }
 
-void PushManager::StartPush(const UniqueID &push_id, int64_t num_chunks,
-                            std::function<void(int64_t)> send_chunk_fn) {
-  RAY_LOG(DEBUG) << "Start push for " << push_id << ", num chunks " << num_chunks;
-  RAY_CHECK(num_chunks > 0);
-  push_info_[push_id] = std::make_pair(num_chunks, send_chunk_fn);
-  next_chunk_id_[push_id] = 0;
-  chunks_remaining_ += num_chunks;
-  ScheduleRemainingPushes();
-  RAY_CHECK(push_info_.size() == next_chunk_id_.size());
-}
-
-void PushManager::OnChunkComplete() {
-  chunks_in_flight_ -= 1;
-  ScheduleRemainingPushes();
-}
-
-void PushManager::ScheduleRemainingPushes() {
-  // Loop over all active pushes for approximate round-robin prioritization.
-  // TODO(ekl) this isn't the best implementation of round robin, we should
-  // consider tracking the number of chunks active per-push and balancing those.
-  while (chunks_in_flight_ < max_chunks_in_flight_ && push_info_.size() > 0) {
-    // Loop over each active push and try to send another chunk.
-    auto it = push_info_.begin();
-    while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
-      auto push_id = it->first;
-      auto max_chunks = it->second.first;
-      auto send_chunk_fn = it->second.second;
-
-      // Send the next chunk for this push.
-      send_chunk_fn(next_chunk_id_[push_id]);
-      chunks_in_flight_ += 1;
-      chunks_remaining_ -= 1;
-      RAY_LOG(DEBUG) << "Sending chunk " << next_chunk_id_[push_id] << " of "
-                     << max_chunks << " for push " << push_id << ", chunks in flight "
-                     << NumChunksInFlight() << " / " << max_chunks_in_flight_
-                     << " max, remaining chunks: " << NumChunksRemaining();
-
-      // It is the last chunk and we don't need to track it any more.
-      if (++next_chunk_id_[push_id] >= max_chunks) {
-        next_chunk_id_.erase(push_id);
-        push_info_.erase(it++);
-        RAY_LOG(DEBUG) << "Push for " << push_id
-                       << " completed, remaining: " << NumPushesInFlight();
-      } else {
-        it++;
-      }
-    }
-  }
-}
-
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &client_id) {
   RAY_LOG(DEBUG) << "Push on " << self_node_id_ << " to " << client_id << " of object "
                  << object_id;
@@ -489,29 +439,6 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &client_id) {
     return;
   }
 
-  // If we haven't pushed this object to this same object manager yet, then push
-  // it. If we have, but it was a long time ago, then push it. If we have and it
-  // was recent, then don't do it again.
-  auto &recent_pushes = local_objects_[object_id].recent_pushes;
-  auto it = recent_pushes.find(client_id);
-  if (it == recent_pushes.end()) {
-    // We haven't pushed this specific object to this specific object manager
-    // yet (or if we have then the object must have been evicted and recreated
-    // locally).
-    recent_pushes[client_id] = absl::GetCurrentTimeNanos() / 1000000;
-  } else {
-    int64_t current_time = absl::GetCurrentTimeNanos() / 1000000;
-    if (current_time - it->second <=
-        RayConfig::instance().object_manager_repeated_push_delay_ms()) {
-      // We pushed this object to the object manager recently, so don't do it
-      // again.
-      RAY_LOG(DEBUG) << "Object " << object_id << " recently pushed to " << client_id;
-      return;
-    } else {
-      it->second = current_time;
-    }
-  }
-
   auto rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
     const object_manager::protocol::ObjectInfoT &object_info =
@@ -532,10 +459,11 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &client_id) {
                    << ", total data size: " << data_size;
 
     UniqueID push_id = UniqueID::FromRandom();
-    push_manager_->StartPush(push_id, num_chunks, [=](int64_t chunk_id) {
+    push_manager_->StartPush(client_id, object_id, num_chunks, [=](int64_t chunk_id) {
       SendObjectChunk(push_id, object_id, owner_address, client_id, data_size,
-                      metadata_size, chunk_id, rpc_client,
-                      [=](const Status &status) { push_manager_->OnChunkComplete(); });
+                      metadata_size, chunk_id, rpc_client, [=](const Status &status) {
+                        push_manager_->OnChunkComplete(client_id, object_id);
+                      });
     });
   } else {
     // Push is best effort, so do nothing here.
