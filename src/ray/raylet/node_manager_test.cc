@@ -28,9 +28,11 @@ class TestNodeManager : public ::testing::Test {
   TestNodeManager() {
     // Start redis.
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
+    RAY_LOG(INFO) << "Start redis successfully.";
 
     // Start store.
     store_socket_name_ = TestSetupUtil::StartObjectStore();
+    RAY_LOG(INFO) << "Start object store successfully.";
 
     // Create object manager config.
     object_manager_config_.store_socket_name = store_socket_name_;
@@ -52,9 +54,11 @@ class TestNodeManager : public ::testing::Test {
   virtual ~TestNodeManager() {
     // Stop store.
     TestSetupUtil::StopObjectStore(store_socket_name_);
+    RAY_LOG(INFO) << "Stop object store successfully.";
 
     // Stop redis.
     TestSetupUtil::ShutDownRedisServers();
+    RAY_LOG(INFO) << "Stop redis successfully.";
   }
 
   void SetUp() {
@@ -78,6 +82,7 @@ class TestNodeManager : public ::testing::Test {
                                          /*is_test_client=*/true);
     gcs_client_ = std::make_shared<gcs::RedisGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+    RAY_LOG(INFO) << "Start redis gcs client successfully.";
 
     // Create object manager.
     NodeID node_id = NodeID::FromRandom();
@@ -86,24 +91,28 @@ class TestNodeManager : public ::testing::Test {
         std::make_shared<ObjectDirectory>(*server_io_service_, gcs_client_),
         [](const ObjectID &, const std::string &,
            const std::function<void(const ray::Status &)> &) {}));
+    RAY_LOG(INFO) << "Create object manager successfully.";
 
     // Create node manager.
     node_manager_config_.node_manager_port = 5566;
     node_manager_.reset(new NodeManager(
         *server_io_service_, node_id, node_manager_config_, *object_manager_, gcs_client_,
         std::make_shared<ObjectDirectory>(*server_io_service_, gcs_client_), []() {}));
+    RAY_LOG(INFO) << "Create node manager successfully.";
 
     // Create node manager rpc client.
     client_call_manager_.reset(new rpc::ClientCallManager(*client_io_service_));
     node_manager_rpc_client_ = rpc::NodeManagerWorkerClient::make(
         node_manager_config_.node_manager_address, node_manager_config_.node_manager_port,
         *client_call_manager_);
+    RAY_LOG(INFO) << "Create node manager rpc client successfully.";
   }
 
   void TearDown() {
     server_io_service_->stop();
     server_io_service_thread_->join();
     node_manager_.reset();
+    RAY_LOG(INFO) << "Stop node manager successfully.";
 
     client_io_service_->stop();
     client_io_service_thread_->join();
