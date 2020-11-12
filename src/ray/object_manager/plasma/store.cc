@@ -49,6 +49,7 @@
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
+#include "ray/util/asio_util.h"
 #include "ray/util/util.h"
 
 #ifdef PLASMA_CUDA
@@ -127,9 +128,8 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       eviction_policy_(&store_info_, PlasmaAllocator::GetFootprintLimit()),
       external_store_(external_store),
       spill_objects_callback_(spill_objects_callback),
+      delay_on_oom_ms_(delay_on_oom_ms),
       create_request_queue_(RayConfig::instance().object_store_full_max_retries(),
-      delay_on_oom_ms,
-      /*delay_on_transient_oom_ms=*/100,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
       object_store_full_callback) {
   store_info_.directory = directory;
@@ -1086,26 +1086,25 @@ void PlasmaStore::ProcessCreateRequests() {
   // that means that the first request is currently not serviceable because
   // there is not enough memory. In that case, we should wait for the timer to
   // expire before trying any requests again.
-  if (create_timer_set_) {
+  if (create_timer_) {
     return;
   }
 
+  auto status = create_request_queue_.ProcessRequests();
   uint32_t retry_after_ms = 0;
-  bool finished = create_request_queue_.ProcessRequests(&retry_after_ms);
-  if (!finished) {
+  if (status.IsTransientObjectStoreFull()) {
+    retry_after_ms = delay_on_transient_oom_ms_;
+  } else if (status.IsObjectStoreFull()) {
+    retry_after_ms = delay_on_oom_ms_;
+  }
+
+  if (retry_after_ms > 0) {
     // Try to process requests later, after space has been made.
-    RAY_CHECK(retry_after_ms > 0);
-    auto delay = boost::posix_time::milliseconds(retry_after_ms);
-    create_timer_.reset(new boost::asio::deadline_timer(io_context_));
-    create_timer_->expires_from_now(delay);
-    create_timer_->async_wait(
-        [this](const boost::system::error_code &error) {
-          RAY_CHECK(!error);
-          create_timer_set_ = false;
+    create_timer_ = execute_after(io_context_, [this]() {
           RAY_LOG(DEBUG) << "OOM timer finished, retrying create requests";
+          create_timer_ = nullptr;
           ProcessCreateRequests();
-        });
-    create_timer_set_ = true;
+        }, retry_after_ms);
   }
 }
 
@@ -1113,7 +1112,7 @@ void CreateRequestQueue::AddRequest(const std::shared_ptr<Client> &client, const
   queue_.push_back({client, request_callback});
 }
 
-bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback, uint32_t *retry_after_ms) {
+Status CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {
   bool reply_on_oom = num_retries_ >= max_retries_;
   bool evict_if_full = evict_if_full_;
   if (max_retries_ == 0) {
@@ -1124,7 +1123,6 @@ bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, c
     evict_if_full = true;
   }
   auto status = request_callback(client, reply_on_oom, evict_if_full);
-  bool request_fulfilled = false;
 
   if (status.IsTransientObjectStoreFull()) {
     // The object store is full, but we should wait for space to be made
@@ -1137,32 +1135,30 @@ bool CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, c
     // TODO(swang): Ask the raylet to spill enough space for multiple requests
     // at once, instead of just the head of the queue.
     num_retries_ = 0;
-    *retry_after_ms = delay_on_transient_oom_ms_;
   } else if (status.IsObjectStoreFull()) {
     num_retries_++;
     RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_ << " tries";
     if (on_store_full_) {
       on_store_full_();
     }
-    *retry_after_ms = delay_on_oom_ms_;
   } else {
     // We have replied to the client.
     num_retries_ = 0;
-    request_fulfilled = true;
   }
 
-  return request_fulfilled;
+  return status;
 }
 
-bool CreateRequestQueue::ProcessRequests(uint32_t *retry_after_ms) {
+Status CreateRequestQueue::ProcessRequests() {
   for (auto request_it = queue_.begin();
       request_it != queue_.end(); ) {
-    if (!ProcessRequest(request_it->first, request_it->second, retry_after_ms)) {
-      return false;
+    auto status = ProcessRequest(request_it->first, request_it->second);
+    if (!status.ok()) {
+      return status;
     }
     request_it = queue_.erase(request_it);
   }
-  return true;
+  return Status::OK();
 }
 
 
