@@ -393,7 +393,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.respond_to_call("json .Config.Env", ["[]"])
         commands.get_or_create_head_node(
             SMALL_CLUSTER,
-            config_path,
+            printable_config_file=config_path,
             no_restart=False,
             restart_only=False,
             yes=True,
