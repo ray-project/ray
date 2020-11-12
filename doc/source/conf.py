@@ -119,10 +119,6 @@ extensions = [
 versionwarning_admonition_type = "tip"
 
 versionwarning_messages = {
-    "master": (
-        "This document is for the master branch. "
-        'Visit the <a href="/en/latest/">latest pip release documentation here</a>.'
-    ),
     "latest": (
         "This document is for the latest pip release. "
         'Visit the <a href="/en/master/">master branch documentation here</a>.'

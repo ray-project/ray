@@ -38,6 +38,7 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/object_manager/plasma/store_runner.h"
+#include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 
@@ -76,9 +77,6 @@ struct ObjectManagerConfig {
 struct LocalObjectInfo {
   /// Information from the object store about the object.
   object_manager::protocol::ObjectInfoT object_info;
-  /// A map from the ID of a remote object manager to the timestamp of when
-  /// the object was last pushed to that object manager (if a push took place).
-  std::unordered_map<NodeID, int64_t> recent_pushes;
 };
 
 class ObjectStoreRunner {
@@ -97,75 +95,6 @@ class ObjectManagerInterface {
                            const rpc::Address &owner_address) = 0;
   virtual void CancelPull(const ObjectID &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
-};
-
-class PushManager {
- public:
-  /// Manages rate limiting of outbound object pushes.
-
-  /// Create a push manager.
-  ///
-  /// \param max_chunks_in_flight Max number of chunks allowed to be in flight
-  ///                             from this PushManager (this raylet).
-  PushManager(int64_t max_chunks_in_flight)
-      : max_chunks_in_flight_(max_chunks_in_flight) {
-    RAY_CHECK(max_chunks_in_flight_ > 0) << max_chunks_in_flight_;
-  };
-
-  /// Start pushing an object subject to max chunks in flight limit.
-  ///
-  /// \param push_id Unique identifier for this push.
-  /// \param num_chunks The total number of chunks to send.
-  /// \param send_chunk_fn This function will be called with args 0...{num_chunks-1}.
-  ///                      The caller promises to call PushManager::OnChunkComplete()
-  ///                      once a call to send_chunk_fn finishes.
-  void StartPush(const UniqueID &push_id, int64_t num_chunks,
-                 std::function<void(int64_t)> send_chunk_fn);
-
-  /// Called every time a chunk completes to trigger additional sends.
-  /// TODO(ekl) maybe we should cancel the entire push on error.
-  void OnChunkComplete();
-
-  /// Return the number of chunks currently in flight. For testing only.
-  int64_t NumChunksInFlight() const { return chunks_in_flight_; };
-
-  /// Return the number of chunks remaining. For testing only.
-  int64_t NumChunksRemaining() const { return chunks_remaining_; };
-
-  /// Return the number of pushes currently in flight. For testing only.
-  int64_t NumPushesInFlight() const { return push_info_.size(); };
-
-  std::string DebugString() const {
-    std::stringstream result;
-    result << "PushManager:";
-    result << "\n- num pushes in flight: " << NumPushesInFlight();
-    result << "\n- num chunks in flight: " << NumChunksInFlight();
-    result << "\n- num chunks remaining: " << NumChunksRemaining();
-    result << "\n- max chunks allowed: " << max_chunks_in_flight_;
-    return result.str();
-  }
-
- private:
-  /// Called on completion events to trigger additional pushes.
-  void ScheduleRemainingPushes();
-
-  /// Info about the pushed object: (num_chunks total, chunk_send_fn).
-  typedef std::pair<int64_t, std::function<void(int64_t)>> PushInfo;
-
-  /// Max number of chunks in flight allowed.
-  const int64_t max_chunks_in_flight_;
-
-  /// Running count of chunks remaining to send.
-  int64_t chunks_remaining_ = 0;
-
-  /// Running count of chunks in flight, used to limit progress of in_flight_pushes_.
-  int64_t chunks_in_flight_ = 0;
-
-  /// Tracks all pushes with chunk transfers in flight.
-  absl::flat_hash_map<UniqueID, PushInfo> push_info_;
-
-  /// Tracks progress of in flight pushes.
-  absl::flat_hash_map<UniqueID, int64_t> next_chunk_id_;
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.

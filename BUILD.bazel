@@ -1367,6 +1367,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
+        ":aligned_alloc",
         ":sha256",
         "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
@@ -1420,6 +1421,18 @@ cc_library(
     ],
     hdrs = [
         "src/ray/thirdparty/sha256.h",
+    ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+)
+
+cc_library(
+    name = "aligned_alloc",
+    srcs = [
+        "src/ray/thirdparty/aligned_alloc.c",
+    ],
+    hdrs = [
+        "src/ray/thirdparty/aligned_alloc.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
