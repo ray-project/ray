@@ -366,19 +366,19 @@ class UnifiedLogger(Logger):
 
 class ExperimentLogger(Callback):
     def log_trial_start(self, trial: "Trial"):
-        raise NotImplementedError
+        pass
 
     def log_trial_restore(self, trial: "Trial"):
-        raise NotImplementedError
+        pass
 
     def log_trial_save(self, trial: "Trial"):
-        raise NotImplementedError
+        pass
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
-        raise NotImplementedError
+        pass
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        raise NotImplementedError
+        pass
 
     def on_trial_result(self, iteration: int, trials: List["Trial"],
                         trial: "Trial", result: Dict, **info):

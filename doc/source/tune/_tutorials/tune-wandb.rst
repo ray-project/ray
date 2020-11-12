@@ -15,7 +15,7 @@ tools.
   :target: https://www.wandb.com/
 
 Ray Tune currently offers two lightweight integrations for Weights & Biases.
-One is the :ref:`WandbLogger <tune-wandb-logger>`, which automatically logs
+One is the :ref:`WandbExperimentLogger <tune-wandb-logger>`, which automatically logs
 metrics reported to Tune to the Wandb API.
 
 The other one is the :ref:`@wandb_mixin <tune-wandb-mixin>` decorator, which can be
@@ -28,7 +28,7 @@ Please :doc:`see here for a full example </tune/examples/wandb_example>`.
 
 .. _tune-wandb-logger:
 
-.. autoclass:: ray.tune.integration.wandb.WandbLogger
+.. autoclass:: ray.tune.integration.wandb.WandbExperimentLogger
    :noindex:
 
 .. _tune-wandb-mixin:

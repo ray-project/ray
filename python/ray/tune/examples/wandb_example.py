@@ -7,9 +7,9 @@ import wandb
 
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.integration.wandb import WandbLogger, WandbTrainableMixin, \
+from ray.tune.integration.wandb import WandbExperimentLogger, \
+    WandbTrainableMixin, \
     wandb_mixin
-from ray.tune.logger import DEFAULT_LOGGERS
 
 
 def train_function(config, checkpoint_dir=None):
@@ -24,13 +24,12 @@ def tune_function(api_key_file):
         train_function,
         config={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
-            "sd": tune.uniform(0.2, 0.8),
-            "wandb": {
-                "api_key_file": api_key_file,
-                "project": "Wandb_example"
-            }
+            "sd": tune.uniform(0.2, 0.8)
         },
-        loggers=DEFAULT_LOGGERS + (WandbLogger, ))
+        callbacks=[
+            WandbExperimentLogger(
+                api_key_file=api_key_file, project="Wandb_example")
+        ])
 
 
 @wandb_mixin
@@ -86,7 +85,7 @@ if __name__ == "__main__":
     api_key_file = "~/.wandb_api_key"
 
     if args.mock_api:
-        WandbLogger._logger_process_cls = MagicMock
+        WandbExperimentLogger._logger_process_cls = MagicMock
         decorated_train_function.__mixins__ = tuple()
         WandbTrainable._wandb = MagicMock()
         wandb = MagicMock()  # noqa: F811
