@@ -104,7 +104,6 @@ YAPF_EXCLUDES=(
     '--exclude' 'python/build/*'
     '--exclude' 'python/ray/core/src/ray/gcs/*'
     '--exclude' 'python/ray/thirdparty_files/*'
-    '--exclude' 'python/ray/new_dashboard/modules/job/clonevirtualenv.py'
 )
 
 GIT_LS_EXCLUDES=(
@@ -114,7 +113,7 @@ GIT_LS_EXCLUDES=(
 # TODO(barakmich): This should be cleaned up. I've at least excised the copies
 # of these arguments to this location, but the long-term answer is to actually
 # make a flake8 config file
-FLAKE8_EXCLUDE="--exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/,python/build/,python/.eggs/,python/ray/new_dashboard/modules/job/clonevirtualenv.py"
+FLAKE8_EXCLUDE="--exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/,python/build/,python/.eggs/"
 FLAKE8_IGNORES="--ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605"
 FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605"
 
