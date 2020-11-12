@@ -1171,7 +1171,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   if ((RayConfig::instance().enable_multi_tenancy() &&
-       worker_type != rpc::WorkerType::IO_WORKER) ||
+       (worker_type != rpc::WorkerType::SPILL_WORKER &&
+        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
   } else {
@@ -1205,7 +1206,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   };
 
   if (worker_type == rpc::WorkerType::WORKER ||
-      worker_type == rpc::WorkerType::IO_WORKER) {
+      worker_type == rpc::WorkerType::SPILL_WORKER ||
+      worker_type == rpc::WorkerType::RESTORE_WORKER) {
     // Register the new worker.
     auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
     if (!status.ok()) {
@@ -1262,9 +1264,15 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
 
-  if (worker->GetWorkerType() == rpc::WorkerType::IO_WORKER) {
+  if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
     // Return the worker to the idle pool.
-    worker_pool_.PushIOWorker(worker);
+    worker_pool_.PushSpillWorker(worker);
+    return;
+  }
+
+  if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushRestoreWorker(worker);
     return;
   }
 
@@ -1949,9 +1957,6 @@ bool NodeManager::PrepareBundle(
     }
   }
 
-  // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
-  // once retry is implemented. If the resource map contains the local raylet, update load
-  // before calling policy.
   if (resource_map.count(self_node_id_) > 0) {
     resource_map[self_node_id_].SetLoadResources(local_queues_.GetTotalResourceLoad());
   }
