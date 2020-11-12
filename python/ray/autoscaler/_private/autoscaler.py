@@ -72,6 +72,7 @@ class StandardAutoscaler:
         self.provider = None
         self.resource_demand_scheduler = None
         self.reset(errors_fatal=True)
+        self.head_node_ip = load_metrics.local_ip
         self.load_metrics = load_metrics
 
         self.max_failures = max_failures
@@ -443,7 +444,7 @@ class StandardAutoscaler:
             initialization_commands=[],
             setup_commands=[],
             ray_start_commands=with_head_node_ip(
-                self.config["worker_start_ray_commands"]),
+                self.config["worker_start_ray_commands"], self.head_node_ip),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
@@ -516,9 +517,10 @@ class StandardAutoscaler:
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
                 self._get_node_type_specific_fields(
-                    node_id, "initialization_commands")),
-            setup_commands=with_head_node_ip(init_commands),
-            ray_start_commands=with_head_node_ip(ray_start_commands),
+                    node_id, "initialization_commands"), self.head_node_ip),
+            setup_commands=with_head_node_ip(init_commands, self.head_node_ip),
+            ray_start_commands=with_head_node_ip(ray_start_commands,
+                                                 self.head_node_ip),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             is_head_node=False,

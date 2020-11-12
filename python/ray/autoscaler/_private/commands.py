@@ -135,7 +135,7 @@ def create_or_update_cluster(config_file: str,
                              override_cluster_name: Optional[str] = None,
                              no_config_cache: bool = False,
                              redirect_command_output: Optional[bool] = False,
-                             use_login_shells: bool = True) -> None:
+                             use_login_shells: bool = True) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
@@ -215,6 +215,7 @@ def create_or_update_cluster(config_file: str,
     try_logging_config(config)
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name)
+    return config
 
 
 CONFIG_CACHE_VERSION = 1
