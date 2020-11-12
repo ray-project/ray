@@ -483,6 +483,12 @@ void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
         if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
             item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
           pending_placement_groups_.emplace_back(std::move(placement_group));
+        } else {
+          const auto &bundles = item.second.bundles();
+          for (auto &bundle : bundles) {
+            node_to_placement_groups[NodeID::FromBinary(bundle.node_id())].emplace_back(
+                item.first);
+          }
         }
 
         if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||

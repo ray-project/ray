@@ -74,11 +74,20 @@ class GcsPlacementGroupSchedulerInterface {
   /// \param placement_group_id The placement group id scheduling is in progress.
   virtual void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) = 0;
 
+<<<<<<< HEAD
   /// Notify raylets to release unused bundles.
   ///
   /// \param node_to_bundles Bundles used by each node.
   virtual void ReleaseUnusedBundles(
       const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
+=======
+  /// Notify raylets to release unused placement groups.
+  ///
+  /// \param node_to_placement_groups Placement groups used by each node.
+  virtual void ReleaseUnusedPlacementGroups(
+      const std::unordered_map<NodeID, std::vector<PlacementGroupID>>
+          &node_to_placement_groups) = 0;
+>>>>>>> add part code
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
