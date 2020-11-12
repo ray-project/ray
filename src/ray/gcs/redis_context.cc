@@ -301,7 +301,14 @@ Status ConnectWithRetries(const std::string &address, int port,
       }
       break;
     }
-    RAY_LOG(WARNING) << "Failed to connect to Redis, retrying.";
+    if (*context == nullptr) {
+      RAY_LOG(WARNING) << "Could not allocate Redis context, retrying.";
+    }
+    if ((*context)->err) {
+      RAY_LOG(WARNING) << "Could not establish connection to Redis " << address << ":"
+                       << port << " (context.err = " << (*context)->err << ")"
+                       << ", retrying.";
+    }
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));

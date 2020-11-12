@@ -115,15 +115,17 @@ if __name__ == "__main__":
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
-    elif args.worker_type == "IO_WORKER":
-        mode = ray.IO_WORKER_MODE
+    elif args.worker_type == "SPILL_WORKER":
+        mode = ray.SPILL_WORKER_MODE
+    elif args.worker_type == "RESTORE_WORKER":
+        mode = ray.RESTORE_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
     # NOTE(suquark): We must initialize the external storage before we
     # connect to raylet. Otherwise we may receive requests before the
     # external storage is intialized.
-    if mode == ray.IO_WORKER_MODE:
+    if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         from ray import external_storage
         if args.object_spilling_config:
             object_spilling_config = base64.b64decode(
@@ -168,7 +170,7 @@ if __name__ == "__main__":
     ray.worker.connect(node, mode=mode)
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    elif mode == ray.IO_WORKER_MODE:
+    elif mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.
         while True:

@@ -42,3 +42,6 @@ AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = 1000
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 # Max number of retries to create an EC2 node (retry different subnet)
 BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
+
+# ray home path in the container image
+RAY_HOME = "/home/ray"

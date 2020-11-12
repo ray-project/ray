@@ -28,6 +28,8 @@ from ray.autoscaler._private.subprocess_output_util import (
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.util.debug import log_once
 
+from ray.autoscaler._private.constants import RAY_HOME
+
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
@@ -193,7 +195,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 logger.warning("'rsync_filter' detected but is currently "
                                "unsupported for k8s.")
         if target.startswith("~"):
-            target = "/root" + target[1:]
+            target = RAY_HOME + target[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -209,7 +211,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = "/root" + target[1:]
+                target = RAY_HOME + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
@@ -218,7 +220,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
 
     def run_rsync_down(self, source, target, options=None):
         if target.startswith("~"):
-            target = "/root" + target[1:]
+            target = RAY_HOME + target[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -234,7 +236,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = "/root" + target[1:]
+                target = RAY_HOME + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
@@ -702,6 +704,16 @@ class DockerCommandRunner(CommandRunnerInterface):
             cleaned_bind_mounts.pop(mnt, None)
 
         if not self._check_container_status():
+            # Get home directory
+            image_env = self.ssh_command_runner.run(
+                "docker inspect -f '{{json .Config.Env}}' " + image,
+                with_output=True).decode().strip()
+            home_directory = "/root"
+            for env_var in json.loads(image_env):
+                if env_var.startswith("HOME="):
+                    home_directory = env_var.split("HOME=")[1]
+                    break
+
             start_command = docker_start_cmds(
                 self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
                 self.container_name,
@@ -709,7 +721,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options", []) +
                 self._configure_runtime() + self._auto_configure_shm(),
-                self.ssh_command_runner.cluster_name)
+                self.ssh_command_runner.cluster_name, home_directory)
             self.run(start_command, run_env="host")
         else:
             running_image = self.run(
