@@ -21,20 +21,20 @@ def fact(x):
 
 objectref = ray.put("hello world")
 
-# `ObjectID(...)`
+# `ClientObjectRef(...)`
 print(objectref)
 
 # `hello world`
 print(ray.get(objectref))
 
 ref2 = plus2.remote(234)
-# `ObjectID(...)`
+# `ClientObjectRef(...)`
 print(ref2)
 # `236`
 print(ray.get(ref2))
 
 ref3 = fact.remote(20)
-# `ObjectID(...)`
+# `ClientObjectRef(...)`
 print(ref3)
 # `2432902008176640000`
 print(ray.get(ref3))

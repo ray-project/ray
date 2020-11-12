@@ -8,7 +8,7 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 from ray.experimental.client.core_ray_api import set_client_api_as_ray
 from ray.experimental.client.common import convert_from_arg
-from ray.experimental.client.common import ObjectID
+from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ def _convert_args(arg_list):
     out = []
     for arg in arg_list:
         t = convert_from_arg(arg)
-        if isinstance(t, ObjectID):
+        if isinstance(t, ClientObjectRef):
             out.append(ray.ObjectRef(t.id))
         else:
             out.append(t)

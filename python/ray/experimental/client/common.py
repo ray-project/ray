@@ -4,12 +4,12 @@ from typing import Any
 from ray import cloudpickle
 
 
-class ObjectID:
+class ClientObjectRef:
     def __init__(self, id):
         self.id = id
 
     def __repr__(self):
-        return "ObjectID(%s)" % self.id.hex()
+        return "ClientObjectRef(%s)" % self.id.hex()
 
 
 class ClientRemoteFunc:
@@ -36,7 +36,7 @@ class ClientRemoteFunc:
 
 def convert_from_arg(pb) -> Any:
     if pb.local == ray_client_pb2.Arg.Locality.REFERENCE:
-        return ObjectID(pb.reference_id)
+        return ClientObjectRef(pb.reference_id)
     elif pb.local == ray_client_pb2.Arg.Locality.INTERNED:
         return cloudpickle.loads(pb.data)
 
@@ -45,7 +45,7 @@ def convert_from_arg(pb) -> Any:
 
 def convert_to_arg(val):
     out = ray_client_pb2.Arg()
-    if isinstance(val, ObjectID):
+    if isinstance(val, ClientObjectRef):
         out.local = ray_client_pb2.Arg.Locality.REFERENCE
         out.reference_id = val.id
     else:

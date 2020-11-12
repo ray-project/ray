@@ -1,3 +1,12 @@
+# Along with `api.py` this is the stub that interfaces with
+# the real (C-binding, raylet) ray core.
+#
+# Ideally, the first import line is the only time we actually
+# import ray in this library (excluding the main function for the server)
+#
+# While the stub is trivial, it allows us to check that the calls we're
+# making into the core-ray module are contained and well-defined.
+
 import ray
 
 from ray.experimental.client.api import APIImpl

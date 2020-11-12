@@ -1,3 +1,14 @@
+# This file defines an interface and client-side API stub
+# for referring either to the core Ray API or the same interface
+# from the Ray client.
+#
+# In tandem with __init__.py, we want to expose an API that's
+# close to `python/ray/__init__.py` but with more than one implementation.
+# The stubs in __init__ should call into a well-defined interface.
+# Only the core Ray API implementation should actually `import ray`
+# (and thus import all the raylet worker C bindings and such).
+# But to make sure that we're matching these calls, we define this API.
+
 from abc import ABC
 from abc import abstractmethod
 

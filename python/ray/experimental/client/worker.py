@@ -1,10 +1,19 @@
-import cloudpickle
+from ray import cloudpickle
 import grpc
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
-from ray.experimental.client.common import ObjectID
+from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
+from ray.experimental.client import call_remote
+
+
+class ClientObjectRef:
+    def __init__(self, id):
+        self.id = id
+
+    def __repr__(self):
+        return "ClientObjectRef(%s)" % self.id.hex()
 
 
 class Worker:
@@ -20,7 +29,7 @@ class Worker:
         single = False
         if isinstance(ids, list):
             to_get = [x.id for x in ids]
-        elif isinstance(ids, ObjectID):
+        elif isinstance(ids, ClientObjectRef):
             to_get = [ids.id]
             single = True
         else:
@@ -57,7 +66,7 @@ class Worker:
         data = cloudpickle.dumps(val)
         req = ray_client_pb2.PutRequest(data=data)
         resp = self.server.PutObject(req)
-        return ObjectID(resp.id)
+        return ClientObjectRef(resp.id)
 
     def remote(self, func):
         return ClientRemoteFunc(func)
@@ -73,7 +82,7 @@ class Worker:
             pb_arg = convert_to_arg(arg)
             task.args.append(pb_arg)
         ticket = self.server.Schedule(task)
-        return ObjectID(ticket.return_id)
+        return ClientObjectRef(ticket.return_id)
 
     def close(self):
         self.channel.close()
