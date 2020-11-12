@@ -20,7 +20,8 @@ class ClientRemoteFunc:
         self._raylet_remote_func = None
 
     def __call__(self, *args, **kwargs):
-        raise Exception("Matching the old API -- use %s.remote()" % self._name)
+        raise TypeError(f"Remote function cannot be called directly. "
+                        "Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
         if self._raylet_remote_func is not None:
