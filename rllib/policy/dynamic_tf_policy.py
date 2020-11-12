@@ -597,7 +597,18 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.UNROLL_ID, SampleBatch.DONES,
                     SampleBatch.REWARDS] and \
                         key not in self.model.inference_view_requirements:
-                    del self.view_requirements[key]
+                    # If user deleted this key manually in postprocessing
+                    # fn, warn about it and do not remove from
+                    # view-requirements.
+                    if key in batch_for_postproc.deleted_keys:
+                        logger.warning(
+                            "SampleBatch key '{}' was deleted manually in "
+                            "postprocessing function! RLlib will "
+                            "automatically remove non-used items from the "
+                            "data stream. Remove the `del` from your "
+                            "postprocessing function.".format(key))
+                    else:
+                        del self.view_requirements[key]
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
             # Add those data_cols (again) that are missing and have

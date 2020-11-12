@@ -645,9 +645,7 @@ class Policy(metaclass=ABCMeta):
                                 batch_for_postproc.accessed_keys | \
                                 batch_for_postproc.added_keys
             for key in all_accessed_keys:
-                if key not in self.view_requirements:# and \
-                        #key not in ["accessed_keys", "data", "deleted_keys",
-                        #            "added_keys", "intercepted_values"]:
+                if key not in self.view_requirements:
                     self.view_requirements[key] = ViewRequirement()
             if self._loss:
                 # Tag those only needed for post-processing.
@@ -657,10 +655,12 @@ class Policy(metaclass=ABCMeta):
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
+                # Also always leave DONES and REWARDS, no matter what.
                 for key in list(self.view_requirements.keys()):
                     if key not in all_accessed_keys and key not in [
                         SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                        SampleBatch.UNROLL_ID, SampleBatch.DONES] and \
+                        SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                        SampleBatch.REWARDS] and \
                             key not in self.model.inference_view_requirements:
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from
