@@ -94,6 +94,14 @@ starting Ray. For example, you can do:
 
 This will print any ``RAY_LOG(DEBUG)`` lines in the source code to the
 ``raylet.err`` file, which you can find in :ref:`temp-dir-log-files`.
+If it worked, you should see as the first line in ``raylet.err``:
+
+.. code-block:: shell
+
+  logging.cc:270: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
+
+(-1 is the numerical value of RayLogLevel::DEBUG.)
+(https://github.com/ray-project/ray/blob/master/src/ray/util/logging.h#L54)
 
 
 .. _`issues`: https://github.com/ray-project/ray/issues
