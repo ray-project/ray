@@ -408,7 +408,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 }
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
-                                                 bool force_kill) {
+                                                 bool force_kill, bool recursive) {
   RAY_LOG(INFO) << "Killing task: " << task_spec.TaskId();
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
@@ -470,6 +470,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   auto request = rpc::CancelTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
+  request.set_recursive(recursive);
   client->CancelTask(
       request, [this, task_spec, scheduling_key, force_kill](
                    const Status &status, const rpc::CancelTaskReply &reply) {

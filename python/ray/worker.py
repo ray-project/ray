@@ -1654,7 +1654,7 @@ def kill(actor, *, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
-def cancel(object_ref, *, force=False, recursive=False):
+def cancel(object_ref, *, force=False, recursive=True):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If

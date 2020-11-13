@@ -718,8 +718,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] Status
   Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
 
-  Status CancelTaskLocalHelper(const TaskSpecification &task_spec, bool force_kill,
-                               bool recursive);
+  Status CancelChildren(const TaskSpecification &task_spec, bool force_kill);
 
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.

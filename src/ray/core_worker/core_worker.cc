@@ -1534,22 +1534,17 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
   if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
-    return CancelTaskLocalHelper(task_spec.value(), force_kill, recursive);
+    return direct_task_submitter_->CancelTask(task_spec, force_kill, recursive);
   }
   return Status::OK();
 }
 
-Status CoreWorker::CancelTaskLocalHelper(const TaskSpecification &task_spec,
-                                         bool force_kill, bool recursive) {
-  auto local_cancel_result = direct_task_submitter_->CancelTask(task_spec, force_kill);
-  RAY_LOG(WARNING) << "Task " << task_spec.TaskId()
-                   << " failed to cancel:  " << local_cancel_result.message();
-  bool recursive_success = local_cancel_result.ok();
-  if (recursive) {
-    for (auto child_spec : task_manager_->GetChildrenTasks(task_spec.TaskId())) {
-      auto result = CancelTaskLocalHelper(child_spec, force_kill, recursive);
+Status CoreWorker::CancelChildren(const TaskId &task_id,
+                                         bool force_kill) {
+  bool recursive_success = true;
+  for (const auto &child_spec : task_manager_->GetChildrenTasks(task_id)) {
+      auto result = direct_task_submitter_->CancelTask(task_spec, force_kill, true);
       recursive_success = recursive_success && result.ok();
-    }
   }
   if (recursive_success) {
     return Status::OK();
@@ -2194,6 +2189,9 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   if (success && !request.force_kill()) {
     RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
     success = options_.kill_main();
+  }
+  if (request.recursive()) {
+    CancelChildren(task_id, request.force_kill());
   }
 
   reply->set_attempt_succeeded(success);
