@@ -481,7 +481,8 @@ class TorchDirichlet(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
-        return nn.functional.softmax(self.dist.concentration)
+        self.last_sample = nn.functional.softmax(self.dist.concentration)
+        return self.last_sample
 
     @override(ActionDistribution)
     def logp(self, x):
