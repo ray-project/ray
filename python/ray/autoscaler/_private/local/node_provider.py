@@ -1,5 +1,6 @@
 from filelock import FileLock
 from threading import RLock
+from pathlib import Path
 import json
 import os
 import socket
@@ -27,7 +28,7 @@ class ClusterState:
 
         with self.lock:
             with self.file_lock:
-                if os.path.exists(self.save_path):
+                if Path(self.save_path).exists():
                     workers = json.loads(open(self.save_path).read())
                     head_config = workers.get(provider_config["head_ip"])
                     if (not head_config or
@@ -110,7 +111,7 @@ class OnPremCoordinatorState(ClusterState):
 
         with self.lock:
             with self.file_lock:
-                if os.path.exists(self.save_path):
+                if Path(self.save_path).exists():
                     nodes = json.loads(open(self.save_path).read())
                 else:
                     nodes = {}

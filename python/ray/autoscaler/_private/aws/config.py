@@ -6,6 +6,7 @@ import json
 import os
 import time
 import logging
+from pathlib import Path
 
 import boto3
 from botocore.config import Config
@@ -65,12 +66,12 @@ def key_pair(i, region, key_name):
         key_pair_name = ("{}_{}".format(RAY, region)
                          if key_name is None else key_name)
         return (key_pair_name,
-                os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
+                Path("~/.ssh/{}.pem".format(key_pair_name)).expanduser())
 
     key_pair_name = ("{}_{}_{}".format(RAY, i, region)
                      if key_name is None else key_name + "_key-{}".format(i))
     return (key_pair_name,
-            os.path.expanduser("~/.ssh/{}.pem".format(key_pair_name)))
+            Path("~/.ssh/{}.pem".format(key_pair_name)).expanduser())
 
 
 # Suppress excessive connection dropped logs from boto
@@ -299,7 +300,7 @@ def _configure_key_pair(config):
 
     # Writing the new ssh key to the filesystem fails if the ~/.ssh
     # directory doesn't already exist.
-    os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
+    os.makedirs(Path("~/.ssh").expanduser(), exist_ok=True)
 
     # Try a few times to get or create a good key pair.
     MAX_NUM_KEYS = 30
@@ -312,11 +313,11 @@ def _configure_key_pair(config):
         key = _get_key(key_name, config)
 
         # Found a good key.
-        if key and os.path.exists(key_path):
+        if key and Path(key_path).exists():
             break
 
         # We can safely create a new key.
-        if not key and not os.path.exists(key_path):
+        if not key and not Path(key_path).exists():
             cli_logger.verbose(
                 "Creating new key pair {} for use as the default.",
                 cf.bold(key_name))
@@ -341,9 +342,9 @@ def _configure_key_pair(config):
             "Consider deleting some unused keys pairs from your account.")
 
     cli_logger.doassert(
-        os.path.exists(key_path), "Private key file " + cf.bold("{}") +
+        Path(key_path).exists(), "Private key file " + cf.bold("{}") +
         " not found for " + cf.bold("{}"), key_path, key_name)  # todo: err msg
-    assert os.path.exists(key_path), \
+    assert Path(key_path).exists(), \
         "Private key file {} not found for {}".format(key_path, key_name)
 
     config["auth"]["ssh_private_key"] = key_path

@@ -2,7 +2,7 @@ import copy
 import hashlib
 import json
 import logging
-import os
+from pathlib import Path
 import random
 import sys
 import subprocess
@@ -227,10 +227,10 @@ def _bootstrap_config(config: Dict[str, Any],
 
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
-    cache_key = os.path.join(tempfile.gettempdir(),
+    cache_key = Path(tempfile.gettempdir()).joinpath(
                              "ray-config-{}".format(hasher.hexdigest()))
 
-    if os.path.exists(cache_key) and not no_config_cache:
+    if Path(cache_key).exists() and not no_config_cache:
         config_cache = json.loads(open(cache_key).read())
         if config_cache.get("_version", -1) == CONFIG_CACHE_VERSION:
             # todo: is it fine to re-resolve? afaik it should be.
@@ -693,7 +693,7 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     cli_logger.newline()
     with cli_logger.group("Useful commands"):
-        printable_config_file = os.path.abspath(printable_config_file)
+        printable_config_file = Path(printable_config_file).resolve()
         cli_logger.print("Monitor autoscaling with")
         cli_logger.print(
             cf.bold("  ray exec {}{} {}"), printable_config_file, modifiers,

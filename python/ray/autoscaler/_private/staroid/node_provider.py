@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import logging
 import time
 import requests
@@ -60,7 +61,7 @@ class StaroidNodeProvider(NodeProvider):
         return value
 
     def _connect_kubeapi_incluster(self, instance_name):
-        if not os.path.isdir("/var/run/secrets/kubernetes.io/serviceaccount"):
+        if not Path("/var/run/secrets/kubernetes.io/serviceaccount").is_dir():
             return None
 
         kube_conf = config.load_incluster_config()

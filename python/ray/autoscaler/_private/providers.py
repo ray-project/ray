@@ -1,7 +1,7 @@
 import importlib
 import logging
 import json
-import os
+from pathlib import Path
 from typing import Any, Dict
 
 import yaml
@@ -52,33 +52,32 @@ def _import_staroid(provider_config):
 
 def _load_local_defaults_config():
     import ray.autoscaler.local as ray_local
-    return os.path.join(os.path.dirname(ray_local.__file__), "defaults.yaml")
+    return Path(ray_local.__file__).parent.joinpath("defaults.yaml")
 
 
 def _load_kubernetes_defaults_config():
     import ray.autoscaler.kubernetes as ray_kubernetes
-    return os.path.join(
-        os.path.dirname(ray_kubernetes.__file__), "defaults.yaml")
+    return Path(ray_kubernetes.__file__).parent.joinpath("defaults.yaml")
 
 
 def _load_aws_defaults_config():
     import ray.autoscaler.aws as ray_aws
-    return os.path.join(os.path.dirname(ray_aws.__file__), "defaults.yaml")
+    return Path(ray_aws.__file__).parent.joinpath("defaults.yaml")
 
 
 def _load_gcp_defaults_config():
     import ray.autoscaler.gcp as ray_gcp
-    return os.path.join(os.path.dirname(ray_gcp.__file__), "defaults.yaml")
+    return Path(ray_gcp.__file__).parent.joinpath("defaults.yaml")
 
 
 def _load_azure_defaults_config():
     import ray.autoscaler.azure as ray_azure
-    return os.path.join(os.path.dirname(ray_azure.__file__), "defaults.yaml")
+    return Path(ray_azure.__file__).parent.joinpath("defaults.yaml")
 
 
 def _load_staroid_defaults_config():
     import ray.autoscaler.staroid as ray_staroid
-    return os.path.join(os.path.dirname(ray_staroid.__file__), "defaults.yaml")
+    return Path(ray_staroid.__file__).parent.joinpath("defaults.yaml")
 
 
 def _import_external(provider_config):

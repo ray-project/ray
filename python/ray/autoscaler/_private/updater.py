@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import time
+from pathlib import Path
 
 from threading import Thread
 
@@ -83,7 +84,7 @@ class NodeUpdater:
         # defaults. Better to be defensive.
         file_mounts = file_mounts or {}
         self.file_mounts = {
-            remote: os.path.expanduser(local)
+            remote: Path(local).expanduser()
             for remote, local in file_mounts.items()
         }
 
@@ -99,7 +100,7 @@ class NodeUpdater:
         # on the head node).
         cluster_synced_files = cluster_synced_files or []
         self.cluster_synced_files = [
-            os.path.expanduser(path) for path in cluster_synced_files
+            Path(path).expanduser() for path in cluster_synced_files
         ]
         self.rsync_options = rsync_options or {}
         self.auth_config = auth_config
@@ -168,7 +169,7 @@ class NodeUpdater:
             ]
 
         def do_sync(remote_path, local_path, allow_non_existing_paths=False):
-            if allow_non_existing_paths and not os.path.exists(local_path):
+            if allow_non_existing_paths and not Path(local_path).exists():
                 cli_logger.print("sync: {} does not exist. Skipping.",
                                  local_path)
                 # Ignore missing source files. In the future we should support
@@ -176,9 +177,9 @@ class NodeUpdater:
                 # been removed
                 return
 
-            assert os.path.exists(local_path), local_path
+            assert Path(local_path).exists(), local_path
 
-            if os.path.isdir(local_path):
+            if Path(local_path).is_dir():
                 if not local_path.endswith("/"):
                     local_path += "/"
                 if not remote_path.endswith("/"):
@@ -191,7 +192,7 @@ class NodeUpdater:
                 if not is_docker:
                     # The DockerCommandRunner handles this internally.
                     self.cmd_runner.run(
-                        "mkdir -p {}".format(os.path.dirname(remote_path)),
+                        "mkdir -p {}".format(Path(remote_path).parent),
                         run_env="host")
                 sync_cmd(
                     local_path, remote_path, docker_mount_if_possible=True)
