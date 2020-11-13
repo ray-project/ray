@@ -8,7 +8,7 @@ import numpy as np
 import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.integration.keras import TuneReportCheckpointCallback
+from ray.tune.integration.keras import TuneReportCheckpointCallback, TuneReportCallback
 from ray.tune.integration.tensorflow import (DistributedTrainableCreator,
                                              get_num_workers)
 
@@ -56,10 +56,12 @@ def train_mnist(config, checkpoint_dir=None):
         epochs=2,
         steps_per_epoch=70,
         callbacks=[
-            TuneReportCheckpointCallback(
+            tf.keras.callbacks.ModelCheckpoint(filepath="checkpoint",
+                                               save_weights_only=True),
+            TuneReportCallback(
                 {
                     "mean_accuracy": "accuracy"
-                }, filename="checkpoint")
+                })
         ])
 
 
