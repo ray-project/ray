@@ -206,6 +206,11 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
 
         # Process Samples
         new_samples = process_samples(new_samples)
+        if isinstance(self.action_space, Discrete):
+            act = new_samples["actions"]
+            new_act = np.zeros((act.size, act.max() + 1))
+            new_act[np.arange(act.size), act] = 1
+            new_samples["actions"] = new_act.astype("float32")
 
         if not self.replay_buffer:
             self.replay_buffer = new_samples
