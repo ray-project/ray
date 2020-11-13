@@ -64,11 +64,13 @@ class _TensorFlowTrainable(tune.Trainable):
 
         func_trainable = wrap_function(self.__class__._function)
         remote_trainable = ray.remote(func_trainable)
-        remote_trainable = \
-            remote_trainable.options(**TrainableUtil.get_remote_worker_options(
+        remote_option, self._placement_group =\
+            TrainableUtil.get_remote_worker_options(
                 self._num_workers, self._num_cpus_per_worker,
                 self._num_gpus_per_worker,
-                self._num_workers_per_host, self._timeout_s))
+                self._num_workers_per_host, self._timeout_s)
+        remote_trainable = \
+            remote_trainable.options(**remote_option)
         self.workers = [
             remote_trainable.remote(config=config, )
             for _ in range(num_workers)

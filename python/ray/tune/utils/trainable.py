@@ -164,9 +164,10 @@ class TrainableUtil:
         return chkpt_df
 
     @staticmethod
-    def get_remote_worker_options(num_workers, num_cpus_per_worker,
-                                  num_gpus_per_worker, num_workers_per_host,
-                                  timeout_s) -> Dict[str, Any]:
+    def get_remote_worker_options(
+            num_workers, num_cpus_per_worker, num_gpus_per_worker,
+            num_workers_per_host,
+            timeout_s) -> (Dict[str, Any], placement_group):
         """ Returns the option for remote workers.
         Args:
             num_workers (int): Number of training workers to include in
@@ -185,6 +186,7 @@ class TrainableUtil:
         Returns:
             type(Dict[Str, Any]): option that contains CPU/GPU count of
                 the remote worker and the placement group information.
+            pg(placement_group): return a reference to the placement group
         """
         num_hosts = int(num_workers / num_workers_per_host)
         options = dict(
@@ -202,4 +204,4 @@ class TrainableUtil:
             logger.info("Placement_group started.")
             options["placement_group"] = pg
 
-        return options
+        return options, pg
