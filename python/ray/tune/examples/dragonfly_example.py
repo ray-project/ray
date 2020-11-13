@@ -37,15 +37,7 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 50,
-        "config": {
-            "iterations": 100,
-            "LiNO3_vol": tune.uniform(0, 7),
-            "Li2SO4_vol": tune.uniform(0, 7),
-            "NaClO4_vol": tune.uniform(0, 7)
-        },
-    }
+    tune_kwargs = {}
 
     # Optional: Pass the parameter space yourself
     # space = [{
@@ -80,6 +72,13 @@ if __name__ == "__main__":
         name="dragonfly_search",
         search_alg=df_search,
         scheduler=scheduler,
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 50,
+        config={
+            "iterations": 100,
+            "LiNO3_vol": tune.uniform(0, 7),
+            "Li2SO4_vol": tune.uniform(0, 7),
+            "NaClO4_vol": tune.uniform(0, 7)
+        },
+    )
 
     print("Best hyperparameters found were: ", analysis.best_config)

@@ -38,7 +38,6 @@ if __name__ == "__main__":
         DiscreteSpace("x5", [-1, 0, 1, 2, 3]),
     })
 
-    config = {"stop": {"training_iteration": 100}}
     algo = GeneticSearch(
         space,
         reward_attr="neg_mean_loss",
@@ -52,6 +51,6 @@ if __name__ == "__main__":
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
+        stop={"training_iteration": 100})
 
     print("Best hyperparameters found were: ", analysis.best_config)

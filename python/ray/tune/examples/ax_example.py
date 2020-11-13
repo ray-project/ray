@@ -51,21 +51,7 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 50,
-        "config": {
-            "iterations": 100,
-            "x1": tune.uniform(0.0, 1.0),
-            "x2": tune.uniform(0.0, 1.0),
-            "x3": tune.uniform(0.0, 1.0),
-            "x4": tune.uniform(0.0, 1.0),
-            "x5": tune.uniform(0.0, 1.0),
-            "x6": tune.uniform(0.0, 1.0),
-        },
-        "stop": {
-            "timesteps_total": 100
-        }
-    }
+    tune_kwargs = {}
     algo = AxSearch(
         max_concurrent=4,
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
@@ -79,6 +65,16 @@ if __name__ == "__main__":
         mode="min",
         search_alg=algo,
         scheduler=scheduler,
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 50,
+        config={
+            "iterations": 100,
+            "x1": tune.uniform(0.0, 1.0),
+            "x2": tune.uniform(0.0, 1.0),
+            "x3": tune.uniform(0.0, 1.0),
+            "x4": tune.uniform(0.0, 1.0),
+            "x5": tune.uniform(0.0, 1.0),
+            "x6": tune.uniform(0.0, 1.0),
+        },
+        stop={"timesteps_total": 100})
 
     print("Best hyperparameters found were: ", analysis.best_config)

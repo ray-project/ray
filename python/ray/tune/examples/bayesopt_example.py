@@ -34,14 +34,7 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 1000,
-        "config": {
-            "steps": 100,
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100)
-        }
-    }
+    tune_kwargs = {}
     algo = BayesOptSearch(utility_kwargs={
         "kind": "ucb",
         "kappa": 2.5,
@@ -56,6 +49,11 @@ if __name__ == "__main__":
         mode="min",
         search_alg=algo,
         scheduler=scheduler,
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 1000,
+        config={
+            "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        })
 
     print("Best hyperparameters found were: ", analysis.best_config)

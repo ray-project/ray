@@ -49,12 +49,7 @@ if __name__ == "__main__":
         },
     ]
 
-    config = {
-        "num_samples": 10 if args.smoke_test else 1000,
-        "config": {
-            "total_weight": 1
-        }
-    }
+    config = {}
 
     algo = SigOptSearch(
         space,
@@ -65,5 +60,9 @@ if __name__ == "__main__":
         mode=["max", "min", "obs"])
 
     analysis = tune.run(
-        easy_objective, name="my_exp", search_alg=algo, **config)
+        easy_objective,
+        name="my_exp",
+        search_alg=algo,
+        num_samples=10 if args.smoke_test else 1000,
+        config={"total_weight": 1})
     print("Best hyperparameters found were: ", analysis.best_config)

@@ -81,8 +81,6 @@ if __name__ == "__main__":
         observation_budget=samples,
         parallel_bandwidth=1)
 
-    config = {"num_samples": samples, "config": {}}
-
     algo = SigOptSearch(
         connection=conn,
         experiment_id=experiment.id,
@@ -92,5 +90,9 @@ if __name__ == "__main__":
         mode=["obs", "min"])
 
     analysis = tune.run(
-        easy_objective, name="my_exp", search_alg=algo, **config)
+        easy_objective,
+        name="my_exp",
+        search_alg=algo,
+        num_samples=samples,
+        config={})
     print("Best hyperparameters found were: ", analysis.best_config)

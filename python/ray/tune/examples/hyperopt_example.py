@@ -49,16 +49,7 @@ if __name__ == "__main__":
         }
     ]
 
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 1000,
-        "config": {
-            "steps": 100,
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100),
-            # This is an ignored parameter.
-            "activation": tune.choice(["relu", "tanh"])
-        }
-    }
+    tune_kwargs = {}
     algo = HyperOptSearch(points_to_evaluate=current_best_params)
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
 
@@ -69,6 +60,13 @@ if __name__ == "__main__":
         scheduler=scheduler,
         metric="mean_loss",
         mode="min",
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 1000,
+        config={
+            "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            # This is an ignored parameter.
+            "activation": tune.choice(["relu", "tanh"])
+        })
 
     print("Best hyperparameters found were: ", analysis.best_config)

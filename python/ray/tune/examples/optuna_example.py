@@ -36,16 +36,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init(configure_logging=False)
 
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 100,
-        "config": {
-            "steps": 100,
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100),
-            # This is an ignored parameter.
-            "activation": tune.choice(["relu", "tanh"])
-        }
-    }
+    tune_kwargs = {}
     algo = OptunaSearch()
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
@@ -55,6 +46,13 @@ if __name__ == "__main__":
         mode="min",
         search_alg=algo,
         scheduler=scheduler,
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 100,
+        config={
+            "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            # This is an ignored parameter.
+            "activation": tune.choice(["relu", "tanh"])
+        })
 
     print("Best hyperparameters found were: ", analysis.best_config)

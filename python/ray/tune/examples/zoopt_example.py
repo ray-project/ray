@@ -34,14 +34,7 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 1000,
-        "config": {
-            "steps": 10,
-            "height": tune.quniform(-10, 10, 1e-2),
-            "width": tune.randint(0, 10)
-        }
-    }
+    tune_kwargs = {}
 
     # Optional: Pass the parameter space yourself
     # space = {
@@ -74,5 +67,10 @@ if __name__ == "__main__":
         search_alg=zoopt_search,
         name="zoopt_search",
         scheduler=scheduler,
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 1000,
+        config={
+            "steps": 10,
+            "height": tune.quniform(-10, 10, 1e-2),
+            "width": tune.randint(0, 10)
+        })
     print("Best config found: ", analysis.best_config)
