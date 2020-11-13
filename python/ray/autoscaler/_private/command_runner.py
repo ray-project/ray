@@ -595,18 +595,19 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run_rsync_up(self, source, target, options=None):
         options = options or {}
-        host_destination = os.path.join(
+        host_destination = Path(
             self._get_docker_host_mount_location(
-                self.ssh_command_runner.cluster_name), target.lstrip("/"))
+                self.ssh_command_runner.cluster_name)).joinpath(
+                    target.lstrip("/"))
 
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
+            f"mkdir -p {Path(host_destination.rstrip('/')).parent}")
 
         self.ssh_command_runner.run_rsync_up(
             source, host_destination, options=options)
         if self._check_container_status() and not options.get(
                 "docker_mount_if_possible", False):
-            if os.path.isdir(source):
+            if Path(source).is_dir():
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
                 host_destination += "/."
@@ -616,11 +617,12 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
-        host_source = os.path.join(
+        host_source = Path(
             self._get_docker_host_mount_location(
-                self.ssh_command_runner.cluster_name), source.lstrip("/"))
+                self.ssh_command_runner.cluster_name)).joinpath(
+                    source.lstrip("/"))
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
+            f"mkdir -p {Path(host_source.rstrip('/')).parent}")
         if source[-1] == "/":
             source += "."
             # Adding a "." means that docker copies the *contents*
@@ -758,9 +760,10 @@ class DockerCommandRunner(CommandRunnerInterface):
             if mount in file_mounts:
                 self.ssh_command_runner.run(
                     "docker cp {src} {container}:{dst}".format(
-                        src=os.path.join(
+                        src=Path(
                             self._get_docker_host_mount_location(
-                                self.ssh_command_runner.cluster_name), mount),
+                                self.ssh_command_runner.cluster_name)
+                            ).joinpath(mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True
