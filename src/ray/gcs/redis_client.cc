@@ -86,7 +86,8 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
     int port;
     ss >> port;
     ports->emplace_back(port);
-    RAY_LOG(DEBUG) << "Received Redis shard address " << addr << ":" << port
+    RAY_LOG(DEBUG)
+        << "Received Redis shard address " << addr << ":" << port
         << " from head GCS.";
   }
   freeReplyObject(reply);
