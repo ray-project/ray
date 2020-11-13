@@ -285,20 +285,34 @@ void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
 }
 
 template <typename RedisContext, typename RedisConnectFunction>
+Status ConnectWithoutRetries(const std::string &address, int port,
+                             const RedisConnectFunction &connect_function,
+                             RedisContext **context,
+                             std::string &errorMessage) {
+  *context = connect_function(address.c_str(), port);
+  if (*context == nullptr || (*context)->err) {
+    ostringstream oss(errorMessage);
+    if (*context == nullptr) {
+      oss << "Could not allocate Redis context."
+    } else if ((*context)->err) {
+      oss << "Could not establish connection to Redis " << address << ":"
+          << port << " (context.err = " << (*context)->err << ")";
+    }
+    return Status::RedisError();
+  }
+  return Status::OK();
+}
+
+template <typename RedisContext, typename RedisConnectFunction>
 Status ConnectWithRetries(const std::string &address, int port,
                           const RedisConnectFunction &connect_function,
                           RedisContext **context) {
   int connection_attempts = 0;
-  *context = connect_function(address.c_str(), port);
-  while (*context == nullptr || (*context)->err) {
+  std::string errorMessage = "";
+  Status status = ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
+  while (status != Status::OK()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
-      if (*context == nullptr) {
-        RAY_LOG(FATAL) << "Could not allocate redis context.";
-      }
-      if ((*context)->err) {
-        RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":"
-                       << port << " (context.err = " << (*context)->err << ")";
-      }
+      RAY_LOG(FATAL) << errorMessage;
       break;
     }
     if (*context == nullptr) {
@@ -312,7 +326,7 @@ Status ConnectWithRetries(const std::string &address, int port,
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));
-    *context = connect_function(address.c_str(), port);
+    status = ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
     connection_attempts += 1;
   }
   return Status::OK();
