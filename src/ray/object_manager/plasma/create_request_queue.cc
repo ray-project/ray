@@ -29,7 +29,9 @@ void CreateRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &clie
 }
 
 Status CreateRequestQueue::ProcessRequest(const CreateObjectCallback &request_callback) {
-  bool reply_on_oom = num_retries_ >= max_retries_;
+  // Return an OOM error to the client if we have hit the maximum number of
+  // retries.
+  bool reply_on_oom = (max_retries_ != -1 && num_retries_ >= max_retries_);
   bool evict_if_full = evict_if_full_;
   if (max_retries_ == 0) {
     // If we cannot retry, then always evict on the first attempt.

@@ -35,7 +35,9 @@ class CreateRequestQueue {
       std::function<void()> on_store_full)
     : max_retries_(max_retries),
       evict_if_full_(evict_if_full),
-      on_store_full_(on_store_full) {}
+      on_store_full_(on_store_full) {
+        RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_ << " retries on OOM, evict if full? " << (evict_if_full_ ? 1 : 0);
+      }
 
   /// Add a request to the queue.
   ///
