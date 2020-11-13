@@ -2,7 +2,6 @@ from filelock import FileLock
 from threading import RLock
 from pathlib import Path
 import json
-import os
 import socket
 import logging
 

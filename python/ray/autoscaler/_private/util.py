@@ -16,8 +16,8 @@ from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
-RAY_SCHEMA_PATH = Path(ray.autoscaler.__file__).parent.joinpath(
-                    "ray-schema.json")
+RAY_SCHEMA_PATH = Path(
+    ray.autoscaler.__file__).parent.joinpath("ray-schema.json")
 
 # Internal kv keys for storing debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"

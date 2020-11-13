@@ -227,8 +227,8 @@ def _bootstrap_config(config: Dict[str, Any],
 
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
-    cache_key = Path(tempfile.gettempdir()).joinpath(
-                             "ray-config-{}".format(hasher.hexdigest()))
+    cache_key = Path(tempfile.gettempdir()).joinpath("ray-config-{}".format(
+        hasher.hexdigest()))
 
     if Path(cache_key).exists() and not no_config_cache:
         config_cache = json.loads(open(cache_key).read())
