@@ -1,6 +1,7 @@
 from getpass import getuser
 from shlex import quote
 from typing import Dict
+from pathlib import Path
 import click
 import hashlib
 import json
@@ -32,8 +33,10 @@ logger = logging.getLogger(__name__)
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 HASH_MAX_LENGTH = 10
-KUBECTL_RSYNC = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
+KUBECTL_RSYNC = Path(__file__).resolve() \
+                    .parent() \
+                    .joinpath(
+                        "kubernetes/kubectl-rsync.sh")
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 

@@ -11,7 +11,7 @@ as well as indentation and other structured output.
 import sys
 import logging
 import inspect
-import os
+from pathlib import PurePath
 
 from typing import Any, Dict, Tuple, Optional, List
 
@@ -141,7 +141,7 @@ def _external_caller_info():
         levels += 1
     return {
         "lineno": caller.f_lineno,
-        "filename": os.path.basename(caller.f_code.co_filename)
+        "filename": PurePath(caller.f_code.co_filename).name
     }
 
 

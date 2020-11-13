@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 import json
-import os
+from pathlib import Path
 import tempfile
 
 from ray.autoscaler._private import commands
@@ -209,7 +209,7 @@ def _as_config_file(cluster_config: Union[dict, str]) -> Iterator[str]:
         tmp.write(json.dumps(cluster_config))
         tmp.flush()
         cluster_config = tmp.name
-    if not os.path.exists(cluster_config):
+    if not Path(cluster_config).exists():
         raise ValueError("Cluster config not found {}".format(cluster_config))
     yield cluster_config
 
