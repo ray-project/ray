@@ -43,6 +43,7 @@ class RandomEndpointPolicy(EndpointPolicy):
     """
     A stateless policy that makes a weighted random decision to map each query
     to a backend using the specified weights.
+
     If a shard key is provided in a query, the weighted random selection will
     be made deterministically based on the hash of the shard key.
     """

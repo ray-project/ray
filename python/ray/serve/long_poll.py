@@ -32,7 +32,9 @@ class LongPollerAsyncClient:
     the next poll.
 
     Args:
-        host_actor(ray.ActorHandle): a
+        host_actor(ray.ActorHandle): handle to actor embedding LongPollerHost.
+        key_listeners(Dict[str, AsyncCallable]): a dictionary mapping keys to
+          callbacks to be called on state update for the corresponding keys.
     """
 
     def __init__(self, host_actor,
