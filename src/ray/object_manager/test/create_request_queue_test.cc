@@ -81,6 +81,38 @@ TEST(CreateRequestQueueTest, TestOom) {
   ASSERT_EQ(num_store_full, 2);
 }
 
+TEST(CreateRequestQueueTest, TestOomInfiniteRetry) {
+  int num_store_full = 0;
+  CreateRequestQueue queue(
+      /*max_retries=*/-1,
+      /*evict_if_full=*/true,
+      /*on_store_full=*/[&]() { num_store_full++; });
+
+  int num_created = 0;
+  auto oom_request = [&](bool reply_on_oom, bool evict_if_full) {
+    if (reply_on_oom) {
+      num_created++;
+      return Status();
+    } else {
+      return Status::ObjectStoreFull("");
+    }
+  };
+  auto blocked_request = [&](bool reply_on_oom, bool evict_if_full) {
+    num_created++;
+    return Status();
+  };
+
+  auto client = std::make_shared<MockClient>();
+  queue.AddRequest(client, oom_request);
+  queue.AddRequest(client, blocked_request);
+
+  for (int i = 0; i < 3; i++) {
+    ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
+    ASSERT_EQ(num_created, 0);
+    ASSERT_EQ(num_store_full, i + 1);
+  }
+}
+
 TEST(CreateRequestQueueTest, TestTransientOom) {
   int num_store_full = 0;
   CreateRequestQueue queue(
