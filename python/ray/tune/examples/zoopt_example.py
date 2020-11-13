@@ -34,7 +34,7 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    tune_kwargs = {}
+    num_samples = 10 if args.smoke_test else 1000
 
     # Optional: Pass the parameter space yourself
     # space = {
@@ -52,10 +52,8 @@ if __name__ == "__main__":
 
     zoopt_search = ZOOptSearch(
         algo="Asracos",  # only support ASRacos currently
-        budget=tune_kwargs["num_samples"],
+        budget=num_samples,
         # dim_dict=space,  # If you want to set the space yourself
-        metric="mean_loss",
-        mode="min",
         **zoopt_search_config)
 
     scheduler = AsyncHyperBandScheduler()
@@ -67,7 +65,7 @@ if __name__ == "__main__":
         search_alg=zoopt_search,
         name="zoopt_search",
         scheduler=scheduler,
-        num_samples=10 if args.smoke_test else 1000,
+        num_samples=num_samples,
         config={
             "steps": 10,
             "height": tune.quniform(-10, 10, 1e-2),

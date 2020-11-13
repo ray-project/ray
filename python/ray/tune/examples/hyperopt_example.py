@@ -49,7 +49,6 @@ if __name__ == "__main__":
         }
     ]
 
-    tune_kwargs = {}
     algo = HyperOptSearch(points_to_evaluate=current_best_params)
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
 

@@ -37,8 +37,6 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    tune_kwargs = {}
-
     # Optional: Pass the parameter space yourself
     # space = [{
     #     "name": "LiNO3_vol",

@@ -49,8 +49,6 @@ if __name__ == "__main__":
         },
     ]
 
-    config = {}
-
     algo = SigOptSearch(
         space,
         name="SigOpt Example Multi Objective Experiment",

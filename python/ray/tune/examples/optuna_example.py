@@ -36,7 +36,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init(configure_logging=False)
 
-    tune_kwargs = {}
     algo = OptunaSearch()
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()

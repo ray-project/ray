@@ -51,7 +51,6 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    tune_kwargs = {}
     algo = AxSearch(
         max_concurrent=4,
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.

@@ -35,7 +35,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     # The config will be automatically converted to SkOpt's search space
-    tune_kwargs = {}
 
     # Optional: Pass the parameter space yourself
     # space = {

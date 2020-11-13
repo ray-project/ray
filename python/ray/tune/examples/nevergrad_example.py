@@ -35,9 +35,6 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    # The config will be automatically converted to Nevergrad's search space
-    tune_kwargs = {}
-
     # Optional: Pass the parameter space yourself
     # space = ng.p.Dict(
     #     width=ng.p.Scalar(lower=0, upper=20),

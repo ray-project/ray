@@ -34,7 +34,6 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    tune_kwargs = {}
     algo = BayesOptSearch(utility_kwargs={
         "kind": "ucb",
         "kappa": 2.5,
