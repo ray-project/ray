@@ -3401,6 +3401,7 @@ bool NodeManager::ReturnBundleResources(const BundleSpecification &bundle_spec) 
     CommitBundle(cluster_resource_map_, bundle_spec);
   }
   bundle_state_map_.erase(it);
+  bundle_spec_map_.erase(bundle_spec.BundleId());
 
   // Return resources.
   const auto &resource_set = bundle_spec.GetRequiredResources();
