@@ -18,9 +18,6 @@ if __name__ == "__main__":
         ray.init()
 
     pbt = PB2(
-        time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=20,
         hyperparam_bounds={
             # hyperparameter bounds.
@@ -31,6 +28,8 @@ if __name__ == "__main__":
         pbt_function,
         name="pbt_test",
         scheduler=pbt,
+        metric="mean_accuracy",
+        mode="max",
         verbose=False,
         stop={
             "training_iteration": 30,

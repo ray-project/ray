@@ -40,11 +40,14 @@ if __name__ == "__main__":
     analysis = tune.run(
         easy_objective,
         name="hyperband_test",
+        metric="mean_loss",
+        mode="min",
         num_samples=5,
         trial_name_creator=trial_str_creator,
         loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
+            "steps": 100,
             "width": tune.randint(10, 100),
             "height": tune.loguniform(10, 100)
         })

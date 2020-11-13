@@ -27,7 +27,7 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer,
                                  MockNodeSyncer, mock_storage_client,
-                                 MOCK_REMOTE_DIR)
+                                 MOCK_REMOTE_DIR, MyTrainableClass)
 
 
 def _check_trial_running(trial):
@@ -746,7 +746,6 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
     local_checkpoint_dir = os.path.join(dirpath, "experiment")
-    from ray.tune.examples.async_hyperband_example import MyTrainableClass
     from ray.tune import register_trainable
     register_trainable("trainable", MyTrainableClass)
 

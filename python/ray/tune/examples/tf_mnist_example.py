@@ -118,6 +118,8 @@ if __name__ == "__main__":
     load_data()  # we download data on the driver to avoid race conditions.
     analysis = tune.run(
         MNISTTrainable,
+        metric="test_loss",
+        mode="min",
         stop={"training_iteration": 5 if args.smoke_test else 50},
         verbose=1,
         config={"hiddens": tune.grid_search([32, 64, 128])})

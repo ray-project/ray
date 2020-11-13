@@ -2,7 +2,7 @@ import os
 import argparse
 
 from ray.tune import run
-from ray.tune.examples.async_hyperband_example import MyTrainableClass
+from ray.tune.utils.mock import MyTrainableClass
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
 
