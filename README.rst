@@ -250,9 +250,9 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 
     # Deploy model
-    serve.init()
-    serve.create_backend("iris:v1", BoostingModel)
-    serve.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
+    client = serve.start()
+    client.create_backend("iris:v1", BoostingModel)
+    client.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
 
     # Query it!
     sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}
