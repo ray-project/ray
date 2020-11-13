@@ -248,7 +248,8 @@ class ModelV2:
             states.append(input_dict["state_in_{}".format(i)])
             i += 1
         ret = self.__call__(input_dict, states, input_dict.get("seq_lens"))
-        del train_batch["is_training"]
+        #assert "is_training" not in train_batch#TODO: remove line
+        #del train_batch["is_training"]
         return ret
 
     # TODO: (sven) Experimental method.

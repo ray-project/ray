@@ -255,18 +255,21 @@ class SampleBatch:
             data = {k: v[start:end] for k, v in self.data.items()}
             # Fix state_in_x data.
             count = 0
-            state_start = state_end = None
+            state_start = None
             for i, seq_len in enumerate(self.seq_lens):
                 count += seq_len
                 if count >= end:
-                    state_end = i + 1
+                    data["state_in_0"] = self.data["state_in_0"][
+                                         state_start:i + 1]
+                    seq_lens = self.seq_lens[state_start:i] + [seq_len - (count - end)]
+                    assert sum(seq_lens) == (end - start)
                     break
-                elif state_start is None and count >= start:
+                elif state_start is None and count > start:
                     state_start = i
-            data["state_in_0"] = self.data["state_in_0"][state_start:state_end]
+
             return SampleBatch(
                 data,
-                _seq_lens=self.seq_lens[state_start:state_end],
+                _seq_lens=seq_lens,
                 _time_major=self.time_major,
                 _dont_check_lens=True)
         else:

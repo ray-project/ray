@@ -194,6 +194,7 @@ def build_eager_tf_policy(name,
                           action_sampler_fn=None,
                           action_distribution_fn=None,
                           mixins=None,
+                          view_requirements_fn=None,
                           obs_include_prev_action_reward=True,
                           get_batch_divisibility_req=None):
     """Build an eager TF policy.
@@ -264,6 +265,9 @@ def build_eager_tf_policy(name,
                 for s in self.model.get_initial_state()
             ]
 
+            # Update this Policy's ViewRequirements (if function given).
+            if callable(view_requirements_fn):
+                self.view_requirements.update(view_requirements_fn(self))
             # Combine view_requirements for Model and Policy.
             self.view_requirements.update(
                 self.model.inference_view_requirements)
@@ -576,6 +580,7 @@ def build_eager_tf_policy(name,
             """Computes and returns grads as eager tensors."""
 
             self._is_training = True
+            samples["is_training"] = True
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
                 # TODO: set seq len and state-in properly

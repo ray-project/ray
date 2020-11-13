@@ -182,7 +182,7 @@ class _AgentCollector:
             # Single index.
             else:
                 shift = view_req.data_rel_pos + obs_shift
-                if shift == 0:
+                if shift >= 0:
                     data = np_data[data_col][self.shift_before:]
                 else:
                     data = np_data[data_col][self.shift_before + shift:shift]
