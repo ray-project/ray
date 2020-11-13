@@ -984,7 +984,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
       RAY_LOG(DEBUG) << "Received create request for object " << GetCreateRequestObjectId(message);
-      create_request_queue_.AddRequest(client, [this, message](const std::shared_ptr<Client> &client, bool reply_on_oom, bool evict_if_full) {
+      create_request_queue_.AddRequest(client, [this, client, message](bool reply_on_oom, bool evict_if_full) {
             return HandleCreateObjectRequest(client, message, reply_on_oom, evict_if_full);
           });
       ProcessCreateRequests();
@@ -1105,70 +1105,6 @@ void PlasmaStore::ProcessCreateRequests() {
           create_timer_ = nullptr;
           ProcessCreateRequests();
         }, retry_after_ms);
-  }
-}
-
-void CreateRequestQueue::AddRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {
-  queue_.push_back({client, request_callback});
-}
-
-Status CreateRequestQueue::ProcessRequest(const std::shared_ptr<Client> &client, const CreateObjectCallback &request_callback) {
-  bool reply_on_oom = num_retries_ >= max_retries_;
-  bool evict_if_full = evict_if_full_;
-  if (max_retries_ == 0) {
-    // If we cannot retry, then always evict on the first attempt.
-    evict_if_full = true;
-  } else if (num_retries_ > 0) {
-    // Always try to evict after the first attempt.
-    evict_if_full = true;
-  }
-  auto status = request_callback(client, reply_on_oom, evict_if_full);
-
-  if (status.IsTransientObjectStoreFull()) {
-    // The object store is full, but we should wait for space to be made
-    // through spilling, so do nothing. The caller must guarantee that
-    // ProcessRequests is called again so that we can try this request again.
-    // NOTE(swang): There could be other requests behind this one that are
-    // actually serviceable. This may be inefficient, but eventually this
-    // request will get served and unblock the following requests, once
-    // enough objects have been spilled.
-    // TODO(swang): Ask the raylet to spill enough space for multiple requests
-    // at once, instead of just the head of the queue.
-    num_retries_ = 0;
-  } else if (status.IsObjectStoreFull()) {
-    num_retries_++;
-    RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_ << " tries";
-    if (on_store_full_) {
-      on_store_full_();
-    }
-  } else {
-    // We have replied to the client.
-    num_retries_ = 0;
-  }
-
-  return status;
-}
-
-Status CreateRequestQueue::ProcessRequests() {
-  for (auto request_it = queue_.begin();
-      request_it != queue_.end(); ) {
-    auto status = ProcessRequest(request_it->first, request_it->second);
-    if (!status.ok()) {
-      return status;
-    }
-    request_it = queue_.erase(request_it);
-  }
-  return Status::OK();
-}
-
-
-void CreateRequestQueue::RemoveDisconnectedClientRequests(const std::shared_ptr<Client> &client) {
-  for (auto it = queue_.begin(); it != queue_.end(); ) {
-    if (it->first == client) {
-      it = queue_.erase(it);
-    } else {
-      it++;
-    }
   }
 }
 
