@@ -1,23 +1,26 @@
-import numpy as np
 import os
+
+import numpy as np
 import pytest
 import torch
-import torch.nn as nn
 import torch.distributed as dist
-from ray.tune.utils import merge_dicts
+import torch.nn as nn
 from torch.utils.data import DataLoader
 
 import ray
+import ray.util.data as ml_data
+import ray.util.iter as parallel_it
 from ray import tune
-from ray.util.sgd.torch import TorchTrainer
-from ray.util.sgd.torch.training_operator import (
-    get_test_operator, get_test_metrics_operator, TrainingOperator)
-from ray.util.sgd.torch.constants import SCHEDULER_STEP
-from ray.util.sgd.utils import (NUM_SAMPLES, BATCH_COUNT, BATCH_SIZE)
-
+from ray.tune.utils import merge_dicts
+from ray.util.data.examples.mlp_identity_torch import make_train_operator
 from ray.util.sgd.data.examples import mlp_identity
+from ray.util.sgd.torch import TorchTrainer
+from ray.util.sgd.torch.constants import SCHEDULER_STEP
 from ray.util.sgd.torch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
+from ray.util.sgd.torch.training_operator import (
+    get_test_operator, get_test_metrics_operator, TrainingOperator)
+from ray.util.sgd.utils import (NUM_SAMPLES, BATCH_COUNT, BATCH_SIZE)
 
 
 @pytest.fixture
@@ -831,6 +834,24 @@ def test_multi_input_model(ray_start_2_cpus, use_local):
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
 
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("use_local", [True, False])
+def test_torch_dataset(ray_start_4_cpus, use_local):
+    para_it = parallel_it.from_range(32 * 100 * 2, 2, False).for_each(lambda x: [x, x])
+    ds = ml_data.from_parallel_iter(para_it, batch_size=32)
+
+    torch_ds = ds.to_torch(feature_columns=[0], feature_types=1)
+    operator = get_test_operator(make_train_operator(torch_ds))
+    trainer = TorchTrainer(
+        training_operator_cls=operator, num_workers=2,
+        use_local=use_local, config={"batch_size": 32})
+    for i in range(5):
+        trainer.train(num_steps=100)
+
+    prediction = float(trainer.get_model()(0.5)[0][0])
+    assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
 
 

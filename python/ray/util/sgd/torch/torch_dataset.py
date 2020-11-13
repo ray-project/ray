@@ -12,9 +12,9 @@ from torch.utils.data import IterableDataset
 from ray.util.data.dataset import MLDataset
 
 
-def convert_to_tensor(df, feature_columns: List[str],
+def convert_to_tensor(df, feature_columns: List[Any],
                       feature_shapes: List[Any],
-                      feature_types: List[torch.dtype], label_column: str,
+                      feature_types: List[torch.dtype], label_column: Any,
                       label_shape: Optional[int], label_type: torch.dtype):
     feature_tensor = []
     for col, shape, dtype in zip(feature_columns, feature_shapes,
@@ -46,10 +46,10 @@ def convert_to_tensor(df, feature_columns: List[str],
 class TorchDataset:
     def __init__(self,
                  ds: MLDataset = None,
-                 feature_columns: List[str] = None,
+                 feature_columns: List[Any] = None,
                  feature_shapes: Optional[List[Any]] = None,
                  feature_types: Optional[List[torch.dtype]] = None,
-                 label_column: str = None,
+                 label_column: Any = None,
                  label_shape: Optional[int] = None,
                  label_type: Optional[torch.dtype] = None):
 
@@ -113,8 +113,8 @@ class TorchDataset:
                   shuffle_buffer_size: int = 1,
                   seed: int = None) -> torch.utils.data.IterableDataset:
 
-        it = self._ds.get_repeat_shard(shard_index, batch_ms, num_async,
-                                       shuffle, shuffle_buffer_size, seed)
+        it = self._ds.get_repeatable_shard(shard_index, batch_ms, num_async,
+                                           shuffle, shuffle_buffer_size, seed)
         convert_fn = functools.partial(
             convert_to_tensor,
             feature_columns=self._feature_columns,
@@ -127,7 +127,7 @@ class TorchDataset:
 
 
 class TorchIterableDataset(IterableDataset):
-    def __init__(self, it: Iterator[DataFrame],
+    def __init__(self, it: Iterator,
                  convert_fn: Callable[[DataFrame], Any]):
         super().__init__()
         self._it = it

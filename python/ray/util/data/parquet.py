@@ -90,4 +90,4 @@ def read_parquet(paths: Union[str, List[str]],
     for i, shard in enumerate(shards):
         shards[i] = ParquetSourceShard(shard, columns, pq_ds.partitions, i)
     it = para_iter.from_iterators(shards, False, "parquet")
-    return MLDataset.from_parallel_it(it, batch_size=0)
+    return MLDataset.from_parallel_it(it, batch_size=0, repeated=False)

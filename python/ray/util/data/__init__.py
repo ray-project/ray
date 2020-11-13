@@ -53,18 +53,19 @@ def to_pandas(it: ParallelIterator[T],
                 batch = pd.DataFrame(values, columns=names)
             else:
                 raise ValueError(
-                    "DistributedDataset only support list like "
-                    "item or dataclass instance")
+                    "MLDataset only support list like item or dataclass instance")
 
             yield batch
 
-    it = it.transform(convert_fn)
+    it = it._with_transform(
+        lambda local_it: local_it.transform(convert_fn), ".to_pandas()")
     return it
 
 
 def from_parallel_iter(para_it: ParallelIterator[T],
                        need_convert: bool = True,
-                       batch_size: int = 32) -> MLDataset:
+                       batch_size: int = 32,
+                       repeated: bool = False) -> MLDataset:
     """Create a MLDataset from an existing ParallelIterator.
 
     The object of the ParallelIterator should be list like object or dataclass
@@ -77,6 +78,7 @@ def from_parallel_iter(para_it: ParallelIterator[T],
             should be False if the record type is pandas.DataFrame.
         batch_size (int): if need_convert is True, we will batch the batch_size
             records to a pandas.DataFrame
+        repeated (bool): whether the para_it is repeated.
     Returns:
         a MLDataset
     """
@@ -86,7 +88,7 @@ def from_parallel_iter(para_it: ParallelIterator[T],
     else:
         batch_size = 0
 
-    return MLDataset.from_parallel_it(para_it, batch_size)
+    return MLDataset.from_parallel_it(para_it, batch_size, repeated)
 
 
 def from_source_shards(source_shards: List[SourceShard],
@@ -106,7 +108,7 @@ def from_source_shards(source_shards: List[SourceShard],
     for i, shard in shards:
         shards[i] = make_gen(shard)
     it = parallel_it.from_iterators(shards, False, name)
-    return MLDataset.from_parallel_it(it, batch_size)
+    return MLDataset.from_parallel_it(it, batch_size, False)
 
 
 __all__ = [

@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import Any, List, Optional
 
 import tensorflow as tf
 
@@ -7,11 +7,33 @@ from ray.util.data.dataset import MLDataset
 
 
 class TFDataset:
-    def __init__(self, pandas_ds: MLDataset,
-                 feature_columns: List[str],
-                 feature_shapes: List[tf.TensorShape],
-                 feature_types: List[tf.DType], label_column: str,
-                 label_shape: tf.TensorShape, label_type: tf.DType):
+    """ A TFDataset which converted from MLDataset
+
+    .. code-block:: python
+
+        ds = ml_dataset.to_tf(feature_columns=["x"], label_column="y")
+        shard = ds.get_shard(0) # the data as (x_value, y_value)
+
+        ds = ml_dataset.to_tf(feature_columns=["x, y"], label_column="z")
+        shard = ds.get_shard(0) # the data as ((x_value, y_value), z_value)
+
+
+    Args:
+        ds (MLDataset): a MLDataset
+        feature_columns (List[Any]): the feature columns' name
+        feature_shapes (Optional[List[tf.TensorShape]]): the shape for each
+            feature. If provide, it should match the size of feature_columns
+        feature_types (Optional[List[tf.DType]]): the data type for each
+            feature. If provide, it should match the size of feature_columns
+        label_column (Any): the label column name
+        label_shape (Optional[tf.TensorShape]): the shape for the label data
+        label_type (Optional[tf.DType]): the data type for the label data
+    """
+    def __init__(self, ds: MLDataset,
+                 feature_columns: List[Any],
+                 feature_shapes: Optional[List[tf.TensorShape]],
+                 feature_types: Optional[List[tf.DType]], label_column: Any,
+                 label_shape: Optional[tf.TensorShape], label_type: Optional[tf.DType]):
 
         self._feature_columns = feature_columns
         self._feature_shapes = feature_shapes
@@ -22,7 +44,7 @@ class TFDataset:
 
         self._check_and_convert()
 
-        self._ds = pandas_ds
+        self._ds = ds
 
     def _check_and_convert(self):
         # convert to list for convenience
@@ -62,7 +84,7 @@ class TFDataset:
 
     def set_num_shards(self, num_shards):
         """
-        Reshards the iterator if necessary.
+        Repartition the MLDataset to given number of shards.
         """
         if num_shards != self._ds.num_shards():
             logging.info("Setting num shards", num_shards)
@@ -72,13 +94,18 @@ class TFDataset:
                   shard_index: int,
                   batch_ms: int = 0,
                   num_async: int = 1,
-                  repeat: bool = True,
                   shuffle: bool = False,
                   shuffle_buffer_size: int = 1,
                   seed: int = None) -> "tf.data.Dataset":
-        def make_generator():
-            it = self._ds.get_repeat_shard(shard_index, batch_ms, num_async,
+        """
+        Get a the given shard data from MLDataset and convert into a
+        tensorflow.data.Dataset. If the shard_index is smaller than zero,
+        it will collect all data as a tensorflow.data.Dataset.
+        """
+        it = self._ds.get_repeatable_shard(shard_index, batch_ms, num_async,
                                            shuffle, shuffle_buffer_size, seed)
+
+        def make_generator():
             for df in iter(it):
                 num_rows = df.shape[0]
                 feature_columns = [
@@ -87,17 +114,24 @@ class TFDataset:
                 label_column = df[self._label_column].values
                 for i in range(num_rows):
                     features = [f[i] for f in feature_columns]
-                    yield tuple(features), label_column[i]
+                    if len(features) > 1:
+                        yield tuple(features), label_column[i]
+                    else:
+                        yield features[0], label_column[i]
 
         output_shapes = self._feature_shapes.copy()
-        output_shapes = (tuple(output_shapes), self._label_shape)
+        if len(output_shapes) > 1:
+            output_shapes = (tuple(output_shapes), self._label_shape)
+        else:
+            output_shapes = (output_shapes[0], self._label_shape)
 
         output_types = self._feature_types.copy()
-        output_types = (tuple(output_types), self._label_type)
+        if len(output_types) > 1:
+            output_types = (tuple(output_types), self._label_type)
+        else:
+            output_types = output_types[0], self._label_type
         ds = tf.data.Dataset.from_generator(
             make_generator,
             output_types=output_types,
             output_shapes=output_shapes)
-        if repeat:
-            ds = ds.repeat()
         return ds

@@ -2,13 +2,12 @@ import random
 from typing import Callable, List, Union, Iterable, Iterator
 
 import pandas as pd
-from pandas import DataFrame
 
 from ray.util.iter import (_ActorSet, _NextValueNotReady, LocalIterator,
                            ParallelIterator, T, U)
 
 
-class MLDataset(ParallelIterator[DataFrame]):
+class MLDataset(ParallelIterator[pd.DataFrame]):
     """ A distributed ML dataset implemented based on ParallelIterator
 
     All item should be a list like object or dataclass instance.
@@ -21,7 +20,7 @@ class MLDataset(ParallelIterator[DataFrame]):
     def __init__(self,
                  actor_sets: List["_ActorSet"],
                  name: str,
-                 parent_iterators: List[ParallelIterator[DataFrame]],
+                 parent_iterators: List[ParallelIterator[pd.DataFrame]],
                  batch_size: int,
                  repeated: bool):
         super(MLDataset, self).__init__(actor_sets, name, parent_iterators)
@@ -29,9 +28,9 @@ class MLDataset(ParallelIterator[DataFrame]):
         self._repeated = repeated
 
     @staticmethod
-    def from_parallel_it(para_it: ParallelIterator[DataFrame],
+    def from_parallel_it(para_it: ParallelIterator[pd.DataFrame],
                          batch_size: int,
-                         repeated: bool) -> "MLDataset":
+                         repeated: bool = False) -> "MLDataset":
         """
         Create a MLDataset from an existing parallel iterator and each
         object is a pandas.DataFrame
@@ -64,7 +63,7 @@ class MLDataset(ParallelIterator[DataFrame]):
         return MLDataset.from_parallel_it(
             para_it, self._batch_size, self._repeated)
 
-    def transform(self, fn: Callable[[Iterable[DataFrame]], Iterable[DataFrame]]
+    def transform(self, fn: Callable[[Iterable[pd.DataFrame]], Iterable[pd.DataFrame]]
                   ) -> "MLDataset":
         """
         Apply the fn function to the MLDataset
@@ -88,38 +87,38 @@ class MLDataset(ParallelIterator[DataFrame]):
         if batch_size == self._batch_size:
             return self
 
-        def batch_fn(it: Iterable[DataFrame]) -> Iterable[DataFrame]:
+        def batch_fn(it: Iterable[pd.DataFrame]) -> Iterable[pd.DataFrame]:
             it = iter(it)
-            cur_df = None
-            cur_index = 0
-            cur_size = 0
             return_df = None
             while True:
                 try:
                     cur_df = next(it)
-                    while cur_df or (cur_index + batch_size) < cur_size:
-                        if not cur_df or cur_index == cur_size:
+                    cur_index = 0
+                    cur_size = cur_df.shape[0]
+                    while cur_df is not None or (cur_index + batch_size) < cur_size:
+                        if cur_df is None or cur_index == cur_size:
                             cur_df = next(it)
                             cur_index = 0
                             cur_size = cur_df.shape[0]
-                        if return_df:
+                        if return_df is not None:
                             ri = cur_index + batch_size - return_df.shape[0]
                             ri = min(ri, cur_size)
-                            tmp = cur_df.iloc[cur_index, ri]
+                            tmp = cur_df.iloc[cur_index: ri]
                             return_df = pd.concat([return_df, tmp])
                             cur_index = ri
                         else:
                             ri = cur_index + batch_size
                             ri = min(ri, cur_size)
-                            return_df = cur_df.iloc[cur_index:ri]
+                            return_df = cur_df.iloc[cur_index: ri]
                             cur_index = ri
                         if return_df.shape[0] == batch_size:
+                            return_df.index = range(return_df.shape[0])
                             yield return_df
                             return_df = None
                 except StopIteration:
                     break
 
-            if return_df:
+            if return_df is not None:
                 return_df.index = range(return_df.shape[0])
                 yield return_df
 
@@ -134,8 +133,13 @@ class MLDataset(ParallelIterator[DataFrame]):
     def combine(self, fn: Callable[[T], List[U]]) -> "MLDataset":
         raise Exception("Unsupported operation")
 
+    @property
     def repeated(self) -> bool:
         return self._repeated
+
+    @property
+    def batch_size(self) -> bool:
+        return self._batch_size
 
     def local_shuffle(self, shuffle_buffer_size: int,
                       seed: int = None) -> "MLDataset":
@@ -146,7 +150,7 @@ class MLDataset(ParallelIterator[DataFrame]):
         """
         ds = super().local_shuffle(shuffle_buffer_size, seed)
 
-        def shuffle_fn(it: Iterable[DataFrame]) -> Iterable[DataFrame]:
+        def shuffle_fn(it: Iterable[pd.DataFrame]) -> Iterable[pd.DataFrame]:
             for df in it:
                 df = df.sample(frac=1, random_state=seed)
                 yield df
@@ -171,11 +175,11 @@ class MLDataset(ParallelIterator[DataFrame]):
             raise TypeError(
                 f"other must be of type MLDataset, got {type(other)}")
 
-        if self._repeated != other.repeated():
+        if self._repeated != other.repeated:
             raise TypeError(
                 f"want to union two MLDataset which have different repeated "
                 f"type, self repeated: {self._repeated}, other repeated: "
-                f"{other.repeated()}"
+                f"{other.repeated}"
             )
 
         batch_size = 0
@@ -200,26 +204,26 @@ class MLDataset(ParallelIterator[DataFrame]):
         return MLDataset.from_parallel_it(
             para_it, self._batch_size, self._repeated)
 
-    def get_repeat_shard(self,
-                         index: int,
-                         batch_ms: int = 0,
-                         num_async: int = 1,
-                         shuffle: bool = False,
-                         shuffle_buffer_size: int = 1,
-                         seed: int = None) -> Iterator[DataFrame]:
+    def get_repeatable_shard(self,
+                             index: int,
+                             batch_ms: int = 0,
+                             num_async: int = 1,
+                             shuffle: bool = False,
+                             shuffle_buffer_size: int = 1,
+                             seed: int = None) -> Iterator:
         """
         Get the given shard of the current dataset. The return is a iterator.
         We support shuffle the return iterator when each call iter on the
         return.
         Args:
-            index (int): the shard index id
+            index (int): the shard index id, -1 means collect all data.
             batch_ms (int): Batches items for batch_ms milliseconds
-                before retrieving it.
-                Increasing batch_ms increases latency but improves throughput.
-                If this value is 0, then items are returned immediately.
-            num_async (int): The max number of requests in flight.
-                Increasing this improves the amount of pipeline
-                parallelism in the iterator.
+                before retrieving it. Increasing batch_ms increases latency
+                but improves throughput. If this value is 0, then items are
+                returned immediately.
+            num_async (int): The max number of requests in flight. Increasing
+                this improves the amount of pipeline parallelism in the
+                iterator.
             shuffle (bool): whether shuffle the given shard data
             shuffle_buffer_size (int): same as ParallelIterator.local_shuffle
             seed (int): the random seed
@@ -238,11 +242,9 @@ class MLDataset(ParallelIterator[DataFrame]):
                  label_shape=None,
                  label_type=None):
         """
-        Create a TorchDataset from the current DistributedDataset.
+        Create a TorchDataset from the current MLDataset.
         Args:
-            feature_columns (List[Union[int, str]]): the column indexes
-                name. This is a list of int if the record is list like object.
-                This is a list of str if the record is dataclass instance.
+            feature_columns (List[Any]): the column indexes name.
             feature_shapes (Optional[List[Any]]): the feature shapes matching
                the feature columns. One row will packet into one torch.Tensor
                if this is not provided. Otherwise, each feature column will be
@@ -250,9 +252,7 @@ class MLDataset(ParallelIterator[DataFrame]):
             feature_types (Optional[List["torch.dtype"]]): the feature types
                matching the feature columns. All feature will be cast into
                torch.float by default. Otherwise, cast into the provided type.
-            label_column (Union[int, str]): the label index or name. This is a
-               int index if the record is list like object. It should be str if
-               the record is dataclass instance.
+            label_column (Any): the label name.
             label_shape (Optional[int]): the label shape.
             label_type (Optional["torch.dtype"]): the label type, this will be
                cast into torch.float by default
@@ -272,13 +272,9 @@ class MLDataset(ParallelIterator[DataFrame]):
               label_shape=None,
               label_type=None):
         """
-        Create a TFDataset from the current DistributedDataset. This will
-        convert to a PandasDistributedDataset first, and then convert a
-        TFDataset.
+        Create a TFDataset from the current MLDataset.
         Args:
-            feature_columns (List[Union[int, str]]): the column indexes
-                name. This is a list of int if the record is list like object.
-                This is a list of str if the record is dataclass instance.
+            feature_columns (List[Any]): the column names.
             feature_shapes (Optional[List[tf.TensorShape]]): the feature shapes
                 matching the feature columns. One row will packet into one
                 tf.Tensor if this is not provided. Otherwise, each feature
@@ -286,9 +282,7 @@ class MLDataset(ParallelIterator[DataFrame]):
             feature_types (Optional[List["tf.DType"]]): the feature types
                matching the feature columns. All feature will be cast into
                tf.float by default. Otherwise, cast into the provided type.
-            label_column (Union[int, str]): the label index or name. This is a
-               int index if the record is list like object. It should be str if
-               the record is dataclass instance.
+            label_column (Any): the label name.
             label_shape (Optional[tf.TensorShape]): the label shape.
             label_type (Optional["tf.DType"]): the label type, this will be
                cast into tf.float by default
@@ -307,14 +301,13 @@ class _RepeatableIterator(Iterator[T]):
     different order or data.
     Args:
         ds (MLDataset): a MLDataset
-        shard_index (int): the shard index id.
+        shard_index (int): the shard index id. -1 means collect all data.
         batch_ms (int): Batches items for batch_ms milliseconds
-                before retrieving it.
-                Increasing batch_ms increases latency but improves throughput.
-                If this value is 0, then items are returned immediately.
-        num_async (int): The max number of requests in flight.
-            Increasing this improves the amount of pipeline
-            parallelism in the iterator.
+            before retrieving it. Increasing batch_ms increases latency
+            but improves throughput. If this value is 0, then items are
+            returned immediately.
+        num_async (int): The max number of requests in flight. Increasing this
+            improves the amount of pipeline parallelism in the iterator.
         shuffle (bool): whether shuffle the given shard data
         shuffle_buffer_size (int): same as ParallelIterator.local_shuffle
         seed (int): the random seed
@@ -338,20 +331,31 @@ class _RepeatableIterator(Iterator[T]):
         self._seed = seed
         self._local_it: LocalIterator[T] = None
 
+        self._i = 0
+
     def __next__(self) -> T:
         assert self._local_it is not None
         return next(self._local_it)
 
     def __iter__(self) -> Iterator[T]:
-        it = self._ds.get_shard(self._shard_index, self._batch_ms,
-                                self._num_async)
+        if self._shard_index >= 0:
+            print("nnnnnnnnnnn", self._i)
+            self._i += 1
+            it = self._ds.get_shard(self._shard_index, self._batch_ms,
+                                    self._num_async)
+        else:
+            if self._num_async > 0:
+                it = self._ds.gather_async(batch_ms=self._batch_ms,
+                                           num_async=self._num_async)
+            else:
+                it = self._ds.gather_sync()
         if self._shuffle:
             it = self.shuffle(it)
 
         self._local_it = it
         return self
 
-    def shuffle(self, local_it: LocalIterator[T]) -> LocalIterator[DataFrame]:
+    def shuffle(self, local_it: LocalIterator[T]) -> LocalIterator[pd.DataFrame]:
         shuffle_random = random.Random(self._seed)
 
         def apply_shuffle(it):
