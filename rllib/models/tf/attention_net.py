@@ -9,6 +9,8 @@
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
 import numpy as np
+import gym
+from typing import Optional, Any
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
@@ -16,6 +18,7 @@ from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
 
 tf1, tf, tfv = try_import_tf()
 
@@ -28,7 +31,11 @@ class PositionwiseFeedforward(tf.keras.layers.Layer):
     layer separately.
     """
 
-    def __init__(self, out_dim, hidden_dim, output_activation=None, **kwargs):
+    def __init__(self,
+                 out_dim: int,
+                 hidden_dim: int,
+                 output_activation: Optional[Any] = None,
+                 **kwargs):
         super().__init__(**kwargs)
 
         self._hidden_layer = tf.keras.layers.Dense(
@@ -39,7 +46,7 @@ class PositionwiseFeedforward(tf.keras.layers.Layer):
         self._output_layer = tf.keras.layers.Dense(
             out_dim, activation=output_activation)
 
-    def call(self, inputs, **kwargs):
+    def call(self, inputs: TensorType, **kwargs) -> TensorType:
         del kwargs
         output = self._hidden_layer(inputs)
         return self._output_layer(output)
@@ -48,9 +55,11 @@ class PositionwiseFeedforward(tf.keras.layers.Layer):
 class TrXLNet(RecurrentNetwork):
     """A TrXL net Model described in [1]."""
 
-    def __init__(self, observation_space, action_space, num_outputs,
-                 model_config, name, num_transformer_units, attn_dim,
-                 num_heads, head_dim, ff_hidden_dim):
+    def __init__(self, observation_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str,
+                 num_transformer_units: int, attn_dim: int, num_heads: int,
+                 head_dim: int, ff_hidden_dim: int):
         """Initializes a TfXLNet object.
 
         Args:
@@ -109,7 +118,8 @@ class TrXLNet(RecurrentNetwork):
         self.register_variables(self.base_model.variables)
 
     @override(RecurrentNetwork)
-    def forward_rnn(self, inputs, state, seq_lens):
+    def forward_rnn(self, inputs: TensorType, state: List[TensorType],
+                    seq_lens: TensorType) -> (TensorType, List[TensorType]):
         # To make Attention work with current RLlib's ModelV2 API:
         # We assume `state` is the history of L recent observations (all
         # concatenated into one tensor) and append the current inputs to the
@@ -126,7 +136,7 @@ class TrXLNet(RecurrentNetwork):
         return logits, [observations]
 
     @override(RecurrentNetwork)
-    def get_initial_state(self):
+    def get_initial_state(self) -> List[np.ndarray]:
         # State is the T last observations concat'd together into one Tensor.
         # Plus all Transformer blocks' E(l) outputs concat'd together (up to
         # tau timesteps).
@@ -156,18 +166,18 @@ class GTrXLNet(RecurrentNetwork):
     """
 
     def __init__(self,
-                 observation_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
-                 name,
-                 num_transformer_units,
-                 attn_dim,
-                 num_heads,
-                 memory_tau,
-                 head_dim,
-                 ff_hidden_dim,
-                 init_gate_bias=2.0):
+                 observation_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 num_outputs: int,
+                 model_config: ModelConfigDict,
+                 name: str,
+                 num_transformer_units: int,
+                 attn_dim: int,
+                 num_heads: int,
+                 memory_tau: int,
+                 head_dim: int,
+                 ff_hidden_dim: int,
+                 init_gate_bias: float = 2.0):
         """Initializes a GTrXLNet.
 
         Args:
@@ -271,7 +281,8 @@ class GTrXLNet(RecurrentNetwork):
         self.trxl_model.summary()
 
     @override(RecurrentNetwork)
-    def forward_rnn(self, inputs, state, seq_lens):
+    def forward_rnn(self, inputs: TensorType, state: List[TensorType],
+                    seq_lens: TensorType) -> (TensorType, List[TensorType]):
         # To make Attention work with current RLlib's ModelV2 API:
         # We assume `state` is the history of L recent observations (all
         # concatenated into one tensor) and append the current inputs to the
@@ -303,7 +314,7 @@ class GTrXLNet(RecurrentNetwork):
         return logits, [observations] + memory_outs
 
     @override(RecurrentNetwork)
-    def get_initial_state(self):
+    def get_initial_state(self) -> List[np.ndarray]:
         # State is the T last observations concat'd together into one Tensor.
         # Plus all Transformer blocks' E(l) outputs concat'd together (up to
         # tau timesteps).
@@ -312,11 +323,11 @@ class GTrXLNet(RecurrentNetwork):
                 for _ in range(self.num_transformer_units)]
 
     @override(ModelV2)
-    def value_function(self):
+    def value_function(self) -> TensorType:
         return tf.reshape(self._value_out, [-1])
 
 
-def relative_position_embedding(seq_length, out_dim):
+def relative_position_embedding(seq_length: int, out_dim: int) -> TensorType:
     """Creates a [seq_length x seq_length] matrix for rel. pos encoding.
 
     Denoted as Phi in [2] and [3]. Phi is the standard sinusoid encoding

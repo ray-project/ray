@@ -143,7 +143,7 @@ class Tune extends React.Component<
             You can use this tab to monitor Tune jobs, their statuses,
             hyperparameters, and more. For more information, read the
             documentation{" "}
-            <a href="https://docs.ray.io/en/latest/ray-dashboard.html#tune">
+            <a href="https://docs.ray.io/en/master/ray-dashboard.html#tune">
               here
             </a>
             .
