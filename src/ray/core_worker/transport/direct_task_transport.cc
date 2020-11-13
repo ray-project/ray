@@ -484,8 +484,9 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
               cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
                   RayConfig::instance().cancellation_retry_ms()));
             }
-            cancel_retry_timer_->async_wait(boost::bind(
-                &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill, recursive));
+            cancel_retry_timer_->async_wait(
+                boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec,
+                            force_kill, recursive));
           }
         }
         // Retry is not attempted if !status.ok() because force-kill may kill the worker

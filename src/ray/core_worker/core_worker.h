@@ -718,8 +718,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] Status
   Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
 
-  Status CancelChildren(const TaskID &task_spec, bool force_kill);
-
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///
@@ -949,6 +947,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void AddLocalReference(const ObjectID &object_id, std::string call_site) {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
+
+  /// Stops the children tasks from the given TaskID
+  ///
+  /// \param[in] task_id of the parent task
+  /// \param[in] force_kill Whether to force kill a task by killing the worker.
+  Status CancelChildren(const TaskID &task_id, bool force_kill);
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
