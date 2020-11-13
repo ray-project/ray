@@ -472,7 +472,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
   client->CancelTask(
-      request, [this, task_spec, scheduling_key, force_kill](
+      request, [this, task_spec, scheduling_key, force_kill, recursive](
                    const Status &status, const rpc::CancelTaskReply &reply) {
         absl::MutexLock lock(&mu_);
         cancelled_tasks_.erase(task_spec.TaskId());
@@ -485,7 +485,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                   RayConfig::instance().cancellation_retry_ms()));
             }
             cancel_retry_timer_->async_wait(boost::bind(
-                &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill));
+                &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill, recursive));
           }
         }
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
