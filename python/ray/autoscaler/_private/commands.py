@@ -230,7 +230,7 @@ def _bootstrap_config(config: Dict[str, Any],
     cache_key = Path(tempfile.gettempdir()).joinpath("ray-config-{}".format(
         hasher.hexdigest()))
 
-    if Path(cache_key).exists() and not no_config_cache:
+    if cache_key.exists() and not no_config_cache:
         config_cache = json.loads(open(cache_key).read())
         if config_cache.get("_version", -1) == CONFIG_CACHE_VERSION:
             # todo: is it fine to re-resolve? afaik it should be.

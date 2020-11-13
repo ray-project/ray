@@ -218,9 +218,9 @@ def hash_runtime_conf(file_mounts,
                     contents_hasher.update(chunk)
 
         path = Path(path).expanduser()
-        if allow_non_existing_paths and not Path(path).exists():
+        if allow_non_existing_paths and not path.exists():
             return
-        if Path(path).is_dir():
+        if path.is_dir():
             dirs = []
             for dirpath, _, filenames in os.walk(path):
                 dirs.append((dirpath, sorted(filenames)))

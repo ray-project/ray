@@ -292,7 +292,7 @@ def _configure_key_pair(config, compute):
             if len(key_parts) != 3:
                 continue
 
-            if key_parts[2] == ssh_user and Path(private_key_path).exists():
+            if key_parts[2] == ssh_user and private_key_path.exists():
                 # Found a key
                 key_found = True
                 break
@@ -302,7 +302,7 @@ def _configure_key_pair(config, compute):
         os.makedirs(Path("~/.ssh").expanduser(), exist_ok=True)
 
         # Create a key since it doesn't exist locally or in GCP
-        if not key_found and not Path(private_key_path).exists():
+        if not key_found and not private_key_path.exists():
             logger.info("_configure_key_pair: "
                         "Creating new key pair {}".format(key_name))
             public_key, private_key = generate_rsa_key_pair()
@@ -311,7 +311,7 @@ def _configure_key_pair(config, compute):
                                          compute)
 
             # Create the directory if it doesn't exists
-            private_key_dir = Path(private_key_path).parent
+            private_key_dir = private_key_path.parent
             os.makedirs(private_key_dir, exist_ok=True)
 
             # We need to make sure to _create_ the file with the right
@@ -336,7 +336,7 @@ def _configure_key_pair(config, compute):
 
     assert key_found, "SSH keypair for user {} not found for {}".format(
         ssh_user, private_key_path)
-    assert Path(private_key_path).exists(), (
+    assert private_key_path.exists(), (
         "Private key file {} not found for user {}"
         "".format(private_key_path, ssh_user))
 

@@ -763,7 +763,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                         src=Path(
                             self._get_docker_host_mount_location(
                                 self.ssh_command_runner.cluster_name))
-                        .joinpath(mount),
+                        .joinpath(mount).name,
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True
