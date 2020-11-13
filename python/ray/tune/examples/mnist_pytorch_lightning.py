@@ -199,8 +199,6 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
     }
 
     scheduler = ASHAScheduler(
-        metric="loss",
-        mode="min",
         max_t=num_epochs,
         grace_period=1,
         reduction_factor=2)
@@ -219,6 +217,8 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
             "cpu": 1,
             "gpu": gpus_per_trial
         },
+        metric="loss",
+        mode="min",
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
@@ -244,9 +244,6 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
     }
 
     scheduler = PopulationBasedTraining(
-        time_attr="training_iteration",
-        metric="loss",
-        mode="min",
         perturbation_interval=4,
         hyperparam_mutations={
             "lr": tune.loguniform(1e-4, 1e-1),
@@ -267,6 +264,8 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
             "cpu": 1,
             "gpu": gpus_per_trial
         },
+        metric="loss",
+        mode="min",
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,

@@ -105,8 +105,6 @@ if __name__ == "__main__":
 
     scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="is_score",
-        mode="max",
         perturbation_interval=5,
         hyperparam_mutations={
             # distribution for resampling
@@ -123,6 +121,8 @@ if __name__ == "__main__":
         stop={
             "training_iteration": tune_iter,
         },
+        metric="is_score",
+        mode="max",
         num_samples=8,
         config={
             "netG_lr": tune.sample_from(

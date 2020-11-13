@@ -28,8 +28,6 @@ if __name__ == "__main__":
 
     pbt = PopulationBasedTraining(
         time_attr="time_total_s",
-        metric="episode_reward_mean",
-        mode="max",
         perturbation_interval=120,
         resample_probability=0.25,
         # Specifies the mutations of these hyperparams
@@ -48,6 +46,8 @@ if __name__ == "__main__":
         name="pbt_humanoid_test",
         scheduler=pbt,
         num_samples=8,
+        metric="episode_reward_mean",
+        mode="max",
         config={
             "env": "Humanoid-v1",
             "kl_coeff": 1.0,

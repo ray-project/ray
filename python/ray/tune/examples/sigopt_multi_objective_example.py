@@ -4,7 +4,6 @@ import time
 
 import numpy as np
 from ray import tune
-from ray.tune.schedulers import FIFOScheduler
 from ray.tune.suggest.sigopt import SigOptSearch
 
 np.random.seed(0)

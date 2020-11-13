@@ -1,5 +1,4 @@
 import argparse
-import numpy as np
 from tensorflow.keras.datasets import mnist
 
 from ray.tune.integration.keras import TuneReportCallback

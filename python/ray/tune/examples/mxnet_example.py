@@ -1,8 +1,6 @@
-from functools import partial
-
 import mxnet as mx
+
 from ray import tune, logger
-from ray.tune import CLIReporter
 from ray.tune.integration.mxnet import TuneCheckpointCallback, \
     TuneReportCallback
 from ray.tune.schedulers import ASHAScheduler
@@ -59,14 +57,7 @@ def tune_mnist_mxnet(num_samples=10, num_epochs=10):
     }
 
     scheduler = ASHAScheduler(
-        metric="mean_accuracy",
-        mode="max",
-        max_t=num_epochs,
-        grace_period=1,
-        reduction_factor=2)
-
-    reporter = CLIReporter(
-        parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"])
+        max_t=num_epochs, grace_period=1, reduction_factor=2)
 
     analysis = tune.run(
         tune.with_parameters(
@@ -74,10 +65,11 @@ def tune_mnist_mxnet(num_samples=10, num_epochs=10):
         resources_per_trial={
             "cpu": 1,
         },
+        metric="mean_accuracy",
+        mode="max",
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        progress_reporter=reporter,
         name="tune_mnist_mxnet")
     return analysis
 

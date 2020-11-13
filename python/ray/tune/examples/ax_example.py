@@ -68,15 +68,15 @@ if __name__ == "__main__":
     }
     algo = AxSearch(
         max_concurrent=4,
-        metric="hartmann6",
-        mode="min",
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
-    scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="min")
+    scheduler = AsyncHyperBandScheduler()
     analysis = tune.run(
         easy_objective,
         name="ax",
+        metric="hartmann6",  # provided in the 'easy_objective' function
+        mode="min",
         search_alg=algo,
         scheduler=scheduler,
         **tune_kwargs)
