@@ -9,7 +9,7 @@ import numpy as np
 import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.integration.keras import TuneReportCheckpointCallback, TuneReportCallback
+from ray.tune.integration.keras import TuneReportCallback
 from ray.tune.integration.tensorflow import (DistributedTrainableCreator,
                                              get_num_workers)
 
@@ -53,7 +53,7 @@ def train_mnist(config, checkpoint_dir=None):
         multi_worker_model = build_and_compile_cnn_model(config)
     # Define the checkpoint directory to store the checkpoints
 
-    checkpoint_dir = './training_checkpoints'
+    checkpoint_dir = "./training_checkpoints"
     # Name of the checkpoint files
     checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt_{epoch}")
     multi_worker_model.fit(
