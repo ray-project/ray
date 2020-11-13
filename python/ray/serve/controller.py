@@ -476,21 +476,21 @@ class ServeController:
         # will send over the entire configs. In the future, we should
         # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollerHost()
-        self.on_backend_configs_changed()
-        self.on_replica_handles_changed()
-        self.on_traffic_policies_changed()
+        self.notify_backend_configs_changed()
+        self.notify_replica_handles_changed()
+        self.notify_traffic_policies_changed()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
-    def on_replica_handles_changed(self):
+    def notify_replica_handles_changed(self):
         self.long_poll_host.notify_changed(
             "worker_handles", self.actor_reconciler.backend_replicas)
 
-    def on_traffic_policies_changed(self):
+    def notify_traffic_policies_changed(self):
         self.long_poll_host.notify_changed(
             "traffic_policies", self.configuration_store.traffic_policies)
 
-    def on_backend_configs_changed(self):
+    def notify_backend_configs_changed(self):
         self.long_poll_host.notify_changed(
             "backend_configs", self.configuration_store.get_backend_configs())
 
@@ -657,7 +657,7 @@ class ServeController:
         # update.
         self._checkpoint()
 
-        self.on_traffic_policies_changed()
+        self.notify_traffic_policies_changed()
 
     async def set_traffic(self, endpoint_name: str,
                           traffic_dict: Dict[str, float]) -> None:
@@ -686,7 +686,7 @@ class ServeController:
             # update to avoid inconsistent state if we crash after pushing the
             # update.
             self._checkpoint()
-            self.on_traffic_policies_changed()
+            self.notify_traffic_policies_changed()
 
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
     async def create_endpoint(self, endpoint: str,
@@ -818,11 +818,11 @@ class ServeController:
             await self.actor_reconciler._start_pending_backend_replicas(
                 self.configuration_store)
 
-            self.on_replica_handles_changed()
+            self.notify_replica_handles_changed()
 
             # Set the backend config inside the router
             # (particularly for max_concurrent_queries).
-            self.on_backend_configs_changed()
+            self.notify_backend_configs_changed()
             await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag: BackendTag) -> None:
@@ -862,7 +862,7 @@ class ServeController:
             self._checkpoint()
             await self.actor_reconciler._stop_pending_backend_replicas()
 
-            self.on_replica_handles_changed()
+            self.notify_replica_handles_changed()
 
     async def update_backend_config(
             self, backend_tag: BackendTag,
@@ -903,8 +903,8 @@ class ServeController:
                 self.configuration_store)
             await self.actor_reconciler._stop_pending_backend_replicas()
 
-            self.on_replica_handles_changed()
-            self.on_backend_configs_changed()
+            self.notify_replica_handles_changed()
+            self.notify_backend_configs_changed()
 
             await self.broadcast_backend_config(backend_tag)
 

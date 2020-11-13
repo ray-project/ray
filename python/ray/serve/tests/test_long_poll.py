@@ -39,7 +39,8 @@ def test_host_standalone(ray_start_regular_shared):
 
 
 @pytest.mark.skip(
-    "Skip until https://github.com/ray-project/ray/issues/11683 fixed.")
+    "Skip until https://github.com/ray-project/ray/issues/11683 fixed "
+    "since async actor retries is broken.")
 def test_long_pull_restarts(ray_start_regular_shared):
     @ray.remote(
         max_restarts=-1,
@@ -55,7 +56,7 @@ def test_long_pull_restarts(ray_start_regular_shared):
             await asyncio.sleep(0.5)
             return await self.host.listen_for_change(key_to_ids)
 
-        async def suicide(self):
+        async def exit(self):
             sys.exit(1)
 
     host = RestartableLongPollerHost.remote()
@@ -63,7 +64,7 @@ def test_long_pull_restarts(ray_start_regular_shared):
     timer: UpdatedObject = updated_values["timer"]
 
     on_going_ref = host.listen_for_change.remote({"timer": timer.snapshot_id})
-    host.suicide.remote()
+    host.exit.remote()
     on_going_ref = host.listen_for_change.remote({"timer": timer.snapshot_id})
     new_timer: UpdatedObject = ray.get(on_going_ref)["timer"]
     assert new_timer.snapshot_id != timer.snapshot_id + 1
