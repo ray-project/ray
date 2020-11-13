@@ -188,6 +188,7 @@ class TrainableUtil:
                 the remote worker and the placement group information.
             pg(placement_group): return a reference to the placement group
         """
+        pg = None
         options = dict(
             num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)
         if num_workers_per_host > 0:
