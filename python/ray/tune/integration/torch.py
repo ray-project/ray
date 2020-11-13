@@ -5,7 +5,7 @@ import os
 import logging
 import shutil
 import tempfile
-from typing import Callable, Dict, Generator, Optional, Type, Any
+from typing import Callable, Dict, Generator, Optional, Type
 
 import torch
 from datetime import timedelta
@@ -16,10 +16,10 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil, get_remote_worker_options
 from ray.tune.utils import detect_checkpoint_function
 from ray.util.sgd.torch.utils import setup_process_group, setup_address
-from ray.util.placement_group import placement_group, remove_placement_group
+from ray.util.placement_group import remove_placement_group
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
@@ -61,50 +61,12 @@ class _TorchTrainable(tune.Trainable):
     __slots__ = ["workers", "_finished"]
 
     @property
-    def worker_gpus(self) -> int:
-        if not self._use_gpu:
-            return 0
-        return self._num_gpus_per_worker
-
-    @property
-    def worker_cpus(self) -> float:
-        return self._num_cpus_per_worker
-
-    @property
     def should_colocate(self) -> bool:
-        return bool(self._num_workers_per_host)
-
-    @property
-    def num_hosts(self) -> Optional[int]:
-        if self.should_colocate:
-            return int(self._num_workers / self._num_workers_per_host)
+        return self._num_workers_per_host is not None
 
     @classmethod
     def default_process_group_parameters(cls) -> Dict:
         return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
-
-    def get_remote_worker_options(self) -> Dict[str, Any]:
-        options = dict(
-            num_cpus=self.worker_cpus, num_gpus=self._num_gpus_per_worker)
-        if self.should_colocate:
-            cpus_per_node = self.worker_cpus * self._num_workers_per_host
-            gpus_per_node = \
-                self._num_gpus_per_worker * self._num_workers_per_host
-            bundle = {}
-            if cpus_per_node:
-                bundle["CPU"] = cpus_per_node
-            if gpus_per_node:
-                bundle["GPU"] = gpus_per_node
-
-            all_bundles = [bundle] * self.num_hosts
-            self._placement_group = placement_group(
-                all_bundles, strategy="STRICT_SPREAD")
-            logger.info("Waiting for placement_group to start.")
-            ray.get(self._placement_group.ready(), timeout=self._timeout_s)
-            logger.info("Placement_group started.")
-            options["placement_group"] = self._placement_group
-
-        return options
 
     def setup(self, config: Dict):
         self._finished = False
@@ -115,8 +77,11 @@ class _TorchTrainable(tune.Trainable):
         func_trainable = wrap_function(self.__class__._function)
 
         remote_trainable = ray.remote(func_trainable)
-        remote_trainable = remote_trainable.options(
-            **self.get_remote_worker_options())
+        remote_trainable = \
+            remote_trainable.options(**get_remote_worker_options(
+                self.workers, self._num_cpus_per_worker,
+                self._num_gpus_per_worker,
+                self._num_workers_per_host, self._timeout_s))
 
         self.workers = [
             remote_trainable.remote(

@@ -9,9 +9,10 @@ from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
 from ray.tune.utils.trainable import TrainableUtil
 from ray.util.sgd.utils import find_free_port
-from ray.util.placement_group import placement_group, remove_placement_group
+from ray.util.placement_group import remove_placement_group
+from ray.tune.utils.trainable import get_remote_worker_options
 from ray.tune.utils.util import detect_checkpoint_function
-from typing import Callable, Dict, Type, Any
+from typing import Callable, Dict, Type, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -48,35 +49,14 @@ class _TensorFlowTrainable(tune.Trainable):
     _num_cpus_per_worker = None
     _num_gpus_per_worker = None
     _num_workers_per_host = None
-    __placement_group = None
+    _placement_group = None
     _timeout_s = None
 
     __slots__ = ["workers", "_finished"]
 
     @property
     def should_colocate(self) -> bool:
-        return bool(self._num_workers_per_host)
-
-    def get_remote_worker_options(self) -> Dict[str, Any]:
-        num_gpus = int(self._num_gpus_per_worker or 0)
-        num_cpus = int(self._num_cpus_per_worker or 1)
-        options = dict(num_cpus=num_cpus, num_gpus=num_gpus)
-        if self.should_colocate:
-            cpus_per_node = num_cpus * self._num_workers_per_host
-            gpus_per_node = num_gpus * self._num_workers_per_host
-            bundles = {}
-            if cpus_per_node:
-                bundles["CPU"] = cpus_per_node
-                bundles["GPU"] = gpus_per_node
-            num_hosts = int(self._num_workers / self._num_workers_per_host)
-            all_bundles = [bundles] * num_hosts
-            self._placement_group = placement_group(
-                all_bundles, strategy="STRICT_SPREAD")
-            logger.info("Waiting for placement group to get ready..")
-            ray.get(self._placement_group.ready(), timeout=self._timeout_s)
-            logger.info("Placement group ready.")
-            options["placement_group"] = self._placement_group
-        return options
+        return self._num_workers_per_host is not None
 
     def setup(self, config: Dict):
         self._finished = False
@@ -85,8 +65,11 @@ class _TensorFlowTrainable(tune.Trainable):
 
         func_trainable = wrap_function(self.__class__._function)
         remote_trainable = ray.remote(func_trainable)
-        remote_trainable = remote_trainable.options(
-            **self.get_remote_worker_options())
+        remote_trainable = \
+            remote_trainable.options(**get_remote_worker_options(
+                self.workers, self._num_cpus_per_worker,
+                self._num_gpus_per_worker,
+                self._num_workers_per_host, self._timeout_s))
         self.workers = [
             remote_trainable.remote(config=config, )
             for _ in range(num_workers)
@@ -136,7 +119,7 @@ def DistributedTrainableCreator(
         num_workers: int = 2,
         num_gpus_per_worker: int = 0,
         num_cpus_per_worker: int = 1,
-        num_workers_per_host: int = 0,
+        num_workers_per_host: Optional[int] = None,
         timeout_s: int = 15 * 60) -> Type[_TensorFlowTrainable]:
     """Converts TensorFlow MultiWorkerMirror training to be executable by Tune.
 
@@ -158,9 +141,10 @@ def DistributedTrainableCreator(
             from Ray per worker.
         num_workers (int): Number of hosts that each trial is expected
             to use.
-        num_workers_per_host (int): Number of workers to colocate per host.
-        timeout_s (float): Seconds before triggering
-            placement timeouts if forcing colocation.
+        num_workers_per_host (Optional[int]): Number of workers to
+            colocate per host. None if not specified.
+        timeout_s (float): Seconds before triggering placement timeouts
+            if forcing colocation. Default to 15 minutes.
 
 
     Returns:
@@ -183,7 +167,9 @@ def DistributedTrainableCreator(
     if num_workers_per_host:
         if num_workers % num_workers_per_host:
             raise ValueError("`num_workers` must be an integer multiple "
-                             "of num_workers_per_host.")
+                             f"of num_workers_per_host. Got: "
+                             f"num_workers: {num_workers}, "
+                             f"num_workers_per_host: {num_workers_per_host}")
 
     class WrappedDistributedTensorFlowTrainable(_TensorFlowTrainable):
         _function = func
