@@ -65,7 +65,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--workers-per-node",
         type=int,
-        default=2,
         help="Sets number of workers for training.")
 
     args = parser.parse_args()
