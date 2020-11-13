@@ -64,7 +64,6 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
 
 build:manylinux2010 --copt="-Wno-unused-result"
 build:manylinux2010 --linkopt="-lrt"
-build:manylinux2010 --jobs=8
 
 
 # Debug build flags. Uncomment in '-c dbg' builds to enable checks in the C++ standard library:
