@@ -79,7 +79,7 @@ class _TorchTrainable(tune.Trainable):
         remote_trainable = ray.remote(func_trainable)
         remote_trainable = \
             remote_trainable.options(**TrainableUtil.get_remote_worker_options(
-                self.workers, self._num_cpus_per_worker,
+                self._num_workers, self._num_cpus_per_worker,
                 self._num_gpus_per_worker,
                 self._num_workers_per_host, self._timeout_s))
 
