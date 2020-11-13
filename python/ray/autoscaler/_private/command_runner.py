@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 NODE_START_WAIT_S = 300
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = Path(__file__).resolve() \
-                    .parent() \
+                    .parent \
                     .joinpath(
                         "kubernetes/kubectl-rsync.sh")
 
