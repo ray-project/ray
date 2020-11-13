@@ -200,9 +200,9 @@ class TrainableUtil:
 
             all_bundles = [bundle] * num_hosts
             pg = placement_group(all_bundles, strategy="STRICT_SPREAD")
-            logger.info("Waiting for placement_group to start.")
+            logger.debug("Waiting for placement_group to start.")
             ray.get(pg.ready(), timeout=timeout_s)
-            logger.info("Placement_group started.")
+            logger.debug("Placement_group started.")
             options["placement_group"] = pg
 
         return options, pg

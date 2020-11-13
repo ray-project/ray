@@ -141,7 +141,6 @@ class _TorchTrainable(tune.Trainable):
 
 def DistributedTrainableCreator(
         func: Callable,
-        use_gpu: bool = False,
         num_workers: int = 1,
         num_cpus_per_worker: int = 1,
         num_gpus_per_worker: int = 0,
@@ -160,9 +159,6 @@ def DistributedTrainableCreator(
             This function must have 2 args in the signature, and the
             latter arg must contain `checkpoint_dir`. For example:
             `func(config, checkpoint_dir=None)`.
-        use_gpu (bool): Sets resource allocation for workers to 1 GPU
-            if true. Also automatically sets CUDA_VISIBLE_DEVICES
-            for each training worker.
         num_workers (int): Number of training workers to include in
             world.
         num_cpus_per_worker (int): Number of CPU resources to reserve

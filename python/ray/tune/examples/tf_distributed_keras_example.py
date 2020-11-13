@@ -4,6 +4,8 @@ https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras
 """
 import argparse
 import os
+from typing import Optional
+
 import tensorflow as tf
 import numpy as np
 import ray
@@ -80,8 +82,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num-workers-per-host",
         "-w",
-        type=int,
-        default=0,
+        type=Optional[int],
+        default=None,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--num-cpus-per-worker",
