@@ -93,7 +93,6 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.log("ptl/val_loss", avg_loss)
         self.log("ptl/val_accuracy", avg_acc)
 
-
     @staticmethod
     def download_data(data_dir):
         transform = transforms.Compose([
@@ -177,7 +176,8 @@ def train_mnist_tune_checkpoint(config,
         ckpt = pl_load(
             os.path.join(checkpoint_dir, "checkpoint"),
             map_location=lambda storage, loc: storage)
-        model = LightningMNISTClassifier._load_model_state(ckpt, config=config, data_dir=data_dir)
+        model = LightningMNISTClassifier._load_model_state(
+            ckpt, config=config, data_dir=data_dir)
         trainer.current_epoch = ckpt["epoch"]
     else:
         model = LightningMNISTClassifier(config=config, data_dir=data_dir)
@@ -209,7 +209,7 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
         parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
         metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
-    tune.run(
+    analysis = tune.run(
         tune.with_parameters(
             train_mnist_tune,
             data_dir=data_dir,
@@ -224,6 +224,8 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
         scheduler=scheduler,
         progress_reporter=reporter,
         name="tune_mnist_asha")
+
+    print("Best hyperparameters found were: ", analysis.best_config)
 
     shutil.rmtree(data_dir)
 # __tune_asha_end__
@@ -255,7 +257,7 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
         parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
         metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
-    tune.run(
+    analysis = tune.run(
         tune.with_parameters(
             train_mnist_tune_checkpoint,
             data_dir=data_dir,
@@ -270,6 +272,8 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
         scheduler=scheduler,
         progress_reporter=reporter,
         name="tune_mnist_pbt")
+
+    print("Best hyperparameters found were: ", analysis.best_config)
 
     shutil.rmtree(data_dir)
 # __tune_pbt_end__

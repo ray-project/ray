@@ -28,7 +28,7 @@ Trainable Class Examples
 Though it is preferable to use the Function API, Tune also supports a Class-based API for training.
 
 - :doc:`/tune/examples/hyperband_example`: Example of using a Trainable class with HyperBandScheduler. Also uses the AsyncHyperBandScheduler.
-- :doc:`/tune/examples/durable_trainable_example`: Example using a durable storage mechanism in the Trainable.
+.. - :doc:`/tune/examples/durable_trainable_example`: Example using a durable storage mechanism in the Trainable.
 - :doc:`/tune/examples/pbt_example`: Example of using a Trainable class with PopulationBasedTraining scheduler.
 
 

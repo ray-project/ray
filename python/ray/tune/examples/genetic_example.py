@@ -44,10 +44,14 @@ if __name__ == "__main__":
         reward_attr="neg_mean_loss",
         max_generation=2 if args.smoke_test else 10,
         population_size=10 if args.smoke_test else 50)
-    scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
-    tune.run(
+    scheduler = AsyncHyperBandScheduler()
+    analysis = tune.run(
         michalewicz_function,
+        metric="neg_mean_loss",
+        mode="max",
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,
         **config)
+
+    print("Best hyperparameters found were: ", analysis.best_config)

@@ -20,7 +20,7 @@ def train_function(config, checkpoint_dir=None):
 
 def tune_function(api_key_file):
     """Example for using a WandbLogger with the function API"""
-    tune.run(
+    analysis = tune.run(
         train_function,
         config={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
@@ -31,6 +31,7 @@ def tune_function(api_key_file):
             }
         },
         loggers=DEFAULT_LOGGERS + (WandbLogger, ))
+    return analysis.best_config
 
 
 @wandb_mixin
@@ -43,7 +44,7 @@ def decorated_train_function(config, checkpoint_dir=None):
 
 def tune_decorated(api_key_file):
     """Example for using the @wandb_mixin decorator with the function API"""
-    tune.run(
+    analysis = tune.run(
         decorated_train_function,
         config={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
@@ -53,6 +54,7 @@ def tune_decorated(api_key_file):
                 "project": "Wandb_example"
             }
         })
+    return analysis.best_config
 
 
 class WandbTrainable(WandbTrainableMixin, Trainable):
@@ -65,7 +67,7 @@ class WandbTrainable(WandbTrainableMixin, Trainable):
 
 def tune_trainable(api_key_file):
     """Example for using a WandTrainableMixin with the class API"""
-    tune.run(
+    analysis = tune.run(
         WandbTrainable,
         config={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
@@ -75,6 +77,7 @@ def tune_trainable(api_key_file):
                 "project": "Wandb_example"
             }
         })
+    return analysis.best_config
 
 
 if __name__ == "__main__":

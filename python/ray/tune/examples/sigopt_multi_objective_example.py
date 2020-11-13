@@ -65,11 +65,6 @@ if __name__ == "__main__":
         metric=["average", "std", "sharpe"],
         mode=["max", "min", "obs"])
 
-    scheduler = FIFOScheduler()
-
-    tune.run(
-        easy_objective,
-        name="my_exp",
-        search_alg=algo,
-        scheduler=scheduler,
-        **config)
+    analysis = tune.run(
+        easy_objective, name="my_exp", search_alg=algo, **config)
+    print("Best hyperparameters found were: ", analysis.best_config)

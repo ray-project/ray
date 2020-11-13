@@ -35,15 +35,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     # The config will be automatically converted to SkOpt's search space
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 50,
-        "config": {
-            "steps": 100,
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100),
-            "activation": tune.choice(["relu", "tanh"])
-        }
-    }
+    tune_kwargs = {}
 
     # Optional: Pass the parameter space yourself
     # space = {
@@ -64,11 +56,18 @@ if __name__ == "__main__":
 
     scheduler = AsyncHyperBandScheduler()
 
-    tune.run(
+    analysis = tune.run(
         easy_objective,
         metric="mean_loss",
         mode="min",
         name="skopt_exp_with_warmstart",
         search_alg=algo,
         scheduler=scheduler,
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 50,
+        config={
+            "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            "activation": tune.choice(["relu", "tanh"])
+        })
+    print("Best hyperparameters found were: ", analysis.best_config)

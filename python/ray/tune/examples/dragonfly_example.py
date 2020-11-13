@@ -73,7 +73,7 @@ if __name__ == "__main__":
     df_search = ConcurrencyLimiter(df_search, max_concurrent=4)
 
     scheduler = AsyncHyperBandScheduler()
-    tune.run(
+    analysis = tune.run(
         objective,
         metric="objective",
         mode="max",
@@ -81,3 +81,5 @@ if __name__ == "__main__":
         search_alg=df_search,
         scheduler=scheduler,
         **tune_kwargs)
+
+    print("Best hyperparameters found were: ", analysis.best_config)

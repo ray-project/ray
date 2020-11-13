@@ -76,7 +76,7 @@ if __name__ == "__main__":
         max_concurrent=4,
         **experiment_metrics)
 
-    tune.run(
+    analysis = tune.run(
         MyTrainableClass,
         name="bohb_test",
         config=config,
@@ -84,3 +84,5 @@ if __name__ == "__main__":
         search_alg=bohb_search,
         num_samples=10,
         stop={"training_iteration": 100})
+
+    print("Best hyperparameters found were: ", analysis.best_config)

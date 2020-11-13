@@ -63,10 +63,12 @@ if __name__ == "__main__":
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
 
     scheduler = AsyncHyperBandScheduler()
-    tune.run(
+    analysis = tune.run(
         easy_objective,
         search_alg=algo,
         scheduler=scheduler,
         metric="mean_loss",
         mode="min",
         **tune_kwargs)
+
+    print("Best hyperparameters found were: ", analysis.best_config)

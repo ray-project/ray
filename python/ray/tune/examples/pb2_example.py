@@ -27,7 +27,7 @@ if __name__ == "__main__":
             "lr": [0.0001, 0.02],
         })
 
-    tune.run(
+    analysis = tune.run(
         pbt_function,
         name="pbt_test",
         scheduler=pbt,
@@ -43,3 +43,5 @@ if __name__ == "__main__":
             # the model training in this example
             "some_other_factor": 1,
         })
+
+    print("Best hyperparameters found were: ", analysis.best_config)

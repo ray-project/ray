@@ -74,9 +74,11 @@ if __name__ == "__main__":
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
     scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="min")
-    tune.run(
+    analysis = tune.run(
         easy_objective,
         name="ax",
         search_alg=algo,
         scheduler=scheduler,
         **tune_kwargs)
+
+    print("Best hyperparameters found were: ", analysis.best_config)

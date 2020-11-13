@@ -72,4 +72,7 @@ if __name__ == "__main__":
     ray.init(**options)
     trainable_cls = DistributedTrainableCreator(
         train_mnist, num_workers=args.num_workers, use_gpu=args.use_gpu)
-    tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 10})
+    analysis = tune.run(
+        trainable_cls, num_samples=4, stop={"training_iteration": 10})
+
+    print("Best hyperparameters found were: ", analysis.best_config)

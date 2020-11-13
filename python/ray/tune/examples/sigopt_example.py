@@ -69,9 +69,11 @@ if __name__ == "__main__":
         metric="mean_loss",
         mode="min")
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    tune.run(
+    analysis = tune.run(
         easy_objective,
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,
         **config)
+
+    print("Best hyperparameters found were: ", analysis.best_config)

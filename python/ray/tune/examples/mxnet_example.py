@@ -68,8 +68,9 @@ def tune_mnist_mxnet(num_samples=10, num_epochs=10):
     reporter = CLIReporter(
         parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"])
 
-    tune.run(
-        partial(train_mnist_mxnet, mnist=mnist_data, num_epochs=num_epochs),
+    analysis = tune.run(
+        tune.with_parameters(
+            train_mnist_mxnet, mnist=mnist_data, num_epochs=num_epochs),
         resources_per_trial={
             "cpu": 1,
         },
@@ -78,6 +79,7 @@ def tune_mnist_mxnet(num_samples=10, num_epochs=10):
         scheduler=scheduler,
         progress_reporter=reporter,
         name="tune_mnist_mxnet")
+    return analysis
 
 
 if __name__ == "__main__":
@@ -89,6 +91,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_mnist_mxnet(num_samples=1, num_epochs=1)
+        analysis = tune_mnist_mxnet(num_samples=1, num_epochs=1)
     else:
-        tune_mnist_mxnet(num_samples=10, num_epochs=10)
+        analysis = tune_mnist_mxnet(num_samples=10, num_epochs=10)
+
+    print("Best hyperparameters found were: ", analysis.best_config)
