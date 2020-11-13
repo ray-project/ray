@@ -350,7 +350,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                             new_obs=obs_batch[0])
                     batch = builder.build_and_reset(episode=None)
                     episodes[0].add_extra_batch(batch)
-    
+
                 # Just return zeros for actions
                 return [0] * len(obs_batch), [], {}
 
