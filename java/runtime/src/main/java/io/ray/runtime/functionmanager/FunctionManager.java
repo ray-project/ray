@@ -1,5 +1,6 @@
 package io.ray.runtime.functionmanager;
 
+import com.google.common.collect.Lists;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.JobId;
 import io.ray.runtime.util.LambdaUtils;
@@ -207,7 +208,25 @@ public class FunctionManager {
 
         List<Executable> executables = new ArrayList<>();
         executables.addAll(Arrays.asList(clazz.getDeclaredMethods()));
-        executables.addAll(Arrays.asList(clazz.getConstructors()));
+        executables.addAll(Arrays.asList(clazz.getDeclaredConstructors()));
+        // Put interface methods ahead, so that in can be override by subclass methods in `map.put`
+        for (Class baseInterface : clazz.getInterfaces()) {
+          for (Method method : baseInterface.getDeclaredMethods()) {
+            if (method.isDefault()) {
+              executables.add(method);
+            }
+          }
+        }
+        List<Class> superClasses = new ArrayList<>();
+        clazz = clazz.getSuperclass();
+        while (clazz != null && clazz != Object.class) {
+          superClasses.add(clazz);
+          clazz = clazz.getSuperclass();
+        }
+        // Use reverse order so that child class methods can override super class methods.
+        Lists.reverse(superClasses).forEach(cls ->
+            executables.addAll(Arrays.asList(cls.getDeclaredMethods())));
+
 
         for (Executable e : executables) {
           e.setAccessible(true);
