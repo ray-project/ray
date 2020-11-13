@@ -74,12 +74,11 @@ class GcsPlacementGroupSchedulerInterface {
   /// \param placement_group_id The placement group id scheduling is in progress.
   virtual void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) = 0;
 
-  /// Notify raylets to release unused placement groups.
+  /// Notify raylets to release unused bundles.
   ///
-  /// \param node_to_placement_groups Placement groups used by each node.
-  virtual void ReleaseUnusedPlacementGroups(
-      const std::unordered_map<NodeID, std::vector<PlacementGroupID>>
-          &node_to_placement_groups) = 0;
+  /// \param node_to_bundles Bundles used by each node.
+  virtual void ReleaseUnusedBundles(
+      const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
@@ -392,12 +391,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
       const NodeID &node_id) override;
 
-  /// Notify raylets to release unused placement groups.
+  /// Notify raylets to release unused bundles.
   ///
-  /// \param node_to_placement_groups Placement groups used by each node.
-  void ReleaseUnusedPlacementGroups(
-      const std::unordered_map<NodeID, std::vector<PlacementGroupID>>
-          &node_to_placement_groups) override;
+  /// \param node_to_bundles Bundles used by each node.
+  void ReleaseUnusedBundles(const std::unordered_map<NodeID, std::vector<rpc::Bundle>>
+                                &node_to_bundles) override;
 
  protected:
   /// Send a bundle PREPARE request to a node. The PREPARE request will lock resources
@@ -492,8 +490,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeaseStatusTracker>>
       placement_group_leasing_in_progress_;
 
-  /// The nodes which are releasing unused placement groups.
-  absl::flat_hash_set<NodeID> nodes_of_releasing_unused_placement_groups_;
+  /// The nodes which are releasing unused bundles.
+  absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
 };
 
 }  // namespace gcs

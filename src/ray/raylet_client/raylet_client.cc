@@ -402,19 +402,19 @@ void raylet::RayletClient::CancelResourceReserve(
   grpc_client_->CancelResourceReserve(request, callback);
 }
 
-void raylet::RayletClient::ReleaseUnusedPlacementGroups(
-    const std::vector<PlacementGroupID> &placement_groups_in_use,
-    const rpc::ClientCallback<rpc::ReleaseUnusedPlacementGroupsReply> &callback) {
-  rpc::ReleaseUnusedPlacementGroupsRequest request;
-  for (auto &placement_group_id : placement_groups_in_use) {
-    request.add_placement_group_ids_in_use(placement_group_id.Binary());
+void raylet::RayletClient::ReleaseUnusedBundles(
+    const std::vector<rpc::Bundle> &bundles_in_use,
+    const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) {
+  rpc::ReleaseUnusedBundlesRequest request;
+  for (auto &bundle : bundles_in_use) {
+    request.add_bundles_in_use()->CopyFrom(bundle);
   }
-  grpc_client_->ReleaseUnusedPlacementGroups(
-      request, [callback](const Status &status,
-                          const rpc::ReleaseUnusedPlacementGroupsReply &reply) {
+  grpc_client_->ReleaseUnusedBundles(
+      request,
+      [callback](const Status &status, const rpc::ReleaseUnusedBundlesReply &reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING)
-              << "Error releasing placement groups from raylet, the raylet may have died:"
+              << "Error releasing bundles from raylet, the raylet may have died:"
               << status;
         }
         callback(status, reply);

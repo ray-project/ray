@@ -118,9 +118,9 @@ class ResourceReserveInterface {
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
-  virtual void ReleaseUnusedPlacementGroups(
-      const std::vector<PlacementGroupID> &placement_groups_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedPlacementGroupsReply> &callback) = 0;
+  virtual void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
 
   virtual ~ResourceReserveInterface(){};
 };
@@ -384,11 +384,10 @@ class RayletClient : public PinObjectsInterface,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 
-  /// Implements ReleaseUnusedPlacementGroupsInterface.
-  void ReleaseUnusedPlacementGroups(
-      const std::vector<PlacementGroupID> &placement_groups_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedPlacementGroupsReply> &callback)
-      override;
+  /// Implements ReleaseUnusedBundlesInterface.
+  void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
 
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,

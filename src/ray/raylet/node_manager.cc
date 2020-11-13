@@ -556,19 +556,44 @@ void NodeManager::HandleRequestObjectSpillage(
       });
 }
 
-void NodeManager::HandleReleaseUnusedPlacementGroups(
-    const rpc::ReleaseUnusedPlacementGroupsRequest &request,
-    rpc::ReleaseUnusedPlacementGroupsReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  std::unordered_set<PlacementGroupID> in_use_placement_group_ids;
-  for (int index = 0; index < request.placement_group_ids_in_use_size(); ++index) {
-    auto worker_id =
-        PlacementGroupID::FromBinary(request.placement_group_ids_in_use(index));
-    in_use_placement_group_ids.emplace(worker_id);
-  }
+void NodeManager::HandleReleaseUnusedBundles(
+    const rpc::ReleaseUnusedBundlesRequest &request,
+    rpc::ReleaseUnusedBundlesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
+  //  std::unordered_set<PlacementGroupID> in_use_placement_group_ids;
+  //  for (int index = 0; index < request.placement_group_ids_in_use_size(); ++index) {
+  //    auto pg_id =
+  //    PlacementGroupID::FromBinary(request.placement_group_ids_in_use(index));
+  //    in_use_placement_group_ids.emplace(pg_id);
+  //  }
+  //
+  //  // Kill all workers that are currently associated with the unused placement group.
+  //  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_unused_pg;
+  //  for (const auto &worker_it : leased_workers_) {
+  //    auto &worker = worker_it.second;
+  //    if (0 == in_use_placement_group_ids.count(worker->GetPlacementGroupId())) {
+  //      workers_associated_with_unused_pg.push_back(worker);
+  //    }
+  //  }
+  //  for (const auto &worker : workers_associated_with_unused_pg) {
+  //    RAY_LOG(DEBUG)
+  //        << "Destroying worker since its placement group was unused. Placement group
+  //        id: "
+  //        << worker->GetPlacementGroupId()
+  //        << ", task id: " << worker->GetAssignedTaskId()
+  //        << ", actor id: " << worker->GetActorId()
+  //        << ", worker id: " << worker->WorkerId();
+  //    // We should disconnect the client first. Otherwise, we'll remove bundle resources
+  //    // before actual resources are returned. Subsequent disconnect request that comes
+  //    // due to worker dead will be ignored.
+  //    ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+  //    worker->MarkDead();
+  //    KillWorker(worker);
+  //  }
+  //
+  //  // Return bundle resources.
+  //  ReturnBundleResources(bundle_spec);
 
-  std::vector<PlacementGroupID> unused_placement_group_ids;
-  // TODO(ffbin)
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

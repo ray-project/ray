@@ -470,7 +470,7 @@ void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
   auto callback = [this,
                    done](const std::unordered_map<PlacementGroupID,
                                                   rpc::PlacementGroupTableData> &result) {
-    std::unordered_map<NodeID, std::vector<PlacementGroupID>> node_to_placement_groups;
+    std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
     for (auto &item : result) {
       auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
       if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
@@ -479,19 +479,23 @@ void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
         if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
             item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
           pending_placement_groups_.emplace_back(std::move(placement_group));
-        } else {
+        }
+
+        if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
+            item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
+          // TODO(ffbin): If PG is in scheduling, there may be a resource leak. At
+          // present, the worker is not bound to the bundle ID, so we can not find out the
+          // workers not used by the PG in the schedule. We will solve it in next pr.
           const auto &bundles = item.second.bundles();
           for (auto &bundle : bundles) {
-            node_to_placement_groups[NodeID::FromBinary(bundle.node_id())].emplace_back(
-                item.first);
+            node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
           }
         }
       }
     }
 
-    // Notify raylets to release unused placement groups.
-    gcs_placement_group_scheduler_->ReleaseUnusedPlacementGroups(
-        node_to_placement_groups);
+    // Notify raylets to release unused bundles.
+    gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
 
     SchedulePendingPlacementGroups();
     RAY_LOG(INFO) << "Finished loading initial data.";
