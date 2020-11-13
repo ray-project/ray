@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve.long_poll import LongPollerAsyncClient, LongPollerSyncClient
+from ray.serve.long_poll import LongPollerAsyncClient
 from ray.util import metrics
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
@@ -152,58 +152,52 @@ class Router:
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
         self.long_poll_client = LongPollerAsyncClient(
-            self.controller,
-            ["traffic_policies", "worker_handles", "backend_configs"],
-            self.update_state)
+            self.controller, {
+                "traffic_policies": self.update_traffic_policies,
+                "worker_handles": self.update_worker_handles,
+                "backend_configs": self.update_backend_configs
+            })
 
-    async def update_state(self, object_snapshots: Dict[str, Any],
-                           updated_keys: List[str]):
-        if "traffic_policies" in updated_keys:
-            traffic_policies = object_snapshots["traffic_policies"]
-            updated_endpoints = set(traffic_policies.keys())
-            curr_endpoints = set(self.traffic.keys())
+    async def update_traffic_policies(self, traffic_policies):
+        updated_endpoints = set(traffic_policies.keys())
+        curr_endpoints = set(self.traffic.keys())
 
-            for endpoint in updated_endpoints:
-                await self.set_traffic(endpoint, traffic_policies[endpoint])
+        for endpoint in updated_endpoints:
+            await self.set_traffic(endpoint, traffic_policies[endpoint])
 
-            removed_endpoints = curr_endpoints - updated_endpoints
-            for endpoint in removed_endpoints:
-                await self.remove_endpoint(endpoint)
+        removed_endpoints = curr_endpoints - updated_endpoints
+        for endpoint in removed_endpoints:
+            await self.remove_endpoint(endpoint)
 
-        if "worker_handles" in updated_keys:
-            worker_handles = object_snapshots["worker_handles"]
-            for backend_tag, replica_dict in worker_handles.items():
-                # NOTE(simon): This is a just hack around the current data
-                # structure to resolve replicas added and removed. It will be
-                # immediately become obselete when we update the router.
-                updated_replica_tags = set(replica_dict.keys())
-                curr_replica_tags = set(
-                    tag.replace(backend_tag + ":", "")
-                    for tag in self.replicas.keys()
-                    if tag.startswith(backend_tag))
+    async def update_worker_handles(self, worker_handles):
+        for backend_tag, replica_dict in worker_handles.items():
+            # NOTE(simon): This is a just hack around the current data
+            # structure to resolve replicas added and removed. It will be
+            # immediately become obselete when we update the router.
+            updated_replica_tags = set(replica_dict.keys())
+            curr_replica_tags = set(
+                tag.replace(backend_tag + ":", "")
+                for tag in self.replicas.keys() if tag.startswith(backend_tag))
 
-                added_replicas = updated_replica_tags - curr_replica_tags
-                removed_replicas = curr_replica_tags - updated_replica_tags
+            added_replicas = updated_replica_tags - curr_replica_tags
+            removed_replicas = curr_replica_tags - updated_replica_tags
 
-                for replica_tag in added_replicas:
-                    await self.add_new_replica(backend_tag, replica_tag,
-                                               replica_dict[replica_tag])
-                for replica_tag in removed_replicas:
-                    await self.remove_replica(backend_tag, replica_tag)
+            for replica_tag in added_replicas:
+                await self.add_new_replica(backend_tag, replica_tag,
+                                           replica_dict[replica_tag])
+            for replica_tag in removed_replicas:
+                await self.remove_replica(backend_tag, replica_tag)
 
-        if "backend_configs" in updated_keys:
-            backend_configs = object_snapshots["backend_configs"]
+    async def update_backend_configs(self, backend_configs):
+        updated_backends = set(backend_configs.keys())
+        curr_backends = set(self.backend_info.keys())
 
-            updated_backends = set(backend_configs.keys())
-            curr_backends = set(self.backend_info.keys())
+        for backend in updated_backends:
+            await self.set_backend_config(backend, backend_configs[backend])
 
-            for backend in updated_backends:
-                await self.set_backend_config(backend,
-                                              backend_configs[backend])
-
-            removed_backends = curr_backends - updated_backends
-            for backend in removed_backends:
-                await self.remove_backend(backend)
+        removed_backends = curr_backends - updated_backends
+        for backend in removed_backends:
+            await self.remove_backend(backend)
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):

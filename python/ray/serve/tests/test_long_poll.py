@@ -1,4 +1,5 @@
 import sys
+import functools
 import os
 import time
 import asyncio
@@ -9,7 +10,7 @@ from ray.exceptions import RayActorError
 
 import ray
 from ray.serve.long_poll import (LongPollerAsyncClient, LongPollerHost,
-                                 UpdatedObject, LongPollerSyncClient)
+                                 UpdatedObject)
 from ray.tests.conftest import ray_start_regular_shared
 
 
@@ -72,36 +73,6 @@ def test_long_pull_restarts(ray_start_regular_shared):
     assert new_timer.object_snapshot != timer.object_snapshot
 
 
-def test_sync_client(ray_start_regular_shared):
-    host = ray.remote(LongPollerHost).remote()
-
-    # Write two values
-    ray.get(host.notify_changed.remote("key_1", 100))
-    ray.get(host.notify_changed.remote("key_2", 999))
-
-    callback_results = dict()
-
-    def callback(snapshots, updated_keys):
-        for key in updated_keys:
-            callback_results[key] = snapshots[key]
-
-    client = LongPollerSyncClient(host, ["key_1", "key_2"], callback)
-    assert client.get_object_snapshot("key_1") == 100
-    assert client.get_object_snapshot("key_2") == 999
-
-    ray.get(host.notify_changed.remote("key_2", 1999))
-
-    values = set()
-    for _ in range(3):
-        values.add(client.get_object_snapshot("key_2"))
-        if 1999 in values:
-            break
-        time.sleep(1)
-    assert 1999 in values
-
-    assert callback_results == {"key_1": 100, "key_2": 1999}
-
-
 @pytest.mark.asyncio
 async def test_async_client(ray_start_regular_shared):
     host = ray.remote(LongPollerHost).remote()
@@ -112,22 +83,27 @@ async def test_async_client(ray_start_regular_shared):
 
     callback_results = dict()
 
-    async def callback(snapshots, updated_keys):
-        for key in updated_keys:
-            callback_results[key] = snapshots[key]
+    async def callback(result, key):
+        callback_results[key] = result
 
-    client = LongPollerAsyncClient(host, ["key_1", "key_2"], callback)
+    client = LongPollerAsyncClient(
+        host, {
+            "key_1": functools.partial(callback, key="key_1"),
+            "key_2": functools.partial(callback, key="key_2")
+        })
+
     while len(client.object_snapshots) == 0:
         # Yield the loop for client to get the result
         await asyncio.sleep(0.2)
-    assert client.get_object_snapshot("key_1") == 100
-    assert client.get_object_snapshot("key_2") == 999
+
+    assert client.object_snapshots["key_1"] == 100
+    assert client.object_snapshots["key_2"] == 999
 
     ray.get(host.notify_changed.remote("key_2", 1999))
 
     values = set()
     for _ in range(3):
-        values.add(client.get_object_snapshot("key_2"))
+        values.add(client.object_snapshots["key_2"])
         if 1999 in values:
             break
         await asyncio.sleep(1)

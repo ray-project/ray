@@ -484,18 +484,15 @@ class ServeController:
 
     def on_replica_handles_changed(self):
         self.long_poll_host.notify_changed(
-            "worker_handles",
-            self.controller.actor_reconciler.backend_replicas)
+            "worker_handles", self.actor_reconciler.backend_replicas)
 
     def on_traffic_policies_changed(self):
         self.long_poll_host.notify_changed(
-            "traffic_policies",
-            self.controller.configuration_store.traffic_policies)
+            "traffic_policies", self.configuration_store.traffic_policies)
 
     def on_backend_configs_changed(self):
         self.long_poll_host.notify_changed(
-            "backend_configs",
-            self.controller.configuration_store.get_backend_configs())
+            "backend_configs", self.configuration_store.get_backend_configs())
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.

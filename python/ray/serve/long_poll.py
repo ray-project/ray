@@ -18,24 +18,39 @@ class UpdatedObject:
 
 
 # Type signature for the update state callbacks. E.g.
-# def update_state(updated_objects: Dict[str, Any], updated_keys: List[str]):
-#     if "my_key" in updated_keys: do_something(updated_objects["my_key"])
-UpdateStateCallable = Callable[[Dict[str, Any], List[str]], None]
-UpdateStateAsyncCallable = Callable[[Dict[str, Any], List[str]], Awaitable[
-    None]]
+# async def update_state(updated_object: Any):
+#     do_something(updated_object)
+UpdateStateAsyncCallable = Callable[[Any], Awaitable[None]]
 
 
-class BaseClient:
-    """Shared functionality between LongPollerSyncClient and AsyncClient.
-       This class is not expected to use this directly.
+class LongPollerAsyncClient:
+    """The asynchronous long polling client.
+
+    Internally, it runs `await object_ref` in a `while True` loop. When a
+    object notification arrived, the client will invoke callback if supplied.
+    Note that this client will wait the callback to be completed before issuing
+    the next poll.
+
+    Args:
+        host_actor(ray.ActorHandle): a
     """
 
-    def __init__(self, host_actor, keys: List[str]) -> None:
+    def __init__(self, host_actor,
+                 key_listeners: Dict[str, UpdateStateAsyncCallable]) -> None:
         self.host_actor = host_actor
-        self.snapshot_ids: Dict[str, int] = {key: -1 for key in keys}
+        self.key_listeners = key_listeners
+
+        self.snapshot_ids: Dict[str, int] = {
+            key: -1
+            for key in key_listeners.keys()
+        }
         self.object_snapshots: Dict[str, Any] = dict()
 
-    def _pull_once(self) -> ray.ObjectRef:
+        in_async_context = asyncio.get_event_loop().is_running
+        assert in_async_context, "The client is only available in async context."
+        asyncio.get_event_loop().create_task(self._do_long_poll())
+
+    def _poll_once(self) -> ray.ObjectRef:
         object_ref = self.host_actor.listen_for_change.remote(
             self.snapshot_ids)
         return object_ref
@@ -45,76 +60,16 @@ class BaseClient:
             self.object_snapshots[key] = update.object_snapshot
             self.snapshot_ids[key] = update.snapshot_id
 
-    def get_object_snapshot(self, object_key: str) -> Any:
-        return self.object_snapshots[object_key]
-
-
-class LongPollerSyncClient(BaseClient):
-    """The synchronous long polling client.
-
-    Internally, it uses ray.wait(timeout=0) to check if the object notification
-    has arrived. When a object notification arrived, the client will invoke
-    callback if supplied.
-    """
-
-    def __init__(self,
-                 host_actor,
-                 keys: List[str],
-                 callback: Optional[UpdateStateCallable] = None) -> None:
-        super().__init__(host_actor, keys)
-        self.in_flight_request_ref: ray.ObjectRef = self._pull_once()
-        self.callback = callback
-        self.refresh(block=True)
-
-    def refresh(self, block=False):
-        """Check the inflight request once and update internal state.
-
-        Args:
-            block(bool): If block=True, then calls ray.get to wait and ensure
-              the object notificaiton is received and updated.
-        """
-        done, _ = ray.wait([self.in_flight_request_ref], timeout=0)
-        if len(done) == 1 or block:
-            updates = ray.get(self.in_flight_request_ref)
-            self._update(updates)
-            if self.callback:
-                self.callback(self.object_snapshots, list(updates.keys()))
-        self.in_flight_request_ref = self._pull_once()
-
-    def get_object_snapshot(self, object_key: str) -> Any:
-        # NOTE(simon): Performing one ray.wait on get still has too high
-        # overhead. Consider a batch submission scenario and how to amortize
-        # the cost.
-        self.refresh()
-        return self.object_snapshots[object_key]
-
-
-class LongPollerAsyncClient(BaseClient):
-    """The asynchronous long polling client.
-
-    Internally, it runs `await object_ref` in a `while True` loop. When a
-    object notification arrived, the client will invoke callback if supplied.
-    Note that this client will wait the callback to be completed before issuing
-    the next poll.
-    """
-
-    def __init__(self,
-                 host_actor,
-                 keys: List[str],
-                 callback: Optional[UpdateStateAsyncCallable] = None) -> None:
-        assert asyncio.get_event_loop(
-        ).is_running, "The client is only available in async context."
-        super().__init__(host_actor, keys)
-        asyncio.get_event_loop().create_task(self._do_long_poll())
-        self.callback = callback
-
     async def _do_long_poll(self):
         while True:
-            updates = await self._pull_once()
+            updates: Dict[str, UpdatedObject] = await self._poll_once()
             self._update(updates)
-            if self.callback:
-                await self.callback(self.object_snapshots,
-                                    list(updates.keys()))
+            for key, updated_object in updates.items():
+                # NOTE(simon): This blocks the loop from doing another poll.
+                # Consider use loop.create_task here or poll first then call
+                # the callbacks.
+                callback = self.key_listeners[key]
+                await callback(updated_object.object_snapshot)
 
 
 class LongPollerHost:
