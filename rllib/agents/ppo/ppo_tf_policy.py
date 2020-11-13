@@ -190,8 +190,11 @@ def postprocess_ppo_gae(
         last_r = 0.0
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
+        # Input dict is provided to us automatically via the policy-defined
+        # "view". It's a single-timestep (last one in trajectory) input_dict.
         if policy.config["_use_trajectory_view_api"]:
             last_r = policy._value(sample_batch["_value_input_dict"])
+        # TODO: (sven) Remove once trajectory view API is all-algo default.
         else:
             next_state = []
             for i in range(policy.num_state_tensors()):
@@ -291,7 +294,9 @@ class ValueNetworkMixin:
         # When doing GAE, we need the value function estimate on the
         # observation.
         if config["use_gae"]:
-            # Traj. view API.
+
+            # Input dict is provided to us automatically via the policy-defined
+            # "view". It's a single-timestep (last one in trajectory) input_dict.
             if config["_use_trajectory_view_api"]:
 
                 @make_tf_callable(self.get_session())
@@ -301,7 +306,7 @@ class ValueNetworkMixin:
                     # [0] = remove the batch dim.
                     return self.model.value_function()[0]
 
-            # TODO: (sven) obsolete.
+            # TODO: (sven) Remove once trajectory view API is all-algo default.
             else:
 
                 @make_tf_callable(self.get_session())
@@ -364,7 +369,8 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
 def view_requirements_fn(policy):
     # Adds the input-dict used in postprocessing to the dict of view-reqs.
     # This is for value calculation at the very end of a trajectory
-    # (which is not done).
+    # (abs_pos=-1). It's only used if the trajectory is not finished yet and we
+    # have to rely on the last value function output as a reward estimation.
     return {
         "_value_input_dict": ViewRequirement(is_input_dict=True, abs_pos=-1)
     }
