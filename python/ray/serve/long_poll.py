@@ -1,9 +1,8 @@
 import asyncio
-from asyncio.tasks import Task
 import random
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, DefaultDict, Dict, Generic, Set, Tuple, List, TypeVar, Optional
+from typing import Any, Awaitable, Callable, DefaultDict, Dict, Set
 
 import ray
 from ray.serve.utils import logger
@@ -48,8 +47,8 @@ class LongPollerAsyncClient:
         }
         self.object_snapshots: Dict[str, Any] = dict()
 
-        in_async_context = asyncio.get_event_loop().is_running
-        assert in_async_context, "The client is only available in async context."
+        in_async_loop = asyncio.get_event_loop().is_running
+        assert in_async_loop, "The client is only available in async context."
         asyncio.get_event_loop().create_task(self._do_long_poll())
 
     def _poll_once(self) -> ray.ObjectRef:
@@ -150,9 +149,7 @@ class LongPollerHost:
     def notify_changed(self, object_key: str, updated_object: Any):
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object
-        logger.debug(
-            f"LongPollerHost: Updated object_snapshot to {self.object_snapshots}"
-        )
+        logger.debug(f"LongPollerHost: {object_key} = {updated_object}")
 
         if object_key in self.notifier_events:
             for event in self.notifier_events.pop(object_key):

@@ -1,20 +1,17 @@
 import asyncio
 import copy
 from collections import defaultdict, deque
-import functools
-import itertools
 import time
-from typing import DefaultDict, Iterable, List, Dict, Any, Optional, Union
+from typing import DefaultDict, List, Dict, Any, Optional
 import pickle
 from dataclasses import dataclass, field
 
 import ray
-from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
 from ray.serve.long_poll import LongPollerAsyncClient
 from ray.util import metrics
 from ray.serve.context import TaskContext
-from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
+from ray.serve.endpoint_policy import RandomEndpointPolicy
 from ray.serve.utils import logger, chain_future
 
 REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
@@ -73,7 +70,16 @@ class Query:
 class Router:
     """A router that routes request to available replicas."""
 
-    async def setup(self, name, controller_name):
+    async def setup(self, name, controller_name, _do_long_pull=True):
+        """Setup the router state
+
+        Args:
+            name(str): Used to identify the router when reporting queue
+                lengths to the controller.
+            controller_name(str): The actor name for the controller.
+            _do_long_pull(bool): Used by unit testing.
+        """
+
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -151,12 +157,13 @@ class Router:
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
-        self.long_poll_client = LongPollerAsyncClient(
-            self.controller, {
-                "traffic_policies": self.update_traffic_policies,
-                "worker_handles": self.update_worker_handles,
-                "backend_configs": self.update_backend_configs
-            })
+        if _do_long_pull:
+            self.long_poll_client = LongPollerAsyncClient(
+                self.controller, {
+                    "traffic_policies": self.update_traffic_policies,
+                    "worker_handles": self.update_worker_handles,
+                    "backend_configs": self.update_backend_configs
+                })
 
     async def update_traffic_policies(self, traffic_policies):
         updated_endpoints = set(traffic_policies.keys())

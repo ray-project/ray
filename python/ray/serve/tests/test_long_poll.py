@@ -1,17 +1,14 @@
 import sys
 import functools
-import os
 import time
 import asyncio
 from typing import Dict
 
 import pytest
-from ray.exceptions import RayActorError
 
 import ray
 from ray.serve.long_poll import (LongPollerAsyncClient, LongPollerHost,
                                  UpdatedObject)
-from ray.tests.conftest import ray_start_regular_shared
 
 
 def test_host_standalone(ray_start_regular_shared):
@@ -113,5 +110,4 @@ async def test_async_client(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
