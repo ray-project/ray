@@ -191,7 +191,7 @@ class TrainableUtil:
         pg = None
         options = dict(
             num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)
-        if num_workers_per_host > 0:
+        if num_workers_per_host:
             num_hosts = int(num_workers / num_workers_per_host)
             cpus_per_node = num_cpus_per_worker * num_workers_per_host
             gpus_per_node = \
