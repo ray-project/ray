@@ -293,7 +293,7 @@ Status ConnectWithoutRetries(const std::string &address, int port,
   if (*context == nullptr || (*context)->err) {
     ostringstream oss(errorMessage);
     if (*context == nullptr) {
-      oss << "Could not allocate Redis context."
+      oss << "Could not allocate Redis context.";
     } else if ((*context)->err) {
       oss << "Could not establish connection to Redis " << address << ":"
           << port << " (context.err = " << (*context)->err << ")";
