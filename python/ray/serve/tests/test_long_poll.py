@@ -22,7 +22,7 @@ def test_host_standalone(serve_instance):
     # We should be able to get the result immediately
     result: Dict[str, UpdatedObject] = ray.get(object_ref)
     assert set(result.keys()) == {"key_1", "key_2"}
-    assert set(v.object_snapshot for v in result.values()) == {999}
+    assert {v.object_snapshot for v in result.values()} == {999}
 
     # Now try to pull it again, nothing should happen
     # because we have the updated snapshot_id

@@ -182,9 +182,10 @@ class Router:
             # structure to resolve replicas added and removed. It will be
             # immediately become obselete when we update the router.
             updated_replica_tags = set(replica_dict.keys())
-            curr_replica_tags = set(
+            curr_replica_tags = {
                 tag.replace(backend_tag + ":", "")
-                for tag in self.replicas.keys() if tag.startswith(backend_tag))
+                for tag in self.replicas.keys() if tag.startswith(backend_tag)
+            }
 
             added_replicas = updated_replica_tags - curr_replica_tags
             removed_replicas = curr_replica_tags - updated_replica_tags
