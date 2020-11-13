@@ -188,10 +188,10 @@ class TrainableUtil:
                 the remote worker and the placement group information.
             pg(placement_group): return a reference to the placement group
         """
-        num_hosts = int(num_workers / num_workers_per_host)
         options = dict(
             num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)
         if num_workers_per_host > 0:
+            num_hosts = int(num_workers / num_workers_per_host)
             cpus_per_node = num_cpus_per_worker * num_workers_per_host
             gpus_per_node = \
                 num_gpus_per_worker * num_workers_per_host
