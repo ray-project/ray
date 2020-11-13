@@ -12,6 +12,9 @@ import time
 import warnings
 
 from ray.autoscaler.command_runner import CommandRunnerInterface
+from ray.autoscaler._private.constants import \
+                                     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,\
+                                     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
 from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
@@ -716,8 +719,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.container_name,
                 self.docker_config.get(
                     "run_options", []) + self.docker_config.get(
-                        f"{'head' if as_head else 'worker'}_run_options",
-                        []) + self._configure_runtime(),
+                        f"{'head' if as_head else 'worker'}_run_options", []) +
+                self._configure_runtime() + self._auto_configure_shm(),
                 self.ssh_command_runner.cluster_name, home_directory)
             self.run(start_command, run_env="host")
         else:
@@ -780,6 +783,27 @@ class DockerCommandRunner(CommandRunnerInterface):
                 return []
 
         return []
+
+    def _auto_configure_shm(self):
+        if self.docker_config.get("disable_shm_size_detection"):
+            return []
+        try:
+            shm_output = self.ssh_command_runner.run(
+                "cat /proc/meminfo || true",
+                with_output=True).decode().strip()
+            available_memory = int([
+                ln for ln in shm_output.split("\n") if "MemAvailable" in ln
+            ][0].split()[1])
+            available_memory_bytes = available_memory * 1024
+            # Overestimate SHM size by 10%
+            shm_size = min((available_memory_bytes *
+                            DEFAULT_OBJECT_STORE_MEMORY_PROPORTION * 1.1),
+                           DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+            return [f"--shm-size='{shm_size}b'"]
+        except Exception as e:
+            logger.warning(
+                f"Received error while trying to auto-compute SHM size {e}")
+            return []
 
     def _get_docker_host_mount_location(self, cluster_name: str) -> str:
         """Return the docker host mount directory location."""
