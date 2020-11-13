@@ -100,8 +100,11 @@ If it worked, you should see as the first line in ``raylet.err``:
 
   logging.cc:270: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
 
-(-1 is the numerical value of RayLogLevel::DEBUG.)
-(https://github.com/ray-project/ray/blob/master/src/ray/util/logging.h#L54)
+(-1 is defined as RayLogLevel::DEBUG in logging.h.)
+
+.. literalinclude:: /../../src/ray/util/logging.h
+  :language: C
+  :lines: 52,54
 
 
 .. _`issues`: https://github.com/ray-project/ray/issues
