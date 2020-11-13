@@ -483,9 +483,6 @@ void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
 
         if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
             item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
-          // TODO(ffbin): If PG is in scheduling, there may be a resource leak. At
-          // present, the worker is not bound to the bundle ID, so we can not find out the
-          // workers not used by the PG in the schedule. We will solve it in next pr.
           const auto &bundles = item.second.bundles();
           for (auto &bundle : bundles) {
             node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);

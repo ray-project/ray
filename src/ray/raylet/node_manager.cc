@@ -560,39 +560,24 @@ void NodeManager::HandleReleaseUnusedBundles(
     const rpc::ReleaseUnusedBundlesRequest &request,
     rpc::ReleaseUnusedBundlesReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
-  //  std::unordered_set<PlacementGroupID> in_use_placement_group_ids;
-  //  for (int index = 0; index < request.placement_group_ids_in_use_size(); ++index) {
-  //    auto pg_id =
-  //    PlacementGroupID::FromBinary(request.placement_group_ids_in_use(index));
-  //    in_use_placement_group_ids.emplace(pg_id);
-  //  }
-  //
-  //  // Kill all workers that are currently associated with the unused placement group.
-  //  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_unused_pg;
-  //  for (const auto &worker_it : leased_workers_) {
-  //    auto &worker = worker_it.second;
-  //    if (0 == in_use_placement_group_ids.count(worker->GetPlacementGroupId())) {
-  //      workers_associated_with_unused_pg.push_back(worker);
-  //    }
-  //  }
-  //  for (const auto &worker : workers_associated_with_unused_pg) {
-  //    RAY_LOG(DEBUG)
-  //        << "Destroying worker since its placement group was unused. Placement group
-  //        id: "
-  //        << worker->GetPlacementGroupId()
-  //        << ", task id: " << worker->GetAssignedTaskId()
-  //        << ", actor id: " << worker->GetActorId()
-  //        << ", worker id: " << worker->WorkerId();
-  //    // We should disconnect the client first. Otherwise, we'll remove bundle resources
-  //    // before actual resources are returned. Subsequent disconnect request that comes
-  //    // due to worker dead will be ignored.
-  //    ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
-  //    worker->MarkDead();
-  //    KillWorker(worker);
-  //  }
-  //
-  //  // Return bundle resources.
-  //  ReturnBundleResources(bundle_spec);
+  std::unordered_set<BundleID, pair_hash> in_use_bundles;
+  for (int index = 0; index < request.bundles_in_use_size(); ++index) {
+    const auto &bundle_id = request.bundles_in_use(index).bundle_id();
+    in_use_bundles.emplace(
+        std::make_pair(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                       bundle_id.bundle_index()));
+  }
+
+  // TODO(ffbin): Kill all workers that are currently associated with the unused bundles.
+  // At present, the worker does not have a bundle ID, so we cannot filter out the workers
+  // used by unused bundles. We will solve it in next pr.
+
+  // Return unused bundle resources.
+  for (const auto &iter : bundle_spec_map_) {
+    if (0 == in_use_bundles.count(iter.first)) {
+      ReturnBundleResources(*iter.second);
+    }
+  }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2023,6 +2008,8 @@ bool NodeManager::PrepareBundle(
     // Register bundle state.
     bundle_state->state = CommitState::PREPARED;
     bundle_state_map_.emplace(bundle_id, bundle_state);
+    bundle_spec_map_.emplace(
+        bundle_id, std::make_shared<BundleSpecification>(bundle_spec.GetMessage()));
   }
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
 }
@@ -3384,6 +3371,7 @@ bool NodeManager::ReturnBundleResources(const BundleSpecification &bundle_spec) 
     CommitBundle(cluster_resource_map_, bundle_spec);
   }
   bundle_state_map_.erase(it);
+  bundle_spec_map_.erase(bundle_spec.BundleId());
 
   // Return resources.
   const auto &resource_set = bundle_spec.GetRequiredResources();
