@@ -21,10 +21,12 @@ def one_hot(i, n):
 
 
 class TestMultiAgentEnv(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_basic_mock(self):
@@ -327,25 +329,28 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 prev_reward_batch=None,
                                 episodes=None,
                                 **kwargs):
-                # Pretend we did a model-based rollout and want to return
-                # the extra trajectory.
-                builder = episodes[0].new_batch_builder()
-                rollout_id = random.randint(0, 10000)
-                for t in range(5):
-                    builder.add_values(
-                        agent_id="extra_0",
-                        policy_id="p1",  # use p1 so we can easily check it
-                        t=t,
-                        eps_id=rollout_id,  # new id for each rollout
-                        obs=obs_batch[0],
-                        actions=0,
-                        rewards=0,
-                        dones=t == 4,
-                        infos={},
-                        new_obs=obs_batch[0])
-                batch = builder.build_and_reset(episode=None)
-                episodes[0].add_extra_batch(batch)
-
+                # In policy loss initialization phase, no episodes are passed
+                # in.
+                if episodes is not None:
+                    # Pretend we did a model-based rollout and want to return
+                    # the extra trajectory.
+                    builder = episodes[0].new_batch_builder()
+                    rollout_id = random.randint(0, 10000)
+                    for t in range(5):
+                        builder.add_values(
+                            agent_id="extra_0",
+                            policy_id="p1",  # use p1 so we can easily check it
+                            t=t,
+                            eps_id=rollout_id,  # new id for each rollout
+                            obs=obs_batch[0],
+                            actions=0,
+                            rewards=0,
+                            dones=t == 4,
+                            infos={},
+                            new_obs=obs_batch[0])
+                    batch = builder.build_and_reset(episode=None)
+                    episodes[0].add_extra_batch(batch)
+    
                 # Just return zeros for actions
                 return [0] * len(obs_batch), [], {}
 
