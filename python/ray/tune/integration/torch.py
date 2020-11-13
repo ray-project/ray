@@ -16,7 +16,7 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
-from ray.tune.utils.trainable import TrainableUtil, get_remote_worker_options
+from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import detect_checkpoint_function
 from ray.util.sgd.torch.utils import setup_process_group, setup_address
 from ray.util.placement_group import remove_placement_group
@@ -78,7 +78,7 @@ class _TorchTrainable(tune.Trainable):
 
         remote_trainable = ray.remote(func_trainable)
         remote_trainable = \
-            remote_trainable.options(**get_remote_worker_options(
+            remote_trainable.options(**TrainableUtil.get_remote_worker_options(
                 self.workers, self._num_cpus_per_worker,
                 self._num_gpus_per_worker,
                 self._num_workers_per_host, self._timeout_s))
