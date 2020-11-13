@@ -677,6 +677,8 @@ class TrialProgressCallback(Callback):
 
     def __init__(self, metric: Optional[str] = None):
         self._last_print = collections.defaultdict(float)
+        self._completed_trials = set()
+        self._last_result_str = {}
         self._metric = metric
 
     def on_trial_result(self, iteration: int, trials: List["Trial"],
@@ -687,9 +689,26 @@ class TrialProgressCallback(Callback):
                        trial: "Trial", **info):
         self.log_result(trial, trial.last_result, error=True)
 
+    def on_trial_complete(self, iteration: int, trials: List["Trial"],
+                          trial: "Trial", **info):
+        # Only log when we never logged that a trial was completed
+        if trial not in self._completed_trials:
+            self._completed_trials.add(trial)
+
+            print_result_str = self._print_result(trial.last_result)
+            last_result_str = self._last_result_str.get(trial, "")
+            # If this is a new result, print full result string
+            if print_result_str != last_result_str:
+                self.log_result(trial, trial.last_result, error=False)
+            else:
+                print(f"Trial {trial} completed. "
+                      f"Last result: {print_result_str}")
+
     def log_result(self, trial: "Trial", result: Dict, error: bool = False):
         done = result.get("done", False) is True
         last_print = self._last_print[trial]
+        if done and trial not in self._completed_trials:
+            self._completed_trials.add(trial)
         if has_verbosity(Verbosity.V3_TRIAL_DETAILS) and \
            (done or error or time.time() - last_print > DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(trial))
@@ -704,15 +723,10 @@ class TrialProgressCallback(Callback):
 
             metric_name = self._metric or "_metric"
             metric_value = result.get(metric_name, -99.)
-            print_result = result.copy()
-            print_result.pop("config", None)
-            print_result.pop("trial_id", None)
-            print_result.pop("done", None)
-            for auto_result in AUTO_RESULT_KEYS:
-                print_result.pop(auto_result, None)
 
-            print_result_str = ",".join(
-                [f"{k}={v}" for k, v in print_result.items()])
+            print_result_str = self._print_result(result)
+
+            self._last_result_str[trial] = print_result_str
 
             error_file = os.path.join(trial.logdir, "error.txt")
 
@@ -731,3 +745,16 @@ class TrialProgressCallback(Callback):
 
             print(message)
             self._last_print[trial] = time.time()
+
+    def _print_result(self, result: Dict):
+        print_result = result.copy()
+        print_result.pop("config", None)
+        print_result.pop("trial_id", None)
+        print_result.pop("experiment_tag", None)
+        print_result.pop("done", None)
+        for auto_result in AUTO_RESULT_KEYS:
+            print_result.pop(auto_result, None)
+
+        print_result_str = ",".join(
+            [f"{k}={v}" for k, v in print_result.items()])
+        return print_result_str

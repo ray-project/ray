@@ -160,6 +160,48 @@ EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
 EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
                   "parameters={'a': 4}"
 
+VERBOSE_EXP_OUT_1 = "Number of trials: 1/3 (1 RUNNING)"
+VERBOSE_EXP_OUT_2 = "Number of trials: 3/3 (3 TERMINATED)"
+
+VERBOSE_TRIAL_NORM = "Trial train_xxxxx_00000 reported acc=5 with " + \
+    """parameters={'do': 'complete'}. This trial completed.
+Trial train_xxxxx_00001 reported _metric=6 with parameters={'do': 'once'}.
+Trial train_xxxxx_00001 completed. Last result: _metric=6
+Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.
+Trial train_xxxxx_00002 reported acc=8 with parameters={'do': 'twice'}. """ + \
+    "This trial completed."
+
+VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------+----------+
+| Trial name        | status   | loc   | do       |
+|-------------------+----------+-------+----------|
+| train_xxxxx_00000 | RUNNING  |       | complete |
++-------------------+----------+-------+----------+"""
+
+VERBOSE_CMD = """from ray import tune
+import random
+import numpy as np
+
+
+def train(config):
+    if config["do"] == "complete":
+        tune.report(acc=5, done=True)
+    elif config["do"] == "once":
+        tune.report(6)
+    else:
+        tune.report(acc=7)
+        tune.report(acc=8)
+
+random.seed(1234)
+np.random.seed(1234)
+
+tune.run(
+    train,
+    config={
+        "do": tune.grid_search(["complete", "once", "twice"])
+    },"""
+
+# Add "verbose=3)" etc
+
 
 class ProgressReporterTest(unittest.TestCase):
     def mock_trial(self, status, i):
@@ -355,6 +397,64 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
+        finally:
+            del os.environ["_TEST_TUNE_TRIAL_UUID"]
+
+    def testVerboseReporting(self):
+        try:
+            os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
+
+            verbose_0_cmd = VERBOSE_CMD + "verbose=0)"
+            output = run_string_as_driver(verbose_0_cmd)
+            try:
+                assert VERBOSE_EXP_OUT_1 not in output
+                assert VERBOSE_EXP_OUT_2 not in output
+                assert VERBOSE_TRIAL_NORM not in output
+                assert VERBOSE_TRIAL_DETAIL not in output
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
+
+            verbose_1_cmd = VERBOSE_CMD + "verbose=1)"
+            output = run_string_as_driver(verbose_1_cmd)
+            try:
+                assert VERBOSE_EXP_OUT_1 in output
+                assert VERBOSE_EXP_OUT_2 in output
+                assert VERBOSE_TRIAL_NORM not in output
+                assert VERBOSE_TRIAL_DETAIL not in output
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
+
+            verbose_2_cmd = VERBOSE_CMD + "verbose=2)"
+            output = run_string_as_driver(verbose_2_cmd)
+            try:
+                assert VERBOSE_EXP_OUT_1 in output
+                assert VERBOSE_EXP_OUT_2 in output
+                assert VERBOSE_TRIAL_NORM in output
+                assert VERBOSE_TRIAL_DETAIL not in output
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
+
+            verbose_3_cmd = VERBOSE_CMD + "verbose=3)"
+            output = run_string_as_driver(verbose_3_cmd)
+            try:
+                assert VERBOSE_EXP_OUT_1 in output
+                assert VERBOSE_EXP_OUT_2 in output
+                assert VERBOSE_TRIAL_NORM not in output
+                assert VERBOSE_TRIAL_DETAIL in output
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
