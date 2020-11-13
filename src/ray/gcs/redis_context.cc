@@ -310,7 +310,7 @@ Status ConnectWithRetries(const std::string &address, int port,
   int connection_attempts = 0;
   std::string errorMessage = "";
   Status status = ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
-  while (status != Status::OK()) {
+  while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       RAY_LOG(FATAL) << errorMessage;
       break;
