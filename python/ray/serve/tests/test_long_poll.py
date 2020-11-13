@@ -11,7 +11,7 @@ from ray.serve.long_poll import (LongPollerAsyncClient, LongPollerHost,
                                  UpdatedObject)
 
 
-def test_host_standalone(ray_start_regular_shared):
+def test_host_standalone(serve_instance):
     host = ray.remote(LongPollerHost).remote()
 
     # Write two values
@@ -41,7 +41,7 @@ def test_host_standalone(ray_start_regular_shared):
 @pytest.mark.skip(
     "Skip until https://github.com/ray-project/ray/issues/11683 fixed "
     "since async actor retries is broken.")
-def test_long_pull_restarts(ray_start_regular_shared):
+def test_long_pull_restarts(serve_instance):
     @ray.remote(
         max_restarts=-1,
         # max_task_retries=-1,
@@ -72,7 +72,7 @@ def test_long_pull_restarts(ray_start_regular_shared):
 
 
 @pytest.mark.asyncio
-async def test_async_client(ray_start_regular_shared):
+async def test_async_client(serve_instance):
     host = ray.remote(LongPollerHost).remote()
 
     # Write two values
