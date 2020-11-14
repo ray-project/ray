@@ -668,11 +668,9 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
     return;
   }
 
-  // Initialize a rpc client to the new node manager.
-  std::unique_ptr<rpc::NodeManagerClient> client(
-      new rpc::NodeManagerClient(node_info.node_manager_address(),
-                                 node_info.node_manager_port(), client_call_manager_));
-  remote_node_manager_clients_.emplace(node_id, std::move(client));
+  // Store address of the new node manager for rpc requests.
+  remote_node_manager_addresses_[node_id] =
+      std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
 
   // Fetch resource info for the remote client and update cluster resource map.
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(
@@ -723,10 +721,10 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
     }
   }
 
-  // Remove the node manager client.
-  const auto client_entry = remote_node_manager_clients_.find(node_id);
-  if (client_entry != remote_node_manager_clients_.end()) {
-    remote_node_manager_clients_.erase(client_entry);
+  // Remove the node manager address.
+  const auto client_entry = remote_node_manager_addresses_.find(node_id);
+  if (client_entry != remote_node_manager_addresses_.end()) {
+    remote_node_manager_addresses_.erase(client_entry);
   }
 
   // Notify the object directory that the client has been removed so that it
@@ -1166,13 +1164,23 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   Language language = static_cast<Language>(message->language());
+  const JobID job_id = from_flatbuf<JobID>(*message->job_id());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
-  auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
-      worker_id, language, worker_type, worker_ip_address, client, client_call_manager_));
+  if ((RayConfig::instance().enable_multi_tenancy() &&
+       (worker_type != rpc::WorkerType::SPILL_WORKER &&
+        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
+      worker_type == rpc::WorkerType::DRIVER) {
+    RAY_CHECK(!job_id.IsNil());
+  } else {
+    RAY_CHECK(job_id.IsNil());
+  }
+  auto worker = std::dynamic_pointer_cast<WorkerInterface>(
+      std::make_shared<Worker>(job_id, worker_id, language, worker_type,
+                               worker_ip_address, client, client_call_manager_));
 
   auto send_reply_callback = [this, client](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
@@ -1198,7 +1206,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   };
 
   if (worker_type == rpc::WorkerType::WORKER ||
-      worker_type == rpc::WorkerType::IO_WORKER) {
+      worker_type == rpc::WorkerType::SPILL_WORKER ||
+      worker_type == rpc::WorkerType::RESTORE_WORKER) {
     // Register the new worker.
     auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
     if (!status.ok()) {
@@ -1211,14 +1220,12 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Register the new driver.
     RAY_CHECK(pid >= 0);
     worker->SetProcess(Process::FromPid(pid));
-    const JobID job_id = from_flatbuf<JobID>(*message->job_id());
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
-    Status status =
-        worker_pool_.RegisterDriver(worker, job_id, job_config, send_reply_callback);
+    Status status = worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr =
@@ -1257,9 +1264,15 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
 
-  if (worker->GetWorkerType() == rpc::WorkerType::IO_WORKER) {
+  if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
     // Return the worker to the idle pool.
-    worker_pool_.PushIOWorker(worker);
+    worker_pool_.PushSpillWorker(worker);
+    return;
+  }
+
+  if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushRestoreWorker(worker);
     return;
   }
 
@@ -1944,9 +1957,6 @@ bool NodeManager::PrepareBundle(
     }
   }
 
-  // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
-  // once retry is implemented. If the resource map contains the local raylet, update load
-  // before calling policy.
   if (resource_map.count(self_node_id_) > 0) {
     resource_map[self_node_id_].SetLoadResources(local_queues_.GetTotalResourceLoad());
   }
@@ -2847,7 +2857,9 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worke
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
     worker->SetOwnerAddress(spec.CallerAddress());
-    worker->AssignJobId(spec.JobId());
+    if (!RayConfig::instance().enable_multi_tenancy()) {
+      worker->AssignJobId(spec.JobId());
+    }
     // TODO(swang): For actors with multiple actor handles, to
     // guarantee that tasks are replayed in the same order after a
     // failure, we must update the task's execution dependency to be
@@ -2994,8 +3006,8 @@ std::string NodeManager::DebugString() const {
   result << "\n- num restarting actors: " << statistical_data.restarting_actors;
   result << "\n- num dead actors: " << statistical_data.dead_actors;
 
-  result << "\nRemote node manager clients: ";
-  for (const auto &entry : remote_node_manager_clients_) {
+  result << "\nRemote node managers: ";
+  for (const auto &entry : remote_node_manager_addresses_) {
     result << "\n" << entry.first;
   }
 
@@ -3238,7 +3250,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   auto local_reply = std::make_shared<rpc::GetNodeStatsReply>();
   local_request->set_include_memory_info(true);
 
-  unsigned int num_nodes = remote_node_manager_clients_.size() + 1;
+  unsigned int num_nodes = remote_node_manager_addresses_.size() + 1;
   rpc::GetNodeStatsRequest stats_req;
   stats_req.set_include_memory_info(true);
 
@@ -3252,8 +3264,10 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   };
 
   // Fetch from remote nodes.
-  for (const auto &entry : remote_node_manager_clients_) {
-    entry.second->GetNodeStats(
+  for (const auto &entry : remote_node_manager_addresses_) {
+    std::unique_ptr<rpc::NodeManagerClient> client(new rpc::NodeManagerClient(
+        entry.second.first, entry.second.second, client_call_manager_));
+    client->GetNodeStats(
         stats_req, [replies, store_reply](const ray::Status &status,
                                           const rpc::GetNodeStatsReply &r) {
           if (!status.ok()) {

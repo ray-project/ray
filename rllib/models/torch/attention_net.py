@@ -9,6 +9,7 @@
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
 import numpy as np
+import gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
@@ -17,11 +18,12 @@ from ray.rllib.models.torch.modules import GRUGate, \
 from ray.rllib.models.torch.recurrent_net import RecurrentNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
 
 torch, nn = try_import_torch()
 
 
-def relative_position_embedding(seq_length, out_dim):
+def relative_position_embedding(seq_length: int, out_dim: int) -> TensorType:
     """Creates a [seq_length x seq_length] matrix for rel. pos encoding.
 
     Denoted as Phi in [2] and [3]. Phi is the standard sinusoid encoding
@@ -64,18 +66,18 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
     """
 
     def __init__(self,
-                 observation_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
-                 name,
-                 num_transformer_units,
-                 attn_dim,
-                 num_heads,
-                 memory_tau,
-                 head_dim,
-                 ff_hidden_dim,
-                 init_gate_bias=2.0):
+                 observation_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 num_outputs: int,
+                 model_config: ModelConfigDict,
+                 name: str,
+                 num_transformer_units: int,
+                 attn_dim: int,
+                 num_heads: int,
+                 memory_tau: int,
+                 head_dim: int,
+                 ff_hidden_dim: int,
+                 init_gate_bias: float = 2.0):
         """Initializes a GTrXLNet.
 
         Args:
@@ -167,7 +169,8 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
             in_size=self.attn_dim, out_size=1, activation_fn=None)
 
     @override(RecurrentNetwork)
-    def forward_rnn(self, inputs, state, seq_lens):
+    def forward_rnn(self, inputs: TensorType, state: List[TensorType],
+                    seq_lens: TensorType) -> (TensorType, List[TensorType]):
         # To make Attention work with current RLlib's ModelV2 API:
         # We assume `state` is the history of L recent observations (all
         # concatenated into one tensor) and append the current inputs to the
@@ -214,7 +217,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         return logits, [observations] + memory_outs
 
     @override(RecurrentNetwork)
-    def get_initial_state(self):
+    def get_initial_state(self) -> List[np.ndarray]:
         # State is the T last observations concat'd together into one Tensor.
         # Plus all Transformer blocks' E(l) outputs concat'd together (up to
         # tau timesteps).
@@ -223,5 +226,5 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                 for _ in range(self.num_transformer_units)]
 
     @override(ModelV2)
-    def value_function(self):
+    def value_function(self) -> TensorType:
         return torch.reshape(self._value_out, [-1])

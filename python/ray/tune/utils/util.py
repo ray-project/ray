@@ -161,6 +161,10 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
+def is_nan_or_inf(value):
+    return np.isnan(value) or np.isinf(value)
+
+
 def env_integer(key, default):
     # TODO(rliaw): move into ray.constants
     if key in os.environ:
@@ -264,14 +268,15 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
 
 def unflatten_dict(dt, delimiter="/"):
     """Unflatten dict. Does not support unflattening lists."""
-    out = defaultdict(dict)
+    dict_type = type(dt)
+    out = dict_type()
     for key, val in dt.items():
         path = key.split(delimiter)
         item = out
         for k in path[:-1]:
-            item = item[k]
+            item = item.setdefault(k, dict_type())
         item[path[-1]] = val
-    return dict(out)
+    return out
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
