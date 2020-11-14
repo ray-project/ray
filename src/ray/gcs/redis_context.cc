@@ -289,10 +289,6 @@ Status ConnectWithoutRetries(const std::string &address, int port,
                              const RedisConnectFunction &connect_function,
                              RedisContext **context, std::string &errorMessage) {
   RedisContext *newContext = connect_function(address.c_str(), port);
-  if (context != nullptr) {
-    // Don't crash if the RedisContext** is null.
-    *context = newContext;
-  }
   if (newContext == nullptr || (newContext)->err) {
     std::ostringstream oss(errorMessage);
     if (newContext == nullptr) {
@@ -302,6 +298,12 @@ Status ConnectWithoutRetries(const std::string &address, int port,
           << " (context.err = " << newContext->err << ")";
     }
     return Status::RedisError(errorMessage);
+  }
+  if (context != nullptr) {
+    // Don't crash if the RedisContext** is null.
+    *context = newContext;
+  } else {
+    redisFree(newContext);
   }
   return Status::OK();
 }
