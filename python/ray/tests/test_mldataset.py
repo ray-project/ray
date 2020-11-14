@@ -42,7 +42,7 @@ def test_from_parallel_it(ray_start_regular_shared):
                         ".for_each().batch(2).to_pandas()]")
     collected = list(ds.gather_sync())
     assert len(collected) == 2
-    assert all([d.shape == (2, 1) for d in collected])
+    assert all(d.shape == (2, 1) for d in collected)
     expected = para_it.flatten().batch(2).gather_sync().flatten()
     flattened = ds.gather_sync().for_each(lambda x: x[0].to_list()).flatten()
     assert list(flattened) == list(expected)
@@ -53,14 +53,14 @@ def test_batch(ray_start_regular_shared):
     ds = ml_data.from_parallel_iter(para_it, batch_size=2)
     collected = list(ds.gather_sync())
     assert len(collected) == 8
-    assert all([d.shape == (2, 1) for d in collected])
+    assert all(d.shape == (2, 1) for d in collected)
 
     ds = ds.batch(4)
     assert repr(ds) == ("MLDataset[from_range[16, shards=2]"
                         ".for_each().batch(2).to_pandas().batch(4)]")
     collected = list(ds.gather_sync())
     assert len(collected) == 4
-    assert all([d.shape == (4, 1) for d in collected])
+    assert all(d.shape == (4, 1) for d in collected)
     expected = para_it.flatten().batch(4).gather_sync().flatten()
     flattened = ds.gather_sync().for_each(lambda x: x[0].to_list()).flatten()
     assert list(flattened) == list(expected)
@@ -76,7 +76,7 @@ def test_local_shuffle(ray_start_regular_shared):
 
     l1 = list(ds1.gather_sync())
     l2 = list(ds2.gather_sync())
-    assert not all([df1.equals(df2) for df1, df2 in zip(l1, l2)])
+    assert not all(df1.equals(df2) for df1, df2 in zip(l1, l2))
 
     # batch_size equals 1 and shuffle_buffer_size larger than 1
     ds = ml_data.from_parallel_iter(para_it, batch_size=1)
@@ -85,7 +85,7 @@ def test_local_shuffle(ray_start_regular_shared):
 
     l1 = list(ds1.gather_sync())
     l2 = list(ds2.gather_sync())
-    assert not all([df1.equals(df2) for df1, df2 in zip(l1, l2)])
+    assert not all(df1.equals(df2) for df1, df2 in zip(l1, l2))
 
     # batch_size equals 1 and shuffle_buffer_size equals 1
     ds = ml_data.from_parallel_iter(para_it, batch_size=1)
@@ -94,7 +94,7 @@ def test_local_shuffle(ray_start_regular_shared):
 
     l1 = list(ds1.gather_sync())
     l2 = list(ds2.gather_sync())
-    assert all([df1.equals(df2) for df1, df2 in zip(l1, l2)])
+    assert all(df1.equals(df2) for df1, df2 in zip(l1, l2))
 
 
 def test_union(ray_start_regular_shared):

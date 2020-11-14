@@ -13,11 +13,11 @@ def model_creator(config):
     model = tf.keras.models.Sequential([
         tf.keras.Input(shape=(1, )),
         tf.keras.layers.Dense(128, activation="relu"),
-        tf.keras.layers.Dense(1, activation="sigmoid")
+        tf.keras.layers.Dense(1)
     ])
     optimizer = tf.keras.optimizers.Adam(lr=1e-4)
     model.compile(optimizer=optimizer, loss="mse", metrics=["accuracy"])
-    return model.fit
+    return model
 
 
 def make_data_creator(tf_ds: TFDataset):
@@ -49,7 +49,7 @@ def main():
         config={
             "batch_size": 32,
             "fit_config": {
-                "steps_per_epoch": 10,
+                "steps_per_epoch": 100,
             }
         })
 
@@ -57,7 +57,7 @@ def main():
         trainer.train()
 
     model = trainer.get_model()
-    print("f(0.5)=", float(model.predict([0.5])))
+    print("f(10)=", float(model.predict([10])))
 
 
 if __name__ == "__main__":

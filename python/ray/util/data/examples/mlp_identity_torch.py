@@ -54,13 +54,13 @@ def main():
     torch_ds = ds.to_torch(feature_columns=[0], label_column=1)
 
     trainer = TorchTrainer(
+        num_workers=2,
         training_operator_cls=make_train_operator(torch_ds),
-        config={"batch_size": 32},
-    )
+        config={"batch_size": 32})
     for i in range(10):
         trainer.train(num_steps=100)
         model = trainer.get_model()
-        print("f(0.5)=", float(model(torch.tensor([[0.5]]).float())[0][0]))
+        print("f(10)=", float(model(torch.tensor([[10]]).float())[0][0]))
 
 
 if __name__ == "__main__":

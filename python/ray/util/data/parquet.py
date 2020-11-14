@@ -7,7 +7,7 @@ from pandas import DataFrame
 
 import ray.util.iter as para_iter
 from .dataset import MLDataset
-from .source import SourceShard
+from .interface import SourceShard
 
 
 class ParquetSourceShard(SourceShard):
@@ -38,7 +38,21 @@ def read_parquet(paths: Union[str, List[str]],
                  shuffle_seed: int = None,
                  columns: Optional[List[str]] = None,
                  **kwargs) -> MLDataset:
-    """ Read parquet format data from hdfs filesystem into a MLDataset.
+    """ Read parquet format data from hdfs like filesystem into a MLDataset.
+
+    .. code-block:: python
+
+        # create dummy data
+        spark.range(...).write.parquet(...)
+        # create MLDataset
+        data = ray.util.data.read_parquet(...)
+        # convert to TorchDataset
+        ds = data.to_torch(feature_columns=..., label_column=...)
+        # get the given shard data
+        shard = ds.get_shard(0)
+        # create the DataLoader from the shard data and this can be used for
+        # the TorchTrainer data creator as well
+        data = DataLoader(shard, batch_size=32)
 
     Args:
         paths (Union[str, List[str]): a single file path or a list of file path

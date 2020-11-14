@@ -9,7 +9,7 @@ import torch
 import pandas as pd
 from torch.utils.data import IterableDataset
 
-from ray.util.data.dataset import MLDataset
+from ray.util.data import MLDataset, TensorDataset
 
 
 def convert_to_tensor(df, feature_columns: List[Any],
@@ -47,7 +47,7 @@ def convert_to_tensor(df, feature_columns: List[Any],
     return feature_tensor, label_tensor
 
 
-class TorchDataset:
+class TorchDataset(TensorDataset):
     """ A TorchDataset which converted from MLDataset
 
     .. code-block:: python

@@ -5,7 +5,7 @@ import pandas as pd
 
 from ray.util.data.dataset import MLDataset
 from ray.util.data.parquet import read_parquet
-from ray.util.data.source import SourceShard
+from ray.util.data.interface import SourceShard, TensorDataset
 from ray.util.iter import T, ParallelIterator
 import ray.util.iter as parallel_it
 
@@ -116,5 +116,5 @@ def from_source_shards(source_shards: List[SourceShard],
 
 __all__ = [
     "from_parallel_iter", "from_source_shards", "read_parquet", "MLDataset",
-    "SourceShard"
+    "SourceShard", "TensorDataset"
 ]

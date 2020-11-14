@@ -16,3 +16,11 @@ class SourceShard:
 
     def __repr__(self):
         return f"SourceShard[{self.shard_id}]"
+
+
+class TensorDataset:
+    def set_num_shards(self, num_shards, **kwargs):
+        raise NotImplementedError
+
+    def get_shard(self, shard_index: int, **kwargs):
+        raise NotImplementedError

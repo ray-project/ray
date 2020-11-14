@@ -854,8 +854,8 @@ def test_torch_dataset(ray_start_4_cpus, use_local):
         trainer.train(num_steps=100)
 
     model = trainer.get_model()
-    prediction = float(model(torch.tensor([[0.5]]).float())[0][0])
-    assert 0.4 <= prediction <= 0.6
+    prediction = float(model(torch.tensor([[10]]).float())[0][0])
+    assert 9 <= prediction <= 11
     trainer.shutdown()
 
 

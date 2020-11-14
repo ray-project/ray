@@ -127,7 +127,7 @@ def test_tf_dataset(ray_start_4_cpus):  # noqa: F811
         config={
             "batch_size": 32,
             "fit_config": {
-                "steps_per_epoch": 10,
+                "steps_per_epoch": 100,
             }
         })
 
@@ -135,8 +135,8 @@ def test_tf_dataset(ray_start_4_cpus):  # noqa: F811
         trainer.train()
 
     model = trainer.get_model()
-    prediction = model.predict([0.5])[0][0]
-    assert 0.4 <= prediction <= 0.6
+    prediction = model.predict([10])[0][0]
+    assert 9 <= prediction <= 11
     trainer.shutdown()
 
 
