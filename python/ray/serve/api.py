@@ -45,6 +45,8 @@ class Client:
         self._detached = detached
         self._shutdown = False
 
+        self._handle_cache = dict()
+
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
         # throws a nasty stacktrace).
@@ -366,23 +368,10 @@ class Client:
                 self._controller.get_all_endpoints.remote()):
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
-        routers = list(ray.get(self._controller.get_routers.remote()).values())
-        current_node_id = ray.get_runtime_context().node_id.hex()
-
-        try:
-            router_chosen = next(
-                filter(lambda r: get_node_id_for_actor(r) == current_node_id,
-                       routers))
-        except StopIteration:
-            logger.warning(
-                f"When getting a handle for {endpoint_name}, Serve can't find "
-                "a router on the same node. Serve will use a random router.")
-            router_chosen = random.choice(routers)
-
-        return RayServeHandle(
-            router_chosen,
-            endpoint_name,
-        )
+        if endpoint_name not in self._handle_cache:
+            handle = RayServeHandle(self._controller, endpoint_name, sync=True)
+            self._handle_cache[endpoint_name] = handle
+        return self._handle_cache[endpoint_name]
 
 
 def start(detached: bool = False,

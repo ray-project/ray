@@ -28,7 +28,7 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_controller(self, name, controller_name):
+    async def fetch_config_from_controller(self, controller_name):
         assert ray.is_initialized()
         controller = ray.get_actor(controller_name)
 
@@ -39,8 +39,8 @@ class HTTPProxy:
             description="The number of HTTP requests processed",
             tag_keys=("route", ))
 
-        self.router = Router()
-        await self.router.setup(name, controller_name)
+        self.router = Router(controller)
+        await self.router.setup_in_async_loop()
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -119,8 +119,9 @@ class HTTPProxy:
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
 
-        result = await self.router.enqueue_request(request_metadata, scope,
-                                                   http_body_bytes)
+        ref = await self.router.enqueue_request(request_metadata, scope,
+                                                http_body_bytes)
+        result = await ref
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
@@ -133,17 +134,15 @@ class HTTPProxy:
 class HTTPProxyActor:
     async def __init__(
             self,
-            name,
             host,
             port,
             controller_name,
             http_middlewares: List["starlette.middleware.Middleware"] = []):
-        self.app = HTTPProxy()
         self.host = host
         self.port = port
 
         self.app = HTTPProxy()
-        await self.app.fetch_config_from_controller(name, controller_name)
+        await self.app.fetch_config_from_controller(controller_name)
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:
@@ -188,5 +187,5 @@ class HTTPProxyActor:
     # ------ Proxy router logic ------ #
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
-        return await self.app.router.enqueue_request(
-            request_meta, *request_args, **request_kwargs)
+        return await (await self.app.router.enqueue_request(
+            request_meta, *request_args, **request_kwargs))
