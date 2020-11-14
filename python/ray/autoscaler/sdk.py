@@ -115,8 +115,7 @@ def rsync(cluster_config: Union[dict, str],
           down: bool,
           ip_address: str = None,
           use_internal_ip: bool = False,
-          no_config_cache: bool = False,
-          all_nodes: bool = False):
+          no_config_cache: bool = False):
     """Rsyncs files to or from the cluster.
 
     Args:
@@ -130,8 +129,6 @@ def rsync(cluster_config: Union[dict, str],
             public or private.
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
-        all_nodes (bool): whether to sync worker nodes in addition to the head
-            node
 
     Raises:
         RuntimeError if the cluster head node is not found.
@@ -146,7 +143,7 @@ def rsync(cluster_config: Union[dict, str],
             ip_address=ip_address,
             use_internal_ip=use_internal_ip,
             no_config_cache=no_config_cache,
-            all_nodes=all_nodes)
+            all_nodes=False)
 
 
 def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
