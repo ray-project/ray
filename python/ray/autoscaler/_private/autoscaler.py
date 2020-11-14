@@ -108,7 +108,7 @@ class StandardAutoscaler:
         # earlier when the config is written since we might be on different
         # platform and the expansion would result in wrong path.
         self.config["file_mounts"] = {
-            remote: Path(local).expanduser()
+            remote: Path(local).expanduser().name
             for remote, local in self.config["file_mounts"].items()
         }
 

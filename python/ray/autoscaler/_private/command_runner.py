@@ -36,7 +36,8 @@ HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = Path(__file__).resolve() \
                     .parent \
                     .joinpath(
-                        "kubernetes/kubectl-rsync.sh")
+                        "kubernetes/kubectl-rsync.sh") \
+                    .name
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
@@ -598,7 +599,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         host_destination = Path(
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name)).joinpath(
-                    target.lstrip("/"))
+                    target.lstrip("/")).name
 
         self.ssh_command_runner.run(
             f"mkdir -p {Path(host_destination.rstrip('/')).parent}")

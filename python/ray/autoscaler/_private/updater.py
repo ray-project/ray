@@ -83,7 +83,7 @@ class NodeUpdater:
         # defaults. Better to be defensive.
         file_mounts = file_mounts or {}
         self.file_mounts = {
-            remote: Path(local).expanduser()
+            remote: Path(local).expanduser().name
             for remote, local in file_mounts.items()
         }
 
@@ -99,7 +99,7 @@ class NodeUpdater:
         # on the head node).
         cluster_synced_files = cluster_synced_files or []
         self.cluster_synced_files = [
-            Path(path).expanduser() for path in cluster_synced_files
+            Path(path).expanduser().name for path in cluster_synced_files
         ]
         self.rsync_options = rsync_options or {}
         self.auth_config = auth_config
