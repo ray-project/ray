@@ -1033,6 +1033,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]"])
         get_or_create_head_node(
             config,
             printable_config_file=config_path,

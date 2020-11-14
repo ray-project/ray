@@ -456,7 +456,8 @@ absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id
   return it->second.spec;
 }
 
-std::vector<TaskID> TaskManager::GetPendingChildrenTasks(const TaskID &parent_task_id) const {
+std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
+    const TaskID &parent_task_id) const {
   std::vector<TaskID> ret_vec;
   absl::MutexLock lock(&mu_);
   RAY_LOG(ERROR) << " calling get children tasks";
