@@ -286,6 +286,8 @@ void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
 
 void FreeRedisContext(redisContext *context) { redisFree(context); }
 
+void FreeRedisContext(redisAsyncContext *context) {}
+
 void FreeRedisContext(RedisAsyncContext *context) {}
 
 template <typename RedisContext, typename RedisConnectFunction>
