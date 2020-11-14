@@ -843,7 +843,7 @@ def test_torch_dataset(ray_start_4_cpus, use_local):
                                      False).for_each(lambda x: [x, x])
     ds = ml_data.from_parallel_iter(para_it, batch_size=32)
 
-    torch_ds = ds.to_torch(feature_columns=[0], feature_types=1)
+    torch_ds = ds.to_torch(feature_columns=[0], label_column=1)
     operator = get_test_operator(make_train_operator(torch_ds))
     trainer = TorchTrainer(
         training_operator_cls=operator,
