@@ -67,7 +67,7 @@ class WandbTrainable(WandbTrainableMixin, Trainable):
 
 def tune_trainable(api_key_file):
     """Example for using a WandTrainableMixin with the class API"""
-    analysis = tune.run(
+    tune.run(
         WandbTrainable,
         config={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
@@ -77,7 +77,6 @@ def tune_trainable(api_key_file):
                 "project": "Wandb_example"
             }
         })
-    return analysis.best_config
 
 
 if __name__ == "__main__":

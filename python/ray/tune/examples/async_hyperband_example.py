@@ -44,8 +44,8 @@ if __name__ == "__main__":
     analysis = tune.run(
         easy_objective,
         name="asynchyperband_test",
-        metric="accuracy",
-        mode="max",
+        metric="mean_loss",
+        mode="min",
         scheduler=scheduler,
         stop=stopping_criteria,
         num_samples=20,
