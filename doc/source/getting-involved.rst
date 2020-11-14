@@ -44,6 +44,8 @@ On systems with a precompiled wheel available, the easiest way to use clang-form
 
   path/to/your/env/bin/clang-format --style=file -i src/ray/path/name_of_file.cc
 
+A normal ``git diff`` will then show the changes clang-format made.
+
 
 Submitting and Merging a Contribution
 -------------------------------------
