@@ -1367,6 +1367,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
+        ":aligned_alloc",
         ":sha256",
         "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
@@ -1420,6 +1421,18 @@ cc_library(
     ],
     hdrs = [
         "src/ray/thirdparty/sha256.h",
+    ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+)
+
+cc_library(
+    name = "aligned_alloc",
+    srcs = [
+        "src/ray/thirdparty/aligned_alloc.c",
+    ],
+    hdrs = [
+        "src/ray/thirdparty/aligned_alloc.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
@@ -1941,24 +1954,13 @@ copy_to_workspace(
 )
 
 genrule(
-    name = "ray_pkg",
+    name = "install_py_proto",
     srcs = [
-        ":cp_raylet_so",
-        ":cp_streaming",
-        ":python_sources",
         ":cp_all_py_proto",
-        ":cp_redis",
-        ":cp_libray_redis_module",
-        ":cp_raylet",
-        ":cp_gcs_server",
-        ":cp_plasma_store_server",
         "//streaming:copy_streaming_py_proto",
     ],
-    outs = ["ray_pkg.out"],
+    outs = ["install_py_proto.out"],
     cmd = """
-        if [ "$${OSTYPE-}" = "msys" ]; then
-            ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
-        fi
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
         # shellcheck disable=SC2006
@@ -1966,6 +1968,29 @@ genrule(
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
+        echo "$${PWD}" > $@
+    """,
+    local = 1,
+)
+
+genrule(
+    name = "ray_pkg",
+    srcs = [
+        ":cp_raylet_so",
+        ":cp_streaming",
+        ":python_sources",
+        ":install_py_proto",
+        ":cp_redis",
+        ":cp_libray_redis_module",
+        ":cp_raylet",
+        ":cp_gcs_server",
+        ":cp_plasma_store_server",
+    ],
+    outs = ["ray_pkg.out"],
+    cmd = """
+        if [ "$${OSTYPE-}" = "msys" ]; then
+            ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
+        fi
         echo "$${PWD}" > $@
     """,
     local = 1,

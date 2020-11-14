@@ -278,7 +278,8 @@ Start out by launching the deployment container.
   docker run --shm-size=<shm-size> -t -i rayproject/ray
 
 Replace ``<shm-size>`` with a limit appropriate for your system, for example
-``512M`` or ``2G``. The ``-t`` and ``-i`` options here are required to support
+``512M`` or ``2G``. A good estimate for this is to use roughly 30% of your available memory (this is 
+what Ray uses internally for its Object Store). The ``-t`` and ``-i`` options here are required to support
 interactive use of the container.
 
 **Note:** Ray requires a **large** amount of shared memory because each object

@@ -1,44 +1,60 @@
-import ray
-from ray.experimental.client.worker import Worker
+from ray.experimental.client.api import ClientAPI
+from ray.experimental.client.api import APIImpl
 from typing import Optional
 
-_client_worker: Optional[Worker] = None
-_in_cluster: bool = True
+import logging
+
+logger = logging.getLogger(__name__)
+
+_client_api: Optional[APIImpl] = None
+
+
+def check_client_api():
+    global _client_api
+    if _client_api is None:
+        logger.info(
+            "No client API initialized: probably a worker, using core ray")
+        from ray.experimental.client.core_ray_api import set_client_api_as_ray
+        set_client_api_as_ray()
 
 
 def get(*args, **kwargs):
-    global _client_worker
-    global _in_cluster
-    if _in_cluster:
-        return ray.get(*args, **kwargs)
-    else:
-        return _client_worker.get(*args, **kwargs)
+    global _client_api
+    check_client_api()
+    return _client_api.get(*args, **kwargs)
 
 
 def put(*args, **kwargs):
-    global _client_worker
-    global _in_cluster
-    if _in_cluster:
-        return ray.put(*args, **kwargs)
-    else:
-        return _client_worker.put(*args, **kwargs)
+    global _client_api
+    check_client_api()
+    return _client_api.put(*args, **kwargs)
 
 
 def remote(*args, **kwargs):
-    pass
+    global _client_api
+    check_client_api()
+    return _client_api.remote(*args, **kwargs)
+
+
+def call_remote(f, *args, **kwargs):
+    global _client_api
+    check_client_api()
+    return _client_api.call_remote(f, *args, **kwargs)
 
 
 def connect(conn_str):
-    global _in_cluster
-    global _client_worker
-    _in_cluster = False
+    global _client_api
+    from ray.experimental.client.worker import Worker
     _client_worker = Worker(conn_str)
+    _client_api = ClientAPI(_client_worker)
 
 
 def disconnect():
-    global _in_cluster
-    global _client_worker
-    if _client_worker is not None:
-        _client_worker.close()
-    _in_cluster = True
-    _client_worker = None
+    global _client_api
+    _client_api.close()
+    _client_api = None
+
+
+def _set_client_api(api: Optional[APIImpl]):
+    global _client_api
+    _client_api = api
