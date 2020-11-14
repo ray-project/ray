@@ -669,7 +669,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         if user_pos > -1:
             if self.home_dir is None:
                 self.home_dir = self.ssh_command_runner.run(
-                    "docker exec {} env | grep HOME | cut -d'=' -f2".format(
+                    "docker exec {} env | grep ^HOME= | cut -d'=' -f2".format(
                         self.container_name),
                     with_output=True).decode("utf-8").strip()
 
