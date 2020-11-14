@@ -291,14 +291,14 @@ Status ConnectWithoutRetries(const std::string &address, int port,
                              std::string &errorMessage) {
   *context = connect_function(address.c_str(), port);
   if (*context == nullptr || (*context)->err) {
-    ostringstream oss(errorMessage);
+    std::ostringstream oss(errorMessage);
     if (*context == nullptr) {
       oss << "Could not allocate Redis context.";
     } else if ((*context)->err) {
       oss << "Could not establish connection to Redis " << address << ":"
           << port << " (context.err = " << (*context)->err << ")";
     }
-    return Status::RedisError();
+    return Status::RedisError(errorMessage);
   }
   return Status::OK();
 }
