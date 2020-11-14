@@ -1541,7 +1541,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   bool recursive_success = true;
-  for (const auto &child_id : task_manager_->GetChildrenTasks(task_id)) {
+  for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
     auto child_spec = task_manager_->GetTaskSpec(child_id);
     if (child_spec.has_value()) {
       auto result =
