@@ -74,6 +74,7 @@ class TorchDataset:
         label_shape (Optional[int]): the shape for the label data
         label_type (Optional[torch.dtype]): the data type for the label data
     """
+
     def __init__(self,
                  ds: MLDataset = None,
                  feature_columns: List[Any] = None,

@@ -26,7 +26,6 @@ class Net(nn.Module):
 
 def make_train_operator(ds: TorchDataset):
     class IdentityTrainOperator(TrainingOperator):
-
         def setup(self, config):
             model = Net()
             optimizer = torch.optim.SGD(
@@ -34,23 +33,22 @@ def make_train_operator(ds: TorchDataset):
             loss = torch.nn.MSELoss()
 
             batch_size = config["batch_size"]
-            train_data = ds.get_shard(self.world_rank, shuffle=True, shuffle_buffer_size=4)
+            train_data = ds.get_shard(
+                self.world_rank, shuffle=True, shuffle_buffer_size=4)
             train_loader = DataLoader(train_data, batch_size=batch_size)
 
             self.model, self.optimizer, self.criterion = self.register(
-                models=model,
-                optimizers=optimizer,
-                criterion=loss)
+                models=model, optimizers=optimizer, criterion=loss)
 
             self.register_data(
-                train_loader=train_loader,
-                validation_loader=None)
+                train_loader=train_loader, validation_loader=None)
 
     return IdentityTrainOperator
 
 
 def main():
-    it = parallel_it.from_range(32 * 100 * 2, 2, False).for_each(lambda x: [x, x])
+    it = parallel_it.from_range(32 * 100 * 2, 2,
+                                False).for_each(lambda x: [x, x])
     # this will create MLDataset with column RangeIndex(range(2))
     ds = ml_data.from_parallel_iter(it, True, batch_size=32, repeated=False)
     torch_ds = ds.to_torch(feature_columns=[0], label_column=1)

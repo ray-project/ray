@@ -839,14 +839,17 @@ def test_multi_input_model(ray_start_2_cpus, use_local):
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_torch_dataset(ray_start_4_cpus, use_local):
-    para_it = parallel_it.from_range(32 * 100 * 2, 2, False).for_each(lambda x: [x, x])
+    para_it = parallel_it.from_range(32 * 100 * 2, 2,
+                                     False).for_each(lambda x: [x, x])
     ds = ml_data.from_parallel_iter(para_it, batch_size=32)
 
     torch_ds = ds.to_torch(feature_columns=[0], feature_types=1)
     operator = get_test_operator(make_train_operator(torch_ds))
     trainer = TorchTrainer(
-        training_operator_cls=operator, num_workers=2,
-        use_local=use_local, config={"batch_size": 32})
+        training_operator_cls=operator,
+        num_workers=2,
+        use_local=use_local,
+        config={"batch_size": 32})
     for i in range(5):
         trainer.train(num_steps=100)
 

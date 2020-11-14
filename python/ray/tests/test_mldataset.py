@@ -9,12 +9,10 @@ import os
 
 
 def test_read_parquet(ray_start_regular_shared, tmp_path):
-    df1 = pd.DataFrame({"one": [1, 2, 3],
-                        "two": ["a", "b", "c"]})
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-    df2 = pd.DataFrame({"one": [4, 5, 6],
-                        "two": ["e", "f", "g"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     table = pa.Table.from_pandas(df2)
     pq.write_table(table, os.path.join(tmp_path, "test2.parquet"))
 

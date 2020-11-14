@@ -29,11 +29,12 @@ class TFDataset:
         label_shape (Optional[tf.TensorShape]): the shape for the label data
         label_type (Optional[tf.DType]): the data type for the label data
     """
-    def __init__(self, ds: MLDataset,
-                 feature_columns: List[Any],
+
+    def __init__(self, ds: MLDataset, feature_columns: List[Any],
                  feature_shapes: Optional[List[tf.TensorShape]],
                  feature_types: Optional[List[tf.DType]], label_column: Any,
-                 label_shape: Optional[tf.TensorShape], label_type: Optional[tf.DType]):
+                 label_shape: Optional[tf.TensorShape],
+                 label_type: Optional[tf.DType]):
 
         self._feature_columns = feature_columns
         self._feature_shapes = feature_shapes

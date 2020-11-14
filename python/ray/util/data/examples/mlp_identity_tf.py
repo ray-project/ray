@@ -11,19 +11,16 @@ from ray.util.sgd.tf.tf_trainer import TFTrainer
 def model_creator(config):
     import tensorflow as tf
     model = tf.keras.models.Sequential([
-        tf.keras.Input(shape=(1,)),
-        tf.keras.layers.Dense(128, activation='relu'),
-        tf.keras.layers.Dense(1, activation='sigmoid')
+        tf.keras.Input(shape=(1, )),
+        tf.keras.layers.Dense(128, activation="relu"),
+        tf.keras.layers.Dense(1, activation="sigmoid")
     ])
     optimizer = tf.keras.optimizers.Adam(lr=1e-4)
-    model.compile(optimizer=optimizer,
-                  loss='mse',
-                  metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss="mse", metrics=["accuracy"])
     return model.fit
 
 
 def make_data_creator(tf_ds: TFDataset):
-
     def data_creator(config):
         world_rank = None
         if "TF_CONFIG" in os.environ:
@@ -32,14 +29,15 @@ def make_data_creator(tf_ds: TFDataset):
         else:
             world_rank = -1
         batch_size = config["batch_size"]
-        print(batch_size, world_rank, "abccccccccc")
         ds = tf_ds.get_shard(shard_index=world_rank).batch(batch_size).repeat()
         return ds, None
+
     return data_creator
 
 
 def main():
-    it = parallel_it.from_range(32 * 100 * 2, 2, False).for_each(lambda x: [x, x])
+    it = parallel_it.from_range(32 * 100 * 2, 2,
+                                False).for_each(lambda x: [x, x])
     # this will create MLDataset with column RangeIndex(range(2))
     ds = ml_data.from_parallel_iter(it, True, batch_size=32, repeated=False)
     tf_ds = ds.to_tf(feature_columns=[0], label_column=1)

@@ -3,8 +3,8 @@ from typing import Callable, List, Iterable, Iterator
 
 import pandas as pd
 
-from ray.util.iter import (_ActorSet, _NextValueNotReady, LocalIterator,
-                           ParallelIterator, T, U)
+from ray.util.iter import (_NextValueNotReady, LocalIterator, ParallelIterator,
+                           T, U)
 
 
 class MLDataset(ParallelIterator[pd.DataFrame]):
@@ -17,12 +17,9 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
             larger than zero, and 0 means unknown.
     """
 
-    def __init__(self,
-                 actor_sets: List["_ActorSet"],
-                 name: str,
+    def __init__(self, actor_sets: List["_ActorSet"], name: str,
                  parent_iterators: List[ParallelIterator[pd.DataFrame]],
-                 batch_size: int,
-                 repeated: bool):
+                 batch_size: int, repeated: bool):
         super(MLDataset, self).__init__(actor_sets, name, parent_iterators)
         self._batch_size = batch_size
         self._repeated = repeated
@@ -36,10 +33,10 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
         The record of ParallelIterator should be pandas.DataFrame.
 
         Args:
-            para_it (ParallelIterator[T]): An existing parallel iterator, and each
-                should be a list like object or dataclass instance.
-            batch_size (int): The batch size of the current dataset. It should be
-                larger than zero, and 0 means unknown.
+            para_it (ParallelIterator[T]): An existing parallel iterator,
+                and each should be a list like object or dataclass instance
+            batch_size (int): The batch size of the current dataset. It
+                should be larger than zero, and 0 means unknown.
             repeated (bool): whether the para_it is repeated.
         Returns:
             A MLDataset
@@ -61,11 +58,13 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
     def _with_transform(self, local_it_fn, name) -> "MLDataset":
         """Helper function to create new MLDataset"""
         para_it = super()._with_transform(local_it_fn, name)
-        return MLDataset.from_parallel_it(
-            para_it, self._batch_size, self._repeated)
+        return MLDataset.from_parallel_it(para_it, self._batch_size,
+                                          self._repeated)
 
-    def transform(self, fn: Callable[[Iterable[pd.DataFrame]], Iterable[pd.DataFrame]]
-                  ) -> "MLDataset":
+    def transform(
+            self,
+            fn: Callable[[Iterable[pd.DataFrame]], Iterable[pd.DataFrame]]
+    ) -> "MLDataset":
         """Apply the fn function to the MLDataset
 
         Args:
@@ -97,7 +96,8 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                     cur_df = next(it)
                     cur_index = 0
                     cur_size = cur_df.shape[0]
-                    while cur_df is not None or (cur_index + batch_size) < cur_size:
+                    while cur_df is not None or (
+                            cur_index + batch_size) < cur_size:
                         if cur_df is None or cur_index == cur_size:
                             cur_df = next(it)
                             cur_index = 0
@@ -105,13 +105,13 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                         if return_df is not None:
                             ri = cur_index + batch_size - return_df.shape[0]
                             ri = min(ri, cur_size)
-                            tmp = cur_df.iloc[cur_index: ri]
+                            tmp = cur_df.iloc[cur_index:ri]
                             return_df = pd.concat([return_df, tmp])
                             cur_index = ri
                         else:
                             ri = cur_index + batch_size
                             ri = min(ri, cur_size)
-                            return_df = cur_df.iloc[cur_index: ri]
+                            return_df = cur_df.iloc[cur_index:ri]
                             cur_index = ri
                         if return_df.shape[0] == batch_size:
                             return_df.index = range(return_df.shape[0])
@@ -182,8 +182,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
             raise TypeError(
                 f"want to union two MLDataset which have different repeated "
                 f"type, self repeated: {self._repeated}, other repeated: "
-                f"{other.repeated}"
-            )
+                f"{other.repeated}")
 
         batch_size = 0
         if self._batch_size == other._batch_size:
@@ -201,11 +200,10 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
             batch_size=batch_size,
             repeated=self._repeated)
 
-    def select_shards(self,
-                      shards_to_keep: List[int]) -> "MLDataset":
+    def select_shards(self, shards_to_keep: List[int]) -> "MLDataset":
         para_it = super().select_shards(shards_to_keep)
-        return MLDataset.from_parallel_it(
-            para_it, self._batch_size, self._repeated)
+        return MLDataset.from_parallel_it(para_it, self._batch_size,
+                                          self._repeated)
 
     def get_repeatable_shard(self,
                              index: int,
@@ -235,8 +233,8 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
             The given shard iterator. If the shuffle is True, each call iter
             will return a different ordered iterator.
         """
-        return _RepeatableIterator(self, index, batch_ms, num_async,
-                                   shuffle, shuffle_buffer_size, seed)
+        return _RepeatableIterator(self, index, batch_ms, num_async, shuffle,
+                                   shuffle_buffer_size, seed)
 
     def to_torch(self,
                  feature_columns=None,
@@ -345,8 +343,8 @@ class _RepeatableIterator(Iterator[T]):
                                     self._num_async)
         else:
             if self._num_async > 0:
-                it = self._ds.gather_async(batch_ms=self._batch_ms,
-                                           num_async=self._num_async)
+                it = self._ds.gather_async(
+                    batch_ms=self._batch_ms, num_async=self._num_async)
             else:
                 it = self._ds.gather_sync()
         if self._shuffle:
@@ -355,7 +353,8 @@ class _RepeatableIterator(Iterator[T]):
         self._local_it = it
         return self
 
-    def shuffle(self, local_it: LocalIterator[T]) -> LocalIterator[pd.DataFrame]:
+    def shuffle(self,
+                local_it: LocalIterator[T]) -> LocalIterator[pd.DataFrame]:
         shuffle_random = random.Random(self._seed)
 
         def apply_shuffle(it):

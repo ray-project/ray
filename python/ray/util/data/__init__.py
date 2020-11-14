@@ -11,7 +11,7 @@ import ray.util.iter as parallel_it
 
 try:
     import dataclasses
-except:
+except:  # noqa: E722
     pass
 else:
     from dataclasses import is_dataclass
@@ -52,13 +52,13 @@ def to_pandas(it: ParallelIterator[T],
                         values[col].append(getattr(item, col))
                 batch = pd.DataFrame(values, columns=names)
             else:
-                raise ValueError(
-                    "MLDataset only support list like item or dataclass instance")
+                raise ValueError("MLDataset only support list like item or "
+                                 "dataclass instance")
 
             yield batch
 
-    it = it._with_transform(
-        lambda local_it: local_it.transform(convert_fn), ".to_pandas()")
+    it = it._with_transform(lambda local_it: local_it.transform(convert_fn),
+                            ".to_pandas()")
     return it
 
 
@@ -92,7 +92,8 @@ def from_parallel_iter(para_it: ParallelIterator[T],
 
 
 def from_source_shards(source_shards: List[SourceShard],
-                       num_shards: int, name: str,
+                       num_shards: int,
+                       name: str,
                        batch_size: int = 0) -> MLDataset:
     shards = [[] for _ in range(num_shards)]
     for i, item in enumerate(source_shards):
@@ -104,7 +105,9 @@ def from_source_shards(source_shards: List[SourceShard],
                 s = iter(s)
                 for df in s:
                     yield s
+
         return gen
+
     for i, shard in shards:
         shards[i] = make_gen(shard)
     it = parallel_it.from_iterators(shards, False, name)

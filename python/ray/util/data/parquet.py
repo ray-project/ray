@@ -11,11 +11,9 @@ from .source import SourceShard
 
 
 class ParquetSourceShard(SourceShard):
-    def __init__(self,
-                 data_pieces: List[pq.ParquetDatasetPiece],
+    def __init__(self, data_pieces: List[pq.ParquetDatasetPiece],
                  columns: Optional[List[str]],
-                 partitions: Optional[pq.ParquetPartitions],
-                 shard_id: int):
+                 partitions: Optional[pq.ParquetPartitions], shard_id: int):
         self._data_pieces = data_pieces
         self._columns = columns
         self._partitions = partitions
@@ -27,8 +25,10 @@ class ParquetSourceShard(SourceShard):
 
     def __iter__(self) -> Iterable[DataFrame]:
         for piece in self._data_pieces:
-            yield piece.read(columns=self._columns, use_threads=False,
-                             partitions=self._partitions).to_pandas()
+            yield piece.read(
+                columns=self._columns,
+                use_threads=False,
+                partitions=self._partitions).to_pandas()
 
 
 def read_parquet(paths: Union[str, List[str]],
@@ -61,17 +61,16 @@ def read_parquet(paths: Union[str, List[str]],
             num_row_groups = piece.get_metadata().to_dict()["num_row_groups"]
             for i in range(num_row_groups):
                 data_pieces.append(
-                    pq.ParquetDatasetPiece(
-                        piece.path, piece.open_file_func, piece.file_options,
-                        i, piece.partition_keys))
+                    pq.ParquetDatasetPiece(piece.path, piece.open_file_func,
+                                           piece.file_options, i,
+                                           piece.partition_keys))
     else:
         # split base on file pieces
         data_pieces = pieces.copy()
 
     if len(data_pieces) < num_shards:
-        raise ValueError(
-            f"number of data pieces: {len(data_pieces)} should "
-            f"larger than num_shards: {num_shards}")
+        raise ValueError(f"number of data pieces: {len(data_pieces)} should "
+                         f"larger than num_shards: {num_shards}")
 
     if shuffle:
         random_shuffle = random.Random(shuffle_seed)
@@ -81,9 +80,10 @@ def read_parquet(paths: Union[str, List[str]],
         shard = shards[i % num_shards]
         if item.row_group is None:
             for number in pieces.get_metadata().to_dict()["num_row_groups"]:
-                shard.append(pq.ParquetDatasetPiece(
-                    item.path, item.open_file_func, item.file_options,
-                    number, item.partition_keys))
+                shard.append(
+                    pq.ParquetDatasetPiece(item.path, item.open_file_func,
+                                           item.file_options, number,
+                                           item.partition_keys))
         else:
             shard.append(item)
 
