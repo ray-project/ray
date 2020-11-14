@@ -128,9 +128,7 @@ class TorchDataset:
             self._label_type = torch.float
 
     def set_num_shards(self, num_shards):
-        """
-        Reshards the iterator if necessary.
-        """
+        """Reshards the iterator if necessary"""
         if num_shards != self._ds.num_shards():
             logging.info("Setting num shards", num_shards)
             self._ds = self._ds.repartition(num_shards)

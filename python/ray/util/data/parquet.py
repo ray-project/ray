@@ -38,8 +38,8 @@ def read_parquet(paths: Union[str, List[str]],
                  shuffle_seed: int = None,
                  columns: Optional[List[str]] = None,
                  **kwargs) -> MLDataset:
-    """
-    Read parquet format data from hdfs filesystem into a MLDataset.
+    """ Read parquet format data from hdfs filesystem into a MLDataset.
+
     Args:
         paths (Union[str, List[str]): a single file path or a list of file path
         rowgroup_split (bool): whether split the files into shards based on

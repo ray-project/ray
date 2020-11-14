@@ -83,9 +83,7 @@ class TFDataset:
             self._label_shape = tf.TensorShape(([]))
 
     def set_num_shards(self, num_shards):
-        """
-        Repartition the MLDataset to given number of shards.
-        """
+        """ Repartition the MLDataset to given number of shards"""
         if num_shards != self._ds.num_shards():
             logging.info("Setting num shards", num_shards)
             self._ds = self._ds.repartition(num_shards)
@@ -97,7 +95,8 @@ class TFDataset:
                   shuffle: bool = False,
                   shuffle_buffer_size: int = 1,
                   seed: int = None) -> "tf.data.Dataset":
-        """
+        """ Get the given shard data.
+
         Get a the given shard data from MLDataset and convert into a
         tensorflow.data.Dataset. If the shard_index is smaller than zero,
         it will collect all data as a tensorflow.data.Dataset.

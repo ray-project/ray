@@ -8,7 +8,7 @@ from ray.util.iter import (_ActorSet, _NextValueNotReady, LocalIterator,
 
 
 class MLDataset(ParallelIterator[pd.DataFrame]):
-    """ A distributed ML dataset implemented based on ParallelIterator
+    """A distributed ML dataset implemented based on ParallelIterator
 
     All item should be a list like object or dataclass instance.
 
@@ -31,9 +31,10 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
     def from_parallel_it(para_it: ParallelIterator[pd.DataFrame],
                          batch_size: int,
                          repeated: bool = False) -> "MLDataset":
-        """
-        Create a MLDataset from an existing parallel iterator and each
-        object is a pandas.DataFrame
+        """Create a MLDataset from an parallel iterator
+
+        The record of ParallelIterator should be pandas.DataFrame.
+
         Args:
             para_it (ParallelIterator[T]): An existing parallel iterator, and each
                 should be a list like object or dataclass instance.
@@ -65,8 +66,8 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
 
     def transform(self, fn: Callable[[Iterable[pd.DataFrame]], Iterable[pd.DataFrame]]
                   ) -> "MLDataset":
-        """
-        Apply the fn function to the MLDataset
+        """Apply the fn function to the MLDataset
+
         Args:
             fn (Callable[[Iterable[DataFrame]], Iterable[DataFrame]]):
                 The function to applied. The input is a iterator of
@@ -79,7 +80,8 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                                     ".transform()")
 
     def batch(self, batch_size: int) -> "MLDataset":
-        """
+        """ Rebatch the number of rows for each pandas.DataFrame record
+
         Unlike the ParallelIterator.batch. This method rebatch the underlying
         the pandas DataFrame, and each pandas DataFrame will have batch_size
         rows.
@@ -143,7 +145,8 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
 
     def local_shuffle(self, shuffle_buffer_size: int,
                       seed: int = None) -> "MLDataset":
-        """
+        """ Applying local shuffle
+
         Unlike the ParallelIterator.local_shuffle. This shuffle will first
         apply the local_shuffle for each shards and then shuffle the each
         pandas DataFrame.
@@ -211,10 +214,11 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                              shuffle: bool = False,
                              shuffle_buffer_size: int = 1,
                              seed: int = None) -> Iterator:
-        """
-        Get the given shard of the current dataset. The return is a iterator.
-        We support shuffle the return iterator when each call iter on the
-        return.
+        """ Get the given shard of the current dataset.
+
+        The return is a iterator. Each call iter on the returned iterator will
+        get the shard data from beginning. And it support shuffle the return
+        iterator when each call iter on the return.
         Args:
             index (int): the shard index id, -1 means collect all data.
             batch_ms (int): Batches items for batch_ms milliseconds
@@ -241,17 +245,16 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                  label_column=None,
                  label_shape=None,
                  label_type=None):
-        """
-        Create a TorchDataset from the current MLDataset.
+        """ Create a TorchDataset from the current MLDataset.
+
         Args:
             feature_columns (List[Any]): the column indexes name.
-            feature_shapes (Optional[List[Any]]): the feature shapes matching
-               the feature columns. One row will packet into one torch.Tensor
-               if this is not provided. Otherwise, each feature column will be
-               one torch.Tensor and with the provided shapes.
+            feature_shapes (Optional[List[Any]]): the feature shapes should
+               match the feature columns if provided.
             feature_types (Optional[List["torch.dtype"]]): the feature types
-               matching the feature columns. All feature will be cast into
-               torch.float by default. Otherwise, cast into the provided type.
+               should match the feature columns if provided. All feature will
+               be cast into torch.float by default. Otherwise, cast into the
+               provided type.
             label_column (Any): the label name.
             label_shape (Optional[int]): the label shape.
             label_type (Optional["torch.dtype"]): the label type, this will be
@@ -271,17 +274,16 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
               label_column=None,
               label_shape=None,
               label_type=None):
-        """
-        Create a TFDataset from the current MLDataset.
+        """ Create a TFDataset from the current MLDataset.
+
         Args:
             feature_columns (List[Any]): the column names.
             feature_shapes (Optional[List[tf.TensorShape]]): the feature shapes
-                matching the feature columns. One row will packet into one
-                tf.Tensor if this is not provided. Otherwise, each feature
-                column will be one tf.Tensor and with the provided shapes.
+                should match the feature columns if provided.
             feature_types (Optional[List["tf.DType"]]): the feature types
-               matching the feature columns. All feature will be cast into
-               tf.float by default. Otherwise, cast into the provided type.
+               should match the feature columns if provided. All feature will
+               be cast into tf.float by default. Otherwise, cast into the
+               provided type.
             label_column (Any): the label name.
             label_shape (Optional[tf.TensorShape]): the label shape.
             label_type (Optional["tf.DType"]): the label type, this will be
@@ -295,10 +297,10 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
 
 
 class _RepeatableIterator(Iterator[T]):
-    """
-    A repeatable iterator for the given shard index data. Each call
-    iter(_RepeatableIterator instance) will shuffle the iterator and return a
-    different order or data.
+    """A repeatable iterator for the given shard index data.
+
+    Each call iter(_RepeatableIterator instance) will fetch the data from
+    beginning and will return a different order or data if set shuffle
     Args:
         ds (MLDataset): a MLDataset
         shard_index (int): the shard index id. -1 means collect all data.
