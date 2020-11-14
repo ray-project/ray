@@ -175,7 +175,7 @@ class RedisContext {
   /// \param address IP address to test.
   /// \param port port number to test.
   /// \return The Status that we would get if we Connected.
-  Status RedisContext::PingPort(const std::string &address, int port);
+  Status PingPort(const std::string &address, int port);
 
   Status Connect(const std::string &address, int port, bool sharding,
                  const std::string &password);
