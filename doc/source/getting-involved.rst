@@ -37,7 +37,7 @@ Setting up your development environment
 
 To edit the Ray source code, you'll want to checkout the repository and also build Ray from source. Follow :ref:`these instructions for building <building-ray>` a local copy of Ray to easily make changes.
 
-When editing C++ code, if you're not very familiar with Google style, you may find it useful to repeatedly run clang-format as you go. Note however that ``clang-format`` will only pick up the ``.clang-format`` if you run from the top-level directory with ``-style=file``.
+When editing C++ code, if you're not very familiar with Google style, you may find it useful to repeatedly run clang-format as you go. Note however that ``clang-format`` will only pick up the ``.clang-format`` file if you run from the top-level directory with ``-style=file``.
 On systems with a precompiled wheel available, the easiest way to use clang-format might be to ``pip install clang-format`` into your regular Python environment.
 
 .. code:: bash
