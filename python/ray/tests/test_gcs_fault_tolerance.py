@@ -235,7 +235,11 @@ def test_create_pg_during_gcs_server_restart(ray_start_cluster_head):
     # Create placement groups during gcs server restart.
     placement_groups = []
     for i in range(0, 100):
-        placement_group = ray.util.placement_group([{"CPU": 0.1}, {"CPU": 0.1}])
+        placement_group = ray.util.placement_group([{
+            "CPU": 0.1
+        }, {
+            "CPU": 0.1
+        }])
         placement_groups.append(placement_group)
 
     cluster.head_node.kill_gcs_server()
