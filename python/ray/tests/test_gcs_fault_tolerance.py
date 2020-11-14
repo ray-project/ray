@@ -169,25 +169,29 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
     indirect=True)
 def test_create_pg_after_gcs_server_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    cluster.add_node(num_cpus=4)
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
     # Create placement group 1 successfully.
-    placement_group1 = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
     ray.get(placement_group1.ready(), timeout=2)
+    table = ray.util.placement_group_table(placement_group1)
+    assert table["state"] == "CREATED"
 
     # Restart gcs server.
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
 
     # Create placement group 2 successfully.
-    placement_group2 = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
     ray.get(placement_group2.ready(), timeout=2)
+    table = ray.util.placement_group_table(placement_group2)
+    assert table["state"] == "CREATED"
 
     # Create placement group 3.
     # Status is `PENDING` because the cluster resource is insufficient.
-    placement_group3 = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    placement_group3 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(placement_group3.ready(), timeout=2)
     table = ray.util.placement_group_table(placement_group3)
@@ -202,11 +206,11 @@ def test_create_pg_after_gcs_server_restart(ray_start_cluster_head):
     indirect=True)
 def test_create_actor_with_pg_after_gcs_server_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
     # Create a placement group.
-    placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    placement_group = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
 
     # Create an actor that occupies resources after gcs server restart.
     cluster.head_node.kill_gcs_server()
@@ -225,12 +229,12 @@ def test_create_actor_with_pg_after_gcs_server_restart(ray_start_cluster_head):
     indirect=True)
 def test_create_pg_during_gcs_server_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
     # Create a placement group during gcs server restart.
     cluster.head_node.kill_gcs_server()
-    placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    placement_group = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
     cluster.head_node.start_gcs_server()
     ray.get(placement_group.ready(), timeout=2)
 
