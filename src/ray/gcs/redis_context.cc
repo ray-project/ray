@@ -309,7 +309,8 @@ Status ConnectWithRetries(const std::string &address, int port,
                           RedisContext **context) {
   int connection_attempts = 0;
   std::string errorMessage = "";
-  Status status = ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
+  Status status = ConnectWithoutRetries(address, port, connect_function, context,
+                                        errorMessage);
   while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       RAY_LOG(FATAL) << errorMessage;
@@ -326,7 +327,8 @@ Status ConnectWithRetries(const std::string &address, int port,
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));
-    status = ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
+    status = ConnectWithoutRetries(address, port, connect_function, context,
+                                   errorMessage);
     connection_attempts += 1;
   }
   return Status::OK();
