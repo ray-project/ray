@@ -227,20 +227,20 @@ def test_create_actor_with_pg_after_gcs_server_restart(ray_start_cluster_head):
     indirect=True)
 def test_create_pg_during_gcs_server_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=20)
     cluster.wait_for_nodes()
 
-    # Create a placement group during gcs server restart.
-    cluster.head_node.kill_gcs_server()
-    placement_group = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    cluster.head_node.start_gcs_server()
-    ray.get(placement_group.ready(), timeout=2)
+    # Create placement groups during gcs server restart.
+    placement_groups = []
+    for i in range(0, 100):
+        placement_group = ray.util.placement_group([{"CPU": 0.1}, {"CPU": 0.1}])
+        placement_groups.append(placement_group)
 
-    # Create an actor that occupies resources.
-    actor = Increase.options(
-        placement_group=placement_group,
-        placement_group_bundle_index=0).remote()
-    assert ray.get(actor.method.remote(1)) == 3
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    for i in range(0, 10):
+        ray.get(placement_groups[i].ready(), timeout=2)
 
 
 if __name__ == "__main__":
