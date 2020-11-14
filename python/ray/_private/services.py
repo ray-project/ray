@@ -346,14 +346,14 @@ def address_to_ip(address):
 
 
 def get_node_ip_address(address="8.8.8.8:53"):
-    """Determine the IP address of the local node.
+    """IP address by which the local node can be reached *from* the `address`.
 
     Args:
         address (str): The IP address and port of any known live service on the
             network you care about.
 
     Returns:
-        The IP address of the current node.
+        The IP address by which the local node can be reached from the address.
     """
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
