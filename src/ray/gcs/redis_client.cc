@@ -130,6 +130,12 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) 
       boost::asio::io_service &io_service = *io_services[io_service_index];
       // Populate shard_contexts.
       shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
+      Status portReachable = shard_contexts_[i]->PingPort(addresses[i], ports[i]);
+      if (!portReachable.ok()) {
+        RAY_LOG(WARNING) << "Successfully connected to " << options_.server_ip_ << ":"
+                         << options_.server_port_ << ", but not to the shard address it "
+                         << "sent: " << portReachable.message();
+      }
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
                                                /*password=*/options_.password_));
     }
