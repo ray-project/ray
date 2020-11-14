@@ -43,9 +43,8 @@ class TestRedisPassword:
         except Exception as ex:
             if not (isinstance(ex.__cause__, redis.AuthenticationError)
                     and "invalid password" in str(ex.__cause__)) and not (
-                    isinstance(ex, redis.ResponseError)
-                    and "WRONGPASS invalid username-password pair" in str(ex)
-                    ):
+                        isinstance(ex, redis.ResponseError) and
+                        "WRONGPASS invalid username-password pair" in str(ex)):
                 raise
             # By contrast, we may be fairly confident the exact string
             # 'invalid password' won't go away, because redis-py simply wraps
