@@ -287,16 +287,15 @@ void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
 template <typename RedisContext, typename RedisConnectFunction>
 Status ConnectWithoutRetries(const std::string &address, int port,
                              const RedisConnectFunction &connect_function,
-                             RedisContext **context,
-                             std::string &errorMessage) {
+                             RedisContext **context, std::string &errorMessage) {
   *context = connect_function(address.c_str(), port);
   if (*context == nullptr || (*context)->err) {
     std::ostringstream oss(errorMessage);
     if (*context == nullptr) {
       oss << "Could not allocate Redis context.";
     } else if ((*context)->err) {
-      oss << "Could not establish connection to Redis " << address << ":"
-          << port << " (context.err = " << (*context)->err << ")";
+      oss << "Could not establish connection to Redis " << address << ":" << port
+          << " (context.err = " << (*context)->err << ")";
     }
     return Status::RedisError(errorMessage);
   }
@@ -309,8 +308,8 @@ Status ConnectWithRetries(const std::string &address, int port,
                           RedisContext **context) {
   int connection_attempts = 0;
   std::string errorMessage = "";
-  Status status = ConnectWithoutRetries(address, port, connect_function, context,
-                                        errorMessage);
+  Status status =
+      ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
   while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       RAY_LOG(FATAL) << errorMessage;
@@ -327,8 +326,8 @@ Status ConnectWithRetries(const std::string &address, int port,
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));
-    status = ConnectWithoutRetries(address, port, connect_function, context,
-                                   errorMessage);
+    status =
+        ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
     connection_attempts += 1;
   }
   return Status::OK();
