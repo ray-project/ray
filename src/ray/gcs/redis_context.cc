@@ -288,14 +288,18 @@ template <typename RedisContext, typename RedisConnectFunction>
 Status ConnectWithoutRetries(const std::string &address, int port,
                              const RedisConnectFunction &connect_function,
                              RedisContext **context, std::string &errorMessage) {
-  *context = connect_function(address.c_str(), port);
-  if (*context == nullptr || (*context)->err) {
+  RedisContext *newContext = connect_function(address.c_str(), port);
+  if (context != nullptr) {
+    // Don't crash if the RedisContext** is null.
+    *context = newContext;
+  }
+  if (newContext == nullptr || (newContext)->err) {
     std::ostringstream oss(errorMessage);
-    if (*context == nullptr) {
+    if (newContext == nullptr) {
       oss << "Could not allocate Redis context.";
-    } else if ((*context)->err) {
+    } else if (newContext->err) {
       oss << "Could not establish connection to Redis " << address << ":" << port
-          << " (context.err = " << (*context)->err << ")";
+          << " (context.err = " << newContext->err << ")";
     }
     return Status::RedisError(errorMessage);
   }
@@ -331,6 +335,11 @@ Status ConnectWithRetries(const std::string &address, int port,
     connection_attempts += 1;
   }
   return Status::OK();
+}
+
+Status RedisContext::PingPort(const std::string &address, int port) {
+  std::string errorMessage;
+  return ConnectWithoutRetries(address, port, redisConnect, nullptr, errorMessage);
 }
 
 Status RedisContext::Connect(const std::string &address, int port, bool sharding,
