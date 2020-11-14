@@ -1,6 +1,8 @@
+import os
 import json
 import numpy as np
 from ray.tune import Trainable
+
 
 class MyTrainableClass(Trainable):
     """Example agent whose learning curve is a random sigmoid.
