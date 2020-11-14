@@ -6,7 +6,7 @@ from typing import Any, Callable, List, Optional
 
 import numpy as np
 import torch
-from pandas import DataFrame
+import pandas as pd
 from torch.utils.data import IterableDataset
 
 from ray.util.data.dataset import MLDataset
@@ -34,16 +34,46 @@ def convert_to_tensor(df, feature_columns: List[Any],
         t = torch.as_tensor(column, dtype=dtype)
         if shape is not None:
             t = t.view(*(-1, *shape))
+        else:
+            t = t.view(-1, 1)
         feature_tensor.append(t)
 
     label_df = df[label_column].values
     label_tensor = torch.as_tensor(label_df, dtype=label_type)
     if label_shape:
         label_tensor = label_tensor.view(-1, label_shape)
+    else:
+        label_tensor = label_tensor.view(-1, 1)
     return feature_tensor, label_tensor
 
 
 class TorchDataset:
+    """ A TorchDataset which converted from MLDataset
+
+    .. code-block:: python
+
+        ds = ml_dataset.to_torch(feature_columns=["x"], label_column="y")
+        shard = ds.get_shard(0)
+        data = DataLoader(shard, batch_size=32)
+        batch_tensor_x, batch_tensor_y = next(iter(data))
+
+        ds = ml_dataset.to_torch(feature_columns=["x, y"], label_column="z")
+        shard = ds.get_shard(0)
+        data = DataLoader(shard, batch_size=32)
+        batch_tensor_x, batch_tensor_y, batch_tensor_z = next(iter(data))
+
+
+    Args:
+        ds (MLDataset): a MLDataset
+        feature_columns (List[Any]): the feature columns' name
+        feature_shapes (Optional[List[Any]]): the shape for each
+            feature. If provide, it should match the size of feature_columns.
+        feature_types (Optional[List[torch.dtype]]): the data type for each
+            feature. If provide, it should match the size of feature_columns
+        label_column (Any): the label column name
+        label_shape (Optional[int]): the shape for the label data
+        label_type (Optional[torch.dtype]): the data type for the label data
+    """
     def __init__(self,
                  ds: MLDataset = None,
                  feature_columns: List[Any] = None,
@@ -128,11 +158,16 @@ class TorchDataset:
 
 class TorchIterableDataset(IterableDataset):
     def __init__(self, it: Iterator,
-                 convert_fn: Callable[[DataFrame], Any]):
+                 convert_fn: Callable[[pd.DataFrame], Any]):
         super().__init__()
         self._it = it
         self._convert_fn = convert_fn
 
     def __iter__(self):
-        for df in self._it:
-            yield self._convert_fn(df)
+        for df in iter(self._it):
+            num_rows = df.shape[0]
+            feature_tensor, label_tensor = self._convert_fn(df)
+            for i in range(num_rows):
+                features = [tensor[i] for tensor in feature_tensor]
+                label = label_tensor[i]
+                yield (*features, label)

@@ -1,5 +1,5 @@
 import random
-from typing import Callable, List, Union, Iterable, Iterator
+from typing import Callable, List, Iterable, Iterator
 
 import pandas as pd
 
@@ -339,8 +339,6 @@ class _RepeatableIterator(Iterator[T]):
 
     def __iter__(self) -> Iterator[T]:
         if self._shard_index >= 0:
-            print("nnnnnnnnnnn", self._i)
-            self._i += 1
             it = self._ds.get_shard(self._shard_index, self._batch_ms,
                                     self._num_async)
         else:

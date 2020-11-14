@@ -37,7 +37,7 @@ def make_train_operator(ds: TorchDataset):
             train_data = ds.get_shard(self.world_rank, shuffle=True, shuffle_buffer_size=4)
             train_loader = DataLoader(train_data, batch_size=batch_size)
 
-            self.model, self.optimizer = self.register(
+            self.model, self.optimizer, self.criterion = self.register(
                 models=model,
                 optimizers=optimizer,
                 criterion=loss)
@@ -62,7 +62,7 @@ def main():
     for i in range(10):
         trainer.train(num_steps=100)
         model = trainer.get_model()
-        print("f(0.5)=", float(model(0.5)[0][0]))
+        print("f(0.5)=", float(model(torch.tensor([[0.5]]).float())[0][0]))
 
 
 if __name__ == "__main__":
