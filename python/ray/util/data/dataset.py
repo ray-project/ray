@@ -79,7 +79,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                                     ".transform()")
 
     def batch(self, batch_size: int) -> "MLDataset":
-        """ Rebatch the number of rows for each pandas.DataFrame record
+        """Rebatch the number of rows for each pandas.DataFrame record
 
         Unlike the ParallelIterator.batch. This method rebatch the underlying
         the pandas DataFrame, and each pandas DataFrame will have batch_size
@@ -145,7 +145,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
 
     def local_shuffle(self, shuffle_buffer_size: int,
                       seed: int = None) -> "MLDataset":
-        """ Applying local shuffle
+        """Applying local shuffle
 
         Unlike the ParallelIterator.local_shuffle. This shuffle will first
         apply the local_shuffle for each shards and then shuffle the each
@@ -212,7 +212,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                              shuffle: bool = False,
                              shuffle_buffer_size: int = 1,
                              seed: int = None) -> Iterator:
-        """ Get the given shard of the current dataset.
+        """Get the given shard of the current dataset.
 
         The return is a iterator. Each call iter on the returned iterator will
         get the shard data from beginning. And it support shuffle the return
@@ -243,7 +243,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                  label_column=None,
                  label_shape=None,
                  label_type=None):
-        """ Create a TorchDataset from the current MLDataset.
+        """Create a TorchDataset from the current MLDataset.
 
         Args:
             feature_columns (List[Any]): the column indexes name.
@@ -272,7 +272,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
               label_column=None,
               label_shape=None,
               label_type=None):
-        """ Create a TFDataset from the current MLDataset.
+        """Create a TFDataset from the current MLDataset.
 
         Args:
             feature_columns (List[Any]): the column names.

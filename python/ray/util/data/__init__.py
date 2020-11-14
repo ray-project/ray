@@ -19,13 +19,14 @@ else:
 
 def to_pandas(it: ParallelIterator[T],
               batch_size: int = 32) -> "ParallelIterator[pd.DataFrame]":
-    """
-    Convert the a ParallelIterator to ParallelIterator of pd.DataFrame. The
-    record type should be list like object or dataclass instance. If
+    """Convert the a ParallelIterator to ParallelIterator of pd.DataFrame.
+
+    The record type should be list like object or dataclass instance. If
     the record is a iterable, we will convert to a list. If the record has
     __getitem__ attr, we will use __getitem__ to get the given column
     indexes data to create pandas DataFrame. If the record is dataclass
     instance we will use __getattr__ to get the given column.
+
     Args:
         it (ParallelIterator[T]): the ParallelIterator to converted
         batch_size (int): batch the given size to create a pandas DataFrame

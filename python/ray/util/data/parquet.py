@@ -38,7 +38,7 @@ def read_parquet(paths: Union[str, List[str]],
                  shuffle_seed: int = None,
                  columns: Optional[List[str]] = None,
                  **kwargs) -> MLDataset:
-    """ Read parquet format data from hdfs like filesystem into a MLDataset.
+    """Read parquet format data from hdfs like filesystem into a MLDataset.
 
     .. code-block:: python
 
