@@ -41,15 +41,21 @@ class TestRedisPassword:
         # We catch a generic Exception here in case someone later changes the
         # type of the exception.
         except Exception as ex:
-            if not isinstance(ex.__cause__, redis.AuthenticationError):
+            if not (isinstance(ex.__cause__, redis.AuthenticationError)
+                    and "invalid password" in str(ex.__cause__)) and not (
+                    isinstance(ex, redis.ResponseError)
+                    and "WRONGPASS invalid username-password pair" in str(ex)
+                    ):
                 raise
             # By contrast, we may be fairly confident the exact string
             # 'invalid password' won't go away, because redis-py simply wraps
             # the exact error from the Redis library.
             # https://github.com/andymccurdy/redis-py/blob/master/
             # redis/connection.py#L132
-            if "invalid password" not in str(ex.__cause__):
-                raise
+            # Except, apparently sometimes redis-py raises a completely
+            # different *type* of error for a bad password,
+            # redis.ResponseError, which is not even derived from
+            # redis.ConnectionError as redis.AuthenticationError is.
 
         # Check that we can connect to Redis using the provided password
         redis_client = redis.StrictRedis(
