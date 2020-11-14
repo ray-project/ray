@@ -47,8 +47,9 @@ def make_train_operator(ds: TorchDataset):
 
 
 def main():
-    it = parallel_it.from_range(32 * 100 * 2, 2,
-                                False).for_each(lambda x: [x, x])
+    num_points = 32 * 100 * 2
+    data = [i * (1 / num_points) for i in range(num_points)]
+    it = parallel_it.from_items(data, 2, False).for_each(lambda x: [x, x])
     # this will create MLDataset with column RangeIndex(range(2))
     ds = ml_data.from_parallel_iter(it, True, batch_size=32, repeated=False)
     torch_ds = ds.to_torch(feature_columns=[0], label_column=1)
@@ -60,7 +61,7 @@ def main():
     for i in range(10):
         trainer.train(num_steps=100)
         model = trainer.get_model()
-        print("f(10)=", float(model(torch.tensor([[10]]).float())[0][0]))
+        print("f(0.5)=", float(model(torch.tensor([[0.5]]).float())[0][0]))
 
 
 if __name__ == "__main__":

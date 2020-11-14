@@ -839,8 +839,9 @@ def test_multi_input_model(ray_start_2_cpus, use_local):
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_torch_dataset(ray_start_4_cpus, use_local):
-    para_it = parallel_it.from_range(32 * 100 * 2, 2,
-                                     False).for_each(lambda x: [x, x])
+    num_points = 32 * 100 * 2
+    data = [i * (1 / num_points) for i in range(num_points)]
+    para_it = parallel_it.from_items(data, 2, False).for_each(lambda x: [x, x])
     ds = ml_data.from_parallel_iter(para_it, batch_size=32)
 
     torch_ds = ds.to_torch(feature_columns=[0], label_column=1)
@@ -854,8 +855,8 @@ def test_torch_dataset(ray_start_4_cpus, use_local):
         trainer.train(num_steps=100)
 
     model = trainer.get_model()
-    prediction = float(model(torch.tensor([[10]]).float())[0][0])
-    assert 9 <= prediction <= 11
+    prediction = float(model(torch.tensor([[0.5]]).float())[0][0])
+    assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
 
 
