@@ -55,6 +55,7 @@ if __name__ == "__main__":
             "gpu": 0
         },
         config={  # Hyperparameter space
+            "steps": 100,
             "width": tune.uniform(10, 100),
             "height": tune.uniform(0, 100),
         })
