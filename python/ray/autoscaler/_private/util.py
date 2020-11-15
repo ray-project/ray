@@ -9,8 +9,7 @@ from typing import Any, Dict
 
 import ray
 import ray._private.services as services
-from ray.autoscaler._private.providers import _get_default_config, \
-    _NODE_PROVIDERS
+from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
