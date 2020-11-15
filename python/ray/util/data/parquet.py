@@ -56,6 +56,7 @@ def read_parquet(paths: Union[str, List[str]],
 
     Args:
         paths (Union[str, List[str]): a single file path or a list of file path
+        num_shards (int): the number of shards
         rowgroup_split (bool): whether split the files into shards based on
             rowgroup. If set False, each shard will have a list of files.
         shuffle (bool): whether shuffle the ParquetDatasetPiece order when

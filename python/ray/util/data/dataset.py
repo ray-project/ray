@@ -140,7 +140,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
         return self._repeated
 
     @property
-    def batch_size(self) -> bool:
+    def batch_size(self) -> int:
         return self._batch_size
 
     def local_shuffle(self, shuffle_buffer_size: int,
