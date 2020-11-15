@@ -73,7 +73,8 @@ bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
-  RAY_CHECK(task_spec_);
+  RAY_CHECK(task_spec_) << "This method shouldn't be called after the "
+                           "ClearCreationTaskSpecification method is invoked.";
   return TaskSpecification(*task_spec_);
 }
 
@@ -292,6 +293,12 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Put(
       actor->GetActorID(), actor->GetCreationTaskSpecification().GetMessage(),
       [this, actor](const Status &status) {
+        // If a creator dies before this callback is called, the actor could have
+        // been already destroyed. It is okay not to write gcs storage.
+        auto registered_actor_it = registered_actors_.find(actor->GetActorID());
+        if (registered_actor_it == registered_actors_.end()) {
+          return;
+        }
         RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
             actor->GetActorID(), *actor->GetMutableActorTableData(),
             [this, actor](const Status &status) {
