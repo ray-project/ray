@@ -3,13 +3,12 @@ Adapted from
 https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras
 """
 import argparse
-import os
 import tensorflow as tf
 import numpy as np
 import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.integration.keras import TuneReportCallback
+from ray.tune.integration.keras import TuneReportCheckpointCallback
 from ray.tune.integration.tensorflow import (DistributedTrainableCreator,
                                              get_num_workers)
 
@@ -51,19 +50,12 @@ def train_mnist(config, checkpoint_dir=None):
     multi_worker_dataset = mnist_dataset(global_batch_size)
     with strategy.scope():
         multi_worker_model = build_and_compile_cnn_model(config)
-    # Define the checkpoint directory to store the checkpoints
-
-    checkpoint_dir = "./training_checkpoints"
-    # Name of the checkpoint files
-    checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt_{epoch}")
     multi_worker_model.fit(
         multi_worker_dataset,
         epochs=2,
         steps_per_epoch=70,
         callbacks=[
-            tf.keras.callbacks.ModelCheckpoint(
-                filepath=checkpoint_prefix, save_weights_only=True),
-            TuneReportCallback({
+            TuneReportCheckpointCallback({
                 "mean_accuracy": "accuracy"
             })
         ])
