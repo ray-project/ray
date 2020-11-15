@@ -630,7 +630,7 @@ class Policy(metaclass=ABCMeta):
         # train batch with a to-tensor UsageTrackingDict.
         train_batch = self.model.preprocess_train_batch(postprocessed_batch)
         train_batch = self._lazy_tensor_dict(train_batch)
-        train_batch.count = self._dummy_batch.count
+        #train_batch["seq_lens"] = postprocessed_batch.seq_lens
         # Call the loss function, if it exists.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)

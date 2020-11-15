@@ -119,6 +119,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
 
         out = tf.einsum("bijh,bjhd->bihd", wmat, values)
         out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * d]), axis=0))
+
         return self._linear_layer(out)
 
     @staticmethod

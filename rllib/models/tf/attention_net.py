@@ -17,7 +17,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
-from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+from ray.rllib.models.utils import preprocess_train_batch_attention_nets
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -341,9 +341,6 @@ class GTrXLNet(RecurrentNetwork):
     # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
     def get_initial_state(self) -> List[np.ndarray]:
-        # State is the tau last observations concat'd together into one Tensor.
-        # Plus all Transformer blocks' E(l) outputs concat'd together (up to
-        # tau timesteps). Tau=memory size in inference mode.
         return []
 
     @override(ModelV2)
@@ -352,36 +349,8 @@ class GTrXLNet(RecurrentNetwork):
 
     @override(RecurrentNetwork)
     def preprocess_train_batch(self, train_batch):
-        # Should be the same as for RecurrentNets, but with dynamic-max=False.
-        assert "state_in_0" in train_batch
-        state_keys = []
-        feature_keys_ = []
-        for k, v in train_batch.items():
-            if k.startswith("state_in_"):
-                state_keys.append(k)
-            elif not k.startswith(
-                    "state_out_"
-            ) and k != "infos" and k != "seq_lens" and isinstance(
-                    v, np.ndarray):
-                feature_keys_.append(k)
-
-        feature_sequences, initial_states, seq_lens = \
-            chop_into_sequences(
-                episode_ids=None,
-                unroll_ids=None,
-                agent_indices=None,
-                feature_columns=[train_batch[k] for k in feature_keys_],
-                state_columns=[train_batch[k] for k in state_keys],
-                max_seq_len=self.model_config["max_seq_len"],
-                dynamic_max=False,
-                seq_lens=train_batch.seq_lens,
-                shuffle=False)
-        for i, k in enumerate(feature_keys_):
-            train_batch[k] = feature_sequences[i]
-        for i, k in enumerate(state_keys):
-            train_batch[k] = initial_states[i]
-        train_batch["seq_lens"] = seq_lens
-        return train_batch
+        return preprocess_train_batch_attention_nets(
+            train_batch, max_seq_len=self.model_config["max_seq_len"])
 
 
 def relative_position_embedding(seq_length: int, out_dim: int) -> TensorType:

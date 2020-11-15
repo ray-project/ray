@@ -110,6 +110,8 @@ class TorchPolicy(Policy):
             logger.info("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+        self._state_inputs = self.model.get_initial_state()
+        self._is_recurrent = len(self._state_inputs) > 0
         # Auto-update model's inference view requirements, if recurrent.
         self._update_model_inference_view_requirements_from_init_state()
         # Combine view_requirements for Model and Policy.
@@ -203,6 +205,8 @@ class TorchPolicy(Policy):
             Tuple:
                 - actions, state_out, extra_fetches, logp.
         """
+        self._is_recurrent = state_batches is not None
+
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
             state_out = state_batches
@@ -341,15 +345,16 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
+        train_batch = self.model.preprocess_train_batch(postprocessed_batch)
         # Get batch ready for RNNs, if applicable.
-        pad_batch_to_sequences_of_same_size(
-            postprocessed_batch,
-            max_seq_len=self.max_seq_len,
-            shuffle=False,
-            batch_divisibility_req=self.batch_divisibility_req,
-        )
+        #pad_batch_to_sequences_of_same_size(
+        #    postprocessed_batch,
+        #    max_seq_len=self.max_seq_len,
+        #    shuffle=False,
+        #    batch_divisibility_req=self.batch_divisibility_req,
+        #)
 
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        train_batch = self._lazy_tensor_dict(train_batch)
 
         # Calculate the actual policy loss.
         loss_out = force_list(
@@ -443,7 +448,7 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def is_recurrent(self) -> bool:
-        return len(self.model.get_initial_state()) > 0
+        return self._is_recurrent
 
     @override(Policy)
     @DeveloperAPI

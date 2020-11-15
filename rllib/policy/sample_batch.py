@@ -269,7 +269,7 @@ class SampleBatch:
 
             return SampleBatch(
                 data,
-                _seq_lens=seq_lens,
+                _seq_lens=np.array(seq_lens),
                 _time_major=self.time_major,
                 _dont_check_lens=True)
         else:

@@ -260,10 +260,8 @@ def build_eager_tf_policy(name,
             self._update_model_inference_view_requirements_from_init_state()
 
             self.exploration = self._create_exploration()
-            self._state_in = [
-                tf.convert_to_tensor([s])
-                for s in self.model.get_initial_state()
-            ]
+            self._state_inputs = self.model.get_initial_state()
+            self._is_recurrent = len(self._state_inputs) > 0
 
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
@@ -359,7 +357,7 @@ def build_eager_tf_policy(name,
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
-            self._state_in = state_batches
+            self._is_recurrent = state_batches is not None
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -537,11 +535,11 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def is_recurrent(self):
-            return len(self._state_in) > 0
+            return self._is_recurrent
 
         @override(Policy)
         def num_state_tensors(self):
-            return len(self._state_in)
+            return len(self._state_inputs)
 
         @override(Policy)
         def get_initial_state(self):
@@ -587,9 +585,9 @@ def build_eager_tf_policy(name,
                 state_in = []
                 for i in range(self.num_state_tensors()):
                     state_in.append(samples["state_in_{}".format(i)])
-                self._state_in = state_in
+                self._is_recurrent = state_in is not None
 
-                model_out, _ = self.model(samples, self._state_in,
+                model_out, _ = self.model(samples, state_in,
                                           samples.get("seq_lens"))
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 

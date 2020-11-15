@@ -1,3 +1,6 @@
+import numpy as np
+
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 
@@ -65,3 +68,36 @@ def get_initializer(name, framework="tf"):
 
     raise ValueError("Unknown activation ({}) for framework={}!".format(
         name, framework))
+
+
+def preprocess_train_batch_attention_nets(train_batch, max_seq_len):
+    # Should be the same as for RecurrentNets, but with dynamic-max=False.
+    assert "state_in_0" in train_batch
+    state_keys = []
+    feature_keys_ = []
+    for k, v in train_batch.items():
+        if k.startswith("state_in_"):
+            state_keys.append(k)
+        elif not k.startswith(
+                "state_out_"
+        ) and k != "infos" and k != "seq_lens" and isinstance(
+                v, np.ndarray):
+            feature_keys_.append(k)
+
+    feature_sequences, initial_states, seq_lens = \
+        chop_into_sequences(
+            episode_ids=None,
+            unroll_ids=None,
+            agent_indices=None,
+            feature_columns=[train_batch[k] for k in feature_keys_],
+            state_columns=[train_batch[k] for k in state_keys],
+            max_seq_len=max_seq_len,
+            dynamic_max=False,
+            seq_lens=train_batch.seq_lens,
+            shuffle=False)
+    for i, k in enumerate(feature_keys_):
+        train_batch[k] = feature_sequences[i]
+    for i, k in enumerate(state_keys):
+        train_batch[k] = initial_states[i]
+    train_batch["seq_lens"] = seq_lens
+    return train_batch
