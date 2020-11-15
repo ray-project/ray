@@ -278,8 +278,9 @@ def _bootstrap_config(config: Dict[str, Any],
     except Exception:
         # When the user is using e.g., staroid, but it is not installed.
         logger.exception("Failed to autodetect node resources.")
-    # NOTE: this will fail if non-AWS resources are missing, as we currently
-    # support autofilling resources for AWS instances only.
+    # NOTE: if `resources` field is missing, validate_config for non-AWS will
+    # fail (the schema error will ask the user to manually fill the resources)
+    # as we currently support autofilling resources for AWS instances only.
     validate_config(config)
     resolved_config = provider_cls.bootstrap_config(config)
 
