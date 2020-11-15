@@ -15,6 +15,8 @@ def setup_logger(logging_level, logging_format):
         _default_handler = logging.StreamHandler()
         logger.addHandler(_default_handler)
     _default_handler.setFormatter(logging.Formatter(logging_format))
+    # Setting this will avoid the message
+    # is propagated to the parent logger.
     logger.propagate = False
 
 
@@ -46,10 +48,9 @@ class StandardStreamInterceptor:
 
     def write(self, message):
         """Redirect the original message to the logger."""
-        self.logger.info("{}".format(message))
+        self.logger.info(message)
 
     def flush(self):
-        # flush method can be empty because logger will handle flush
         for handler in self.logger.handlers:
             handler.flush()
 

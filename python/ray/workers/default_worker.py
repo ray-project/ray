@@ -17,7 +17,7 @@ from ray.parameter import RayParams
 from ray.ray_logging import StandardStreamInterceptor
 
 
-def setup_and_get_worker_interceptor_logger(is_for_stdout: bool):
+def setup_and_get_worker_interceptor_logger(is_for_stdout: bool = True):
     """Setup a logger to be used to intercept worker log messages.
 
     NOTE: The method is not idempotent.
@@ -40,11 +40,16 @@ def setup_and_get_worker_interceptor_logger(is_for_stdout: bool):
     # TODO(sang): This is how the job id is propagated to workers now.
     # But eventually, it will be clearer to just pass the job id.
     job_id = os.environ.get("RAY_JOB_ID")
-    assert job_id is not None, (
-        "RAY_JOB_ID should be set as an env "
-        "variable within default_worker.py. If you see this error, "
-        "please report it to Ray's Github issue.")
-    worker_name = "worker" if args.worker_type == "WORKER" else "io_worker"
+    if args.worker_type == "WORKER":
+        assert job_id is not None, (
+            "RAY_JOB_ID should be set as an env "
+            "variable within default_worker.py. If you see this error, "
+            "please report it to Ray's Github issue.")
+        worker_name = "worker"
+    else:
+        job_id = ray.JobID.nil()
+        worker_name = "io_worker"
+
     # Make sure these values are set already.
     assert ray.worker._global_node is not None
     assert ray.worker.global_worker is not None
@@ -57,7 +62,10 @@ def setup_and_get_worker_interceptor_logger(is_for_stdout: bool):
     # TODO(sang): Add 0 or 1 to decide whether
     # or not logs are streamed to drivers.
     handler.setFormatter(logging.Formatter("%(message)s"))
+    # Avoid messages are propagated to parent loggers.
     logger.propagate = False
+    # Remove the terminator. It is important because we don't want this
+    # logger to add a newline at the end of string.
     handler.terminator = ""
     return logger
 
@@ -124,9 +132,11 @@ def main(args):
     # NOTE: We deprecated redirect_worker_output arg,
     # so we don't need to handle here.
     stdout_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(True), intercept_stdout=True)
+        setup_and_get_worker_interceptor_logger(is_for_stdout=True),
+        intercept_stdout=True)
     stderr_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(False), intercept_stdout=False)
+        setup_and_get_worker_interceptor_logger(is_for_stdout=False),
+        intercept_stdout=False)
     with redirect_stdout(stdout_interceptor):
         with redirect_stderr(stderr_interceptor):
             if mode == ray.WORKER_MODE:
