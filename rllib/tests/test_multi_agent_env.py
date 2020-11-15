@@ -4,8 +4,8 @@ import unittest
 
 import ray
 from ray.tune.registry import register_env
+from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
@@ -319,7 +319,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch["state_out_0"][1], h)
 
     def test_returning_model_based_rollouts_data(self):
-        class ModelBasedPolicy(PGTFPolicy):
+        class ModelBasedPolicy(DQNTFPolicy):
             def compute_actions(self,
                                 obs_batch,
                                 state_batches,

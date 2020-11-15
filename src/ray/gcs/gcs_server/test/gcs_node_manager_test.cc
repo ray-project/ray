@@ -100,14 +100,14 @@ TEST_F(GcsNodeManagerTest, TestGetClusterRealtimeResources) {
 
   ResourceSet required_resources;
   required_resources.AddOrUpdateResource(cpu_resource, 9);
-  ASSERT_TRUE(required_resources.IsSubset(*node_resources[node_id]));
+  ASSERT_TRUE(required_resources.IsSubset(node_resources[node_id]));
   required_resources.AddOrUpdateResource(cpu_resource, 10);
-  ASSERT_TRUE(required_resources.IsSubset(*node_resources[node_id]));
+  ASSERT_TRUE(required_resources.IsSubset(node_resources[node_id]));
   required_resources.AddOrUpdateResource(cpu_resource, 10.1);
-  ASSERT_FALSE(required_resources.IsSubset(*node_resources[node_id]));
+  ASSERT_FALSE(required_resources.IsSubset(node_resources[node_id]));
   required_resources.DeleteResource(cpu_resource);
   required_resources.AddOrUpdateResource("GPU", 9);
-  ASSERT_FALSE(required_resources.IsSubset(*node_resources[node_id]));
+  ASSERT_FALSE(required_resources.IsSubset(node_resources[node_id]));
 }
 
 }  // namespace ray
