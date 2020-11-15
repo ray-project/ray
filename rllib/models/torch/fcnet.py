@@ -1,5 +1,6 @@
 import logging
 import numpy as np
+from ray.rllib import SampleBatch
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
@@ -111,7 +112,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         self._last_flat_in = None
 
     @override(TorchModelV2)
-    def forward(self, input_dict, state, seq_lens, return_values=False):
+    def forward(self, input_dict, state, seq_lens):
         obs = input_dict["obs_flat"].float()
         self._last_flat_in = obs.reshape(obs.shape[0], -1)
         self._features = self._hidden_layers(self._last_flat_in)
@@ -120,16 +121,10 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
 
-        if return_values:
-            return logits, state, self.value_function()
-        else:
-            return logits, state
-
-    @override(TorchModelV2)
-    def value_function(self):
-        assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
-            return self._value_branch(
+            value = self._value_branch(
                 self._value_branch_separate(self._last_flat_in)).squeeze(1)
         else:
-            return self._value_branch(self._features).squeeze(1)
+            value = self._value_branch(self._features).squeeze(1)
+
+        return logits, state, {SampleBatch.VF_PREDS: value}

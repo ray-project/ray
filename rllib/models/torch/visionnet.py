@@ -1,4 +1,5 @@
 import numpy as np
+from ray.rllib import SampleBatch
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
@@ -148,12 +149,24 @@ class VisionNetwork(TorchModelV2, nn.Module):
         self._features = None
 
     @override(TorchModelV2)
-    def forward(self, input_dict, state, seq_lens, return_values=False):
+    def forward(self, input_dict, state, seq_lens):
         self._features = input_dict["obs"].float().permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
-        if not self._value_branch_separate:
+
+        if self._value_branch_separate:
+            value = self._value_branch_separate(self._features)
+            value = value.squeeze(3)
+            value = value.squeeze(2)
+            value = value.squeeze(1)
+        else:
             self._features = conv_out
+            if not self.last_layer_is_flattened:
+                features = self._features.squeeze(3)
+                features = features.squeeze(2)
+            else:
+                features = self._features
+            value = self._value_branch(features).squeeze(1)
 
         if not self.last_layer_is_flattened:
             if self._logits:
@@ -168,29 +181,11 @@ class VisionNetwork(TorchModelV2, nn.Module):
             logits = conv_out.squeeze(3)
             logits = logits.squeeze(2)
 
-            if return_values:
-                return logits, state, self.value_function()
-            return logits, state
+            output = logits
         else:
-            if return_values:
-                return conv_out, state, self.value_function()
-            return conv_out, state
+            output = conv_out
 
-    @override(TorchModelV2)
-    def value_function(self):
-        assert self._features is not None, "must call forward() first"
-        if self._value_branch_separate:
-            value = self._value_branch_separate(self._features)
-            value = value.squeeze(3)
-            value = value.squeeze(2)
-            return value.squeeze(1)
-        else:
-            if not self.last_layer_is_flattened:
-                features = self._features.squeeze(3)
-                features = features.squeeze(2)
-            else:
-                features = self._features
-            return self._value_branch(features).squeeze(1)
+        return output, state, {SampleBatch.VF_PREDS: value}
 
     def _hidden_layers(self, obs):
         res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
