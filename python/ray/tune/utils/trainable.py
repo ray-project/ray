@@ -163,12 +163,15 @@ class TrainableUtil:
             iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
         return chkpt_df
 
+
+class PlacementGroupUtil:
     @staticmethod
     def get_remote_worker_options(
             num_workers, num_cpus_per_worker, num_gpus_per_worker,
             num_workers_per_host,
             timeout_s) -> (Dict[str, Any], placement_group):
         """ Returns the option for remote workers.
+
         Args:
             num_workers (int): Number of training workers to include in
                 world.
@@ -182,7 +185,8 @@ class TrainableUtil:
                 times out. Useful when machines are unreliable. Defaults
                 to 60 seconds. This value is also reused for triggering
                 placement timeouts if forcing colocation.
-                :return:
+
+
         Returns:
             type(Dict[Str, Any]): option that contains CPU/GPU count of
                 the remote worker and the placement group information.

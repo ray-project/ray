@@ -16,7 +16,7 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
 from ray.tune.utils import detect_checkpoint_function
 from ray.util.sgd.torch.utils import setup_process_group, setup_address
 from ray.util.placement_group import remove_placement_group
@@ -51,7 +51,6 @@ class _TorchTrainable(tune.Trainable):
     """
     _function = None
     _num_workers = None
-    _use_gpu = None
     _num_gpus_per_worker = None
     _num_cpus_per_worker = None
     _num_workers_per_host = None
@@ -78,7 +77,7 @@ class _TorchTrainable(tune.Trainable):
 
         remote_trainable = ray.remote(func_trainable)
         remote_option, self._placement_group = \
-            TrainableUtil.get_remote_worker_options(
+            PlacementGroupUtil.get_remote_worker_options(
                 self._num_workers, self._num_cpus_per_worker,
                 self._num_gpus_per_worker,
                 self._num_workers_per_host, self._timeout_s)
@@ -139,14 +138,14 @@ class _TorchTrainable(tune.Trainable):
             remove_placement_group(self._placement_group)
 
 
-def DistributedTrainableCreator(
-        func: Callable,
-        num_workers: int = 1,
-        num_cpus_per_worker: int = 1,
-        num_gpus_per_worker: int = 0,
-        num_workers_per_host: Optional[int] = None,
-        backend: str = "gloo",
-        timeout_s: int = NCCL_TIMEOUT_S) -> Type[_TorchTrainable]:
+def DistributedTrainableCreator(func: Callable,
+                                num_workers: int = 1,
+                                num_cpus_per_worker: int = 1,
+                                num_gpus_per_worker: int = 0,
+                                num_workers_per_host: Optional[int] = None,
+                                backend: str = "gloo",
+                                timeout_s: int = NCCL_TIMEOUT_S,
+                                use_gpu=None) -> Type[_TorchTrainable]:
     """Creates a class that executes distributed training.
 
     Similar to running `torch.distributed.launch`.
@@ -186,6 +185,9 @@ def DistributedTrainableCreator(
             train_func, num_workers=2)
         analysis = tune.run(trainable_cls)
     """
+    if use_gpu:
+        raise ValueError(
+            "use_gpu is deprecated. Use 'num_gpus_per_worker' instead.")
     detect_checkpoint_function(func, abort=True)
     if num_workers_per_host:
         if num_workers % num_workers_per_host:
