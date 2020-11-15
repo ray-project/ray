@@ -186,25 +186,6 @@ class HTTPProxyActor:
         self.app.set_route_table(route_table)
 
     # ------ Proxy router logic ------ #
-    async def add_new_replica(self, backend_tag, replica_tag, worker_handle):
-        return await self.app.router.add_new_replica(backend_tag, replica_tag,
-                                                     worker_handle)
-
-    async def set_traffic(self, endpoint, traffic_policy):
-        return await self.app.router.set_traffic(endpoint, traffic_policy)
-
-    async def set_backend_config(self, backend, config):
-        return await self.app.router.set_backend_config(backend, config)
-
-    async def remove_backend(self, backend):
-        return await self.app.router.remove_backend(backend)
-
-    async def remove_endpoint(self, endpoint):
-        return await self.app.router.remove_endpoint(endpoint)
-
-    async def remove_replica(self, backend_tag, replica_tag):
-        return await self.app.router.remove_replica(backend_tag, replica_tag)
-
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
         return await self.app.router.enqueue_request(

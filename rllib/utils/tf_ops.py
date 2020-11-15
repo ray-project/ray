@@ -36,7 +36,7 @@ def explained_variance(y, pred):
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
-def get_placeholder(*, space=None, value=None):
+def get_placeholder(*, space=None, value=None, name=None):
     from ray.rllib.models.catalog import ModelCatalog
 
     if space is not None:
@@ -45,6 +45,7 @@ def get_placeholder(*, space=None, value=None):
         return tf1.placeholder(
             shape=(None, ) + space.shape,
             dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
+            name=name,
         )
     else:
         assert value is not None
@@ -53,6 +54,7 @@ def get_placeholder(*, space=None, value=None):
             shape=(None, ) + (shape if isinstance(shape, tuple) else tuple(
                 shape.as_list())),
             dtype=tf.float32 if value.dtype == np.float64 else value.dtype,
+            name=name,
         )
 
 

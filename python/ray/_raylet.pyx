@@ -64,7 +64,8 @@ from ray.includes.common cimport (
     TASK_TYPE_ACTOR_TASK,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
-    WORKER_TYPE_IO_WORKER,
+    WORKER_TYPE_SPILL_WORKER,
+    WORKER_TYPE_RESTORE_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -604,7 +605,10 @@ cdef c_vector[c_string] spill_objects_handler(
     with gil:
         object_refs = VectorToObjectRefs(object_ids_to_spill)
         try:
-            urls = external_storage.spill_objects(object_refs)
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
+                urls = external_storage.spill_objects(object_refs)
             for url in urls:
                 return_urls.push_back(url)
         except Exception:
@@ -614,7 +618,7 @@ cdef c_vector[c_string] spill_objects_handler(
             logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
-                "io_worker_spill_objects_error",
+                "spill_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
         return return_urls
@@ -628,7 +632,10 @@ cdef void restore_spilled_objects_handler(
         for i in range(size):
             urls.append(object_urls[i])
         try:
-            external_storage.restore_spilled_objects(urls)
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
+                external_storage.restore_spilled_objects(urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
@@ -636,7 +643,7 @@ cdef void restore_spilled_objects_handler(
             logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
-                "io_worker_retore_spilled_objects_error",
+                "restore_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
 
@@ -722,9 +729,12 @@ cdef class CoreWorker:
         elif worker_type == ray.WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_WORKER
-        elif worker_type == ray.IO_WORKER_MODE:
+        elif worker_type == ray.SPILL_WORKER_MODE:
             self.is_driver = False
-            options.worker_type = WORKER_TYPE_IO_WORKER
+            options.worker_type = WORKER_TYPE_SPILL_WORKER
+        elif worker_type == ray.RESTORE_WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_RESTORE_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON

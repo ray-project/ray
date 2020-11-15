@@ -112,16 +112,15 @@ if __name__ == "__main__":
         num_cpus_per_worker=args.num_cpus_per_worker,
         num_gpus_per_worker=args.num_gpus_per_worker,
     )
-    sched = AsyncHyperBandScheduler(
-        time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
-        max_t=400,
-        grace_period=20)
-    tune.run(
+
+    sched = AsyncHyperBandScheduler(max_t=400, grace_period=20)
+
+    analysis = tune.run(
         tf_trainable,
         name="exp",
         scheduler=sched,
+        metric="mean_accuracy",
+        mode="max",
         stop={
             "mean_accuracy": 0.99,
             "training_iteration": 10
@@ -134,3 +133,4 @@ if __name__ == "__main__":
             "hidden": tune.sample_from(
                 lambda spec: np.random.randint(32, 512)),
         })
+    print("Best hyperparameters found were: ", analysis.best_config)

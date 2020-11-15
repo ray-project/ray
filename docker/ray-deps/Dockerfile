@@ -17,4 +17,4 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install $(basename $WHEEL_PATH)[all] 
         "azure-mgmt-compute==12.0.0" \
         "azure-mgmt-msi==1.0.0" \
         "azure-mgmt-network==10.1.0"; fi) \
-    && $HOME/anaconda3/bin/pip uninstall ray -y && rm $(basename $WHEEL_PATH)
+    && $HOME/anaconda3/bin/pip uninstall ray -y && sudo rm $(basename $WHEEL_PATH)

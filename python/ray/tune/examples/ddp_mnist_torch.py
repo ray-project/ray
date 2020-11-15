@@ -79,4 +79,12 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         num_gpus_per_worker=args.num_gpus_per_worker,
         num_workers_per_host=args.workers_per_node)
-    tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 10})
+
+    analysis = tune.run(
+        trainable_cls,
+        num_samples=4,
+        stop={"training_iteration": 10},
+        metric="mean_accuracy",
+        mode="max")
+
+    print("Best hyperparameters found were: ", analysis.best_config)
