@@ -221,6 +221,7 @@ class TorchPolicy(Policy):
                 - actions, state_out, extra_fetches, logp.
         """
         if self.action_sampler_fn:
+            extra_outputs = None  # TODO (roi): should this return values estimates
             action_dist = dist_inputs = None
             state_out = state_batches
             actions, logp, state_out = self.action_sampler_fn(
@@ -235,6 +236,7 @@ class TorchPolicy(Policy):
             self.exploration.before_compute_actions(
                 explore=explore, timestep=timestep)
             if self.action_distribution_fn:
+                extra_outputs = None  # TODO (roi): should this return values estimates
                 dist_inputs, dist_class, state_out = \
                     self.action_distribution_fn(
                         self,
@@ -245,8 +247,7 @@ class TorchPolicy(Policy):
                         is_training=False)
             else:
                 dist_class = self.dist_class
-                dist_inputs, state_out = self.model(input_dict, state_batches,
-                                                    seq_lens)
+                dist_inputs, state_out, extra_outputs = self.model(input_dict, state_batches, seq_lens)
 
             if not (isinstance(dist_class, functools.partial)
                     or issubclass(dist_class, TorchDistributionWrapper)):
@@ -273,6 +274,10 @@ class TorchPolicy(Policy):
         # Action-dist inputs.
         if dist_inputs is not None:
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+
+        # If model has returned value predictions
+        if extra_outputs is not None:
+            extra_fetches.update(extra_outputs)
 
         # Update our global timestep by the batch size.
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])

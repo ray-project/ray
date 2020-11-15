@@ -14,8 +14,7 @@ torch, nn = try_import_torch()
 
 
 def actor_critic_loss(policy, model, dist_class, train_batch):
-    logits, _, values = model.from_batch(train_batch, return_values=True)
-    #values = model.value_function()
+    logits, _, out = model.from_batch(train_batch)
     dist = dist_class(logits, model)
     log_probs = dist.logp(train_batch[SampleBatch.ACTIONS])
     policy.entropy = dist.entropy().sum()
@@ -23,7 +22,7 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
         log_probs.reshape(-1))
     policy.value_err = torch.sum(
         torch.pow(
-            values.reshape(-1) - train_batch[Postprocessing.VALUE_TARGETS],
+            out[SampleBatch.VF_PREDS].reshape(-1) - train_batch[Postprocessing.VALUE_TARGETS],
             2.0))
     overall_err = sum([
         policy.pi_err,
@@ -57,11 +56,6 @@ def add_advantages(policy,
         policy.config["use_gae"], policy.config["use_critic"])
 
 
-def model_value_predictions(policy, input_dict, state_batches, model,
-                            action_dist):
-    return {SampleBatch.VF_PREDS: model.value_function()}
-
-
 def apply_grad_clipping(policy, optimizer, loss):
     info = {}
     if policy.config["grad_clip"]:
@@ -85,10 +79,9 @@ def torch_optimizer(policy, config):
 
 class ValueNetworkMixin:
     def _value(self, obs):
-        _, _, values = self.model(
-            {SampleBatch.OBS: torch.Tensor([obs]).to(self.device)}, [], [1],
-            return_values=True)
-        return values[0]
+        _, _, out = self.model(
+            {SampleBatch.OBS: torch.Tensor([obs]).to(self.device)}, [], [1])
+        return out[SampleBatch.VF_PREDS][0]
 
 
 def view_requirements_fn(policy: Policy) -> Dict[str, ViewRequirement]:
@@ -133,7 +126,6 @@ A3CTorchPolicy = build_torch_policy(
     loss_fn=actor_critic_loss,
     stats_fn=loss_and_entropy_stats,
     postprocess_fn=add_advantages,
-    extra_action_out_fn=model_value_predictions,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=torch_optimizer,
     mixins=[ValueNetworkMixin],

@@ -85,8 +85,7 @@ class ModelV2:
     @PublicAPI
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
-                seq_lens: TensorType,
-                **kwargs) -> (TensorType, List[TensorType]):
+                seq_lens: TensorType) -> (TensorType, List[TensorType], Dict[str, TensorType]):
         """Call the model with the given input tensors and state.
 
         Any complex observations (dicts, tuples, etc.) will be unpacked by
@@ -109,8 +108,10 @@ class ModelV2:
             seq_lens (Tensor): 1d tensor holding input sequence lengths
 
         Returns:
-            (outputs, state): The model output tensor of size
-                [BATCH, num_outputs], and the new RNN state.
+            (outputs, state, extra_outputs): The model output tensor of size
+                [BATCH, num_outputs].
+                the new RNN state.
+                additional outputs (value function, auxiliary outputs, etc.)
 
         Examples:
             >>> def forward(self, input_dict, state, seq_lens):
@@ -177,8 +178,7 @@ class ModelV2:
             input_dict: Dict[str, TensorType],
             state: List[Any] = None,
             seq_lens: TensorType = None,
-            return_values: bool = False,
-    ) -> (TensorType, List[TensorType]):
+    ) -> (TensorType, List[TensorType], Dict[str, TensorType]):
         """Call the model with the given input tensors and state.
 
         This is the method used by RLlib to execute the forward pass. It calls
@@ -192,16 +192,13 @@ class ModelV2:
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
             seq_lens (Tensor): 1d tensor holding input sequence lengths
-            return_values (bool): Whether to also return the values tensor.
-                If True, will return 3 items: [output, states, values], instead
-                of 2.
 
         Returns:
             (outputs, state, values?): The model output tensor of size
                 [BATCH, output_spec.size] or a list of tensors corresponding to
                 output_spec.shape_list, and a list of state tensors of
                 [BATCH, state_size_i], and (optionally) the values tensor
-                [BATCH].
+                [BATCH] extra outputs (value function estimates, auxiliary outputs, etc.)
         """
 
         restored = input_dict.copy()
@@ -212,14 +209,12 @@ class ModelV2:
         else:
             restored["obs_flat"] = input_dict["obs"]
         with self.context():
-            res = self.forward(restored, state or [], seq_lens, return_values=return_values)
-        if not isinstance(res, (list, tuple)) or \
-                (return_values is False and len(res) != 2) or \
-                (return_values is True and len(res) != 3):
+            res = self.forward(restored, state or [], seq_lens)
+        if not isinstance(res, (list, tuple)) or len(res) != 3:
             raise ValueError(
                 "`ModelV2.forward()` must return a tuple of (output, state, "
                 "values?) tensors, got {}".format(res))
-        outputs, state_outs = res[0], res[1]
+        outputs, state_outs, extra_outputs = res
 
         try:
             shape = outputs.shape
@@ -235,14 +230,11 @@ class ModelV2:
                 "State output is not a list: {}".format(state_outs))
 
         self._last_output = outputs
-        if return_values:
-            return outputs, state_outs, res[2]
-        return outputs, state_outs
+        return outputs, state_outs, extra_outputs
 
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,
-                   is_training: bool = True,
-                   return_values: bool = False) -> \
+                   is_training: bool = True) -> \
             (TensorType, List[TensorType]):
         """Convenience function that calls this model with a tensor batch.
 
@@ -266,8 +258,7 @@ class ModelV2:
         return self.__call__(
             input_dict=input_dict,
             state=states,
-            seq_lens=train_batch.get("seq_lens"),
-            return_values=return_values)
+            seq_lens=train_batch.get("seq_lens"))
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
