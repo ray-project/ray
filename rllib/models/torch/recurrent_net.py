@@ -59,7 +59,7 @@ class RecurrentNetwork(TorchModelV2):
     """
 
     @override(ModelV2)
-    def forward(self, input_dict, state, seq_lens, return_values=False):
+    def forward(self, input_dict, state, seq_lens):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
@@ -74,11 +74,10 @@ class RecurrentNetwork(TorchModelV2):
             framework="torch",
             time_major=self.time_major,
         )
-        output, new_state = self.forward_rnn(inputs, state, seq_lens)
+        output, new_state, extra_outputs = self.forward_rnn(inputs, state, seq_lens)
         output = torch.reshape(output, [-1, self.num_outputs])
-        if return_values:
-            return output, new_state, self.value_function()
-        return output, new_state
+
+        return output, new_state, extra_outputs
 
     def forward_rnn(self, inputs, state, seq_lens):
         """Call the model with the given input tensors and state.
@@ -198,7 +197,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         #         self._features,
         #         batch_first=not time_major)
         model_out = self._logits_branch(self._features)
-        return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
+        return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)], \
+               {SampleBatch.VF_PREDS: torch.reshape(self._value_branch(self._features), [-1])}
 
     @override(ModelV2)
     def get_initial_state(self):
@@ -210,7 +210,3 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         ]
         return h
 
-    @override(ModelV2)
-    def value_function(self):
-        assert self._features is not None, "must call forward() first"
-        return torch.reshape(self._value_branch(self._features), [-1])
