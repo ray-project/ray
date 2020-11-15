@@ -322,7 +322,7 @@ class GTrXLNet(RecurrentNetwork):
         is_training = tf.expand_dims(input_dict["is_training"], axis=0)
         observations = input_dict[SampleBatch.OBS]
         # Add the time dim to observations.
-        B = len(seq_lens)
+        B = tf.shape(seq_lens)[0]
         shape = tf.shape(observations)
         T = shape[0] // B
         observations = tf.reshape(observations,
