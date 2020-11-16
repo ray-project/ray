@@ -944,7 +944,7 @@ def test_actor_creation_task_crash(ray_start_regular):
         }
     }],
     indirect=True)
-# @pytest.mark.skipif(new_scheduler_enabled(), reason="todo hangs")
+@pytest.mark.skipif(new_scheduler_enabled(), reason="todo hangs")
 def test_pending_actor_removed_by_owner(ray_start_regular):
     # Verify when an owner of pending actors is killed, the actor resources
     # are correctly returned.
@@ -952,25 +952,13 @@ def test_pending_actor_removed_by_owner(ray_start_regular):
     @ray.remote(num_cpus=1, resources={"a": 1})
     class A:
         def __init__(self):
-            print("Actor A started")
             self.actors = []
 
         def create_actors(self):
-            self.actors = [B.remote(i) for i in range(2)]
+            self.actors = [B.remote() for _ in range(2)]
 
     @ray.remote(resources={"a": 1})
     class B:
-        def __init__(self, arg):
-            print("Actor B Created!!!")
-
-        def ping(self):
-            return True
-
-    @ray.remote(resources={"a": 1})
-    class C:
-        def __init__(self, arg):
-            print("Actor C Created!!!")
-
         def ping(self):
             return True
 
@@ -978,21 +966,14 @@ def test_pending_actor_removed_by_owner(ray_start_regular):
     def f():
         return True
 
-    # import pdb; pdb.set_trace()
     a = A.remote()
     # Create pending actors
     ray.get(a.create_actors.remote())
 
     # Owner is dead. pending actors should be killed
     # and raylet should return workers correctly.
-    time.sleep(1)
-    print("---------------------")
-    # del a
-    ray.kill(a)
-    time.sleep(1)
-    print("=====================")
-    time.sleep(1)
-    a = C.remote(2)
+    del a
+    a = B.remote()
     assert ray.get(a.ping.remote())
     ray.kill(a)
     assert ray.get(f.remote())

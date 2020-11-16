@@ -576,8 +576,8 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
 }
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id) {
-  RAY_LOG(ERROR) << "Destroying actor, actor id = " << actor_id
-                 << ", job id = " << actor_id.JobId();
+  RAY_LOG(INFO) << "Destroying actor, actor id = " << actor_id
+                << ", job id = " << actor_id.JobId();
   actor_to_register_callbacks_.erase(actor_id);
   actor_to_create_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
@@ -618,7 +618,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     const auto &worker_id = actor->GetWorkerID();
     auto node_it = created_actors_.find(node_id);
     if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
-      RAY_LOG(ERROR) << "Actor already created, force destroying it. " << actor_id;
       // The actor has already been created. Destroy the process by force-killing
       // it.
       KillActor(actor);
@@ -632,11 +631,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       auto canceled_actor_id =
           gcs_actor_scheduler_->CancelOnWorker(actor->GetNodeID(), actor->GetWorkerID());
       if (!canceled_actor_id.IsNil()) {
-        RAY_LOG(ERROR) << "Actor was being scheduled, now dead " << actor_id;
         // The actor was being scheduled and has now been canceled.
         RAY_CHECK(canceled_actor_id == actor_id);
       } else {
-        RAY_LOG(ERROR) << "Actor was pending scheduling, " << actor_id;
         auto pending_it =
             std::find_if(pending_actors_.begin(), pending_actors_.end(),
                          [actor_id](const std::shared_ptr<GcsActor> &actor) {
@@ -645,10 +642,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
 
         // The actor was pending scheduling. Remove it from the queue.
         if (pending_it != pending_actors_.end()) {
-          RAY_LOG(ERROR) << "Actor removed from queue: " << actor_id;
           pending_actors_.erase(pending_it);
         } else {
-          RAY_LOG(ERROR) << "Cancelling on leasing (aka don't cancel)" << actor_id;
           // When actor creation request of this actor id is pending in raylet,
           // it doesn't responds, and the actor should be still in leasing state.
           // NOTE: Raylet will cancel the lease request once it receives the
@@ -1131,16 +1126,12 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
 }
 
 void GcsActorManager::KillActor(const std::shared_ptr<GcsActor> &actor) {
-  RAY_LOG(ERROR) << "Kill actor called";
   auto actor_client = worker_client_factory_(actor->GetAddress());
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor->GetActorID().Binary());
   request.set_force_kill(true);
   request.set_no_restart(true);
-  auto callback = [](const Status &status, const rpc::KillActorReply &reply) {
-    if (!status.ok()) RAY_LOG(ERROR) << "Kill actor RPC failed";
-  };
-  RAY_UNUSED(actor_client->KillActor(request, callback));
+  RAY_UNUSED(actor_client->KillActor(request, nullptr));
 }
 
 void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor) {
