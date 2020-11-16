@@ -205,10 +205,17 @@ public class FunctionManager {
       Map<Pair<String, String>, RayFunction> map = new HashMap<>();
       try {
         Class clazz = Class.forName(className, true, classLoader);
-
         List<Executable> executables = new ArrayList<>();
         executables.addAll(Arrays.asList(clazz.getDeclaredMethods()));
         executables.addAll(Arrays.asList(clazz.getDeclaredConstructors()));
+
+        Class clz = clazz;
+        clz = clz.getSuperclass();
+        while (clz != null && clz != Object.class) {
+          executables.addAll(Arrays.asList(clz.getDeclaredMethods()));
+          clz = clz.getSuperclass();
+        }
+
         // Put interface methods ahead, so that in can be override by subclass methods in `map.put`
         for (Class baseInterface : clazz.getInterfaces()) {
           for (Method method : baseInterface.getDeclaredMethods()) {
@@ -217,18 +224,9 @@ public class FunctionManager {
             }
           }
         }
-        List<Class> superClasses = new ArrayList<>();
-        clazz = clazz.getSuperclass();
-        while (clazz != null && clazz != Object.class) {
-          superClasses.add(clazz);
-          clazz = clazz.getSuperclass();
-        }
+
         // Use reverse order so that child class methods can override super class methods.
-        Lists.reverse(superClasses).forEach(cls ->
-            executables.addAll(Arrays.asList(cls.getDeclaredMethods())));
-
-
-        for (Executable e : executables) {
+        for (Executable e : Lists.reverse(executables)) {
           e.setAccessible(true);
           final String methodName = e instanceof Method ? e.getName() : CONSTRUCTOR_NAME;
           final Type type =

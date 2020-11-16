@@ -27,11 +27,24 @@ public class FunctionManagerTest {
     return null;
   }
 
-  public static class Bar {
+  public static class Base {
+
+    public Object foo() {
+      return null;
+    }
+
+    public Object bar() {
+      return null;
+    }
+
+  }
+
+  public static class Bar extends Base {
 
     public Bar() {
     }
 
+    @Override
     public Object bar() {
       return null;
     }
@@ -115,6 +128,32 @@ public class FunctionManagerTest {
           new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
               "overloadFunction", ""));
     });
+  }
+
+  @Test
+  public void testInheritance() {
+    final FunctionManager functionManager = new FunctionManager(null);
+    fooDescriptor = new JavaFunctionDescriptor(Base.class.getName(), "foo",
+        "()Ljava/lang/Object;");
+    Assert.assertEquals(functionManager.getFunction(JobId.NIL, fooDescriptor).functionDescriptor,
+        fooDescriptor);
+    Assert.assertEquals(functionManager.getFunction(JobId.NIL, fooDescriptor)
+            .executable.getDeclaringClass(), Base.class);
+    RayFunction fooFunc = functionManager.getFunction(JobId.NIL,
+        new JavaFunctionDescriptor(Bar.class.getName(), "foo",
+            "()Ljava/lang/Object;"));
+    Assert.assertEquals(fooFunc.executable.getDeclaringClass(), Base.class);
+
+    barDescriptor = new JavaFunctionDescriptor(Base.class.getName(), "bar",
+        "()Ljava/lang/Object;");
+    Assert.assertEquals(functionManager.getFunction(JobId.NIL, barDescriptor).functionDescriptor,
+        barDescriptor);
+    Assert.assertEquals(functionManager.getFunction(JobId.NIL, barDescriptor)
+        .executable.getDeclaringClass(), Base.class);
+    RayFunction barFunc = functionManager.getFunction(JobId.NIL,
+        new JavaFunctionDescriptor(Bar.class.getName(), "bar",
+            "()Ljava/lang/Object;"));
+    Assert.assertEquals(barFunc.executable.getDeclaringClass(), Bar.class);
   }
 
   @Test
