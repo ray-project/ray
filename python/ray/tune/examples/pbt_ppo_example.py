@@ -11,8 +11,7 @@ computationally demanding example.
 
 import random
 
-import ray
-from ray.tune import run, sample_from
+from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 
 if __name__ == "__main__":
@@ -29,8 +28,6 @@ if __name__ == "__main__":
 
     pbt = PopulationBasedTraining(
         time_attr="time_total_s",
-        metric="episode_reward_mean",
-        mode="max",
         perturbation_interval=120,
         resample_probability=0.25,
         # Specifies the mutations of these hyperparams
@@ -44,12 +41,13 @@ if __name__ == "__main__":
         },
         custom_explore_fn=explore)
 
-    ray.init()
-    run(
+    analysis = tune.run(
         "PPO",
         name="pbt_humanoid_test",
         scheduler=pbt,
         num_samples=8,
+        metric="episode_reward_mean",
+        mode="max",
         config={
             "env": "Humanoid-v1",
             "kl_coeff": 1.0,
@@ -63,10 +61,9 @@ if __name__ == "__main__":
             "clip_param": 0.2,
             "lr": 1e-4,
             # These params start off randomly drawn from a set.
-            "num_sgd_iter": sample_from(
-                lambda spec: random.choice([10, 20, 30])),
-            "sgd_minibatch_size": sample_from(
-                lambda spec: random.choice([128, 512, 2048])),
-            "train_batch_size": sample_from(
-                lambda spec: random.choice([10000, 20000, 40000]))
+            "num_sgd_iter": tune.choice([10, 20, 30]),
+            "sgd_minibatch_size": tune.choice([128, 512, 2048]),
+            "train_batch_size": tune.choice([10000, 20000, 40000])
         })
+
+    print("best hyperparameters: ", analysis.best_config)
