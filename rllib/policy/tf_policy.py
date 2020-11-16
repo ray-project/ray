@@ -797,7 +797,7 @@ class TFPolicy(Policy):
             feed dict of data
         """
 
-        # Get batch ready for RNNs, if applicable.
+        # Get batch ready for RNNs/Attention Nets, etc.
         train_batch = self.model.preprocess_train_batch(train_batch)
         #pad_batch_to_sequences_of_same_size(
         #    batch,

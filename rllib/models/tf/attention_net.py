@@ -380,7 +380,7 @@ class GTrXLNet(RecurrentNetwork):
             train_batch[k] = feature_sequences[i]
         for i, k in enumerate(state_keys):
             train_batch[k] = initial_states[i]
-        train_batch["seq_lens"] = seq_lens
+        train_batch["seq_lens"] = np.array(seq_lens)
         return train_batch
 
 
