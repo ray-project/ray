@@ -317,14 +317,16 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skip(
+    "Temporarily disabled until OutOfMemory retries can be moved "
+    "into the plasma store")
 def test_spill_during_get(object_spilling_config, shutdown_only):
     ray.init(
         num_cpus=4,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "automatic_object_spilling_enabled": True,
-            "object_store_full_initial_delay_ms": 100,
-            "max_io_workers": 1,
+            "max_io_workers": 2,
             "object_spilling_config": object_spilling_config,
         },
     )
