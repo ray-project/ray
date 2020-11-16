@@ -1168,7 +1168,8 @@ ray.shutdown()
             num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
-def test_create_pg_after_gcs_server_restart(ray_start_cluster_head):
+def test_create_placement_group_after_gcs_server_restarts(
+        ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
@@ -1205,7 +1206,8 @@ def test_create_pg_after_gcs_server_restart(ray_start_cluster_head):
             num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
-def test_create_actor_with_pg_after_gcs_server_restart(ray_start_cluster_head):
+def test_create_actor_with_placement_group_after_gcs_server_restart(
+        ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
@@ -1228,7 +1230,8 @@ def test_create_actor_with_pg_after_gcs_server_restart(ray_start_cluster_head):
             num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
-def test_create_pg_during_gcs_server_restart(ray_start_cluster_head):
+def test_create_placement_group_during_gcs_server_restart(
+        ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=20)
     cluster.wait_for_nodes()

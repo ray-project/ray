@@ -466,7 +466,7 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
 }
 
 void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
-  RAY_LOG(INFO) << "Loading initial data.";
+  RAY_LOG(INFO) << "GcsPlacementGroupManager loading initial data.";
   auto callback = [this,
                    done](const std::unordered_map<PlacementGroupID,
                                                   rpc::PlacementGroupTableData> &result) {
