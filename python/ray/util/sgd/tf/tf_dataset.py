@@ -14,7 +14,7 @@ class TFDataset(TensorDataset):
         ds = ml_dataset.to_tf(feature_columns=["x"], label_column="y")
         shard = ds.get_shard(0) # the data as (x_value, y_value)
 
-        ds = ml_dataset.to_tf(feature_columns=["x, y"], label_column="z")
+        ds = ml_dataset.to_tf(feature_columns=["x", "y"], label_column="z")
         shard = ds.get_shard(0) # the data as ((x_value, y_value), z_value)
 
 

@@ -57,7 +57,7 @@ class TorchDataset(TensorDataset):
         data = DataLoader(shard, batch_size=32)
         batch_tensor_x, batch_tensor_y = next(iter(data))
 
-        ds = ml_dataset.to_torch(feature_columns=["x, y"], label_column="z")
+        ds = ml_dataset.to_torch(feature_columns=["x", "y"], label_column="z")
         shard = ds.get_shard(0)
         data = DataLoader(shard, batch_size=32)
         batch_tensor_x, batch_tensor_y, batch_tensor_z = next(iter(data))
