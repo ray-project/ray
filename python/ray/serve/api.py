@@ -166,7 +166,7 @@ class Client:
             config_options(dict, serve.BackendConfig): Backend config options
                 to update. Either a BackendConfig object or a dict mapping
                 strings to values for the following supported options:
-                - "num_replicas": number of worker processes to start up that
+                - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
                 - "max_batch_size": the maximum number of requests that will
                 be processed in one batch by this backend.
@@ -176,6 +176,9 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries
                 that will be sent to a replica of this backend
                 without receiving a response.
+                - "user_config" (experimental): Arguments to pass to the
+                reconfigure method of the backend. The reconfigure method is
+                called if "user_config" is not None.
         """
 
         if not isinstance(config_options, (BackendConfig, dict)):
@@ -218,7 +221,7 @@ class Client:
             config (dict, serve.BackendConfig, optional): configuration options
                 for this backend. Either a BackendConfig, or a dictionary
                 mapping strings to values for the following supported options:
-                - "num_replicas": number of worker processes to start up that
+                - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
                 - "max_batch_size": the maximum number of requests that will
                 be processed in one batch by this backend.
@@ -228,6 +231,9 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries that
                 will be sent to a replica of this backend without receiving a
                 response.
+                - "user_config" (experimental): Arguments to pass to the
+                reconfigure method of the backend. The reconfigure method is
+                called if "user_config" is not None.
             env (serve.CondaEnv, optional): conda environment to run this
                 backend in.  Requires the caller to be running in an activated
                 conda environment (not necessarily ``env``), and requires
@@ -263,6 +269,7 @@ class Client:
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
             is_blocking=replica_config.is_blocking)
+
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
                 **config, "internal_metadata": metadata
@@ -272,6 +279,7 @@ class Client:
                 update={"internal_metadata": metadata})
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
+
         backend_config._validate_complete()
         ray.get(
             self._controller.create_backend.remote(backend_tag, backend_config,

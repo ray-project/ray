@@ -17,6 +17,8 @@ from ray.autoscaler._private.cli_logger import cli_logger, cf
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.constants import \
      RESOURCES_ENVIRONMENT_VARIABLE
+from ray.autoscaler._private.event_system import (CreateClusterEvent,
+                                                  global_event_system)
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +275,8 @@ class NodeUpdater:
 
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
+        global_event_system.execute_callback(
+            CreateClusterEvent.ssh_control_acquired)
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
@@ -323,10 +327,15 @@ class NodeUpdater:
                     with cli_logger.group(
                             "Running initialization commands",
                             _numbered=("[]", 4, NUM_SETUP_STEPS)):
+                        global_event_system.execute_callback(
+                            CreateClusterEvent.run_initialization_cmd)
                         with LogTimer(
                                 self.log_prefix + "Initialization commands",
                                 show_status=True):
                             for cmd in self.initialization_commands:
+                                global_event_system.execute_callback(
+                                    CreateClusterEvent.run_initialization_cmd,
+                                    {"command": cmd})
                                 try:
                                     # Overriding the existing SSHOptions class
                                     # with a new SSHOptions class that uses
@@ -363,12 +372,17 @@ class NodeUpdater:
                             "Running setup commands",
                             # todo: fix command numbering
                             _numbered=("[]", 6, NUM_SETUP_STEPS)):
+                        global_event_system.execute_callback(
+                            CreateClusterEvent.run_setup_cmd)
                         with LogTimer(
                                 self.log_prefix + "Setup commands",
                                 show_status=True):
 
                             total = len(self.setup_commands)
                             for i, cmd in enumerate(self.setup_commands):
+                                global_event_system.execute_callback(
+                                    CreateClusterEvent.run_setup_cmd,
+                                    {"command": cmd})
                                 if cli_logger.verbosity == 0 and len(cmd) > 30:
                                     cmd_to_print = cf.bold(cmd[:30]) + "..."
                                 else:
@@ -396,8 +410,10 @@ class NodeUpdater:
                         _numbered=("[]", 6, NUM_SETUP_STEPS))
 
         with cli_logger.group(
-                "Starting the Ray runtime", _numbered=("[]", 7,
-                                                       NUM_SETUP_STEPS)):
+                "Starting the Ray runtime",
+                _numbered=("[]", 7, NUM_SETUP_STEPS)):
+            global_event_system.execute_callback(
+                CreateClusterEvent.start_ray_runtime)
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
@@ -422,6 +438,8 @@ class NodeUpdater:
                             cli_logger.error("See above for stderr.")
 
                         raise click.ClickException("Start command failed.")
+            global_event_system.execute_callback(
+                CreateClusterEvent.start_ray_runtime_completed)
 
     def rsync_up(self, source, target, docker_mount_if_possible=False):
         options = {}

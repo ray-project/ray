@@ -14,7 +14,7 @@ import { sum } from "../../../common/util";
 import ActorDetailsPane from "./ActorDetailsPane";
 
 const memoryDebuggingDocLink =
-  "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
+  "https://docs.ray.io/en/master/memory-management.html#debugging-using-ray-memory";
 
 const useActorStyles = makeStyles((theme: Theme) =>
   createStyles({
