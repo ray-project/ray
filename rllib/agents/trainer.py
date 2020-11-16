@@ -1047,13 +1047,7 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
-        if config.get("_use_trajectory_view_api") and \
-                config.get("framework") != "torch":
-            logger.info(
-                "`_use_trajectory_view_api` only supported for PyTorch so "
-                "far! Will run w/o.")
-            config["_use_trajectory_view_api"] = False
-        elif not config.get("_use_trajectory_view_api") and \
+        if not config.get("_use_trajectory_view_api") and \
                 config.get("model", {}).get("_time_major"):
             raise ValueError("`model._time_major` only supported "
                              "iff `_use_trajectory_view_api` is True!")

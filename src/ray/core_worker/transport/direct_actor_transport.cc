@@ -309,7 +309,7 @@ void CoreWorkerDirectTaskReceiver::Init(
   client_pool_ = client_pool;
 }
 
-void CoreWorkerDirectTaskReceiver::HandlePushTask(
+void CoreWorkerDirectTaskReceiver::HandleTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
@@ -403,32 +403,43 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   };
 
-  // Run actor creation task immediately on the main thread, without going
-  // through a scheduling queue.
-  if (task_spec.IsActorCreationTask()) {
-    accept_callback();
-    return;
-  }
-
   auto reject_callback = [send_reply_callback]() {
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
-  auto it = scheduling_queue_.find(task_spec.CallerWorkerId());
-  if (it == scheduling_queue_.end()) {
-    auto result = scheduling_queue_.emplace(
-        task_spec.CallerWorkerId(),
-        SchedulingQueue(task_main_io_service_, *waiter_, worker_context_));
-    it = result.first;
-  }
   auto dependencies = task_spec.GetDependencies();
-  // Pop the dummy actor dependency.
+
   if (task_spec.IsActorTask()) {
+    auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
+    if (it == actor_scheduling_queues_.end()) {
+      auto result = actor_scheduling_queues_.emplace(
+          task_spec.CallerWorkerId(),
+          std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
+              task_main_io_service_, *waiter_, worker_context_)));
+      it = result.first;
+    }
+
+    // Pop the dummy actor dependency.
     // TODO(swang): Remove this with legacy raylet code.
     dependencies.pop_back();
+    it->second->Add(request.sequence_number(), request.client_processed_up_to(),
+                    accept_callback, reject_callback, dependencies);
+  } else {
+    // Add the normal task's callbacks to the non-actor scheduling queue.
+    normal_scheduling_queue_->Add(request.sequence_number(),
+                                  request.client_processed_up_to(), accept_callback,
+                                  reject_callback, dependencies);
   }
-  it->second.Add(request.sequence_number(), request.client_processed_up_to(),
-                 accept_callback, reject_callback, dependencies);
+}
+
+void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
+  // If the scheduling queue is empty, return.
+  if (normal_scheduling_queue_->TaskQueueEmpty()) {
+    return;
+  }
+
+  // Execute as many tasks as there are in the queue, in sequential order.
+  normal_scheduling_queue_->ScheduleRequests();
 }
 
 }  // namespace ray

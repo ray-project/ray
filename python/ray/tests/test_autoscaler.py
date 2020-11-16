@@ -390,9 +390,10 @@ class AutoscalingTest(unittest.TestCase):
         # Two initial calls to docker cp, one before run, two final calls to cp
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "true", "true"])
+        runner.respond_to_call("json .Config.Env", ["[]"])
         commands.get_or_create_head_node(
             SMALL_CLUSTER,
-            config_path,
+            printable_config_file=config_path,
             no_restart=False,
             restart_only=False,
             yes=True,
@@ -968,6 +969,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1006,6 +1008,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1159,6 +1162,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1227,6 +1231,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider(cache_stopped=False)
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1269,6 +1274,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider(cache_stopped=True)
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1335,6 +1341,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider(cache_stopped=True)
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(13)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1385,6 +1392,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 2
         config_path = self.write_config(config)
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(4)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1438,6 +1446,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 2
         config_path = self.write_config(config)
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1484,6 +1493,7 @@ class AutoscalingTest(unittest.TestCase):
         from ray.autoscaler._private import util
         util._hash_cache = {}
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1505,6 +1515,38 @@ class AutoscalingTest(unittest.TestCase):
                 f"172.0.0.{i}", f"172.0.0.{i}",
                 f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
+
+    def testAutodetectResources(self):
+        self.provider = MockProvider()
+        config = SMALL_CLUSTER.copy()
+        config_path = self.write_config(config)
+        runner = MockProcessRunner()
+        proc_meminfo = """
+MemTotal:       16396056 kB
+MemFree:        12869528 kB
+MemAvailable:   33000000 kB
+        """
+        runner.respond_to_call("cat /proc/meminfo", 2 * [proc_meminfo])
+        runner.respond_to_call(".Runtimes", 2 * ["nvidia-container-runtime"])
+        runner.respond_to_call("nvidia-smi", 2 * ["works"])
+        runner.respond_to_call("json .Config.Env", 2 * ["[]"])
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+        runner.assert_has_call("172.0.0.0", pattern="--shm-size")
+        runner.assert_has_call("172.0.0.0", pattern="--runtime=nvidia")
 
 
 if __name__ == "__main__":

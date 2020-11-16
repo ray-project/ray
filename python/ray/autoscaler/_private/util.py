@@ -162,8 +162,9 @@ def merge_setup_commands(config):
     return config
 
 
-def with_head_node_ip(cmds):
-    head_ip = services.get_node_ip_address()
+def with_head_node_ip(cmds, head_ip=None):
+    if head_ip is None:
+        head_ip = services.get_node_ip_address()
     out = []
     for cmd in cmds:
         out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))

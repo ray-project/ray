@@ -1,10 +1,9 @@
-"""This test checks that SigOpt is functional.
+"""This example demonstrates the usage of SigOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
 import time
 
-import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.sigopt import SigOptSearch
@@ -37,7 +36,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
 
     space = [
         {
@@ -57,13 +55,6 @@ if __name__ == "__main__":
             },
         },
     ]
-
-    config = {
-        "num_samples": 10 if args.smoke_test else 1000,
-        "config": {
-            "steps": 10
-        }
-    }
     algo = SigOptSearch(
         space,
         name="SigOpt Example Experiment",
@@ -71,9 +62,12 @@ if __name__ == "__main__":
         metric="mean_loss",
         mode="min")
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    tune.run(
+    analysis = tune.run(
         easy_objective,
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
+        num_samples=10 if args.smoke_test else 1000,
+        config={"steps": 10})
+
+    print("Best hyperparameters found were: ", analysis.best_config)
