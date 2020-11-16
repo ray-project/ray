@@ -182,7 +182,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
 void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> callback) {
-  // RAY_LOG(ERROR) << "Task queued";
   Work work = std::make_tuple(task, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   tasks_to_schedule_[scheduling_class].push_back(work);
@@ -202,8 +201,6 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
 }
 
 void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker) {
-  // RAY_LOG(ERROR) << "~~~~~~~~~~~~~~~~~~~Finished!~~~~~~~~~~~~~~~~~~~~~~~~~~";
-  RAY_LOG(ERROR) << "Task finished.";
   cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
   worker->ClearAllocatedInstances();
   cluster_resource_scheduler_->FreeLocalTaskResources(
@@ -212,7 +209,6 @@ void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> wor
 }
 
 void ReplyCancelled(Work &work) {
-  // RAY_LOG(ERROR) << "Task cancelled";
   auto reply = std::get<1>(work);
   auto callback = std::get<2>(work);
   reply->set_canceled(true);
@@ -391,8 +387,6 @@ void ClusterTaskManager::Dispatch(
     }
   }
 
-  RAY_LOG(ERROR) << "Dispatching!" << task_spec.DebugString();
-  // RAY_LOG(ERROR) << "New cluster state:" << this->DebugString();
   // Send the result back.
   send_reply_callback();
 }
@@ -400,7 +394,6 @@ void ClusterTaskManager::Dispatch(
 void ClusterTaskManager::Spillback(NodeID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> send_reply_callback) {
-  // RAY_LOG(ERROR) << "Spilling";
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);
   reply->mutable_retry_at_raylet_address()->set_port(port);
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
