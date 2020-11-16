@@ -6,8 +6,7 @@ import unittest
 import ray
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv, \
-    MultiAgentDebugCounterEnv
+from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
     EpisodeEnvAwarePolicy
@@ -29,8 +28,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         """Tests, whether Model and Policy return the correct ViewRequirements.
         """
         config = dqn.DEFAULT_CONFIG.copy()
-        for _ in framework_iterator(config, frameworks="torch"):#TODO: all
-            trainer = dqn.DQNTrainer(config, env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
+        for _ in framework_iterator(config):
+            trainer = dqn.DQNTrainer(
+                config,
+                env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
             policy = trainer.get_policy()
             view_req_model = policy.model.inference_view_requirements
             view_req_policy = policy.view_requirements
