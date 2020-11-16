@@ -204,11 +204,13 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     std::shared_ptr<GcsPlacementGroup> placement_group,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_callback,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_callback) {
-  // TODO(ffbin)
-  // We need to ensure that the RequestWorkerLease won't be sent before the reply of
-  // ReleaseUnusedWorkers is returned.
+  // We need to ensure that the PrepareBundleResources won't be sent before the reply of
+  // ReleaseUnusedBundles is returned.
   if (!nodes_of_releasing_unused_bundles_.empty()) {
-    // TODO(ffbin): add log
+    RAY_LOG(INFO) << "Failed to schedule placement group " << placement_group->GetName()
+                  << ", id: " << placement_group->GetPlacementGroupID() << ", because "
+                  << nodes_of_releasing_unused_bundles_.size()
+                  << " nodes have not released unused bundles.";
     failure_callback(placement_group);
     return;
   }
