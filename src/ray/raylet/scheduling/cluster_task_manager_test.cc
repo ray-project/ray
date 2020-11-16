@@ -98,12 +98,16 @@ class ClusterTaskManagerTest : public ::testing::Test {
         single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary())),
         fulfills_dependencies_calls_(0),
         dependencies_fulfilled_(true),
+        is_owner_alive_(true),
         node_info_calls_(0),
         node_info_(boost::optional<rpc::GcsNodeInfo>{}),
         task_manager_(id_, single_node_resource_scheduler_,
                       [this](const Task &_task) {
                         fulfills_dependencies_calls_++;
                         return dependencies_fulfilled_;
+                      },
+                      [this](const WorkerID &worker_id, const NodeID &node_id) {
+                        return is_owner_alive_;
                       },
                       [this](const NodeID &node_id) {
                         node_info_calls_++;
@@ -121,6 +125,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   int fulfills_dependencies_calls_;
   bool dependencies_fulfilled_;
+
+  bool is_owner_alive_;
 
   int node_info_calls_;
   boost::optional<rpc::GcsNodeInfo> node_info_;
@@ -411,6 +417,40 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
       ASSERT_TRUE(found);
     }
   }
+}
+
+
+TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
+  /*
+    Test the race condition in which the owner of a task dies while the task is pending. This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
+   */
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
+
+
+  std::shared_ptr<MockWorker> worker =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+
+  is_owner_alive_ = false;
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  is_owner_alive_ = true;
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
 }
 
 int main(int argc, char **argv) {
