@@ -366,18 +366,46 @@ class UnifiedLogger(Logger):
 
 class LoggerCallback(Callback):
     def log_trial_start(self, trial: "Trial"):
+        """Handle logging when a trial starts.
+
+        Args:
+            trial (Trial): Trial object.
+        """
         pass
 
     def log_trial_restore(self, trial: "Trial"):
+        """Handle logging when a trial restores.
+
+        Args:
+            trial (Trial): Trial object.
+        """
         pass
 
     def log_trial_save(self, trial: "Trial"):
+        """Handle logging when a trial saves a checkpoint.
+
+        Args:
+            trial (Trial): Trial object.
+        """
         pass
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        """Handle logging when a trial receives a result.
+
+        Args:
+            trial (Trial): Trial object.
+            result (dict): Result dictionary.
+        """
         pass
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
+        """Handle logging when a trial starts.
+
+        Args:
+            trial (Trial): Trial object.
+            failed (bool): True if the Trial finished gracefully, False if
+                it failed (e.g. when it raised an exception).
+        """
         pass
 
     def on_trial_result(self, iteration: int, trials: List["Trial"],
