@@ -157,9 +157,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           ActorID actor_id = spec.ActorCreationId();
           worker->AssignActorId(actor_id);
           worker->SetLifetimeAllocatedInstances(allocated_instances);
-
-          RAY_LOG(ERROR) << "Assigning actor " << actor_id << " to worker "
-                         << worker->WorkerId();
         } else {
           worker->SetAllocatedInstances(allocated_instances);
         }
