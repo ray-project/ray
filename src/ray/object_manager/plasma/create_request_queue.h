@@ -26,18 +26,11 @@ namespace plasma {
 
 using ray::Status;
 
-using CreateObjectCallback = std::function<Status(bool reply_on_oom, bool evict_if_full)>;
+using CreateObjectCallback = std::function<Status()>;
 
 class CreateRequestQueue {
  public:
-  CreateRequestQueue(int32_t max_retries,
-      bool evict_if_full,
-      std::function<void()> on_store_full)
-    : max_retries_(max_retries),
-      evict_if_full_(evict_if_full),
-      on_store_full_(on_store_full) {
-        RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_ << " retries on OOM, evict if full? " << (evict_if_full_ ? 1 : 0);
-      }
+  CreateRequestQueue() {}
 
   /// Add a request to the queue.
   ///
@@ -63,24 +56,6 @@ class CreateRequestQueue {
   void RemoveDisconnectedClientRequests(const std::shared_ptr<ClientInterface> &client);
 
  private:
-  /// Process a single request. Returns the status returned by the request
-  /// handler.
-  Status ProcessRequest(const CreateObjectCallback &request_callback);
-
-  /// The maximum number of times to retry each request upon OOM.
-  const int32_t max_retries_;
-
-  /// The number of times the request at the head of the queue has been tried.
-  int32_t num_retries_ = 0;
-
-  /// On the first attempt to create an object, whether to evict from the
-  /// object store to make space. If the first attempt fails, then we will
-  /// always try to evict.
-  const bool evict_if_full_;
-
-  /// A callback to call if the object store is full.
-  const std::function<void()> on_store_full_;
-
   /// Queue of object creation requests to respond to. Requests will be placed
   /// on this queue if the object store does not have enough room at the time
   /// that the client made the creation request, but space may be made through

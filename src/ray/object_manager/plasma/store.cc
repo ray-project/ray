@@ -118,9 +118,8 @@ GetRequest::GetRequest(boost::asio::io_service& io_context, const std::shared_pt
 
 PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
                          const std::string& socket_name,
-                         std::shared_ptr<ExternalStore> external_store, uint32_t delay_on_oom_ms,
-                         ray::SpillObjectsCallback spill_objects_callback,
-                    std::function<void()> object_store_full_callback)
+                         std::shared_ptr<ExternalStore> external_store,
+                         ray::SpillObjectsCallback spill_objects_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
@@ -128,10 +127,7 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       eviction_policy_(&store_info_, PlasmaAllocator::GetFootprintLimit()),
       external_store_(external_store),
       spill_objects_callback_(spill_objects_callback),
-      delay_on_oom_ms_(delay_on_oom_ms),
-      create_request_queue_(RayConfig::instance().object_store_full_max_retries(),
-      /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
-      object_store_full_callback) {
+      create_request_queue_() {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
 #ifdef PLASMA_CUDA
@@ -271,7 +267,7 @@ Status PlasmaStore::FreeCudaMemory(int device_num, int64_t size, uint8_t* pointe
 }
 #endif
 
-Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool reply_on_oom, bool evict_if_full) {
+Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message) {
   uint8_t* input = (uint8_t*)message.data();
   size_t input_size = message.size();
   ObjectID object_id;
@@ -281,12 +277,13 @@ Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &cli
   std::string owner_ip_address;
   int owner_port;
   WorkerID owner_worker_id;
+  bool evict_if_full;
   int64_t data_size;
   int64_t metadata_size;
   int device_num;
   RAY_RETURN_NOT_OK(ReadCreateRequest(
     input, input_size, &object_id, &owner_raylet_id, &owner_ip_address, &owner_port,
-    &owner_worker_id, &data_size, &metadata_size, &device_num));
+    &owner_worker_id, &evict_if_full, &data_size, &metadata_size, &device_num));
   PlasmaError error_code = CreateObject(object_id, owner_raylet_id, owner_ip_address,
                                         owner_port, owner_worker_id, evict_if_full,
                                         data_size, metadata_size, device_num, client,
@@ -296,19 +293,11 @@ Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &cli
     RAY_LOG(DEBUG) << "Create object " << object_id << " failed, waiting for object spill";
     status = Status::TransientObjectStoreFull("Object store full, queueing creation request");
   } else if (error_code == PlasmaError::OutOfMemory) {
-    if (reply_on_oom) {
-      RAY_LOG(ERROR) << "Not enough memory to create the object " << object_id
-                       << ", data_size=" << data_size
-                       << ", metadata_size=" << metadata_size
-                       << ", will send a reply of PlasmaError::OutOfMemory";
-      RAY_RETURN_NOT_OK(SendCreateReply(client, object_id, &object, error_code, /*mmap_size=*/0));
-    } else {
-      RAY_LOG(ERROR) << "Not enough memory to create the object " << object_id
-                       << ", data_size=" << data_size
-                       << ", metadata_size=" << metadata_size
-                       << ", retrying after a timeout";
-      status = Status::ObjectStoreFull("Object store full, should retry on timeout");
-    }
+    RAY_LOG(ERROR) << "Not enough memory to create the object " << object_id
+                     << ", data_size=" << data_size
+                     << ", metadata_size=" << metadata_size
+                     << ", will send a reply of PlasmaError::OutOfMemory";
+    RAY_RETURN_NOT_OK(SendCreateReply(client, object_id, &object, error_code, /*mmap_size=*/0));
   } else {
     int64_t mmap_size = 0;
     if (error_code == PlasmaError::OK && device_num == 0) {
@@ -984,8 +973,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
       RAY_LOG(DEBUG) << "Received create request for object " << GetCreateRequestObjectId(message);
-      create_request_queue_.AddRequest(client, [this, client, message](bool reply_on_oom, bool evict_if_full) {
-            return HandleCreateObjectRequest(client, message, reply_on_oom, evict_if_full);
+      create_request_queue_.AddRequest(client, [this, client, message]() {
+            return HandleCreateObjectRequest(client, message);
           });
       ProcessCreateRequests();
     } break;
@@ -1091,20 +1080,13 @@ void PlasmaStore::ProcessCreateRequests() {
   }
 
   auto status = create_request_queue_.ProcessRequests();
-  uint32_t retry_after_ms = 0;
   if (status.IsTransientObjectStoreFull()) {
-    retry_after_ms = delay_on_transient_oom_ms_;
-  } else if (status.IsObjectStoreFull()) {
-    retry_after_ms = delay_on_oom_ms_;
-  }
-
-  if (retry_after_ms > 0) {
     // Try to process requests later, after space has been made.
     create_timer_ = execute_after(io_context_, [this]() {
           RAY_LOG(DEBUG) << "OOM timer finished, retrying create requests";
           create_timer_ = nullptr;
           ProcessCreateRequests();
-        }, retry_after_ms);
+        }, delay_on_transient_oom_ms_);
   }
 }
 

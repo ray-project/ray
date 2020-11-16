@@ -25,11 +25,14 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
     const std::shared_ptr<ReferenceCounter> reference_counter,
-    std::function<Status()> check_signals, bool warmup,
+    std::function<Status()> check_signals, bool evict_if_full, bool warmup,
+    std::function<void()> on_store_full,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
       reference_counter_(reference_counter),
-      check_signals_(check_signals) {
+      check_signals_(check_signals),
+      evict_if_full_(evict_if_full),
+      on_store_full_(on_store_full) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -83,31 +86,58 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data) {
+  int32_t retries = 0;
+  int32_t max_retries = RayConfig::instance().object_store_full_max_retries();
+  uint32_t delay = RayConfig::instance().object_store_full_initial_delay_ms();
   Status status;
-  std::shared_ptr<arrow::Buffer> arrow_buffer;
-  {
-    std::lock_guard<std::mutex> guard(store_client_mutex_);
-    status = store_client_.Create(object_id, owner_address, data_size,
-                                  metadata ? metadata->Data() : nullptr,
-                                  metadata ? metadata->Size() : 0, &arrow_buffer,
-                                  /*device_num=*/0);
-  }
-  if (status.IsObjectStoreFull()) {
-    RAY_LOG(ERROR) << "Failed to put object " << object_id
-                   << " in object store because it "
-                   << "is full. Object size is " << data_size << " bytes.\n"
-                   << "Plasma store status:\n"
-                   << MemoryUsageString() << "\n---\n"
-                   << "--- Tip: Use the `ray memory` command to list active objects "
-                      "in the cluster."
-                   << "\n---\n";
-  } else if (status.IsObjectExists()) {
-    RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
-                     << object_id << ".";
-    status = Status::OK();
-  } else {
-    RAY_RETURN_NOT_OK(status);
-    *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
+  bool should_retry = true;
+  // If we cannot retry, then always evict on the first attempt.
+  bool evict_if_full = max_retries == 0 ? true : evict_if_full_;
+  while (should_retry) {
+    should_retry = false;
+    Status plasma_status;
+    std::shared_ptr<arrow::Buffer> arrow_buffer;
+    {
+      std::lock_guard<std::mutex> guard(store_client_mutex_);
+      plasma_status = store_client_.Create(object_id, owner_address, data_size,
+                                           metadata ? metadata->Data() : nullptr,
+                                           metadata ? metadata->Size() : 0, &arrow_buffer,
+                                           /*device_num=*/0, evict_if_full);
+      // Always try to evict after the first attempt.
+      evict_if_full = true;
+    }
+    if (plasma_status.IsObjectStoreFull()) {
+      std::ostringstream message;
+      message << "Failed to put object " << object_id << " in object store because it "
+              << "is full. Object size is " << data_size << " bytes.";
+      status = Status::ObjectStoreFull(message.str());
+      if (max_retries < 0 || retries < max_retries) {
+        RAY_LOG(ERROR) << message.str() << "\nWaiting " << delay
+                       << "ms for space to free up...";
+        if (on_store_full_) {
+          on_store_full_();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+        delay *= 2;
+        retries += 1;
+        should_retry = true;
+      } else {
+        RAY_LOG(ERROR) << "Failed to put object " << object_id << " after "
+                       << (max_retries + 1) << " attempts. Plasma store status:\n"
+                       << MemoryUsageString() << "\n---\n"
+                       << "--- Tip: Use the `ray memory` command to list active objects "
+                          "in the cluster."
+                       << "\n---\n";
+      }
+    } else if (plasma_status.IsObjectExists()) {
+      RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
+                       << object_id << ".";
+      status = Status::OK();
+    } else {
+      RAY_RETURN_NOT_OK(plasma_status);
+      *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
+      status = Status::OK();
+    }
   }
   return status;
 }

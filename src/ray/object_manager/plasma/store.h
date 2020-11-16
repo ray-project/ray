@@ -55,9 +55,8 @@ class PlasmaStore {
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(boost::asio::io_service &main_service, std::string directory, bool hugepages_enabled,
               const std::string& socket_name,
-              std::shared_ptr<ExternalStore> external_store, uint32_t delay_on_oom_ms,
-              ray::SpillObjectsCallback spill_objects_callback,
-                    std::function<void()> object_store_full_callback);
+              std::shared_ptr<ExternalStore> external_store,
+              ray::SpillObjectsCallback spill_objects_callback);
 
   ~PlasmaStore();
 
@@ -209,7 +208,7 @@ class PlasmaStore {
   void ProcessCreateRequests();
 
  private:
-  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool reply_on_oom, bool evict_if_full);
+  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message);
 
   void PushNotification(ObjectInfoT* object_notification);
 
@@ -283,10 +282,6 @@ class PlasmaStore {
   /// callback returns the amount of space still needed after the spilling is
   /// complete.
   ray::SpillObjectsCallback spill_objects_callback_;
-
-  /// The amount of time to wait before retrying a creation request after an
-  /// OOM error.
-  const uint32_t delay_on_oom_ms_;
 
   /// The amount of time to wait before retrying a creation request after a
   /// transient OOM error.

@@ -60,8 +60,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
-    : main_service_(main_service),
-      self_node_id_(NodeID::FromRandom()),
+    : self_node_id_(NodeID::FromRandom()),
       gcs_client_(gcs_client),
       object_directory_(
           RayConfig::instance().ownership_based_object_directory_enabled()
@@ -80,14 +79,10 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                       [this](int64_t num_bytes_required) {
                         return node_manager_.GetLocalObjectManager().SpillObjectsOfSize(
                             num_bytes_required);
-                      },
-                      [this]() {
-                        // Post on the node manager's event loop since this
-                        // will be called from the plasma store thread.
-                        main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
                       }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
-                    gcs_client_, object_directory_),
+                    gcs_client_, object_directory_,
+                    plasma::plasma_store_runner->OnSpaceReleased()),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {

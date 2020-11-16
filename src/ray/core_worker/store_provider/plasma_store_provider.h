@@ -37,7 +37,8 @@ class CoreWorkerPlasmaStoreProvider {
       const std::string &store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
       const std::shared_ptr<ReferenceCounter> reference_counter,
-      std::function<Status()> check_signals, bool warmup,
+      std::function<Status()> check_signals, bool evict_if_full, bool warmup,
+      std::function<void()> on_store_full = nullptr,
       std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
@@ -153,6 +154,8 @@ class CoreWorkerPlasmaStoreProvider {
   const std::shared_ptr<ReferenceCounter> reference_counter_;
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
+  const bool evict_if_full_;
+  std::function<void()> on_store_full_;
   std::function<std::string()> get_current_call_site_;
 
   // Active buffers tracker. This must be allocated as a separate structure since its

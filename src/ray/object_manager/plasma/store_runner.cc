@@ -75,8 +75,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
   plasma_directory_ = plasma_directory;
 }
 
-void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
-                    std::function<void()> object_store_full_callback) {
+void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback) {
    // Get external store
   std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
   if (!external_store_endpoint_.empty()) {
@@ -96,9 +95,7 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     absl::MutexLock lock(&store_runner_mutex_);
     store_.reset(new PlasmaStore(main_service_, plasma_directory_, hugepages_enabled_,
                                 socket_name_, external_store,
-                                RayConfig::instance().object_store_full_initial_delay_ms(),
-                                spill_objects_callback,
-                                object_store_full_callback));
+                                spill_objects_callback));
     plasma_config = store_->GetPlasmaStoreInfo();
 
     // We are using a single memory-mapped file by mallocing and freeing a single
