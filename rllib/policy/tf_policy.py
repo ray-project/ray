@@ -784,11 +784,11 @@ class TFPolicy(Policy):
                                               **fetches[LEARNER_STATS_KEY])
         return fetches
 
-    def _get_loss_inputs_dict(self, batch, shuffle):
+    def _get_loss_inputs_dict(self, train_batch, shuffle):
         """Return a feed dict from a batch.
 
         Args:
-            batch (SampleBatch): batch of data to derive inputs from
+            train_batch (SampleBatch): batch of data to derive inputs from.
             shuffle (bool): whether to shuffle batch sequences. Shuffle may
                 be done in-place. This only makes sense if you're further
                 applying minibatch SGD after getting the outputs.
@@ -798,29 +798,30 @@ class TFPolicy(Policy):
         """
 
         # Get batch ready for RNNs, if applicable.
-        pad_batch_to_sequences_of_same_size(
-            batch,
-            shuffle=shuffle,
-            max_seq_len=self._max_seq_len,
-            batch_divisibility_req=self._batch_divisibility_req,
-            feature_keys=[
-                k for k in self._loss_input_dict.keys() if k != "seq_lens"
-            ],
-        )
-        batch["is_training"] = True
+        train_batch = self.model.preprocess_train_batch(train_batch)
+        #pad_batch_to_sequences_of_same_size(
+        #    batch,
+        #    shuffle=shuffle,
+        #    max_seq_len=self._max_seq_len,
+        #    batch_divisibility_req=self._batch_divisibility_req,
+        #    feature_keys=[
+        #        k for k in self._loss_input_dict.keys() if k != "seq_lens"
+        #    ],
+        #)
+        train_batch["is_training"] = True
 
         # Build the feed dict from the batch.
         feed_dict = {}
         for key, placeholder in self._loss_input_dict.items():
-            feed_dict[placeholder] = batch[key]
+            feed_dict[placeholder] = train_batch[key]
 
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
         ]
         for key in state_keys:
-            feed_dict[self._loss_input_dict[key]] = batch[key]
+            feed_dict[self._loss_input_dict[key]] = train_batch[key]
         if state_keys:
-            feed_dict[self._seq_lens] = batch["seq_lens"]
+            feed_dict[self._seq_lens] = train_batch["seq_lens"]
 
         return feed_dict
 

@@ -193,7 +193,7 @@ def postprocess_ppo_gae(
         # Input dict is provided to us automatically via the policy-defined
         # "view". It's a single-timestep (last one in trajectory) input_dict.
         if policy.config["_use_trajectory_view_api"]:
-            last_r = policy._value(sample_batch["_value_input_dict"])
+            last_r = policy._value(**sample_batch["_value_input_dict"])
         # TODO: (sven) Remove once trajectory view API is all-algo default.
         else:
             next_state = []
@@ -300,7 +300,7 @@ class ValueNetworkMixin:
             if config["_use_trajectory_view_api"]:
 
                 @make_tf_callable(self.get_session())
-                def value(input_dict):
+                def value(**input_dict):
                     model_out, _ = self.model.from_batch(
                         input_dict, is_training=False)
                     # [0] = remove the batch dim.

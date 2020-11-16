@@ -121,10 +121,11 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
 
     def make_wrapper(fn):
         if session_or_none:
-            placeholders = []
+            args_placeholders = []
+            kwargs_placeholders = {}
             symbolic_out = [None]
 
-            def call(*args):
+            def call(*args, **kwargs):
                 args_flat = []
                 for a in args:
                     if type(a) is list:
@@ -142,13 +143,27 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                                     shape = ()
                             else:
                                 shape = v.shape
-                            placeholders.append(
+                            args_placeholders.append(
                                 tf1.placeholder(
                                     dtype=v.dtype,
                                     shape=shape,
                                     name="arg_{}".format(i)))
-                        symbolic_out[0] = fn(*placeholders)
-                feed_dict = dict(zip(placeholders, args))
+                        for k, v in kwargs.items():
+                            if dynamic_shape:
+                                if len(v.shape) > 0:
+                                    shape = (None, ) + v.shape[1:]
+                                else:
+                                    shape = ()
+                            else:
+                                shape = v.shape
+                            kwargs_placeholders[k] = \
+                                tf1.placeholder(
+                                    dtype=v.dtype,
+                                    shape=shape,
+                                    name="kwarg_{}".format(k))
+                        symbolic_out[0] = fn(*args_placeholders, **kwargs_placeholders)
+                feed_dict = dict(zip(args_placeholders, args))
+                feed_dict.update({kwargs_placeholders[k]: kwargs[k] for k in kwargs.keys()})
                 ret = session_or_none.run(symbolic_out[0], feed_dict)
                 return ret
 
