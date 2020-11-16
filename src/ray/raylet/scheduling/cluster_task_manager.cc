@@ -1,6 +1,7 @@
+#include "ray/raylet/scheduling/cluster_task_manager.h"
+
 #include <google/protobuf/map.h>
 
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -10,10 +11,12 @@ ClusterTaskManager::ClusterTaskManager(
     const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     std::function<bool(const Task &)> fulfills_dependencies_func,
+    std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
     NodeInfoGetter get_node_info)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       fulfills_dependencies_func_(fulfills_dependencies_func),
+      is_owner_alive_(is_owner_alive),
       get_node_info_(get_node_info) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
@@ -109,9 +112,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
        shapes_it != tasks_to_dispatch_.end();) {
     auto &dispatch_queue = shapes_it->second;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
-      auto work = *work_it;
-      auto task = std::get<0>(work);
-      auto spec = task.GetTaskSpecification();
+      auto &work = *work_it;
+      auto &task = std::get<0>(work);
+      auto &spec = task.GetTaskSpecification();
 
       std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
       if (!worker) {
@@ -119,32 +122,54 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         return;
       }
 
-      std::shared_ptr<TaskResourceInstances> allocated_instances(
-          new TaskResourceInstances());
-      bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
-          spec.GetRequiredResources().GetResourceMap(), allocated_instances);
-      if (!schedulable) {
-        // Not enough resources to schedule this task.
+      const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
+      const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
+      // If the owner has died since this task was queued, cancel the task by
+      // killing the worker (unless this task is for a detached actor).
+      if (!worker->IsDetachedActor() &&
+          !is_owner_alive_(owner_worker_id, owner_node_id)) {
+        // TODO (Alex): To @swang pls double check and make sure this is ok. <3 thx
+        RAY_LOG(ERROR) << "Owner of assigned task "
+                       << task.GetTaskSpecification().TaskId()
+                       << " died, killing leased worker " << worker->WorkerId();
         worker_pool.PushWorker(worker);
-        // All the tasks in this queue are the same, so move on to the next queue.
-        break;
-      }
-
-      auto reply = std::get<1>(work);
-      auto callback = std::get<2>(work);
-      worker->SetOwnerAddress(spec.CallerAddress());
-      if (spec.IsActorCreationTask()) {
-        // The actor belongs to this worker now.
-        worker->SetLifetimeAllocatedInstances(allocated_instances);
       } else {
-        worker->SetAllocatedInstances(allocated_instances);
+        std::shared_ptr<TaskResourceInstances> allocated_instances(
+            new TaskResourceInstances());
+        bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
+            spec.GetRequiredResources().GetResourceMap(), allocated_instances);
+        if (!schedulable) {
+          // Not enough resources to schedule this task.
+          worker_pool.PushWorker(worker);
+          // All the tasks in this queue are the same, so move on to the next queue.
+          break;
+        }
+
+        auto reply = std::get<1>(work);
+        auto callback = std::get<2>(work);
+        worker->SetOwnerAddress(spec.CallerAddress());
+        worker->SetAssignedTask(task);
+
+        TaskID task_id = spec.TaskId();
+        worker->AssignTaskId(task_id);
+        if (spec.IsActorCreationTask()) {
+          // The actor belongs to this worker now.
+          ActorID actor_id = spec.ActorCreationId();
+          worker->AssignActorId(actor_id);
+          worker->SetLifetimeAllocatedInstances(allocated_instances);
+
+          RAY_LOG(ERROR) << "Assigning actor " << actor_id << " to worker "
+                         << worker->WorkerId();
+        } else {
+          worker->SetAllocatedInstances(allocated_instances);
+        }
+
+        if (!RayConfig::instance().enable_multi_tenancy()) {
+          worker->AssignJobId(spec.JobId());
+        }
+
+        Dispatch(worker, leased_workers, spec, reply, callback);
       }
-      worker->AssignTaskId(spec.TaskId());
-      if (!RayConfig::instance().enable_multi_tenancy()) {
-        worker->AssignJobId(spec.JobId());
-      }
-      worker->SetAssignedTask(task);
-      Dispatch(worker, leased_workers, spec, reply, callback);
       work_it = dispatch_queue.erase(work_it);
     }
     if (dispatch_queue.empty()) {
@@ -157,6 +182,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
 void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> callback) {
+  // RAY_LOG(ERROR) << "Task queued";
   Work work = std::make_tuple(task, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   tasks_to_schedule_[scheduling_class].push_back(work);
@@ -176,11 +202,17 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
 }
 
 void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker) {
+  // RAY_LOG(ERROR) << "~~~~~~~~~~~~~~~~~~~Finished!~~~~~~~~~~~~~~~~~~~~~~~~~~";
+  RAY_LOG(ERROR) << "Task finished.";
   cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
   worker->ClearAllocatedInstances();
+  cluster_resource_scheduler_->FreeLocalTaskResources(
+      worker->GetLifetimeAllocatedInstances());
+  worker->ClearLifetimeAllocatedInstances();
 }
 
 void ReplyCancelled(Work &work) {
+  // RAY_LOG(ERROR) << "Task cancelled";
   auto reply = std::get<1>(work);
   auto callback = std::get<2>(work);
   reply->set_canceled(true);
@@ -287,7 +319,7 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
   }
 }
 
-std::string ClusterTaskManager::DebugString() {
+std::string ClusterTaskManager::DebugString() const {
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
   buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
@@ -359,6 +391,8 @@ void ClusterTaskManager::Dispatch(
     }
   }
 
+  RAY_LOG(ERROR) << "Dispatching!" << task_spec.DebugString();
+  // RAY_LOG(ERROR) << "New cluster state:" << this->DebugString();
   // Send the result back.
   send_reply_callback();
 }
@@ -366,6 +400,7 @@ void ClusterTaskManager::Dispatch(
 void ClusterTaskManager::Spillback(NodeID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> send_reply_callback) {
+  // RAY_LOG(ERROR) << "Spilling";
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);
   reply->mutable_retry_at_raylet_address()->set_port(port);
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());

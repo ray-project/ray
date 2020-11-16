@@ -48,10 +48,12 @@ class ClusterTaskManager {
   /// the state of the cluster.
   /// \param fulfills_dependencies_func: Returns true if all of a task's
   /// dependencies are fulfilled.
-  /// \param gcs_client: A gcs client.
+  /// \param is_owner_alive: A callback which returns if the owner process is alive
+  /// (according to our ownership model). \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
+                     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
                      NodeInfoGetter get_node_info);
 
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
@@ -106,12 +108,13 @@ class ClusterTaskManager {
   void Heartbeat(bool light_heartbeat_enabled,
                  std::shared_ptr<HeartbeatTableData> data) const;
 
-  std::string DebugString();
+  std::string DebugString() const;
 
  private:
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::function<bool(const Task &)> fulfills_dependencies_func_;
+  std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   NodeInfoGetter get_node_info_;
 
   // TODO (Alex): Implement fair queuing for these queues

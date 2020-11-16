@@ -223,7 +223,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
           auto actor_iter = iter->second.find(actor->GetActorID());
           if (actor_iter == iter->second.end()) {
             // if actor is not in leasing state, it means it is cancelled.
-            RAY_LOG(INFO)
+            RAY_LOG(ERROR)
                 << "Raylet granted a lease request, but the outstanding lease "
                    "request for "
                 << actor->GetActorID()
@@ -239,9 +239,9 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
             if (iter->second.empty()) {
               node_to_actors_when_leasing_.erase(iter);
             }
-            RAY_LOG(INFO) << "Finished leasing worker from " << node_id << " for actor "
-                          << actor->GetActorID()
-                          << ", job id = " << actor->GetActorID().JobId();
+            RAY_LOG(ERROR) << "Finished leasing worker from " << node_id << " for actor "
+                           << actor->GetActorID()
+                           << ", job id = " << actor->GetActorID().JobId();
             HandleWorkerLeasedReply(actor, reply);
           } else {
             RetryLeasingWorkerFromNode(actor, node);

@@ -120,6 +120,7 @@ class LogMonitor:
         """Update the list of log files to monitor."""
         # output of user code is written here
         log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
+        log_file_paths += glob.glob(f"{self.logs_dir}/python*[.out|.err]")
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
         # If gcs server restarts, there can be multiple log files.

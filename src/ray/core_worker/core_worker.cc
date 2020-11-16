@@ -2189,6 +2189,8 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     return;
   }
 
+  RAY_LOG(ERROR) << "***********Handling Killing actor";
+
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
     if (request.no_restart()) {

@@ -253,6 +253,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   void DoRetryCreatingActorOnWorker(std::shared_ptr<GcsActor> actor,
                                     std::shared_ptr<GcsLeasedWorker> worker);
 
+  void KillActor(const std::shared_ptr<ray::gcs::GcsActor> &actor,
+                 const rpc::Address &address);
+
   /// Select a node from alive nodes randomly.
   std::shared_ptr<rpc::GcsNodeInfo> SelectNodeRandomly() const;
 
