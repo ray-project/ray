@@ -3,12 +3,11 @@ cartpole-dqn:
     run: DQN
     stop:
         episode_reward_mean: 150
-        timesteps_total: 75000
+        timesteps_total: 100000
     config:
         # Works for both torch and tf.
         framework: tf
-        n_step: 3
-        gamma: 0.95
         model:
-          fcnet_hiddens: [32]
-          fcnet_activation: linear
+            fcnet_hiddens: [64]
+            fcnet_activation: linear
+        n_step: 3
