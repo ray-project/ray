@@ -122,6 +122,54 @@ def new_port():
 
 
 def find_redis_address(address=None):
+    """
+    Currently, this extracts the deprecated --redis-address from the command
+    that launched the raylet running on this node, if any. Anyone looking to
+    edit this function should be warned that these commands look like, for
+    example:
+    /usr/local/lib/python3.8/dist-packages/ray/core/src/ray/raylet/raylet
+    --redis_address=123.456.78.910 --node_ip_address=123.456.78.910
+    --raylet_socket_name=... --store_socket_name=... --object_manager_port=0
+    --min_worker_port=10000 --max_worker_port=10999 --node_manager_port=58578
+    --redis_port=6379 --num_initial_workers=8 --maximum_startup_concurrency=8
+    --static_resource_list=node:123.456.78.910,1.0,object_store_memory,66
+    --config_list=plasma_store_as_thread,True
+    --python_worker_command=/usr/bin/python
+        /usr/local/lib/python3.8/dist-packages/ray/workers/default_worker.py
+        --redis-address=123.456.78.910:6379
+        --node-ip-address=123.456.78.910 --node-manager-port=58578
+        --object-store-name=... --raylet-name=...
+        --config-list=plasma_store_as_thread,True --temp-dir=/tmp/ray
+        --metrics-agent-port=41856 --redis-password=[MASKED]
+        --java_worker_command= --cpp_worker_command= --redis_password=[MASKED]
+        --temp_dir=/tmp/ray --session_dir=... --metrics-agent-port=41856
+        --metrics_export_port=64229
+        --agent_command=/usr/bin/python
+        -u /usr/local/lib/python3.8/dist-packages/ray/new_dashboard/agent.py
+            --redis-address=123.456.78.910:6379 --metrics-export-port=64229
+            --dashboard-agent-port=41856 --node-manager-port=58578
+            --object-store-name=... --raylet-name=... --temp-dir=/tmp/ray
+            --log-dir=/tmp/ray/session_2020-11-08_14-29-07_199128_278000/logs
+            --redis-password=[MASKED] --object_store_memory=5037192806
+            --plasma_directory=/tmp
+    Longer arguments are elided with ... but all arguments from this instance
+    are included, to provide a sense of what is in these.
+    Indeed, we had to pull --redis-address to the front of each call to make
+    this readable.
+    As you can see, this is very long and complex, which is why we can't simply
+    extract all the the arguments using regular expressions and present a dict
+    as if we never lost track of these arguments, for example.
+    Picking out --redis-address below looks like it might grab the wrong thing,
+    but double-checking that we're finding the correct process by checking that
+    the contents look like we expect would probably be prone to choking in
+    unexpected ways.
+    Notice that --redis-address appears twice. This is not a copy-paste error;
+    this is the reason why the for loop below attempts to pick out every
+    appearance of --redis-address.
+
+    The --redis-address here is what is now called the --address, but it
+    appears in the default_worker.py and agent.py calls as --redis-address.
+    """
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:
@@ -300,14 +348,14 @@ def address_to_ip(address):
 
 
 def get_node_ip_address(address="8.8.8.8:53"):
-    """Determine the IP address of the local node.
+    """IP address by which the local node can be reached *from* the `address`.
 
     Args:
         address (str): The IP address and port of any known live service on the
             network you care about.
 
     Returns:
-        The IP address of the current node.
+        The IP address by which the local node can be reached from the address.
     """
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
@@ -553,7 +601,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password)
     # Wait for the Redis server to start.
-    num_retries = 12
+    num_retries = ray_constants.START_REDIS_WAIT_RETRIES
     delay = 0.001
     for _ in range(num_retries):
         try:
@@ -562,6 +610,17 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
                 "Waiting for redis server at {}:{} to respond...".format(
                     redis_ip_address, redis_port))
             redis_client.client_list()
+        # If the Redis service is delayed getting set up for any reason, we may
+        # get a redis.ConnectionError: Error 111 connecting to host:port.
+        # Connection refused.
+        # Unfortunately, redis.ConnectionError is also the base class of
+        # redis.AuthenticationError. We *don't* want to obscure a
+        # redis.AuthenticationError, because that indicates the user provided a
+        # bad password. Thus a double except clause to ensure a
+        # redis.AuthenticationError isn't trapped here.
+        except redis.AuthenticationError as authEx:
+            raise RuntimeError("Unable to connect to Redis at {}:{}.".format(
+                redis_ip_address, redis_port)) from authEx
         except redis.ConnectionError:
             # Wait a little bit.
             time.sleep(delay)
@@ -569,9 +628,13 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         else:
             break
     else:
-        raise RuntimeError("Unable to connect to Redis. If the Redis instance "
-                           "is on a different machine, check that your "
-                           "firewall is configured properly.")
+        raise RuntimeError(
+            f"Unable to connect to Redis (after {num_retries} retries). "
+            "If the Redis instance is on a different machine, check that "
+            "your firewall and relevant Ray ports are configured properly. "
+            "You can also set the environment variable "
+            "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of "
+            "attempts to ping the Redis server.")
 
 
 def _compute_version_info():

@@ -190,7 +190,6 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         restore_path=spec.get("restore"),
         trial_name_creator=spec.get("trial_name_creator"),
         trial_dirname_creator=spec.get("trial_dirname_creator"),
-        loggers=spec.get("loggers"),
         log_to_file=spec.get("log_to_file"),
         # str(None) doesn't create None
         max_failures=args.max_failures,
