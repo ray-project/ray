@@ -14,7 +14,7 @@ bucket_name = "object-spilling-test"
 file_system_object_spilling_config = {
     "type": "filesystem",
     "params": {
-        "directory_path": "/tmp"
+        "directory_path": "/tmp/spill"
     }
 }
 smart_open_object_spilling_config = {

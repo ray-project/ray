@@ -1,8 +1,51 @@
 import abc
 import os
+import re
 from typing import List
 
 import ray
+
+class ExternalStorageURLProtocl():
+    """Class to parse/generate urls for object spilling.
+    
+    There will be 2 types of URLs.
+    1. URL used internally. These urls are stored in GCS.
+    2. URL used for external storage.
+
+    This class is used as a translator layer between 1 and 2.
+    """
+
+    def __init__(self, Prefix):
+        self._prefix = prefix
+        # NOTE(sang): To optimize the performance, Ray fusions small
+        #             objects when it stored them. object_id_stored is
+        #             an object_id that is used as a filename.
+        # (job_id)-(object_id_stored)-(object_id)
+        # -(object_size_in_bytes)-(offsets_in_bytes)
+        self.internal_url_pattern = re.compile(
+            "([0-9a-f]{4})-([0-9a-f]{20})-([0-9a-f]{20})-(\d+)-(\d+)")
+        # (prefix)-(object_id_stored)
+        self.external_url_pattern = re.compile(
+            "(\w+)-([0-9a-f]{20})"
+        )
+
+    def create_external_storage_url(self, internal_url):
+        """internal_url -> external_url"""
+        match = self.internal_url_pattern.match(internal_url)
+        assert match, (
+            f"Given external url, {internal_url}, doesn't "
+            "follow the protocl. Please follow this pattern: "
+            f"{self.internal_url_pattern}")
+        job_id = match.group(0)
+        object_id_stored = match.group(0)
+
+    def parse_external_storage_url(self, external_url):
+        """external_url -> internal_url"""
+        match = self.external_url_pattern.match(external_url)
+        assert match, (
+            f"Given external url, {external_url}, doesn't "
+            "follow the protocl. Please follow this pattern: "
+            f"{self.external_url_pattern}")
 
 
 class ExternalStorage(metaclass=abc.ABCMeta):
@@ -36,7 +79,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                                                 object_ref)
 
     @abc.abstractmethod
-    def spill_objects(self, object_refs):
+    def spill_objects(self, object_refs) -> List[str]:
         """Spill objects to the external storage. Objects are specified
         by their object refs.
 
@@ -59,7 +102,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 class NullStorage(ExternalStorage):
     """The class that represents an uninitialized external storage."""
 
-    def spill_objects(self, object_refs):
+    def spill_objects(self, object_refs) -> List[str]:
         raise NotImplementedError("External storage is not initialized")
 
     def restore_spilled_objects(self, keys):
@@ -76,13 +119,13 @@ class FileSystemStorage(ExternalStorage):
 
     def __init__(self, directory_path):
         self.directory_path = directory_path
-        self.prefix = "ray_spilled_object_"
+        self.prefix = "ray-spilled-object_"
         os.makedirs(self.directory_path, exist_ok=True)
         if not os.path.exists(self.directory_path):
             raise ValueError("The given directory path to store objects, "
                              f"{self.directory_path}, could not be created.")
 
-    def spill_objects(self, object_refs):
+    def spill_objects(self, object_refs) -> List[str]:
         keys = []
         ray_object_pairs = self._get_objects_from_store(object_refs)
         for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
@@ -129,7 +172,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
 
     def __init__(self,
                  uri: str,
-                 prefix: str = "ray_spilled_object_",
+                 prefix: str = "ray-spilled-object_",
                  override_transport_params: dict = None):
         try:
             from smart_open import open  # noqa
@@ -144,7 +187,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         self.override_transport_params = override_transport_params or {}
         self.transport_params = {}.update(self.override_transport_params)
 
-    def spill_objects(self, object_refs):
+    def spill_objects(self, object_refs) -> List[str]:
         keys = []
         ray_object_pairs = self._get_objects_from_store(object_refs)
         for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
