@@ -46,7 +46,7 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
         if add_loggers:
             callbacks.append(LegacyExperimentLogger(add_loggers))
 
-    # Check if we have a CSV and JSON logger
+    # Check if we have a CSV, JSON and TensorboardX logger
     for i, callback in enumerate(callbacks):
         if isinstance(callback, LegacyExperimentLogger):
             last_logger_index = i
@@ -69,7 +69,7 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
             syncer_index = i
             has_syncer_callback = True
 
-    # If CSV or JSON logger is missing, add
+    # If CSV, JSON or TensorboardX loggers are missing, add
     if os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_LOGGERS", "0") != "1":
         if not has_csv_logger:
             callbacks.append(CSVExperimentLogger())

@@ -77,7 +77,7 @@ Weights and Biases (tune.integration.wandb)
 
 :ref:`See also here <tune-wandb>`.
 
-.. autoclass:: ray.tune.integration.wandb.WandbExperimentLogger
+.. autoclass:: ray.tune.integration.wandb.WandbLoggerCallback
 
 .. autofunction:: ray.tune.integration.wandb.wandb_mixin
 

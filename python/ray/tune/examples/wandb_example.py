@@ -7,7 +7,7 @@ import wandb
 
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.integration.wandb import WandbExperimentLogger, \
+from ray.tune.integration.wandb import WandbLoggerCallback, \
     WandbTrainableMixin, \
     wandb_mixin
 
@@ -27,7 +27,7 @@ def tune_function(api_key_file):
             "sd": tune.uniform(0.2, 0.8)
         },
         callbacks=[
-            WandbExperimentLogger(
+            WandbLoggerCallback(
                 api_key_file=api_key_file, project="Wandb_example")
         ])
 
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     api_key_file = "~/.wandb_api_key"
 
     if args.mock_api:
-        WandbExperimentLogger._logger_process_cls = MagicMock
+        WandbLoggerCallback._logger_process_cls = MagicMock
         decorated_train_function.__mixins__ = tuple()
         WandbTrainable._wandb = MagicMock()
         wandb = MagicMock()  # noqa: F811

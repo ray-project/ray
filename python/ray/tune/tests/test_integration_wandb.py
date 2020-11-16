@@ -8,7 +8,7 @@ import numpy as np
 
 from ray.tune import Trainable
 from ray.tune.function_runner import wrap_function
-from ray.tune.integration.wandb import WandbExperimentLogger, \
+from ray.tune.integration.wandb import WandbLoggerCallback, \
     _WandbLoggingProcess, \
     _WANDB_QUEUE_END, WandbLogger, WANDB_ENV_VAR, WandbTrainableMixin, \
     wandb_mixin
@@ -44,7 +44,7 @@ class _MockWandbLoggingProcess(_WandbLoggingProcess):
             self.logs.put(log)
 
 
-class WandbTestExperimentLogger(WandbExperimentLogger):
+class WandbTestExperimentLogger(WandbLoggerCallback):
     _logger_process_cls = _MockWandbLoggingProcess
 
     @property

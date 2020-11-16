@@ -204,7 +204,7 @@ class RunExperimentTest(unittest.TestCase):
                 }
             }
         })
-        self.assertTrue(
+        self.assertFalse(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
 
         [trial] = run_experiments(

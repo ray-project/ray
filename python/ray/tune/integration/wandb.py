@@ -166,7 +166,7 @@ def _set_api_key(api_key_file: Optional[str] = None,
         raise ValueError(
             "No WandB API key found. Either set the {} environment "
             "variable, pass `api_key` or `api_key_file` to the"
-            "`WandbExperimentLogger` class as arguments, "
+            "`WandbLoggerCallback` class as arguments, "
             "or run `wandb login` from the command line".format(WANDB_ENV_VAR))
 
 
@@ -219,8 +219,8 @@ class _WandbLoggingProcess(Process):
         return log, config_update
 
 
-class WandbExperimentLogger(ExperimentLogger):
-    """WandbExperimentLogger
+class WandbLoggerCallback(ExperimentLogger):
+    """WandbLoggerCallback
 
     Weights and biases (https://www.wandb.com/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
@@ -255,7 +255,7 @@ class WandbExperimentLogger(ExperimentLogger):
     .. code-block:: python
 
         from ray.tune.logger import DEFAULT_LOGGERS
-        from ray.tune.integration.wandb import WandbExperimentLogger
+        from ray.tune.integration.wandb import WandbLoggerCallback
         tune.run(
             train_fn,
             config={
@@ -263,7 +263,7 @@ class WandbExperimentLogger(ExperimentLogger):
                 "parameter_1": tune.choice([1, 2, 3]),
                 "parameter_2": tune.choice([4, 5, 6]),
             },
-            callbacks=[WandbExperimentLogger(
+            callbacks=[WandbLoggerCallback(
                 project="Optimization_Project",
                 api_key_file="/path/to/file",
                 log_config=True)])
@@ -363,12 +363,20 @@ class WandbExperimentLogger(ExperimentLogger):
         del self._trial_queues[trial]
         del self._trial_processes[trial]
 
+    def __del__(self):
+        for trial in self._trial_processes:
+            if trial in self._trial_queues:
+                self._trial_queues[trial].put(_WANDB_QUEUE_END)
+                del self._trial_queues[trial]
+            self._trial_processes[trial].join(timeout=2)
+            del self._trial_processes[trial]
+
 
 class WandbLogger(Logger):
     """WandbLogger
 
     .. warning::
-        This `Logger` class is deprecated. Use the `WandbExperimentLogger`
+        This `Logger` class is deprecated. Use the `WandbLoggerCallback`
         callback instead.
 
     Weights and biases (https://www.wandb.com/) is a tool for experiment
@@ -449,7 +457,7 @@ class WandbLogger(Logger):
 
 
     """
-    _experiment_logger_cls = WandbExperimentLogger
+    _experiment_logger_cls = WandbLoggerCallback
 
     def _init(self):
         config = self.config.copy()
