@@ -168,14 +168,12 @@ class MockWorker : public WorkerInterface {
     borrowed_cpu_instances_ = cpu_instances;
   }
 
-  const PlacementGroupID &GetPlacementGroupId() const {
+  const BundleID &GetBundleId() const {
     RAY_CHECK(false) << "Method unused";
-    return PlacementGroupID::Nil();
+    return std::pair<PlacementGroupID, int64_t>();
   }
 
-  void SetPlacementGroupId(const PlacementGroupID &placement_group_id) {
-    RAY_CHECK(false) << "Method unused";
-  }
+  void SetBundleId(const BundleID &bundle_id) { RAY_CHECK(false) << "Method unused"; }
 
   std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }
 

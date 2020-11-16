@@ -47,6 +47,10 @@ const PlacementGroupID TaskSpecification::PlacementGroupId() const {
   return PlacementGroupID::FromBinary(message_->placement_group_id());
 }
 
+const int64_t TaskSpecification::PlacementGroupBundleIndex() const {
+  return message_->placement_group_bundle_index();
+}
+
 bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
   return message_->placement_group_capture_child_tasks();
 }

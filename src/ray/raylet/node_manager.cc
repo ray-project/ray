@@ -567,9 +567,25 @@ void NodeManager::HandleReleaseUnusedBundles(
                        bundle_id.bundle_index()));
   }
 
-  // TODO(ffbin): Kill all workers that are currently associated with the unused bundles.
-  // At present, the worker does not have a bundle ID, so we cannot filter out the workers
-  // used by unused bundles. We will solve it in next pr.
+  // Kill all workers that are currently associated with the unused bundles.
+  for (const auto &worker_it : leased_workers_) {
+    auto &worker = worker_it.second;
+    if (0 == in_use_bundles.count(worker->GetBundleId())) {
+      RAY_LOG(DEBUG)
+          << "Destroying worker since its bundle was unused. Placement group id: "
+          << worker->GetBundleId().first
+          << ", bundle index: " << worker->GetBundleId().second
+          << ", task id: " << worker->GetAssignedTaskId()
+          << ", actor id: " << worker->GetActorId()
+          << ", worker id: " << worker->WorkerId();
+      // We should disconnect the client first. Otherwise, we'll remove bundle resources
+      // before actual resources are returned. Subsequent disconnect request that comes
+      // due to worker dead will be ignored.
+      ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+      worker->MarkDead();
+      KillWorker(worker);
+    }
+  }
 
   // Return unused bundle resources.
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
@@ -1802,14 +1818,14 @@ void NodeManager::HandleCancelResourceReserve(
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
-    if (worker->GetPlacementGroupId() == bundle_spec.PlacementGroupId()) {
+    if (worker->GetBundleId().first == bundle_spec.PlacementGroupId()) {
       workers_associated_with_pg.push_back(worker);
     }
   }
   for (const auto &worker : workers_associated_with_pg) {
     RAY_LOG(DEBUG)
         << "Destroying worker since its placement group was removed. Placement group id: "
-        << worker->GetPlacementGroupId()
+        << worker->GetBundleId().first
         << ", bundle index: " << bundle_spec.BundleId().second
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
@@ -2511,7 +2527,8 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   if (task.GetTaskSpecification().IsDetachedActor()) {
     worker->MarkDetachedActor();
   }
-  worker->SetPlacementGroupId(spec.PlacementGroupId());
+  worker->SetBundleId(
+      std::make_pair(spec.PlacementGroupId(), spec.PlacementGroupBundleIndex()));
 
   const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
   const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());

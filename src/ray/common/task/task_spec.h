@@ -197,6 +197,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Placement Group ID that this task or actor creation is associated with.
   const PlacementGroupID PlacementGroupId() const;
 
+  // Placement Group bundle index that this task or actor creation is associated with.
+  const int64_t PlacementGroupBundleIndex() const;
+
   // Whether or not we should capture parent's placement group implicitly.
   bool PlacementGroupCaptureChildTasks() const;
 
