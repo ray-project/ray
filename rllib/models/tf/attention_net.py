@@ -320,9 +320,16 @@ class GTrXLNet(RecurrentNetwork):
         assert seq_lens is not None
         # Add the needed batch rank (tf Models' Input requires this).
         is_training = tf.expand_dims(input_dict["is_training"], axis=0)
-        observations = input_dict[SampleBatch.OBS]
+
+       
         # Add the time dim to observations.
         B = tf.shape(seq_lens)[0]
+
+        #TEST
+        #observations = input_dict[SampleBatch.OBS]
+        observations = tf.concat([state[0], input_dict[SampleBatch.OBS]], axis=1)
+        #END TEST
+
         shape = tf.shape(observations)
         T = shape[0] // B
         observations = tf.reshape(observations,
