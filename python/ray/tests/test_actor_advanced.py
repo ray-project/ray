@@ -944,7 +944,6 @@ def test_actor_creation_task_crash(ray_start_regular):
         }
     }],
     indirect=True)
-@pytest.mark.skipif(new_scheduler_enabled(), reason="todo hangs")
 def test_pending_actor_removed_by_owner(ray_start_regular):
     # Verify when an owner of pending actors is killed, the actor resources
     # are correctly returned.
