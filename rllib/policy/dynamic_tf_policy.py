@@ -188,11 +188,12 @@ class DynamicTFPolicy(TFPolicy):
         else:
             if self.config["_use_trajectory_view_api"]:
                 self._state_inputs = [
-                    tf1.placeholder(
-                        shape=(None, ) + vr.space.shape, dtype=vr.space.dtype)
+                    get_placeholder(
+                        space=vr.space,
+                        time_axis=not isinstance(vr.data_rel_pos, int))
                     for k, vr in
                     self.model.inference_view_requirements.items()
-                    if k[:9] == "state_in_"
+                    if k.startswith("state_in_")
                 ]
             else:
                 self._state_inputs = [
@@ -429,8 +430,10 @@ class DynamicTFPolicy(TFPolicy):
             mo = re.match("state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
+                sample = [view_req.space.sample()]
                 dummy_batch[view_col] = np.zeros_like(
-                    [view_req.space.sample()])
+                    [sample] if isinstance(view_req.data_rel_pos_to,
+                                           int) else sample)
             # State-outs (no placeholders needed).
             elif view_col.startswith("state_out_"):
                 dummy_batch[view_col] = np.zeros_like(
