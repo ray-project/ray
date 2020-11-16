@@ -63,6 +63,8 @@ If using the command line, connect to the Ray cluster as follow:
     per worker to avoid contention.
 
 
+.. _temp-dir-log-files:
+
 Logging and Debugging
 ---------------------
 
@@ -135,8 +137,48 @@ Head Node
 In addition to ports specified above, the head node needs to open several more ports.
 
 - ``--port``: Port of GCS. Default: 6379.
-- ``--dashboard-port``: Port for accessing the dashboard. Default: 8265
+- ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
 - ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
+
+- If ``--include-dashboard`` is true (the default), then the head node must open ``--dashboard-port``. Default: 8265.
+
+If ``--include-dashboard`` is true but the ``--dashboard-port`` is not open on
+the head node, you will repeatedly get
+
+.. code-block:: bash
+
+  WARNING worker.py:1114 -- The agent on node <hostname of node that tried to run a task> failed with the following error:
+  Traceback (most recent call last):
+    File "/usr/local/lib/python3.8/dist-packages/grpc/aio/_call.py", line 285, in __await__
+      raise _create_rpc_error(self._cython_call._initial_metadata,
+  grpc.aio._call.AioRpcError: <AioRpcError of RPC that terminated with:
+    status = StatusCode.UNAVAILABLE
+    details = "failed to connect to all addresses"
+    debug_error_string = "{"description":"Failed to pick subchannel","file":"src/core/ext/filters/client_channel/client_channel.cc","file_line":4165,"referenced_errors":[{"description":"failed to connect to all addresses","file":"src/core/ext/filters/client_channel/lb_policy/pick_first/pick_first.cc","file_line":397,"grpc_status":14}]}"
+
+(Also, you will not be able to access the dashboard.)
+
+If you see that error, check whether the ``--dashboard-port`` is accessible
+with ``nc`` or ``nmap`` (or your browser).
+
+.. code-block:: bash
+
+  $ nmap -sV --reason -p 8265 $HEAD_ADDRESS
+  Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+  Host is up, received reset ttl 60 (0.00065s latency).
+  rDNS record for 123.456.78.910: compute04.berkeley.edu
+  PORT     STATE SERVICE REASON         VERSION
+  8265/tcp open  http    syn-ack ttl 60 aiohttp 3.7.2 (Python 3.8)
+  Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+
+Note that the dashboard runs as a separate subprocess which can crash invisibly
+in the background, so even if you checked port 8265 earlier, the port might be
+closed *now* (for the prosaic reason that there is no longer a service running
+on it). This also means that if that port is unreachable, if you ``ray stop``
+and ``ray start``, it may become reachable again due to the dashboard
+restarting.
+
+If you don't want the dashboard, set ``--include-dashboard=false``.
 
 Redis Port Authentication
 -------------------------

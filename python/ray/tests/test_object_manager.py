@@ -157,9 +157,8 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     # Make sure that each object was transferred a reasonable number of times.
     for x_id in object_refs:
         relevant_events = [
-            event for event in transfer_events
-            if event["cat"] == "transfer_send"
-            and event["args"][0] == x_id.hex() and event["args"][2] == 1
+            event for event in transfer_events if
+            event["cat"] == "transfer_send" and event["args"][0] == x_id.hex()
         ]
 
         # NOTE: Each event currently appears twice because we duplicate the
@@ -200,15 +199,11 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
 def test_object_transfer_retry(ray_start_cluster):
     cluster = ray_start_cluster
 
-    repeated_push_delay = 1
-
     # Force the sending object manager to allow duplicate pushes again sooner.
     # Also, force the receiving object manager to retry the pull sooner. We
     # make the chunk size smaller in order to make it easier to test objects
     # with multiple chunks.
     config = {
-        "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000,
-        "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
         "object_manager_default_chunk_size": 1000,
         "object_store_full_max_retries": 1,
     }
@@ -231,13 +226,7 @@ def test_object_transfer_retry(ray_start_cluster):
     # Get the objects locally to cause them to be transferred. This is the
     # first time the objects are getting transferred, so it should happen
     # quickly.
-    start_time = time.time()
     ray.get(x_id)
-    end_time = time.time()
-    if end_time - start_time > repeated_push_delay:
-        warnings.warn("The initial transfer took longer than the repeated "
-                      "push delay, so this test may not be testing the thing "
-                      "it's supposed to test.")
 
     def not_exists():
         return not ray.worker.global_worker.core_worker.object_exists(x_id)
@@ -258,20 +247,6 @@ def test_object_transfer_retry(ray_start_cluster):
 
     # Get the object again and make sure it gets transferred.
     ray.get(x_id)
-    end_transfer_time = time.time()
-    # We should have had to wait for the repeated push delay.
-    assert end_transfer_time - start_time >= repeated_push_delay
-
-    # Force the object to be evicted again and wait longer than the repeated
-    # push delay and make sure that the object is transferred again.
-    force_eviction()
-    time.sleep(repeated_push_delay)
-
-    # Fetch the object again. This should not wait for the delay.
-    start_time = time.time()
-    ray.get(x_id)
-    end_time = time.time()
-    assert end_time - start_time < repeated_push_delay
 
 
 # The purpose of this test is to make sure we can transfer many objects. In the

@@ -1,7 +1,5 @@
 Cluster: test-cli
 
-Updating the resources of ray-legacy-head-node-type to {'CPU': 1}.
-Updating the resources of ray-legacy-worker-node-type to {'CPU': 1}.
 Checking AWS environment settings
 AWS config
   IAM Profile: .+ \[default\]

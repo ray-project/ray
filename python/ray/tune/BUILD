@@ -80,7 +80,7 @@ py_test(
 
 py_test(
     name = "test_experiment_analysis_mem",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_experiment_analysis_mem.py"],
     deps = [":tune_lib"],
 )
@@ -159,6 +159,14 @@ py_test(
     name = "test_sample",
     size = "small",
     srcs = ["tests/test_sample.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_searchers",
+    size = "medium",
+    srcs = ["tests/test_searchers.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
@@ -352,6 +360,14 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_trainable",
+    size = "medium",
+    srcs = ["tests/test_tensorflow_trainable.py"],
+    tags = ["exclusive", "example", "tensorflow"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "test_horovod",
     size = "medium",
     srcs = ["tests/test_horovod.py"],
@@ -366,6 +382,14 @@ py_test(
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
     args = ["--num-workers=2"]
+)
+
+py_test(
+    name = "tf_distributed_keras_example",
+    size = "small",
+    srcs = ["examples/tf_distributed_keras_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "tensorflow"],
 )
 
 py_test(
@@ -515,6 +539,15 @@ py_test(
     name = "optuna_example",
     size = "small",
     srcs = ["examples/optuna_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pb2_example",
+    size = "medium",
+    srcs = ["examples/pb2_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]

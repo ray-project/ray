@@ -157,7 +157,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     type=str,
     help="Override the address to connect to.")
 def debug(address):
-    """Debug Ray program."""
+    """Show all active breakpoints and exceptions in the Ray debugger."""
     from telnetlib import Telnet
     if not address:
         address = services.find_redis_address_or_die()

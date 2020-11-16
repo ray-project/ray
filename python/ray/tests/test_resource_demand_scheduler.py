@@ -371,6 +371,81 @@ def test_calculate_node_resources():
     assert to_launch == {"p2.8xlarge": 1}
 
 
+def test_request_resources_existing_usage():
+    provider = MockProvider()
+    TYPES = {
+        "p2.8xlarge": {
+            "node_config": {},
+            "resources": {
+                "CPU": 32,
+                "GPU": 8
+            },
+            "max_workers": 40,
+        },
+    }
+    scheduler = ResourceDemandScheduler(provider, TYPES, max_workers=100)
+
+    # 5 nodes with 32 CPU and 8 GPU each
+    provider.create_node({}, {
+        TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+    }, 2)
+    all_nodes = provider.non_terminated_nodes({})
+    node_ips = provider.non_terminated_node_ips({})
+    assert len(node_ips) == 2, node_ips
+
+    # Fully utilized, no requests.
+    avail_by_ip = {ip: {} for ip in node_ips}
+    max_by_ip = {ip: {"GPU": 8, "CPU": 32} for ip in node_ips}
+    demands = []
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert len(to_launch) == 0, to_launch
+
+    # Fully utilized, resource requests exactly equal.
+    avail_by_ip = {ip: {} for ip in node_ips}
+    demands = [{"GPU": 4}] * 4
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert len(to_launch) == 0, to_launch
+
+    # Fully utilized, resource requests in excess.
+    avail_by_ip = {ip: {} for ip in node_ips}
+    demands = [{"GPU": 4}] * 7
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert to_launch.get("p2.8xlarge") == 2, to_launch
+
+    # Not utilized, no requests.
+    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
+    demands = []
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert len(to_launch) == 0, to_launch
+
+    # Not utilized, resource requests exactly equal.
+    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
+    demands = [{"GPU": 4}] * 4
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert len(to_launch) == 0, to_launch
+
+    # Not utilized, resource requests in excess.
+    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
+    demands = [{"GPU": 4}] * 7
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    assert to_launch.get("p2.8xlarge") == 2, to_launch
+
+    # Not utilized, resource requests hugely in excess.
+    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
+    demands = [{"GPU": 4}] * 70
+    to_launch = scheduler.get_nodes_to_launch(all_nodes, {}, [], avail_by_ip,
+                                              [], max_by_ip, demands)
+    # This bypasses the launch rate limit.
+    assert to_launch.get("p2.8xlarge") == 33, to_launch
+
+
 def test_backlog_queue_impact_on_binpacking_time():
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["max_workers"] = 1000
@@ -579,7 +654,7 @@ def test_get_concurrent_resource_demand_to_launch():
 
     # Sanity check.
     updated_to_launch = \
-        scheduler._get_concurrent_resource_demand_to_launch({}, [], [], {})
+        scheduler._get_concurrent_resource_demand_to_launch({}, [], [], {}, {})
     assert updated_to_launch == {}
 
     provider.create_node({}, {
@@ -598,7 +673,7 @@ def test_get_concurrent_resource_demand_to_launch():
     connected_nodes = []  # All the non_terminated_nodes are not connected yet.
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes)
+        pending_launches_nodes, {})
     # Note: we have 2 pending/launching gpus, 3 pending/launching cpus,
     # 0 running gpu, and 0 running cpus.
     assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 2}
@@ -611,7 +686,7 @@ def test_get_concurrent_resource_demand_to_launch():
     ]
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes)
+        pending_launches_nodes, {})
     # Note that here we have 1 launching gpu, 1 launching cpu,
     # 1 running gpu, and 2 running cpus.
     assert updated_to_launch == {"p2.8xlarge": 4, "m4.large": 4}
@@ -632,7 +707,7 @@ def test_get_concurrent_resource_demand_to_launch():
     pending_launches_nodes = {}  # No pending launches
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes)
+        pending_launches_nodes, {})
     # Note: we have 5 pending cpus. So we are not allowed to start any.
     # Still only 2 running cpus.
     assert updated_to_launch == {}
@@ -643,7 +718,7 @@ def test_get_concurrent_resource_demand_to_launch():
     ]
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes)
+        pending_launches_nodes, {})
     # Note: that here we have 7 running cpus and nothing pending/launching.
     assert updated_to_launch == {"m4.large": 7}
 
@@ -659,7 +734,7 @@ def test_get_concurrent_resource_demand_to_launch():
     pending_launches_nodes = {"m4.large": 1}
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes)
+        pending_launches_nodes, {})
     # Note: we have 8 pending/launching cpus and only 7 running.
     # So we should not launch anything (8 < 7).
     assert updated_to_launch == {}
@@ -670,7 +745,7 @@ def test_get_concurrent_resource_demand_to_launch():
     ]
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes)
+        pending_launches_nodes, {})
     # Note: that here we have 14 running cpus and 1 launching.
     assert updated_to_launch == {"m4.large": 13}
 
@@ -927,9 +1002,10 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(MULTI_WORKER_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]"])
         get_or_create_head_node(
             MULTI_WORKER_CLUSTER,
-            config_path,
+            printable_config_file=config_path,
             no_restart=False,
             restart_only=False,
             yes=True,
@@ -949,8 +1025,43 @@ class AutoscalingTest(unittest.TestCase):
             self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE),
             "empty_node")
 
+    def testGetOrCreateMultiNodeTypeCustomHeadResources(self):
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["empty_node"]["resources"] = {
+            "empty_resource_name": 1000
+        }
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        get_or_create_head_node(
+            config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        runner.assert_has_call("1.2.3.4", "empty_resource_name")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, "empty_node")
+        self.assertEqual(
+            self.provider.mock_nodes[0].node_config.get("FooProperty"), 42)
+        self.assertEqual(
+            self.provider.mock_nodes[0].node_config.get("TestProp"), 1)
+        self.assertEqual(
+            self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE),
+            "empty_node")
+
     def testScaleUpMinSanity(self):
-        config_path = self.write_config(MULTI_WORKER_CLUSTER)
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["m4.large"]["min_workers"] = \
+            config["min_workers"]
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
@@ -1034,11 +1145,9 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinWorkers(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["min_workers"] = 2
         config["max_workers"] = 50
         config["idle_timeout_minutes"] = 1
-        # Since config["min_workers"] > 1, the remaining worker is started
-        # with the default worker node type.
+        config["available_node_types"]["m4.large"]["min_workers"] = 1
         config["available_node_types"]["p2.8xlarge"]["min_workers"] = 1
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -1196,6 +1305,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1277,6 +1387,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1329,6 +1440,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(4)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1392,7 +1504,9 @@ class AutoscalingTest(unittest.TestCase):
                                    "p2x_image:nightly")
 
     def testUpdateConfig(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["m4.large"]["min_workers"] = \
+            config["min_workers"]
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -1405,7 +1519,7 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(2)
-        config["min_workers"] = 0
+        config["available_node_types"]["m4.large"]["min_workers"] = 0
         config["available_node_types"]["m4.large"]["node_config"][
             "field_changed"] = 1
         config_path = self.write_config(config)

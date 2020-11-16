@@ -6,6 +6,7 @@ import os
 import inspect
 import threading
 import time
+import uuid
 from collections import defaultdict, deque, Mapping, Sequence
 from datetime import datetime
 from threading import Thread
@@ -160,6 +161,10 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
+def is_nan_or_inf(value):
+    return np.isnan(value) or np.isinf(value)
+
+
 def env_integer(key, default):
     # TODO(rliaw): move into ray.constants
     if key in os.environ:
@@ -263,14 +268,15 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
 
 def unflatten_dict(dt, delimiter="/"):
     """Unflatten dict. Does not support unflattening lists."""
-    out = defaultdict(dict)
+    dict_type = type(dt)
+    out = dict_type()
     for key, val in dt.items():
         path = key.split(delimiter)
         item = out
         for k in path[:-1]:
-            item = item[k]
+            item = item.setdefault(k, dict_type())
         item[path[-1]] = val
-    return dict(out)
+    return out
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
@@ -538,6 +544,30 @@ def detect_config_single(func):
         logger.debug(str(e))
         use_config_single = False
     return use_config_single
+
+
+def create_logdir(dirname: str, local_dir: str):
+    """Create an empty logdir with name `dirname` in `local_dir`.
+
+    If `local_dir`/`dirname` already exists, a unique string is appended
+    to the dirname.
+
+    Args:
+        dirname (str): Dirname to create in `local_dir`
+        local_dir (str): Root directory for the log dir
+
+    Returns: full path to the newly created logdir.
+    """
+    local_dir = os.path.expanduser(local_dir)
+    logdir = os.path.join(local_dir, dirname)
+    if os.path.exists(logdir):
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
+        logdir = os.path.join(local_dir, dirname)
+    os.makedirs(logdir, exist_ok=True)
+    return logdir
 
 
 class SafeFallbackEncoder(json.JSONEncoder):
