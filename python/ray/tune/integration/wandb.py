@@ -485,6 +485,7 @@ class WandbLogger(Logger):
 
     def close(self):
         self._trial_experiment_logger.log_trial_end(self.trial, failed=False)
+        del self._trial_experiment_logger
 
 
 class WandbTrainableMixin:
