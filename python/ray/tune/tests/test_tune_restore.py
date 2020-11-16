@@ -116,7 +116,7 @@ class TuneExampleTest(unittest.TestCase):
         validate_save_restore(MyTrainableClass, use_object_store=True)
 
     def testAsyncHyperbandExample(self):
-        from ray.tune.examples.async_hyperband_example import MyTrainableClass
+        from ray.tune.utils.mock import MyTrainableClass
         validate_save_restore(MyTrainableClass)
         validate_save_restore(MyTrainableClass, use_object_store=True)
 

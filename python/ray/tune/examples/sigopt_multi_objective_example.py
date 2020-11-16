@@ -1,13 +1,9 @@
-"""This test checks that SigOpt is functional.
+"""Example using Sigopt's multi-objective functionality."""
 
-It also checks that it is usable with a separate scheduler.
-"""
 import time
 
-import ray
 import numpy as np
 from ray import tune
-from ray.tune.schedulers import FIFOScheduler
 from ray.tune.suggest.sigopt import SigOptSearch
 
 np.random.seed(0)
@@ -41,7 +37,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
 
     space = [
         {
@@ -54,13 +49,6 @@ if __name__ == "__main__":
         },
     ]
 
-    config = {
-        "num_samples": 10 if args.smoke_test else 1000,
-        "config": {
-            "total_weight": 1
-        }
-    }
-
     algo = SigOptSearch(
         space,
         name="SigOpt Example Multi Objective Experiment",
@@ -69,11 +57,10 @@ if __name__ == "__main__":
         metric=["average", "std", "sharpe"],
         mode=["max", "min", "obs"])
 
-    scheduler = FIFOScheduler()
-
-    tune.run(
+    analysis = tune.run(
         easy_objective,
         name="my_exp",
         search_alg=algo,
-        scheduler=scheduler,
-        **config)
+        num_samples=10 if args.smoke_test else 1000,
+        config={"total_weight": 1})
+    print("Best hyperparameters found were: ", analysis.best_config)
