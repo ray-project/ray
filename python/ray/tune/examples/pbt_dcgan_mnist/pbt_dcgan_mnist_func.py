@@ -9,7 +9,6 @@ from ray.tune.schedulers import PopulationBasedTraining
 import argparse
 import os
 from filelock import FileLock
-import random
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -105,9 +104,6 @@ if __name__ == "__main__":
     mnist_model_ref = ray.put(mnist_cnn)
 
     scheduler = PopulationBasedTraining(
-        time_attr="training_iteration",
-        metric="is_score",
-        mode="max",
         perturbation_interval=5,
         hyperparam_mutations={
             # distribution for resampling
@@ -124,12 +120,12 @@ if __name__ == "__main__":
         stop={
             "training_iteration": tune_iter,
         },
+        metric="is_score",
+        mode="max",
         num_samples=8,
         config={
-            "netG_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
-            "netD_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
+            "netG_lr": tune.choice([0.0001, 0.0002, 0.0005]),
+            "netD_lr": tune.choice([0.0001, 0.0002, 0.0005]),
             "mnist_model_ref": mnist_model_ref
         })
     # __tune_end__

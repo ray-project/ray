@@ -77,9 +77,10 @@ class FileSystemStorage(ExternalStorage):
     def __init__(self, directory_path):
         self.directory_path = directory_path
         self.prefix = "ray_spilled_object_"
+        os.makedirs(self.directory_path, exist_ok=True)
         if not os.path.exists(self.directory_path):
             raise ValueError("The given directory path to store objects, "
-                             f"{self.directory_path}, doesn't exist.")
+                             f"{self.directory_path}, could not be created.")
 
     def spill_objects(self, object_refs):
         keys = []

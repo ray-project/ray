@@ -1,4 +1,5 @@
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import TensorType
 
 torch, nn = try_import_torch()
 
@@ -6,7 +7,7 @@ torch, nn = try_import_torch()
 class GRUGate(nn.Module):
     """Implements a gated recurrent unit for use in AttentionNet"""
 
-    def __init__(self, dim, init_bias=0., **kwargs):
+    def __init__(self, dim: int, init_bias: int = 0., **kwargs):
         """
         input_shape (torch.Tensor): dimension of the input
         init_bias (int): Bias added to every input to stabilize training
@@ -33,7 +34,7 @@ class GRUGate(nn.Module):
 
         self._bias_z = torch.zeros(dim, ).fill_(self._init_bias)
 
-    def forward(self, inputs, **kwargs):
+    def forward(self, inputs: TensorType, **kwargs) -> TensorType:
         # Pass in internal state first.
         h, X = inputs
 
