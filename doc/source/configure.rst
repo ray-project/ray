@@ -63,6 +63,8 @@ If using the command line, connect to the Ray cluster as follow:
     per worker to avoid contention.
 
 
+.. _temp-dir-log-files:
+
 Logging and Debugging
 ---------------------
 
