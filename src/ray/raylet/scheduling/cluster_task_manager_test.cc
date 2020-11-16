@@ -419,10 +419,10 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   }
 }
 
-
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   /*
-    Test the race condition in which the owner of a task dies while the task is pending. This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
+    Test the race condition in which the owner of a task dies while the task is pending.
+    This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
    */
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
@@ -430,9 +430,8 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   bool *callback_occurred_ptr = &callback_occurred;
   auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
 
-
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
   task_manager_.QueueTask(task, &reply, callback);

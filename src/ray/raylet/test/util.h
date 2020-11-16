@@ -20,7 +20,8 @@ namespace raylet {
 
 class MockWorker : public WorkerInterface {
  public:
- MockWorker(WorkerID worker_id, int port) : worker_id_(worker_id), port_(port), is_detached_actor_(false) {}
+  MockWorker(WorkerID worker_id, int port)
+      : worker_id_(worker_id), port_(port), is_detached_actor_(false) {}
 
   WorkerID WorkerId() const { return worker_id_; }
 
@@ -111,10 +112,8 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return ActorID::Nil();
   }
-  void MarkDetachedActor() { is_detached_actor_ = true;}
-  bool IsDetachedActor() const {
-    return is_detached_actor_;
-  }
+  void MarkDetachedActor() { is_detached_actor_ = true; }
+  bool IsDetachedActor() const { return is_detached_actor_; }
   const std::shared_ptr<ClientConnection> Connection() const {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
@@ -163,7 +162,7 @@ class MockWorker : public WorkerInterface {
 
   void ClearAllocatedInstances() { allocated_instances_ = nullptr; }
 
-  void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr;}
+  void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; }
 
   void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
     borrowed_cpu_instances_ = cpu_instances;
