@@ -475,7 +475,7 @@ class DynamicTFPolicy(TFPolicy):
             logger.info("Testing `compute_actions` w/ dummy batch.")
             actions, state_outs, extra_fetches = \
                 self.compute_actions_from_input_dict(
-                    self._dummy_batch, explore=True, timestep=0)
+                    self._dummy_batch, explore=False, timestep=0)
             for key, value in extra_fetches.items():
                 self._dummy_batch[key] = np.zeros_like(value)
                 self._input_dict[key] = get_placeholder(value=value, name=key)

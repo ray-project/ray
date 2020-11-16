@@ -4,6 +4,7 @@ import time
 import unittest
 
 import ray
+import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -26,19 +27,20 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def test_traj_view_normal_case(self):
         """Tests, whether Model and Policy return the correct ViewRequirements.
         """
-        config = ppo.DEFAULT_CONFIG.copy()
-        for _ in framework_iterator(config, frameworks="torch"):
-            trainer = ppo.PPOTrainer(config, env="CartPole-v0")
+        config = dqn.DEFAULT_CONFIG.copy()
+        for _ in framework_iterator(config):
+            trainer = dqn.DQNTrainer(
+                config,
+                env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
             policy = trainer.get_policy()
             view_req_model = policy.model.inference_view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
-            assert len(view_req_policy) == 12, view_req_policy
+            assert len(view_req_policy) == 8, view_req_policy
             for key in [
                     SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
                     SampleBatch.DONES, SampleBatch.NEXT_OBS,
-                    SampleBatch.VF_PREDS, "advantages", "value_targets",
-                    SampleBatch.ACTION_DIST_INPUTS, SampleBatch.ACTION_LOGP
+                    SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX, "weights",
             ]:
                 assert key in view_req_policy
                 # None of the view cols has a special underlying data_col,
