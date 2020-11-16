@@ -119,8 +119,8 @@ class HTTPProxy:
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
 
-        ref = await self.router.enqueue_request(request_metadata, scope,
-                                                http_body_bytes)
+        ref = await self.router.assign_request(request_metadata, scope,
+                                               http_body_bytes)
         result = await ref
 
         if isinstance(result, RayTaskError):
@@ -185,7 +185,7 @@ class HTTPProxyActor:
         self.app.set_route_table(route_table)
 
     # ------ Proxy router logic ------ #
-    async def enqueue_request(self, request_meta, *request_args,
-                              **request_kwargs):
-        return await (await self.app.router.enqueue_request(
+    async def assign_request(self, request_meta, *request_args,
+                             **request_kwargs):
+        return await (await self.app.router.assign_request(
             request_meta, *request_args, **request_kwargs))

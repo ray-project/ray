@@ -87,7 +87,7 @@ async def test_servable_function(serve_instance, router):
 
     for query in [333, 444, 555]:
         query_param = make_request_param()
-        result = await router.enqueue_request.remote(query_param, i=query)
+        result = await router.assign_request.remote(query_param, i=query)
         assert result == query
 
 
@@ -103,7 +103,7 @@ async def test_servable_class(serve_instance, router):
 
     for query in [333, 444, 555]:
         query_param = make_request_param()
-        result = await router.enqueue_request.remote(query_param, i=query)
+        result = await router.assign_request.remote(query_param, i=query)
         assert result == query + 3
 
 
@@ -118,16 +118,16 @@ async def test_task_runner_custom_method_single(serve_instance, router):
     _ = await add_servable_to_router(NonBatcher, router)
 
     query_param = make_request_param("a")
-    a_result = await router.enqueue_request.remote(query_param)
+    a_result = await router.assign_request.remote(query_param)
     assert a_result == "a"
 
     query_param = make_request_param("b")
-    b_result = await router.enqueue_request.remote(query_param)
+    b_result = await router.assign_request.remote(query_param)
     assert b_result == "b"
 
     query_param = make_request_param("non_exist")
     with pytest.raises(ray.exceptions.RayTaskError):
-        await router.enqueue_request.remote(query_param)
+        await router.assign_request.remote(query_param)
 
 
 async def test_task_runner_custom_method_batch(serve_instance, router):
@@ -149,8 +149,8 @@ async def test_task_runner_custom_method_batch(serve_instance, router):
     a_query_param = make_request_param("a")
     b_query_param = make_request_param("b")
 
-    futures = [router.enqueue_request.remote(a_query_param) for _ in range(2)]
-    futures += [router.enqueue_request.remote(b_query_param) for _ in range(2)]
+    futures = [router.assign_request.remote(a_query_param) for _ in range(2)]
+    futures += [router.assign_request.remote(b_query_param) for _ in range(2)]
 
     gathered = await asyncio.gather(*futures)
     assert set(gathered) == {"a-0", "a-1", "b-0", "b-1"}
@@ -176,14 +176,14 @@ async def test_servable_batch_error(serve_instance, router):
 
     with pytest.raises(RayServeException, match="doesn't preserve batch size"):
         different_size = make_request_param("error_different_size")
-        await router.enqueue_request.remote(different_size)
+        await router.assign_request.remote(different_size)
 
     with pytest.raises(RayServeException, match="iterable"):
         non_iterable = make_request_param("error_non_iterable")
-        await router.enqueue_request.remote(non_iterable)
+        await router.assign_request.remote(non_iterable)
 
     np_array = make_request_param("return_np_array")
-    result_np_value = await router.enqueue_request.remote(np_array)
+    result_np_value = await router.assign_request.remote(np_array)
     assert isinstance(result_np_value, np.int32)
 
 
@@ -201,7 +201,7 @@ async def test_task_runner_perform_batch(serve_instance, router):
 
     query_param = make_request_param()
     my_batch_sizes = await asyncio.gather(
-        *[router.enqueue_request.remote(query_param) for _ in range(3)])
+        *[router.assign_request.remote(query_param) for _ in range(3)])
     assert my_batch_sizes == [2, 2, 1]
 
 
@@ -236,7 +236,7 @@ async def test_task_runner_perform_async(serve_instance, router):
     query_param = make_request_param()
 
     done, not_done = await asyncio.wait(
-        [router.enqueue_request.remote(query_param) for _ in range(10)],
+        [router.assign_request.remote(query_param) for _ in range(10)],
         timeout=10)
     assert len(done) == 10
     for item in done:

@@ -2,16 +2,23 @@ from abc import ABCMeta, abstractmethod
 import random
 from hashlib import sha256
 from functools import lru_cache
-from typing import Dict, List
+from typing import List
 
 import numpy as np
 
+import ray
 from ray.serve.utils import logger
 
 
 @lru_cache(maxsize=128)
 def deterministic_hash(key: bytes) -> float:
-    """Given an arbitrary string, return a value between 0 and 1"""
+    """Given an arbitrary bytes, return a deterministic value between 0 and 1.
+
+    Note:
+        This function uses stdlib random number generator because it's faster
+        than numpy's. On a cache miss, the runtime of this function is about
+        ~10us.
+    """
     bytes_hash = sha256(key).digest()  # should return 32 bytes value
     int_seed = int.from_bytes(bytes_hash, "little", signed=False)
     random_state = random.Random(int_seed)
@@ -28,7 +35,7 @@ class EndpointPolicy:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def flush(self, query) -> List[str]:
+    def assign(self, query) -> List[str]:
         """Assign a query to a list of backends.
 
         Arguments:
@@ -71,10 +78,9 @@ class RandomEndpointPolicy(EndpointPolicy):
 
         return chosen_backend, shadow_backends
 
-    def flush(self, query):
+    def assign(self, query):
         if len(self.backends) == 0:
-            logger.info("No backends to assign traffic to.")
-            return set()
+            raise ValueError("No backends to assign traffic to.")
 
         if query.metadata.shard_key is None:
             value = np.random.random()
@@ -83,4 +89,5 @@ class RandomEndpointPolicy(EndpointPolicy):
                 query.metadata.shard_key.encode("utf-8"))
 
         chosen_backend, shadow_backends = self._select_backends(value)
+        logger.debug(f"Chosen backend {chosen_backend} for query {query}")
         return [chosen_backend] + shadow_backends

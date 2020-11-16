@@ -1,8 +1,8 @@
 import asyncio
 import threading
-from typing import Coroutine, Optional, Dict, Any, Union
-from contextlib import contextmanager
+from typing import Any, Coroutine, Dict, Optional, Union
 
+import ray
 from ray.serve.context import TaskContext
 from ray.serve.router import RequestMetadata, Router
 from ray.serve.utils import get_random_letters
@@ -10,21 +10,10 @@ from ray.serve.utils import get_random_letters
 global_async_loop = None
 
 
-@contextmanager
-def reset_event_loop_policy():
-    policy = asyncio.get_event_loop_policy()
-    asyncio.set_event_loop_policy(None)
-    yield
-    asyncio.set_event_loop_policy(policy)
-
-
 def create_or_get_async_loop_in_thread():
     global global_async_loop
     if global_async_loop is None:
-        # We have to asyncio's loop because uvloop will segfault when there
-        # are multiple copies of loop running.
-        with reset_event_loop_policy():
-            global_async_loop = asyncio.new_event_loop()
+        global_async_loop = asyncio.new_event_loop()
         thread = threading.Thread(
             daemon=True,
             target=global_async_loop.run_forever,
@@ -75,6 +64,9 @@ class RayServeHandle:
 
         self.router = Router(self.controller_handle)
         self.sync = sync
+        # In the synchrounous mode, we create a new event loop in a separate
+        # thread and run the Router.setup in that loop. In the async mode, we
+        # can just use the current loop we are in right now.
         if self.sync:
             self.async_loop = create_or_get_async_loop_in_thread()
             asyncio.run_coroutine_threadsafe(
@@ -83,6 +75,7 @@ class RayServeHandle:
             )
         else:  # async
             self.async_loop = asyncio.get_event_loop()
+            # create_task is not threadsafe.
             self.async_loop.create_task(self.router.setup_in_async_loop())
 
     def _remote(self, request_data, kwargs) -> Coroutine:
@@ -95,8 +88,8 @@ class RayServeHandle:
             http_method=self.http_method or "GET",
             http_headers=self.http_headers or dict(),
         )
-        coro = self.router.enqueue_request(request_metadata, request_data,
-                                           **kwargs)
+        coro = self.router.assign_request(request_metadata, request_data,
+                                          **kwargs)
         return coro
 
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
@@ -120,8 +113,9 @@ class RayServeHandle:
         future = asyncio.run_coroutine_threadsafe(coro, self.async_loop)
         return future.result()
 
-    async def remote_async(self, request_data, **kwargs):
-        assert not self.sync, "handle.remote_async() must be called from async context."
+    async def _remote_async(self, request_data, **kwargs) -> ray.ObjectRef:
+        """Experimental API for enqueue a request in async context."""
+        assert not self.sync, "_remote_async must be called inside async loop."
         return await self._remote(request_data, kwargs)
 
     def options(self,
