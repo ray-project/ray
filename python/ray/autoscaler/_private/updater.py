@@ -298,10 +298,7 @@ class NodeUpdater:
             cli_logger.print(
                 "Configuration already up to date, "
                 "skipping file mounts, initalization and setup commands.",
-                _numbered=("[]", "2-6", 7))
-            cli_logger.old_info(logger,
-                                "{}{} already up-to-date, skip to ray start",
-                                self.log_prefix, self.node_id)
+                _numbered=("[]", "2-6", NUM_SETUP_STEPS))
 
         else:
             cli_logger.print(
