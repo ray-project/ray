@@ -18,8 +18,7 @@ from ray.tune.syncer import wait_for_sync, set_sync_periods, \
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import FIFOScheduler
-from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity, \
-    verbose_log
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 
 logger = logging.getLogger(__name__)
 
@@ -446,10 +445,9 @@ def run(
             logger.error("Trials did not complete: %s", incomplete_trials)
 
     all_taken = time.time() - all_start
-    verbose_log(
-        logger.info, Verbosity.V1_EXPERIMENT,
-        f"Total run time: {all_taken:.2f} seconds "
-        f"({tune_taken:.2f} seconds for the tuning loop).")
+    if has_verbosity(Verbosity.V1_EXPERIMENT):
+        logger.info(f"Total run time: {all_taken:.2f} seconds "
+                    f"({tune_taken:.2f} seconds for the tuning loop).")
 
     trials = runner.get_trials()
     return ExperimentAnalysis(

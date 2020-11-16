@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Callable, Union
+from typing import Union
 
 
 class Verbosity(Enum):
@@ -22,18 +22,6 @@ def set_verbosity(level: Union[int, Verbosity]):
         verbosity = Verbosity(level)
     else:
         verbosity = verbosity
-
-
-def verbose_log(logger: Callable[[str], Any], level: Union[int, Verbosity],
-                message: str):
-    """Log `message` if specified level exceeds global verbosity level.
-
-    `logger` should be a Callable, e.g. `logger.info`. It can also be
-    `print` or a logger method of any other level - or any callable that
-    accepts a string.
-    """
-    if has_verbosity(level):
-        logger(message)
 
 
 def has_verbosity(level: Union[int, Verbosity]) -> bool:
