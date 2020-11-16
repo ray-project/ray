@@ -365,6 +365,17 @@ class UnifiedLogger(Logger):
 
 
 class LoggerCallback(Callback):
+    """Base class for experiment-level logger callbacks
+
+    This base class defines a general interface for logging events,
+    like trial starts, restores, ends, checkpoint saves, and receiving
+    trial results.
+
+    Callbacks implementing this interface should make sure that logging
+    utilities are cleaned up properly on trial termination, i.e. when
+    ``log_trial_end`` is received. This includes e.g. closing files.
+    """
+
     def log_trial_start(self, trial: "Trial"):
         """Handle logging when a trial starts.
 
@@ -390,7 +401,7 @@ class LoggerCallback(Callback):
         pass
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
-        """Handle logging when a trial receives a result.
+        """Handle logging when a trial reports a result.
 
         Args:
             trial (Trial): Trial object.
@@ -399,7 +410,7 @@ class LoggerCallback(Callback):
         pass
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        """Handle logging when a trial starts.
+        """Handle logging when a trial ends.
 
         Args:
             trial (Trial): Trial object.

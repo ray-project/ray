@@ -224,7 +224,7 @@ class WandbLoggerCallback(LoggerCallback):
 
     Weights and biases (https://www.wandb.com/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
-    ``Logger`` sends metrics to Wandb for automatic tracking and
+    ``LoggerCallback`` sends metrics to Wandb for automatic tracking and
     visualization.
 
     Args:

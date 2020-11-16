@@ -8,8 +8,8 @@ Tune has default loggers for Tensorboard, CSV, and JSON formats. By default, Tun
 If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.
 
 .. note::
-    Tune's per-trial `Logger` classes have been deprecated. They can still be used, but we encourage you
-    to use our new interface with the `LoggerCallback` class instead.
+    Tune's per-trial ``Logger`` classes have been deprecated. They can still be used, but we encourage you
+    to use our new interface with the ``LoggerCallback`` class instead.
 
 Custom Loggers
 --------------
@@ -61,7 +61,7 @@ You can then pass in your own logger as follows:
     )
 
 Per default, Ray Tune creates JSON, CSV and TensorboardX logger callbacks if you don't pass them yourself.
-You can disable this behavior by setting the `TUNE_DISABLE_AUTO_CALLBACK_LOGGERS` environment variable to `"1"`.
+You can disable this behavior by setting the ``TUNE_DISABLE_AUTO_CALLBACK_LOGGERS`` environment variable to ``"1"``.
 
 An example of creating a custom logger can be found in :doc:`/tune/examples/logging_example`.
 
@@ -177,3 +177,4 @@ LoggerCallback
 --------------
 
 .. autoclass:: ray.tune.logger.LoggerCallback
+    :members: log_trial_start, log_trial_restore, log_trial_save, log_trial_result, log_trial_end
