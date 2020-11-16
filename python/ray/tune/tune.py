@@ -247,7 +247,7 @@ def run(
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
             ``ray.tune.trial_runner.Callback`` class. If not passed,
-            `ExperimentLogger` and `SyncerCallback` callbacks are automatically
+            `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
 
 

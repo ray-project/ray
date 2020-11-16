@@ -4,10 +4,10 @@ from typing import List, Optional
 
 from ray.tune.callback import Callback
 from ray.tune.syncer import SyncConfig
-from ray.tune.logger import CSVExperimentLogger, CSVLogger, \
-    ExperimentLogger, \
-    JsonExperimentLogger, JsonLogger, LegacyExperimentLogger, Logger, \
-    TBXExperimentLogger, TBXLogger
+from ray.tune.logger import CSVLoggerCallback, CSVLogger, \
+    LoggerCallback, \
+    JsonLoggerCallback, JsonLogger, LegacyLoggerCallback, Logger, \
+    TBXLoggerCallback, TBXLogger
 from ray.tune.syncer import SyncerCallback
 
 logger = logging.getLogger(__name__)
@@ -27,14 +27,14 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
     last_logger_index = None
     syncer_index = None
 
-    # Create LegacyExperimentLogger for passed Logger classes
+    # Create LegacyLoggerCallback for passed Logger classes
     if loggers:
         # Todo(krfricke): Deprecate `loggers` argument, print warning here.
-        # Add warning as soon as we ported all loggers to ExperimentLogger
+        # Add warning as soon as we ported all loggers to LoggerCallback
         # classes.
         add_loggers = []
         for trial_logger in loggers:
-            if isinstance(trial_logger, ExperimentLogger):
+            if isinstance(trial_logger, LoggerCallback):
                 callbacks.append(trial_logger)
             elif isinstance(trial_logger, type) and issubclass(
                     trial_logger, Logger):
@@ -44,11 +44,11 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
                     f"Invalid value passed to `loggers` argument of "
                     f"`tune.run()`: {trial_logger}")
         if add_loggers:
-            callbacks.append(LegacyExperimentLogger(add_loggers))
+            callbacks.append(LegacyLoggerCallback(add_loggers))
 
     # Check if we have a CSV, JSON and TensorboardX logger
     for i, callback in enumerate(callbacks):
-        if isinstance(callback, LegacyExperimentLogger):
+        if isinstance(callback, LegacyLoggerCallback):
             last_logger_index = i
             if CSVLogger in callback.logger_classes:
                 has_csv_logger = True
@@ -56,13 +56,13 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
                 has_json_logger = True
             if TBXLogger in callback.logger_classes:
                 has_tbx_logger = True
-        elif isinstance(callback, CSVExperimentLogger):
+        elif isinstance(callback, CSVLoggerCallback):
             has_csv_logger = True
             last_logger_index = i
-        elif isinstance(callback, JsonExperimentLogger):
+        elif isinstance(callback, JsonLoggerCallback):
             has_json_logger = True
             last_logger_index = i
-        elif isinstance(callback, TBXExperimentLogger):
+        elif isinstance(callback, TBXLoggerCallback):
             has_tbx_logger = True
             last_logger_index = i
         elif isinstance(callback, SyncerCallback):
@@ -72,13 +72,13 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
     # If CSV, JSON or TensorboardX loggers are missing, add
     if os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_LOGGERS", "0") != "1":
         if not has_csv_logger:
-            callbacks.append(CSVExperimentLogger())
+            callbacks.append(CSVLoggerCallback())
             last_logger_index = len(callbacks) - 1
         if not has_json_logger:
-            callbacks.append(JsonExperimentLogger())
+            callbacks.append(JsonLoggerCallback())
             last_logger_index = len(callbacks) - 1
         if not has_tbx_logger:
-            callbacks.append(TBXExperimentLogger())
+            callbacks.append(TBXLoggerCallback())
             last_logger_index = len(callbacks) - 1
 
     # If no SyncerCallback was found, add
@@ -98,9 +98,9 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
             # passed a customer SyncerCallback).
             raise ValueError(
                 "The `SyncerCallback` you passed to `tune.run()` came before "
-                "at least one `ExperimentLogger`. Syncing should be done "
+                "at least one `LoggerCallback`. Syncing should be done "
                 "after writing logs. Please re-order the callbacks so that "
-                "the `SyncerCallback` comes after any `ExperimentLogger`.")
+                "the `SyncerCallback` comes after any `LoggerCallback`.")
         else:
             # If these loggers were automatically created. just re-order
             # the callbacks

@@ -364,7 +364,7 @@ class UnifiedLogger(Logger):
             _logger.flush()
 
 
-class ExperimentLogger(Callback):
+class LoggerCallback(Callback):
     def log_trial_start(self, trial: "Trial"):
         pass
 
@@ -405,7 +405,7 @@ class ExperimentLogger(Callback):
         self.log_trial_end(trial, failed=True)
 
 
-class LegacyExperimentLogger(ExperimentLogger):
+class LegacyLoggerCallback(LoggerCallback):
     """Supports logging to trial-specific `Logger` classes.
 
     Previously, Ray Tune logging was handled via `Logger` classes that have
@@ -455,12 +455,12 @@ class LegacyExperimentLogger(ExperimentLogger):
                 trial_loggers[trial].close()
 
 
-class JsonExperimentLogger(ExperimentLogger):
+class JsonLoggerCallback(LoggerCallback):
     """Logs trial results in json format.
 
     Also writes to a results file and param.json file when results or
     configurations are updated. Experiments must be executed with the
-    JsonLogger to be compatible with the ExperimentAnalysis tool.
+    JsonLoggerCallback to be compatible with the ExperimentAnalysis tool.
     """
 
     def __init__(self):
@@ -510,7 +510,7 @@ class JsonExperimentLogger(ExperimentLogger):
             cloudpickle.dump(self._trial_configs[trial], f)
 
 
-class CSVExperimentLogger(ExperimentLogger):
+class CSVLoggerCallback(LoggerCallback):
     """Logs results to progress.csv under the trial directory.
 
     Automatically flattens nested dicts in the result dict before writing
@@ -566,7 +566,7 @@ class CSVExperimentLogger(ExperimentLogger):
         del self._trial_files[trial]
 
 
-class TBXExperimentLogger(ExperimentLogger):
+class TBXLoggerCallback(LoggerCallback):
     """TensorBoardX Logger.
 
     Note that hparams will be written only after a trial has terminated.

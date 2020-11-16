@@ -9,9 +9,9 @@ import shutil
 import numpy as np
 from ray.cloudpickle import cloudpickle
 
-from ray.tune.logger import CSVExperimentLogger, JsonExperimentLogger, \
+from ray.tune.logger import CSVLoggerCallback, JsonLoggerCallback, \
     JsonLogger, CSVLogger, \
-    TBXExperimentLogger, TBXLogger
+    TBXLoggerCallback, TBXLogger
 from ray.tune.result import EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE, \
     EXPR_PROGRESS_FILE, \
     EXPR_RESULT_FILE
@@ -65,7 +65,7 @@ class LoggerSuite(unittest.TestCase):
         config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
         t = Trial(
             evaluated_params=config, trial_id="csv", logdir=self.test_dir)
-        logger = CSVExperimentLogger()
+        logger = CSVLoggerCallback()
         logger.on_trial_result(0, [], t, result(0, 4))
         logger.on_trial_result(1, [], t, result(1, 5))
         logger.on_trial_result(
@@ -102,7 +102,7 @@ class LoggerSuite(unittest.TestCase):
         config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
         t = Trial(
             evaluated_params=config, trial_id="json", logdir=self.test_dir)
-        logger = JsonExperimentLogger()
+        logger = JsonLoggerCallback()
         logger.on_trial_result(0, [], t, result(0, 4))
         logger.on_trial_result(1, [], t, result(1, 5))
         logger.on_trial_result(
@@ -173,7 +173,7 @@ class LoggerSuite(unittest.TestCase):
         }
         t = Trial(
             evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
-        logger = TBXExperimentLogger()
+        logger = TBXLoggerCallback()
         logger.on_trial_result(0, [], t, result(0, 4))
         logger.on_trial_result(1, [], t, result(1, 5))
         logger.on_trial_result(
@@ -226,7 +226,7 @@ class LoggerSuite(unittest.TestCase):
         config = {"b": (1, 2, 3)}
         t = Trial(
             evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
-        logger = TBXExperimentLogger()
+        logger = TBXLoggerCallback()
         logger.on_trial_result(0, [], t, result(0, 4))
         logger.on_trial_result(1, [], t, result(1, 5))
         logger.on_trial_result(
@@ -238,7 +238,7 @@ class LoggerSuite(unittest.TestCase):
         config = {"None": None}
         t = Trial(
             evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
-        logger = TBXExperimentLogger()
+        logger = TBXLoggerCallback()
         logger.on_trial_result(0, [], t, result(0, 4))
         logger.on_trial_result(1, [], t, result(1, 5))
         logger.on_trial_result(
