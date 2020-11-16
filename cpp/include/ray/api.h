@@ -197,13 +197,12 @@ template <typename ReturnType, typename FuncType, typename ExecFuncType,
           typename... ArgTypes>
 inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &exec_func,
                                                 ArgTypes &... args) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::WrapArgs(packer, args...);
+  std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
+  Arguments::WrapArgs(&task_args, args...);
   RemoteFunctionPtrHolder ptr;
   ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return TaskCaller<ReturnType>(runtime_.get(), ptr, buffer);
+  return TaskCaller<ReturnType>(runtime_.get(), ptr, std::move(task_args));
 }
 
 template <typename ActorType, typename FuncType, typename ExecFuncType,
@@ -211,13 +210,12 @@ template <typename ActorType, typename FuncType, typename ExecFuncType,
 inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
                                                         ExecFuncType &exec_func,
                                                         ArgTypes &... args) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::WrapArgs(packer, args...);
+  std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
+  Arguments::WrapArgs(&task_args, args...);
   RemoteFunctionPtrHolder ptr;
   ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorCreator<ActorType>(runtime_.get(), ptr, buffer);
+  return ActorCreator<ActorType>(runtime_.get(), ptr, std::move(task_args));
 }
 
 template <typename ReturnType, typename ActorType, typename FuncType,
@@ -226,14 +224,14 @@ inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
                                                           ExecFuncType &exec_func,
                                                           ActorHandle<ActorType> &actor,
                                                           ArgTypes &... args) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::WrapArgs(packer, args...);
+  std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
+  Arguments::WrapArgs(&task_args, args...);
   RemoteFunctionPtrHolder ptr;
   MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
   ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorTaskCaller<ReturnType>(runtime_.get(), actor.ID(), ptr, buffer);
+  return ActorTaskCaller<ReturnType>(runtime_.get(), actor.ID(), ptr,
+                                     std::move(task_args));
 }
 
 // TODO(barakmich): These includes are generated files that do not contain their

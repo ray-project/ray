@@ -11,7 +11,7 @@ import numpy as np
 import ray
 from ray.tune import (run, Trainable, sample_from, Analysis,
                       ExperimentAnalysis, grid_search)
-from ray.tune.examples.async_hyperband_example import MyTrainableClass
+from ray.tune.utils.mock import MyTrainableClass
 
 
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):

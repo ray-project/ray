@@ -346,14 +346,14 @@ def address_to_ip(address):
 
 
 def get_node_ip_address(address="8.8.8.8:53"):
-    """Determine the IP address of the local node.
+    """IP address by which the local node can be reached *from* the `address`.
 
     Args:
         address (str): The IP address and port of any known live service on the
             network you care about.
 
     Returns:
-        The IP address of the current node.
+        The IP address by which the local node can be reached from the address.
     """
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
@@ -608,6 +608,17 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
                 "Waiting for redis server at {}:{} to respond...".format(
                     redis_ip_address, redis_port))
             redis_client.client_list()
+        # If the Redis service is delayed getting set up for any reason, we may
+        # get a redis.ConnectionError: Error 111 connecting to host:port.
+        # Connection refused.
+        # Unfortunately, redis.ConnectionError is also the base class of
+        # redis.AuthenticationError. We *don't* want to obscure a
+        # redis.AuthenticationError, because that indicates the user provided a
+        # bad password. Thus a double except clause to ensure a
+        # redis.AuthenticationError isn't trapped here.
+        except redis.AuthenticationError as authEx:
+            raise RuntimeError("Unable to connect to Redis at {}:{}.".format(
+                redis_ip_address, redis_port)) from authEx
         except redis.ConnectionError:
             # Wait a little bit.
             time.sleep(delay)
@@ -1391,6 +1402,7 @@ def start_raylet(redis_address,
         sys.executable,
         "-u",
         os.path.join(RAY_PATH, "new_dashboard/agent.py"),
+        f"--node-ip-address={node_ip_address}",
         f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
