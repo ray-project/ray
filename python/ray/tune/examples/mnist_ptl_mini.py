@@ -90,7 +90,7 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
         data_dir=data_dir,
         num_epochs=num_epochs,
         num_gpus=gpus_per_trial)
-    tune.run(
+    analysis = tune.run(
         trainable,
         resources_per_trial={
             "cpu": 1,
@@ -101,6 +101,8 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
         config=config,
         num_samples=num_samples,
         name="tune_mnist")
+
+    print("Best hyperparameters found were: ", analysis.best_config)
 
 
 if __name__ == "__main__":

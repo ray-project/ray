@@ -129,8 +129,8 @@ class Experiment:
             # if they instantiate their `Experiment` objects themselves.
             raise ValueError(
                 "Passing `loggers` to an `Experiment` is deprecated. Use "
-                "an `ExperimentLogger` callback instead, e.g. by passing the "
-                "`Logger` classes to `tune.logger.LegacyExperimentLogger` and "
+                "an `LoggerCallback` callback instead, e.g. by passing the "
+                "`Logger` classes to `tune.logger.LegacyLoggerCallback` and "
                 "passing this as part of the `callback` parameter to "
                 "`tune.run()`.")
 

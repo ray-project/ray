@@ -6,9 +6,9 @@ from typing import DefaultDict, List, Dict, Any, Optional
 import pickle
 from dataclasses import dataclass, field
 
-from ray.exceptions import RayTaskError
-
 import ray
+from ray.exceptions import RayTaskError
+from ray.serve.long_poll import LongPollerAsyncClient
 from ray.util import metrics
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import RandomEndpointPolicy
@@ -70,7 +70,16 @@ class Query:
 class Router:
     """A router that routes request to available replicas."""
 
-    async def setup(self, name, controller_name):
+    async def setup(self, name, controller_name, _do_long_pull=True):
+        """Setup the router state
+
+        Args:
+            name(str): Used to identify the router when reporting queue
+                lengths to the controller.
+            controller_name(str): The actor name for the controller.
+            _do_long_pull(bool): Used by unit testing.
+        """
+
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -123,22 +132,6 @@ class Router:
         # from failure.
         self.controller = ray.get_actor(controller_name)
 
-        traffic_policies = ray.get(
-            self.controller.get_traffic_policies.remote())
-        for endpoint, traffic_policy in traffic_policies.items():
-            await self.set_traffic(endpoint, traffic_policy)
-
-        backend_dict = ray.get(
-            self.controller.get_all_replica_handles.remote())
-        for backend_tag, replica_dict in backend_dict.items():
-            for replica_tag, replica_handle in replica_dict.items():
-                await self.add_new_replica(backend_tag, replica_tag,
-                                           replica_handle)
-
-        backend_configs = ray.get(self.controller.get_backend_configs.remote())
-        for backend, backend_config in backend_configs.items():
-            await self.set_backend_config(backend, backend_config)
-
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Count(
             "num_router_requests",
@@ -163,6 +156,56 @@ class Router:
             tag_keys=("backend", ))
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
+
+        if _do_long_pull:
+            self.long_poll_client = LongPollerAsyncClient(
+                self.controller, {
+                    "traffic_policies": self.update_traffic_policies,
+                    "worker_handles": self.update_worker_handles,
+                    "backend_configs": self.update_backend_configs
+                })
+
+    async def update_traffic_policies(self, traffic_policies):
+        updated_endpoints = set(traffic_policies.keys())
+        curr_endpoints = set(self.traffic.keys())
+
+        for endpoint in updated_endpoints:
+            await self.set_traffic(endpoint, traffic_policies[endpoint])
+
+        removed_endpoints = curr_endpoints - updated_endpoints
+        for endpoint in removed_endpoints:
+            await self.remove_endpoint(endpoint)
+
+    async def update_worker_handles(self, worker_handles):
+        for backend_tag, replica_dict in worker_handles.items():
+            # NOTE(simon): This is a just hack around the current data
+            # structure to resolve replicas added and removed. It will be
+            # immediately become obselete when we update the router.
+            updated_replica_tags = set(replica_dict.keys())
+            curr_replica_tags = {
+                tag.replace(backend_tag + ":", "")
+                for tag in self.replicas.keys() if tag.startswith(backend_tag)
+            }
+
+            added_replicas = updated_replica_tags - curr_replica_tags
+            removed_replicas = curr_replica_tags - updated_replica_tags
+
+            for replica_tag in added_replicas:
+                await self.add_new_replica(backend_tag, replica_tag,
+                                           replica_dict[replica_tag])
+            for replica_tag in removed_replicas:
+                await self.remove_replica(backend_tag, replica_tag)
+
+    async def update_backend_configs(self, backend_configs):
+        updated_backends = set(backend_configs.keys())
+        curr_backends = set(self.backend_info.keys())
+
+        for backend in updated_backends:
+            await self.set_backend_config(backend, backend_configs[backend])
+
+        removed_backends = curr_backends - updated_backends
+        for backend in removed_backends:
+            await self.remove_backend(backend)
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
