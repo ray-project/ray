@@ -1,11 +1,14 @@
 import abc
 import os
 import re
+from collections import namedtuple
 from typing import List
 
 import ray
+from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 
-class ExternalStorageURLProtocl():
+
+class ExternalStorageURLProtocol:
     """Class to parse/generate urls for object spilling.
     
     There will be 2 types of URLs.
@@ -15,37 +18,73 @@ class ExternalStorageURLProtocl():
     This class is used as a translator layer between 1 and 2.
     """
 
-    def __init__(self, Prefix):
+    def __init__(self, prefix: str):
         self._prefix = prefix
         # NOTE(sang): To optimize the performance, Ray fusions small
-        #             objects when it stored them. object_id_stored is
-        #             an object_id that is used as a filename.
+        # objects when it stored them. object_id_stored is
+        # an object_id that is used as a filename.
         # (job_id)-(object_id_stored)-(object_id)
         # -(object_size_in_bytes)-(offsets_in_bytes)
         self.internal_url_pattern = re.compile(
-            "([0-9a-f]{4})-([0-9a-f]{20})-([0-9a-f]{20})-(\d+)-(\d+)")
+            "([0-9a-f]{8})-([0-9a-f]{40})-([0-9a-f]{40})-(\d+)-(\d+)")
         # (prefix)-(object_id_stored)
         self.external_url_pattern = re.compile(
-            "(\w+)-([0-9a-f]{20})"
-        )
+            "([0-9a-zA-Z_]+)-([0-9a-f]{40})")
 
-    def create_external_storage_url(self, internal_url):
+    def produce_external_url(self, internal_url: str):
         """internal_url -> external_url"""
         match = self.internal_url_pattern.match(internal_url)
-        assert match, (
-            f"Given external url, {internal_url}, doesn't "
-            "follow the protocl. Please follow this pattern: "
-            f"{self.internal_url_pattern}")
-        job_id = match.group(0)
-        object_id_stored = match.group(0)
-
-    def parse_external_storage_url(self, external_url):
-        """external_url -> internal_url"""
+        assert match, (f"Given external url, {internal_url}, doesn't "
+                       "follow the protocl. Please follow this pattern: "
+                       f"{self.internal_url_pattern}")
+        object_id_stored = match.group(2)
+        external_url = f"{self._prefix}-{object_id_stored}"
         match = self.external_url_pattern.match(external_url)
-        assert match, (
-            f"Given external url, {external_url}, doesn't "
-            "follow the protocl. Please follow this pattern: "
-            f"{self.external_url_pattern}")
+        assert match, (f"Given external url, {external_url}, doesn't "
+                       "follow the protocol. Please follow this pattern: "
+                       f"{self.external_url_pattern}")
+        return external_url
+
+    def create_internal_url(self, *, job_id: str, object_id_stored: str,
+                            object_id: str, object_size_in_bytes: int,
+                            offsets_in_bytes: int):
+        """Create an internal url from a given input.
+        
+        Follow the self.internal_url_pattern protocol.
+
+        Args:
+            job_id(str): JobID in hex string.
+            object_id_stored(str): Object ID in hex that is used
+                as a key to store this object.
+            object_id(str): Object ID in hex.
+            object_size_in_bytes(int): The size of objects in bytes.
+            offsets_in_bytes(int): The offsets from the beginning
+                of the file in bytes
+        """
+        internal_url = (
+            f"{job_id}-{object_id_stored}-{object_id}"
+            f"-{str(object_size_in_bytes)}-{str(offsets_in_bytes)}")
+        match = self.internal_url_pattern.match(internal_url)
+        assert match, (f"Given external url, {internal_url}, doesn't "
+                       "follow the protocol. Please follow this pattern: "
+                       f"{self.internal_url_pattern}")
+        return internal_url
+
+    def get_url_info(self, internal_url) -> namedtuple:
+        match = self.internal_url_pattern.match(internal_url)
+        assert match, (f"Given external url, {internal_url}, doesn't "
+                       "follow the protocol. Please follow this pattern: "
+                       f"{self.internal_url_pattern}")
+        URLInfo = namedtuple(
+            "URLInfo", "job_id object_id_stored "
+            "object_id object_size_in_bytes "
+            "offsets_in_bytes")
+        return URLInfo(
+            job_id=match.group(1),
+            object_id_stored=match.group(2),
+            object_id=match.group(3),
+            object_size_in_bytes=int(match.group(4)),
+            offsets_in_bytes=int(match.group(5)))
 
 
 class ExternalStorage(metaclass=abc.ABCMeta):
@@ -86,16 +125,16 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         Args:
             object_refs: The list of the refs of the objects to be spilled.
         Returns:
-            A list of keys corresponding to the input object refs.
+            A list of internal URLs following ExternalStorageURLProtocol.
         """
 
     @abc.abstractmethod
-    def restore_spilled_objects(self, keys: List[bytes]):
+    def restore_spilled_objects(self, keys: List[str]):
         """Spill objects to the external storage. Objects are specified
         by their object refs.
 
         Args:
-            keys: A list of bytes corresponding to the spilled objects.
+            keys: A list of internal URL following ExternalStorageURLProtocol.
         """
 
 
@@ -119,32 +158,44 @@ class FileSystemStorage(ExternalStorage):
 
     def __init__(self, directory_path):
         self.directory_path = directory_path
-        self.prefix = "ray-spilled-object_"
+        self.prefix = DEFAULT_OBJECT_PREFIX
         os.makedirs(self.directory_path, exist_ok=True)
         if not os.path.exists(self.directory_path):
             raise ValueError("The given directory path to store objects, "
                              f"{self.directory_path}, could not be created.")
+        self.url_protocol = ExternalStorageURLProtocol(self.prefix)
 
     def spill_objects(self, object_refs) -> List[str]:
         keys = []
         ray_object_pairs = self._get_objects_from_store(object_refs)
         for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
+            offsets = 0
             filename = self.prefix + ref.hex()
+            metadata_len = len(metadata)
+            buf_len = len(buf)
+            internal_url = self.url_protocol.create_internal_url(
+                job_id=ref.job_id().hex(),
+                object_id_stored=ref.hex(),
+                object_id=ref.hex(),
+                object_size_in_bytes=metadata_len + buf_len + 16,
+                offsets_in_bytes=offsets)
+            filename = self.url_protocol.produce_external_url(internal_url)
             with open(os.path.join(self.directory_path, filename), "wb") as f:
-                metadata_len = len(metadata)
-                buf_len = len(buf)
                 f.write(metadata_len.to_bytes(8, byteorder="little"))
                 f.write(buf_len.to_bytes(8, byteorder="little"))
                 f.write(metadata)
                 f.write(memoryview(buf))
-            keys.append(filename.encode())
+            keys.append(internal_url.encode())
         return keys
 
     def restore_spilled_objects(self, keys):
         for k in keys:
-            filename = k.decode()
-            ref = ray.ObjectRef(bytes.fromhex(filename[len(self.prefix):]))
+            internal_url = k.decode()
+            url_info = self.url_protocol.get_url_info(internal_url)
+            filename = self.url_protocol.produce_external_url(internal_url)
+            ref = ray.ObjectRef(bytes.fromhex(url_info.object_id))
             with open(os.path.join(self.directory_path, filename), "rb") as f:
+                f.seek(url_info.offsets_in_bytes)
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata = f.read(metadata_len)
@@ -172,7 +223,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
 
     def __init__(self,
                  uri: str,
-                 prefix: str = "ray-spilled-object_",
+                 prefix: str = DEFAULT_OBJECT_PREFIX,
                  override_transport_params: dict = None):
         try:
             from smart_open import open  # noqa

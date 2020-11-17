@@ -152,6 +152,9 @@ cdef class TaskID(BaseID):
     def actor_id(self):
         return ActorID(self.data.ActorId().Binary())
 
+    def job_id(self):
+        return JobID(self.data.JobId().Binary())
+
     cdef size_t hash(self):
         return self.data.Hash()
 
