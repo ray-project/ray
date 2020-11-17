@@ -316,12 +316,11 @@ class _SimpleListCollector(_SampleCollector):
         env_steps = \
             self.built_env_steps_per_index[episode.env_index] + \
             self.episode_steps[episode_id]
-        #TODO: this seems wrong.
         if (env_steps > self.large_batch_threshold
                 and log_once("large_batch_warning")):
             logger.warning(
-                "More than {} observations for {} env steps ".format(
-                    env_steps, env_steps) +
+                "More than {} env steps for episode {} ".format(
+                    env_steps, episode_id) +
                 "are buffered in the sampler. If this is more than you "
                 "expected, check that that you set a horizon on your "
                 "environment correctly and that it terminates at some point. "
@@ -329,7 +328,7 @@ class _SimpleListCollector(_SampleCollector):
                 "sets the batch size based on (across-agents) environment "
                 "steps, not the steps of individual agents, which can result "
                 "in unexpectedly large batches." +
-                ("Also, you may be in evaluation waiting for your Env to "
+                ("Also, you may be waiting for your Env to "
                  "terminate (batch_mode=`complete_episodes`). Make sure it "
                  "does at some point."
                  if not self.multiple_episodes_in_batch else ""))

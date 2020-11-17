@@ -60,8 +60,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             rollout_worker = trainer.workers.local_worker()
             sample_batch = rollout_worker.sample()
-            expected_count = config["num_envs_per_worker"] * \
-                             config["rollout_fragment_length"]
+            expected_count = \
+                config["num_envs_per_worker"] * \
+                config["rollout_fragment_length"]
             assert sample_batch.count == expected_count
             for v in sample_batch.data.values():
                 assert len(v) == expected_count
