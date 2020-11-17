@@ -320,7 +320,7 @@ class _PolicyCollector:
         """
         for view_col, data in batch.items():
             # Skip columns that are not used for training.
-            if view_col in view_requirements and \
+            if view_col not in view_requirements or \
                     not view_requirements[view_col].used_for_training:
                 continue
             assert view_requirements[view_col].is_input_dict is False
