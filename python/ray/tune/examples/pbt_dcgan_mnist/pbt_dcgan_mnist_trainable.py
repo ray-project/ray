@@ -127,8 +127,6 @@ if __name__ == "__main__":
     # __tune_begin__
     scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="is_score",
-        mode="max",
         perturbation_interval=5,
         hyperparam_mutations={
             # distribution for resampling
@@ -143,6 +141,8 @@ if __name__ == "__main__":
         scheduler=scheduler,
         reuse_actors=True,
         verbose=1,
+        metric="is_score",
+        mode="max",
         checkpoint_at_end=True,
         stop={
             "training_iteration": tune_iter,
