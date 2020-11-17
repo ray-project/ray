@@ -145,7 +145,15 @@ public class ActorTest extends BaseTest {
     Assert.expectThrows(UnreconstructableException.class, () -> largeValue.get());
   }
 
-  public static class ChildClass extends Counter {
+  public interface ChildClassInterface {
+
+    default String interfaceName() {
+      return getClass().getName();
+    }
+
+  }
+
+  public static class ChildClass extends Counter implements ChildClassInterface {
 
     public ChildClass(int initValue) {
       super(initValue);
@@ -167,6 +175,9 @@ public class ActorTest extends BaseTest {
     // execute child class methods.
     counter.task(Counter::increase, 10).remote();
     Assert.assertEquals(counter.task(Counter::getValue).remote().get(), Integer.valueOf(80));
+    // test interface default methods
+    Assert.assertEquals(counter.task(ChildClassInterface::interfaceName).remote().get(),
+        ChildClassInterface.class.getName());
   }
 
 }
