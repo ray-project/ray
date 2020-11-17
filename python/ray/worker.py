@@ -1486,8 +1486,8 @@ def get(object_refs, *, timeout=None):
         # Put code here that tests for object_ids
         print("XXX")
         for object_ref in object_refs:
-            print("YYY")
-            key = "RAY_PDB_GET_{}".format(object_ref)
+            print("YYY", object_ref.hex())
+            key = "RAY_PDB_GET_{}".format(object_ref.hex())
             data = ray.experimental.internal_kv._internal_kv_get(key)
             print("data", data)
             if data:

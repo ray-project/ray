@@ -180,7 +180,7 @@ def debug(address):
                         host, port = session["pdb_address"].split(":")
                         with Telnet(host, int(port)) as tn:
                             tn.interact()
-                        break
+                        continue
                     time.sleep(1.0)
 
         print("Active breakpoints:")
