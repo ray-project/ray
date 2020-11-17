@@ -243,7 +243,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                  label_column=None,
                  label_shape=None,
                  label_type=None):
-        """Create a TorchDataset from the current MLDataset.
+        """Create a TorchMLDataset from the current MLDataset.
 
         Args:
             feature_columns (List[Any]): the column indexes name.
@@ -258,12 +258,12 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
             label_type (Optional["torch.dtype"]): the label type, this will be
                cast into torch.float by default
         Returns:
-            A TorchDataset
+            A TorchMLDataset
         """
-        from ray.util.sgd.torch.torch_dataset import TorchDataset
-        return TorchDataset(self, feature_columns, feature_shapes,
-                            feature_types, label_column, label_shape,
-                            label_type)
+        from ray.util.sgd.torch.torch_dataset import TorchMLDataset
+        return TorchMLDataset(self, feature_columns, feature_shapes,
+                              feature_types, label_column, label_shape,
+                              label_type)
 
     def to_tf(self,
               feature_columns=None,
@@ -272,7 +272,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
               label_column=None,
               label_shape=None,
               label_type=None):
-        """Create a TFDataset from the current MLDataset.
+        """Create a TFMLDataset from the current MLDataset.
 
         Args:
             feature_columns (List[Any]): the column names.
@@ -287,11 +287,12 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
             label_type (Optional["tf.DType"]): the label type, this will be
                cast into tf.float by default
         Returns:
-            A TFDataset
+            A TFMLDataset
         """
-        from ray.util.sgd.tf.tf_dataset import TFDataset
-        return TFDataset(self, feature_columns, feature_shapes, feature_types,
-                         label_column, label_shape, label_type)
+        from ray.util.sgd.tf.tf_dataset import TFMLDataset
+        return TFMLDataset(self, feature_columns, feature_shapes,
+                           feature_types, label_column, label_shape,
+                           label_type)
 
 
 class _RepeatableIterator(Iterator[T]):

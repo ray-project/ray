@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 import ray
 import ray.util.data as ml_data
 import ray.util.iter as parallel_it
-from ray.util.sgd.torch.torch_dataset import TorchDataset
+from ray.util.sgd.torch.torch_dataset import TorchMLDataset
 from ray.util.sgd.torch.torch_trainer import TorchTrainer
 from ray.util.sgd.torch.training_operator import TrainingOperator
 
@@ -24,7 +24,7 @@ class Net(nn.Module):
         return x
 
 
-def make_train_operator(ds: TorchDataset):
+def make_train_operator(ds: TorchMLDataset):
     class IdentityTrainOperator(TrainingOperator):
         def setup(self, config):
             model = Net()

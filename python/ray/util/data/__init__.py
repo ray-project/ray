@@ -1,13 +1,12 @@
 from collections import defaultdict
-from typing import List, Iterable
+from typing import Iterable
 
 import pandas as pd
 
 from ray.util.data.dataset import MLDataset
+from ray.util.data.interface import TensorDataset
 from ray.util.data.parquet import read_parquet
-from ray.util.data.interface import SourceShard, TensorDataset
 from ray.util.iter import T, ParallelIterator
-import ray.util.iter as parallel_it
 
 try:
     import dataclasses
@@ -92,30 +91,4 @@ def from_parallel_iter(para_it: ParallelIterator[T],
     return MLDataset.from_parallel_it(para_it, batch_size, repeated)
 
 
-def from_source_shards(source_shards: List[SourceShard],
-                       num_shards: int,
-                       name: str,
-                       batch_size: int = 0) -> MLDataset:
-    shards = [[] for _ in range(num_shards)]
-    for i, item in enumerate(source_shards):
-        shards[i % num_shards].append(item)
-
-    def make_gen(shard_list: List[SourceShard]):
-        def gen():
-            for s in shard_list:
-                s = iter(s)
-                for df in s:
-                    yield s
-
-        return gen
-
-    for i, shard in shards:
-        shards[i] = make_gen(shard)
-    it = parallel_it.from_iterators(shards, False, name)
-    return MLDataset.from_parallel_it(it, batch_size, False)
-
-
-__all__ = [
-    "from_parallel_iter", "from_source_shards", "read_parquet", "MLDataset",
-    "SourceShard", "TensorDataset"
-]
+__all__ = ["from_parallel_iter", "read_parquet", "MLDataset", "TensorDataset"]

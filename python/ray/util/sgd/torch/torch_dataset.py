@@ -47,8 +47,8 @@ def convert_to_tensor(df, feature_columns: List[Any],
     return feature_tensor, label_tensor
 
 
-class TorchDataset(TensorDataset):
-    """ A TorchDataset which converted from MLDataset
+class TorchMLDataset(TensorDataset):
+    """A TorchMLDataset which converted from MLDataset
 
     .. code-block:: python
 

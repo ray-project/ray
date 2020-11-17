@@ -6,8 +6,8 @@ import tensorflow as tf
 from ray.util.data import MLDataset, TensorDataset
 
 
-class TFDataset(TensorDataset):
-    """ A TFDataset which converted from MLDataset
+class TFMLDataset(TensorDataset):
+    """ A TFMLDataset which converted from MLDataset
 
     .. code-block:: python
 

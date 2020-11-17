@@ -4,7 +4,7 @@ import os
 import ray
 import ray.util.data as ml_data
 import ray.util.iter as parallel_it
-from ray.util.sgd.tf.tf_dataset import TFDataset
+from ray.util.sgd.tf.tf_dataset import TFMLDataset
 from ray.util.sgd.tf.tf_trainer import TFTrainer
 
 
@@ -20,7 +20,7 @@ def model_creator(config):
     return model
 
 
-def make_data_creator(tf_ds: TFDataset):
+def make_data_creator(tf_ds: TFMLDataset):
     def data_creator(config):
         world_rank = None
         if "TF_CONFIG" in os.environ:

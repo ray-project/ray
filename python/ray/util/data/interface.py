@@ -3,7 +3,10 @@ from typing import Iterable
 import pandas as pd
 
 
-class SourceShard:
+class _SourceShard:
+    def prefix(self) -> str:
+        raise NotImplementedError
+
     @property
     def shard_id(self) -> int:
         raise NotImplementedError
@@ -15,7 +18,7 @@ class SourceShard:
         return repr(self)
 
     def __repr__(self):
-        return f"SourceShard[{self.shard_id}]"
+        return f"{self.prefix()}SourceShard[{self.shard_id}]"
 
 
 class TensorDataset:

@@ -7,10 +7,10 @@ from pandas import DataFrame
 
 import ray.util.iter as para_iter
 from .dataset import MLDataset
-from .interface import SourceShard
+from .interface import _SourceShard
 
 
-class ParquetSourceShard(SourceShard):
+class ParquetSourceShard(_SourceShard):
     def __init__(self, data_pieces: List[pq.ParquetDatasetPiece],
                  columns: Optional[List[str]],
                  partitions: Optional[pq.ParquetPartitions], shard_id: int):
@@ -18,6 +18,9 @@ class ParquetSourceShard(SourceShard):
         self._columns = columns
         self._partitions = partitions
         self._shard_id = shard_id
+
+    def prefix(self) -> str:
+        return "Parquet"
 
     @property
     def shard_id(self) -> int:
@@ -46,7 +49,7 @@ def read_parquet(paths: Union[str, List[str]],
         spark.range(...).write.parquet(...)
         # create MLDataset
         data = ray.util.data.read_parquet(...)
-        # convert to TorchDataset
+        # convert to TorchMLDataset
         ds = data.to_torch(feature_columns=..., label_column=...)
         # get the given shard data
         shard = ds.get_shard(0)
@@ -94,7 +97,7 @@ def read_parquet(paths: Union[str, List[str]],
     for i, item in enumerate(data_pieces):
         shard = shards[i % num_shards]
         if item.row_group is None:
-            for number in pieces.get_metadata().to_dict()["num_row_groups"]:
+            for number in item.get_metadata().to_dict()["num_row_groups"]:
                 shard.append(
                     pq.ParquetDatasetPiece(item.path, item.open_file_func,
                                            item.file_options, number,
