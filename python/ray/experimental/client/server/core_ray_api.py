@@ -30,5 +30,3 @@ class CoreRayAPI(APIImpl):
 
     def close(self, *args, **kwargs):
         return None
-
-
