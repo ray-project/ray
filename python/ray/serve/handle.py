@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import threading
 from typing import Any, Coroutine, Dict, Optional, Union
 
@@ -110,7 +111,9 @@ class RayServeHandle:
         """
         assert self.sync, "handle.remote() should be called from sync handle."
         coro = self._remote(request_data, kwargs)
-        future = asyncio.run_coroutine_threadsafe(coro, self.async_loop)
+        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
+            coro, self.async_loop)
+        # Block until the result is ready.
         return future.result()
 
     async def _remote_async(self, request_data, **kwargs) -> ray.ObjectRef:

@@ -70,6 +70,8 @@ class ReplicaSet:
     def set_max_concurrent_queries(self, new_value):
         if new_value != self.max_concurrent_queries:
             self.max_concurrent_queries = new_value
+            logger.debug(
+                f"ReplicaSet: chaging max_concurrent_queries to {new_value}")
             self.config_updated_event.set()
 
     def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
@@ -104,6 +106,7 @@ class ReplicaSet:
                    ) >= self.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
+            logger.debug(f"Replica set assigned {query} to {replica}")
             ref = replica.handle_request.remote(query)
             self.in_flight_queries[replica].add(ref)
             return ref
@@ -130,12 +133,15 @@ class ReplicaSet:
         """
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
+            logger.debug(f"Failed to assign a replica for query {query}")
             # Maybe there exists a free replica, we just need to refresh our
             # query tracker.
             num_finished = self._drain_completed_object_refs()
             # All replicas are really busy, wait for a query to complete or the
             # config to be updated.
             if num_finished == 0:
+                logger.debug(
+                    f"All replicas are busy, waiting for a free replica.")
                 await asyncio.wait(
                     self._all_query_refs + [self.config_updated_event.wait()],
                     return_when=asyncio.FIRST_COMPLETED)
