@@ -17,8 +17,6 @@ ClusterTaskManager::ClusterTaskManager(
       get_node_info_(get_node_info) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
-  RAY_LOG(DEBUG) << "Scheduling pending tasks from " << tasks_to_schedule_.size()
-                 << " resource shape queues";
   bool did_schedule = false;
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
@@ -95,8 +93,6 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
-  RAY_LOG(DEBUG) << "Dispatching tasks from " << tasks_to_dispatch_.size()
-                 << " resource shape queues";
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -115,7 +111,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       }
 
       bool worker_leased;
-      bool remove = DispatchWork(*work_it, worker, &worker_leased);
+      bool remove = AttemptDispatchWork(*work_it, worker, &worker_leased);
       if (worker_leased) {
         auto reply = std::get<1>(*work_it);
         auto callback = std::get<2>(*work_it);
@@ -138,11 +134,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   }
 }
 
-bool ClusterTaskManager::DispatchWork(const Work &work,
-                                      std::shared_ptr<WorkerInterface> &worker,
-                                      bool *worker_leased) {
+bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
+                                             std::shared_ptr<WorkerInterface> &worker,
+                                             bool *worker_leased) {
   const auto &task = std::get<0>(work);
   const auto &spec = task.GetTaskSpecification();
+  RAY_LOG(DEBUG) << "Attempting to dispatch task " << spec.TaskId();
 
   std::shared_ptr<TaskResourceInstances> allocated_instances(new TaskResourceInstances());
   bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
@@ -331,6 +328,7 @@ void ClusterTaskManager::Dispatch(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
+  RAY_LOG(DEBUG) << "Dispatching task " << task_spec.TaskId();
   // Pass the contact info of the worker to use.
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());

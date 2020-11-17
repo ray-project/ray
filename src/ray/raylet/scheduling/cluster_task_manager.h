@@ -117,8 +117,8 @@ class ClusterTaskManager {
   /// Helper method to try dispatching a single task from the queue to an
   /// available worker. Returns whether the task should be removed from the
   /// queue and whether the worker was successfully leased to execute the work.
-  bool DispatchWork(const Work &work, std::shared_ptr<WorkerInterface> &worker,
-                    bool *worker_leased);
+  bool AttemptDispatchWork(const Work &work, std::shared_ptr<WorkerInterface> &worker,
+                           bool *worker_leased);
 
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
