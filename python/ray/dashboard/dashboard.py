@@ -81,7 +81,7 @@ class DashboardController(BaseDashboardController):
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
         workers_info_by_node = {
-            data["nodeId"]: data.get("workersStats")
+            data["nodeId"]: data.get("workersStats", [])
             for data in D.values()
         }
 
@@ -165,7 +165,7 @@ class DashboardController(BaseDashboardController):
         self.raylet_stats.include_memory_info = True
         D = self.raylet_stats.get_raylet_stats()
         workers_info_by_node = {
-            data["nodeId"]: data.get("workersStats")
+            data["nodeId"]: data.get("workersStats", [])
             for data in D.values()
         }
         self.memory_table = construct_memory_table(
@@ -696,7 +696,7 @@ class RayletStats(threading.Thread):
                         node_manager_pb2.GetNodeStatsRequest(
                             include_memory_info=self.include_memory_info),
                         timeout=2)
-                    reply_dict = MessageToDict(reply)
+                    reply_dict = MessageToDict(reply, including_default_value_fields=True)
                     reply_dict["nodeId"] = node_id
                     replies[node["NodeManagerAddress"]] = reply_dict
                 with self._raylet_stats_lock:
