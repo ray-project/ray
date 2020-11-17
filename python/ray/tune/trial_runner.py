@@ -6,6 +6,7 @@ import os
 import time
 import traceback
 import types
+import warnings
 
 import ray.cloudpickle as cloudpickle
 from ray.services import get_node_ip_address
@@ -20,6 +21,7 @@ from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
+from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.web_server import TuneServer
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.util.debug import log_once
@@ -109,8 +111,6 @@ class TrialRunner:
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution.
-        verbose (bool): Flag for verbosity. If False, trial results
-            will not be output.
         checkpoint_period (int): Trial runner checkpoint periodicity in
             seconds. Defaults to 10.
         trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
@@ -133,7 +133,6 @@ class TrialRunner:
                  resume=False,
                  server_port=None,
                  fail_fast=False,
-                 verbose=True,
                  checkpoint_period=None,
                  trial_executor=None,
                  callbacks=None,
@@ -157,7 +156,7 @@ class TrialRunner:
         if isinstance(self._fail_fast, str):
             self._fail_fast = self._fail_fast.upper()
             if self._fail_fast == TrialRunner.RAISE:
-                logger.warning(
+                warnings.warn(
                     "fail_fast='raise' detected. Be careful when using this "
                     "mode as resources (such as Ray processes, "
                     "file descriptors, and temporary files) may not be "
@@ -166,7 +165,6 @@ class TrialRunner:
             else:
                 raise ValueError("fail_fast must be one of {bool, RAISE}. "
                                  f"Got {self._fail_fast}.")
-        self._verbose = verbose
 
         self._server = None
         self._server_port = server_port
@@ -196,7 +194,7 @@ class TrialRunner:
                 self.resume(run_errored_only=errored_only)
                 self._resumed = True
             except Exception as e:
-                if self._verbose:
+                if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
                     logger.error(str(e))
                 logger.exception("Runner restore failed.")
                 if self._fail_fast:
@@ -429,7 +427,6 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
-        trial.set_verbose(self._verbose)
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
@@ -474,7 +471,7 @@ class TrialRunner:
         wait_for_trial = trials_done and not self._search_alg.is_finished()
         # Only fetch a new trial if we have no pending trial
         if not any(trial.status == Trial.PENDING for trial in self._trials) \
-           or wait_for_trial:
+                or wait_for_trial:
             self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
             trial = self._scheduler_alg.choose_trial_to_run(self)
@@ -587,6 +584,8 @@ class TrialRunner:
                 with warn_if_slow("scheduler.on_trial_result"):
                     decision = self._scheduler_alg.on_trial_result(
                         self, trial, flat_result)
+                if decision == TrialScheduler.STOP:
+                    result.update(done=True)
                 with warn_if_slow("search_alg.on_trial_result"):
                     self._search_alg.on_trial_result(trial.trial_id,
                                                      flat_result)
@@ -605,7 +604,6 @@ class TrialRunner:
                             iteration=self._iteration,
                             trials=self._trials,
                             trial=trial)
-                    result.update(done=True)
 
             if not is_duplicate:
                 trial.update_last_result(
@@ -625,9 +623,12 @@ class TrialRunner:
             else:
                 self._execute_action(trial, decision)
         except Exception:
-            logger.exception("Trial %s: Error processing event.", trial)
+            error_msg = "Trial %s: Error processing event." % trial
             if self._fail_fast == TrialRunner.RAISE:
+                logger.error(error_msg)
                 raise
+            else:
+                logger.exception(error_msg)
             self._process_trial_failure(trial, traceback.format_exc())
 
     def _validate_result_metrics(self, result):
@@ -793,11 +794,7 @@ class TrialRunner:
             # Restore was unsuccessful, try again without checkpoint.
             trial.clear_checkpoint()
         self.trial_executor.stop_trial(
-            trial,
-            error=error_msg is not None,
-            error_msg=error_msg,
-            stop_logger=False)
-        trial.result_logger.flush()
+            trial, error=error_msg is not None, error_msg=error_msg)
         if self.trial_executor.has_resources(trial.resources):
             logger.info(
                 "Trial %s: Attempting to restore "

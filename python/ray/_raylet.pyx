@@ -54,7 +54,6 @@ from ray.includes.common cimport (
     CTaskType,
     CPlacementStrategy,
     CRayFunction,
-    LocalMemoryBuffer,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -65,7 +64,8 @@ from ray.includes.common cimport (
     TASK_TYPE_ACTOR_TASK,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
-    WORKER_TYPE_IO_WORKER,
+    WORKER_TYPE_SPILL_WORKER,
+    WORKER_TYPE_RESTORE_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -326,19 +326,6 @@ cdef prepare_args(
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
 
 
-def switch_worker_log_if_needed(worker, next_job_id):
-    if worker.mode != ray.WORKER_MODE:
-        return
-    if (worker.current_logging_job_id is None) or \
-            (worker.current_logging_job_id != next_job_id):
-        job_stdout_path, job_stderr_path = (
-            worker.node.get_job_redirected_log_file(
-                worker.worker_id, next_job_id.binary())
-        )
-        ray.worker.set_log_file(job_stdout_path, job_stderr_path)
-        worker.current_logging_job_id = next_job_id
-
-
 cdef execute_task(
         CTaskType task_type,
         const c_string name,
@@ -472,7 +459,6 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    switch_worker_log_if_needed(worker, job_id)
                     with ray.worker._changeproctitle(title, next_title):
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
@@ -605,7 +591,10 @@ cdef c_vector[c_string] spill_objects_handler(
     with gil:
         object_refs = VectorToObjectRefs(object_ids_to_spill)
         try:
-            urls = external_storage.spill_objects(object_refs)
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
+                urls = external_storage.spill_objects(object_refs)
             for url in urls:
                 return_urls.push_back(url)
         except Exception:
@@ -615,7 +604,7 @@ cdef c_vector[c_string] spill_objects_handler(
             logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
-                "io_worker_spill_objects_error",
+                "spill_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
         return return_urls
@@ -629,7 +618,10 @@ cdef void restore_spilled_objects_handler(
         for i in range(size):
             urls.append(object_urls[i])
         try:
-            external_storage.restore_spilled_objects(urls)
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
+                external_storage.restore_spilled_objects(urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
@@ -637,7 +629,7 @@ cdef void restore_spilled_objects_handler(
             logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
-                "io_worker_retore_spilled_objects_error",
+                "restore_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
 
@@ -723,9 +715,12 @@ cdef class CoreWorker:
         elif worker_type == ray.WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_WORKER
-        elif worker_type == ray.IO_WORKER_MODE:
+        elif worker_type == ray.SPILL_WORKER_MODE:
             self.is_driver = False
-            options.worker_type = WORKER_TYPE_IO_WORKER
+            options.worker_type = WORKER_TYPE_SPILL_WORKER
+        elif worker_type == ray.RESTORE_WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_RESTORE_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
@@ -893,7 +888,7 @@ cdef class CoreWorker:
             # can't track their lifecycle, so we don't pin the object
             # in this case.
             check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
-                         c_object_id, pin_object=object_ref is None))
+                         c_object_id, pin_object=False))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,

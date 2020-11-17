@@ -10,6 +10,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
+from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 tf1, tf, tfv = try_import_tf()
@@ -96,6 +97,16 @@ class Random(Exploration):
                         return tf.random.normal(
                             shape=(batch_size, ) + component.shape,
                             dtype=component.dtype)
+                else:
+                    assert isinstance(component, Simplex), \
+                        "Unsupported distribution component '{}' for random " \
+                        "sampling!".format(component)
+                    return tf.nn.softmax(
+                        tf.random.uniform(
+                            shape=(batch_size, ) + component.shape,
+                            minval=0.0,
+                            maxval=1.0,
+                            dtype=component.dtype))
 
             actions = tree.map_structure(random_component,
                                          self.action_space_struct)

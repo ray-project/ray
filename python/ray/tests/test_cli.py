@@ -29,6 +29,7 @@ import pytest
 
 import moto
 from moto import mock_ec2, mock_iam
+from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 
 from testfixtures import Replacer
@@ -36,6 +37,34 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray.autoscaler._private.aws.config as aws_config
 import ray.scripts.scripts as scripts
+
+boto3_list = [{
+    "InstanceType": "t1.micro",
+    "VCpuInfo": {
+        "DefaultVCpus": 1
+    }
+}, {
+    "InstanceType": "m4.xlarge",
+    "VCpuInfo": {
+        "DefaultVCpus": 4
+    }
+}, {
+    "InstanceType": "m4.4xlarge",
+    "VCpuInfo": {
+        "DefaultVCpus": 16
+    }
+}, {
+    "InstanceType": "p3.8xlarge",
+    "VCpuInfo": {
+        "DefaultVCpus": 32
+    },
+    "GpuInfo": {
+        "Gpus": [{
+            "Name": "V100",
+            "Count": 4
+        }]
+    }
+}]
 
 
 @pytest.fixture
@@ -60,6 +89,10 @@ def configure_aws():
     dlami = moto.ec2.ec2_backends["us-west-2"].describe_images(
         filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
     aws_config.DEFAULT_AMI["us-west-2"] = dlami
+    list_instances_mock = MagicMock(return_value=boto3_list)
+    with patch("ray.autoscaler._private.aws.node_provider.list_ec2_instances",
+               list_instances_mock):
+        yield
 
 
 @pytest.fixture(scope="function")

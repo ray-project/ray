@@ -280,6 +280,7 @@ cc_library(
 cc_library(
     name = "plasma_store_server_lib",
     srcs = [
+        "src/ray/object_manager/plasma/create_request_queue.cc",
         "src/ray/object_manager/plasma/dlmalloc.cc",
         "src/ray/object_manager/plasma/eviction_policy.cc",
         "src/ray/object_manager/plasma/external_store.cc",
@@ -290,6 +291,7 @@ cc_library(
     ],
     hdrs = [
         "src/ray/object_manager/common.h",
+        "src/ray/object_manager/plasma/create_request_queue.h",
         "src/ray/object_manager/plasma/eviction_policy.h",
         "src/ray/object_manager/plasma/external_store.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
@@ -803,6 +805,31 @@ cc_test(
     copts = COPTS,
     deps = [
         ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "push_manager_test",
+    srcs = [
+        "src/ray/object_manager/test/push_manager_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "create_request_queue_test",
+    srcs = [
+        "src/ray/object_manager/test/create_request_queue_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1355,6 +1382,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
+        ":aligned_alloc",
         ":sha256",
         "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
@@ -1408,6 +1436,18 @@ cc_library(
     ],
     hdrs = [
         "src/ray/thirdparty/sha256.h",
+    ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+)
+
+cc_library(
+    name = "aligned_alloc",
+    srcs = [
+        "src/ray/thirdparty/aligned_alloc.c",
+    ],
+    hdrs = [
+        "src/ray/thirdparty/aligned_alloc.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
@@ -1861,6 +1901,7 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
+        "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
     ],
 )
@@ -1928,24 +1969,13 @@ copy_to_workspace(
 )
 
 genrule(
-    name = "ray_pkg",
+    name = "install_py_proto",
     srcs = [
-        ":cp_raylet_so",
-        ":cp_streaming",
-        ":python_sources",
         ":cp_all_py_proto",
-        ":cp_redis",
-        ":cp_libray_redis_module",
-        ":cp_raylet",
-        ":cp_gcs_server",
-        ":cp_plasma_store_server",
         "//streaming:copy_streaming_py_proto",
     ],
-    outs = ["ray_pkg.out"],
+    outs = ["install_py_proto.out"],
     cmd = """
-        if [ "$${OSTYPE-}" = "msys" ]; then
-            ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
-        fi
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
         # shellcheck disable=SC2006
@@ -1953,6 +1983,29 @@ genrule(
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
+        echo "$${PWD}" > $@
+    """,
+    local = 1,
+)
+
+genrule(
+    name = "ray_pkg",
+    srcs = [
+        ":cp_raylet_so",
+        ":cp_streaming",
+        ":python_sources",
+        ":install_py_proto",
+        ":cp_redis",
+        ":cp_libray_redis_module",
+        ":cp_raylet",
+        ":cp_gcs_server",
+        ":cp_plasma_store_server",
+    ],
+    outs = ["ray_pkg.out"],
+    cmd = """
+        if [ "$${OSTYPE-}" = "msys" ]; then
+            ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
+        fi
         echo "$${PWD}" > $@
     """,
     local = 1,

@@ -97,7 +97,7 @@ def add_click_options(options):
 @click.version_option()
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
-    ray.utils.setup_logger(level, logging_format)
+    ray.ray_logging.setup_logger(level, logging_format)
     cli_logger.set_format(format_tmpl=logging_format)
 
 
@@ -157,7 +157,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     type=str,
     help="Override the address to connect to.")
 def debug(address):
-    """Debug Ray program."""
+    """Show all active breakpoints and exceptions in the Ray debugger."""
     from telnetlib import Telnet
     if not address:
         address = services.find_redis_address_or_die()

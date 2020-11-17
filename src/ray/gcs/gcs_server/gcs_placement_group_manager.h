@@ -228,6 +228,15 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// to.
   void CleanPlacementGroupIfNeededWhenActorDead(const ActorID &actor_id);
 
+  /// Collect stats from gcs placement group manager in-memory data structures.
+  void CollectStats() const;
+
+  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const EmptyCallback &done);
+
  private:
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();

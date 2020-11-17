@@ -17,7 +17,7 @@ accurate one. Often simple things like choosing a different learning rate or cha
 a network layer size can have a dramatic impact on your model performance.
 
 Fortunately, there are tools that help with finding the best combination of parameters.
-`Ray Tune <https://docs.ray.io/en/latest/tune.html>`_ is an industry standard tool for
+`Ray Tune <https://docs.ray.io/en/master/tune.html>`_ is an industry standard tool for
 distributed hyperparameter tuning. Ray Tune includes the latest hyperparameter search
 algorithms, integrates with TensorBoard and other analysis libraries, and natively
 supports distributed training through `Ray's distributed machine learning engine

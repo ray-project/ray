@@ -24,12 +24,14 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
+#include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/external_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -99,11 +101,14 @@ class PlasmaStore {
   ///  - PlasmaError::TransientOutOfMemory, if the store is temporarily out of
   ///    memory but there may be space soon to create the object.  In this
   ///    case, the client should not call plasma_release.
-  PlasmaError CreateObject(const ObjectID& object_id, const NodeID& owner_raylet_id,
-                           const std::string& owner_ip_address, int owner_port,
-                           const WorkerID& owner_worker_id, bool evict_if_full,
-                           int64_t data_size, int64_t metadata_size, int device_num,
-                           const std::shared_ptr<Client> &client, PlasmaObject* result);
+  PlasmaError CreateObject(const ObjectID& object_id,
+                                      const NodeID& owner_raylet_id,
+                                      const std::string& owner_ip_address,
+                                      int owner_port, const WorkerID& owner_worker_id,
+                                      bool evict_if_full, int64_t data_size,
+                                      int64_t metadata_size, int device_num,
+                                      const std::shared_ptr<Client> &client,
+                                      PlasmaObject* result);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -199,7 +204,12 @@ class PlasmaStore {
     }
   }
 
+  /// Process queued requests to create an object.
+  void ProcessCreateRequests();
+
  private:
+  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message);
+
   void PushNotification(ObjectInfoT* object_notification);
 
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
@@ -273,6 +283,17 @@ class PlasmaStore {
   /// complete.
   ray::SpillObjectsCallback spill_objects_callback_;
 
+  /// The amount of time to wait before retrying a creation request after a
+  /// transient OOM error.
+  const uint32_t delay_on_transient_oom_ms_ = 10;
+
+  /// A timer that is set when the first request in the queue is not
+  /// serviceable because there is not enough memory. The request will be
+  /// retried when this timer expires.
+  std::shared_ptr<boost::asio::deadline_timer> create_timer_;
+
+  /// Queue of object creation requests.
+  CreateRequestQueue create_request_queue_;
 };
 
 }  // namespace plasma

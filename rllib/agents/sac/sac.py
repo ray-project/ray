@@ -6,7 +6,7 @@ This file defines the distributed Trainer class for the soft actor critic
 algorithm.
 See `sac_[tf|torch]_policy.py` for the definition of the policy loss.
 
-Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#sac
+Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#sac
 """
 
 import logging
@@ -134,6 +134,10 @@ DEFAULT_CONFIG = with_common_config({
     # Use a Beta-distribution instead of a SquashedGaussian for bounded,
     # continuous action spaces (not recommended, for debugging only).
     "_use_beta_distribution": False,
+
+    # Use the new "trajectory view API" to collect samples and produce
+    # model- and policy inputs.
+    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
