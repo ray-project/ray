@@ -4,7 +4,6 @@ import logging
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
-from ray.tune.utils.serialization import RawJson
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +69,7 @@ class TrialExecutor:
     def get_checkpoints(self):
         """Returns a copy of mapping of the trial ID to pickled metadata."""
         for trial in self._trials_to_cache:
-            self._cached_trial_state[trial.trial_id] = RawJson(
-                trial.get_json_state())
+            self._cached_trial_state[trial.trial_id] = trial.get_json_state()
         self._trials_to_cache.clear()
         return self._cached_trial_state
 
