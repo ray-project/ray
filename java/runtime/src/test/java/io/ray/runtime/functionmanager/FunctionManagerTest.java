@@ -27,7 +27,7 @@ public class FunctionManagerTest {
     return null;
   }
 
-  public static class Base {
+  public static class ParentClass {
 
     public Object foo() {
       return null;
@@ -39,9 +39,9 @@ public class FunctionManagerTest {
 
   }
 
-  public static class Bar extends Base {
+  public static class ChildClass extends ParentClass {
 
-    public Bar() {
+    public ChildClass() {
     }
 
     @Override
@@ -59,8 +59,8 @@ public class FunctionManagerTest {
   }
 
   private static RayFunc0<Object> fooFunc;
-  private static RayFunc1<Bar, Object> barFunc;
-  private static RayFunc0<Bar> barConstructor;
+  private static RayFunc1<ChildClass, Object> barFunc;
+  private static RayFunc0<ChildClass> barConstructor;
   private static JavaFunctionDescriptor fooDescriptor;
   private static JavaFunctionDescriptor barDescriptor;
   private static JavaFunctionDescriptor barConstructorDescriptor;
@@ -70,13 +70,13 @@ public class FunctionManagerTest {
   @BeforeClass
   public static void beforeClass() {
     fooFunc = FunctionManagerTest::foo;
-    barConstructor = Bar::new;
-    barFunc = Bar::bar;
+    barConstructor = ChildClass::new;
+    barFunc = ChildClass::bar;
     fooDescriptor = new JavaFunctionDescriptor(FunctionManagerTest.class.getName(), "foo",
         "()Ljava/lang/Object;");
-    barDescriptor = new JavaFunctionDescriptor(Bar.class.getName(), "bar",
+    barDescriptor = new JavaFunctionDescriptor(ChildClass.class.getName(), "bar",
         "()Ljava/lang/Object;");
-    barConstructorDescriptor = new JavaFunctionDescriptor(Bar.class.getName(),
+    barConstructorDescriptor = new JavaFunctionDescriptor(ChildClass.class.getName(),
         FunctionManager.CONSTRUCTOR_NAME,
         "()V");
     overloadFunctionDescriptorInt = new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
@@ -133,34 +133,37 @@ public class FunctionManagerTest {
   @Test
   public void testInheritance() {
     final FunctionManager functionManager = new FunctionManager(null);
-    fooDescriptor = new JavaFunctionDescriptor(Base.class.getName(), "foo",
+    // Check inheritance can work and FunctionManager can find method in parent class.
+    fooDescriptor = new JavaFunctionDescriptor(ParentClass.class.getName(), "foo",
         "()Ljava/lang/Object;");
     Assert.assertEquals(functionManager.getFunction(JobId.NIL, fooDescriptor).functionDescriptor,
         fooDescriptor);
     Assert.assertEquals(functionManager.getFunction(JobId.NIL, fooDescriptor)
-            .executable.getDeclaringClass(), Base.class);
+            .executable.getDeclaringClass(), ParentClass.class);
     RayFunction fooFunc = functionManager.getFunction(JobId.NIL,
-        new JavaFunctionDescriptor(Bar.class.getName(), "foo",
+        new JavaFunctionDescriptor(ChildClass.class.getName(), "foo",
             "()Ljava/lang/Object;"));
-    Assert.assertEquals(fooFunc.executable.getDeclaringClass(), Base.class);
+    Assert.assertEquals(fooFunc.executable.getDeclaringClass(), ParentClass.class);
 
-    barDescriptor = new JavaFunctionDescriptor(Base.class.getName(), "bar",
+    // Check FunctionManager can use method in child class if child class methods overrides methods
+    // in parent class.
+    barDescriptor = new JavaFunctionDescriptor(ParentClass.class.getName(), "bar",
         "()Ljava/lang/Object;");
     Assert.assertEquals(functionManager.getFunction(JobId.NIL, barDescriptor).functionDescriptor,
         barDescriptor);
     Assert.assertEquals(functionManager.getFunction(JobId.NIL, barDescriptor)
-        .executable.getDeclaringClass(), Base.class);
+        .executable.getDeclaringClass(), ParentClass.class);
     RayFunction barFunc = functionManager.getFunction(JobId.NIL,
-        new JavaFunctionDescriptor(Bar.class.getName(), "bar",
+        new JavaFunctionDescriptor(ChildClass.class.getName(), "bar",
             "()Ljava/lang/Object;"));
-    Assert.assertEquals(barFunc.executable.getDeclaringClass(), Bar.class);
+    Assert.assertEquals(barFunc.executable.getDeclaringClass(), ChildClass.class);
   }
 
   @Test
   public void testLoadFunctionTableForClass() {
     JobFunctionTable functionTable = new JobFunctionTable(getClass().getClassLoader());
     Map<Pair<String, String>, RayFunction> res = functionTable
-        .loadFunctionsForClass(Bar.class.getName());
+        .loadFunctionsForClass(ChildClass.class.getName());
     // The result should be 4 entries:
     //   1, the constructor with signature
     //   2, the constructor without signature

@@ -144,4 +144,29 @@ public class ActorTest extends BaseTest {
     // Free deletes big objects from plasma store.
     Assert.expectThrows(UnreconstructableException.class, () -> largeValue.get());
   }
+
+  public static class ChildClass extends Counter {
+
+    public ChildClass(int initValue) {
+      super(initValue);
+    }
+
+    @Override
+    public void increase(int delta) {
+      super.increase(-delta);
+    }
+
+  }
+
+  @Test(groups = {"cluster"})
+  public void testInheritance() {
+    ActorHandle<ChildClass> counter = Ray.actor(ChildClass::new, 100).remote();
+    counter.task(ChildClass::increase, 10).remote();
+    Assert.assertEquals(counter.task(ChildClass::getValue).remote().get(), Integer.valueOf(90));
+    // Since `increase` method is overrided, call by super class method reference should still
+    // execute child class methods.
+    counter.task(Counter::increase, 10).remote();
+    Assert.assertEquals(counter.task(Counter::getValue).remote().get(), Integer.valueOf(80));
+  }
+
 }
