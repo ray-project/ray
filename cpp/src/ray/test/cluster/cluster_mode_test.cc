@@ -128,7 +128,6 @@ TEST(RayClusterModeTest, FullTest) {
   auto r14 = actor5.Task(&Counter::Add, r13).Remote();
 //  auto r15 = Ray::Task(Plus, r0, r11).Remote();
   auto r15 = Ray::Task(Plus, 1, r11).Remote();
-//  auto r15 = Ray::Task(Plus, r0, r11).Remote();
   auto r16 = Ray::Task(Plus1, r15).Remote();
 
 //  int result12 = *(Ray::Get(r12));
