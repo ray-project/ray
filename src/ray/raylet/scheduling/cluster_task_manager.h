@@ -63,7 +63,12 @@ class ClusterTaskManager {
 
   /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
-  /// avaialable resources on the node.
+  /// available resources on the node.
+  ///
+  /// If there are not enough resources locally, up to one task per resource
+  /// shape (the task at the head of the queue) will get spilled back to a
+  /// different node.
+  ///
   /// \param worker_pool: The pool of workers which will be dispatched to.
   /// `worker_pool` state will be modified (idle workers will be popped) during
   /// dispatching.
