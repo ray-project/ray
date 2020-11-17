@@ -308,7 +308,8 @@ def build_eager_tf_policy(name,
         @override(Policy)
         def learn_on_batch(self, postprocessed_batch):
             # Callback handling.
-            self.callbacks.on_learn_on_batch(self, postprocessed_batch)
+            self.callbacks.on_learn_on_batch(
+                policy=self, train_batch=postprocessed_batch)
             # Get batch ready for RNNs, if applicable.
             if getattr(self, "model", None):
                 self.model.preprocess_train_batch(postprocessed_batch)

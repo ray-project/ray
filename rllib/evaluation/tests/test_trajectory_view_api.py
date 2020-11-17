@@ -4,21 +4,44 @@ import time
 import unittest
 
 import ray
+from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
     EpisodeEnvAwarePolicy
+from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
+
+
+class MyCallbacks(DefaultCallbacks):
+    @override(DefaultCallbacks)
+    def on_learn_on_batch(self, *, policy, train_batch, **kwargs):
+        assert train_batch.count == 201
+        assert sum(train_batch.seq_lens) == 201
+        for k, v in train_batch.data.items():
+            if k == "state_in_0":
+                assert len(v) == len(train_batch.seq_lens)
+            else:
+                assert len(v) == 201
+        current = None
+        for o in train_batch[SampleBatch.OBS]:
+            if current:
+                assert o == current + 1
+            current = o
+            if o == 15:
+                current = None
+        print(policy, train_batch)
 
 
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -108,6 +131,39 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_rel_pos == 1
             trainer.stop()
 
+    def test_traj_view_attention_net(self):
+        config = ppo.DEFAULT_CONFIG.copy()
+        # Setup attention net.
+        config["model"] = config["model"].copy()
+        config["model"]["max_seq_len"] = 50
+        config["model"]["custom_model"] = GTrXLNet
+        config["model"]["custom_model_config"] = {
+            "num_transformer_units": 1,
+            "attn_dim": 64,
+            "num_heads": 2,
+            "memory_inference": 50,
+            "memory_training": 50,
+            "head_dim": 32,
+            "ff_hidden_dim": 32,
+        }
+        # Test with odd batch numbers.
+        config["train_batch_size"] = 1031
+        config["sgd_minibatch_size"] = 201
+        config["num_sgd_iter"] = 5
+        config["num_workers"] = 0
+        config["callbacks"] = MyCallbacks
+
+        for _ in framework_iterator(config, frameworks="tf2"):#TODO: all
+            trainer = ppo.PPOTrainer(
+                config,
+                env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
+            rw = trainer.workers.local_worker()
+            sample = rw.sample()
+            assert sample.count == config["rollout_fragment_length"]
+            results = trainer.train()
+            assert results["train_batch_size"] == config["train_batch_size"]
+            trainer.stop()
+
     def test_traj_view_simple_performance(self):
         """Test whether PPOTrainer runs faster w/ `_use_trajectory_view_api`.
         """
@@ -116,7 +172,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         obs_space = Box(-1.0, 1.0, shape=(700, ))
 
         from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
-
         from ray.tune import register_env
         register_env("ma_env", lambda c: RandomMultiAgentEnv({
             "num_agents": 2,

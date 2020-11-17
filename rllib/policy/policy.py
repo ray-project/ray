@@ -57,8 +57,7 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def __init__(self, observation_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, config: TrainerConfigDict,
-                 *, callbacks: Optional[Type["DefaultCallbacks"]] = None):
+                 action_space: gym.spaces.Space, config: TrainerConfigDict):
         """Initialize the graph.
 
         This is the standard constructor for policies. The policy
@@ -75,8 +74,8 @@ class Policy(metaclass=ABCMeta):
         self.action_space = action_space
         self.action_space_struct = get_base_struct_from_space(action_space)
         self.config = config
-        if callbacks:
-            self.callbacks: "DefaultCallbacks" = callbacks()
+        if self.config.get("callbacks"):
+            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
         else:
             from ray.rllib.agents.callbacks import DefaultCallbacks
             self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
