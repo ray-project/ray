@@ -286,10 +286,8 @@ async def test_replica_set(ray_instance):
     assert await third_ref == "DONE"
 
     # Finally, make sure that one of the replica processed the third query.
-    num_queries_set = {
-        await worker.num_queries.remote()
-        for worker in workers
-    }
+    num_queries_set = {(await worker.num_queries.remote())
+                       for worker in workers}
     assert num_queries_set == {2, 1}
 
 
