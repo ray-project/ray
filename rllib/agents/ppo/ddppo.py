@@ -74,8 +74,8 @@ DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
         "truncate_episodes": True,
         # This is auto set based on sample batch size.
         "train_batch_size": -1,
-        # Trajectory View API not supported for DD-PPO yet.
-        "_use_trajectory_view_api": False,
+        ## Trajectory View API not supported for DD-PPO yet.
+        #"_use_trajectory_view_api": True,
     },
     _allow_unknown_configs=True,
 )

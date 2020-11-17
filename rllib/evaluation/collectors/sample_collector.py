@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABCMeta
 import logging
-from typing import Dict, Union
+from typing import Dict, List, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -166,13 +166,15 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def build_multi_agent_batch(self, env_steps: int) -> \
+    def build_multi_agent_batch(self, env_steps: int, env_index: int) -> \
             Union[MultiAgentBatch, SampleBatch]:
         """Builds a MultiAgentBatch of size=env_steps from the collected data.
 
         Args:
             env_steps (int): The sum of all env-steps (across all agents) taken
                 so far.
+            env_index (int): The environment index (in a vector env) for which
+                to build the batch.
 
         Returns:
             Union[MultiAgentBatch, SampleBatch]: Returns the accumulated
@@ -183,7 +185,7 @@ class _SampleCollector(metaclass=ABCMeta):
 
     @abstractmethod
     def try_build_truncated_episode_multi_agent_batch(self) -> \
-            Union[MultiAgentBatch, SampleBatch, None]:
+            List[Union[MultiAgentBatch, SampleBatch]]:
         """Tries to build an MA-batch, if `rollout_fragment_length` is reached.
 
         Any unprocessed data will be first postprocessed with a policy
@@ -193,9 +195,10 @@ class _SampleCollector(metaclass=ABCMeta):
         returns None.
 
         Returns:
-            Union[MultiAgentBatch, SampleBatch, None]: Returns the accumulated
-                sample batches for each policy inside one MultiAgentBatch
-                object (or a simple SampleBatch if only one policy) or None
-                if `self.rollout_fragment_length` has not been reached yet.
+            List[Union[MultiAgentBatch, SampleBatch]]: Returns a (possibly
+                empty) list of MultiAgentBatches (containing the accumulated
+                SampleBatches for each policy or a simple SampleBatch if only
+                one policy). The list will be empty if
+                `self.rollout_fragment_length` has not been reached yet.
         """
         raise NotImplementedError

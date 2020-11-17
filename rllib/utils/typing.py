@@ -37,7 +37,7 @@ PolicyID = str
 MultiAgentPolicyConfigDict = Dict[PolicyID, Tuple[Union[
     type, None], gym.Space, gym.Space, PartialTrainerConfigDict]]
 
-# Represents an environment id.
+# Represents an environment id (index) in a vectorized env.
 EnvID = int
 
 # Represents an episode id.

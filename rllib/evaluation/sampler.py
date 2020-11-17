@@ -519,7 +519,8 @@ def _env_runner(
 
     def new_episode(env_index):
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
-                                    get_batch_builder, extra_batch_callback)
+                                    get_batch_builder, extra_batch_callback,
+                                    env_index=env_index)
         # Call each policy's Exploration.on_episode_start method.
         # type: Policy
         for p in policies.values():
@@ -972,7 +973,6 @@ def _process_observations_w_trajectory_view_api(
 
         if not is_new_episode:
             _sample_collector.episode_step(episode.episode_id)
-            episode.length += 1
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
@@ -1097,7 +1097,8 @@ def _process_observations_w_trajectory_view_api(
             # MultiAgentBatch from a single episode and add it to "outputs".
             if not multiple_episodes_in_batch:
                 ma_sample_batch = \
-                    _sample_collector.build_multi_agent_batch(episode.length)
+                    _sample_collector.build_multi_agent_batch(
+                        env_steps=episode.length, env_index=env_id)
                 outputs.append(ma_sample_batch)
 
             # Call each policy's Exploration.on_episode_end method.
@@ -1162,10 +1163,10 @@ def _process_observations_w_trajectory_view_api(
 
     # Try to build something.
     if multiple_episodes_in_batch:
-        sample_batch = \
+        sample_batches = \
             _sample_collector.try_build_truncated_episode_multi_agent_batch()
-        if sample_batch is not None:
-            outputs.append(sample_batch)
+        if sample_batches:
+            outputs.extend(sample_batches)
 
     return active_envs, to_eval, outputs
 
