@@ -1,31 +1,28 @@
-"""Example of a custom gym environment and model. Run this for a demo.
+"""Example of a custom observation filter
 
 This example shows:
-  - using a custom environment
-  - using a custom model
-  - using Tune for grid search
+  - using a custom observation filter
 
-You can visualize experiment results in ~/ray_results using TensorBoard.
 """
 import argparse
 
 import numpy as np
 import ray
 from ray import tune
+from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
-
-from rllib.utils.filter import Filter
 
 tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-reward", type=float, default=0.01)
+parser.add_argument("--stop-reward", type=float, default=70)
+parser.add_argument("--stop-timesteps", type=int, default=20000)
 
 
-class SimpleRollingStat():
+class SimpleRollingStat:
     def __init__(self, n=0, m=0, s=0):
         self._n = n
         self._m = m
@@ -76,8 +73,9 @@ class CustomFilter(Filter):
     is_concurrent = False
 
     def __init__(self, shape):
-        self.rs = SimpleRollingStat(shape)
-        self.buffer = SimpleRollingStat(shape)
+        self.rs = SimpleRollingStat()
+        self.buffer = SimpleRollingStat()
+        self.shape = shape
 
     def clear_buffer(self):
         self.buffer = SimpleRollingStat(self.shape)
@@ -88,7 +86,6 @@ class CustomFilter(Filter):
             self.buffer = other.buffer.copy()
 
     def copy(self):
-        """Returns a copy of Filter."""
         other = CustomFilter(self.shape)
         other.sync(self)
         return other

@@ -1697,14 +1697,6 @@ py_test(
     args = ["--torch", "--stop-iters=1", "--num-cpus=4"]
 )
 
-py_test(
-    name = "examples/custom_filters",
-    main = "examples/custom_filters.py",
-    tags = ["examples", "examples_C"],
-    size = "small",
-    srcs = ["examples/custom_env.py"],
-    args = ["--as-test"]
-)
 
 py_test(
     name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
@@ -1795,6 +1787,15 @@ py_test(
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
     args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/custom_observation_filters",
+    main = "examples/custom_observation_filters.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_observation_filters.py"],
+    args = ["--as-test"]
 )
 
 py_test(
