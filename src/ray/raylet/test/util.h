@@ -170,7 +170,7 @@ class MockWorker : public WorkerInterface {
 
   const BundleID &GetBundleId() const {
     RAY_CHECK(false) << "Method unused";
-    return std::pair<PlacementGroupID, int64_t>();
+    return bundle_id_;
   }
 
   void SetBundleId(const BundleID &bundle_id) { RAY_CHECK(false) << "Method unused"; }
@@ -203,6 +203,7 @@ class MockWorker : public WorkerInterface {
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   std::vector<double> borrowed_cpu_instances_;
   bool is_detached_actor_;
+  BundleID bundle_id_;
 };
 
 }  // namespace raylet
