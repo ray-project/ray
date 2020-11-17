@@ -109,6 +109,12 @@ class ClusterTaskManager {
   std::string DebugString();
 
  private:
+  /// Helper method to try dispatching a single task from the queue to an
+  /// available worker. Returns whether the task should be removed from the
+  /// queue and whether the worker was successfully leased to execute the work.
+  bool DispatchWork(const Work &work, std::shared_ptr<WorkerInterface> &worker,
+                    bool *worker_leased);
+
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::function<bool(const Task &)> fulfills_dependencies_func_;
@@ -135,9 +141,7 @@ class ClusterTaskManager {
       const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
-  void Spillback(NodeID spillback_to, std::string address, int port,
-                 rpc::RequestWorkerLeaseReply *reply,
-                 std::function<void(void)> send_reply_callback);
+  void Spillback(const NodeID &spillback_to, const Work &work);
 };
 }  // namespace raylet
 }  // namespace ray
