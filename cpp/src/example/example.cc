@@ -5,7 +5,7 @@
 #include <ray/api.h>
 
 /// using namespace
-using namespace ray::api;
+using namespace ::ray::api;
 
 /// general function of user code
 int Return1() { return 1; }

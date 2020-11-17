@@ -10,13 +10,10 @@
 template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>
 std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer, TaskType task_type,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer, TaskType task_type,
     std::shared_ptr<OtherArgTypes> &... args) {
-  msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(args_buffer->size());
-  memcpy(unpacker.buffer(), args_buffer->data(), args_buffer->size());
-  unpacker.buffer_consumed(args_buffer->size());
-  Arguments::UnwrapArgs(unpacker, &args...);
+  int arg_index = 0;
+  Arguments::UnwrapArgs(args_buffer, arg_index, &args...);
 
   ReturnType return_value;
   typedef ReturnType (*Func)(OtherArgTypes...);
@@ -33,7 +30,7 @@ std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
 template <typename ReturnType, typename ActorType, typename... OtherArgTypes>
 std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     std::shared_ptr<msgpack::sbuffer> &actor_buffer,
     std::shared_ptr<OtherArgTypes> &... args) {
   msgpack::unpacker actor_unpacker;
@@ -44,11 +41,8 @@ std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
   Serializer::Deserialize(actor_unpacker, &actor_ptr);
   ActorType *actor_object = (ActorType *)actor_ptr;
 
-  msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(args_buffer->size());
-  memcpy(unpacker.buffer(), args_buffer->data(), args_buffer->size());
-  unpacker.buffer_consumed(args_buffer->size());
-  Arguments::UnwrapArgs(unpacker, &args...);
+  int arg_index = 0;
+  Arguments::UnwrapArgs(args_buffer, arg_index, &args...);
 
   ReturnType return_value;
   typedef ReturnType (ActorType::*Func)(OtherArgTypes...);
@@ -68,7 +62,7 @@ std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
 template <typename ReturnType>
 std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
   return ExecuteNormalFunction<ReturnType, ReturnType>(
       base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK);
 }
@@ -77,7 +71,7 @@ std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
 template <typename ReturnType, typename Arg1Type>
 std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
   std::shared_ptr<Arg1Type> arg1_ptr;
   return ExecuteNormalFunction<ReturnType, ReturnType>(
       base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK, arg1_ptr);
@@ -87,7 +81,7 @@ std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
 template <typename ReturnType, typename Arg1Type, typename Arg2Type>
 std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
   std::shared_ptr<Arg1Type> arg1_ptr;
   std::shared_ptr<Arg2Type> arg2_ptr;
   return ExecuteNormalFunction<ReturnType, ReturnType>(
@@ -98,7 +92,7 @@ std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
 template <typename ReturnType>
 std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
   return ExecuteNormalFunction<ReturnType, uintptr_t>(base_addr, func_offset, args_buffer,
                                                       TaskType::ACTOR_CREATION_TASK);
 }
@@ -107,7 +101,7 @@ std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
 template <typename ReturnType, typename Arg1Type>
 std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
   std::shared_ptr<Arg1Type> arg1_ptr;
   return ExecuteNormalFunction<ReturnType, uintptr_t>(
       base_addr, func_offset, args_buffer, TaskType::ACTOR_CREATION_TASK, arg1_ptr);
@@ -117,7 +111,7 @@ std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
 template <typename ReturnType, typename Arg1Type, typename Arg2Type>
 std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
   std::shared_ptr<Arg1Type> arg1_ptr;
   std::shared_ptr<Arg2Type> arg2_ptr;
   return ExecuteNormalFunction<ReturnType, uintptr_t>(base_addr, func_offset, args_buffer,
@@ -129,7 +123,7 @@ std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
 template <typename ReturnType, typename ActorType>
 std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     std::shared_ptr<msgpack::sbuffer> &actor_buffer) {
   return ExecuteActorFunction<ReturnType, ActorType>(base_addr, func_offset, args_buffer,
                                                      actor_buffer);
@@ -139,7 +133,7 @@ std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
 template <typename ReturnType, typename ActorType, typename Arg1Type>
 std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     std::shared_ptr<msgpack::sbuffer> &actor_buffer) {
   std::shared_ptr<Arg1Type> arg1_ptr;
   return ExecuteActorFunction<ReturnType, ActorType>(base_addr, func_offset, args_buffer,
@@ -150,7 +144,7 @@ std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
 template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
 std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
     uintptr_t base_addr, size_t func_offset,
-    std::shared_ptr<msgpack::sbuffer> &args_buffer,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     std::shared_ptr<msgpack::sbuffer> &actor_buffer) {
   std::shared_ptr<Arg1Type> arg1_ptr;
   std::shared_ptr<Arg2Type> arg2_ptr;
