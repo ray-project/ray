@@ -259,10 +259,11 @@ async def test_replica_set(ray_instance):
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get([first_ref, second_ref], timeout=1)
 
-    # Each replica should have exactly one inflight query.
-    # This test the max_concurrent_query and load balancing.
+    # Each replica should have exactly one inflight query. Let make sure the
+    # queries arrived there.
     for worker in workers:
-        assert await worker.num_queries.remote() == 1
+        while await worker.num_queries.remote() != 1:
+            await asyncio.sleep(1)
 
     # Let's try to send another query.
     third_ref_pending_task = asyncio.get_event_loop().create_task(
