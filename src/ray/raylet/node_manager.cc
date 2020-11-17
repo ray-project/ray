@@ -2512,7 +2512,7 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   });
 }
 
-bool NodeManager::FinishAssignedTask(std::shared_ptr<WorkerInterface> &worker_ptr) {
+bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {
   // TODO (Alex): We should standardize to pass
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;

@@ -128,7 +128,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       // killing the worker (unless this task is for a detached actor).
       if (!spec.IsDetachedActor() &&
           !is_owner_alive_(owner_worker_id, owner_node_id)) {
-        // TODO (Alex): To @swang pls double check and make sure this is ok. <3 thx
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
