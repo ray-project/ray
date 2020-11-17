@@ -116,22 +116,20 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       auto &task = std::get<0>(work);
       auto &spec = task.GetTaskSpecification();
 
-      std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
-      if (!worker) {
-        // No worker available, we won't be able to schedule any kind of task.
-        return;
-      }
-
-      const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
-      const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
       // If the owner has died since this task was queued, cancel the task by
       // killing the worker (unless this task is for a detached actor).
-      if (!spec.IsDetachedActor() &&
-          !is_owner_alive_(owner_worker_id, owner_node_id)) {
+      const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
+      const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
+      if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
-        worker_pool.PushWorker(worker);
       } else {
+        std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
+        if (!worker) {
+          // No worker available, we won't be able to schedule any kind of task.
+          return;
+        }
+
         std::shared_ptr<TaskResourceInstances> allocated_instances(
             new TaskResourceInstances());
         bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
@@ -145,23 +143,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
         auto reply = std::get<1>(work);
         auto callback = std::get<2>(work);
-        worker->SetOwnerAddress(spec.CallerAddress());
-        worker->SetAssignedTask(task);
-
-        TaskID task_id = spec.TaskId();
-        worker->AssignTaskId(task_id);
-        if (spec.IsActorCreationTask()) {
-          // The actor belongs to this worker now.
-          worker->SetLifetimeAllocatedInstances(allocated_instances);
-        } else {
-          worker->SetAllocatedInstances(allocated_instances);
-        }
-
-        if (!RayConfig::instance().enable_multi_tenancy()) {
-          worker->AssignJobId(spec.JobId());
-        }
-
-        Dispatch(worker, leased_workers, spec, reply, callback);
+        Dispatch(worker, leased_workers, task, allocated_instances, reply, callback);
       }
       work_it = dispatch_queue.erase(work_it);
     }
@@ -323,20 +305,32 @@ std::string ClusterTaskManager::DebugString() const {
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
-    const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
-    std::function<void(void)> send_reply_callback) {
-  // Pass the contact info of the worker to use.
-  reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
-  reply->mutable_worker_address()->set_port(worker->Port());
-  reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
-  reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+    Task task, std::shared_ptr<TaskResourceInstances> allocated_instances,
+    rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback) {
+  // We have 2 types of bookkeeping that we need to keep up to date when dispatching:
+  // tracking of our leased workers, and our resource view.
+  const auto &spec = task.GetTaskSpecification();
 
+  // Update our leased workers bookkeeping.
+  worker->SetOwnerAddress(spec.CallerAddress());
+  worker->SetAssignedTask(task);
+
+  worker->AssignTaskId(spec.TaskId());
+  if (spec.IsActorCreationTask()) {
+    worker->SetLifetimeAllocatedInstances(allocated_instances);
+  } else {
+    worker->SetAllocatedInstances(allocated_instances);
+  }
+
+  if (!RayConfig::instance().enable_multi_tenancy()) {
+    worker->AssignJobId(spec.JobId());
+  }
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
 
-  // Update our internal view of the cluster state.
+  // Update our resource view bookkeeping.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
-  if (task_spec.IsActorCreationTask()) {
+  if (spec.IsActorCreationTask()) {
     allocated_resources = worker->GetLifetimeAllocatedInstances();
   } else {
     allocated_resources = worker->GetAllocatedInstances();
@@ -380,7 +374,11 @@ void ClusterTaskManager::Dispatch(
     }
   }
 
-  // Send the result back.
+  // Pass the contact info of the worker to use.
+  reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
+  reply->mutable_worker_address()->set_port(worker->Port());
+  reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
+  reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
   send_reply_callback();
 }
 

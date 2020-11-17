@@ -132,11 +132,13 @@ class ClusterTaskManager {
   /// \return True if the work can be immediately dispatched.
   bool WaitForTaskArgsRequests(Work work);
 
+  /// There are essentially two steps to dispatching. Update our internal bookkeeping and
+  /// pass the contact information of the leased worker back to the caller.
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
-      std::function<void(void)> send_reply_callback);
+      Task task, std::shared_ptr<TaskResourceInstances> allocated_instances,
+      rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback);
 
   void Spillback(NodeID spillback_to, std::string address, int port,
                  rpc::RequestWorkerLeaseReply *reply,
