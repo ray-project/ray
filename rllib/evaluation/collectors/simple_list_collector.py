@@ -300,16 +300,22 @@ class _SimpleListCollector(_SampleCollector):
 
         # Maps episode index to env step counts (already built inside a
         # `_PolicyCollector` object).
-        self.built_env_steps_per_index: Dict[EnvID, int] = collections.defaultdict(int)
+        self.built_env_steps_per_index: Dict[EnvID, int] = \
+            collections.defaultdict(int)
+        # Maps episode ID to the (non-built) env steps taken in this episode.
+        self.episode_steps: Dict[EpisodeID, int] = \
+            collections.defaultdict(int)
         # Maps episode ID to MultiAgentEpisode.
         self.episodes: Dict[EpisodeID, MultiAgentEpisode] = {}
 
     @override(_SampleCollector)
     def episode_step(self, episode_id: EpisodeID) -> None:
         episode = self.episodes[episode_id]
+        self.episode_steps[episode_id] += 1
         episode.length += 1
         env_steps = \
-            self.built_env_steps_per_index[episode.env_index] + episode.length
+            self.built_env_steps_per_index[episode.env_index] + \
+            self.episode_steps[episode_id]
         #TODO: this seems wrong.
         if (env_steps > self.large_batch_threshold
                 and log_once("large_batch_warning")):
@@ -509,11 +515,14 @@ class _SimpleListCollector(_SampleCollector):
             self.policy_collectors[p_key].add_postprocessed_batch_for_training(
                 post_batch, policy.view_requirements)
 
-        env_steps = self.episodes[episode_id].length
+        env_steps = self.episode_steps[episode_id]
         self.built_env_steps_per_index[env_index] += env_steps
 
         if is_done:
+            del self.episode_steps[episode_id]
             del self.episodes[episode_id]
+        else:
+            self.episode_steps[episode_id] = 0
 
     @override(_SampleCollector)
     def build_multi_agent_batch(self, env_steps: int, env_index: int) -> \
@@ -531,26 +540,27 @@ class _SimpleListCollector(_SampleCollector):
     @override(_SampleCollector)
     def try_build_truncated_episode_multi_agent_batch(self) -> \
             List[Union[MultiAgentBatch, SampleBatch]]:
-        ma_batches = []
+        batches = []
         # Loop through ongoing episodes and see whether their length plus
         # what's already in the policy collectors reaches the fragment-len.
         for episode_id, episode in self.episodes.items():
-            built_env_steps_per_index = self.built_env_steps_per_index[episode.env_index]
-            env_steps = built_env_steps_per_index + episode.length
+            built_env_steps_per_index = \
+                self.built_env_steps_per_index[episode.env_index]
+            env_steps = \
+                built_env_steps_per_index + self.episode_steps[episode_id]
             # Reached the fragment-len -> We should build an MA-Batch.
             if env_steps >= self.rollout_fragment_length:
+                assert env_steps == self.rollout_fragment_length
                 # If we reached the fragment-len only because of `episode_id`
                 # (still ongoing) -> postprocess `episode_id` first.
                 if built_env_steps_per_index < self.rollout_fragment_length:
-                    self.postprocess_episode(
-                        self.episodes[episode_id], is_done=False)
-                # Otherwise, create MA-batch only from what's already in our
-                # policy buffers (do not include `episode_id`'s data).
-                else:
-                    env_steps = built_env_steps_per_index#self.policy_collectors_env_steps
+                    self.postprocess_episode(episode, is_done=False)
                 # Build the MA-batch and return.
-                ma_batches.append(self.build_multi_agent_batch(env_steps=env_steps, env_index=episode.env_index))
-        return ma_batches
+                batch = self.build_multi_agent_batch(
+                    env_steps=env_steps,
+                    env_index=episode.env_index)
+                batches.append(batch)
+        return batches
 
     def _add_to_next_inference_call(self, agent_key: Tuple[EpisodeID, AgentID],
                                     env_id: EnvID) -> None:
