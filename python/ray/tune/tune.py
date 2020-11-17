@@ -249,7 +249,7 @@ def run(
             trial (of ERROR state) when the experiments complete.
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
-            ``ray.tune.trial_runner.Callback`` class.
+            ``ray.tune.callback.Callback`` class.
 
 
     Returns:
