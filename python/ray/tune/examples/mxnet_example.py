@@ -1,8 +1,6 @@
-from functools import partial
-
 import mxnet as mx
+
 from ray import tune, logger
-from ray.tune import CLIReporter
 from ray.tune.integration.mxnet import TuneCheckpointCallback, \
     TuneReportCallback
 from ray.tune.schedulers import ASHAScheduler
@@ -59,25 +57,21 @@ def tune_mnist_mxnet(num_samples=10, num_epochs=10):
     }
 
     scheduler = ASHAScheduler(
-        metric="mean_accuracy",
-        mode="max",
-        max_t=num_epochs,
-        grace_period=1,
-        reduction_factor=2)
+        max_t=num_epochs, grace_period=1, reduction_factor=2)
 
-    reporter = CLIReporter(
-        parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"])
-
-    tune.run(
-        partial(train_mnist_mxnet, mnist=mnist_data, num_epochs=num_epochs),
+    analysis = tune.run(
+        tune.with_parameters(
+            train_mnist_mxnet, mnist=mnist_data, num_epochs=num_epochs),
         resources_per_trial={
             "cpu": 1,
         },
+        metric="mean_accuracy",
+        mode="max",
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        progress_reporter=reporter,
         name="tune_mnist_mxnet")
+    return analysis
 
 
 if __name__ == "__main__":
@@ -89,6 +83,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_mnist_mxnet(num_samples=1, num_epochs=1)
+        analysis = tune_mnist_mxnet(num_samples=1, num_epochs=1)
     else:
-        tune_mnist_mxnet(num_samples=10, num_epochs=10)
+        analysis = tune_mnist_mxnet(num_samples=10, num_epochs=10)
+
+    print("Best hyperparameters found were: ", analysis.best_config)

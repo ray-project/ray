@@ -51,16 +51,14 @@ if __name__ == "__main__":
     # Hyperband early stopping, configured with `episode_reward_mean` as the
     # objective and `training_iteration` as the time unit,
     # which is automatically filled by Tune.
-    hyperband = HyperBandScheduler(
-        time_attr="training_iteration",
-        metric="episode_reward_mean",
-        mode="max",
-        max_t=200)
+    hyperband = HyperBandScheduler(time_attr="training_iteration", max_t=200)
 
-    tune.run(
+    analysis = tune.run(
         MyTrainableClass,
         name="hyperband_test",
         num_samples=20,
+        metric="episode_reward_mean",
+        mode="max",
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
             "width": tune.randint(10, 90),
@@ -68,3 +66,5 @@ if __name__ == "__main__":
         },
         scheduler=hyperband,
         fail_fast=True)
+
+    print("Best hyperparameters found were: ", analysis.best_config)

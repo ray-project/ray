@@ -14,7 +14,6 @@ import torchvision
 import torchvision.transforms as transforms
 import ray
 from ray import tune
-from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 # __import_end__
 
@@ -187,21 +186,18 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         "batch_size": tune.choice([2, 4, 8, 16])
     }
     scheduler = ASHAScheduler(
-        metric="loss",
-        mode="min",
         max_t=max_num_epochs,
         grace_period=1,
         reduction_factor=2)
-    reporter = CLIReporter(
-        # parameter_columns=["l1", "l2", "lr", "batch_size"],
-        metric_columns=["loss", "accuracy", "training_iteration"])
     result = tune.run(
-        partial(train_cifar, data_dir=data_dir),
+        tune.with_parameters(train_cifar, data_dir=data_dir),
         resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
         config=config,
+        metric="loss",
+        mode="min",
         num_samples=num_samples,
-        scheduler=scheduler,
-        progress_reporter=reporter)
+        scheduler=scheduler
+    )
 
     best_trial = result.get_best_trial("loss", "min", "last")
     print("Best trial config: {}".format(best_trial.config))

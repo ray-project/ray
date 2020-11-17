@@ -37,11 +37,11 @@ class RayRuntime {
                           int timeout_ms) = 0;
 
   virtual ObjectID Call(const RemoteFunctionPtrHolder &fptr,
-                        std::shared_ptr<msgpack::sbuffer> args) = 0;
+                        std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
   virtual ActorID CreateActor(const RemoteFunctionPtrHolder &fptr,
-                              std::shared_ptr<msgpack::sbuffer> args) = 0;
+                              std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
   virtual ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
-                             std::shared_ptr<msgpack::sbuffer> args) = 0;
+                             std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
 };
 }  // namespace api
 }  // namespace ray
