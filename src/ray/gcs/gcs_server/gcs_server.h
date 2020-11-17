@@ -84,7 +84,7 @@ class GcsServer {
   void InitGcsActorManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs placement group manager.
-  void InitGcsPlacementGroupManager();
+  void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs object manager.
   void InitObjectManager(const GcsInitData &gcs_init_data);

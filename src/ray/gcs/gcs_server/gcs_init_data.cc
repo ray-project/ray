@@ -18,7 +18,7 @@ namespace ray {
 namespace gcs {
 void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   // There are 5 kinds of table data need to be loaded.
-  auto count_down = std::make_shared<int>(5);
+  auto count_down = std::make_shared<int>(6);
   auto on_load_finished = [count_down, on_done] {
     if (--(*count_down) == 0) {
       if (on_done) {
@@ -36,6 +36,8 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   AsyncLoadResourceTableData(on_load_finished);
 
   AsyncLoadActorTableData(on_load_finished);
+
+  AsyncLoadPlacementGroupTableData(on_load_finished);
 }
 
 void GcsInitData::AsyncLoadJobTableData(const EmptyCallback &on_done) {
@@ -86,6 +88,20 @@ void GcsInitData::AsyncLoadResourceTableData(const EmptyCallback &on_done) {
       };
   RAY_CHECK_OK(
       gcs_table_storage_->NodeResourceTable().GetAll(load_resource_table_data_callback));
+}
+
+void GcsInitData::AsyncLoadPlacementGroupTableData(const EmptyCallback &on_done) {
+  RAY_LOG(INFO) << "Loading placement group table data.";
+  auto load_placement_group_table_data_callback =
+      [this, on_done](const std::unordered_map<PlacementGroupID,
+                                               rpc::PlacementGroupTableData> &result) {
+        placement_group_table_data_ = result;
+        RAY_LOG(INFO) << "Finished loading placement group table data, size = "
+                      << placement_group_table_data_.size();
+        on_done();
+      };
+  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().GetAll(
+      load_placement_group_table_data_callback));
 }
 
 void GcsInitData::AsyncLoadActorTableData(const EmptyCallback &on_done) {

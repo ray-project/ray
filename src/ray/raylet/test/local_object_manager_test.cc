@@ -101,9 +101,16 @@ class MockIOWorker : public MockWorker {
 
 class MockIOWorkerPool : public IOWorkerPoolInterface {
  public:
-  MOCK_METHOD1(PushIOWorker, void(const std::shared_ptr<WorkerInterface> &worker));
+  MOCK_METHOD1(PushSpillWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
-  void PopIOWorker(
+  MOCK_METHOD1(PushRestoreWorker, void(const std::shared_ptr<WorkerInterface> &worker));
+
+  void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    callback(io_worker);
+  }
+
+  void PopRestoreWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
     callback(io_worker);
   }
@@ -249,7 +256,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   ObjectID object_id = ObjectID::FromRandom();
   std::string object_url("url");
   int num_times_fired = 0;
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushRestoreWorker(_));
   manager.AsyncRestoreSpilledObject(object_id, object_url, [&](const Status &status) {
     ASSERT_TRUE(status.ok());
     num_times_fired++;
@@ -282,7 +289,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids.size(); i++) {
     urls.push_back("url" + std::to_string(i));
@@ -337,7 +344,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   for (size_t i = 0; i < object_ids.size(); i++) {
     urls.push_back("url" + std::to_string(i));
   }
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < object_ids.size(); i++) {
     ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
@@ -389,7 +396,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   for (size_t i = 0; i < object_ids.size() / 2 + 1; i++) {
     urls.push_back("url" + std::to_string(i));
   }
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   // Objects should get freed even though we didn't wait for the owner's notice
   // to evict.
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
@@ -431,7 +438,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   });
 
   // Return an error from the IO worker during spill.
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(
       worker_pool.io_worker_client->ReplySpillObjects({}, Status::IOError("error")));
   ASSERT_FALSE(object_table.ReplyAsyncAddSpilledUrl());
@@ -444,7 +451,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
     num_times_fired++;
   });
   std::string url = "url";
-  EXPECT_CALL(worker_pool, PushIOWorker(_));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
   ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
   ASSERT_EQ(num_times_fired, 2);

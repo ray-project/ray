@@ -20,6 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -230,6 +231,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// Collect stats from gcs placement group manager in-memory data structures.
   void CollectStats() const;
+
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
 
  private:
   /// Try to create placement group after a short time.

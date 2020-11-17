@@ -532,7 +532,9 @@ class ModelCatalog:
         return wrapper
 
     @staticmethod
-    def _get_v2_model_class(input_space, model_config, framework="tf"):
+    def _get_v2_model_class(input_space: gym.Space,
+                            model_config: ModelConfigDict,
+                            framework: str = "tf") -> ModelV2:
         if framework == "torch":
             from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                       FCNet)

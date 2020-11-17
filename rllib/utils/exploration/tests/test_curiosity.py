@@ -119,7 +119,7 @@ CONV_FILTERS = [[16, [11, 11], 3], [32, [9, 9], 3], [64, [5, 5], 3]]
 class TestCuriosity(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=3, local_mode=True)
+        ray.init(num_cpus=3)
 
     @classmethod
     def tearDownClass(cls):

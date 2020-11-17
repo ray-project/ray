@@ -71,11 +71,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs job manager.
   InitGcsJobManager();
 
+  // Init gcs placement group manager.
+  InitGcsPlacementGroupManager(gcs_init_data);
+
   // Init gcs actor manager.
   InitGcsActorManager(gcs_init_data);
-
-  // Init gcs placement group manager.
-  InitGcsPlacementGroupManager();
 
   // Init object manager.
   InitObjectManager(gcs_init_data);
@@ -192,7 +192,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   rpc_server_.RegisterService(*actor_info_service_);
 }
 
-void GcsServer::InitGcsPlacementGroupManager() {
+void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
   auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
       main_service_, gcs_table_storage_, *gcs_node_manager_,
@@ -206,6 +206,8 @@ void GcsServer::InitGcsPlacementGroupManager() {
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_, scheduler, gcs_table_storage_, *gcs_node_manager_);
+  // Initialize by gcs tables data.
+  gcs_placement_group_manager_->Initialize(gcs_init_data);
   // Register service.
   placement_group_info_service_.reset(new rpc::PlacementGroupInfoGrpcService(
       main_service_, *gcs_placement_group_manager_));
@@ -317,9 +319,10 @@ void GcsServer::PrintDebugInfo() {
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.
   RAY_LOG(INFO) << stream.str();
-  execute_after(main_service_, [this] { PrintDebugInfo(); },
-                (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
-                 60000) /* milliseconds */);
+  execute_after(
+      main_service_, [this] { PrintDebugInfo(); },
+      (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
+       60000) /* milliseconds */);
 }
 
 }  // namespace gcs

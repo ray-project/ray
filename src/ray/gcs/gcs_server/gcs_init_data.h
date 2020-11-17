@@ -64,6 +64,11 @@ class GcsInitData {
     return actor_table_data_;
   }
 
+  const std::unordered_map<PlacementGroupID, rpc::PlacementGroupTableData>
+      &PlacementGroups() const {
+    return placement_group_table_data_;
+  }
+
  private:
   /// Load job metadata from the store into memory asynchronously.
   ///
@@ -85,6 +90,11 @@ class GcsInitData {
   /// \param on_done The callback when resource metadata is loaded successfully.
   void AsyncLoadResourceTableData(const EmptyCallback &on_done);
 
+  /// Load placement group metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when placement group metadata is loaded successfully.
+  void AsyncLoadPlacementGroupTableData(const EmptyCallback &on_done);
+
   /// Load actor metadata from the store into memory asynchronously.
   ///
   /// \param on_done The callback when actor metadata is loaded successfully.
@@ -105,6 +115,10 @@ class GcsInitData {
 
   /// Resource metadata.
   std::unordered_map<NodeID, rpc::ResourceMap> resource_table_data_;
+
+  /// Placement group metadata.
+  std::unordered_map<PlacementGroupID, rpc::PlacementGroupTableData>
+      placement_group_table_data_;
 
   /// Actor metadata.
   std::unordered_map<ActorID, rpc::ActorTableData> actor_table_data_;
