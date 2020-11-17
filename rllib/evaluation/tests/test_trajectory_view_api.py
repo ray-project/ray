@@ -38,9 +38,14 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             assert len(view_req_model) == 1, view_req_model
             assert len(view_req_policy) == 8, view_req_policy
             for key in [
-                    SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
-                    SampleBatch.DONES, SampleBatch.NEXT_OBS,
-                    SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX, "weights",
+                    SampleBatch.OBS,
+                    SampleBatch.ACTIONS,
+                    SampleBatch.REWARDS,
+                    SampleBatch.DONES,
+                    SampleBatch.NEXT_OBS,
+                    SampleBatch.EPS_ID,
+                    SampleBatch.AGENT_INDEX,
+                    "weights",
             ]:
                 assert key in view_req_policy
                 # None of the view cols has a special underlying data_col,
