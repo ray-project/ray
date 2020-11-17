@@ -197,7 +197,9 @@ def get_address_info_from_redis_helper(redis_address,
             " found raylets at "
             "{', '.join(c['NodeManagerAddress'] for c in client_table)} but "
             "none of these match this node's IP {node_ip_address}. Are any of"
-            " these actually a different IP address for the same node?")
+            " these actually a different IP address for the same node?"
+            "You might need to provide --node-ip-address to specify the IP "
+            "address that the head should use when sending to this node.")
 
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
