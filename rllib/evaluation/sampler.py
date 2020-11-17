@@ -518,9 +518,12 @@ def _env_runner(
                                                 callbacks)
 
     def new_episode(env_index):
-        episode = MultiAgentEpisode(policies, policy_mapping_fn,
-                                    get_batch_builder, extra_batch_callback,
-                                    env_index=env_index)
+        episode = MultiAgentEpisode(
+            policies,
+            policy_mapping_fn,
+            get_batch_builder,
+            extra_batch_callback,
+            env_index=env_index)
         # Call each policy's Exploration.on_episode_start method.
         # type: Policy
         for p in policies.values():

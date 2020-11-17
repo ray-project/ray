@@ -556,8 +556,7 @@ class _SimpleListCollector(_SampleCollector):
                     self.postprocess_episode(episode, is_done=False)
                 # Build the MA-batch and return.
                 batch = self.build_multi_agent_batch(
-                    env_steps=env_steps,
-                    env_index=episode.env_index)
+                    env_steps=env_steps, env_index=episode.env_index)
                 batches.append(batch)
         return batches
 
