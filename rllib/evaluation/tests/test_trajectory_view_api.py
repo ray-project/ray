@@ -28,6 +28,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         """Tests, whether Model and Policy return the correct ViewRequirements.
         """
         config = dqn.DEFAULT_CONFIG.copy()
+        config["num_envs_per_worker"] = 10
+        config["rollout_fragment_length"] = 4
+
         for _ in framework_iterator(config):
             trainer = dqn.DQNTrainer(
                 config,
@@ -55,6 +58,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
+            rollout_worker = trainer.workers.local_worker()
+            sample_batch = rollout_worker.sample()
+            expected_count = config["num_envs_per_worker"] * \
+                             config["rollout_fragment_length"]
+            assert sample_batch.count == expected_count
+            for v in sample_batch.data.values():
+                assert len(v) == expected_count
             trainer.stop()
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):

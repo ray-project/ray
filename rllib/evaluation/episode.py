@@ -44,11 +44,13 @@ class MultiAgentEpisode:
         >>> episode.extra_batches.add(batch.build_and_reset())
     """
 
-    def __init__(self, policies: Dict[PolicyID, Policy],
+    def __init__(self,
+                 policies: Dict[PolicyID, Policy],
                  policy_mapping_fn: Callable[[AgentID], PolicyID],
                  batch_builder_factory: Callable[
                      [], "MultiAgentSampleBatchBuilder"],
-                 extra_batch_callback: Callable[[SampleBatchType], None]):
+                 extra_batch_callback: Callable[[SampleBatchType], None],
+                 env_index: int):
         self.new_batch_builder: Callable[
             [], "MultiAgentSampleBatchBuilder"] = batch_builder_factory
         self.add_extra_batch: Callable[[SampleBatchType],
@@ -58,6 +60,7 @@ class MultiAgentEpisode:
         self.total_reward: float = 0.0
         self.length: int = 0
         self.episode_id: int = random.randrange(2e9)
+        self.env_index = env_index
         self.agent_rewards: Dict[AgentID, float] = defaultdict(float)
         self.custom_metrics: Dict[str, float] = {}
         self.user_data: Dict[str, Any] = {}
