@@ -288,9 +288,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 self._build_uri(external_url),
                 "wb",
                 transport_params=self.transport_params) as file_like:
-            keys = self._fusion_objects(file_like, object_refs,
+            return self._fusion_objects(file_like, object_refs,
                                         object_id_stored, self.url_protocol)
-            return keys
 
     def restore_spilled_objects(self, keys):
         from smart_open import open
