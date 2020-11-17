@@ -44,9 +44,9 @@ boto3_list = [{
         "DefaultVCpus": 1
     }
 }, {
-    "InstanceType": "m4.xlarge",
+    "InstanceType": "t3a.small",
     "VCpuInfo": {
-        "DefaultVCpus": 4
+        "DefaultVCpus": 2
     }
 }, {
     "InstanceType": "m4.4xlarge",
@@ -242,6 +242,8 @@ def test_ray_up_docker(configure_lang, _unlink_test_ssh_key, configure_aws):
         # we can have overrides happen here.
         # unfortunately, cutting out SSH prefixes and such
         # is, to put it lightly, non-trivial
+        if ".Config.Env" in command:
+            return PopenBehaviour(stdout=b"{}")
         if "uptime" in command:
             return PopenBehaviour(stdout=b"MOCKED uptime")
         if "rsync" in command:
