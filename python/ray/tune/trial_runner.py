@@ -266,28 +266,19 @@ class TrialRunner:
                 not force):
             return
         self._last_checkpoint_time = now
+        runner_state = {
+            "checkpoints": list(
+                self.trial_executor.get_checkpoints().values()),
+            "runner_data": self.__getstate__(),
+            "stats": {
+                "start_time": self._start_time,
+                "timestamp": self._last_checkpoint_time
+            }
+        }
         tmp_file_name = os.path.join(self._local_checkpoint_dir,
                                      ".tmp_checkpoint")
-
-        # `self.trial_executor.get_checkpoints().values()` returns a list
-        # of pre-serialized JSON strings. There is no great way to include
-        # these in an object passed to `json.dump`, so we dump the high-level
-        # JSON ourselves.
         with open(tmp_file_name, "w") as f:
-            f.write("{\n"
-                    "  \"checkpoints\": [\n" +
-                    ", ".join(self.trial_executor.get_checkpoints().values()) +
-                    "],\n"
-                    "  \"runner_data\": " + json.dumps(
-                        self.__getstate__(), indent=2,
-                        cls=TuneFunctionEncoder) + ",\n"
-                    "  \"stats\": " + json.dumps(
-                        {
-                            "start_time": self._start_time,
-                            "timestamp": self._last_checkpoint_time
-                        },
-                        indent=2,
-                        cls=TuneFunctionEncoder) + "}\n")
+            json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
 
         os.replace(tmp_file_name, self.checkpoint_file)
         self._search_alg.save_to_dir(
@@ -320,8 +311,10 @@ class TrialRunner:
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
+        checkpoints = [json.loads(cp) for cp in runner_state["checkpoints"]]
+
         trials = []
-        for trial_cp in runner_state["checkpoints"]:
+        for trial_cp in checkpoints:
             new_trial = Trial(trial_cp["trainable_name"])
             new_trial.__setstate__(trial_cp)
             trials += [new_trial]

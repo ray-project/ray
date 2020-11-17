@@ -343,7 +343,9 @@ class ExperimentAnalysis(Analysis):
 
         if "checkpoints" not in _experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")
-        self._checkpoints = _experiment_state["checkpoints"]
+        self._checkpoints = [
+            json.loads(cp) for cp in _experiment_state["checkpoints"]
+        ]
         self.trials = trials
 
         super(ExperimentAnalysis, self).__init__(
