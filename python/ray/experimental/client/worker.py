@@ -4,6 +4,7 @@ to the server.
 """
 from typing import List
 
+import ray.cloudpickle as cloudpickle
 import grpc
 
 from ray import cloudpickle
