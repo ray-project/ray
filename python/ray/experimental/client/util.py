@@ -1,7 +1,7 @@
 from ray import cloudpickle
 from ray.experimental.client.worker import ClientObjectRef
 
-import ray
+import rayexperimental.client as ray_client
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 
@@ -11,8 +11,8 @@ def dump_args_proto(arg):
     else:
         # TODO(barakmich): This is a dirty hack that assumes the
         # server maintains a reference to the ID we've been given
-        ref = ray.ObjectRef(arg.reference_id)
-        return ray.get(ref)
+        ref = ray_client.ClientObjectRef(arg.reference_id)
+        return ray_client.get(ref)
 
 
 def load_args_proto(thing):
