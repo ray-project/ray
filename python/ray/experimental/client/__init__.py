@@ -6,13 +6,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 # _client_api has to be external to the API stub, below.
 # Otherwise, ray.remote() that contains ray.remote()
 # contains a reference to the RayAPIStub, therefore a
 # reference to the _client_api, and then tries to pickle
 # the thing.
 _client_api: Optional[APIImpl] = None
+
 
 class RayAPIStub:
     def connect(self, conn_str):
