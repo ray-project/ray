@@ -121,7 +121,7 @@ class TrainingOperator:
                  world_rank,
                  local_rank,
                  is_distributed=False,
-                 device_ids=None,
+                 device=None,
                  use_gpu=False,
                  use_fp16=False,
                  use_tqdm=False,
@@ -134,9 +134,8 @@ class TrainingOperator:
         self._config = config
         self._is_distributed = is_distributed
         self._use_fp16 = use_fp16
-        self._device_ids = device_ids
+        self._device = device
         self._use_gpu = use_gpu and torch.cuda.is_available()
-        self._device = torch.device("cuda" if self._use_gpu else "cpu")
         if tqdm is None and use_tqdm:
             raise ValueError("tqdm must be installed to use tqdm in training.")
         self._use_tqdm = use_tqdm
@@ -874,7 +873,8 @@ class TrainingOperator:
 
     @property
     def device(self):
-        """torch.device: The appropriate torch device, at your convenience."""
+        """torch.device: The appropriate torch device, at your
+        convenience."""
         return self._device
 
     @property
@@ -909,11 +909,14 @@ class TrainingOperator:
 
     @property
     def device_ids(self):
-        """List[int]: Device IDs for the model.
+        """Optional[List[int]]: Device IDs for the model.
 
         This is useful for using batch norm with DistributedDataParallel.
+        Not applicable if not using GPU.
         """
-        return self._device_ids
+        if not self.use_gpu:
+            return None
+        return [self.device.index]
 
     @property
     def scheduler_step_freq(self):
