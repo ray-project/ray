@@ -4,14 +4,13 @@ import random
 import platform
 import sys
 import time
-from pathlib import Path
 
 import numpy as np
 import pytest
 import psutil
 import ray
 
-bucket_name = "sang-object-spilling-test"
+bucket_name = "object-spilling-test"
 spill_local_path = "/tmp/spill"
 file_system_object_spilling_config = {
     "type": "filesystem",
@@ -30,9 +29,9 @@ smart_open_object_spilling_config = {
 @pytest.fixture(
     scope="function",
     params=[
-        # file_system_object_spilling_config,
+        file_system_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
-        smart_open_object_spilling_config,
+        # smart_open_object_spilling_config,
     ])
 def object_spilling_config(request, tmpdir):
     if request.param["type"] == "filesystem":
@@ -108,6 +107,37 @@ def test_invalid_config_raises_exception(shutdown_only):
         ray.init(_system_config={
             "object_spilling_config": json.dumps(copied_config),
         })
+
+
+def test_url_protocol(shutdown_only):
+    """Make sure the url protocol to create
+    internal/external url works as expected."""
+    ray.init(num_cpus=0)
+    from ray.external_storage import ExternalStorageURLProtocol
+    prefix = "ray"
+    protocol = ExternalStorageURLProtocol(prefix)
+    ref = ray.put(1)
+    object_size_in_bytes = 30
+    offsets_in_bytes = 15
+    object_id = ref.hex()
+    object_id_stored = ref.hex()
+    job_id = ray.JobID.nil().hex()
+
+    # Make sure internal url is properly created
+    internal_url = protocol.create_internal_url(
+        job_id=job_id,
+        object_id_stored=object_id_stored,
+        object_id=object_id,
+        object_size_in_bytes=object_size_in_bytes,
+        offsets_in_bytes=offsets_in_bytes)
+    external_url = protocol.produce_external_url_from_object_ref(ref)
+    assert external_url == protocol.produce_external_url(internal_url)
+    url_info = protocol.get_url_info(internal_url)
+    assert url_info.job_id == job_id
+    assert url_info.object_id_stored == object_id_stored
+    assert url_info.object_id == object_id
+    assert url_info.object_size_in_bytes == object_size_in_bytes
+    assert url_info.offsets_in_bytes == offsets_in_bytes
 
 
 @pytest.mark.skipif(
@@ -292,28 +322,34 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 0,
+            "min_spilling_size": 30 * 1024 * 1024,
         })
-    arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
+    solution_buffer = []
+    buffer_length = 100
 
     # Wait raylet for starting an IO worker.
     time.sleep(1)
 
     # Create objects of more than 800 MiB.
-    for _ in range(15):
+    for _ in range(buffer_length):
         ref = None
         while ref is None:
+            multiplier = random.choice([1, 2, 3])
+            arr = np.random.rand(multiplier * 1024 * 1024)
             ref = ray.put(arr)
             replay_buffer.append(ref)
+            solution_buffer.append(arr)
 
     print("-----------------------------------")
 
     # randomly sample objects
     for _ in range(1000):
-        ref = random.choice(replay_buffer)
+        index = random.choice([i for i in range(buffer_length)])
+        ref = replay_buffer[index]
+        solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
-        assert np.array_equal(sample, arr)
+        assert np.array_equal(sample, solution)
 
 
 @pytest.mark.skipif(

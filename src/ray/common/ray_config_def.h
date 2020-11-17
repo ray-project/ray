@@ -342,4 +342,5 @@ RAY_CONFIG(int, max_io_workers, 1)
 /// The minimum size that can be spilled. 100 MB by default.
 /// This value is recommended to be smaller than the plasma object size, but
 /// it will still work although it doesn't.
+/// Setting 0 for this config means that you don't fusion objects.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)

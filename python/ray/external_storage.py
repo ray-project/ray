@@ -10,7 +10,7 @@ from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 
 class ExternalStorageURLProtocol:
     """Class to parse/generate urls for object spilling.
-    
+
     There will be 2 types of URLs.
     1. URL used internally. These urls are stored in GCS.
     2. URL used for external storage.
@@ -20,7 +20,7 @@ class ExternalStorageURLProtocol:
 
     def __init__(self, prefix: str):
         self._prefix = prefix
-        # NOTE(sang): To optimize the performance, Ray fusions small
+        # NOTE: To optimize the performance, Ray fusions small
         # objects when it stored them. object_id_stored is
         # an object_id that is used as a filename.
         # (job_id)-(object_id_stored)-(object_id)
@@ -51,7 +51,7 @@ class ExternalStorageURLProtocol:
                             object_id: str, object_size_in_bytes: int,
                             offsets_in_bytes: int):
         """Create an internal url from a given input.
-        
+
         Follow the self.internal_url_pattern protocol.
 
         Args:
@@ -88,6 +88,7 @@ class ExternalStorageURLProtocol:
         assert match, (f"Given external url, {internal_url}, doesn't "
                        "follow the protocol. Please follow this pattern: "
                        f"{self.internal_url_pattern}")
+
     def _check_external_url_match(self, match, external_url):
         assert match, (f"Given external url, {external_url}, doesn't "
                        "follow the protocol. Please follow this pattern: "
@@ -124,20 +125,16 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         worker.core_worker.put_file_like_object(metadata, data_size, file_like,
                                                 object_ref)
 
-    def _fusion_objects(
-            self,
-            f,
-            object_refs,
-            object_id_stored,
-            url_protocol) -> List[str]:
+    def _fusion_objects(self, f, object_refs, object_id_stored,
+                        url_protocol) -> List[str]:
         """Fusion all objects into a given file handle/return internal urls.
-        
+
         Args:
             f: File handle to fusion all given object refs.
             object_refs: Object references to fusion to a single file.
             object_id_stored: The ID that will be used to store the file f.
-            url_protocol: instance of ExternalStorageURLProtocol. 
-        
+            url_protocol: instance of ExternalStorageURLProtocol.
+
         Return:
             List of internal urls of fusioned objects.
         """
@@ -213,19 +210,14 @@ class FileSystemStorage(ExternalStorage):
     def spill_objects(self, object_refs) -> List[str]:
         if len(object_refs) == 0:
             return []
-        keys = []
         # Always use the first object ref as a key when fusioning objects.
         first_ref = object_refs[0]
         object_id_stored = first_ref.hex()
         filename = self.url_protocol.produce_external_url_from_object_ref(
             first_ref)
-        offsets = 0
         with open(os.path.join(self.directory_path, filename), "wb") as f:
-            return self._fusion_objects(
-                f,
-                object_refs,
-                object_id_stored,
-                self.url_protocol)
+            return self._fusion_objects(f, object_refs, object_id_stored,
+                                        self.url_protocol)
 
     def restore_spilled_objects(self, keys):
         for k in keys:
@@ -279,7 +271,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         self.uri = uri.strip("/")
         self.prefix = prefix
         self.override_transport_params = override_transport_params or {}
-        self.transport_params = {}.update(self.override_transport_params)
+        self.transport_params = {}
+        self.transport_params.update(self.override_transport_params)
         self.url_protocol = ExternalStorageURLProtocol(self.prefix)
 
     def spill_objects(self, object_refs) -> List[str]:
@@ -291,19 +284,12 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         object_id_stored = first_ref.hex()
         external_url = self.url_protocol.produce_external_url_from_object_ref(
             first_ref)
-        offsets = 0
-        from time import perf_counter
-        start  = perf_counter()
         with open(
-                self._build_uri(external_url), "wb",
+                self._build_uri(external_url),
+                "wb",
                 transport_params=self.transport_params) as file_like:
-            keys = self._fusion_objects(
-                file_like,
-                object_refs,
-                object_id_stored,
-                self.url_protocol)
-            end = perf_counter()
-            print("sang ", end - start)
+            keys = self._fusion_objects(file_like, object_refs,
+                                        object_id_stored, self.url_protocol)
             return keys
 
     def restore_spilled_objects(self, keys):
@@ -314,10 +300,12 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             external_url = self.url_protocol.produce_external_url(internal_url)
             ref = ray.ObjectRef(bytes.fromhex(url_info.object_id))
             first_bytes = url_info.offsets_in_bytes
-            end_bytes = url_info.offsets_in_bytes + url_info.object_size_in_bytes
+            end_bytes = first_bytes + url_info.object_size_in_bytes
             with open(
-                    self._build_uri(external_url), "wb",
-                    transport_params=self.transport_params) as f:
+                    self._build_uri(external_url),
+                    "rb",
+                    transport_params=self._get_restore_transport_param(
+                        first_bytes, end_bytes)) as f:
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata = f.read(metadata_len)
@@ -325,6 +313,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 self._put_object_to_store(metadata, buf_len, f, ref)
 
     def _get_restore_transport_param(self, first_bytes, end_bytes):
+        # Add the range read argument.
         return self.transport_params.copy().update({
             "object_kwargs": {
                 "Range": f"bytes={first_bytes}-{end_bytes}"

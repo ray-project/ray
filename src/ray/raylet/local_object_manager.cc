@@ -89,7 +89,8 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
   }
 }
 
-int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required, int64_t min_bytes_to_spill) {
+int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required,
+                                               int64_t min_bytes_to_spill) {
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
     return num_bytes_required;
@@ -168,12 +169,10 @@ void LocalObjectManager::SpillObjectsInternal(
     }
     return;
   }
-  RAY_LOG(ERROR) << "Sagngbin spill requests " << object_id;
   io_worker_pool_.PopSpillWorker(
       [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
         for (const auto &object_id : objects_to_spill) {
-          RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
           request.add_object_ids_to_spill(object_id.Binary());
         }
         io_worker->rpc_client()->SpillObjects(
