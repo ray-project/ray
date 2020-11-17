@@ -73,7 +73,6 @@ def run(
         checkpoint_at_end=False,
         verbose=Verbosity.V3_TRIAL_DETAILS,
         progress_reporter=None,
-        loggers=None,
         log_to_file=False,
         trial_name_creator=None,
         trial_dirname_creator=None,
@@ -90,6 +89,7 @@ def run(
         raise_on_failed_trial=True,
         callbacks=None,
         # Deprecated args
+        loggers=None,
         ray_auto_init=None,
         run_errored_only=None,
         global_checkpoint_period=None,
@@ -196,9 +196,6 @@ def run(
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
-        loggers (list): List of logger creators to be used with
-            each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
-            See `ray/tune/logger.py`.
         log_to_file (bool|str|Sequence): Log stdout and stderr to files in
             Tune's trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
@@ -251,7 +248,9 @@ def run(
             trial (of ERROR state) when the experiments complete.
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
-            ``ray.tune.trial_runner.Callback`` class.
+            ``ray.tune.trial_runner.Callback`` class. If not passed,
+            `LoggerCallback` and `SyncerCallback` callbacks are automatically
+            added.
 
 
     Returns:

@@ -7,7 +7,7 @@ from ray.rllib import _register_all
 from ray.tune.result import TIMESTEPS_TOTAL
 from ray.tune import Trainable, TuneError
 from ray.tune import register_trainable, run_experiments
-from ray.tune.logger import LegacyExperimentLogger, Logger
+from ray.tune.logger import LegacyLoggerCallback, Logger
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, ExportFormat
 
@@ -191,7 +191,7 @@ class RunExperimentTest(unittest.TestCase):
                     }
                 }
             },
-            callbacks=[LegacyExperimentLogger(logger_classes=[CustomLogger])])
+            callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])])
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
         self.assertFalse(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
@@ -204,7 +204,7 @@ class RunExperimentTest(unittest.TestCase):
                 }
             }
         })
-        self.assertTrue(
+        self.assertFalse(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
 
         [trial] = run_experiments(
@@ -216,7 +216,7 @@ class RunExperimentTest(unittest.TestCase):
                     }
                 }
             },
-            callbacks=[LegacyExperimentLogger(logger_classes=[])])
+            callbacks=[LegacyLoggerCallback(logger_classes=[])])
         self.assertFalse(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
 
@@ -239,7 +239,7 @@ class RunExperimentTest(unittest.TestCase):
                     }
                 }
             },
-            callbacks=[LegacyExperimentLogger(logger_classes=[CustomLogger])])
+            callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])])
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
         self.assertTrue(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
@@ -264,7 +264,7 @@ class RunExperimentTest(unittest.TestCase):
                     }
                 }
             },
-            callbacks=[LegacyExperimentLogger(logger_classes=[])])
+            callbacks=[LegacyLoggerCallback(logger_classes=[])])
         self.assertTrue(
             os.path.exists(os.path.join(trial.logdir, "params.json")))
 

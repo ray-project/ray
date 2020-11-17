@@ -6,13 +6,13 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
-import io.ray.runtime.placementgroup.PlacementGroupId;
 import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.util.List;
 import java.util.Map;
@@ -86,6 +86,11 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       .setName(name).setBundles(bundles).setStrategy(strategy).build();
   }
 
+  @Override
+  public void removePlacementGroup(PlacementGroupId id) {
+    nativeRemovePlacementGroup(id.getBytes());
+  }
+
   private static native List<byte[]> nativeSubmitTask(FunctionDescriptor functionDescriptor,
       int functionDescriptorHash, List<FunctionArg> args, int numReturns, CallOptions callOptions);
 
@@ -99,4 +104,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
 
   private static native byte[] nativeCreatePlacementGroup(String name,
       List<Map<String, Double>> bundles, int strategy);
+
+  private static native void nativeRemovePlacementGroup(byte[] placementGroupId);
+
 }
