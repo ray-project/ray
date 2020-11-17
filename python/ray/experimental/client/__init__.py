@@ -30,6 +30,12 @@ def put(*args, **kwargs):
     return _client_api.put(*args, **kwargs)
 
 
+def wait(*args, **kwargs):
+    global _client_api
+    check_client_api()
+    return _client_api.wait(*args, **kwargs)
+
+
 def remote(*args, **kwargs):
     global _client_api
     check_client_api()

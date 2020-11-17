@@ -56,11 +56,24 @@ message GetResponse {
   bool valid = 1;
   bytes data = 2;
 }
+message WaitRequest {
+  bytes object_refs = 1;
+  bytes num_returns = 2;
+  bytes timeout = 3;
+}
+
+message WaitResponse {
+  bool valid = 1;
+  bytes ready_object_ids = 2;
+  bytes remaining_object_ids = 3;
+}
 
 service RayletDriver {
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
   rpc PutObject(PutRequest) returns (PutResponse) {
+  }
+  rpc WaitObject(WaitRequest) returns (WaitResponse) {
   }
   rpc Schedule(ClientTask) returns (ClientTaskTicket) {
   }

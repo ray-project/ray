@@ -23,6 +23,10 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
+    def wait(self, *args, **kwargs):
+        pass
+
+    @abstractmethod
     def remote(self, *args, **kwargs):
         pass
 
@@ -44,6 +48,9 @@ class ClientAPI(APIImpl):
 
     def put(self, *args, **kwargs):
         return self.worker.put(*args, **kwargs)
+
+    def wait(self, *args, **kwargs):
+        return self.worker.wait(*args, **kwargs)
 
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)

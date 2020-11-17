@@ -1,6 +1,7 @@
 import pytest
 import ray.experimental.client.server as ray_client_server
 import ray.experimental.client as ray
+from ray.experimental.client.common import ClientObjectRef
 
 
 def test_put_get(ray_start_regular_shared):
@@ -12,6 +13,39 @@ def test_put_get(ray_start_regular_shared):
 
     retval = ray.get(objectref)
     assert retval == "hello world"
+    ray.disconnect()
+    server.stop(0)
+
+
+def test_wait(ray_start_regular_shared):
+    server = ray_client_server.serve("localhost:50051")
+    ray.connect("localhost:50051")
+
+    objectref = ray.put("hello world")
+    ready, remaining = ray.wait([objectref])
+    assert remaining == []
+    retval = ray.get(ready[0])
+    assert retval == "hello world"
+
+    objectref2 = ray.put(5)
+    ready, remaining = ray.wait([objectref, objectref2])
+    assert ready == [objectref]
+    assert remaining == [objectref2]
+    ready_retval = ray.get(ready[0])
+    assert ready_retval == "hello world"
+    remaining_retval = ray.get(remaining[0])
+    assert remaining_retval == 5
+
+    with pytest.raises(Exception):
+        # Reference not in the object store.
+        ray.wait([ClientObjectRef("blabla")])
+    with pytest.raises(AssertionError):
+        ray.wait("blabla")
+    with pytest.raises(AssertionError):
+        ray.wait(ClientObjectRef("blabla"))
+    with pytest.raises(AssertionError):
+        ray.wait(["blabla"])
+
     ray.disconnect()
     server.stop(0)
 
@@ -44,6 +78,19 @@ def test_remote_functions(ray_start_regular_shared):
     # Reuse the cached ClientRemoteFunc object
     ref4 = fact.remote(5)
     assert ray.get(ref4) == 120
+
+    # Test ray.wait()
+    ref5 = fact.remote(10)
+    # should return ref2, ref3, ref4
+    res = ray.wait([ref5, ref2, ref3, ref4], num_returns=3)
+    assert [ref2, ref3, ref4] == res[0]
+    assert [ref5] == res[1]
+    assert ray.get(res[0]) == [236, 2_432_902_008_176_640_000, 120]
+    # should return ref2, ref3, ref4, ref5
+    res = ray.wait([ref2, ref3, ref4, ref5], num_returns=4)
+    assert [ref2, ref3, ref4, ref5] == res[0]
+    assert [] == res[1]
+    assert ray.get(res[0]) == [236, 2_432_902_008_176_640_000, 120, 3628800]
 
     ray.disconnect()
     server.stop(0)

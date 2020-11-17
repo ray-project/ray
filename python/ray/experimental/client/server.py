@@ -35,6 +35,35 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         logger.info("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary())
 
+    def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
+        object_refs = cloudpickle.loads(request.object_refs)
+        num_returns = cloudpickle.loads(request.num_returns)
+        timeout = cloudpickle.loads(request.timeout)
+        object_refs_ids = []
+        for object_ref in object_refs:
+            if object_ref.id not in self.object_refs:
+                return ray_client_pb2.WaitResponse(valid=False)
+            object_refs_ids.append(self.object_refs[object_ref.id])
+        try:
+            ready_object_refs, remaining_object_refs = ray.wait(
+                object_refs_ids, num_returns=num_returns, timeout=timeout)
+        except Exception:
+            # TODO(ameer): improve exception messages.
+            return ray_client_pb2.WaitResponse(valid=False)
+        logger.info("wait: %s %s" % (str(ready_object_refs),
+                                     str(remaining_object_refs)))
+        ready_object_ids = [
+            ready_object_ref.binary() for ready_object_ref in ready_object_refs
+        ]
+        remaining_object_ids = [
+            remaining_object_ref.binary()
+            for remaining_object_ref in remaining_object_refs
+        ]
+        return ray_client_pb2.WaitResponse(
+            valid=True,
+            ready_object_ids=cloudpickle.dumps(ready_object_ids),
+            remaining_object_ids=cloudpickle.dumps(remaining_object_ids))
+
     def Schedule(self, task, context=None):
         logger.info("schedule: %s" % task)
         if task.payload_id not in self.function_refs:

@@ -19,6 +19,9 @@ class CoreRayAPI(APIImpl):
     def put(self, *args, **kwargs):
         return ray.put(*args, **kwargs)
 
+    def wait(self, *args, **kwargs):
+        return ray.wait(*args, **kwargs)
+
     def remote(self, *args, **kwargs):
         return ray.remote(*args, **kwargs)
 
