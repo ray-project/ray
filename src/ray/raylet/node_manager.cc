@@ -2512,7 +2512,7 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   });
 }
 
-bool NodeManager::FinishAssignedTask(std::shared_ptr<WorkerInterface> worker_ptr) {
+bool NodeManager::FinishAssignedTask(std::shared_ptr<WorkerInterface> &worker_ptr) {
   // TODO (Alex): We should standardize to pass
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
@@ -2524,9 +2524,7 @@ bool NodeManager::FinishAssignedTask(std::shared_ptr<WorkerInterface> worker_ptr
     task = worker.GetAssignedTask();
     // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ?
     if (worker.GetAllocatedInstances() != nullptr) {
-        this->cluster_task_manager_->HandleTaskFinished(worker_ptr);
-      // new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
-      // worker.ClearAllocatedInstances();
+      this->cluster_task_manager_->HandleTaskFinished(worker_ptr);
     }
   } else {
     // (See design_docs/task_states.rst for the state transition diagram.)

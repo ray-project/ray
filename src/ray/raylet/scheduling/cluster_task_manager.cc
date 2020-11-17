@@ -126,12 +126,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
       // If the owner has died since this task was queued, cancel the task by
       // killing the worker (unless this task is for a detached actor).
-      if (!worker->IsDetachedActor() &&
+      if (!spec.IsDetachedActor() &&
           !is_owner_alive_(owner_worker_id, owner_node_id)) {
         // TODO (Alex): To @swang pls double check and make sure this is ok. <3 thx
-        RAY_LOG(ERROR) << "Owner of assigned task "
-                       << task.GetTaskSpecification().TaskId()
-                       << " died, killing leased worker " << worker->WorkerId();
+        RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
+                         << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
       } else {
         std::shared_ptr<TaskResourceInstances> allocated_instances(
@@ -154,8 +153,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         worker->AssignTaskId(task_id);
         if (spec.IsActorCreationTask()) {
           // The actor belongs to this worker now.
-          // ActorID actor_id = spec.ActorCreationId();
-          // worker->AssignActorId(actor_id);
           worker->SetLifetimeAllocatedInstances(allocated_instances);
         } else {
           worker->SetAllocatedInstances(allocated_instances);
