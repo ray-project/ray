@@ -1698,6 +1698,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_filters",
+    main = "examples/custom_filters.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_env.py"],
+    args = ["--as-test"]
+)
+
+py_test(
     name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
