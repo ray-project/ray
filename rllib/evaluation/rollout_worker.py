@@ -46,6 +46,7 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
+    from ray.rllib.agents.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
 
 # Generic type var for foreach_* methods.
@@ -257,7 +258,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 directory if specified.
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
-            callbacks (DefaultCallbacks): Custom training callbacks.
+            callbacks (Type[DefaultCallbacks]): Custom sub-class of
+                DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator (Callable[[IOContext], InputReader]): Function that
                 returns an InputReader object for loading previous generated
                 experiences.

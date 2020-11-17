@@ -306,11 +306,13 @@ def build_eager_tf_policy(name,
             return sample_batch
 
         @override(Policy)
-        def learn_on_batch(self, samples):
+        def learn_on_batch(self, postprocessed_batch):
+            # Callback handling.
+            self.callbacks.on_learn_on_batch(self, postprocessed_batch)
             # Get batch ready for RNNs, if applicable.
             if getattr(self, "model", None):
-                self.model.preprocess_train_batch(samples)
-            return self._learn_on_batch_eager(samples)
+                self.model.preprocess_train_batch(postprocessed_batch)
+            return self._learn_on_batch_eager(postprocessed_batch)
 
         @convert_eager_inputs
         @convert_eager_outputs
