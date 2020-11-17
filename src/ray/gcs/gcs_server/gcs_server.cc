@@ -101,7 +101,7 @@ void GcsServer::Start() {
   rpc_server_.RegisterService(*worker_info_service_);
 
   auto load_completed_count = std::make_shared<int>(0);
-  int load_count = 2;
+  int load_count = 3;
   auto on_done = [this, load_count, load_completed_count]() {
     ++(*load_completed_count);
 
@@ -126,6 +126,10 @@ void GcsServer::Start() {
   };
   gcs_object_manager_->LoadInitialData(on_done);
   gcs_node_manager_->LoadInitialData(on_done);
+  gcs_placement_group_manager_->LoadInitialData(on_done);
+
+  // Print debug info periodically.
+  PrintDebugInfo();
 }
 
 void GcsServer::Stop() {
@@ -294,6 +298,20 @@ void GcsServer::CollectStats() {
   execute_after(
       main_service_, [this] { CollectStats(); },
       (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
+}
+
+void GcsServer::PrintDebugInfo() {
+  std::ostringstream stream;
+  stream << gcs_node_manager_->DebugString() << "\n"
+         << gcs_actor_manager_->DebugString() << "\n"
+         << gcs_object_manager_->DebugString() << "\n"
+         << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
+  // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
+  // gcs_debug_state.txt.
+  RAY_LOG(INFO) << stream.str();
+  execute_after(main_service_, [this] { PrintDebugInfo(); },
+                (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
+                 60000) /* milliseconds */);
 }
 
 }  // namespace gcs

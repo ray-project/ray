@@ -99,8 +99,14 @@ class AgentIOTest(unittest.TestCase):
                 with open(path) as f:
                     for line in f.readlines():
                         data = json.loads(line)
+                        # Data won't contain rewards as these are not included
+                        # in the writeOutputs run (not needed in the
+                        # SampleBatch). Flip out "rewards" for "advantages"
+                        # just for testing.
+                        data["rewards"] = data["advantages"]
                         del data["advantages"]
-                        del data["value_targets"]
+                        if "value_targets" in data:
+                            del data["value_targets"]
                         out.append(data)
                 with open(path, "w") as f:
                     for data in out:

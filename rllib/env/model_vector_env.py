@@ -1,6 +1,6 @@
 import logging
 import numpy as np
-
+from gym.spaces import Discrete
 from ray.rllib.utils.annotations import override
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -93,6 +93,13 @@ class _VectorizedModelGymEnv(VectorEnv):
     def vector_step(self, actions):
         if self.cur_obs is None:
             raise ValueError("Need to reset env first")
+
+        # If discrete, need to one-hot actions
+        if isinstance(self.action_space, Discrete):
+            act = np.array(actions)
+            new_act = np.zeros((act.size, act.max() + 1))
+            new_act[np.arange(act.size), act] = 1
+            actions = new_act.astype("float32")
 
         # Batch the TD-model prediction.
         obs_batch = np.stack(self.cur_obs, axis=0)

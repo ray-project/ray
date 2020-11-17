@@ -134,14 +134,14 @@ This feature is still considered experimental, but we've already found
 distributed actor handles useful for implementing [**parameter server**][10] and
 [**streaming MapReduce**][11] applications.
 
-[1]: http://docs.ray.io/en/latest/actors.html#passing-around-actor-handles-experimental
-[2]: http://docs.ray.io/en/latest/tune.html
-[3]: http://docs.ray.io/en/latest/rllib.html
+[1]: http://docs.ray.io/en/master/actors.html#passing-around-actor-handles-experimental
+[2]: http://docs.ray.io/en/master/tune.html
+[3]: http://docs.ray.io/en/master/rllib.html
 [4]: https://research.google.com/pubs/pub46180.html
 [5]: https://arxiv.org/abs/1603.06560
 [6]: https://www.tensorflow.org/get_started/summaries_and_tensorboard
 [7]: https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf
 [8]: https://en.wikipedia.org/wiki/Parallel_coordinates
 [9]: https://github.com/ray-project/ray/tree/master/python/ray/tune
-[10]: http://docs.ray.io/en/latest/example-parameter-server.html
-[11]: http://docs.ray.io/en/latest/example-streaming.html
+[10]: http://docs.ray.io/en/master/example-parameter-server.html
+[11]: http://docs.ray.io/en/master/example-streaming.html

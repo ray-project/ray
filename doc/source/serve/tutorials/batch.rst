@@ -63,7 +63,7 @@ are specifying the maximum batch size via ``config={"max_batch_size": 4}``. This
 configuration option limits the maximum possible batch size sent to the backend.
 
 .. note::
-    Ray Serve performs *opportunistic batching*. When a worker is free to evaluate
+    Ray Serve performs *opportunistic batching*. When a replica is free to evaluate
     the next batch, Ray Serve will look at the pending queries and take
     ``max(number_of_pending_queries, max_batch_size)`` queries to form a batch.
     You can provide :mod:`batch_wait_timeout <ray.serve.BackendConfig>` to override

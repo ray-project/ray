@@ -708,7 +708,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   report_worker_failure_request.mutable_worker_failure()->CopyFrom(*worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
   std::vector<rpc::WorkerTableData> worker_table_data = GetAllWorkerInfo();
-  ASSERT_TRUE(worker_table_data.size() == 0);
+  ASSERT_TRUE(worker_table_data.size() == 1);
 
   // Add worker info
   auto worker_data = Mocker::GenWorkerTableData();
@@ -716,7 +716,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   rpc::AddWorkerInfoRequest add_worker_request;
   add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
   ASSERT_TRUE(AddWorkerInfo(add_worker_request));
-  ASSERT_TRUE(GetAllWorkerInfo().size() == 1);
+  ASSERT_TRUE(GetAllWorkerInfo().size() == 2);
 
   // Get worker info
   boost::optional<rpc::WorkerTableData> result =
