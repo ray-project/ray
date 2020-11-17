@@ -31,18 +31,20 @@ class ExternalStorageURLProtocol:
         self.external_url_pattern = re.compile(
             "([0-9a-zA-Z_]+)-([0-9a-f]{40})")
 
+    def produce_external_url_from_object_ref(self, object_ref):
+        external_url = f"{self._prefix}-{object_ref.hex()}"
+        match = self.external_url_pattern.match(external_url)
+        self._check_external_url_match(match, external_url)
+        return external_url
+
     def produce_external_url(self, internal_url: str):
         """internal_url -> external_url"""
         match = self.internal_url_pattern.match(internal_url)
-        assert match, (f"Given external url, {internal_url}, doesn't "
-                       "follow the protocl. Please follow this pattern: "
-                       f"{self.internal_url_pattern}")
+        self._check_internal_url_match(match, internal_url)
         object_id_stored = match.group(2)
         external_url = f"{self._prefix}-{object_id_stored}"
         match = self.external_url_pattern.match(external_url)
-        assert match, (f"Given external url, {external_url}, doesn't "
-                       "follow the protocol. Please follow this pattern: "
-                       f"{self.external_url_pattern}")
+        self._check_external_url_match(match, external_url)
         return external_url
 
     def create_internal_url(self, *, job_id: str, object_id_stored: str,
@@ -65,16 +67,12 @@ class ExternalStorageURLProtocol:
             f"{job_id}-{object_id_stored}-{object_id}"
             f"-{str(object_size_in_bytes)}-{str(offsets_in_bytes)}")
         match = self.internal_url_pattern.match(internal_url)
-        assert match, (f"Given external url, {internal_url}, doesn't "
-                       "follow the protocol. Please follow this pattern: "
-                       f"{self.internal_url_pattern}")
+        self._check_internal_url_match(match, internal_url)
         return internal_url
 
     def get_url_info(self, internal_url) -> namedtuple:
         match = self.internal_url_pattern.match(internal_url)
-        assert match, (f"Given external url, {internal_url}, doesn't "
-                       "follow the protocol. Please follow this pattern: "
-                       f"{self.internal_url_pattern}")
+        self._check_internal_url_match(match, internal_url)
         URLInfo = namedtuple(
             "URLInfo", "job_id object_id_stored "
             "object_id object_size_in_bytes "
@@ -85,6 +83,15 @@ class ExternalStorageURLProtocol:
             object_id=match.group(3),
             object_size_in_bytes=int(match.group(4)),
             offsets_in_bytes=int(match.group(5)))
+
+    def _check_internal_url_match(self, match, internal_url):
+        assert match, (f"Given external url, {internal_url}, doesn't "
+                       "follow the protocol. Please follow this pattern: "
+                       f"{self.internal_url_pattern}")
+    def _check_external_url_match(self, match, external_url):
+        assert match, (f"Given external url, {external_url}, doesn't "
+                       "follow the protocol. Please follow this pattern: "
+                       f"{self.external_url_pattern}")
 
 
 class ExternalStorage(metaclass=abc.ABCMeta):
@@ -116,6 +123,44 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         worker = ray.worker.global_worker
         worker.core_worker.put_file_like_object(metadata, data_size, file_like,
                                                 object_ref)
+
+    def _fusion_objects(
+            self,
+            f,
+            object_refs,
+            object_id_stored,
+            url_protocol) -> List[str]:
+        """Fusion all objects into a given file handle/return internal urls.
+        
+        Args:
+            f: File handle to fusion all given object refs.
+            object_refs: Object references to fusion to a single file.
+            object_id_stored: The ID that will be used to store the file f.
+            url_protocol: instance of ExternalStorageURLProtocol. 
+        
+        Return:
+            List of internal urls of fusioned objects.
+        """
+        keys = []
+        offsets = 0
+        ray_object_pairs = self._get_objects_from_store(object_refs)
+        for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
+            metadata_len = len(metadata)
+            buf_len = len(buf)
+            object_size_in_bytes = metadata_len + buf_len + 16
+            internal_url = url_protocol.create_internal_url(
+                job_id=ref.job_id().hex(),
+                object_id_stored=object_id_stored,
+                object_id=ref.hex(),
+                object_size_in_bytes=object_size_in_bytes,
+                offsets_in_bytes=offsets)
+            f.write(metadata_len.to_bytes(8, byteorder="little"))
+            f.write(buf_len.to_bytes(8, byteorder="little"))
+            f.write(metadata)
+            f.write(memoryview(buf))
+            offsets += object_size_in_bytes
+            keys.append(internal_url.encode())
+        return keys
 
     @abc.abstractmethod
     def spill_objects(self, object_refs) -> List[str]:
@@ -166,27 +211,21 @@ class FileSystemStorage(ExternalStorage):
         self.url_protocol = ExternalStorageURLProtocol(self.prefix)
 
     def spill_objects(self, object_refs) -> List[str]:
+        if len(object_refs) == 0:
+            return []
         keys = []
-        ray_object_pairs = self._get_objects_from_store(object_refs)
-        for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
-            offsets = 0
-            filename = self.prefix + ref.hex()
-            metadata_len = len(metadata)
-            buf_len = len(buf)
-            internal_url = self.url_protocol.create_internal_url(
-                job_id=ref.job_id().hex(),
-                object_id_stored=ref.hex(),
-                object_id=ref.hex(),
-                object_size_in_bytes=metadata_len + buf_len + 16,
-                offsets_in_bytes=offsets)
-            filename = self.url_protocol.produce_external_url(internal_url)
-            with open(os.path.join(self.directory_path, filename), "wb") as f:
-                f.write(metadata_len.to_bytes(8, byteorder="little"))
-                f.write(buf_len.to_bytes(8, byteorder="little"))
-                f.write(metadata)
-                f.write(memoryview(buf))
-            keys.append(internal_url.encode())
-        return keys
+        # Always use the first object ref as a key when fusioning objects.
+        first_ref = object_refs[0]
+        object_id_stored = first_ref.hex()
+        filename = self.url_protocol.produce_external_url_from_object_ref(
+            first_ref)
+        offsets = 0
+        with open(os.path.join(self.directory_path, filename), "wb") as f:
+            return self._fusion_objects(
+                f,
+                object_refs,
+                object_id_stored,
+                self.url_protocol)
 
     def restore_spilled_objects(self, keys):
         for k in keys:
@@ -208,6 +247,10 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     (https://github.com/RaRe-Technologies/smart_open)
 
     Smart open supports multiple backend with the same APIs.
+
+    To use this implementation, you should pre-create the given uri.
+    For example, if your uri is a local file path, you should pre-create
+    the directory.
 
     Args:
         uri(str): Storage URI used for smart open.
@@ -237,45 +280,56 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         self.prefix = prefix
         self.override_transport_params = override_transport_params or {}
         self.transport_params = {}.update(self.override_transport_params)
+        self.url_protocol = ExternalStorageURLProtocol(self.prefix)
 
     def spill_objects(self, object_refs) -> List[str]:
-        keys = []
-        ray_object_pairs = self._get_objects_from_store(object_refs)
-        for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
-            key = self.prefix + ref.hex()
-            self._spill_object(key, ref, buf, metadata)
-            keys.append(key.encode())
-        return keys
+        if len(object_refs) == 0:
+            return []
+        from smart_open import open
+        # Always use the first object ref as a key when fusioning objects.
+        first_ref = object_refs[0]
+        object_id_stored = first_ref.hex()
+        external_url = self.url_protocol.produce_external_url_from_object_ref(
+            first_ref)
+        offsets = 0
+        from time import perf_counter
+        start  = perf_counter()
+        with open(
+                self._build_uri(external_url), "wb",
+                transport_params=self.transport_params) as file_like:
+            keys = self._fusion_objects(
+                file_like,
+                object_refs,
+                object_id_stored,
+                self.url_protocol)
+            end = perf_counter()
+            print("sang ", end - start)
+            return keys
 
     def restore_spilled_objects(self, keys):
+        from smart_open import open
         for k in keys:
-            key = k.decode()
-            ref = ray.ObjectRef(bytes.fromhex(key[len(self.prefix):]))
-            self._restore_spilled_object(key, ref)
+            internal_url = k.decode()
+            url_info = self.url_protocol.get_url_info(internal_url)
+            external_url = self.url_protocol.produce_external_url(internal_url)
+            ref = ray.ObjectRef(bytes.fromhex(url_info.object_id))
+            first_bytes = url_info.offsets_in_bytes
+            end_bytes = url_info.offsets_in_bytes + url_info.object_size_in_bytes
+            with open(
+                    self._build_uri(external_url), "wb",
+                    transport_params=self.transport_params) as f:
+                metadata_len = int.from_bytes(f.read(8), byteorder="little")
+                buf_len = int.from_bytes(f.read(8), byteorder="little")
+                metadata = f.read(metadata_len)
+                # read remaining data to our buffer
+                self._put_object_to_store(metadata, buf_len, f, ref)
 
-    def _spill_object(self, key, ref, buf, metadata):
-        from smart_open import open
-        with open(
-                self._build_uri(key), "wb",
-                transport_params=self.transport_params) as file_like:
-            metadata_len = len(metadata)
-            buf_len = len(buf)
-            file_like.write(metadata_len.to_bytes(8, byteorder="little"))
-            file_like.write(buf_len.to_bytes(8, byteorder="little"))
-            file_like.write(metadata)
-            file_like.write(memoryview(buf))
-
-    def _restore_spilled_object(self, key, ref):
-        from smart_open import open
-        with open(
-                self._build_uri(key), "rb",
-                transport_params=self.transport_params) as file_like:
-            metadata_len = int.from_bytes(
-                file_like.read(8), byteorder="little")
-            buf_len = int.from_bytes(file_like.read(8), byteorder="little")
-            metadata = file_like.read(metadata_len)
-            # read remaining data to our buffer
-            self._put_object_to_store(metadata, buf_len, file_like, ref)
+    def _get_restore_transport_param(self, first_bytes, end_bytes):
+        return self.transport_params.copy().update({
+            "object_kwargs": {
+                "Range": f"bytes={first_bytes}-{end_bytes}"
+            }
+        })
 
     def _build_uri(self, key):
         return f"{self.uri}/{key}"

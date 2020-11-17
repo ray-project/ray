@@ -380,14 +380,14 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   }
   manager.PinObjects(object_ids, std::move(objects));
 
-  int64_t num_bytes_required = manager.SpillObjectsOfSize(total_size / 2);
+  int64_t num_bytes_required = manager.SpillObjectsOfSize(total_size / 2, total_size / 2);
   ASSERT_EQ(num_bytes_required, -object_size / 2);
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
   // Check that this returns the total number of bytes currently being spilled.
-  num_bytes_required = manager.SpillObjectsOfSize(0);
+  num_bytes_required = manager.SpillObjectsOfSize(0, 0);
   ASSERT_EQ(num_bytes_required, -2 * object_size);
 
   // Check that half the objects get spilled and the URLs get added to the
@@ -411,7 +411,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   }
 
   // Check that this returns the total number of bytes currently being spilled.
-  num_bytes_required = manager.SpillObjectsOfSize(0);
+  num_bytes_required = manager.SpillObjectsOfSize(0, 0);
   ASSERT_EQ(num_bytes_required, 0);
   ASSERT_TRUE(num_callbacks_fired > 0);
 }

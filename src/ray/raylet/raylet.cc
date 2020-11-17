@@ -76,9 +76,9 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                         node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
                             object_id, spilled_url, callback);
                       },
-                      [this](int64_t num_bytes_required) {
+                      [this](int64_t num_bytes_required, int64_t min_bytes_to_spill) {
                         return node_manager_.GetLocalObjectManager().SpillObjectsOfSize(
-                            num_bytes_required);
+                            num_bytes_required, min_bytes_to_spill);
                       }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_,

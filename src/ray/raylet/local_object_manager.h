@@ -69,9 +69,10 @@ class LocalObjectManager {
   /// specified number of bytes.
   ///
   /// \param num_bytes_to_spill The total number of bytes to spill.
+  /// \param min_bytes_to_spill The minimum bytes that need to be spilled.
   /// \return The number of bytes of space still required after the spill is
-  /// complete.
-  int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill);
+  /// complete. This return the value < 0 if it satifies the minimy bytes to spill.
+  int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill, int64_t min_bytes_to_spill);
 
   /// Spill objects to external storage.
   ///
