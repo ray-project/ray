@@ -48,7 +48,7 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation(self):
         """Test whether a PPOTrainer can be built with all frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        config["num_workers"] = 0#TODO 1
+        config["num_workers"] = 1
         config["num_sgd_iter"] = 2
         # Settings in case we use an LSTM.
         config["model"]["lstm_cell_size"] = 10
@@ -64,10 +64,7 @@ class TestPPO(unittest.TestCase):
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action_reward"] = lstm
                     trainer = ppo.PPOTrainer(config=config, env=env)
-                    rw = trainer.workers.local_worker()
                     for i in range(num_iterations):
-                        sb = rw.sample()
-                        assert sb.count == config["rollout_fragment_length"]
                         trainer.train()
                     check_compute_single_action(
                         trainer,
