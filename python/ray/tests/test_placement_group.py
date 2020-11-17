@@ -1177,7 +1177,7 @@ def test_create_placement_group_after_gcs_server_restarts(
 
     # Create placement group 1 successfully.
     placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    ray.get(placement_group1.ready())
+    ray.get(placement_group1.ready(), timeout=10)
     table = ray.util.placement_group_table(placement_group1)
     assert table["state"] == "CREATED"
 
@@ -1187,7 +1187,7 @@ def test_create_placement_group_after_gcs_server_restarts(
 
     # Create placement group 2 successfully.
     placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    ray.get(placement_group2.ready())
+    ray.get(placement_group2.ready(), timeout=10)
     table = ray.util.placement_group_table(placement_group2)
     assert table["state"] == "CREATED"
 
