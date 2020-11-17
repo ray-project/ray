@@ -485,12 +485,10 @@ void NodeManager::Heartbeat() {
     }
   }
 
-  if (!new_scheduler_enabled_) {
-    // Add resource load by shape. This will be used by the new autoscaler.
-    auto resource_load = local_queues_.GetResourceLoadByShape(
-        RayConfig::instance().max_resource_shapes_per_load_report());
-    heartbeat_data->mutable_resource_load_by_shape()->Swap(&resource_load);
-  }
+  // Add resource load by shape. This will be used by the new autoscaler.
+  auto resource_load = local_queues_.GetResourceLoadByShape(
+      RayConfig::instance().max_resource_shapes_per_load_report());
+  heartbeat_data->mutable_resource_load_by_shape()->Swap(&resource_load);
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
@@ -886,7 +884,7 @@ void NodeManager::HeartbeatAdded(const NodeID &client_id,
       ResourceSet remote_total(MapFromProtobuf(heartbeat_data.resources_total()));
       remote_resources.SetTotalResources(std::move(remote_total));
     }
-    if (heartbeat_data.resources_available_changed()) {
+    if (heartbeat_data.resource_load_changed()) {
       ResourceSet remote_available(MapFromProtobuf(heartbeat_data.resources_available()));
       remote_resources.SetAvailableResources(std::move(remote_available));
     }
