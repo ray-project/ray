@@ -57,15 +57,15 @@ message GetResponse {
   bytes data = 2;
 }
 message WaitRequest {
-  bytes object_refs = 1;
-  bytes num_returns = 2;
-  bytes timeout = 3;
+  repeated bytes object_refs = 1;
+  int64 num_returns = 2;
+  double timeout = 3;
 }
 
 message WaitResponse {
   bool valid = 1;
-  bytes ready_object_ids = 2;
-  bytes remaining_object_ids = 3;
+  repeated bytes ready_object_ids = 2;
+  repeated bytes remaining_object_ids = 3;
 }
 
 service RayletDriver {

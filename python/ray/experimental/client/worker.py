@@ -76,9 +76,11 @@ class Worker:
         for ref in object_refs:
             assert isinstance(ref, ClientObjectRef)
         data = {
-            "object_refs": cloudpickle.dumps(object_refs),
-            "num_returns": cloudpickle.dumps(num_returns),
-            "timeout": cloudpickle.dumps(timeout)
+            "object_refs": [
+                cloudpickle.dumps(object_ref) for object_ref in object_refs
+            ],
+            "num_returns": num_returns,
+            "timeout": timeout if timeout else -1
         }
         req = ray_client_pb2.WaitRequest(**data)
         resp = self.server.WaitObject(req)
@@ -87,10 +89,12 @@ class Worker:
             raise Exception("Client Wait request failed. Reference invalid?")
         client_ready_object_ids = []
         client_remaining_object_ids = []
-        for id in cloudpickle.loads(resp.ready_object_ids):
-            client_ready_object_ids.append(ClientObjectRef(id))
-        for id in cloudpickle.loads(resp.remaining_object_ids):
-            client_remaining_object_ids.append(ClientObjectRef(id))
+        for id in resp.ready_object_ids:
+            client_ready_object_ids.append(
+                ClientObjectRef(cloudpickle.loads(id)))
+        for id in resp.remaining_object_ids:
+            client_remaining_object_ids.append(
+                ClientObjectRef(cloudpickle.loads(id)))
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
