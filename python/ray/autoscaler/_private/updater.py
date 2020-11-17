@@ -407,8 +407,8 @@ class NodeUpdater:
                         _numbered=("[]", 6, NUM_SETUP_STEPS))
 
         with cli_logger.group(
-                "Starting the Ray runtime",
-                _numbered=("[]", 7, NUM_SETUP_STEPS)):
+                "Starting the Ray runtime", _numbered=("[]", 7,
+                                                       NUM_SETUP_STEPS)):
             global_event_system.execute_callback(
                 CreateClusterEvent.start_ray_runtime)
             with LogTimer(
