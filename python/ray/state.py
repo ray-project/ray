@@ -63,6 +63,8 @@ class GlobalState:
         """Disconnect global state from GCS."""
         self.redis_client = None
         self.redis_clients = None
+        self.redis_address = None
+        self.redis_password = None
         if self.global_state_accessor is not None:
             self.global_state_accessor.disconnect()
             self.global_state_accessor = None
