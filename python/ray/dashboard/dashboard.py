@@ -696,7 +696,8 @@ class RayletStats(threading.Thread):
                         node_manager_pb2.GetNodeStatsRequest(
                             include_memory_info=self.include_memory_info),
                         timeout=2)
-                    reply_dict = MessageToDict(reply, including_default_value_fields=True)
+                    reply_dict = MessageToDict(
+                        reply, including_default_value_fields=True)
                     reply_dict["nodeId"] = node_id
                     replies[node["NodeManagerAddress"]] = reply_dict
                 with self._raylet_stats_lock:
