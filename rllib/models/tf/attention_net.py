@@ -326,8 +326,8 @@ class GTrXLNet(RecurrentNetwork):
         B = tf.shape(seq_lens)[0]
 
         #TEST
-        #observations = input_dict[SampleBatch.OBS]
-        observations = tf.concat([state[0], input_dict[SampleBatch.OBS]], axis=1)
+        observations = input_dict[SampleBatch.OBS] # <- original line
+        #observations = tf.concat([state[0], input_dict[SampleBatch.OBS]], axis=1)
         #END TEST
 
         shape = tf.shape(observations)
