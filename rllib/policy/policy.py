@@ -4,7 +4,7 @@ from gym.spaces import Box
 import logging
 import numpy as np
 import tree
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Type, TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -18,6 +18,9 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
+
+if TYPE_CHECKING:
+    from ray.rllib.agents.callbacks import DefaultCallbacks
 
 torch, _ = try_import_torch()
 
@@ -71,6 +74,11 @@ class Policy(metaclass=ABCMeta):
         self.action_space = action_space
         self.action_space_struct = get_base_struct_from_space(action_space)
         self.config = config
+        if self.config.get("callbacks"):
+            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
+        else:
+            from ray.rllib.agents.callbacks import DefaultCallbacks
+            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
         # The global timestep, broadcast down from time to time from the
         # driver.
         self.global_timestep = 0
