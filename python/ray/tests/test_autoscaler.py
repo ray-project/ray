@@ -1216,9 +1216,6 @@ class AutoscalingTest(unittest.TestCase):
             "type": "external",
             "module": "does-not-exist",
         }
-        with pytest.raises(ValueError):
-            invalid_provider = self.write_config(
-                config, call_prepare_config=True)
         invalid_provider = self.write_config(config, call_prepare_config=False)
         with pytest.raises(ValueError):
             StandardAutoscaler(

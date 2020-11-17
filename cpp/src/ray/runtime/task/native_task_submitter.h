@@ -10,14 +10,14 @@ namespace api {
 
 class NativeTaskSubmitter : public TaskSubmitter {
  public:
-  ObjectID SubmitTask(const InvocationSpec &invocation);
+  ObjectID SubmitTask(InvocationSpec &invocation);
 
-  ActorID CreateActor(const InvocationSpec &invocation);
+  ActorID CreateActor(InvocationSpec &invocation);
 
-  ObjectID SubmitActorTask(const InvocationSpec &invocation);
+  ObjectID SubmitActorTask(InvocationSpec &invocation);
 
  private:
-  ObjectID Submit(const InvocationSpec &invocation);
+  ObjectID Submit(InvocationSpec &invocation);
 };
 }  // namespace api
 }  // namespace ray
