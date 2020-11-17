@@ -19,11 +19,14 @@ class TestSimpleQ(unittest.TestCase):
         """Test whether a SimpleQTrainer can be built on all frameworks."""
         config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        num_iterations = 2
 
         for _ in framework_iterator(config):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
-            num_iterations = 2
+            rw = trainer.workers.local_worker()
             for i in range(num_iterations):
+                sb = rw.sample()
+                assert sb.count == config["rollout_fragment_length"]
                 results = trainer.train()
                 print(results)
 
