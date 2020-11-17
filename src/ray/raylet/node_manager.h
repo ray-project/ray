@@ -285,6 +285,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// only false for direct actor creation calls, which should never be
   /// returned to idle.
   bool FinishAssignedTask(std::shared_ptr<WorkerInterface> worker_ptr);
+
   /// Helper function to produce actor table data for a newly created actor.
   ///
   /// \param task_spec Task specification of the actor creation task that created the

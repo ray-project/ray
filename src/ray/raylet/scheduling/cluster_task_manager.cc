@@ -154,8 +154,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         worker->AssignTaskId(task_id);
         if (spec.IsActorCreationTask()) {
           // The actor belongs to this worker now.
-          ActorID actor_id = spec.ActorCreationId();
-          worker->AssignActorId(actor_id);
+          // ActorID actor_id = spec.ActorCreationId();
+          // worker->AssignActorId(actor_id);
           worker->SetLifetimeAllocatedInstances(allocated_instances);
         } else {
           worker->SetAllocatedInstances(allocated_instances);

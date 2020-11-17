@@ -1359,8 +1359,6 @@ void NodeManager::ProcessDisconnectClientMessage(
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
     const TaskID &task_id = worker->GetAssignedTaskId();
-    RAY_LOG(DEBUG) << "Process disconnect message received. Task ID: " << task_id
-                   << " worker: " << worker->WorkerId();
     // If the worker was running a task or actor, clean up the task and push an
     // error to the driver, unless the worker is already dead.
     if ((!task_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
@@ -1391,7 +1389,11 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Return the resources that were being used by this worker.
     if (new_scheduler_enabled_) {
-      this->cluster_task_manager_->HandleTaskFinished(worker);
+      new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
+      worker->ClearAllocatedInstances();
+      new_resource_scheduler_->FreeLocalTaskResources(
+          worker->GetLifetimeAllocatedInstances());
+      worker->ClearLifetimeAllocatedInstances();
     } else {
       auto const &task_resources = worker->GetTaskResourceIds();
       local_available_resources_.ReleaseConstrained(
@@ -1406,7 +1408,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       worker->ResetLifetimeResourceIds();
     }
 
-    // Since some resources may have been released, we can try to dispatch more tasks.
+    // Since some resources may have been released, we can try to dispatch more tasks. YYY
     if (new_scheduler_enabled_) {
       ScheduleAndDispatch();
     } else {
@@ -1647,8 +1649,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   }
   Task task(task_message, backlog_size);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
+  ActorID actor_id = ActorID::Nil();
 
   if (is_actor_creation_task) {
+    actor_id = task.GetTaskSpecification().ActorCreationId();
+
     // Save the actor creation task spec to GCS, which is needed to
     // reconstruct the actor when raylet detect it dies.
     std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
@@ -2511,15 +2516,17 @@ bool NodeManager::FinishAssignedTask(std::shared_ptr<WorkerInterface> worker_ptr
   // TODO (Alex): We should standardize to pass
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
-
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   Task task;
   if (new_scheduler_enabled_) {
+    task = worker.GetAssignedTask();
     // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ?
-    if (worker_ptr->GetAllocatedInstances() != nullptr) {
-      this->cluster_task_manager_->HandleTaskFinished(worker_ptr);
+    if (worker.GetAllocatedInstances() != nullptr) {
+        this->cluster_task_manager_->HandleTaskFinished(worker_ptr);
+      // new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
+      // worker.ClearAllocatedInstances();
     }
   } else {
     // (See design_docs/task_states.rst for the state transition diagram.)
