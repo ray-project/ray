@@ -152,6 +152,16 @@ class RemotePdb(Pdb):
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
 
+    def do_get(self, arg):
+        """get
+        Skip to where the current task returns to.
+        """
+        ray.worker.global_worker.debugger_get = self._breakpoint_uuid
+        _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid), "get", overwrite=True)
+        self.__restore()
+        self.handle.connection.close()
+        return Pdb.do_continue(self, arg)
+
 
 def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None, breakpoint_uuid=None):
     """

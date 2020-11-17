@@ -125,6 +125,7 @@ class Worker:
         # postprocessor must take two arguments ("object_refs", and "values").
         self._post_get_hooks = []
         self.debugger_breakpoint = ""
+        self.debugger_get = False
 
     @property
     def connected(self):
@@ -1480,6 +1481,20 @@ def get(object_refs, *, timeout=None):
 
         if is_individual_id:
             values = values[0]
+
+        drop_into_debugger = False
+        # Put code here that tests for object_ids
+        print("XXX")
+        for object_ref in object_refs:
+            print("YYY")
+            key = "RAY_PDB_GET_{}".format(object_ref)
+            data = ray.experimental.internal_kv._internal_kv_get(key)
+            print("data", data)
+            if data:
+                drop_into_debugger = True
+        if drop_into_debugger:
+            ray.util.pdb.set_trace(breakpoint_uuid=data)
+
         return values
 
 

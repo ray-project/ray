@@ -492,6 +492,15 @@ cdef execute_task(
                             core_worker.get_current_task_id())
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
+                # Put object_ids into debugger
+                if ray.worker.global_worker.debugger_get:
+                    print("debugger_get", ray.worker.global_worker.debugger_get)
+                    for i in range(c_return_ids.size()):
+                        print("ID = ", c_return_ids[i].Hex().decode())
+                        ray.experimental.internal_kv._internal_kv_put(
+                            "RAY_PDB_GET_{}".format(c_return_ids[i].Hex().decode()),
+                            value=ray.worker.global_worker.debugger_get)
+
                 core_worker.store_task_outputs(
                     worker, outputs, c_return_ids, returns)
         except Exception as error:
