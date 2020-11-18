@@ -57,10 +57,12 @@ def get_policy_class(config):
 def validate_config(config):
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("`entropy_coeff` must be >= 0")
-    #if config["sample_async"] and config["framework"] == "torch":
-    #    config["sample_async"] = False
-    #    logger.warning("`sample_async=True` is not supported for PyTorch! "
-    #                   "Multithreading can lead to crashes.")
+    # Switch on value-fn returns for calling the Model in torch. This is to
+    # counter race-conditions in (async) torch between value calculation
+    # during the "main" forward pass and the actual value retrieval through
+    # ModelV2.value_function().
+    if config["framework"] == "torch":
+        config["model"]["_return_value_estimates_from_call"] = True
 
 
 def execution_plan(workers, config):

@@ -10,7 +10,7 @@ class TestA3C(unittest.TestCase):
     """Sanity tests for A2C exec impl."""
 
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     def tearDown(self):
         ray.shutdown()
@@ -24,8 +24,7 @@ class TestA3C(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for fw in framework_iterator(config):
-            config["sample_async"] = fw == "tf"
+        for fw in framework_iterator(config, frameworks="torch"):#TODO
             for env in ["CartPole-v0", "Pendulum-v0", "PongDeterministic-v0"]:
                 print("env={}".format(env))
                 trainer = a3c.A3CTrainer(config=config, env=env)

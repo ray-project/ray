@@ -74,6 +74,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # (deprecated) Changes frame to range from [-1, 1] if true
     "zero_mean": True,
 
+    # From a Model.__call__, return the value_function estimates as well.
+    # Used for PyTorch to counter race conditions in async algos.
+    "_return_value_estimates_from_call": False,
+
     # === Options for custom models ===
     # Name of a custom model to use
     "custom_model": None,
