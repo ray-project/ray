@@ -56,7 +56,9 @@ def get_policy_class(config):
 
 def validate_config(config):
     if config["entropy_coeff"] < 0:
-        raise DeprecationWarning("`entropy_coeff` must be >= 0")
+        raise ValueError("`entropy_coeff` must be >= 0.0!")
+    if config["num_workers"] <= 0:
+        raise ValueError("`num_workers` for A3C must be >= 1!")
     # Switch on value-fn returns for calling the Model in torch. This is to
     # counter race-conditions in (async) torch between value calculation
     # during the "main" forward pass and the actual value retrieval through
