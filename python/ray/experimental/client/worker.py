@@ -87,12 +87,12 @@ class Worker:
         if not resp.valid:
             # TODO(ameer): improve error/exceptions messages.
             raise Exception("Client Wait request failed. Reference invalid?")
-        client_ready_object_ids = []
-        client_remaining_object_ids = []
-        for id in resp.ready_object_ids:
-            client_ready_object_ids.append(ClientObjectRef(id))
-        for id in resp.remaining_object_ids:
-            client_remaining_object_ids.append(ClientObjectRef(id))
+        client_ready_object_ids = [
+            ClientObjectRef(id) for id in resp.ready_object_ids
+        ]
+        client_remaining_object_ids = [
+            ClientObjectRef(id) for id in resp.remaining_object_ids
+        ]
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
