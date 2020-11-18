@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-reward", type=float, default=50)
-parser.add_argument("--stop-timesteps", type=int, default=6000)
+parser.add_argument("--stop-timesteps", type=int, default=7500)
 
 
 class SimpleRollingStat:
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     config = {
         "env": "CartPole-v0",
         "rollout_fragment_length": 500,
-        "train_batch_size": 1000,
+        "train_batch_size": 1500,
         "observation_filter": lambda size: CustomFilter(size),
         "num_workers": 1,
     }
