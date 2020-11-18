@@ -119,8 +119,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
       // If the owner has died since this task was queued, cancel the task by
       // killing the worker (unless this task is for a detached actor).
-      if (!spec.IsDetachedActor() &&
-          !is_owner_alive_(owner_worker_id, owner_node_id)) {
+      if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
