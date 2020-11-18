@@ -10,6 +10,11 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
 from typing import List
+from ray.rllib.utils.numpy import softmax
+from ray.rllib.utils.numpy import tf
+from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
+    TorchDeterministic
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +29,6 @@ class OffPolicyEstimator:
     @DeveloperAPI
     def __init__(self, policy: Policy, gamma: float):
         """Creates an off-policy estimator.
-
         Args:
             policy (Policy): Policy to evaluate.
             gamma (float): Discount of the MDP.
@@ -49,7 +53,6 @@ class OffPolicyEstimator:
     @DeveloperAPI
     def estimate(self, batch: SampleBatchType):
         """Returns an estimate for the given batch of experiences.
-
         The batch will only contain data from one episode, but it may only be
         a fragment of an episode.
         """
@@ -64,13 +67,28 @@ class OffPolicyEstimator:
             if k.startswith("state_in_"):
                 num_state_inputs += 1
         state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
-        log_likelihoods: TensorType = self.policy.compute_log_likelihoods(
-            actions=batch[SampleBatch.ACTIONS],
-            obs_batch=batch[SampleBatch.CUR_OBS],
-            state_batches=[batch[k] for k in state_keys],
-            prev_action_batch=batch.data.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=batch.data.get(SampleBatch.PREV_REWARDS))
-        return convert_to_numpy(log_likelihoods)
+      
+        actions = self.policy.compute_actions(
+              obs_batch=batch[SampleBatch.CUR_OBS],
+              state_batches=[batch[k] for k in state_keys],
+              prev_action_batch=batch.data.get(SampleBatch.PREV_ACTIONS),
+              prev_reward_batch=batch.data.get(SampleBatch.PREV_REWARDS),
+              full_fetch=True
+              )
+        # Categorical case (e.g. DQN).
+        if self.policy.dist_class in (Categorical, TorchCategorical):
+            action_prob_dist = softmax(actions[2][SampleBatch.ACTION_DIST_INPUTS])
+        # Deterministic (Gaussian actions, e.g. DDPG).
+        elif self.policy.dist_class in [Deterministic, TorchDeterministic]:
+            action_prob_dist = actions[2][SampleBatch.ACTION_DIST_INPUTS]
+        else:
+            raise NotImplementedError  # TODO(sven): Other action-dist cases.
+        
+        cur_action = batch[SampleBatch.ACTIONS]
+        
+        cur_action_prob = action_prob_dist[np.arange(cur_action.shape[0]), cur_action]
+               
+        return cur_action_prob
 
     @DeveloperAPI
     def process(self, batch: SampleBatchType):
@@ -96,7 +114,6 @@ class OffPolicyEstimator:
     @DeveloperAPI
     def get_metrics(self) -> List[OffPolicyEstimate]:
         """Return a list of new episode metric estimates since the last call.
-
         Returns:
             list of OffPolicyEstimate objects.
         """
