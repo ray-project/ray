@@ -522,7 +522,8 @@ def _add_min_workers_nodes(
     total_nodes_to_add_dict = {}
     for node_type, config in node_types.items():
         existing = node_type_counts.get(node_type, 0)
-        target = config.get("min_workers", 0)
+        target = min(
+            config.get("min_workers", 0), config.get("max_workers", 0))
         if existing < target:
             total_nodes_to_add_dict[node_type] = target - existing
             node_type_counts[node_type] = target
