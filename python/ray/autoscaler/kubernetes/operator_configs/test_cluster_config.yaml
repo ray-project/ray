@@ -25,41 +25,7 @@ provider:
     # Namespace to use for all resources created.
     namespace: ray
 
-    services:
-      # Service that maps to the head node of the Ray cluster.
-      - apiVersion: v1
-        kind: Service
-        metadata:
-            # NOTE: If you're running multiple Ray clusters with services
-            # on one Kubernetes cluster, they must have unique service
-            # names.
-            name: ray-head
-        spec:
-            # This selector must match the head node pod's selector below.
-            selector:
-                component: ray-head
-            ports:
-                - protocol: TCP
-                  port: 8000
-                  targetPort: 8000
-
-      # Service that maps to the worker nodes of the Ray cluster.
-      - apiVersion: v1
-        kind: Service
-        metadata:
-            # NOTE: If you're running multiple Ray clusters with services
-            # on one Kubernetes cluster, they must have unique service
-            # names.
-            name: ray-workers
-        spec:
-            # This selector must match the worker node pods' selector below.
-            selector:
-                component: ray-worker
-            ports:
-                - protocol: TCP
-                  port: 8000
-                  targetPort: 8000
-
+    
 # Kubernetes pod config for the head node pod.
 available_node_types:
   head_node:
@@ -152,8 +118,6 @@ available_node_types:
             labels:
                 component: ray-worker
         spec:
-            serviceAccountName: default
-
             # Worker nodes will be managed automatically by the head node, so
             # do not change the restart policy.
             restartPolicy: Never
