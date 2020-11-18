@@ -39,7 +39,7 @@ RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
 /// Whether to send heartbeat lightly. When it is enalbed, only changed part,
 /// like should_global_gc or changed resources, will be included in the heartbeat,
 /// and gcs only broadcast the changed heartbeat.
-RAY_CONFIG(bool, light_heartbeat_enabled, true)
+RAY_CONFIG(bool, light_heartbeat_enabled, false)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
