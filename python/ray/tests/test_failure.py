@@ -22,6 +22,7 @@ from ray.test_utils import (
     init_error_pubsub,
     get_error_message,
     Semaphore,
+    new_scheduler_enabled,
 )
 
 
@@ -662,6 +663,7 @@ def test_warning_for_resource_deadlock(error_pubsub, shutdown_only):
     assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     p = error_pubsub
     # Check that we get warning messages for infeasible tasks.
@@ -687,6 +689,7 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     # Check that we cannot place an actor on a 0 CPU machine and that we get an
     # infeasibility warning (even though the actor creation task itself
@@ -953,6 +956,7 @@ def test_raylet_crash_when_get(ray_start_regular):
     thread.join()
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,

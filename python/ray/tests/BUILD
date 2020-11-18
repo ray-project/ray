@@ -12,8 +12,10 @@ py_test_module_list(
   files = [
     "test_async.py",
     "test_actor.py",
-    "test_actor_failures.py",
     "test_actor_advanced.py",
+    "test_advanced_3.py",
+    "test_actor_failures.py",
+    "test_actor_resources.py",
     "test_advanced.py",
     "test_advanced_2.py",
     "test_array.py",
@@ -22,10 +24,14 @@ py_test_module_list(
     "test_basic_2.py",
     "test_cancel.py",
     "test_cli.py",
+    "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
     "test_gcs_fault_tolerance.py",
     "test_iter.py",
+    "test_joblib.py",
+    "test_global_state.py",
+    "test_global_gc.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -35,13 +41,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_actor_resources.py",
-    "test_advanced_3.py",
-    "test_component_failures_2.py",
-    "test_dynres.py",
-    "test_global_gc.py",
-    "test_global_state.py",
-    "test_joblib.py",
+    "test_dynres.py",  # dyn res not implemented
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -55,13 +55,20 @@ py_test_module_list(
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node_2.py",
+    "test_multi_tenancy.py",
+    "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
+    "test_object_manager.py",
     "test_object_spilling.py",
     "test_output.py",
+    "test_reconstruction.py",
+    "test_reference_counting.py",
     "test_reference_counting_2.py",
     "test_resource_demand_scheduler.py",
     "test_serialization.py",
+    "test_stress.py",
+    "test_stress_sharded.py",
     "test_tensorflow.py",
     "test_unreconstructable_errors.py",
   ],
@@ -73,14 +80,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_multinode_failures.py",
     "test_multi_node.py",
-    "test_object_manager.py",
-    "test_reconstruction.py",
-    "test_reference_counting.py",
-    "test_stress.py",
-    "test_stress_sharded.py",
-    "test_multi_tenancy.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -124,6 +124,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_failure.py",
     "test_stress_failure.py",
   ],
   size = "large",
@@ -134,8 +135,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_failure.py",
-    "test_placement_group.py",
+    "test_placement_group.py",  # placement groups not implemented
   ],
   size = "large",
   extra_srcs = SRCS,

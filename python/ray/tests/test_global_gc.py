@@ -9,7 +9,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_condition, new_scheduler_enabled
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
@@ -129,6 +129,7 @@ def test_global_gc_when_full(shutdown_only):
         gc.enable()
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
 def test_global_gc_actors(shutdown_only):
     ray.init(num_cpus=1)
 
