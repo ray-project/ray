@@ -5,6 +5,7 @@ from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.tune.utils import flatten_dict
+from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf
 
 try:
@@ -338,13 +339,15 @@ class ExperimentAnalysis(Analysis):
             raise ValueError(
                 "{} is not a valid file.".format(experiment_checkpoint_path))
         with open(experiment_checkpoint_path) as f:
-            _experiment_state = json.load(f)
+            _experiment_state = json.load(f, cls=TuneFunctionDecoder)
             self._experiment_state = _experiment_state
 
         if "checkpoints" not in _experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")
         self._checkpoints = [
-            json.loads(cp) for cp in _experiment_state["checkpoints"]
+            json.loads(cp, cls=TuneFunctionDecoder)
+            if isinstance(cp, str) else cp
+            for cp in _experiment_state["checkpoints"]
         ]
         self.trials = trials
 

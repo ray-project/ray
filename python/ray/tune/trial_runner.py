@@ -311,7 +311,11 @@ class TrialRunner:
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        checkpoints = [json.loads(cp) for cp in runner_state["checkpoints"]]
+        checkpoints = [
+            json.loads(cp, cls=TuneFunctionDecoder)
+            if isinstance(cp, str) else cp
+            for cp in runner_state["checkpoints"]
+        ]
 
         trials = []
         for trial_cp in checkpoints:
