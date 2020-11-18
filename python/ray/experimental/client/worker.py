@@ -1,5 +1,12 @@
-from ray import cloudpickle
+"""This file includes the Worker class which sits on the client side.
+It implements the Ray API functions that are forwarded through grpc calls
+to the server.
+"""
+from typing import List
+
 import grpc
+
+from ray import cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
@@ -58,6 +65,36 @@ class Worker:
         req = ray_client_pb2.PutRequest(data=data)
         resp = self.server.PutObject(req)
         return ClientObjectRef(resp.id)
+
+    def wait(self,
+             object_refs: List[ClientObjectRef],
+             *,
+             num_returns: int = 1,
+             timeout: float = None
+             ) -> (List[ClientObjectRef], List[ClientObjectRef]):
+        assert isinstance(object_refs, list)
+        for ref in object_refs:
+            assert isinstance(ref, ClientObjectRef)
+        data = {
+            "object_refs": [
+                cloudpickle.dumps(object_ref) for object_ref in object_refs
+            ],
+            "num_returns": num_returns,
+            "timeout": timeout if timeout else -1
+        }
+        req = ray_client_pb2.WaitRequest(**data)
+        resp = self.server.WaitObject(req)
+        if not resp.valid:
+            # TODO(ameer): improve error/exceptions messages.
+            raise Exception("Client Wait request failed. Reference invalid?")
+        client_ready_object_ids = [
+            ClientObjectRef(id) for id in resp.ready_object_ids
+        ]
+        client_remaining_object_ids = [
+            ClientObjectRef(id) for id in resp.remaining_object_ids
+        ]
+
+        return (client_ready_object_ids, client_remaining_object_ids)
 
     def remote(self, func):
         return ClientRemoteFunc(func)

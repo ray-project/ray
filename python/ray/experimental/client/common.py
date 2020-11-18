@@ -11,6 +11,9 @@ class ClientObjectRef:
     def __repr__(self):
         return "ClientObjectRef(%s)" % self.id.hex()
 
+    def __eq__(self, other):
+        return self.id == other.id
+
 
 class ClientRemoteFunc:
     def __init__(self, f):
