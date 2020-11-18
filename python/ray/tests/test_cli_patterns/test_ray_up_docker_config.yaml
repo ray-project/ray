@@ -1,11 +1,16 @@
 auth:
     ssh_user: ubuntu
 cluster_name: test-cli
+docker:
+    image: rayproject/ray:1.0.0
+    container_name: raydocker
+    pull_before_run: True
+    run_options: []
 file_mounts:
     ~/tests: .
 head_node:
     ImageId: latest_dlami
-    InstanceType: t1.micro
+    InstanceType: t3a.small
 head_setup_commands:
     - echo head
 head_start_ray_commands:
@@ -30,7 +35,7 @@ setup_commands:
 target_utilization_fraction: 0.9
 worker_nodes:
     ImageId: latest_dlami
-    InstanceType: t1.micro
+    InstanceType: t3a.small
 worker_setup_commands:
     - echo worker
 worker_start_ray_commands:
