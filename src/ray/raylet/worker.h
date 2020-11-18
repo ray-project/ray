@@ -249,7 +249,7 @@ class Worker : public WorkerInterface {
   ActorID actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is
   /// associated with a placement group bundle.
-  std::pair<PlacementGroupID, int64_t> bundle_id_;
+  BundleID bundle_id_;
   /// Whether the worker is dead.
   bool dead_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if

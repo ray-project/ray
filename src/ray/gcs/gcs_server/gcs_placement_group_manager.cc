@@ -489,14 +489,6 @@ void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
             item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
           const auto &bundles = item.second.bundles();
           for (auto &bundle : bundles) {
-            node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
-          }
-        }
-
-        if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
-            item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
-          const auto &bundles = item.second.bundles();
-          for (auto &bundle : bundles) {
             if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
               node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
             }
