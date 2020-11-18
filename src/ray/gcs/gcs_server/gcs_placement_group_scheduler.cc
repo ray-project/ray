@@ -48,7 +48,7 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
   const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
   std::vector<std::pair<int64_t, NodeID>> candidate_nodes;
   for (auto &node : alive_nodes) {
-    if (required_resources.IsSubset(*node.second)) {
+    if (required_resources.IsSubset(node.second)) {
       candidate_nodes.emplace_back((*context->node_to_bundles_)[node.first], node.first);
     }
   }
@@ -77,12 +77,15 @@ ScheduleMap GcsPackStrategy::Schedule(
   // First fill up a node. If the node resource is insufficient, select a new node.
   // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
   ScheduleMap schedule_map;
-  const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
+  // TODO(WangTao): This copy might take too much space once cluster grows very large.
+  // Would find better solution.
+  absl::flat_hash_map<NodeID, ResourceSet> alive_nodes(
+      context->node_manager_.GetClusterRealtimeResources());
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
     for (auto &node : alive_nodes) {
-      if (required_resources.IsSubset(*node.second)) {
-        node.second->SubtractResourcesStrict(required_resources);
+      if (required_resources.IsSubset(node.second)) {
+        node.second.SubtractResourcesStrict(required_resources);
         schedule_map[bundle->BundleId()] = node.first;
         break;
       }
@@ -102,7 +105,10 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   // bundles will be deployed to the previous nodes. So we start with the next node of the
   // last selected node.
   ScheduleMap schedule_map;
-  const auto &candidate_nodes = context->node_manager_.GetClusterRealtimeResources();
+  // TODO(WangTao): This copy might take too much space once cluster grows very large.
+  // Would find better solution.
+  absl::flat_hash_map<NodeID, ResourceSet> candidate_nodes(
+      context->node_manager_.GetClusterRealtimeResources());
   if (candidate_nodes.empty()) {
     return schedule_map;
   }
@@ -115,8 +121,8 @@ ScheduleMap GcsSpreadStrategy::Schedule(
     // meets the resource requirements. `iter_begin` is the next node of the last selected
     // node.
     for (; iter != candidate_nodes.end(); ++iter) {
-      if (required_resources.IsSubset(*iter->second)) {
-        iter->second->SubtractResourcesStrict(required_resources);
+      if (required_resources.IsSubset(iter->second)) {
+        iter->second.SubtractResourcesStrict(required_resources);
         schedule_map[bundle->BundleId()] = iter->first;
         break;
       }
@@ -132,8 +138,8 @@ ScheduleMap GcsSpreadStrategy::Schedule(
       if (iter_begin != candidate_nodes.begin()) {
         // Traverse all the nodes from `candidate_nodes.begin()` to `iter_begin`.
         for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
-          if (required_resources.IsSubset(*iter->second)) {
-            iter->second->SubtractResourcesStrict(required_resources);
+          if (required_resources.IsSubset(iter->second)) {
+            iter->second.SubtractResourcesStrict(required_resources);
             schedule_map[bundle->BundleId()] = iter->first;
             break;
           }
@@ -175,7 +181,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     const auto &required_resources = bundle->GetRequiredResources();
     auto iter = candidate_nodes.begin();
     for (; iter != candidate_nodes.end(); ++iter) {
-      if (required_resources.IsSubset(*iter->second)) {
+      if (required_resources.IsSubset(iter->second)) {
         schedule_map[bundle->BundleId()] = iter->first;
         candidate_nodes.erase(iter);
         break;
@@ -198,6 +204,17 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     std::shared_ptr<GcsPlacementGroup> placement_group,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_callback,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_callback) {
+  // We need to ensure that the PrepareBundleResources won't be sent before the reply of
+  // ReleaseUnusedBundles is returned.
+  if (!nodes_of_releasing_unused_bundles_.empty()) {
+    RAY_LOG(INFO) << "Failed to schedule placement group " << placement_group->GetName()
+                  << ", id: " << placement_group->GetPlacementGroupID() << ", because "
+                  << nodes_of_releasing_unused_bundles_.size()
+                  << " nodes have not released unused bundles.";
+    failure_callback(placement_group);
+    return;
+  }
+
   auto bundles = placement_group->GetUnplacedBundles();
   auto strategy = placement_group->GetStrategy();
 
@@ -548,6 +565,34 @@ GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
     committed_bundle_location_index_.Erase(node_id);
   }
   return bundles_on_node;
+}
+
+void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
+    const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) {
+  // The purpose of this function is to release bundles that may be leaked.
+  // When GCS restarts, it doesn't know which bundles it has scheduled in the
+  // previous lifecycle. In this case, GCS will send a list of bundle ids that
+  // are still needed. And Raylet will release other bundles. If the node is
+  // dead, there is no need to send the request of release unused bundles.
+  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  for (const auto &alive_node : alive_nodes) {
+    const auto &node_id = alive_node.first;
+    nodes_of_releasing_unused_bundles_.insert(node_id);
+
+    auto lease_client = GetLeaseClientFromNode(alive_node.second);
+    auto release_unused_bundles_callback =
+        [this, node_id](const Status &status,
+                        const rpc::ReleaseUnusedBundlesReply &reply) {
+          nodes_of_releasing_unused_bundles_.erase(node_id);
+        };
+    auto iter = node_to_bundles.find(alive_node.first);
+
+    // When GCS restarts, some nodes maybe do not have bundles.
+    // In this case, GCS will send an empty list.
+    auto bundles_in_use =
+        iter != node_to_bundles.end() ? iter->second : std::vector<rpc::Bundle>{};
+    lease_client->ReleaseUnusedBundles(bundles_in_use, release_unused_bundles_callback);
+  }
 }
 
 void BundleLocationIndex::AddBundleLocations(

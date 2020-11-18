@@ -52,7 +52,8 @@ def make_ec2_client(region, max_retries, aws_credentials=None):
         "ec2", region_name=region, config=config, **aws_credentials)
 
 
-def list_ec2_instances(region: str) -> List[Dict[str, Any]]:
+def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
+                       ) -> List[Dict[str, Any]]:
     """Get all instance-types/resources available in the user's AWS region.
     Args:
         region (str): the region of the AWS provider. e.g., "us-west-2".
@@ -68,13 +69,15 @@ def list_ec2_instances(region: str) -> List[Dict[str, Any]]:
 
     """
     final_instance_types = []
-    instance_types = boto3.client(
-        "ec2", region_name=region).describe_instance_types()
+    config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    aws_credentials = aws_credentials or {}
+    ec2 = boto3.client(
+        "ec2", region_name=region, config=config, **aws_credentials)
+    instance_types = ec2.describe_instance_types()
     final_instance_types.extend(copy.deepcopy(instance_types["InstanceTypes"]))
     while "NextToken" in instance_types:
-        instance_types = boto3.client(
-            "ec2", region_name=region).describe_instance_types(
-                NextToken=instance_types["NextToken"])
+        instance_types = ec2.describe_instance_types(
+            NextToken=instance_types["NextToken"])
         final_instance_types.extend(
             copy.deepcopy(instance_types["InstanceTypes"]))
 
@@ -302,12 +305,6 @@ class AWSNodeProvider(NodeProvider):
         tags = to_aws_format(tags)
         conf = node_config.copy()
 
-        # Delete unsupported keys from the node config
-        try:
-            del conf["Resources"]
-        except KeyError:
-            pass
-
         tag_pairs = [{
             "Key": TAG_RAY_CLUSTER_NAME,
             "Value": self.cluster_name,
@@ -486,7 +483,8 @@ class AWSNodeProvider(NodeProvider):
         cluster_config = copy.deepcopy(cluster_config)
 
         instances_list = list_ec2_instances(
-            cluster_config["provider"]["region"])
+            cluster_config["provider"]["region"],
+            cluster_config["provider"].get("aws_credentials"))
         instances_dict = {
             instance["InstanceType"]: instance
             for instance in instances_list
@@ -515,8 +513,8 @@ class AWSNodeProvider(NodeProvider):
                         available_node_types[node_type].get("resources", {}):
                     available_node_types[node_type][
                         "resources"] = autodetected_resources
-                    cli_logger.print("Updating the resources of {} to {}.",
-                                     node_type, autodetected_resources)
+                    logger.debug("Updating the resources of {} to {}.".format(
+                        node_type, autodetected_resources))
             else:
                 raise ValueError("Instance type " + instance_type +
                                  " is not available in AWS region: " +

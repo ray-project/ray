@@ -59,6 +59,9 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
+        self.return_value_estimates = \
+            self.model_config.get("_return_value_estimates_from_call")
+        # Basic view requirement for all models: Use the observation as input.
         self.inference_view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
@@ -85,8 +88,7 @@ class ModelV2:
     @PublicAPI
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
-                seq_lens: TensorType,
-                **kwargs) -> (TensorType, List[TensorType]):
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         Any complex observations (dicts, tuples, etc.) will be unpacked by
@@ -176,9 +178,7 @@ class ModelV2:
             self,
             input_dict: Dict[str, TensorType],
             state: List[Any] = None,
-            seq_lens: TensorType = None,
-            return_values: bool = False,
-    ) -> (TensorType, List[TensorType]):
+            seq_lens: TensorType = None) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         This is the method used by RLlib to execute the forward pass. It calls
@@ -192,9 +192,6 @@ class ModelV2:
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
             seq_lens (Tensor): 1d tensor holding input sequence lengths
-            return_values (bool): Whether to also return the values tensor.
-                If True, will return 3 items: [output, states, values], instead
-                of 2.
 
         Returns:
             (outputs, state, values?): The model output tensor of size
@@ -212,10 +209,10 @@ class ModelV2:
         else:
             restored["obs_flat"] = input_dict["obs"]
         with self.context():
-            res = self.forward(restored, state or [], seq_lens, return_values=return_values)
+            res = self.forward(restored, state or [], seq_lens)
         if not isinstance(res, (list, tuple)) or \
-                (return_values is False and len(res) != 2) or \
-                (return_values is True and len(res) != 3):
+                (self.return_value_estimates is False and len(res) != 2) or \
+                (self.return_value_estimates is True and len(res) != 3):
             raise ValueError(
                 "`ModelV2.forward()` must return a tuple of (output, state, "
                 "values?) tensors, got {}".format(res))
@@ -235,39 +232,28 @@ class ModelV2:
                 "State output is not a list: {}".format(state_outs))
 
         self._last_output = outputs
-        if return_values:
+        if self.return_value_estimates:
             return outputs, state_outs, res[2]
         return outputs, state_outs
 
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,
-                   is_training: bool = True,
-                   return_values: bool = False) -> \
-            (TensorType, List[TensorType]):
+                   is_training: bool = True) -> (TensorType, List[TensorType]):
         """Convenience function that calls this model with a tensor batch.
 
         All this does is unpack the tensor batch to call this model with the
         right input dict, state, and seq len arguments.
         """
 
-        input_dict = {
-            "obs": train_batch[SampleBatch.CUR_OBS],
-            "is_training": is_training,
-        }
-        if SampleBatch.PREV_ACTIONS in train_batch:
-            input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
-        if SampleBatch.PREV_REWARDS in train_batch:
-            input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
+        train_batch["is_training"] = is_training
         states = []
         i = 0
         while "state_in_{}".format(i) in train_batch:
             states.append(train_batch["state_in_{}".format(i)])
             i += 1
-        return self.__call__(
-            input_dict=input_dict,
-            state=states,
-            seq_lens=train_batch.get("seq_lens"),
-            return_values=return_values)
+        ret = self.__call__(train_batch, states, train_batch.get("seq_lens"))
+        del train_batch["is_training"]
+        return ret
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
@@ -427,7 +413,9 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                     prep.shape[0], obs.shape))
         offset = 0
         if tensorlib == tf:
-            batch_dims = [v.value for v in obs.shape[:-1]]
+            batch_dims = [
+                v if isinstance(v, int) else v.value for v in obs.shape[:-1]
+            ]
             batch_dims = [-1 if v is None else v for v in batch_dims]
         else:
             batch_dims = list(obs.shape[:-1])

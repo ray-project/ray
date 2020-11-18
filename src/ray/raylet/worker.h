@@ -108,7 +108,7 @@ class WorkerInterface {
 
   virtual Task &GetAssignedTask() = 0;
 
-  virtual void SetAssignedTask(Task &assigned_task) = 0;
+  virtual void SetAssignedTask(const Task &assigned_task) = 0;
 
   virtual bool IsRegistered() = 0;
 
@@ -210,7 +210,7 @@ class Worker : public WorkerInterface {
 
   Task &GetAssignedTask() { return assigned_task_; };
 
-  void SetAssignedTask(Task &assigned_task) { assigned_task_ = assigned_task; };
+  void SetAssignedTask(const Task &assigned_task) { assigned_task_ = assigned_task; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 

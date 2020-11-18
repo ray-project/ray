@@ -231,6 +231,14 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Collect stats from gcs placement group manager in-memory data structures.
   void CollectStats() const;
 
+  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const EmptyCallback &done);
+
+  std::string DebugString() const;
+
  private:
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
@@ -292,6 +300,16 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// Reference of GcsNodeManager.
   GcsNodeManager &gcs_node_manager_;
+
+  // Debug info.
+  enum CountType {
+    CREATE_PLACEMENT_GROUP_REQUEST = 0,
+    REMOVE_PLACEMENT_GROUP_REQUEST = 1,
+    GET_PLACEMENT_GROUP_REQUEST = 2,
+    GET_ALL_PLACEMENT_GROUP_REQUEST = 3,
+    CountType_MAX = 4,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

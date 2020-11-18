@@ -645,6 +645,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReleaseUnusedBundles` request.
+  void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
+                                  rpc::ReleaseUnusedBundlesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
   void TriggerGlobalGC();
@@ -765,9 +770,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// copies), freed, and/or spilled.
   LocalObjectManager local_object_manager_;
 
-  /// Map from node ids to clients of the remote node managers.
-  std::unordered_map<NodeID, std::unique_ptr<rpc::NodeManagerClient>>
-      remote_node_manager_clients_;
+  /// Map from node ids to addresses of the remote node managers.
+  absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
+      remote_node_manager_addresses_;
 
   /// Map of workers leased out to direct call clients.
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
@@ -816,6 +821,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// creation.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
       bundle_state_map_;
+
+  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
+  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
+      bundle_spec_map_;
 };
 
 }  // namespace raylet

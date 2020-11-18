@@ -1,6 +1,4 @@
 .+\.py.*Cluster: test-cli
-.+\.py.*Updating the resources of ray-legacy-head-node-type to {'CPU': 1}.
-.+\.py.*Updating the resources of ray-legacy-worker-node-type to {'CPU': 1}.
 .+\.py.*Checking AWS environment settings
 .+\.py.*Creating new IAM instance profile ray-autoscaler-v1 for use as the default\.
 .+\.py.*Creating new IAM role ray-autoscaler-v1 for use as the default instance role\.
@@ -22,7 +20,7 @@
 .+\.py.*Prepared bootstrap config
 .+\.py.*AWSNodeProvider: Set tag ray-node-status=waiting-for-ssh on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: waiting-for-ssh
-.+\.py.*\[1/6\] Waiting for SSH to become available
+.+\.py.*\[1/7\] Waiting for SSH to become available
 .+\.py.*Running `uptime` as a test\.
 .+\.py.*Fetched IP: .+
 .+\.py.*NodeUpdater: .+: Got IP  \[LogTimer=.+\]
@@ -33,7 +31,7 @@
 .+\.py.*Updating cluster configuration\. \[hash=.+\]
 .+\.py.*AWSNodeProvider: Set tag ray-node-status=syncing-files on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: syncing-files
-.+\.py.*\[3/6\] Processing file mounts
+.+\.py.*\[2/7\] Processing file mounts
 .+\.py.*Running `mkdir -p ~/tests`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*Running `rsync.+`
@@ -52,14 +50,15 @@
 .+\.py.*`rsync`ed .+__test-cli_key-1\.pem \(local\) to ~/ray_bootstrap_key\.pem \(remote\)
 .+\.py.*~/ray_bootstrap_key\.pem from .+__test-cli_key-1\.pem
 .+\.py.*NodeUpdater: i-.+: Synced .+.pem to ~/ray_bootstrap_key\.pem  \[LogTimer=.+\]
-.+\.py.*\[4/6\] No worker file mounts to sync
+.+\.py.*\[3/7\] No worker file mounts to sync
 .+\.py.*AWSNodeProvider: Set tag ray-node-status=setting-up on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: setting-up
-.+\.py.*\[3/5\] Running initialization commands
+.+\.py.*\[4/7\] Running initialization commands
 .+\.py.*Running `echo init`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Initialization commands succeeded \[LogTimer=.+\]
-.+\.py.*\[4/6\] Running setup commands
+.+\.py.*\[5/7\] Initalizing command runner
+.+\.py.*\[6/7\] Running setup commands
 .+\.py.*\(0/4\) echo a
 .+\.py.*Running `echo a`
 .+\.py.*Full command is `ssh.+`
@@ -73,10 +72,10 @@
 .+\.py.*Running `echo head`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Setup commands succeeded \[LogTimer=.+\]
-.+\.py.*\[6/6\] Starting the Ray runtime
-.+\.py.*Running `ray stop`
+.+\.py.*\[7/7\] Starting the Ray runtime
+.+\.py.*Running `export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray stop`
 .+\.py.*Full command is `ssh.+`
-.+\.py.*Running `ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
+.+\.py.*Running `export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Ray start commands succeeded \[LogTimer=.+\]
 .+\.py.*NodeUpdater: i-.+: Applied config .+  \[LogTimer=.+\]

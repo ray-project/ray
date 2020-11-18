@@ -7,7 +7,7 @@ gym[atari]
 GPy
 h5py
 hpbandster
-hyperopt==0.1.2
+hyperopt>=0.2.5
 jupyter
 keras
 kubernetes

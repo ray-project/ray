@@ -8,13 +8,19 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-from ray.test_utils import (get_other_nodes, wait_for_condition,
+from ray.test_utils import (generate_system_config_map, get_other_nodes,
+                            run_string_as_driver, wait_for_condition,
                             get_error_message)
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
-from ray.test_utils import run_string_as_driver
 from ray.util.placement_group import (PlacementGroup,
                                       get_current_placement_group)
+
+
+@ray.remote
+class Increase:
+    def method(self, x):
+        return x + 2
 
 
 def test_placement_group_pack(ray_start_cluster):
@@ -1154,6 +1160,100 @@ ray.shutdown()
     # that is created is deleted again.
     ray.kill(a, no_restart=False)
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
+
+
+@pytest.mark.skip("This test is flaky.")
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_create_placement_group_after_gcs_server_restarts(
+        ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # Create placement group 1 successfully.
+    placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    ray.get(placement_group1.ready(), timeout=10)
+    table = ray.util.placement_group_table(placement_group1)
+    assert table["state"] == "CREATED"
+
+    # Restart gcs server.
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    # Create placement group 2 successfully.
+    placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    ray.get(placement_group2.ready(), timeout=10)
+    table = ray.util.placement_group_table(placement_group2)
+    assert table["state"] == "CREATED"
+
+    # Create placement group 3.
+    # Status is `PENDING` because the cluster resource is insufficient.
+    placement_group3 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(placement_group3.ready(), timeout=2)
+    table = ray.util.placement_group_table(placement_group3)
+    assert table["state"] == "PENDING"
+
+
+@pytest.mark.skip("This test is flaky.")
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_create_actor_with_placement_group_after_gcs_server_restart(
+        ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # Create a placement group.
+    placement_group = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+
+    # Create an actor that occupies resources after gcs server restart.
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+    actor_2 = Increase.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=1).remote()
+    assert ray.get(actor_2.method.remote(1)) == 3
+
+
+@pytest.mark.skip("This test is flaky.")
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_create_placement_group_during_gcs_server_restart(
+        ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=20)
+    cluster.wait_for_nodes()
+
+    # Create placement groups during gcs server restart.
+    placement_groups = []
+    for i in range(0, 100):
+        placement_group = ray.util.placement_group([{
+            "CPU": 0.1
+        }, {
+            "CPU": 0.1
+        }])
+        placement_groups.append(placement_group)
+
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    for i in range(0, 10):
+        ray.get(placement_groups[i].ready())
 
 
 if __name__ == "__main__":

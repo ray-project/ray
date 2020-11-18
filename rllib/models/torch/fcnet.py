@@ -1,11 +1,13 @@
 import logging
 import numpy as np
+import gym
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
     normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
 
 torch, nn = try_import_torch()
 
@@ -15,8 +17,9 @@ logger = logging.getLogger(__name__)
 class FullyConnectedNetwork(TorchModelV2, nn.Module):
     """Generic fully connected network."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
@@ -26,6 +29,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         no_final_linear = model_config.get("no_final_linear")
         self.vf_share_layers = model_config.get("vf_share_layers")
         self.free_log_std = model_config.get("free_log_std")
+        self.return_value_estimates = \
+            model_config.get("_return_value_estimates_from_calls")
 
         # Generate free-floating bias variables for the second half of
         # the outputs.
@@ -111,7 +116,9 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         self._last_flat_in = None
 
     @override(TorchModelV2)
-    def forward(self, input_dict, state, seq_lens, return_values=False):
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         obs = input_dict["obs_flat"].float()
         self._last_flat_in = obs.reshape(obs.shape[0], -1)
         self._features = self._hidden_layers(self._last_flat_in)
@@ -120,13 +127,13 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
 
-        if return_values:
+        if self.return_value_estimates:
             return logits, state, self.value_function()
         else:
             return logits, state
 
     @override(TorchModelV2)
-    def value_function(self):
+    def value_function(self) -> TensorType:
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
             return self._value_branch(
