@@ -54,6 +54,7 @@ py_test_module_list(
     "test_memory_limits.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
+    "test_multi_node.py",
     "test_multi_node_2.py",
     "test_multi_tenancy.py",
     "test_multinode_failures.py",
@@ -75,16 +76,6 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_k_to_z"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_multi_node.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "new_scheduler_broken"],
   deps = ["//:ray_lib"],
 )
 
