@@ -327,8 +327,7 @@ class TorchPolicy(Policy):
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         # Callback handling.
         self.callbacks.on_learn_on_batch(
-            policy=self,
-            train_batch=postprocessed_batch)
+            policy=self, train_batch=postprocessed_batch)
 
         # Compute gradients (will calculate all losses and `backward()`
         # them to get the grads).

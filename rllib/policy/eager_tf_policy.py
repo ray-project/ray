@@ -306,6 +306,7 @@ def build_eager_tf_policy(name,
             # Callback handling.
             self.callbacks.on_learn_on_batch(
                 policy=self, train_batch=postprocessed_batch)
+
             # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
                 postprocessed_batch,
