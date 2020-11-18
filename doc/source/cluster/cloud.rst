@@ -37,7 +37,6 @@ AWS/GCP/Azure
 
             # Get a remote screen on the head node.
             $ ray attach ray/python/ray/autoscaler/aws/example-full.yaml
-            $ source activate tensorflow_p36
             $ # Try running a Ray program with 'ray.init(address="auto")'.
 
             # Tear down the cluster.
@@ -110,7 +109,6 @@ AWS/GCP/Azure
 
             # Get a remote screen on the head node.
             $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
-            $ source activate tensorflow_p36
             $ # Try running a Ray program with 'ray.init(address="auto")'.
 
             # Tear down the cluster.
