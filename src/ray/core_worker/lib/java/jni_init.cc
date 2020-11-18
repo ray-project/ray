@@ -225,9 +225,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
-  java_placement_group_id =
-      env->GetFieldID(java_placement_group_class, "id",
-                      "Lio/ray/runtime/placementgroup/PlacementGroupId;");
+  java_placement_group_id = env->GetFieldID(java_placement_group_class, "id",
+                                            "Lio/ray/api/id/PlacementGroupId;");
 
   java_actor_creation_options_class =
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");

@@ -679,8 +679,8 @@ def init(
 
     if global_worker.connected:
         if ignore_reinit_error:
-            logger.error("Calling ray.init() again after it has already been "
-                         "called.")
+            logger.info(
+                "Calling ray.init() again after it has already been called.")
             return
         else:
             raise RuntimeError("Maybe you called ray.init twice by accident? "

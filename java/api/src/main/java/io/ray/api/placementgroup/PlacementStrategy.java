@@ -23,7 +23,12 @@ public enum PlacementStrategy {
    * Places Bundles across distinct nodes.
    * The group is not allowed to deploy more than one bundle on a node.
    */
-  STRICT_SPREAD(3);
+  STRICT_SPREAD(3),
+
+  /**
+   * Unrecognized strategy.
+   */
+  UNRECOGNIZED(-1);
 
   private int value = 0;
 

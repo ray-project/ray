@@ -14,6 +14,7 @@ import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
@@ -182,6 +183,21 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public PlacementGroup createPlacementGroup(
       List<Map<String, Double>> bundles, PlacementStrategy strategy) {
     return createPlacementGroup(DEFAULT_PLACEMENT_GROUP_NAME, bundles, strategy);
+  }
+
+  @Override
+  public void removePlacementGroup(PlacementGroupId id) {
+    taskSubmitter.removePlacementGroup(id);
+  }
+
+  @Override
+  public PlacementGroup getPlacementGroup(PlacementGroupId id) {
+    return gcsClient.getPlacementGroupInfo(id);
+  }
+
+  @Override
+  public List<PlacementGroup> getAllPlacementGroups() {
+    return gcsClient.getAllPlacementGroupInfo();
   }
 
   @SuppressWarnings("unchecked")
