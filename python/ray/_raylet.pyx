@@ -888,7 +888,7 @@ cdef class CoreWorker:
             # can't track their lifecycle, so we don't pin the object
             # in this case.
             check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
-                         c_object_id, pin_object=False))
+                         c_object_id, pin_object=object_ref is None))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,

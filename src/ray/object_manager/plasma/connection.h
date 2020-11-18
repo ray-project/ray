@@ -16,13 +16,8 @@ class Client;
 using PlasmaStoreMessageHandler = 
     std::function<ray::Status(std::shared_ptr<Client>, flatbuf::MessageType, const std::vector<uint8_t>&)>;
 
-class ClientInterface {
- public:
-  virtual ~ClientInterface() {}
-};
-
 /// Contains all information that is associated with a Plasma store client.
-class Client : public ray::ClientConnection, public ClientInterface  {
+class Client : public ray::ClientConnection  {
  public:
   static std::shared_ptr<Client> Create(
       PlasmaStoreMessageHandler message_handler, ray::local_stream_socket &&socket);
