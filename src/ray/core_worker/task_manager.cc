@@ -456,4 +456,19 @@ absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id
   return it->second.spec;
 }
 
+std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
+    const TaskID &parent_task_id) const {
+  std::vector<TaskID> ret_vec;
+  absl::MutexLock lock(&mu_);
+  RAY_LOG(ERROR) << " calling get children tasks";
+  RAY_LOG(ERROR) << "NUMBER OF PENDING TASKS: " << num_pending_tasks_;
+  for (auto it : submissible_tasks_) {
+    RAY_LOG(ERROR) << "Getting tasks!! " << it.second.spec.TaskId();
+    if (it.second.pending and it.second.spec.ParentTaskId() == parent_task_id) {
+      ret_vec.push_back(it.first);
+    }
+  }
+  return ret_vec;
+}
+
 }  // namespace ray
