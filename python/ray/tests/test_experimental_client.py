@@ -141,6 +141,7 @@ def test_remote_functions(ray_start_regular_shared):
 def test_function_calling_function(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50051", test_mode=True)
     ray.connect("localhost:50051")
+
     @ray.remote
     def g():
         return "OK"
@@ -154,7 +155,6 @@ def test_function_calling_function(ray_start_regular_shared):
     assert ray.get(f.remote()) == "OK"
     ray.disconnect()
     server.stop(0)
-
 
 
 if __name__ == "__main__":
