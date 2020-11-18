@@ -443,7 +443,7 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 }
 
 bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
-  
+  // Look up the task to be canceled in the queue of normal tasks. If it is found and removed successfully, return true.
   return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 

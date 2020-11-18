@@ -2176,7 +2176,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     kill_success = options_.kill_main();
   } else if (!kill_success) {
     
-    // Try deleting the task from the queue of normal tasks
+    // If the task is not currently running, check if it is in the worker's queue of normal tasks, and remove it if found. 
     if (direct_task_receiver_->CancelQueuedNormalTask(task_id)) {
       success=true;
     }

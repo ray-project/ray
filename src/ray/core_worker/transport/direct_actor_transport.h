@@ -389,8 +389,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
+  // We don't cancel actor tasks by removing them from the actor queues, so we don't do anything here.
   bool CancelTaskIfFound(TaskID task_id) {
-    // do nothing
     return false;
   }
 
@@ -527,6 +527,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
         InboundRequest(accept_request, reject_request, task_id, dependencies.size() > 0));
   }
 
+  // Search for an InboundRequest associated with the task that we are trying to cancel. If found, remove the InboundRequest from the queue and return true. Otherwise, return false.
   bool CancelTaskIfFound(TaskID task_id) {
     absl::MutexLock lock(&mu_);
     for (std::deque<InboundRequest>::iterator it = pending_normal_tasks_.begin();
