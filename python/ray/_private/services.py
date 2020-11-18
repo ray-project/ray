@@ -193,7 +193,7 @@ def get_address_info_from_redis_helper(redis_address,
         raise RuntimeError(
             f"This node has an IP address of {node_ip_address}, and Ray "
             "expects this IP address to be either the Redis address or one of"
-            " the Raylet addresses. Connected to Redis at {redis_address} and"
+            f" the Raylet addresses. Connected to Redis at {redis_address} and"
             " found raylets at "
             f"{', '.join(c['NodeManagerAddress'] for c in client_table)} but "
             f"none of these match this node's IP {node_ip_address}. Are any of"
