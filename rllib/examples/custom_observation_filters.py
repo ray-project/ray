@@ -18,8 +18,8 @@ tf1, tf, tfv = try_import_tf()
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-reward", type=float, default=70)
-parser.add_argument("--stop-timesteps", type=int, default=20000)
+parser.add_argument("--stop-reward", type=float, default=50)
+parser.add_argument("--stop-timesteps", type=int, default=6000)
 
 
 class SimpleRollingStat:
@@ -128,7 +128,10 @@ if __name__ == "__main__":
 
     config = {
         "env": "CartPole-v0",
-        "observation_filter": lambda size: CustomFilter(size)
+        "rollout_fragment_length": 500,
+        "train_batch_size": 1000,
+        "observation_filter": lambda size: CustomFilter(size),
+        "num_workers": 1,
     }
 
     stop = {
