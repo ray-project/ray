@@ -10,10 +10,9 @@ import ray
 import ray.test_utils
 from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray.test_utils import (wait_for_condition, wait_for_pid_to_exit,
-                            run_string_as_driver,
-                            run_string_as_driver_nonblocking,
-                            new_scheduler_enabled)
+from ray.test_utils import (
+    wait_for_condition, wait_for_pid_to_exit, run_string_as_driver,
+    run_string_as_driver_nonblocking, new_scheduler_enabled)
 
 
 def get_workers():
