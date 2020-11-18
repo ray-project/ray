@@ -71,6 +71,11 @@ class Policy(metaclass=ABCMeta):
         self.action_space = action_space
         self.action_space_struct = get_base_struct_from_space(action_space)
         self.config = config
+        if self.config.get("callbacks"):
+            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
+        else:
+            from ray.rllib.agents.callbacks import DefaultCallbacks
+            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
         # The global timestep, broadcast down from time to time from the
         # driver.
         self.global_timestep = 0
