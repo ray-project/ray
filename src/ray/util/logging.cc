@@ -254,7 +254,9 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   if (var_value != nullptr) {
     std::string data = var_value;
     std::transform(data.begin(), data.end(), data.begin(), ::tolower);
-    if (data == "debug") {
+    if (data == "trace") {
+      severity_threshold = RayLogLevel::TRACE;
+    } else if (data == "debug") {
       severity_threshold = RayLogLevel::DEBUG;
     } else if (data == "info") {
       severity_threshold = RayLogLevel::INFO;

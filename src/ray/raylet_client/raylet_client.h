@@ -118,6 +118,10 @@ class ResourceReserveInterface {
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
+  virtual void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
+
   virtual ~ResourceReserveInterface(){};
 };
 
@@ -379,6 +383,11 @@ class RayletClient : public PinObjectsInterface,
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
+
+  /// Implements ReleaseUnusedBundlesInterface.
+  void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
 
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,

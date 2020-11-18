@@ -18,7 +18,6 @@ ClusterTaskManager::ClusterTaskManager(
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   bool did_schedule = false;
-
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
@@ -28,8 +27,10 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // blocking where a task which cannot be scheduled because
       // there are not enough available resources blocks other
       // tasks from being scheduled.
-      Work work = *work_it;
+      const Work &work = *work_it;
       Task task = std::get<0>(work);
+      RAY_LOG(DEBUG) << "Scheduling pending task "
+                     << task.GetTaskSpecification().TaskId();
       auto placement_resources =
           task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
       int64_t _unused;
@@ -50,20 +51,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
           did_schedule = task_scheduled || did_schedule;
         } else {
           // Should spill over to a different node.
-          cluster_resource_scheduler_->AllocateRemoteTaskResources(
-              node_id_string,
-              task.GetTaskSpecification().GetRequiredResources().GetResourceMap());
-
           NodeID node_id = NodeID::FromBinary(node_id_string);
-          auto node_info_opt = get_node_info_(node_id);
-          // gcs_client_->Nodes().Get(node_id);
-          RAY_CHECK(node_info_opt)
-              << "Spilling back to a node manager, but no GCS info found for node "
-              << node_id;
-          auto reply = std::get<1>(work);
-          auto callback = std::get<2>(work);
-          Spillback(node_id, node_info_opt->node_manager_address(),
-                    node_info_opt->node_manager_port(), reply, callback);
+          Spillback(node_id, work);
         }
         work_it = work_queue.erase(work_it);
       }
@@ -85,6 +74,8 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   if (object_ids.size() > 0) {
     bool args_ready = fulfills_dependencies_func_(task);
     if (args_ready) {
+      RAY_LOG(DEBUG) << "Args already ready, task can be dispatched "
+                     << task.GetTaskSpecification().TaskId();
       tasks_to_dispatch_[scheduling_key].push_back(work);
     } else {
       can_dispatch = false;
@@ -92,6 +83,8 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
       waiting_tasks_[task_id] = work;
     }
   } else {
+    RAY_LOG(DEBUG) << "No args, task can be dispatched "
+                   << task.GetTaskSpecification().TaskId();
     tasks_to_dispatch_[scheduling_key].push_back(work);
   }
   return can_dispatch;
@@ -109,9 +102,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
        shapes_it != tasks_to_dispatch_.end();) {
     auto &dispatch_queue = shapes_it->second;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
-      auto work = *work_it;
-      auto task = std::get<0>(work);
-      auto spec = task.GetTaskSpecification();
+      auto spec = std::get<0>(*work_it).GetTaskSpecification();
 
       std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
       if (!worker) {
@@ -119,33 +110,21 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         return;
       }
 
-      std::shared_ptr<TaskResourceInstances> allocated_instances(
-          new TaskResourceInstances());
-      bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
-          spec.GetRequiredResources().GetResourceMap(), allocated_instances);
-      if (!schedulable) {
-        // Not enough resources to schedule this task.
+      bool worker_leased;
+      bool remove = AttemptDispatchWork(*work_it, worker, &worker_leased);
+      if (worker_leased) {
+        auto reply = std::get<1>(*work_it);
+        auto callback = std::get<2>(*work_it);
+        Dispatch(worker, leased_workers, spec, reply, callback);
+      } else {
         worker_pool.PushWorker(worker);
-        // All the tasks in this queue are the same, so move on to the next queue.
-        break;
       }
 
-      auto reply = std::get<1>(work);
-      auto callback = std::get<2>(work);
-      worker->SetOwnerAddress(spec.CallerAddress());
-      if (spec.IsActorCreationTask()) {
-        // The actor belongs to this worker now.
-        worker->SetLifetimeAllocatedInstances(allocated_instances);
+      if (remove) {
+        work_it = dispatch_queue.erase(work_it);
       } else {
-        worker->SetAllocatedInstances(allocated_instances);
+        break;
       }
-      worker->AssignTaskId(spec.TaskId());
-      if (!RayConfig::instance().enable_multi_tenancy()) {
-        worker->AssignJobId(spec.JobId());
-      }
-      worker->SetAssignedTask(task);
-      Dispatch(worker, leased_workers, spec, reply, callback);
-      work_it = dispatch_queue.erase(work_it);
     }
     if (dispatch_queue.empty()) {
       shapes_it = tasks_to_dispatch_.erase(shapes_it);
@@ -155,8 +134,52 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   }
 }
 
+bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
+                                             std::shared_ptr<WorkerInterface> &worker,
+                                             bool *worker_leased) {
+  const auto &task = std::get<0>(work);
+  const auto &spec = task.GetTaskSpecification();
+  RAY_LOG(DEBUG) << "Attempting to dispatch task " << spec.TaskId();
+
+  std::shared_ptr<TaskResourceInstances> allocated_instances(new TaskResourceInstances());
+  bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
+      spec.GetRequiredResources().GetResourceMap(), allocated_instances);
+  bool dispatched = false;
+  if (!schedulable) {
+    *worker_leased = false;
+    // Spill at most one task from this queue, then move on to the next
+    // queue.
+    int64_t _unused;
+    auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
+    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+        placement_resources, spec.IsActorCreationTask(), &_unused);
+    if (node_id_string != self_node_id_.Binary() && !node_id_string.empty()) {
+      NodeID node_id = NodeID::FromBinary(node_id_string);
+      Spillback(node_id, work);
+      dispatched = true;
+    }
+  } else {
+    worker->SetOwnerAddress(spec.CallerAddress());
+    if (spec.IsActorCreationTask()) {
+      // The actor belongs to this worker now.
+      worker->SetLifetimeAllocatedInstances(allocated_instances);
+    } else {
+      worker->SetAllocatedInstances(allocated_instances);
+    }
+    worker->AssignTaskId(spec.TaskId());
+    if (!RayConfig::instance().enable_multi_tenancy()) {
+      worker->AssignJobId(spec.JobId());
+    }
+    worker->SetAssignedTask(task);
+    *worker_leased = true;
+    dispatched = true;
+  }
+  return dispatched;
+}
+
 void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> callback) {
+  RAY_LOG(DEBUG) << "Queuing task " << task.GetTaskSpecification().TaskId();
   Work work = std::make_tuple(task, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   tasks_to_schedule_[scheduling_class].push_back(work);
@@ -167,8 +190,10 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
     auto it = waiting_tasks_.find(task_id);
     if (it != waiting_tasks_.end()) {
       auto work = it->second;
-      const auto &scheduling_key =
-          std::get<0>(work).GetTaskSpecification().GetSchedulingClass();
+      const auto &task = std::get<0>(work);
+      const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
+      RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
+                     << task.GetTaskSpecification().TaskId();
       tasks_to_dispatch_[scheduling_key].push_back(work);
       waiting_tasks_.erase(it);
     }
@@ -303,6 +328,7 @@ void ClusterTaskManager::Dispatch(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
+  RAY_LOG(DEBUG) << "Dispatching task " << task_spec.TaskId();
   // Pass the contact info of the worker to use.
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
@@ -362,12 +388,23 @@ void ClusterTaskManager::Dispatch(
   send_reply_callback();
 }
 
-void ClusterTaskManager::Spillback(NodeID spillback_to, std::string address, int port,
-                                   rpc::RequestWorkerLeaseReply *reply,
-                                   std::function<void(void)> send_reply_callback) {
-  reply->mutable_retry_at_raylet_address()->set_ip_address(address);
-  reply->mutable_retry_at_raylet_address()->set_port(port);
+void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work) {
+  const auto &task_spec = std::get<0>(work).GetTaskSpecification();
+  RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
+  cluster_resource_scheduler_->AllocateRemoteTaskResources(
+      spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap());
+
+  auto node_info_opt = get_node_info_(spillback_to);
+  RAY_CHECK(node_info_opt)
+      << "Spilling back to a node manager, but no GCS info found for node "
+      << spillback_to;
+  auto reply = std::get<1>(work);
+  reply->mutable_retry_at_raylet_address()->set_ip_address(
+      node_info_opt->node_manager_address());
+  reply->mutable_retry_at_raylet_address()->set_port(node_info_opt->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+
+  auto send_reply_callback = std::get<2>(work);
   send_reply_callback();
 }
 
