@@ -125,9 +125,6 @@ def find_redis_address(address=None):
     """
     Attempts to find all valid Ray redis addresses on this node.
 
-    Args:
-        address: The ...
-
     Returns:
         Set of detected Redis instances.
     """
