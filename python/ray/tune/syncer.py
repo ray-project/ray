@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, List, TYPE_CHECKING, Type, Union
 
 import distutils
 import logging
@@ -10,6 +10,7 @@ from inspect import isclass
 from shlex import quote
 
 import ray
+import yaml
 from ray import services
 from ray.tune import TuneError
 from ray.tune.callback import Callback
@@ -448,3 +449,32 @@ class SyncerCallback(Callback):
     def on_checkpoint(self, iteration: int, trials: List["Trial"],
                       trial: "Trial", checkpoint: Checkpoint, **info):
         self._sync_trial_checkpoint(trial, checkpoint)
+
+
+def detect_sync_to_driver(
+        sync_to_driver: Union[None, bool, Type],
+        cluster_config_file: str = "~/ray_bootstrap_config.yaml"):
+    from ray.tune.integration.docker import DockerSyncer
+    from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
+
+    if isinstance(sync_to_driver, Type):
+        return sync_to_driver
+    elif isinstance(sync_to_driver, bool) and sync_to_driver is False:
+        return sync_to_driver
+
+    # Else: True or None. Auto-detect.
+    cluster_config_file = os.path.expanduser(cluster_config_file)
+    if not os.path.exists(cluster_config_file):
+        return sync_to_driver
+
+    with open(cluster_config_file, "rt") as fp:
+        config = yaml.safe_load(fp.read())
+
+    if config.get("docker", None):
+        return DockerSyncer
+
+    if config.get("provider", {}).get("type", "") == "kubernetes":
+        namespace = config["provider"].get("namespace", "ray")
+        return NamespacedKubernetesSyncer(namespace)
+
+    return sync_to_driver

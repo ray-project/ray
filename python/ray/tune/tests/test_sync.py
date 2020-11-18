@@ -14,8 +14,7 @@ from ray.rllib import _register_all
 from ray import tune
 from ray.tune.integration.docker import DockerSyncer
 from ray.tune.integration.kubernetes import KubernetesSyncer
-from ray.tune.syncer import CommandBasedClient
-from ray.tune.utils.callback import _detect_sync_to_driver
+from ray.tune.syncer import CommandBasedClient, detect_sync_to_driver
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -277,18 +276,18 @@ class TestSyncFunctionality(unittest.TestCase):
             with open(aws_file, "wt") as fp:
                 yaml.safe_dump(aws_conf, fp)
 
-            kubernetes_syncer = _detect_sync_to_driver(None, kubernetes_file)
+            kubernetes_syncer = detect_sync_to_driver(None, kubernetes_file)
             self.assertTrue(issubclass(kubernetes_syncer, KubernetesSyncer))
             self.assertEqual(kubernetes_syncer._namespace, "test_ray")
 
-            docker_syncer = _detect_sync_to_driver(None, docker_file)
+            docker_syncer = detect_sync_to_driver(None, docker_file)
             self.assertTrue(issubclass(docker_syncer, DockerSyncer))
 
-            aws_syncer = _detect_sync_to_driver(None, aws_file)
+            aws_syncer = detect_sync_to_driver(None, aws_file)
             self.assertEqual(aws_syncer, None)
 
             # Should still return DockerSyncer, since it was passed explicitly
-            syncer = _detect_sync_to_driver(DockerSyncer, kubernetes_file)
+            syncer = detect_sync_to_driver(DockerSyncer, kubernetes_file)
             self.assertTrue(issubclass(syncer, DockerSyncer))
 
 

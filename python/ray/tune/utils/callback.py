@@ -1,14 +1,11 @@
-from typing import List, Optional, Type, Union
+from typing import List, Optional
 
 import logging
 import os
-import yaml
 
 from ray.tune.callback import Callback
-from ray.tune.integration.docker import DockerSyncer
-from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
 from ray.tune.progress_reporter import TrialProgressCallback
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import SyncConfig, detect_sync_to_driver
 from ray.tune.logger import CSVLoggerCallback, CSVLogger, LoggerCallback, \
     JsonLoggerCallback, JsonLogger, LegacyLoggerCallback, Logger, \
     TBXLoggerCallback, TBXLogger
@@ -120,7 +117,7 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
             "TUNE_DISABLE_AUTO_CALLBACK_SYNCER", "0") != "1":
 
         # Detect Docker and Kubernetes environments
-        _sync_to_driver = _detect_sync_to_driver(sync_config.sync_to_driver)
+        _sync_to_driver = detect_sync_to_driver(sync_config.sync_to_driver)
 
         syncer_callback = SyncerCallback(sync_function=_sync_to_driver)
         callbacks.append(syncer_callback)
@@ -146,29 +143,3 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
             callbacks.insert(last_logger_index, syncer_obj)
 
     return callbacks
-
-
-def _detect_sync_to_driver(
-        sync_to_driver: Union[None, bool, Type],
-        cluster_config_file: str = "~/ray_bootstrap_config.yaml"):
-    if isinstance(sync_to_driver, Type):
-        return sync_to_driver
-    elif isinstance(sync_to_driver, bool) and sync_to_driver is False:
-        return sync_to_driver
-
-    # Else: True or None. Auto-detect.
-    cluster_config_file = os.path.expanduser(cluster_config_file)
-    if not os.path.exists(cluster_config_file):
-        return sync_to_driver
-
-    with open(cluster_config_file, "rt") as fp:
-        config = yaml.safe_load(fp.read())
-
-    if config.get("docker", None):
-        return DockerSyncer
-
-    if config.get("provider", {}).get("type", "") == "kubernetes":
-        namespace = config["provider"].get("namespace", "ray")
-        return NamespacedKubernetesSyncer(namespace)
-
-    return sync_to_driver
