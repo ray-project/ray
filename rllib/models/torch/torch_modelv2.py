@@ -46,6 +46,11 @@ class TorchModelV2(ModelV2):
             name,
             framework="torch")
 
+        # Return the value-estimates of this model with every __call__ as a
+        # third item: ([logits], [state-output], [value-estimates]).
+        self.return_value_estimates = \
+            self.model_config.get("_return_value_estimates_from_call")
+
     @override(ModelV2)
     def variables(self, as_dict: bool = False) -> List[TensorType]:
         p = list(self.parameters())

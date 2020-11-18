@@ -59,8 +59,6 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
-        self.return_value_estimates = \
-            self.model_config.get("_return_value_estimates_from_call")
         # Basic view requirement for all models: Use the observation as input.
         self.inference_view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
