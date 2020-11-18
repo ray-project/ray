@@ -48,3 +48,84 @@ spec:
         memory: 1Gi
       limits:
         memory: 2Gi
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: rayclusters.cluster.ray.io
+spec:
+  group: cluster.ray.io
+  scope: Namespaced
+  names:
+    plural: rayclusters
+    singular: raycluster
+    kind: RayCluster
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        description: Ray cluster configuration
+        type: object
+        required:
+        - spec
+        properties:
+          spec:
+            type: object
+            properties:
+              maxWorkers:
+                description: The maximum number of workers nodes to launch in addition to the
+                  head node.
+                type: integer
+                minimum: 0
+              autoscalingMode:
+                description: The mode of the autoscaler, default or aggressive.
+                type: string
+                enum:
+                - default
+                - aggressive
+              targetUtilizationFraction:
+                description: 'The autoscaler will scale up the cluster to this target fraction
+                  of resources usage. For example, if a cluster of 8 nodes is 100% busy # and
+                  targetUtilization was 0.8, it would resize the cluster to 10.'
+                type: number
+                minimum: 0
+                maximum: 1
+              upscalingSpeed:
+                description: The autoscaler will scale up the cluster faster with higher upscaling
+                  speed. E.g., if the task requires adding more nodes then autoscaler will gradually
+                  scale up the cluster in chunks of upscalingSpeed*currentlyRunningNodes. This
+                  number should be > 0.
+                type: number
+                minimum: 0
+              idleTimeoutMinutes:
+                description: If a node is idle for this many minutes, it will be removed.
+                type: integer
+                minimum: 0
+              podTypes:
+                description: A list of Pod types on which to run Ray nodes, for multi-node-type autoscaling.
+                type: array
+                items:
+                    type: object
+                    required:
+                    - name
+                    - podConfig
+                    properties:
+                      name:
+                        type: string
+                        descritpion: Name of the Pod type.
+                      podConfig:
+                        type: object
+                        description: Pod configuration. (Pod properties currently not validated by this CRD.)
+                      minWorkers:
+                        type: integer
+                      maxWorkers:
+                        type: integer
+              headPodType:
+                description: Specifies the head node type.
+                type: string
+              workerDefaultPodType:
+                description: Specifies the default worker node type.
+                type: string
+
