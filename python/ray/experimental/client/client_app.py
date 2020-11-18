@@ -1,4 +1,4 @@
-import ray.experimental.client as ray
+from ray.experimental.client import ray
 
 ray.connect("localhost:50051")
 
