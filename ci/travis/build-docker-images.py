@@ -143,8 +143,7 @@ def copy_wheels():
 
 def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
     """Returns images to tag and build"""
-    _ = DOCKER_CLIENT.api.pull(
-        repository="rayproject/base-deps", tag="nightly")
+    DOCKER_CLIENT.api.pull(repository="rayproject/base-deps", tag="nightly")
 
     age = DOCKER_CLIENT.api.inspect_image("rayproject/base-deps:nightly")[
         "Created"]
@@ -154,15 +153,13 @@ def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
 
     print("Pulling images for caching")
 
-    _ = DOCKER_CLIENT.api.pull(
+    DOCKER_CLIENT.api.pull(
         repository="rayproject/base-deps", tag="nightly-cpu")
-    _ = DOCKER_CLIENT.api.pull(
+    DOCKER_CLIENT.api.pull(
         repository="rayproject/base-deps", tag="nightly-gpu")
 
-    _ = DOCKER_CLIENT.api.pull(
-        repository="rayproject/ray-deps", tag="nightly-gpu")
-    _ = DOCKER_CLIENT.api.pull(
-        repository="rayproject/ray-deps", tag="nightly-cpu")
+    DOCKER_CLIENT.api.pull(repository="rayproject/ray-deps", tag="nightly-gpu")
+    DOCKER_CLIENT.api.pull(repository="rayproject/ray-deps", tag="nightly-cpu")
 
     # TODO(ilr) See if any caching happens
     if True or (is_stale or is_docker_affected or _release_build()):
