@@ -170,6 +170,10 @@ def find_redis_address(address=None):
     The --redis-address here is what is now called the --address, but it
     appears in the default_worker.py and agent.py calls as --redis-address.
     """
+
+    if "RAY_ADDRESS" in os.environ:
+        return os.environ["RAY_ADDRESS"]
+
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:
@@ -203,9 +207,7 @@ def find_redis_address(address=None):
     return redis_addresses
 
 
-def find_redis_address_or_die(check_environ=True):
-    if check_environ and "RAY_ADDRESS" in os.environ:
-        return None
+def find_redis_address_or_die():
     redis_addresses = find_redis_address()
     if len(redis_addresses) > 1:
         raise ConnectionError(
@@ -307,7 +309,7 @@ def validate_redis_address(address):
     """
 
     if address == "auto":
-        address = find_redis_address_or_die(check_environ=False)
+        address = find_redis_address_or_die()
     redis_address = address_to_ip(address)
 
     redis_address_parts = redis_address.split(":")
