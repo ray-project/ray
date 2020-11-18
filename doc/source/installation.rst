@@ -8,10 +8,10 @@ Installing Ray
 Ray currently supports MacOS and Linux.
 Windows wheels are now available, but :ref:`Windows support <windows-support>` is experimental and under development.
 
-Latest stable version
----------------------
+Official Releases
+-----------------
 
-You can install the latest stable version of Ray as follows.
+You can install the latest official version of Ray as follows. Official releases are produced according to the `release process doc <https://github.com/ray-project/ray/blob/master/doc/dev/RELEASE_PROCESS.rst>`__.
 
 .. code-block:: bash
 
@@ -21,10 +21,10 @@ You can install the latest stable version of Ray as follows.
 
 .. _install-nightlies:
 
-Latest Snapshots (Nightlies)
-----------------------------
+Daily Releases (Nightlies)
+--------------------------
 
-You can install the latest Ray wheels via the following command:
+You can install the latest Ray wheels via the following command. These daily releases are tested via automated tests but do not go through the full release process:
 
 .. code-block:: bash
 

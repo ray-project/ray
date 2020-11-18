@@ -361,7 +361,7 @@ class ClusterResourceScheduler {
   /// \param node_id Remote node whose resources we allocate.
   /// \param task_req Task for which we allocate resources.
   void AllocateRemoteTaskResources(
-      std::string &node_id,
+      const std::string &node_id,
       const std::unordered_map<std::string, double> &task_resources);
 
   void FreeLocalTaskResources(std::shared_ptr<TaskResourceInstances> task_allocation);

@@ -183,6 +183,12 @@ struct GcsServerMocker {
       return_callbacks.push_back(callback);
     }
 
+    void ReleaseUnusedBundles(
+        const std::vector<rpc::Bundle> &bundles_in_use,
+        const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override {
+      ++num_release_unused_bundles_requested;
+    }
+
     // Trigger reply to PrepareBundleResources.
     bool GrantPrepareBundleResources(bool success = true) {
       Status status = Status::OK();
@@ -231,6 +237,7 @@ struct GcsServerMocker {
     int num_lease_requested = 0;
     int num_return_requested = 0;
     int num_commit_requested = 0;
+    int num_release_unused_bundles_requested = 0;
     NodeID node_id = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CommitBundleResourcesReply>> commit_callbacks = {};

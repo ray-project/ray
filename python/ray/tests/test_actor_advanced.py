@@ -91,7 +91,6 @@ def test_actor_load_balancing(ray_start_cluster):
     ray.get(results)
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="multi node broken")
 def test_actor_lifetime_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
