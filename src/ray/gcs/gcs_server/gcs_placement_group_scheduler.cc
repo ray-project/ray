@@ -204,6 +204,17 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     std::shared_ptr<GcsPlacementGroup> placement_group,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_callback,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_callback) {
+  // We need to ensure that the PrepareBundleResources won't be sent before the reply of
+  // ReleaseUnusedBundles is returned.
+  if (!nodes_of_releasing_unused_bundles_.empty()) {
+    RAY_LOG(INFO) << "Failed to schedule placement group " << placement_group->GetName()
+                  << ", id: " << placement_group->GetPlacementGroupID() << ", because "
+                  << nodes_of_releasing_unused_bundles_.size()
+                  << " nodes have not released unused bundles.";
+    failure_callback(placement_group);
+    return;
+  }
+
   auto bundles = placement_group->GetUnplacedBundles();
   auto strategy = placement_group->GetStrategy();
 
@@ -554,6 +565,34 @@ GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
     committed_bundle_location_index_.Erase(node_id);
   }
   return bundles_on_node;
+}
+
+void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
+    const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) {
+  // The purpose of this function is to release bundles that may be leaked.
+  // When GCS restarts, it doesn't know which bundles it has scheduled in the
+  // previous lifecycle. In this case, GCS will send a list of bundle ids that
+  // are still needed. And Raylet will release other bundles. If the node is
+  // dead, there is no need to send the request of release unused bundles.
+  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  for (const auto &alive_node : alive_nodes) {
+    const auto &node_id = alive_node.first;
+    nodes_of_releasing_unused_bundles_.insert(node_id);
+
+    auto lease_client = GetLeaseClientFromNode(alive_node.second);
+    auto release_unused_bundles_callback =
+        [this, node_id](const Status &status,
+                        const rpc::ReleaseUnusedBundlesReply &reply) {
+          nodes_of_releasing_unused_bundles_.erase(node_id);
+        };
+    auto iter = node_to_bundles.find(alive_node.first);
+
+    // When GCS restarts, some nodes maybe do not have bundles.
+    // In this case, GCS will send an empty list.
+    auto bundles_in_use =
+        iter != node_to_bundles.end() ? iter->second : std::vector<rpc::Bundle>{};
+    lease_client->ReleaseUnusedBundles(bundles_in_use, release_unused_bundles_callback);
+  }
 }
 
 void BundleLocationIndex::AddBundleLocations(

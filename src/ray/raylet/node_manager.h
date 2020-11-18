@@ -645,6 +645,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReleaseUnusedBundles` request.
+  void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
+                                  rpc::ReleaseUnusedBundlesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
   void TriggerGlobalGC();
@@ -816,6 +821,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// creation.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
       bundle_state_map_;
+
+  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
+  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
+      bundle_spec_map_;
 };
 
 }  // namespace raylet
