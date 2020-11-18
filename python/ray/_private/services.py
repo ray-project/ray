@@ -623,8 +623,8 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
             if i >= num_retries - 1:
                 raise RuntimeError(
                     f"Unable to connect to Redis at {redis_ip_address}:"
-                    "{redis_port} after {num_retries} retries. Check that "
-                    "{redis_ip_address}:{redis_port} is reachable from this "
+                    f"{redis_port} after {num_retries} retries. Check that "
+                    f"{redis_ip_address}:{redis_port} is reachable from this "
                     "machine. If it is not, your firewall may be blocking "
                     "this port. If the problem is a flaky connection, try "
                     "setting the environment variable "
