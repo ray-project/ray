@@ -90,11 +90,9 @@ class Worker:
         client_ready_object_ids = []
         client_remaining_object_ids = []
         for id in resp.ready_object_ids:
-            client_ready_object_ids.append(
-                ClientObjectRef(cloudpickle.loads(id)))
+            client_ready_object_ids.append(ClientObjectRef(id))
         for id in resp.remaining_object_ids:
-            client_remaining_object_ids.append(
-                ClientObjectRef(cloudpickle.loads(id)))
+            client_remaining_object_ids.append(ClientObjectRef(id))
 
         return (client_ready_object_ids, client_remaining_object_ids)
 

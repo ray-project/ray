@@ -63,10 +63,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         ]
         return ray_client_pb2.WaitResponse(
             valid=True,
-            ready_object_ids=[cloudpickle.dumps(o) for o in ready_object_ids],
-            remaining_object_ids=[
-                cloudpickle.dumps(o) for o in remaining_object_ids
-            ])
+            ready_object_ids=[o for o in ready_object_ids],
+            remaining_object_ids=[o for o in remaining_object_ids])
 
     def Schedule(self, task, context=None):
         logger.info("schedule: %s" % task)

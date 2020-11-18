@@ -29,12 +29,12 @@ def test_wait(ray_start_regular_shared):
 
     objectref2 = ray.put(5)
     ready, remaining = ray.wait([objectref, objectref2])
-    assert ready == [objectref2]
-    assert remaining == [objectref]
+    assert (ready, remaining) == ([objectref], [objectref2]) or \
+        (ready, remaining) == ([objectref2], [objectref])
     ready_retval = ray.get(ready[0])
-    assert ready_retval == 5
     remaining_retval = ray.get(remaining[0])
-    assert remaining_retval == "hello world"
+    assert (ready_retval, remaining_retval) == ("hello world", 5) \
+        or (ready_retval, remaining_retval) == (5, "hello world")
 
     with pytest.raises(Exception):
         # Reference not in the object store.
