@@ -389,7 +389,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
-  // We don't cancel actor tasks by removing them from the actor queues, so we don't do anything here.
+  // We don't cancel actor tasks, so we don't do anything here. 
   bool CancelTaskIfFound(TaskID task_id) {
     return false;
   }
