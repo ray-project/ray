@@ -61,7 +61,7 @@ class _AgentCollector:
         self.count = 0
 
     def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
-                     env_id: EnvID, init_obs: TensorType,
+                     env_id: EnvID, t: int, init_obs: TensorType,
                      view_requirements: Dict[str, ViewRequirement]) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
 
@@ -71,6 +71,8 @@ class _AgentCollector:
             agent_id (AgentID): Unique ID for the agent we are adding the
                 initial observation for.
             env_id (EnvID): The environment index (in a vectorized setup).
+            t (int): The time step (episode length - 1). The initial obs has
+                ts=-1(!), then an action/reward/next-obs at t=0, etc..
             init_obs (TensorType): The initial observation tensor (after
             `env.reset()`).
             view_requirements (Dict[str, ViewRequirements])
@@ -82,8 +84,13 @@ class _AgentCollector:
                     SampleBatch.EPS_ID: episode_id,
                     SampleBatch.AGENT_INDEX: agent_id,
                     "env_id": env_id,
+                    "t": t,
                 })
         self.buffers[SampleBatch.OBS].append(init_obs)
+        self.buffers[SampleBatch.EPS_ID].append(episode_id)
+        self.buffers[SampleBatch.AGENT_INDEX].append(agent_id)
+        self.buffers["env_id"].append(env_id)
+        self.buffers["t"].append(t)
 
     def add_action_reward_next_obs(self, values: Dict[str, TensorType]) -> \
             None:
@@ -219,7 +226,11 @@ class _AgentCollector:
         for col, data in single_row.items():
             if col in self.buffers:
                 continue
-            shift = self.shift_before - (1 if col == SampleBatch.OBS else 0)
+            shift = self.shift_before - \
+                    (1 if col in
+                          [SampleBatch.OBS, SampleBatch.EPS_ID,
+                           SampleBatch.AGENT_INDEX, "env_id", "t"]
+                     else 0)
             # Python primitive or dict (e.g. INFOs).
             if isinstance(data, (int, float, bool, str, dict)):
                 self.buffers[col] = [0 for _ in range(shift)]
@@ -442,7 +453,7 @@ class _SimpleListCollector(_SampleCollector):
     @override(_SampleCollector)
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
                      env_id: EnvID, policy_id: PolicyID,
-                     init_obs: TensorType) -> None:
+                     t: int, init_obs: TensorType) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
         if agent_key not in self.agent_key_to_policy_id:
@@ -461,6 +472,7 @@ class _SimpleListCollector(_SampleCollector):
             episode_id=episode.episode_id,
             agent_id=agent_id,
             env_id=env_id,
+            t=t,
             init_obs=init_obs,
             view_requirements=view_reqs)
 

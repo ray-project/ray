@@ -134,6 +134,7 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
         states = [
             np.array([[ts[i]] for i in range(len(input_dict["obs"]))])
         ]
+        self.global_timestep += 1
         return actions, states, {}
 
     @override(Policy)

@@ -346,8 +346,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             policy_mapping_fn=policy_fn,
             num_envs=1,
         )
-        s = rollout_worker_w_api.sample()
-        TODO: batch state_in seems off by 1 timestep!!
+        batch = rollout_worker_w_api.sample()
+        analyze_attention_batch(batch)
+        #TODO: batch state_in seems off by 1 timestep!!
         print(end="")
 
 

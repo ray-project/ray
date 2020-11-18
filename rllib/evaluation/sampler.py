@@ -1037,7 +1037,8 @@ def _process_observations_w_trajectory_view_api(
             # Record transition info if applicable.
             if last_observation is None:
                 _sample_collector.add_init_obs(episode, agent_id, env_id,
-                                               policy_id, filtered_obs)
+                                               policy_id, episode.length - 1,
+                                               filtered_obs)
             else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
@@ -1153,7 +1154,8 @@ def _process_observations_w_trajectory_view_api(
 
                     # Add initial obs to buffer.
                     _sample_collector.add_init_obs(
-                        new_episode, agent_id, env_id, policy_id, filtered_obs)
+                        new_episode, agent_id, env_id, policy_id,
+                        new_episode.length - 1, filtered_obs)
 
                     item = PolicyEvalData(
                         env_id, agent_id, filtered_obs,
