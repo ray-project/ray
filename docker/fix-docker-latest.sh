@@ -27,46 +27,46 @@ done
 echo "You must be logged into a user with push priviledges to do this."
 
 docker pull rayproject/ray:"$IMAGE"
-docker tag rayproject/ray:"$IMAGE" rayproject/ray:$DEST
-docker tag rayproject/ray:"$IMAGE" rayproject/ray:$DEST-cpu
+docker tag rayproject/ray:"$IMAGE" rayproject/ray:"$DEST"
+docker tag rayproject/ray:"$IMAGE" rayproject/ray:"$DEST"-cpu
 docker pull rayproject/ray:"$IMAGE"-gpu
-docker tag rayproject/ray:"$IMAGE"-gpu rayproject/ray:$DEST-gpu
-docker push rayproject/ray:$DEST
-docker push rayproject/ray:$DEST-cpu
-docker push rayproject/ray:$DEST-gpu
+docker tag rayproject/ray:"$IMAGE"-gpu rayproject/ray:"$DEST"-gpu
+docker push rayproject/ray:"$DEST"
+docker push rayproject/ray:"$DEST"-cpu
+docker push rayproject/ray:"$DEST"-gpu
 
 docker pull rayproject/ray-deps:"$IMAGE"
-docker tag rayproject/ray-deps:"$IMAGE" rayproject/ray-deps:$DEST
-docker tag rayproject/ray-deps:"$IMAGE" rayproject/ray-deps:$DEST-cpu
+docker tag rayproject/ray-deps:"$IMAGE" rayproject/ray-deps:"$DEST"
+docker tag rayproject/ray-deps:"$IMAGE" rayproject/ray-deps:"$DEST"-cpu
 docker pull rayproject/ray-deps:"$IMAGE"-gpu
-docker tag rayproject/ray-deps:"$IMAGE"-gpu rayproject/ray-deps:$DEST-gpu
-docker push rayproject/ray-deps:$DEST
-docker push rayproject/ray-deps:$DEST-cpu
-docker push rayproject/ray-deps:$DEST-gpu
+docker tag rayproject/ray-deps:"$IMAGE"-gpu rayproject/ray-deps:"$DEST"-gpu
+docker push rayproject/ray-deps:"$DEST"
+docker push rayproject/ray-deps:"$DEST"-cpu
+docker push rayproject/ray-deps:"$DEST"-gpu
 
 docker pull rayproject/base-deps:"$IMAGE"
-docker tag rayproject/base-deps:"$IMAGE" rayproject/base-deps:$DEST
-docker tag rayproject/base-deps:"$IMAGE" rayproject/base-deps:$DEST-cpu
+docker tag rayproject/base-deps:"$IMAGE" rayproject/base-deps:"$DEST"
+docker tag rayproject/base-deps:"$IMAGE" rayproject/base-deps:"$DEST"-cpu
 docker pull rayproject/base-deps:"$IMAGE"-gpu
-docker tag rayproject/base-deps:"$IMAGE"-gpu rayproject/base-deps:$DEST-gpu
-docker push rayproject/base-deps:$DEST
-docker push rayproject/base-deps:$DEST-cpu
-docker push rayproject/base-deps:$DEST-gpu
+docker tag rayproject/base-deps:"$IMAGE"-gpu rayproject/base-deps:"$DEST"-gpu
+docker push rayproject/base-deps:"$DEST"
+docker push rayproject/base-deps:"$DEST"-cpu
+docker push rayproject/base-deps:"$DEST"-gpu
 
 docker pull rayproject/ray-ml:"$IMAGE"
-docker tag rayproject/ray-ml:"$IMAGE" rayproject/ray-ml:$DEST
-docker tag rayproject/ray-ml:"$IMAGE" rayproject/ray-ml:$DEST-cpu
+docker tag rayproject/ray-ml:"$IMAGE" rayproject/ray-ml:"$DEST"
+docker tag rayproject/ray-ml:"$IMAGE" rayproject/ray-ml:"$DEST"-cpu
 docker pull rayproject/ray-ml:"$IMAGE"-gpu
-docker tag rayproject/ray-ml:"$IMAGE"-gpu rayproject/ray-ml:$DEST-gpu
-docker push rayproject/ray-ml:$DEST
-docker push rayproject/ray-ml:$DEST-cpu
-docker push rayproject/ray-ml:$DEST-gpu
+docker tag rayproject/ray-ml:"$IMAGE"-gpu rayproject/ray-ml:"$DEST"-gpu
+docker push rayproject/ray-ml:"$DEST"
+docker push rayproject/ray-ml:"$DEST"-cpu
+docker push rayproject/ray-ml:"$DEST"-gpu
 
 docker pull rayproject/autoscaler:"$IMAGE"
-docker tag rayproject/autoscaler:"$IMAGE" rayproject/autoscaler:$DEST
-docker tag rayproject/autoscaler:"$IMAGE" rayproject/autoscaler:$DEST-cpu
+docker tag rayproject/autoscaler:"$IMAGE" rayproject/autoscaler:"$DEST"
+docker tag rayproject/autoscaler:"$IMAGE" rayproject/autoscaler:"$DEST"-cpu
 docker pull rayproject/autoscaler:"$IMAGE"-gpu
-docker tag rayproject/autoscaler:"$IMAGE"-gpu rayproject/autoscaler:$DEST-gpu
-docker push rayproject/autoscaler:$DEST
-docker push rayproject/autoscaler:$DEST-cpu
-docker push rayproject/autoscaler:$DEST-gpu
+docker tag rayproject/autoscaler:"$IMAGE"-gpu rayproject/autoscaler:"$DEST"-gpu
+docker push rayproject/autoscaler:"$DEST"
+docker push rayproject/autoscaler:"$DEST"-cpu
+docker push rayproject/autoscaler:"$DEST"-gpu
