@@ -125,53 +125,21 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
       } else {
-        std::shared_ptr<TaskResourceInstances> allocated_instances(
-            new TaskResourceInstances());
-        bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
-            spec.GetRequiredResources().GetResourceMap(), allocated_instances);
-        if (!schedulable) {
-          // Not enough resources to schedule this task.
+        bool worker_leased;
+        bool remove = AttemptDispatchWork(*work_it, worker, &worker_leased);
+        if (worker_leased) {
+          auto reply = std::get<1>(*work_it);
+          auto callback = std::get<2>(*work_it);
+          Dispatch(worker, leased_workers, spec, reply, callback);
+        } else {
           worker_pool.PushWorker(worker);
-          // All the tasks in this queue are the same, so move on to the next queue.
+        }
+
+        if (remove) {
+          work_it = dispatch_queue.erase(work_it);
+        } else {
           break;
         }
-
-        auto reply = std::get<1>(work);
-        auto callback = std::get<2>(work);
-        worker->SetOwnerAddress(spec.CallerAddress());
-        worker->SetAssignedTask(task);
-
-        TaskID task_id = spec.TaskId();
-        worker->AssignTaskId(task_id);
-        if (spec.IsActorCreationTask()) {
-          // The actor belongs to this worker now.
-          worker->SetLifetimeAllocatedInstances(allocated_instances);
-        } else {
-          worker->SetAllocatedInstances(allocated_instances);
-        }
-
-        if (!RayConfig::instance().enable_multi_tenancy()) {
-          worker->AssignJobId(spec.JobId());
-        }
-
-        Dispatch(worker, leased_workers, spec, reply, callback);
-      }
-      work_it = dispatch_queue.erase(work_it);
-
-      bool worker_leased;
-      bool remove = AttemptDispatchWork(*work_it, worker, &worker_leased);
-      if (worker_leased) {
-        auto reply = std::get<1>(*work_it);
-        auto callback = std::get<2>(*work_it);
-        Dispatch(worker, leased_workers, spec, reply, callback);
-      } else {
-        worker_pool.PushWorker(worker);
-      }
-
-      if (remove) {
-        work_it = dispatch_queue.erase(work_it);
-      } else {
-        break;
       }
     }
     if (dispatch_queue.empty()) {
