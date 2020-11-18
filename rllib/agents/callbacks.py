@@ -32,7 +32,8 @@ class DefaultCallbacks:
 
     def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode, env_index: int, **kwargs):
+                         episode: MultiAgentEpisode, env_index: int,
+                         **kwargs) -> None:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -58,7 +59,8 @@ class DefaultCallbacks:
             })
 
     def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                        episode: MultiAgentEpisode, env_index: int, **kwargs):
+                        episode: MultiAgentEpisode, env_index: int,
+                        **kwargs) -> None:
         """Runs on each episode step.
 
         Args:
@@ -82,7 +84,8 @@ class DefaultCallbacks:
 
     def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode, env_index: int, **kwargs):
+                       episode: MultiAgentEpisode, env_index: int,
+                       **kwargs) -> None:
         """Runs when an episode is done.
 
         Args:
@@ -111,7 +114,7 @@ class DefaultCallbacks:
             self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
             agent_id: AgentID, policy_id: PolicyID,
             policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
-            original_batches: Dict[AgentID, SampleBatch], **kwargs):
+            original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
         """Called immediately after a policy's postprocess_fn is called.
 
         You can use this callback to do additional postprocessing for a policy,
@@ -143,7 +146,7 @@ class DefaultCallbacks:
             })
 
     def on_sample_end(self, *, worker: "RolloutWorker", samples: SampleBatch,
-                      **kwargs):
+                      **kwargs) -> None:
         """Called at the end of RolloutWorker.sample().
 
         Args:
@@ -159,7 +162,23 @@ class DefaultCallbacks:
                 "samples": samples,
             })
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs):
+    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
+                          **kwargs) -> None:
+        """Called at the beginning of Policy.learn_on_batch().
+
+        Note: This is called before the Model's `preprocess_train_batch()`
+        is called.
+
+        Args:
+            policy (Policy): Reference to the current Policy object.
+            train_batch (SampleBatch): SampleBatch to be trained on. You can
+                mutate this object to modify the samples generated.
+            kwargs: Forward compatibility placeholder.
+        """
+
+        pass
+
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         """Called at the end of Trainable.train().
 
         Args:

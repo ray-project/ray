@@ -42,7 +42,6 @@ AWS/GCP/Azure
             # Tear down the cluster.
             $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
-        .. tip:: For the AWS node configuration, you can set ``"ImageId: latest_dlami"`` to automatically use the newest `Deep Learning AMI <https://aws.amazon.com/machine-learning/amis/>`_ for your region. For example, ``head_node: {InstanceType: c5.xlarge, ImageId: latest_dlami}``.
 
         See :ref:`aws-cluster` for recipes on customizing AWS clusters.
     .. group-tab:: Azure
