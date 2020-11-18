@@ -470,6 +470,7 @@ void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
   auto callback = [this,
                    done](const std::unordered_map<PlacementGroupID,
                                                   rpc::PlacementGroupTableData> &result) {
+    std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
     for (auto &item : result) {
       auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
       if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
@@ -479,8 +480,19 @@ void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
             item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
           pending_placement_groups_.emplace_back(std::move(placement_group));
         }
+
+        if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
+            item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
+          const auto &bundles = item.second.bundles();
+          for (auto &bundle : bundles) {
+            node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
+          }
+        }
       }
     }
+
+    // Notify raylets to release unused bundles.
+    gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
 
     SchedulePendingPlacementGroups();
     RAY_LOG(INFO) << "Finished loading initial data.";
