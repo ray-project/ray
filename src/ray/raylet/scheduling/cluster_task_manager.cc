@@ -124,6 +124,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
+        work_it = dispatch_queue.erase(work_it);
       } else {
         bool worker_leased;
         bool remove = AttemptDispatchWork(*work_it, worker, &worker_leased);
@@ -134,7 +135,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         } else {
           worker_pool.PushWorker(worker);
         }
-
         if (remove) {
           work_it = dispatch_queue.erase(work_it);
         } else {

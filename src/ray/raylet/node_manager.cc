@@ -2528,7 +2528,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
     task = worker.GetAssignedTask();
     // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ?
     if (worker.GetAllocatedInstances() != nullptr) {
-      this->cluster_task_manager_->HandleTaskFinished(worker_ptr);
+      cluster_task_manager_->HandleTaskFinished(worker_ptr);
     }
   } else {
     // (See design_docs/task_states.rst for the state transition diagram.)
