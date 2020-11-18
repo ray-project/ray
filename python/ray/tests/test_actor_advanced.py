@@ -12,7 +12,7 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
-                            wait_for_condition, new_scheduler_enabled)
+                            wait_for_condition)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
