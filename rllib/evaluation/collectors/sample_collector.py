@@ -166,15 +166,14 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def build_multi_agent_batch(self, env_steps: int, env_index: int) -> \
+    def build_multi_agent_batch(self, env_steps: int, env_id: EnvID) -> \
             Union[MultiAgentBatch, SampleBatch]:
         """Builds a MultiAgentBatch of size=env_steps from the collected data.
 
         Args:
             env_steps (int): The sum of all env-steps (across all agents) taken
                 so far.
-            env_index (int): The environment index (in a vector env) for which
-                to build the batch.
+            env_id (EnvID): The environment ID for which to build the batch.
 
         Returns:
             Union[MultiAgentBatch, SampleBatch]: Returns the accumulated

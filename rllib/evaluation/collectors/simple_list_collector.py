@@ -300,7 +300,7 @@ class _SimpleListCollector(_SampleCollector):
 
         # Maps episode index to env step counts (already built inside a
         # `_PolicyCollector` object).
-        self.built_env_steps_per_index: Dict[EnvID, int] = \
+        self.built_env_steps_per_env_id: Dict[EnvID, int] = \
             collections.defaultdict(int)
         # Maps episode ID to the (non-built) env steps taken in this episode.
         self.episode_steps: Dict[EpisodeID, int] = \
@@ -314,7 +314,7 @@ class _SimpleListCollector(_SampleCollector):
         self.episode_steps[episode_id] += 1
         episode.length += 1
         env_steps = \
-            self.built_env_steps_per_index[episode.env_index] + \
+            self.built_env_steps_per_env_id[episode.env_id] + \
             self.episode_steps[episode_id]
         if (env_steps > self.large_batch_threshold
                 and log_once("large_batch_warning")):
@@ -420,10 +420,10 @@ class _SimpleListCollector(_SampleCollector):
     @override(_SampleCollector)
     def postprocess_episode(self,
                             episode: MultiAgentEpisode,
+                            policy_collector_env_id: EnvID,
                             is_done: bool = False,
                             check_dones: bool = False) -> None:
         episode_id = episode.episode_id
-        env_index = episode.env_index
 
         # TODO: (sven) Once we implement multi-agent communication channels,
         #  we have to resolve the restriction of only sending other agent
@@ -508,14 +508,14 @@ class _SimpleListCollector(_SampleCollector):
                 original_batches=pre_batches)
             # Add the postprocessed SampleBatch to the policy collectors for
             # training.
-            p_key = (pid, env_index)
+            p_key = (pid, policy_collector_env_id)
             if p_key not in self.policy_collectors:
                 self.policy_collectors[p_key] = _PolicyCollector()
             self.policy_collectors[p_key].add_postprocessed_batch_for_training(
                 post_batch, policy.view_requirements)
 
         env_steps = self.episode_steps[episode_id]
-        self.built_env_steps_per_index[env_index] += env_steps
+        self.built_env_steps_per_env_id[policy_collector_env_id] += env_steps
 
         if is_done:
             del self.episode_steps[episode_id]
@@ -524,16 +524,16 @@ class _SimpleListCollector(_SampleCollector):
             self.episode_steps[episode_id] = 0
 
     @override(_SampleCollector)
-    def build_multi_agent_batch(self, env_steps: int, env_index: int) -> \
+    def build_multi_agent_batch(self, env_steps: int, env_id: EnvID) -> \
             Union[MultiAgentBatch, SampleBatch]:
         ma_batch = MultiAgentBatch.wrap_as_needed(
             {
                 pid: collector.build()
-                for (pid, e_idx), collector in self.policy_collectors.items()
-                if collector.count > 0 and env_index == e_idx
+                for (pid, e_id), collector in self.policy_collectors.items()
+                if collector.count > 0 and env_id == e_id
             },
             env_steps=env_steps)
-        self.built_env_steps_per_index[env_index] = 0
+        del self.built_env_steps_per_env_id[env_id]
         return ma_batch
 
     @override(_SampleCollector)
@@ -543,21 +543,22 @@ class _SimpleListCollector(_SampleCollector):
         # Loop through ongoing episodes and see whether their length plus
         # what's already in the policy collectors reaches the fragment-len.
         for episode_id, episode in self.episodes.items():
-            built_env_steps_per_index = \
-                self.built_env_steps_per_index[episode.env_index]
-            env_steps = \
-                built_env_steps_per_index + self.episode_steps[episode_id]
-            # Reached the fragment-len -> We should build an MA-Batch.
-            if env_steps >= self.rollout_fragment_length:
-                assert env_steps == self.rollout_fragment_length
-                # If we reached the fragment-len only because of `episode_id`
-                # (still ongoing) -> postprocess `episode_id` first.
-                if built_env_steps_per_index < self.rollout_fragment_length:
-                    self.postprocess_episode(episode, is_done=False)
-                # Build the MA-batch and return.
-                batch = self.build_multi_agent_batch(
-                    env_steps=env_steps, env_index=episode.env_index)
-                batches.append(batch)
+            built_env_steps_per_env_id = set(
+                self.built_env_steps_per_env_id.keys())
+            for env_id in built_env_steps_per_env_id:
+                built_env_steps = self.built_env_steps_per_env_id[env_id]
+                env_steps = built_env_steps + self.episode_steps[episode_id]
+                # Reached the fragment-len -> We should build an MA-Batch.
+                if env_steps >= self.rollout_fragment_length:
+                    assert env_steps == self.rollout_fragment_length
+                    # If we reached the fragment-len only because of `episode_id`
+                    # (still ongoing) -> postprocess `episode_id` first.
+                    if built_env_steps < self.rollout_fragment_length:
+                        self.postprocess_episode(episode, policy_collector_env_id=env_id, is_done=False)
+                    # Build the MA-batch and return.
+                    batch = self.build_multi_agent_batch(
+                        env_steps=env_steps, env_id=env_id)
+                    batches.append(batch)
         return batches
 
     def _add_to_next_inference_call(self, agent_key: Tuple[EpisodeID, AgentID],

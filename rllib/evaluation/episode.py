@@ -8,7 +8,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
-    EnvObsType, EnvInfoDict, EnvActionType
+    EnvActionType, EnvID, EnvInfoDict, EnvObsType
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.sample_batch_builder import \
@@ -49,7 +49,7 @@ class MultiAgentEpisode:
                  batch_builder_factory: Callable[
                      [], "MultiAgentSampleBatchBuilder"],
                  extra_batch_callback: Callable[[SampleBatchType], None],
-                 env_index: int):
+                 env_id: EnvID):
         self.new_batch_builder: Callable[
             [], "MultiAgentSampleBatchBuilder"] = batch_builder_factory
         self.add_extra_batch: Callable[[SampleBatchType],
@@ -59,7 +59,7 @@ class MultiAgentEpisode:
         self.total_reward: float = 0.0
         self.length: int = 0
         self.episode_id: int = random.randrange(2e9)
-        self.env_index = env_index
+        self.env_id = env_id
         self.agent_rewards: Dict[AgentID, float] = defaultdict(float)
         self.custom_metrics: Dict[str, float] = {}
         self.user_data: Dict[str, Any] = {}
