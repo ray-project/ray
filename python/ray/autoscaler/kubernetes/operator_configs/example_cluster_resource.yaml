@@ -36,8 +36,6 @@ spec:
           args: ['trap : TERM INT; sleep infinity & wait;']
           ports:
           - containerPort: 6379 # Redis port.
-          - containerPort: 6380 # Redis port.
-          - containerPort: 6381 # Redis port.
           - containerPort: 12345 # Ray internal communication.
           - containerPort: 12346 # Ray internal communication.
 
@@ -59,7 +57,7 @@ spec:
               # the object store size is not set manually, ray will
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
-              memory: 2Gi
+              memory: 512Mi
           env:
           # The pod uses this as an argument to 'ray start' command so that
           # Ray can spawn the correct number of processes. Omitting this
@@ -101,7 +99,7 @@ spec:
               cpu: 100m
               memory: 512Mi
             limits:
-              memory: 2Gi
+              memory: 512Mi
           env:
           - name: MYCPUREQUEST
             valueFrom:
