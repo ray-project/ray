@@ -1216,9 +1216,6 @@ class AutoscalingTest(unittest.TestCase):
             "type": "external",
             "module": "does-not-exist",
         }
-        with pytest.raises(ValueError):
-            invalid_provider = self.write_config(
-                config, call_prepare_config=True)
         invalid_provider = self.write_config(config, call_prepare_config=False)
         with pytest.raises(ValueError):
             StandardAutoscaler(
@@ -1515,6 +1512,38 @@ class AutoscalingTest(unittest.TestCase):
                 f"172.0.0.{i}", f"172.0.0.{i}",
                 f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
+
+    def testAutodetectResources(self):
+        self.provider = MockProvider()
+        config = SMALL_CLUSTER.copy()
+        config_path = self.write_config(config)
+        runner = MockProcessRunner()
+        proc_meminfo = """
+MemTotal:       16396056 kB
+MemFree:        12869528 kB
+MemAvailable:   33000000 kB
+        """
+        runner.respond_to_call("cat /proc/meminfo", 2 * [proc_meminfo])
+        runner.respond_to_call(".Runtimes", 2 * ["nvidia-container-runtime"])
+        runner.respond_to_call("nvidia-smi", 2 * ["works"])
+        runner.respond_to_call("json .Config.Env", 2 * ["[]"])
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+        runner.assert_has_call("172.0.0.0", pattern="--shm-size")
+        runner.assert_has_call("172.0.0.0", pattern="--runtime=nvidia")
 
 
 if __name__ == "__main__":

@@ -1,16 +1,21 @@
 from __future__ import print_function
 
 import collections
+import os
 import sys
+from typing import Dict, List, Optional
 
 import numpy as np
 import time
 
+from ray.tune.callback import Callback
+from ray.tune.logger import pretty_print
 from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
                              TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
                              AUTO_RESULT_KEYS)
-from ray.tune.trial import Trial
+from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial
 from ray.tune.utils import unflattened_lookup
+from ray.tune.utils.log import Verbosity, has_verbosity
 
 try:
     from collections.abc import Mapping
@@ -224,15 +229,19 @@ class TuneReporterBase(ProgressReporter):
                 best_trial_str(current_best_trial, metric,
                                self._parameter_columns))
 
-        messages.append(
-            trial_progress_str(
-                trials,
-                metric_columns=self._metric_columns,
-                parameter_columns=self._parameter_columns,
-                total_samples=self._total_samples,
-                fmt=fmt,
-                max_rows=max_progress))
-        messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
+        if has_verbosity(Verbosity.V1_EXPERIMENT):
+            # Will filter the table in `trial_progress_str`
+            messages.append(
+                trial_progress_str(
+                    trials,
+                    metric_columns=self._metric_columns,
+                    parameter_columns=self._parameter_columns,
+                    total_samples=self._total_samples,
+                    fmt=fmt,
+                    max_rows=max_progress,
+                    done=done))
+            messages.append(
+                trial_errors_str(trials, fmt=fmt, max_rows=max_error))
 
         return delim.join(messages) + delim
 
@@ -399,12 +408,20 @@ def memory_debug_str():
                 "(or ray[debug]) to resolve)")
 
 
+def _get_trials_by_state(trials):
+    trials_by_state = collections.defaultdict(list)
+    for t in trials:
+        trials_by_state[t.status].append(t)
+    return trials_by_state
+
+
 def trial_progress_str(trials,
                        metric_columns,
                        parameter_columns=None,
                        total_samples=0,
                        fmt="psql",
-                       max_rows=None):
+                       max_rows=None,
+                       done=False):
     """Returns a human readable message for printing to the console.
 
     This contains a table where each row represents a trial, its parameters
@@ -432,9 +449,7 @@ def trial_progress_str(trials,
         return delim.join(messages)
 
     num_trials = len(trials)
-    trials_by_state = collections.defaultdict(list)
-    for t in trials:
-        trials_by_state[t.status].append(t)
+    trials_by_state = _get_trials_by_state(trials)
 
     for local_dir in sorted({t.local_dir for t in trials}):
         messages.append("Result logdir: {}".format(local_dir))
@@ -443,6 +458,30 @@ def trial_progress_str(trials,
         "{} {}".format(len(trials_by_state[state]), state)
         for state in sorted(trials_by_state)
     ]
+
+    if total_samples and total_samples >= sys.maxsize:
+        total_samples = "infinite"
+
+    messages.append("Number of trials: {}{} ({})".format(
+        num_trials, f"/{total_samples}"
+        if total_samples else "", ", ".join(num_trials_strs)))
+
+    if has_verbosity(Verbosity.V3_TRIAL_DETAILS) or (has_verbosity(
+            Verbosity.V2_TRIAL_NORM) and done):
+        messages += trial_progress_table(trials, metric_columns,
+                                         parameter_columns, fmt, max_rows)
+
+    return delim.join(messages)
+
+
+def trial_progress_table(trials,
+                         metric_columns,
+                         parameter_columns=None,
+                         fmt="psql",
+                         max_rows=None):
+    messages = []
+    num_trials = len(trials)
+    trials_by_state = _get_trials_by_state(trials)
 
     state_tbl_order = [
         Trial.RUNNING, Trial.PAUSED, Trial.PENDING, Trial.TERMINATED,
@@ -473,13 +512,6 @@ def trial_progress_str(trials,
             if state not in trials_by_state:
                 continue
             trials += trials_by_state[state]
-
-    if total_samples and total_samples >= sys.maxsize:
-        total_samples = "infinite"
-
-    messages.append("Number of trials: {}{} ({})".format(
-        num_trials, f"/{total_samples}"
-        if total_samples else "", ", ".join(num_trials_strs)))
 
     # Pre-process trials to figure out what columns to show.
     if isinstance(metric_columns, Mapping):
@@ -522,7 +554,7 @@ def trial_progress_str(trials,
     if overflow:
         messages.append("... {} more trials not shown ({})".format(
             overflow, overflow_str))
-    return delim.join(messages)
+    return messages
 
 
 def trial_errors_str(trials, fmt="psql", max_rows=None):
@@ -621,3 +653,108 @@ def _get_trial_info(trial, parameters, metrics):
         unflattened_lookup(metric, result, default=None) for metric in metrics
     ]
     return trial_info
+
+
+class TrialProgressCallback(Callback):
+    """Reports (prints) intermediate trial progress.
+
+    This callback is automatically added to the callback stack. When a
+    result is obtained, this callback will print the results according to
+    the specified verbosity level.
+
+    For ``Verbosity.V3_TRIAL_DETAILS``, a full result list is printed.
+
+    For ``Verbosity.V2_TRIAL_NORM``, only one line is printed per received
+    result.
+
+    All other verbosity levels do not print intermediate trial progress.
+
+    Result printing is throttled on a per-trial basis. Per default, results are
+    printed only once every 30 seconds. Results are always printed when a trial
+    finished or errored.
+
+    """
+
+    def __init__(self, metric: Optional[str] = None):
+        self._last_print = collections.defaultdict(float)
+        self._completed_trials = set()
+        self._last_result_str = {}
+        self._metric = metric
+
+    def on_trial_result(self, iteration: int, trials: List["Trial"],
+                        trial: "Trial", result: Dict, **info):
+        self.log_result(trial, result, error=False)
+
+    def on_trial_error(self, iteration: int, trials: List["Trial"],
+                       trial: "Trial", **info):
+        self.log_result(trial, trial.last_result, error=True)
+
+    def on_trial_complete(self, iteration: int, trials: List["Trial"],
+                          trial: "Trial", **info):
+        # Only log when we never logged that a trial was completed
+        if trial not in self._completed_trials:
+            self._completed_trials.add(trial)
+
+            print_result_str = self._print_result(trial.last_result)
+            last_result_str = self._last_result_str.get(trial, "")
+            # If this is a new result, print full result string
+            if print_result_str != last_result_str:
+                self.log_result(trial, trial.last_result, error=False)
+            else:
+                print(f"Trial {trial} completed. "
+                      f"Last result: {print_result_str}")
+
+    def log_result(self, trial: "Trial", result: Dict, error: bool = False):
+        done = result.get("done", False) is True
+        last_print = self._last_print[trial]
+        if done and trial not in self._completed_trials:
+            self._completed_trials.add(trial)
+        if has_verbosity(Verbosity.V3_TRIAL_DETAILS) and \
+           (done or error or time.time() - last_print > DEBUG_PRINT_INTERVAL):
+            print("Result for {}:".format(trial))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            self._last_print[trial] = time.time()
+        elif has_verbosity(Verbosity.V2_TRIAL_NORM) and (
+                done or error
+                or time.time() - last_print > DEBUG_PRINT_INTERVAL):
+            info = ""
+            if done:
+                info = " This trial completed."
+
+            metric_name = self._metric or "_metric"
+            metric_value = result.get(metric_name, -99.)
+
+            print_result_str = self._print_result(result)
+
+            self._last_result_str[trial] = print_result_str
+
+            error_file = os.path.join(trial.logdir, "error.txt")
+
+            if error:
+                message = f"The trial {trial} errored with " \
+                          f"parameters={trial.config}. " \
+                          f"Error file: {error_file}"
+            elif self._metric:
+                message = f"Trial {trial} reported " \
+                          f"{metric_name}={metric_value:.2f} " \
+                          f"with parameters={trial.config}.{info}"
+            else:
+                message = f"Trial {trial} reported " \
+                          f"{print_result_str} " \
+                          f"with parameters={trial.config}.{info}"
+
+            print(message)
+            self._last_print[trial] = time.time()
+
+    def _print_result(self, result: Dict):
+        print_result = result.copy()
+        print_result.pop("config", None)
+        print_result.pop("trial_id", None)
+        print_result.pop("experiment_tag", None)
+        print_result.pop("done", None)
+        for auto_result in AUTO_RESULT_KEYS:
+            print_result.pop(auto_result, None)
+
+        print_result_str = ",".join(
+            [f"{k}={v}" for k, v in print_result.items()])
+        return print_result_str

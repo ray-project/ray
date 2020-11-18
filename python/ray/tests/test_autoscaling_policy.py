@@ -415,17 +415,16 @@ class Simulator:
         num_connected_nodes = len(
             [node for node in self.ip_to_nodes.values() if node.in_cluster])
         num_pending_nodes = len(self.ip_to_nodes) - num_connected_nodes
-        return f"""[t={self.virtual_time}]
-    Connected nodes: {num_connected_nodes}
-    Pending nodes: {num_pending_nodes}
-    Remaining requests: {len(self.work_queue)}
-        """
+        return (f"[t={self.virtual_time}] "
+                f"Connected: {num_connected_nodes}, "
+                f"Pending: {num_pending_nodes}, "
+                f"Remaining: {len(self.work_queue)}")
 
 
 SAMPLE_CLUSTER_CONFIG = copy.deepcopy(MULTI_WORKER_CLUSTER)
 SAMPLE_CLUSTER_CONFIG["min_workers"] = 0
 SAMPLE_CLUSTER_CONFIG["max_workers"] = 9999
-SAMPLE_CLUSTER_CONFIG["target_utilization_fraction"] = 1.0
+SAMPLE_CLUSTER_CONFIG["target_utilization_fraction"] = 0.5
 SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"][
     "max_workers"] = 100
 SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"][

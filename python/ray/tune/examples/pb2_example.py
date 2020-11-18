@@ -18,19 +18,18 @@ if __name__ == "__main__":
         ray.init()
 
     pbt = PB2(
-        time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=20,
         hyperparam_bounds={
             # hyperparameter bounds.
             "lr": [0.0001, 0.02],
         })
 
-    tune.run(
+    analysis = tune.run(
         pbt_function,
         name="pbt_test",
         scheduler=pbt,
+        metric="mean_accuracy",
+        mode="max",
         verbose=False,
         stop={
             "training_iteration": 30,
@@ -43,3 +42,5 @@ if __name__ == "__main__":
             # the model training in this example
             "some_other_factor": 1,
         })
+
+    print("Best hyperparameters found were: ", analysis.best_config)

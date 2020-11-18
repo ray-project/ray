@@ -19,6 +19,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
 from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.long_poll import LongPollerHost
 from ray.actor import ActorHandle
 
 import numpy as np
@@ -44,8 +45,8 @@ NodeId = str
 
 class TrafficPolicy:
     def __init__(self, traffic_dict: Dict[str, float]) -> None:
-        self.traffic_dict = dict()
-        self.shadow_dict = dict()
+        self.traffic_dict: Dict[str, float] = dict()
+        self.shadow_dict: Dict[str, float] = dict()
         self.set_traffic_dict(traffic_dict)
 
     def set_traffic_dict(self, traffic_dict: Dict[str, float]) -> None:
@@ -69,6 +70,9 @@ class TrafficPolicy:
             del self.shadow_dict[backend]
         else:
             self.shadow_dict[backend] = proportion
+
+    def __repr__(self) -> str:
+        return f"<Traffic {self.traffic_dict}; Shadow {self.shadow_dict}>"
 
 
 class BackendInfo(BaseModel):
@@ -182,13 +186,6 @@ class ActorStateReconciler:
 
         self.backend_replicas[backend_tag][replica_tag] = replica_handle
 
-        # Register the replica with the router.
-        await asyncio.gather(*[
-            router.add_new_replica.remote(backend_tag, replica_tag,
-                                          replica_handle)
-            for router in self.router_handles()
-        ])
-
     def _scale_backend_replicas(self, backends: Dict[BackendTag, BackendInfo],
                                 backend_tag: BackendTag,
                                 num_replicas: int) -> None:
@@ -265,12 +262,6 @@ class ActorStateReconciler:
                 except ValueError:
                     continue
 
-                # Remove the replica from router. This call is idempotent.
-                await asyncio.gather(*[
-                    router.remove_replica.remote(backend_tag, replica_tag)
-                    for router in self.router_handles()
-                ])
-
                 # TODO(edoakes): this logic isn't ideal because there may be
                 # pending tasks still executing on the replica. However, if we
                 # use replica.__ray_terminate__, we may send it while the
@@ -279,18 +270,6 @@ class ActorStateReconciler:
                 ray.kill(replica, no_restart=True)
 
         self.backend_replicas_to_stop.clear()
-
-    async def _remove_pending_backends(self) -> None:
-        """Removes the pending backends in self.backends_to_remove.
-
-        Clears self.backends_to_remove.
-        """
-        for backend_tag in self.backends_to_remove:
-            await asyncio.gather(*[
-                router.remove_backend.remote(backend_tag)
-                for router in self.router_handles()
-            ])
-        self.backends_to_remove.clear()
 
     async def _start_single_replica(
             self, config_store: ConfigurationStore, backend_tag: BackendTag,
@@ -342,7 +321,6 @@ class ActorStateReconciler:
                         node_resource: 0.01
                     },
                 ).remote(
-                    node_id,
                     http_host,
                     http_port,
                     controller_name=self.controller_name,
@@ -372,18 +350,6 @@ class ActorStateReconciler:
 
         return actor_stopped
 
-    async def _remove_pending_endpoints(self) -> None:
-        """Removes the pending endpoints in self.actor_reconciler.endpoints_to_remove.
-
-        Clears self.endpoints_to_remove.
-        """
-        for endpoint_tag in self.endpoints_to_remove:
-            await asyncio.gather(*[
-                router.remove_endpoint.remote(endpoint_tag)
-                for router in self.router_handles()
-            ])
-        self.endpoints_to_remove.clear()
-
     def _recover_actor_handles(self) -> None:
         # Refresh the RouterCache
         for node_id in self.routers_cache.keys():
@@ -408,46 +374,16 @@ class ActorStateReconciler:
     ) -> Dict[BackendTag, BasicAutoscalingPolicy]:
         self._recover_actor_handles()
         autoscaling_policies = dict()
-        # Push configuration state to the router.
-        # TODO(edoakes): should we make this a pull-only model for simplicity?
-        for endpoint, traffic_policy in config_store.traffic_policies.items():
-            await asyncio.gather(*[
-                router.set_traffic.remote(endpoint, traffic_policy)
-                for router in self.router_handles()
-            ])
-
-        for backend_tag, replica_dict in self.backend_replicas.items():
-            for replica_tag, replica_handle in replica_dict.items():
-                await asyncio.gather(*[
-                    router.add_new_replica.remote(backend_tag, replica_tag,
-                                                  replica_handle)
-                    for router in self.router_handles()
-                ])
 
         for backend, info in config_store.backends.items():
-            await asyncio.gather(*[
-                router.set_backend_config.remote(backend, info.backend_config)
-                for router in self.router_handles()
-            ])
-            await controller.broadcast_backend_config(backend)
             metadata = info.backend_config.internal_metadata
             if metadata.autoscaling_config is not None:
                 autoscaling_policies[backend] = BasicAutoscalingPolicy(
                     backend, metadata.autoscaling_config)
 
-        # Push configuration state to the routers.
-        await asyncio.gather(*[
-            router.set_route_table.remote(config_store.routes)
-            for router in self.router_handles()
-        ])
-
         # Start/stop any pending backend replicas.
         await self._start_pending_backend_replicas(config_store)
         await self._stop_pending_backend_replicas()
-
-        # Remove any pending backends and endpoints.
-        await self._remove_pending_backends()
-        await self._remove_pending_endpoints()
 
         return autoscaling_policies
 
@@ -536,7 +472,44 @@ class ServeController:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
+        # NOTE(simon): Currently we do all-to-all broadcast. This means
+        # any listeners will receive notification for all changes. This
+        # can be problem at scale, e.g. updating a single backend config
+        # will send over the entire configs. In the future, we should
+        # optimize the logic to support subscription by key.
+        self.long_poll_host = LongPollerHost()
+        self.notify_backend_configs_changed()
+        self.notify_replica_handles_changed()
+        self.notify_traffic_policies_changed()
+
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    def notify_replica_handles_changed(self):
+        self.long_poll_host.notify_changed(
+            "worker_handles", {
+                backend_tag: list(replica_dict.values())
+                for backend_tag, replica_dict in
+                self.actor_reconciler.backend_replicas.items()
+            })
+
+    def notify_traffic_policies_changed(self):
+        self.long_poll_host.notify_changed(
+            "traffic_policies", self.configuration_store.traffic_policies)
+
+    def notify_backend_configs_changed(self):
+        self.long_poll_host.notify_changed(
+            "backend_configs", self.configuration_store.get_backend_configs())
+
+    async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
+        """Proxy long pull client's listen request.
+
+        Args:
+            keys_to_snapshot_ids (Dict[str, int]): Snapshot IDs are used to
+              determine whether or not the host should immediately return the
+              data or wait for the value to be changed.
+        """
+        return await (
+            self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
     def get_routers(self) -> Dict[str, ActorHandle]:
         """Returns a dictionary of node ID to router actor handles."""
@@ -689,10 +662,8 @@ class ServeController:
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
-        await asyncio.gather(*[
-            router.set_traffic.remote(endpoint_name, traffic_policy)
-            for router in self.actor_reconciler.router_handles()
-        ])
+
+        self.notify_traffic_policies_changed()
 
     async def set_traffic(self, endpoint_name: str,
                           traffic_dict: Dict[str, float]) -> None:
@@ -721,12 +692,7 @@ class ServeController:
             # update to avoid inconsistent state if we crash after pushing the
             # update.
             self._checkpoint()
-            await asyncio.gather(*[
-                router.set_traffic.remote(
-                    endpoint_name,
-                    self.configuration_store.traffic_policies[endpoint_name],
-                ) for router in self.actor_reconciler.router_handles()
-            ])
+            self.notify_traffic_policies_changed()
 
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
     async def create_endpoint(self, endpoint: str,
@@ -813,7 +779,6 @@ class ServeController:
                 router.set_route_table.remote(self.configuration_store.routes)
                 for router in self.actor_reconciler.router_handles()
             ])
-            await self.actor_reconciler._remove_pending_endpoints()
 
     async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,
@@ -859,12 +824,11 @@ class ServeController:
             await self.actor_reconciler._start_pending_backend_replicas(
                 self.configuration_store)
 
+            self.notify_replica_handles_changed()
+
             # Set the backend config inside the router
-            # (particularly for max-batch-size).
-            await asyncio.gather(*[
-                router.set_backend_config.remote(backend_tag, backend_config)
-                for router in self.actor_reconciler.router_handles()
-            ])
+            # (particularly for max_concurrent_queries).
+            self.notify_backend_configs_changed()
             await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag: BackendTag) -> None:
@@ -903,7 +867,8 @@ class ServeController:
             # after pushing the update.
             self._checkpoint()
             await self.actor_reconciler._stop_pending_backend_replicas()
-            await self.actor_reconciler._remove_pending_backends()
+
+            self.notify_replica_handles_changed()
 
     async def update_backend_config(
             self, backend_tag: BackendTag,
@@ -939,14 +904,13 @@ class ServeController:
 
             # Inform the router about change in configuration
             # (particularly for setting max_batch_size).
-            await asyncio.gather(*[
-                router.set_backend_config.remote(backend_tag, backend_config)
-                for router in self.actor_reconciler.router_handles()
-            ])
 
             await self.actor_reconciler._start_pending_backend_replicas(
                 self.configuration_store)
             await self.actor_reconciler._stop_pending_backend_replicas()
+
+            self.notify_replica_handles_changed()
+            self.notify_backend_configs_changed()
 
             await self.broadcast_backend_config(backend_tag)
 

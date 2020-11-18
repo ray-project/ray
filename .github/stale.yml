@@ -20,6 +20,7 @@ exemptLabels:
   - release-blocker
   - fix-docs
   - regression
+  - fix-error-msg
 
 # Set to true to ignore issues in a project (defaults to false)
 exemptProjects: false

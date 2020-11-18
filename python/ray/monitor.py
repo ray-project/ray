@@ -17,7 +17,7 @@ from ray.autoscaler._private.constants import \
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.utils import setup_logger
+from ray.ray_logging import setup_logger
 from ray._raylet import GlobalStateAccessor
 
 import redis

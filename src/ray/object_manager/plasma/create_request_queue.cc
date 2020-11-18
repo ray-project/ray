@@ -62,6 +62,8 @@ Status CreateRequestQueue::ProcessRequest(const CreateObjectCallback &request_ca
   } else {
     // We have replied to the client.
     num_retries_ = 0;
+    // Reset the status in case there was an error responding to the client.
+    status = Status::OK();
   }
 
   return status;
