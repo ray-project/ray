@@ -20,6 +20,7 @@ import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray.utils
+from ray.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -148,17 +149,17 @@ if __name__ == "__main__":
         "--logging-rotate-bytes",
         required=False,
         type=int,
-        default=dashboard_consts.LOGGING_ROTATE_BYTES,
+        default=ray_constants.LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
         "log file, default is {} bytes.".format(
-            dashboard_consts.LOGGING_ROTATE_BYTES))
+            ray_constants.LOGGING_ROTATE_BYTES))
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
-        default=dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT,
+        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is {}.".
-        format(dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT))
+        format(ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
     parser.add_argument(
         "--log-dir",
         required=True,
@@ -174,19 +175,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     try:
-        if args.logging_filename:
-            logging_handlers = [
-                logging.handlers.RotatingFileHandler(
-                    os.path.join(args.log_dir, args.logging_filename),
-                    maxBytes=args.logging_rotate_bytes,
-                    backupCount=args.logging_rotate_backup_count)
-            ]
-        else:
-            logging_handlers = None
-        logging.basicConfig(
-            level=args.logging_level,
-            format=args.logging_format,
-            handlers=logging_handlers)
+        setup_component_logger(
+            logging_level=args.logging_level,
+            logging_format=args.logging_format,
+            log_dir=args.log_dir,
+            filename=args.logging_filename,
+            max_bytes=args.logging_rotate_bytes,
+            backup_count=args.logging_rotate_backup_count)
 
         dashboard = Dashboard(
             args.host,

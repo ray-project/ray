@@ -1786,6 +1786,7 @@ def start_worker(node_ip_address,
 
 
 def start_monitor(redis_address,
+                  logs_dir,
                   stdout_file=None,
                   stderr_file=None,
                   autoscaling_config=None,
@@ -1795,6 +1796,7 @@ def start_monitor(redis_address,
 
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        logs_dir(str): The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1810,6 +1812,7 @@ def start_monitor(redis_address,
         sys.executable,
         "-u",
         monitor_path,
+        f"--logs-dir={logs_dir}",
         "--redis-address=" + str(redis_address),
     ]
     if autoscaling_config:

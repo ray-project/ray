@@ -20,26 +20,34 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-def setup_component_logger(logging_level, logging_format):
-    """Logger that is used for Ray's python components.
-    
+def setup_component_logger(*, logging_level, logging_format, log_dir, filename,
+                           max_bytes, backup_count):
+    """Configure the root logger that is used for Ray's python components.
+
     For example, it should be used for monitor, dashboard, and log monitor.
     The only exception is workers. They use the different logging config.
+
+    Args:
+        logging_level(str | int): Logging level in string or logging enum.
+        logging_format(str): Logging format string.
+        log_dir(str): Log directory path.
+        filename(str): Name of the file to write logs.
+        max_bytes(int): Same argument as RotatingFileHandler's maxBytes.
+        backup_count(int): Same argument as RotatingFileHandler's backupCount.
     """
-    try:
-        if args.logging_filename:
-            logging_handlers = [
-                logging.handlers.RotatingFileHandler(
-                    os.path.join(args.log_dir, args.logging_filename),
-                    maxBytes=args.logging_rotate_bytes,
-                    backupCount=args.logging_rotate_backup_count)
-            ]
-        else:
-            logging_handlers = None
-        logging.basicConfig(
-            level=args.logging_level,
-            format=args.logging_format,
-            handlers=logging_handlers)
+    # Get the root logger.
+    logger = logging.getLogger("")
+    if type(logging_level) is str:
+        logging_level = logging.getLevelName(logging_level.upper())
+    assert filename, "filename argument should not be None."
+    assert log_dir, "log_dir should not be None."
+    handler = logging.handlers.RotatingFileHandler(
+        os.path.join(log_dir, filename),
+        maxBytes=max_bytes,
+        backupCount=backup_count)
+    logger.setLevel(logging_level)
+    handler.setFormatter(logging.Formatter(logging_format))
+    logger.addHandler(handler)
 
 
 class StandardStreamInterceptor:

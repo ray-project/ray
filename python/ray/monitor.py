@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import logging.handlers
 import os
 import time
 import traceback
@@ -17,7 +18,7 @@ from ray.autoscaler._private.constants import \
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.ray_logging import setup_logger
+from ray.ray_logging import setup_component_logger
 from ray._raylet import GlobalStateAccessor
 
 import redis
@@ -340,8 +341,43 @@ if __name__ == "__main__":
         type=str,
         default=ray_constants.LOGGER_FORMAT,
         help=ray_constants.LOGGER_FORMAT_HELP)
+    parser.add_argument(
+        "--logging-filename",
+        required=False,
+        type=str,
+        default=ray_constants.MONITOR_LOG_FILE_NAME,
+        help="Specify the name of log file, "
+        "log to stdout if set empty, default is \"{}\"".format(
+            ray_constants.MONITOR_LOG_FILE_NAME))
+    parser.add_argument(
+        "--logs-dir",
+        required=True,
+        type=str,
+        help="Specify the path of the temporary directory used by Ray "
+        "processes.")
+    parser.add_argument(
+        "--logging-rotate-bytes",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BYTES,
+        help="Specify the max bytes for rotating "
+        "log file, default is {} bytes.".format(
+            ray_constants.LOGGING_ROTATE_BYTES))
+    parser.add_argument(
+        "--logging-rotate-backup-count",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        help="Specify the backup count of rotated log file, default is {}.".
+        format(ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
     args = parser.parse_args()
-    setup_logger(args.logging_level, args.logging_format)
+    setup_component_logger(
+        logging_level=args.logging_level,
+        logging_format=args.logging_format,
+        log_dir=args.logs_dir,
+        filename=args.logging_filename,
+        max_bytes=args.logging_rotate_bytes,
+        backup_count=args.logging_rotate_backup_count)
 
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)
