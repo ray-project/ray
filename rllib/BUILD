@@ -1697,7 +1697,6 @@ py_test(
     args = ["--torch", "--stop-iters=1", "--num-cpus=4"]
 )
 
-
 py_test(
     name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
