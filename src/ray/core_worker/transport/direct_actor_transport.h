@@ -389,6 +389,11 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
+  bool CancelTaskIfFound(TaskID task_id) {
+    // do nothing
+    return false;
+  }
+
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
     // Only call SetMaxActorConcurrency to configure threadpool size when the
