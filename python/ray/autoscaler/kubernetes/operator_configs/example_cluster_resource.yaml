@@ -79,7 +79,6 @@ spec:
         labels:
           component: ray-worker
       spec:
-        serviceAccountName: default
         restartPolicy: Never
         volumes:
         - name: dshm
