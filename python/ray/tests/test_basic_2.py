@@ -651,7 +651,8 @@ def test_load_code_from_local():
     # This case writes a driver python file to a temporary directory.
     #
     # The driver starts a cluster with `ray.init(_load_code_from_local=True)`,
-    # then create a nested actor. The actor will be loaded from code in worker.
+    # then creates a nested actor. The actor will be loaded from code in
+    # worker.
     code_test = """
 import os
 import ray
