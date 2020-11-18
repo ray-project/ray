@@ -2167,19 +2167,26 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
                                   rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
-  bool success = main_thread_task_id_ == task_id;
+  bool kill_success = main_thread_task_id_ == task_id;
+  bool success = kill_success;
 
   // Try non-force kill
-  if (success && !request.force_kill()) {
+  if (kill_success && !request.force_kill()) {
     RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
-    success = options_.kill_main();
+    kill_success = options_.kill_main();
+  } else if (!kill_success) {
+    
+    // Try deleting the task from the queue of normal tasks
+    if (direct_task_receiver_->CancelQueuedNormalTask(task_id)) {
+      success=true;
+    }
   }
 
   reply->set_attempt_succeeded(success);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Do force kill after reply callback sent
-  if (success && request.force_kill()) {
+  if (kill_success && request.force_kill()) {
     RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
     Disconnect();
     if (options_.enable_logging) {
