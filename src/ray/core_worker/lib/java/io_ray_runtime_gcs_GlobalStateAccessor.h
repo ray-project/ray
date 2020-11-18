@@ -112,6 +112,26 @@ JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorCheckpointId(JNIEnv *, jobject,
                                                                        jlong, jbyteArray);
 
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetPlacementGroupInfo
+ * Signature: (J[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfo(JNIEnv *, jobject,
+                                                                        jlong,
+                                                                        jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetAllPlacementGroupInfo
+ * Signature: (J)Ljava/util/List;
+ */
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(JNIEnv *,
+                                                                           jobject,
+                                                                           jlong);
+
 #ifdef __cplusplus
 }
 #endif

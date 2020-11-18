@@ -910,6 +910,8 @@ void NodeManager::HeartbeatAdded(const NodeID &client_id,
     new_resource_scheduler_->AddOrUpdateNode(
         client_id.Binary(), remote_resources.GetTotalResources().GetResourceMap(),
         remote_resources.GetAvailableResources().GetResourceMap());
+    // TODO(swang): We could probably call this once per batch instead of once
+    // per node in the batch.
     ScheduleAndDispatch();
     return;
   }
