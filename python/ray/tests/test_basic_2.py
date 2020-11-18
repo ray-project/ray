@@ -1,8 +1,11 @@
 # coding: utf-8
+import os
 import logging
 import sys
 import threading
 import time
+import tempfile
+import subprocess
 
 import numpy as np
 import pytest
@@ -642,6 +645,32 @@ def test_get_correct_node_ip():
         worker_mock._global_node = node_mock
         found_ip = ray._private.services.get_node_ip_address()
         assert found_ip == "10.0.0.111"
+
+
+def test_load_code_from_local():
+    code_test = """
+import os
+import ray
+
+class A:
+    @ray.remote
+    class B:
+        def get(self):
+            return "OK"
+
+if __name__ == "__main__":
+    current_path = os.path.dirname(__file__)
+    ray.init(_load_code_from_local=True, _code_search_path=current_path)
+    b = A.B.remote()
+    print(ray.get(b.get.remote()))
+"""
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
+        with open(test_driver, "w") as f:
+            f.write(code_test)
+        output = subprocess.check_output([sys.executable, test_driver])
+        assert b"OK" in output
 
 
 if __name__ == "__main__":
