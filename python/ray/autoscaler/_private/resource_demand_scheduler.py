@@ -192,7 +192,8 @@ class ResourceDemandScheduler:
                                                resource_demands)
         logger.info("Resource demands: {}".format(resource_demands))
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
-        max_to_add = self.max_workers - sum(node_type_counts.values())
+        # Add 1 to account for the head node.
+        max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
         if resource_requests:
             nodes_to_add_based_on_requests = get_nodes_for(
                 self.node_types, node_type_counts, max_to_add,
@@ -452,7 +453,7 @@ class ResourceDemandScheduler:
             # nodes. The remaining will be allocated on new nodes.
             unfulfilled, node_resources = get_bin_pack_residual(
                 node_resources, bundles, strict_spread=True)
-            max_to_add = self.max_workers - sum(node_type_counts.values())
+            max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
             # Allocate new nodes for the remaining bundles that don't fit.
             to_launch = get_nodes_for(
                 self.node_types,
