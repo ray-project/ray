@@ -219,7 +219,7 @@ def get_ray_address_to_use_or_die():
         A string to pass into `ray.init(address=...)`
     """
     if "RAY_ADDRESS" in os.environ:
-        return "auto"
+        return "auto"   # Avoid conflict with RAY_ADDRESS env var
 
     return find_redis_address_or_die()
 
