@@ -29,8 +29,6 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         no_final_linear = model_config.get("no_final_linear")
         self.vf_share_layers = model_config.get("vf_share_layers")
         self.free_log_std = model_config.get("free_log_std")
-        self.return_value_estimates = \
-            model_config.get("_return_value_estimates_from_calls")
 
         # Generate free-floating bias variables for the second half of
         # the outputs.
