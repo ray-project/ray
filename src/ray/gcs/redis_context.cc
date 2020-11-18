@@ -294,6 +294,9 @@ template <typename RedisContext, typename RedisConnectFunction>
 Status ConnectWithoutRetries(const std::string &address, int port,
                              const RedisConnectFunction &connect_function,
                              RedisContext **context, std::string &errorMessage) {
+  // This currently returns the errorMessage in two different ways,
+  // as an output parameter and in the Status::RedisError,
+  // because we're not sure whether we'll want to change what this returns.
   RedisContext *newContext = connect_function(address.c_str(), port);
   if (newContext == nullptr || (newContext)->err) {
     std::ostringstream oss(errorMessage);
@@ -310,27 +313,6 @@ Status ConnectWithoutRetries(const std::string &address, int port,
     *context = newContext;
   } else {
     FreeRedisContext(newContext);
-  }
-  return Status::OK();
-}
-
-template <typename RedisContext, typename RedisConnectFunction>
-Status ConnectWithoutRetries(const std::string &address, int port,
-                             const RedisConnectFunction &connect_function,
-                             RedisContext **context, std::string &errorMessage) {
-  // This currently returns the errorMessage in two different ways,
-  // as an output parameter and in the Status::RedisError,
-  // because we're not sure whether we'll want to change what this returns.
-  *context = connect_function(address.c_str(), port);
-  if (*context == nullptr || (*context)->err) {
-    std::ostringstream oss(errorMessage);
-    if (*context == nullptr) {
-      oss << "Could not allocate Redis context.";
-    } else if ((*context)->err) {
-      oss << "Could not establish connection to Redis " << address << ":" << port
-          << " (context.err = " << (*context)->err << ")";
-    }
-    return Status::RedisError(errorMessage);
   }
   return Status::OK();
 }
