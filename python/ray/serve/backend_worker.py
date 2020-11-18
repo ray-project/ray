@@ -141,6 +141,7 @@ def ensure_async(func: Callable) -> Callable:
     return sync_to_async(func)
 
 
+# Define Long-Poll Client
 class RayServeReplica:
     """Handles requests with the provided callable."""
 

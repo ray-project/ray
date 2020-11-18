@@ -912,9 +912,13 @@ class ServeController:
             self.notify_replica_handles_changed()
             self.notify_backend_configs_changed()
 
+            # Remove this because we call notify_backend_configs_changed() above!!
             await self.broadcast_backend_config(backend_tag)
 
     async def broadcast_backend_config(self, backend_tag: BackendTag) -> None:
+
+        # Replace with notify_backend_configs_changed()
+        # After adding this to the Backend Replica
         backend_config = self.configuration_store.get_backend(
             backend_tag).backend_config
         broadcast_futures = [
@@ -939,6 +943,7 @@ class ServeController:
                 ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
 
+    # CLEAN_UP, remove below
     async def report_queue_lengths(self, router_name: str,
                                    queue_lengths: Dict[str, int]):
         # TODO: remove old router stats when removing them.
