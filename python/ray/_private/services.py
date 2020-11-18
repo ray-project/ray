@@ -195,7 +195,7 @@ def get_address_info_from_redis_helper(redis_address,
             "expects this IP address to be either the Redis address or one of"
             " the Raylet addresses. Connected to Redis at {redis_address} and"
             " found raylets at "
-            "{', '.join(c['NodeManagerAddress'] for c in client_table)} but "
+            f"{', '.join(c['NodeManagerAddress'] for c in client_table)} but "
             "none of these match this node's IP {node_ip_address}. Are any of"
             " these actually a different IP address for the same node?"
             "You might need to provide --node-ip-address to specify the IP "
