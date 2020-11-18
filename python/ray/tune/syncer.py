@@ -470,11 +470,22 @@ def detect_sync_to_driver(
     with open(cluster_config_file, "rt") as fp:
         config = yaml.safe_load(fp.read())
 
-    if config.get("docker", None):
+    if config.get("docker"):
+        logger.debug(
+            "Detected docker autoscaling environment. Using `DockerSyncer` "
+            "as sync client. If this is not correct or leads to errors, "
+            "please pass a `sync_to_driver` parameter in the `SyncConfig` to "
+            "`tune.run().` to manually configure syncing behavior.")
         return DockerSyncer
 
     if config.get("provider", {}).get("type", "") == "kubernetes":
         namespace = config["provider"].get("namespace", "ray")
+        logger.debug(
+            f"Detected Kubernetes autoscaling environment. Using "
+            f"`NamespacedKubernetesSyncer` with namespace `{namespace}` "
+            f"as sync client. If this is not correct or leads to errors, "
+            f"please pass a `sync_to_driver` parameter in the `SyncConfig` "
+            f"to `tune.run()` to manually configure syncing behavior..")
         return NamespacedKubernetesSyncer(namespace)
 
     return sync_to_driver
