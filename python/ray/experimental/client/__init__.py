@@ -41,40 +41,11 @@ class RayAPIStub:
 
 ray = RayAPIStub()
 
-# The following are methods in this module so that someone who
+# Someday we might add methods in this module so that someone who
 # tries to `import ray_client as ray` -- as a module, instead of
 # `from ray_client import ray` -- as the API stub
-# still gets expected functionality.
+# still gets expected functionality. This is the way the ray package
+# worked in the past.
 #
 # This really calls for PEP 562: https://www.python.org/dev/peps/pep-0562/
 # But until Python 3.6 is EOL, here we are.
-
-
-def get(*args, **kwargs):
-    return ray.get(*args, **kwargs)
-
-
-def put(*args, **kwargs):
-    return ray.put(*args, **kwargs)
-
-
-def wait(*args, **kwargs):
-    global _client_api
-    check_client_api()
-    return _client_api.wait(*args, **kwargs)
-
-
-def remote(*args, **kwargs):
-    return ray.remote(*args, **kwargs)
-
-
-def call_remote(*args, **kwargs):
-    return ray.call_remote(*args, **kwargs)
-
-
-def connect(*args, **kwargs):
-    return ray.connect(*args, **kwargs)
-
-
-def disconnect():
-    return ray.disconnect()
