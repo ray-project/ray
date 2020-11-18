@@ -19,5 +19,12 @@ LocalModeRayRuntime::LocalModeRayRuntime(std::shared_ptr<RayConfig> config) {
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new LocalModeTaskSubmitter(*this));
 }
 
+ActorID LocalModeRayRuntime::GetNextActorID() {
+  const int next_task_index = worker_->GetNextTaskIndex();
+  const ActorID actor_id = ActorID::Of(worker_->GetCurrentJobID(),
+                                       worker_->GetCurrentTaskID(), next_task_index);
+  return actor_id;
+}
+
 }  // namespace api
 }  // namespace ray
