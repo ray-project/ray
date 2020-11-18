@@ -192,7 +192,7 @@ class ResourceDemandScheduler:
                                                resource_demands)
         logger.info("Resource demands: {}".format(resource_demands))
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
-        # Add 1 to acocunt for the headnode.
+        # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
         if resource_requests:
             nodes_to_add_based_on_requests = get_nodes_for(
