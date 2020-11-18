@@ -74,7 +74,7 @@ This document describes the process for creating new releases.
    **IMPORTANT**: You must get signoff from the RLlib team for the RLlib test results.
 
    The summaries printed by each test should be checked in under
-   ``doc/dev/release_logs/<version>``.
+   ``doc/dev/release_logs/<version>`` on the **master** branch (make a pull request).
 
    4. Microbenchmarks
 
