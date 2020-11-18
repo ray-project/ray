@@ -211,9 +211,16 @@ def find_redis_address(address=None):
     return redis_addresses
 
 
-def find_redis_address_or_die_respect_environment():
+def get_ray_address_to_use_or_die():
+    """
+    Attempts to find an address for an existing Ray cluster if it is not
+    already specified as an environment variable.
+    Returns:
+        A string to pass into `ray.init(address=...)`
+    """
     if "RAY_ADDRESS" in os.environ:
-        return None
+        return "auto"
+
     return find_redis_address_or_die()
 
 
