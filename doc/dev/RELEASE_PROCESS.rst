@@ -51,7 +51,7 @@ This document describes the process for creating new releases.
 
    **IMPORTANT**: check that the test are actually running (printing output regularly) and aren't
    just stuck at an iteration. You must also check that the node CPU usage is stable
-   (and not increasing over time, which indicates a leak).
+   (and not increasing or decreasing over time, which indicates a leak).
 
    3. Multi-node regression tests
 
