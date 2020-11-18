@@ -238,6 +238,7 @@ matrix:
       jdk: openjdk8
       install:
         - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
+        - docker version
       before_script:
         - . ./ci/travis/ci.sh build
       script:
