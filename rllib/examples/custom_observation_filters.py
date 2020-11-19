@@ -11,15 +11,12 @@ import ray
 from ray import tune
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check_learning_achieved
 
 tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-reward", type=float, default=50)
-parser.add_argument("--stop-timesteps", type=int, default=7500)
+parser.add_argument("--stop-iters", type=int, default=100)
 
 
 class SimpleRollingStat:
@@ -128,18 +125,14 @@ if __name__ == "__main__":
 
     config = {
         "env": "CartPole-v0",
-        "rollout_fragment_length": 500,
-        "train_batch_size": 1500,
         "observation_filter": lambda size: CustomFilter(size),
-        "num_workers": 1,
+        "num_workers": 0,
     }
 
     stop = {
-        "timesteps_total": args.stop_timesteps,
+        "training_iteration": args.stop_iters,
     }
 
-    results = tune.run(args.run, config=config, stop=stop)
+    results = tune.run("PG", args.run, config=config, stop=stop)
 
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
     ray.shutdown()

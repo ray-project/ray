@@ -1794,7 +1794,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_observation_filters.py"],
-    args = ["--as-test"]
+    args = ["--stop-iters=2"]
 )
 
 py_test(
