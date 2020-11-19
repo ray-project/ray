@@ -576,8 +576,7 @@ class NodeInfoAccessor {
   /// Resend heartbeat when GCS restarts from a failure.
   virtual void AsyncReReportHeartbeat() = 0;
 
-  /// Cache which stores resources in last heartbeat used to check if they are changed.
-  /// Used by light heartbeat.
+  /// Return resources in last report. Used by light heartbeat.
   std::shared_ptr<SchedulingResources> &GetLastHeartbeatResources() {
     return last_heartbeat_resources_;
   }
@@ -629,6 +628,8 @@ class NodeInfoAccessor {
   NodeInfoAccessor() = default;
 
  private:
+  /// Cache which stores resources in last heartbeat used to check if they are changed.
+  /// Used by light heartbeat.
   std::shared_ptr<SchedulingResources> last_heartbeat_resources_ =
       std::make_shared<SchedulingResources>();
 };
