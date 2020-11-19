@@ -4,9 +4,17 @@ from ray.experimental.client import ray
 from ray.experimental.client.common import ClientObjectRef
 
 
-def test_generic_fallback(ray_start_regular_shared):
+def test_real_ray_fallback(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50051")
     ray.connect("localhost:50051")
+
+    @ray.remote
+    def get_nodes_real():
+        import ray as real_ray
+        return real_ray.nodes()
+
+    nodes = ray.get(get_nodes_real.remote())
+    assert len(nodes) == 1, nodes
 
     @ray.remote
     def get_nodes():
@@ -15,8 +23,26 @@ def test_generic_fallback(ray_start_regular_shared):
     nodes = ray.get(get_nodes.remote())
     assert len(nodes) == 1, nodes
 
-    with pytest.raises(AttributeError):
-        print(ray.get_nodes())
+    with pytest.raises(NotImplementedError):
+        print(ray.nodes())
+
+    server.stop(0)
+
+
+def test_nested_function(ray_start_regular_shared):
+    server = ray_client_server.serve("localhost:50051")
+    ray.connect("localhost:50051")
+
+    @ray.remote
+    def g():
+        @ray.remote
+        def f():
+            return "OK"
+
+        return ray.get(f.remote())
+
+    assert ray.get(g.remote()) == "OK"
+    server.stop(0)
 
 
 def test_put_get(ray_start_regular_shared):
@@ -67,6 +93,7 @@ def test_wait(ray_start_regular_shared):
 
 def test_remote_functions(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50051")
+    ray.connect("localhost:50051")
 
     @ray.remote
     def plus2(x):
