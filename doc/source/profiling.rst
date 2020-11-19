@@ -13,7 +13,7 @@ the process is stuck on).
 
 .. code-block:: shell
 
- sudo gdb -batch -ex "thread apply all bt" -p 80774
+ sudo gdb -batch -ex "thread apply all bt" -p <pid>
 
 Installation
 ------------
