@@ -16,7 +16,7 @@ tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--stop-iters", type=int, default=100)
+parser.add_argument("--stop-iters", type=int, default=200)
 
 
 class SimpleRollingStat:
