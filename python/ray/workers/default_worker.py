@@ -137,18 +137,20 @@ def main(args):
     stderr_interceptor = StandardStreamInterceptor(
         setup_and_get_worker_interceptor_logger(is_for_stdout=False),
         intercept_stdout=False)
-    with redirect_stdout(stdout_interceptor):
-        with redirect_stderr(stderr_interceptor):
-            if mode == ray.WORKER_MODE:
-                ray.worker.global_worker.main_loop()
-            elif (mode == ray.RESTORE_WORKER_MODE
-                  or mode == ray.SPILL_WORKER_MODE):
-                # It is handled by another thread in the C++ core worker.
-                # We just need to keep the worker alive.
-                while True:
-                    time.sleep(100000)
-            else:
-                raise ValueError(f"Unexcepted worker mode: {mode}")
+    # with redirect_stdout(stdout_interceptor):
+    #     with redirect_stderr(stderr_interceptor):
+    sys.stdout = stdout_interceptor
+    sys.stderr = stderr_interceptor
+    if mode == ray.WORKER_MODE:
+        ray.worker.global_worker.main_loop()
+    elif (mode == ray.RESTORE_WORKER_MODE
+            or mode == ray.SPILL_WORKER_MODE):
+        # It is handled by another thread in the C++ core worker.
+        # We just need to keep the worker alive.
+        while True:
+            time.sleep(100000)
+    else:
+        raise ValueError(f"Unexcepted worker mode: {mode}")
 
 
 parser = argparse.ArgumentParser(

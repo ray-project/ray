@@ -44,6 +44,9 @@ class StandardStreamInterceptor:
 
     def __init__(self, logger, intercept_stdout=True):
         self.logger = logger
+        assert len(self.logger.handlers) < 2, (
+            "Only one handler is allowed for interceptor logger."
+        )
         self.intercept_stdout = intercept_stdout
 
     def write(self, message):
@@ -58,3 +61,13 @@ class StandardStreamInterceptor:
         # Return the standard out isatty. This is used by colorful.
         fd = 1 if self.intercept_stdout else 2
         return os.isatty(fd)
+
+    def close(self):
+        handler = self.logger.handlers[0]
+        handler.close()
+        self.logger.removeHandler(handler)
+
+    def fileno(self):
+        handler = self.logger.handlers[0]
+        return handler.stream.fileno()
+
