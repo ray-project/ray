@@ -32,6 +32,7 @@ py_test_module_list(
     "test_joblib.py",
     "test_global_state.py",
     "test_global_gc.py",
+    "test_mldataset.py",
   ],
   size = "medium",
   extra_srcs = SRCS,

@@ -1,6 +1,6 @@
 import pytest
-import ray.experimental.client.server as ray_client_server
-import ray.experimental.client as ray
+import ray.experimental.client.server.server as ray_client_server
+from ray.experimental.client import ray
 from ray.experimental.client.common import ClientObjectRef
 
 

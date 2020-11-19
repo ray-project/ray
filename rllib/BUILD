@@ -1667,7 +1667,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_eval.py"],
-    args = ["--num-cpus=4"]
+    args = ["--num-cpus=4", "--as-test"]
 )
 
 py_test(
@@ -1676,7 +1676,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_eval.py"],
-    args = ["--torch", "--num-cpus=4"]
+    args = ["--num-cpus=4", "--as-test", "--torch"]
 )
 
 py_test(
