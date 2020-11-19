@@ -61,7 +61,7 @@ def _inspect_func_serialization(base_obj, depth, failure_set):
     return found
 
 
-def _inspect_type_serialization(base_obj, depth, failure_set):
+def _inspect_generic_serialization(base_obj, depth, failure_set):
     assert not inspect.isfunction(base_obj)
     functions = inspect.getmembers(base_obj, predicate=inspect.isfunction)
     found = False
@@ -127,11 +127,14 @@ def inspect_serializability(base_obj, name=None, depth=3, _failure_set=None):
     if depth <= 0:
         return False, _failure_set
 
+    # TODO: we only differentiate between 'function' and 'object'
+    # but we should do a better job of diving into something
+    # more specific like a Type, Object, etc.
     if inspect.isfunction(base_obj):
         _inspect_func_serialization(
             base_obj, depth=depth, failure_set=_failure_set)
     else:
-        _inspect_type_serialization(
+        _inspect_generic_serialization(
             base_obj, depth=depth, failure_set=_failure_set)
 
     if top_level:
