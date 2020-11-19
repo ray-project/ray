@@ -51,7 +51,8 @@ This document describes the process for creating new releases.
 
    **IMPORTANT**: check that the test are actually running (printing output regularly) and aren't
    just stuck at an iteration. You must also check that the node CPU usage is stable
-   (and not increasing or decreasing over time, which indicates a leak).
+   (and not increasing or decreasing over time, which indicates a leak). You can see the head node
+   and worker node CPU utilizations in the AWS console.
 
    3. Multi-node regression tests
 
