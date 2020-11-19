@@ -41,7 +41,7 @@ class GcsResourceManagerInterface {
 
 class GcsResourceManager : public GcsResourceManagerInterface {
  public:
-  GcsResourceManager(const GcsNodeManager &gcs_node_manager);
+  GcsResourceManager(GcsNodeManager &gcs_node_manager);
 
   virtual ~GcsResourceManager() = default;
 

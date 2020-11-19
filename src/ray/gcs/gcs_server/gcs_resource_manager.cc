@@ -18,7 +18,7 @@
 namespace ray {
 namespace gcs {
 
-GcsResourceManager::GcsResourceManager(const GcsNodeManager &gcs_node_manager) {
+GcsResourceManager::GcsResourceManager(GcsNodeManager &gcs_node_manager) {
   gcs_node_manager.AddNodeResourceChangeListener(
       [this](const rpc::HeartbeatTableData &heartbeat) {
         auto node_id = NodeID::FromBinary(heartbeat.client_id());
@@ -45,9 +45,9 @@ void GcsResourceManager::CommitTransaction() {
 
 void GcsResourceManager::RollbackTransaction() {
   RAY_CHECK(is_transaction_in_progress_);
-  for (const auto &resource_changes : resource_changes_during_transaction_) {
-    for (const auto &resource : resource_changes) {
-      cluster_resources_[node_id].AddResources(resource);
+  for (auto &resource_changes : resource_changes_during_transaction_) {
+    for (auto &resource : resource_changes.second) {
+      cluster_resources_[resource_changes.first].AddResources(resource);
     }
   }
   resource_changes_during_transaction_.clear();
@@ -64,7 +64,7 @@ void GcsResourceManager::AcquireResource(const NodeID &node_id,
 
 void GcsResourceManager::ReleaseResource(const NodeID &node_id,
                                          const ResourceSet &acquired_resources) {
-  cluster_resources_[node_id].AddResources(required_resources);
+  cluster_resources_[node_id].AddResources(acquired_resources);
 }
 
 }  // namespace gcs
