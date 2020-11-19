@@ -38,7 +38,7 @@ install_base() {
       pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
         tmux gdb
       if [ "${LINUX_WHEELS-}" = 1 ]; then
-        pkg_install_helper docker
+        pkg_install_helper docker.io
         if [ -n "${TRAVIS-}" ]; then
           sudo usermod -a -G docker travis
         fi
