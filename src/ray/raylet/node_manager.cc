@@ -2004,6 +2004,8 @@ void NodeManager::CommitBundle(
   const auto &bundle_state = it->second;
   bundle_state->state = CommitState::COMMITTED;
   const auto &acquired_resources = bundle_state->acquired_resources;
+  local_available_resources_.CommitImplicityBundleResourceIds(
+      bundle_spec.PlacementGroupId(), bundle_spec.Index());
   for (auto resource : acquired_resources.AvailableResources()) {
     local_available_resources_.CommitBundleResourceIds(bundle_spec.PlacementGroupId(),
                                                        bundle_spec.Index(),

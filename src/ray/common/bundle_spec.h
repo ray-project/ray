@@ -102,6 +102,10 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const BundleSpecification &bundle_spec);
 
+/// Format a placement group implicity resource, format is: PlacementGroup_implicity_i_YYY
+std::string FormatPlacementGroupImplicityResource(const PlacementGroupID &group_id,
+                                                  int64_t bundle_index);
+
 /// Return whether a formatted resource is a bundle of the given index.
 bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
                    const int bundle_index);

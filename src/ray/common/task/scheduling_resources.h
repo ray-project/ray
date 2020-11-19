@@ -20,6 +20,9 @@ const std::string kGPU_ResourceLabel = "GPU";
 const std::string kTPU_ResourceLabel = "TPU";
 const std::string kMemory_ResourceLabel = "memory";
 
+constexpr double placementGroupImplicityResourceValue = 1000;
+constexpr double placementGroupImplicityRequiredResource = 0.0001;
+
 /// \class FractionalResourceQuantity
 /// \brief Converts the resource quantities to an internal representation to
 /// avoid machine precision errors.
@@ -443,6 +446,16 @@ class ResourceIdSet {
   void CommitBundleResourceIds(const PlacementGroupID &group_id, const int bundle_index,
                                const std::string &resource_name,
                                ResourceIds &resource_ids);
+
+  /// \brief Commit a implicity Bundle resource in the ResourceIdSet.
+  ///
+  /// This will add a implicity resources for placement group.
+  /// (format is: PlacementGroupimplicity_i_zzz).
+  ///
+  /// \param group_id: The placement group id.
+  /// \param bundle_index: The index of the bundle.
+  void CommitImplicityBundleResourceIds(const PlacementGroupID &group_id,
+                                        const int bundle_index);
 
   /// \brief remove a Bundle resource in the ResourceIdSet.
   ///
