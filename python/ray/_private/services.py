@@ -605,7 +605,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     # Wait for the Redis server to start.
     num_retries = ray_constants.START_REDIS_WAIT_RETRIES
     delay = 0.001
-    for _ in range(num_retries):
+    for i in range(num_retries):
         try:
             # Run some random command and see if it worked.
             logger.debug(
@@ -623,7 +623,17 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         except redis.AuthenticationError as authEx:
             raise RuntimeError("Unable to connect to Redis at {}:{}.".format(
                 redis_ip_address, redis_port)) from authEx
-        except redis.ConnectionError:
+        except redis.ConnectionError as connEx:
+            if i >= num_retries - 1:
+                raise RuntimeError(
+                    f"Unable to connect to Redis at {redis_ip_address}:"
+                    f"{redis_port} after {num_retries} retries. Check that "
+                    f"{redis_ip_address}:{redis_port} is reachable from this "
+                    "machine. If it is not, your firewall may be blocking "
+                    "this port. If the problem is a flaky connection, try "
+                    "setting the environment variable "
+                    "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of"
+                    " attempts to ping the Redis server.") from connEx
             # Wait a little bit.
             time.sleep(delay)
             delay *= 2
