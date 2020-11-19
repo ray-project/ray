@@ -1,3 +1,5 @@
+"""A utility for debugging serialization issues."""
+
 import inspect
 import ray.cloudpickle as cp
 from contextlib import contextmanager
@@ -10,7 +12,7 @@ def _indent(printer):
     printer.level -= 1
 
 
-class Printer:
+class _Printer:
     def __init__(self):
         self.level = 0
 
@@ -22,10 +24,10 @@ class Printer:
         print(indent + msg)
 
 
-_printer = Printer()
+_printer = _Printer()
 
 
-def _inspect_func_serialization(base_obj, level, failure_set):
+def _inspect_func_serialization(base_obj, depth, failure_set):
     assert inspect.isfunction(base_obj)
     closure = inspect.getclosurevars(base_obj)
     found = False
@@ -36,7 +38,7 @@ def _inspect_func_serialization(base_obj, level, failure_set):
         with _printer.indent():
             for name, obj in closure.globals.items():
                 serializable, _ = inspect_serializability(
-                    obj, name=name, level=level - 1, _failure_set=failure_set)
+                    obj, name=name, depth=depth - 1, _failure_set=failure_set)
                 found = found or not serializable
                 if found:
                     break
@@ -48,7 +50,7 @@ def _inspect_func_serialization(base_obj, level, failure_set):
         with _printer.indent():
             for name, obj in closure.nonlocals.items():
                 serializable, _ = inspect_serializability(
-                    obj, name=name, level=level - 1, _failure_set=failure_set)
+                    obj, name=name, depth=depth - 1, _failure_set=failure_set)
                 found = found or not serializable
                 if found:
                     break
@@ -59,14 +61,14 @@ def _inspect_func_serialization(base_obj, level, failure_set):
     return found
 
 
-def _inspect_type_serialization(base_obj, level, failure_set):
+def _inspect_type_serialization(base_obj, depth, failure_set):
     assert not inspect.isfunction(base_obj)
     functions = inspect.getmembers(base_obj, predicate=inspect.isfunction)
     found = False
     with _printer.indent():
         for name, obj in functions:
             serializable, _ = inspect_serializability(
-                obj, name=name, level=level - 1, _failure_set=failure_set)
+                obj, name=name, depth=depth - 1, _failure_set=failure_set)
             found = found or not serializable
             if found:
                 break
@@ -78,7 +80,7 @@ def _inspect_type_serialization(base_obj, level, failure_set):
                     "__") or inspect.isbuiltin(obj):
                 continue
             serializable, _ = inspect_serializability(
-                obj, name=name, level=level - 1, _failure_set=failure_set)
+                obj, name=name, depth=depth - 1, _failure_set=failure_set)
             found = found or not serializable
             if found:
                 break
@@ -89,7 +91,18 @@ def _inspect_type_serialization(base_obj, level, failure_set):
     return found
 
 
-def inspect_serializability(base_obj, name=None, level=3, _failure_set=None):
+def inspect_serializability(base_obj, name=None, depth=3, _failure_set=None):
+    """Identifies what objects are preventing serialization.
+
+    Args:
+        base_obj: Object to be serialized.
+        name (str): Optional name of string.
+        depth (int): Depth of the scope stack to walk through. Defaults to 3.
+
+    Returns:
+        True if serializable.
+        set: Set of objects that cloudpickle is unable to serialize.
+    """
     top_level = False
     found = False
     if _failure_set is None:
@@ -111,15 +124,15 @@ def inspect_serializability(base_obj, name=None, level=3, _failure_set=None):
         except Exception:
             pass
 
-    if level <= 0:
+    if depth <= 0:
         return False, _failure_set
 
     if inspect.isfunction(base_obj):
         _inspect_func_serialization(
-            base_obj, level=level, failure_set=_failure_set)
+            base_obj, depth=depth, failure_set=_failure_set)
     else:
         _inspect_type_serialization(
-            base_obj, level=level, failure_set=_failure_set)
+            base_obj, depth=depth, failure_set=_failure_set)
 
     if top_level:
         print("Result:\n")
