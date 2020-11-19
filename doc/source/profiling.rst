@@ -14,6 +14,8 @@ the process is stuck on).
 .. code-block:: shell
 
  sudo gdb -batch -ex "thread apply all bt" -p <pid>
+ 
+Note that you can find the pid of the raylet with ``pgrep raylet``.
 
 Installation
 ------------
