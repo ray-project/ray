@@ -194,6 +194,9 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncReReportHeartbeat() override;
 
+  /// Fill resource fields with cached resources. Used by light heartbeat.
+  void FillHeartbeatRequest(rpc::ReportHeartbeatRequest &heartbeat);
+
   Status AsyncGetAllHeartbeat(
       const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override;
 
