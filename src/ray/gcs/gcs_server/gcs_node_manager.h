@@ -152,6 +152,15 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
+  /// Add listener to monitor the resource change of nodes.
+  ///
+  /// \param listener The handler which process the resource change of nodes.
+  void AddNodeResourceChangeListener(
+      std::function<void(const rpc::HeartbeatTableData &)> listener) {
+    RAY_CHECK(listener);
+    node_resource_change_listeners_.emplace_back(std::move(listener));
+  }
+
   /// Load initial data from gcs storage to memory cache asynchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
@@ -280,6 +289,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Listeners which monitors the removal of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
+  /// Listeners which monitors the resource change of nodes.
+  std::vector<std::function<void(const rpc::HeartbeatTableData &)>>
+      node_resource_change_listeners_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.

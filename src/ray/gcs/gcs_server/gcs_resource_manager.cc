@@ -18,19 +18,53 @@
 namespace ray {
 namespace gcs {
 
-const absl::flat_hash_map<NodeID, SchedulingResources>
-    &GcsResourceManager::GetClusterResources() const {
-  return cluster_scheduling_resources_;
+GcsResourceManager::GcsResourceManager(const GcsNodeManager &gcs_node_manager) {
+  gcs_node_manager.AddNodeResourceChangeListener(
+      [this](const rpc::HeartbeatTableData &heartbeat) {
+        auto node_id = NodeID::FromBinary(heartbeat.client_id());
+        cluster_resources_[node_id] =
+            ResourceSet(MapFromProtobuf(heartbeat.resources_available()));
+      });
 }
 
-bool GcsResourceManager::AcquireResource(const NodeID &node_id,
+const absl::flat_hash_map<NodeID, ResourceSet> &GcsResourceManager::GetClusterResources()
+    const {
+  return cluster_resources_;
+}
+
+void GcsResourceManager::StartTransaction() {
+  RAY_CHECK(!is_transaction_in_progress_);
+  is_transaction_in_progress_ = true;
+}
+
+void GcsResourceManager::CommitTransaction() {
+  RAY_CHECK(is_transaction_in_progress_);
+  resource_changes_during_transaction_.clear();
+  is_transaction_in_progress_ = false;
+}
+
+void GcsResourceManager::RollbackTransaction() {
+  RAY_CHECK(is_transaction_in_progress_);
+  for (const auto &resource_changes : resource_changes_during_transaction_) {
+    for (const auto &resource : resource_changes) {
+      cluster_resources_[node_id].AddResources(resource);
+    }
+  }
+  resource_changes_during_transaction_.clear();
+  is_transaction_in_progress_ = false;
+}
+
+void GcsResourceManager::AcquireResource(const NodeID &node_id,
                                          const ResourceSet &required_resources) {
-  return true;
+  cluster_resources_[node_id].SubtractResourcesStrict(required_resources);
+  if (is_transaction_in_progress_) {
+    resource_changes_during_transaction_[node_id].push_back(required_resources);
+  }
 }
 
-bool GcsResourceManager::ReleaseResource(const NodeID &node_id,
+void GcsResourceManager::ReleaseResource(const NodeID &node_id,
                                          const ResourceSet &acquired_resources) {
-  return true;
+  cluster_resources_[node_id].AddResources(required_resources);
 }
 
 }  // namespace gcs

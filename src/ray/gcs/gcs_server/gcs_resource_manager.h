@@ -24,13 +24,18 @@ class GcsResourceManagerInterface {
  public:
   virtual ~GcsResourceManagerInterface() {}
 
-  virtual const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources()
-      const = 0;
+  virtual void StartTransaction() = 0;
 
-  virtual bool AcquireResource(const NodeID &node_id,
+  virtual void CommitTransaction() = 0;
+
+  virtual void RollbackTransaction() = 0;
+
+  virtual const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterResources() const = 0;
+
+  virtual void AcquireResource(const NodeID &node_id,
                                const ResourceSet &required_resources) = 0;
 
-  virtual bool ReleaseResource(const NodeID &node_id,
+  virtual void ReleaseResource(const NodeID &node_id,
                                const ResourceSet &acquired_resources) = 0;
 };
 
@@ -40,15 +45,29 @@ class GcsResourceManager : public GcsResourceManagerInterface {
 
   virtual ~GcsResourceManager() = default;
 
-  const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources() const;
+  void StartTransaction();
 
-  bool AcquireResource(const NodeID &node_id, const ResourceSet &required_resources);
+  void CommitTransaction();
 
-  bool ReleaseResource(const NodeID &node_id, const ResourceSet &acquired_resources);
+  void RollbackTransaction();
+
+  const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterResources() const;
+
+  void AcquireResource(const NodeID &node_id, const ResourceSet &required_resources);
+
+  void ReleaseResource(const NodeID &node_id, const ResourceSet &acquired_resources);
 
  private:
-  /// Map from node id to the scheduling resources of the node.
-  absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
+  /// Check if there's any transaction going on.
+  bool IsTransactionInProgress() const { return is_transaction_in_progress_; }
+
+  bool is_transaction_in_progress_;
+
+  /// Map from node id to the resources of the node.
+  absl::flat_hash_map<NodeID, ResourceSet> cluster_resources_;
+
+  absl::flat_hash_map<NodeID, std::list<ResourceSet>>
+      resource_changes_during_transaction_;
 };
 
 }  // namespace gcs
