@@ -524,6 +524,11 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
       heartbeat.resources_available_changed()) {
     cluster_realtime_resources_[node_id] =
         ResourceSet(MapFromProtobuf(heartbeat.resources_available()));
+
+    // Notify all listeners.
+    for (auto &listener : node_resource_change_listeners_) {
+      listener(heartbeat);
+    }
   }
 }
 
