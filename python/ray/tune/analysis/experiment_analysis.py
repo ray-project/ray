@@ -16,8 +16,8 @@ except ImportError:
     DataFrame = None
 
 from ray.tune.error import TuneError
-from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
-    CONFIG_PREFIX, TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
+    EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
 from ray.tune.utils.trainable import TrainableUtil
 
@@ -33,7 +33,8 @@ class Analysis:
         experiment_dir (str): Directory of the experiment to load.
         default_metric (str): Default metric for comparing results. Can be
             overwritten with the ``metric`` parameter in the respective
-            functions.
+            functions. If None but a mode was passed, the anonymous metric
+            `_metric` will be used per default.
         default_mode (str): Default mode for comparing results. Has to be one
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
@@ -56,6 +57,10 @@ class Analysis:
             raise ValueError(
                 "`default_mode` has to be None or one of [min, max]")
         self.default_mode = default_mode
+
+        if self.default_metric is None and self.default_mode:
+            # If only a mode was passed, use anonymous metric
+            self.default_metric = DEFAULT_METRIC
 
         if not pd:
             logger.warning(

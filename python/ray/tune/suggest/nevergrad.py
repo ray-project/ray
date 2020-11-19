@@ -2,6 +2,7 @@ import logging
 import pickle
 from typing import Dict, Optional, Union
 
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
@@ -45,7 +46,9 @@ class NevergradSearch(Searcher):
         space (list|nevergrad.parameter.Parameter): Nevergrad parametrization
             to be passed to optimizer on instantiation, or list of parameter
             names if you passed an optimizer object.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         use_early_stopped_trials: Deprecated.
@@ -151,6 +154,10 @@ class NevergradSearch(Searcher):
             self._metric_op = -1.
         elif self._mode == "min":
             self._metric_op = 1.
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
         if hasattr(self._nevergrad_opt, "instrumentation"):  # added in v0.2.0
             if self._nevergrad_opt.instrumentation.kwargs:

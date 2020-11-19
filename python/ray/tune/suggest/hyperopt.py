@@ -6,6 +6,7 @@ import logging
 from functools import partial
 import pickle
 
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Normal, \
     Quantized, \
@@ -50,7 +51,9 @@ class HyperOptSearch(Searcher):
         space (dict): HyperOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
@@ -177,14 +180,22 @@ class HyperOptSearch(Searcher):
                     UNRESOLVED_SEARCH_SPACE.format(
                         par="space", cls=type(self)))
                 space = self.convert_search_space(space)
-            self.domain = hpo.Domain(lambda spc: spc, space)
+            self._space = space
+            self.setup_hyperopt()
+
+    def setup_hyperopt(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
+        self.domain = hpo.Domain(lambda spc: spc, self._space)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         if self.domain:
             return False
         space = self.convert_search_space(config)
-        self.domain = hpo.Domain(lambda spc: spc, space)
+        self._space = space
 
         if metric:
             self._metric = metric
@@ -196,6 +207,7 @@ class HyperOptSearch(Searcher):
         elif self._mode == "min":
             self.metric_op = 1.
 
+        self.setup_hyperopt()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

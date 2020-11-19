@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Union
 
 from ax.service.ax_client import AxClient
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
@@ -42,10 +43,11 @@ class AxSearch(Searcher):
             (list of two values, lower bound first), "values" for choice
             parameters (list of values), and "value" for fixed parameters
             (single value).
-        objective_name (str): Name of the metric used as objective in this
+        metric (str): Name of the metric used as objective in this
             experiment. This metric must be present in `raw_data` argument
             to `log_data`. This metric must also be present in the dict
-            reported/returned by the Trainable.
+            reported/returned by the Trainable. If None but a mode was passed,
+            the anonymous metric `_metric` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute. Defaults to "max".
         parameter_constraints (list[str]): Parameter constraints, such as
@@ -147,6 +149,10 @@ class AxSearch(Searcher):
             self.setup_experiment()
 
     def setup_experiment(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         if not self._ax:
             self._ax = AxClient()
 
@@ -198,6 +204,7 @@ class AxSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
+
         self.setup_experiment()
         return True
 

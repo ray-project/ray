@@ -4,6 +4,7 @@ from typing import Dict, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     Uniform
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
@@ -113,11 +114,11 @@ class ZOOptSearch(Searcher):
             For discrete dimensions: (discrete, search_range, has_order);
             For grid dimensions: (grid, grid_list).
             More details can be found in zoopt package.
-        metric (str): The training result objective value attribute.
-            Defaults to "episode_reward_mean".
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-            Defaults to "min".
         parallel_num (int): How many workers to parallel. Note that initial
             phase may start less workers than this number. More details can
             be found in zoopt package.
@@ -174,6 +175,10 @@ class ZOOptSearch(Searcher):
             self.setup_zoopt()
 
     def setup_zoopt(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         _dim_list = []
         for k in self._dim_dict:
             self._dim_keys.append(k)

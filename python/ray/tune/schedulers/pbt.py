@@ -10,7 +10,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from ray.tune import trial_runner
 from ray.tune import trial_executor
 from ray.tune.error import TuneError
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -141,7 +141,8 @@ class PopulationBasedTraining(FIFOScheduler):
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
         metric (str): The training result objective value attribute. Stopping
-            procedures will use this attribute.
+            procedures will use this attribute. If None but a mode was passed,
+            the anonymous metric `_metric` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         perturbation_interval (float): Models will be considered for
@@ -309,6 +310,10 @@ class PopulationBasedTraining(FIFOScheduler):
             self._metric_op = 1.
         elif self._mode == "min":
             self._metric_op = -1.
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
         return True
 

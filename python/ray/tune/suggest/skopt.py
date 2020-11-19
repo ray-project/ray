@@ -2,6 +2,7 @@ import logging
 import pickle
 from typing import Dict, List, Optional, Tuple, Union
 
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
@@ -75,7 +76,9 @@ class SkOptSearch(Searcher):
             parameters. If you passed an optimizer instance as the
             `optimizer` argument, this should be a list of parameter names
             instead.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list of lists): A list of points you'd like to run
@@ -212,6 +215,10 @@ class SkOptSearch(Searcher):
             self._metric_op = -1.
         elif self._mode == "min":
             self._metric_op = 1.
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
