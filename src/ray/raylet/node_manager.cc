@@ -44,6 +44,8 @@ struct ActorStats {
 ActorStats GetActorStatisticalData(
     std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> actor_registry) {
   ActorStats item;
+  /*  TODO(ekl) this gets slower and slower over time since we never clean up dead actors.
+   *  https://github.com/ray-project/ray/issues/11239
   for (auto &pair : actor_registry) {
     if (pair.second.GetState() == ray::rpc::ActorTableData::ALIVE) {
       item.live_actors += 1;
@@ -53,6 +55,7 @@ ActorStats GetActorStatisticalData(
       item.dead_actors += 1;
     }
   }
+  */
   return item;
 }
 
