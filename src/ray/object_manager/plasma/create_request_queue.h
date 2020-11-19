@@ -41,13 +41,17 @@ class CreateRequestQueue {
         RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_ << " retries on OOM, evict if full? " << (evict_if_full_ ? 1 : 0);
       }
 
-  /// Add a request to the queue.
+  /// Add a request to the queue. The caller should use the returned request ID
+  /// to later get the result of the request.
   ///
   /// The request may not get tried immediately if the head of the queue is not
   /// serviceable.
   ///
-  /// \param client The client that sent the request.
-  uint64_t AddRequest(const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &request_callback);
+  /// \param object_id The ID of the object to create.
+  /// \param client The client that sent the request. This is used as a key to
+  /// drop this request if the client disconnects.
+  /// \param create_callback A callback to attempt to create the object.
+  uint64_t AddRequest(const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback);
 
   bool GetRequestResult(uint64_t req_id, PlasmaObject *result, PlasmaError *error);
 
@@ -68,15 +72,27 @@ class CreateRequestQueue {
 
  private:
   struct CreateRequest {
-    CreateRequest(uint64_t id, const std::shared_ptr<ClientInterface> &client,
+    CreateRequest(const ObjectID &object_id, uint64_t request_id, const std::shared_ptr<ClientInterface> &client,
         CreateObjectCallback create_callback)
-    : id(id), client(client),
+    : object_id(object_id), request_id(request_id), client(client),
       create_callback(create_callback) {}
-    const uint64_t id;
 
+    // The ObjectID to create.
+    const ObjectID object_id;
+
+    // A request ID that can be returned to the caller to get the result once
+    // ready.
+    const uint64_t request_id;
+
+    // A pointer to the client, used as a key to delete requests that were made
+    // by a client that is now disconnected.
     const std::shared_ptr<ClientInterface> client;
+
+    // A callback to attempt to create the object.
     const CreateObjectCallback create_callback;
 
+    // The results of the creation call. These should be sent back to the
+    // client once ready.
     PlasmaError error = PlasmaError::OK;
     PlasmaObject result = {};
   };

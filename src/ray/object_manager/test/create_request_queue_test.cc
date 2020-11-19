@@ -55,7 +55,7 @@ TEST(CreateRequestQueueTest, TestSimple) {
     return PlasmaError::OK;
   };
   auto client = std::make_shared<MockClient>();
-  auto req_id = queue.AddRequest(client, request);
+  auto req_id = queue.AddRequest(ObjectID::Nil(), client, request);
   ASSERT_REQUEST_UNFINISHED(queue, req_id);
 
   ASSERT_TRUE(queue.ProcessRequests().ok());
@@ -64,9 +64,9 @@ TEST(CreateRequestQueueTest, TestSimple) {
   // Request gets cleaned up after we get it.
   ASSERT_REQUEST_UNFINISHED(queue, req_id);
 
-  auto req_id1 = queue.AddRequest(client, request);
-  auto req_id2 = queue.AddRequest(client, request);
-  auto req_id3 = queue.AddRequest(client, request);
+  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, request);
+  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, request);
+  auto req_id3 = queue.AddRequest(ObjectID::Nil(), client, request);
   ASSERT_REQUEST_UNFINISHED(queue, req_id1);
   ASSERT_REQUEST_UNFINISHED(queue, req_id2);
   ASSERT_REQUEST_UNFINISHED(queue, req_id3);
@@ -98,8 +98,8 @@ TEST(CreateRequestQueueTest, TestOom) {
   };
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue.AddRequest(client, oom_request);
-  auto req_id2 = queue.AddRequest(client, blocked_request);
+  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
+  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
 
   // Neither request was fulfilled.
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
@@ -134,8 +134,8 @@ TEST(CreateRequestQueueTest, TestOomInfiniteRetry) {
   };
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue.AddRequest(client, oom_request);
-  auto req_id2 = queue.AddRequest(client, blocked_request);
+  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
+  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
 
   for (int i = 0; i < 3; i++) {
     ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
@@ -167,8 +167,8 @@ TEST(CreateRequestQueueTest, TestTransientOom) {
   };
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue.AddRequest(client, oom_request);
-  auto req_id2 = queue.AddRequest(client, blocked_request);
+  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
+  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
 
   // Transient OOM should not use up any retries.
   for (int i = 0; i < 3; i++) {
@@ -205,8 +205,8 @@ TEST(CreateRequestQueueTest, TestTransientOomThenOom) {
   };
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue.AddRequest(client, oom_request);
-  auto req_id2 = queue.AddRequest(client, blocked_request);
+  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
+  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
 
   // Transient OOM should not use up any retries.
   for (int i = 0; i < 3; i++) {
@@ -244,7 +244,7 @@ TEST(CreateRequestQueueTest, TestEvictIfFull) {
   };
 
   auto client = std::make_shared<MockClient>();
-  static_cast<void>(queue.AddRequest(client, oom_request));
+  static_cast<void>(queue.AddRequest(ObjectID::Nil(), client, oom_request));
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
 }
@@ -267,7 +267,7 @@ TEST(CreateRequestQueueTest, TestNoEvictIfFull) {
   };
 
   auto client = std::make_shared<MockClient>();
-  static_cast<void>(queue.AddRequest(client, oom_request));
+  static_cast<void>(queue.AddRequest(ObjectID::Nil(), client, oom_request));
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
 }

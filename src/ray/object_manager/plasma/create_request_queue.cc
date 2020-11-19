@@ -24,10 +24,10 @@
 
 namespace plasma {
 
-uint64_t CreateRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback) {
+uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
-  queue_.emplace_back(new CreateRequest(req_id, client, create_callback));
+  queue_.emplace_back(new CreateRequest(object_id, req_id, client, create_callback));
   return req_id;
 }
 
@@ -86,10 +86,10 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
     status = Status::ObjectStoreFull("Object store full, should retry on timeout");
   } else {
     if (request->error == PlasmaError::OutOfMemory) {
-      RAY_LOG(ERROR) << "Not enough memory to create the object after " << num_retries_ << " returning OutOfMemory to the client";
+      RAY_LOG(ERROR) << "Not enough memory to create object " << request->object_id << " after " << num_retries_ << ", will return OutOfMemory to the client";
     }
 
-    auto it = fulfilled_requests_.find(request->id);
+    auto it = fulfilled_requests_.find(request->request_id);
     RAY_CHECK(it != fulfilled_requests_.end());
     RAY_CHECK(it->second == nullptr);
     it->second = std::move(request);
