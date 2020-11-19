@@ -114,13 +114,20 @@ Status CreateRequestQueue::ProcessRequests() {
 
 
 void CreateRequestQueue::RemoveDisconnectedClientRequests(const std::shared_ptr<ClientInterface> &client) {
-  // TODO: Remove from finished requests too.
   for (auto it = queue_.begin(); it != queue_.end(); ) {
     if ((*it)->client == client) {
+      fulfilled_requests_.erase((*it)->request_id);
       it = queue_.erase(it);
     } else {
       it++;
     }
+  }
+
+  for (auto it = fulfilled_requests_.begin(); it != fulfilled_requests_.end(); ) {
+    if (it->second && it->second->client == client) {
+      fulfilled_requests_.erase(it);
+    }
+    it++;
   }
 }
 

@@ -131,6 +131,8 @@ class CreateRequestQueue {
   std::list<std::unique_ptr<CreateRequest>> queue_;
   
   absl::flat_hash_map<uint64_t, std::unique_ptr<CreateRequest>> fulfilled_requests_;
+
+  friend class CreateRequestQueueTest;
 };
 
 }  // namespace plasma
