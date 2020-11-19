@@ -37,6 +37,8 @@ using ray::Status;
 using flatbuf::MessageType;
 using flatbuf::PlasmaError;
 
+Status PlasmaErrorStatus(flatbuf::PlasmaError plasma_error);
+
 template <class T>
 bool VerifyFlatbuffer(T* object, uint8_t* data, size_t size) {
   flatbuffers::Verifier verifier(data, size);

@@ -24,14 +24,33 @@
 
 namespace plasma {
 
-void CreateRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &request_callback) {
-  queue_.push_back({client, request_callback});
+uint64_t CreateRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback) {
+  auto req_id = next_req_id_++;
+  fulfilled_requests_[req_id] = nullptr;
+  queue_.emplace_back(new CreateRequest(req_id, client, create_callback));
+  return req_id;
 }
 
-Status CreateRequestQueue::ProcessRequest(const CreateObjectCallback &request_callback) {
+bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result, Status *status) {
+  auto it = fulfilled_requests_.find(req_id);
+  if (it == fulfilled_requests_.end()) {
+    RAY_LOG(ERROR) << "Object store client requested the result of a previous request to create an object, but the result has already been returned to the client. This client may hang because the creation request cannot be fulfilled.";
+    return false;
+  }
+
+  if (!it->second) {
+    return false;
+  }
+
+  *result = it->second->result;
+  *status = it->second->status;
+  fulfilled_requests_.erase(it);
+  return true;
+}
+
+Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
   // Return an OOM error to the client if we have hit the maximum number of
   // retries.
-  bool reply_on_oom = (max_retries_ != -1 && num_retries_ >= max_retries_);
   bool evict_if_full = evict_if_full_;
   if (max_retries_ == 0) {
     // If we cannot retry, then always evict on the first attempt.
@@ -40,9 +59,11 @@ Status CreateRequestQueue::ProcessRequest(const CreateObjectCallback &request_ca
     // Always try to evict after the first attempt.
     evict_if_full = true;
   }
-  auto status = request_callback(reply_on_oom, evict_if_full);
+  request->status = request->create_callback(evict_if_full, &request->result);
 
-  if (status.IsTransientObjectStoreFull()) {
+  Status status = request->status;
+  auto should_retry_on_oom = max_retries_ == -1 || num_retries_ < max_retries_;
+  if (request->status.IsTransientObjectStoreFull()) {
     // The object store is full, but we should wait for space to be made
     // through spilling, so do nothing. The caller must guarantee that
     // ProcessRequests is called again so that we can try this request again.
@@ -53,16 +74,21 @@ Status CreateRequestQueue::ProcessRequest(const CreateObjectCallback &request_ca
     // TODO(swang): Ask the raylet to spill enough space for multiple requests
     // at once, instead of just the head of the queue.
     num_retries_ = 0;
-  } else if (status.IsObjectStoreFull()) {
+  } else if (request->status.IsObjectStoreFull() && should_retry_on_oom) {
     num_retries_++;
     RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_ << " tries";
+
     if (on_store_full_) {
       on_store_full_();
     }
   } else {
-    // We have replied to the client.
+    auto it = fulfilled_requests_.find(request->id);
+    RAY_CHECK(it != fulfilled_requests_.end());
+    RAY_CHECK(it->second == nullptr);
+    it->second = std::move(request);
+
     num_retries_ = 0;
-    // Reset the status in case there was an error responding to the client.
+    // Reset the return status because we are done with this request.
     status = Status::OK();
   }
 
@@ -72,8 +98,8 @@ Status CreateRequestQueue::ProcessRequest(const CreateObjectCallback &request_ca
 Status CreateRequestQueue::ProcessRequests() {
   for (auto request_it = queue_.begin();
       request_it != queue_.end(); ) {
-    auto status = ProcessRequest(request_it->second);
-    if (!status.ok()) {
+    auto status = ProcessRequest(*request_it);
+    if (status.IsTransientObjectStoreFull() || status.IsObjectStoreFull()) {
       return status;
     }
     request_it = queue_.erase(request_it);
@@ -83,8 +109,9 @@ Status CreateRequestQueue::ProcessRequests() {
 
 
 void CreateRequestQueue::RemoveDisconnectedClientRequests(const std::shared_ptr<ClientInterface> &client) {
+  // TODO: Remove from finished requests too.
   for (auto it = queue_.begin(); it != queue_.end(); ) {
-    if (it->first == client) {
+    if ((*it)->client == client) {
       it = queue_.erase(it);
     } else {
       it++;

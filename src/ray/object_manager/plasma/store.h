@@ -209,7 +209,7 @@ class PlasmaStore {
   void ProcessCreateRequests();
 
  private:
-  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool reply_on_oom, bool evict_if_full);
+  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool evict_if_full, PlasmaObject *object);
 
   void PushNotification(ObjectInfoT* object_notification);
 

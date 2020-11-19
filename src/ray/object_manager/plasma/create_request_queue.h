@@ -18,18 +18,22 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
+#include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/protocol.h"
 
 namespace plasma {
 
 using ray::Status;
 
-using CreateObjectCallback = std::function<Status(bool reply_on_oom, bool evict_if_full)>;
-
 class CreateRequestQueue {
  public:
+  using CreateObjectCallback = std::function<Status(bool evict_if_full, PlasmaObject *result)>;
+
   CreateRequestQueue(int32_t max_retries,
       bool evict_if_full,
       std::function<void()> on_store_full)
@@ -45,7 +49,9 @@ class CreateRequestQueue {
   /// serviceable.
   ///
   /// \param client The client that sent the request.
-  void AddRequest(const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &request_callback);
+  uint64_t AddRequest(const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &request_callback);
+
+  bool GetRequestResult(uint64_t req_id, PlasmaObject *result, Status *error);
 
   /// Process requests in the queue.
   ///
@@ -63,9 +69,25 @@ class CreateRequestQueue {
   void RemoveDisconnectedClientRequests(const std::shared_ptr<ClientInterface> &client);
 
  private:
+  struct CreateRequest {
+    CreateRequest(uint64_t id, const std::shared_ptr<ClientInterface> &client,
+        CreateObjectCallback create_callback)
+    : id(id), client(client),
+      create_callback(create_callback) {}
+    const uint64_t id;
+
+    const std::shared_ptr<ClientInterface> client;
+    const CreateObjectCallback create_callback;
+
+    Status status = Status::OK();
+    PlasmaObject result = {};
+  };
+
   /// Process a single request. Returns the status returned by the request
   /// handler.
-  Status ProcessRequest(const CreateObjectCallback &request_callback);
+  Status ProcessRequest(std::unique_ptr<CreateRequest> &request);
+
+  uint64_t next_req_id_ = 0;
 
   /// The maximum number of times to retry each request upon OOM.
   const int32_t max_retries_;
@@ -92,7 +114,10 @@ class CreateRequestQueue {
   /// in the object store. Then, the client does not need to poll on an
   /// OutOfMemory error and we can just respond to them once there is enough
   /// space made, or after a timeout.
-  std::list<std::pair<const std::shared_ptr<ClientInterface>, const CreateObjectCallback>> queue_;
+  std::list<std::unique_ptr<CreateRequest>> queue_;
+  
+
+  absl::flat_hash_map<uint64_t, std::unique_ptr<CreateRequest>> fulfilled_requests_;
 };
 
 }  // namespace plasma
