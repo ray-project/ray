@@ -468,7 +468,7 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_2.last_result["metric"], 500_000)
         self.assertEquals(trial_2.last_result["cp"], "DIR")
 
-    def test_return_anonymous(self):
+    def testReturnAnonymous(self):
         def train(config):
             return config["a"]
 
@@ -480,7 +480,7 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_1.last_result[DEFAULT_METRIC], 4)
         self.assertEquals(trial_2.last_result[DEFAULT_METRIC], 8)
 
-    def test_return_specific(self):
+    def testReturnSpecific(self):
         def train(config):
             return {"m": config["a"]}
 
@@ -492,7 +492,7 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_1.last_result["m"], 4)
         self.assertEquals(trial_2.last_result["m"], 8)
 
-    def test_yield_anonymous(self):
+    def testYieldAnonymous(self):
         def train(config):
             for i in range(10):
                 yield config["a"] + i
@@ -505,7 +505,7 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_1.last_result[DEFAULT_METRIC], 4 + 9)
         self.assertEquals(trial_2.last_result[DEFAULT_METRIC], 8 + 9)
 
-    def test_yield_specific(self):
+    def testYieldSpecific(self):
         def train(config):
             for i in range(10):
                 yield {"m": config["a"] + i}
