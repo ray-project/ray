@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABCMeta
 import logging
-from typing import Any, Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -145,7 +145,8 @@ class _SampleCollector(metaclass=ABCMeta):
     def postprocess_episode(self,
                             episode: MultiAgentEpisode,
                             is_done: bool = False,
-                            check_dones: bool = False) -> Any:
+                            check_dones: bool = False,
+                            build: bool = False) -> Optional[MultiAgentBatch]:
         """Postprocesses all agents' trajectories in a given episode.
 
         Generates (single-trajectory) SampleBatches for all Policies/Agents and
@@ -162,30 +163,14 @@ class _SampleCollector(metaclass=ABCMeta):
                 (all agents are done).
             check_dones (bool): Whether we need to check that all agents'
                 trajectories have dones=True at the end.
+            build (bool): Whether to build a MultiAgentBatch from the given
+                episode (and only that episode!) and return that
+                MultiAgentBatch. Used for batch_mode=`complete_episodes`.
 
         Returns:
             Any: An ID that can be used in `build_multi_agent_batch` to
                 retrieve the samples that have been postprocessed as a
                 ready-built MultiAgentBatch.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def build_multi_agent_batch(
-            self, env_steps: int, episode: MultiAgentEpisode) -> \
-            Union[MultiAgentBatch, SampleBatch]:
-        """Builds a MultiAgentBatch of size=env_steps from the collected data.
-
-        Args:
-            env_steps (int): The sum of all env-steps (across all agents) taken
-                so far.
-            episode (MultiAgentEpisode): The episode that carries the
-                batch_builder property to use for building the MultiAgentBatch.
-
-        Returns:
-            Union[MultiAgentBatch, SampleBatch]: Returns the accumulated
-                sample batches for each policy inside one MultiAgentBatch
-                object (or a simple SampleBatch if only one policy).
         """
         raise NotImplementedError
 

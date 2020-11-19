@@ -1086,19 +1086,19 @@ def _process_observations_w_trajectory_view_api(
         if all_agents_done:
             is_done = dones[env_id]["__all__"]
             check_dones = is_done and not no_done_at_end
-            #TODO: (sven) make this one call, including build, if necessary, returning MABatch, if not multiple_episodes_in_batch
-            _sample_collector.postprocess_episode(
-                episode,
-                is_done=is_done,
-                check_dones=check_dones)
-            # We are not allowed to pack the next episode into the same
+
+            # If, we are not allowed to pack the next episode into the same
             # SampleBatch (batch_mode=complete_episodes) -> Build the
             # MultiAgentBatch from a single episode and add it to "outputs".
-            if not multiple_episodes_in_batch:
-                ma_sample_batch = \
-                    _sample_collector.build_multi_agent_batch(
-                        env_steps=episode.length,
-                        episode=episode)
+            # Otherwise, just postprocess and continue collecting across
+            # episodes.
+            ma_sample_batch = _sample_collector.postprocess_episode(
+                episode,
+                is_done=is_done,
+                check_dones=check_dones,
+                build=not multiple_episodes_in_batch
+            )
+            if ma_sample_batch:
                 outputs.append(ma_sample_batch)
 
             # Call each policy's Exploration.on_episode_end method.
