@@ -3356,7 +3356,6 @@ void NodeManager::RecordMetrics() {
   // Last recorded time will be reset in the caller side.
   uint64_t current_time = current_time_ms();
   uint64_t duration_ms = current_time - metrics_last_recorded_time_ms_;
-  RAY_LOG(ERROR) << "sangbin duration" << duration_ms;
 
   // Record available resources of this node.
   const auto &available_resources =
