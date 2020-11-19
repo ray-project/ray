@@ -87,6 +87,8 @@ class RAY_EXPORT PlasmaClient {
   ///        should be NULL.
   /// \param metadata_size The size in bytes of the metadata. If there is no
   ///        metadata, this should be 0.
+  /// \param retry_with_request_id If the request is not yet fulfilled, this
+  ///        will be set to a unique ID with which the client should retry.
   /// \param data The address of the newly created object will be written here.
   /// \param device_num The number of the device where the object is being
   ///        created.
@@ -99,7 +101,13 @@ class RAY_EXPORT PlasmaClient {
   /// be either sealed or aborted.
   Status Create(const ObjectID& object_id, const ray::rpc::Address& owner_address,
                 int64_t data_size, const uint8_t* metadata, int64_t metadata_size,
+                                  uint64_t *retry_with_request_id,
                 std::shared_ptr<Buffer>* data, int device_num = 0);
+
+  Status RetryCreate(const ObjectID& object_id, uint64_t request_id,
+                                  const uint8_t* metadata, 
+      uint64_t *retry_with_request_id,
+                std::shared_ptr<Buffer>* data);
 
   /// Get some objects from the Plasma Store. This function will block until the
   /// objects have all been created and sealed in the Plasma Store or the

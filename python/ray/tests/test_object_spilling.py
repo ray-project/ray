@@ -317,6 +317,10 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
         _system_config={
             "automatic_object_spilling_enabled": True,
             "object_store_full_initial_delay_ms": 100,
+            # NOTE(swang): Use infinite retries because the OOM timer can still
+            # get accidentally triggered when objects are released too slowly
+            # (see github.com/ray-project/ray/issues/12040).
+            "object_store_full_max_retries": -1,
             "max_io_workers": 1,
             "object_spilling_config": object_spilling_config,
         },

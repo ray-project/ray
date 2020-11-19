@@ -23,6 +23,7 @@ enum MessageType:long {
   PlasmaDisconnectClient = 0,
   // Create a new object.
   PlasmaCreateRequest,
+  PlasmaCreateRetryRequest,
   PlasmaCreateReply,
   PlasmaAbortRequest,
   PlasmaAbortReply,
@@ -149,6 +150,13 @@ table PlasmaCreateRequest {
   device_num: int;
 }
 
+table PlasmaCreateRetryRequest {
+  // ID of the object to be created.
+  object_id: string;
+  // The ID of the request to retry.
+  request_id: uint64;
+  }
+
 table CudaHandle {
   handle: [ubyte];
 }
@@ -156,6 +164,9 @@ table CudaHandle {
 table PlasmaCreateReply {
   // ID of the object that was created.
   object_id: string;
+  // The client should retry the request if this is > 0. This
+  // is the request ID to include in the retry.
+  retry_with_request_id: uint64;
   // The object that is returned with this reply.
   plasma_object: PlasmaObjectSpec;
   // Error that occurred for this call.

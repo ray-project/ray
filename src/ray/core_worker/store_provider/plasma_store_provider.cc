@@ -85,13 +85,27 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              std::shared_ptr<Buffer> *data) {
   Status status;
   std::shared_ptr<arrow::Buffer> arrow_buffer;
+  uint64_t retry_with_request_id = 0;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    status = store_client_.Create(object_id, owner_address, data_size,
-                                  metadata ? metadata->Data() : nullptr,
-                                  metadata ? metadata->Size() : 0, &arrow_buffer,
-                                  /*device_num=*/0);
+    status = store_client_.Create(
+        object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
+        metadata ? metadata->Size() : 0, &retry_with_request_id, &arrow_buffer,
+        /*device_num=*/0);
   }
+
+  while (retry_with_request_id > 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    {
+      std::lock_guard<std::mutex> guard(store_client_mutex_);
+      RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
+                     << retry_with_request_id;
+      status = store_client_.RetryCreate(object_id, retry_with_request_id,
+                                         metadata ? metadata->Data() : nullptr,
+                                         &retry_with_request_id, &arrow_buffer);
+    }
+  }
+
   if (status.IsObjectStoreFull()) {
     RAY_LOG(ERROR) << "Failed to put object " << object_id
                    << " in object store because it "

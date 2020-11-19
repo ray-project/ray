@@ -28,11 +28,9 @@
 
 namespace plasma {
 
-using ray::Status;
-
 class CreateRequestQueue {
  public:
-  using CreateObjectCallback = std::function<Status(bool evict_if_full, PlasmaObject *result)>;
+  using CreateObjectCallback = std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
 
   CreateRequestQueue(int32_t max_retries,
       bool evict_if_full,
@@ -51,7 +49,7 @@ class CreateRequestQueue {
   /// \param client The client that sent the request.
   uint64_t AddRequest(const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &request_callback);
 
-  bool GetRequestResult(uint64_t req_id, PlasmaObject *result, Status *error);
+  bool GetRequestResult(uint64_t req_id, PlasmaObject *result, PlasmaError *error);
 
   /// Process requests in the queue.
   ///
@@ -59,7 +57,7 @@ class CreateRequestQueue {
   /// FIFO order. If the first request is not serviceable, this will break and
   /// the caller should try again later.
   ///
-  /// \return Bad status for the first request in the queue if it failed to be
+  /// \return Bad PlasmaError for the first request in the queue if it failed to be
   /// serviced, or OK if all requests were fulfilled.
   Status ProcessRequests();
 
@@ -79,15 +77,15 @@ class CreateRequestQueue {
     const std::shared_ptr<ClientInterface> client;
     const CreateObjectCallback create_callback;
 
-    Status status = Status::OK();
+    PlasmaError error = PlasmaError::OK;
     PlasmaObject result = {};
   };
 
-  /// Process a single request. Returns the status returned by the request
+  /// Process a single request. Returns the PlasmaError returned by the request
   /// handler.
   Status ProcessRequest(std::unique_ptr<CreateRequest> &request);
 
-  uint64_t next_req_id_ = 0;
+  uint64_t next_req_id_ = 1;
 
   /// The maximum number of times to retry each request upon OOM.
   const int32_t max_retries_;
@@ -116,7 +114,6 @@ class CreateRequestQueue {
   /// space made, or after a timeout.
   std::list<std::unique_ptr<CreateRequest>> queue_;
   
-
   absl::flat_hash_map<uint64_t, std::unique_ptr<CreateRequest>> fulfilled_requests_;
 };
 

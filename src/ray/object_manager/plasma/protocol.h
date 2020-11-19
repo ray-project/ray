@@ -82,20 +82,24 @@ Status ReadGetDebugStringReply(uint8_t* data, size_t size, std::string* debug_st
 
 /* Plasma Create message functions. */
 
+Status SendCreateRetryRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id, uint64_t request_id);
+
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
                          const ray::rpc::Address &owner_address,
                          int64_t data_size, int64_t metadata_size, int device_num);
 
-Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
+void ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
                          NodeID* owner_raylet_id, std::string* owner_ip_address,
                          int* owner_port, WorkerID* owner_worker_id,
                          int64_t* data_size, int64_t* metadata_size,
                          int* device_num);
 
-Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id, PlasmaObject* object,
-                       PlasmaError error, int64_t mmap_size);
+Status SendUnfinishedCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id, uint64_t retry_with_request_id);
 
-Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
+Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id, const PlasmaObject &object,
+                       PlasmaError error);
+
+Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id, uint64_t *retry_with_request_id,
                        PlasmaObject* object, MEMFD_TYPE* store_fd, int64_t* mmap_size);
 
 Status SendAbortRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);

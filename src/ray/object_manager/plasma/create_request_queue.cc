@@ -31,7 +31,7 @@ uint64_t CreateRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &
   return req_id;
 }
 
-bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result, Status *status) {
+bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result, PlasmaError *error) {
   auto it = fulfilled_requests_.find(req_id);
   if (it == fulfilled_requests_.end()) {
     RAY_LOG(ERROR) << "Object store client requested the result of a previous request to create an object, but the result has already been returned to the client. This client may hang because the creation request cannot be fulfilled.";
@@ -43,7 +43,7 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
   }
 
   *result = it->second->result;
-  *status = it->second->status;
+  *error= it->second->error;
   fulfilled_requests_.erase(it);
   return true;
 }
@@ -59,11 +59,11 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
     // Always try to evict after the first attempt.
     evict_if_full = true;
   }
-  request->status = request->create_callback(evict_if_full, &request->result);
 
-  Status status = request->status;
+  request->error = request->create_callback(evict_if_full, &request->result);
+  Status status;
   auto should_retry_on_oom = max_retries_ == -1 || num_retries_ < max_retries_;
-  if (request->status.IsTransientObjectStoreFull()) {
+  if (request->error == PlasmaError::TransientOutOfMemory) {
     // The object store is full, but we should wait for space to be made
     // through spilling, so do nothing. The caller must guarantee that
     // ProcessRequests is called again so that we can try this request again.
@@ -74,22 +74,27 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
     // TODO(swang): Ask the raylet to spill enough space for multiple requests
     // at once, instead of just the head of the queue.
     num_retries_ = 0;
-  } else if (request->status.IsObjectStoreFull() && should_retry_on_oom) {
+    status = Status::TransientObjectStoreFull("Object store full, queueing creation request");
+  } else if (request->error == PlasmaError::OutOfMemory && should_retry_on_oom) {
     num_retries_++;
     RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_ << " tries";
 
     if (on_store_full_) {
       on_store_full_();
     }
+
+    status = Status::ObjectStoreFull("Object store full, should retry on timeout");
   } else {
+    if (request->error == PlasmaError::OutOfMemory) {
+      RAY_LOG(ERROR) << "Not enough memory to create the object after " << num_retries_ << " returning OutOfMemory to the client";
+    }
+
     auto it = fulfilled_requests_.find(request->id);
     RAY_CHECK(it != fulfilled_requests_.end());
     RAY_CHECK(it->second == nullptr);
     it->second = std::move(request);
 
     num_retries_ = 0;
-    // Reset the return status because we are done with this request.
-    status = Status::OK();
   }
 
   return status;

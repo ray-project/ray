@@ -55,6 +55,8 @@ struct PlasmaObject {
   int64_t metadata_size;
   /// Device number object is on.
   int device_num;
+  /// Set if device_num is equal to 0.
+  int64_t mmap_size;
 
   bool operator==(const PlasmaObject& other) const {
     return (

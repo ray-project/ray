@@ -271,7 +271,7 @@ Status PlasmaStore::FreeCudaMemory(int device_num, int64_t size, uint8_t* pointe
 }
 #endif
 
-Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool evict_if_full, PlasmaObject *object) {
+PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client, const std::vector<uint8_t> &message, bool evict_if_full, PlasmaObject *object) {
   uint8_t* input = (uint8_t*)message.data();
   size_t input_size = message.size();
   ObjectID object_id;
@@ -283,13 +283,13 @@ Status PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &cli
   int64_t data_size;
   int64_t metadata_size;
   int device_num;
-  RAY_RETURN_NOT_OK(ReadCreateRequest(
+  ReadCreateRequest(
     input, input_size, &object_id, &owner_raylet_id, &owner_ip_address, &owner_port,
-    &owner_worker_id, &data_size, &metadata_size, &device_num));
-  return PlasmaErrorStatus(CreateObject(object_id, owner_raylet_id, owner_ip_address,
+    &owner_worker_id, &data_size, &metadata_size, &device_num);
+  return CreateObject(object_id, owner_raylet_id, owner_ip_address,
                                         owner_port, owner_worker_id, evict_if_full,
                                         data_size, metadata_size, device_num, client,
-                                        object));
+                                        object);
 }
 
 //Status PlasmaStore::ReplyToCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -402,6 +402,10 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID& object_id,
   result->data_size = data_size;
   result->metadata_size = metadata_size;
   result->device_num = device_num;
+  if (device_num == 0) {
+    result->mmap_size = GetMmapSize(fd);
+  }
+
   // Notify the eviction policy that this object was created. This must be done
   // immediately before the call to AddToClientObjectIds so that the
   // eviction policy does not have an opportunity to evict the object.
@@ -987,11 +991,20 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   // Process the different types of requests.
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
-      RAY_LOG(DEBUG) << "Received create request for object " << GetCreateRequestObjectId(message);
-      create_request_queue_.AddRequest(client, [this, client, message](bool evict_if_full, PlasmaObject *result) {
+      const auto &object_id = GetCreateRequestObjectId(message);
+      auto req_id = create_request_queue_.AddRequest(client, [this, client, message](bool evict_if_full, PlasmaObject *result) {
             return HandleCreateObjectRequest(client, message, evict_if_full, result);
           });
+      RAY_LOG(DEBUG) << "Received create request for object " << object_id << " assigned request ID " << req_id;
       ProcessCreateRequests();
+      ReplyToCreateClient(client, object_id, req_id);
+    } break;
+    case fb::MessageType::PlasmaCreateRetryRequest: {
+      auto request = flatbuffers::GetRoot<fb::PlasmaCreateRetryRequest>(input);
+      RAY_DCHECK(plasma::VerifyFlatbuffer(request, input, input_size));
+      const auto &object_id = ObjectID::FromBinary(request->object_id()->str());
+      RAY_LOG(DEBUG) << "Received create retry request for object " << object_id << " request ID " << request->request_id();
+      ReplyToCreateClient(client, object_id, request->request_id());
     } break;
     case fb::MessageType::PlasmaAbortRequest: {
       RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
@@ -1109,6 +1122,22 @@ void PlasmaStore::ProcessCreateRequests() {
           create_timer_ = nullptr;
           ProcessCreateRequests();
         }, retry_after_ms);
+  }
+}
+
+void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client, const ObjectID &object_id, uint64_t req_id) {
+  PlasmaObject result = {};
+  PlasmaError error;
+  bool finished = create_request_queue_.GetRequestResult(req_id, &result, &error);
+  if (finished) {
+    RAY_LOG(DEBUG) << "Finishing create request " << req_id;
+    SendCreateReply(client, object_id, result, error);
+    if (error == PlasmaError::OK && result.device_num == 0) {
+      static_cast<void>(client->SendFd(result.store_fd));
+    }
+  } else {
+    RAY_LOG(DEBUG) << "Create request not finished, client should retry: " << req_id;
+    SendUnfinishedCreateReply(client, object_id, req_id);
   }
 }
 
