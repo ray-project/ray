@@ -2,6 +2,7 @@ from collections import Counter
 import shutil
 import tempfile
 import copy
+import numpy as np
 import os
 import time
 import unittest
@@ -1018,6 +1019,22 @@ class TrainableFunctionApiTest(unittest.TestCase):
             time_budget_s=datetime.timedelta(seconds=3))
         diff = time.time() - start
         self.assertLess(diff, 9)
+
+    def testInfiniteTrials(self):
+        def train(config):
+            time.sleep(0.5)
+            tune.report(np.random.uniform(-10., 10.))
+
+        start = time.time()
+        out = tune.run(train, num_samples=-1, time_budget_s=10)
+        taken = time.time() - start
+
+        # Allow for init time overhead
+        self.assertLessEqual(taken, 20.)
+        self.assertGreaterEqual(len(out.trials), 0)
+
+        status = dict(Counter([trial.status for trial in out.trials]))
+        self.assertGreaterEqual(status["TERMINATED"], 1)
 
     def testMetricCheckingEndToEnd(self):
         from ray import tune
