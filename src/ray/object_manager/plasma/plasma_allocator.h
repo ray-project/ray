@@ -30,14 +30,14 @@ class PlasmaAllocator {
   /// \param alignment Memory alignment.
   /// \param bytes Number of bytes.
   /// \return Pointer to allocated memory.
-  static void* Memalign(size_t alignment, size_t bytes);
+  static void *Memalign(size_t alignment, size_t bytes);
 
   /// Frees the memory space pointed to by mem, which must have been returned by
   /// a previous call to Memalign()
   ///
   /// \param mem Pointer to memory to free.
   /// \param bytes Number of bytes to be freed.
-  static void Free(void* mem, size_t bytes);
+  static void Free(void *mem, size_t bytes);
 
   /// Sets the memory footprint limit for Plasma.
   ///
