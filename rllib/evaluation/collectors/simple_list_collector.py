@@ -1,7 +1,7 @@
 import collections
 import logging
 import numpy as np
-from typing import List, Any, Dict, Tuple, TYPE_CHECKING, Union
+from typing import Any, List, Dict, Optional, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import _SampleCollector
@@ -204,6 +204,9 @@ class _PolicyCollector:
         """Initializes a _PolicyCollector instance."""
 
         self.buffers: Dict[str, List] = collections.defaultdict(list)
+        # Identifier used to group different batches from different episodes
+        # together in this one collector prior to a final multi-agent build.
+        #self.bucket_id = bucket_id
         # The total timestep count for all agents that use this policy.
         # NOTE: This is not an env-step count (across n agents). AgentA and
         # agentB, both using this policy, acting in the same episode and both
@@ -231,6 +234,8 @@ class _PolicyCollector:
             self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
         self.count += batch.count
+        # Reset bucket ID for re-use.
+        #self.bucket_id = None
 
     def build(self):
         """Builds a SampleBatch for this policy from the collected data.
@@ -248,7 +253,17 @@ class _PolicyCollector:
         self.buffers.clear()
         # Reset count to 0.
         self.count = 0
+        # Reset bucket ID for re-use.
+        #self.bucket_id = None
         return batch
+
+    
+class _PolicyCollectorGroup:
+    def __init__(self, policy_map):
+        self.policy_collectors = {
+            pid: _PolicyCollector() for pid in policy_map.keys()
+        }
+        self.count = 0
 
 
 class _SimpleListCollector(_SampleCollector):
@@ -259,6 +274,8 @@ class _SimpleListCollector(_SampleCollector):
     per agent. When an agent is done, then its local batch is appended into the
     corresponding policy batch for the agent's policy.
     """
+
+    #_next_bucket_id = 0
 
     def __init__(self,
                  policy_map: Dict[PolicyID, Policy],
@@ -285,14 +302,18 @@ class _SimpleListCollector(_SampleCollector):
             1000, rollout_fragment_length *
             10) if rollout_fragment_length != float("inf") else 5000
 
-        # Build each Policies' single collector.
-        self.policy_collectors = {}
+        ## Build each Policies' single collector.
+        #self._free_policy_collector_buckets = {}
+        #self._used_policy_collector_buckets = {}
+        #self.policy_collectors = collections.defaultdict(dict)
         # Whenever we observe a new episode+agent, add a new
         # _SingleTrajectoryCollector.
         self.agent_collectors: Dict[Tuple[EpisodeID, AgentID],
                                     _AgentCollector] = {}
         # Internal agent-key-to-policy-id map.
         self.agent_key_to_policy_id = {}
+        #TODO
+        self.policy_collector_groups = []
 
         # Agents to collect data from for the next forward pass (per policy).
         self.forward_pass_agent_keys = {pid: [] for pid in policy_map.keys()}
@@ -300,8 +321,10 @@ class _SimpleListCollector(_SampleCollector):
 
         # Maps episode index to env step counts (already built inside a
         # `_PolicyCollector` object).
-        self.built_env_steps_per_env_id: Dict[EnvID, int] = \
-            collections.defaultdict(int)
+        #self.built_env_steps_per_builder_id: Dict[int, int] = \
+        #    collections.defaultdict(int)
+        #self.episode_id_to_builder_id = {}
+
         # Maps episode ID to the (non-built) env steps taken in this episode.
         self.episode_steps: Dict[EpisodeID, int] = \
             collections.defaultdict(int)
@@ -313,9 +336,12 @@ class _SimpleListCollector(_SampleCollector):
         episode = self.episodes[episode_id]
         self.episode_steps[episode_id] += 1
         episode.length += 1
-        env_steps = \
-            self.built_env_steps_per_env_id[episode.env_id] + \
-            self.episode_steps[episode_id]
+        if episode.length == 1:
+            episode.batch_builder = self.policy_collector_groups.pop() if self.policy_collector_groups else _PolicyCollectorGroup()
+
+        #TODO: this is not correct.
+        env_steps = 0#sum(self.built_env_steps_per_bucket_id.values()) + \
+            #sum(self.episode_steps.values())
         if (env_steps > self.large_batch_threshold
                 and log_once("large_batch_warning")):
             logger.warning(
@@ -360,7 +386,7 @@ class _SimpleListCollector(_SampleCollector):
 
         self.episodes[episode.episode_id] = episode
 
-        self._add_to_next_inference_call(agent_key, env_id)
+        self._add_to_next_inference_call(agent_key)
 
     @override(_SampleCollector)
     def add_action_reward_next_obs(self, episode_id: EpisodeID,
@@ -380,7 +406,7 @@ class _SimpleListCollector(_SampleCollector):
         self.agent_collectors[agent_key].add_action_reward_next_obs(values)
 
         if not agent_done:
-            self._add_to_next_inference_call(agent_key, env_id)
+            self._add_to_next_inference_call(agent_key)
 
     @override(_SampleCollector)
     def total_env_steps(self) -> int:
@@ -420,7 +446,7 @@ class _SimpleListCollector(_SampleCollector):
     @override(_SampleCollector)
     def postprocess_episode(self,
                             episode: MultiAgentEpisode,
-                            policy_collector_env_id: EnvID,
+                            #bucket_id: Optional[EnvID] = None,
                             is_done: bool = False,
                             check_dones: bool = False) -> None:
         episode_id = episode.episode_id
@@ -495,6 +521,7 @@ class _SimpleListCollector(_SampleCollector):
 
         # Append into policy batches and reset.
         from ray.rllib.evaluation.rollout_worker import get_global_worker
+        #policy_collectors, bucket_id = self._get_policy_collectors(bucket_id)
         for agent_id, post_batch in sorted(post_batches.items()):
             pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
@@ -508,32 +535,49 @@ class _SimpleListCollector(_SampleCollector):
                 original_batches=pre_batches)
             # Add the postprocessed SampleBatch to the policy collectors for
             # training.
-            p_key = (pid, policy_collector_env_id)
-            if p_key not in self.policy_collectors:
-                self.policy_collectors[p_key] = _PolicyCollector()
-            self.policy_collectors[p_key].add_postprocessed_batch_for_training(
+            #p_key = (pid, policy_collector_env_id)
+            #p_key = (pid, episode.episode_id)
+            #if p_key not in self.policy_collectors:
+            #    self.policy_collectors[p_key] =
+            #self.policy_collectors[p_key].add_postprocessed_batch_for_training(
+            #    post_batch, policy.view_requirements)
+            episode.batch_builder.policy_collectors[pid].add_postprocessed_batch_for_training(
                 post_batch, policy.view_requirements)
+            #self.available_policy_collectors[pid].append(
+            #    self.policy_collectors[p_key])
+            #self.available_policy_collectors[pid].append(
+            #    policy_collectors[pid])
 
         env_steps = self.episode_steps[episode_id]
-        self.built_env_steps_per_env_id[policy_collector_env_id] += env_steps
+        episode.batch_builder.count += env_steps
+        #self.built_env_steps_per_bucket_id[bucket_id] += env_steps
 
         if is_done:
             del self.episode_steps[episode_id]
             del self.episodes[episode_id]
+            # Make PolicyCollectorGroup available for more agent batches in
+            # other episodes. Do not reset count to 0.
+            self.policy_collector_groups.append(episode.batch_builder)
         else:
             self.episode_steps[episode_id] = 0
+        #return bucket_id
 
     @override(_SampleCollector)
-    def build_multi_agent_batch(self, env_steps: int, env_id: EnvID) -> \
+    def build_multi_agent_batch(self, env_steps: int, episode: MultiAgentEpisode) -> \
             Union[MultiAgentBatch, SampleBatch]:
-        ma_batch = MultiAgentBatch.wrap_as_needed(
-            {
-                pid: collector.build()
-                for (pid, e_id), collector in self.policy_collectors.items()
-                if collector.count > 0 and env_id == e_id
-            },
-            env_steps=env_steps)
-        del self.built_env_steps_per_env_id[env_id]
+
+        ma_batch = {}
+        for (pid, e_id), collector in episode.batch_builder.policy_collectors.items():
+            if collector.count > 0:
+                ma_batch[pid] = collector.build()
+        # Make PolicyCollector available for recycling.
+        episode.batch_builder.count = 0
+        self.policy_collector_groups.append(episode.batch_builder)
+        #del self.built_env_steps_per_bucket_id[bucket_id]
+
+        # Create the batch.
+        ma_batch = MultiAgentBatch.wrap_as_needed(ma_batch, env_steps=env_steps)
+
         return ma_batch
 
     @override(_SampleCollector)
@@ -543,26 +587,21 @@ class _SimpleListCollector(_SampleCollector):
         # Loop through ongoing episodes and see whether their length plus
         # what's already in the policy collectors reaches the fragment-len.
         for episode_id, episode in self.episodes.items():
-            built_env_steps_per_env_id = set(
-                self.built_env_steps_per_env_id.keys())
-            for env_id in built_env_steps_per_env_id:
-                built_env_steps = self.built_env_steps_per_env_id[env_id]
-                env_steps = built_env_steps + self.episode_steps[episode_id]
-                # Reached the fragment-len -> We should build an MA-Batch.
-                if env_steps >= self.rollout_fragment_length:
-                    assert env_steps == self.rollout_fragment_length
-                    # If we reached the fragment-len only because of `episode_id`
-                    # (still ongoing) -> postprocess `episode_id` first.
-                    if built_env_steps < self.rollout_fragment_length:
-                        self.postprocess_episode(episode, policy_collector_env_id=env_id, is_done=False)
-                    # Build the MA-batch and return.
-                    batch = self.build_multi_agent_batch(
-                        env_steps=env_steps, env_id=env_id)
-                    batches.append(batch)
+            env_steps = episode.batch_builder.count + self.episode_steps[episode_id]
+            # Reached the fragment-len -> We should build an MA-Batch.
+            if env_steps >= self.rollout_fragment_length:
+                assert env_steps == self.rollout_fragment_length
+                # If we reached the fragment-len only because of `episode_id`
+                # (still ongoing) -> postprocess `episode_id` first.
+                if episode.batch_builder.count < self.rollout_fragment_length:
+                    self.postprocess_episode(episode, is_done=False)
+                # Build the MA-batch and return.
+                batch = self.build_multi_agent_batch(
+                    env_steps=env_steps, episode=episode)
+                batches.append(batch)
         return batches
 
-    def _add_to_next_inference_call(self, agent_key: Tuple[EpisodeID, AgentID],
-                                    env_id: EnvID) -> None:
+    def _add_to_next_inference_call(self, agent_key: Tuple[EpisodeID, AgentID]) -> None:
         """Adds an Agent key (episode+agent IDs) to the next inference call.
 
         This makes sure that the agent's current data (in the trajectory) is
@@ -572,7 +611,6 @@ class _SimpleListCollector(_SampleCollector):
         Args:
             agent_key (Tuple[EpisodeID, AgentID]: A unique agent key (across
                 vectorized environments).
-            env_id (EnvID): The environment index (in a vectorized setup).
         """
         pid = self.agent_key_to_policy_id[agent_key]
         idx = self.forward_pass_size[pid]
@@ -592,3 +630,27 @@ class _SimpleListCollector(_SampleCollector):
                 inference pointers.
         """
         self.forward_pass_size[policy_id] = 0
+
+    #TODO
+    def _OBSOLETED_get_policy_collectors(self, bucket_id=None):
+        # Get any available bucket of PolicyCollectors.
+        if bucket_id is None:
+            if not self._free_policy_collector_buckets:
+                collectors = {}
+                bucket_id = self._next_bucket_id
+                for pid in self.policy_map.keys():
+                    collectors[pid] = _PolicyCollector(bucket_id=bucket_id)
+                self._used_policy_collector_buckets[bucket_id] = collectors
+                self._next_bucket_id += 1
+                return collectors, bucket_id
+            else:
+                collectors = self._free_policy_collector_buckets.pop()
+                self._used_policy_collector_buckets[next(iter(collectors.values())).bucket_id] = collectors
+                return collectors
+        # Get a specific bucket of PolicyCollectors.
+        else:
+            if bucket_id in self._used_policy_collector_buckets:
+                return self._used_policy_collector_buckets[bucket_id]
+            else:
+                raise ValueError(
+                    "policy collector with ID {} not found!".format(bucket_id))

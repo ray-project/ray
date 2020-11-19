@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABCMeta
 import logging
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -145,7 +145,7 @@ class _SampleCollector(metaclass=ABCMeta):
     def postprocess_episode(self,
                             episode: MultiAgentEpisode,
                             is_done: bool = False,
-                            check_dones: bool = False) -> None:
+                            check_dones: bool = False) -> Any:
         """Postprocesses all agents' trajectories in a given episode.
 
         Generates (single-trajectory) SampleBatches for all Policies/Agents and
@@ -162,18 +162,26 @@ class _SampleCollector(metaclass=ABCMeta):
                 (all agents are done).
             check_dones (bool): Whether we need to check that all agents'
                 trajectories have dones=True at the end.
+
+        Returns:
+            Any: An ID that can be used in `build_multi_agent_batch` to
+                retrieve the samples that have been postprocessed as a
+                ready-built MultiAgentBatch.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def build_multi_agent_batch(self, env_steps: int, env_id: EnvID) -> \
+    def build_multi_agent_batch(
+            self, env_steps: int, policy_collector_bucket_id: EnvID) -> \
             Union[MultiAgentBatch, SampleBatch]:
         """Builds a MultiAgentBatch of size=env_steps from the collected data.
 
         Args:
             env_steps (int): The sum of all env-steps (across all agents) taken
                 so far.
-            env_id (EnvID): The environment ID for which to build the batch.
+            policy_collector_bucket_id (EnvID): A unique ID (usually an env
+                ID), indicating the bucket of policy specific collectors (e.g.
+                _PolicyCollector), from which to build the multi-agent batch.
 
         Returns:
             Union[MultiAgentBatch, SampleBatch]: Returns the accumulated
