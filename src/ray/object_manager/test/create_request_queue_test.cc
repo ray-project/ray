@@ -296,6 +296,43 @@ TEST_F(CreateRequestQueueTest, TestClientDisconnected) {
   AssertNoLeaks();
 }
 
+TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
+  auto request = [&](bool evict_if_full, PlasmaObject *result) {
+    result->store_fd = 1234;
+    return PlasmaError::OK;
+  };
+  auto client = std::make_shared<MockClient>();
+
+  // Queue is empty, request can be fulfilled.
+  auto result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request);
+  ASSERT_EQ(result.first.store_fd, 1234);
+  ASSERT_EQ(result.second, PlasmaError::OK);
+
+  // Request would block.
+  auto req_id = queue_.AddRequest(ObjectID::Nil(), client, request);
+  result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request);
+  ASSERT_EQ(result.first.store_fd, 0);
+  ASSERT_EQ(result.second, PlasmaError::OutOfMemory);
+  ASSERT_TRUE(queue_.ProcessRequests().ok());
+
+  // Queue is empty again, request can be fulfilled.
+  result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request);
+  ASSERT_EQ(result.first.store_fd, 1234);
+  ASSERT_EQ(result.second, PlasmaError::OK);
+
+  // Queue is empty, but request would block. Check that we do not attempt to
+  // retry the request.
+  auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
+    return PlasmaError::OutOfMemory;
+  };
+  result = queue_.TryRequestImmediately(ObjectID::Nil(), client, oom_request);
+  ASSERT_EQ(result.first.store_fd, 0);
+  ASSERT_EQ(result.second, PlasmaError::OutOfMemory);
+
+  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::OK);
+  AssertNoLeaks();
+}
+
 }  // namespace plasma
 
 int main(int argc, char **argv) {

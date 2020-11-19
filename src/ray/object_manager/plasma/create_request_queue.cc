@@ -48,6 +48,26 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
   return true;
 }
 
+std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback) {
+  PlasmaObject result = {};
+
+  if (!queue_.empty()) {
+    // There are other requests queued. Return an out-of-memory error
+    // immediately because this request cannot be served.
+    return {result, PlasmaError::OutOfMemory};
+  }
+
+  auto req_id = AddRequest(object_id, client, create_callback);
+  if (!ProcessRequests().ok()) {
+    // If the request was not immediately fulfillable, finish it.
+    RAY_CHECK(!queue_.empty());
+    FinishRequest(queue_.begin());
+  }
+  PlasmaError error;
+  RAY_CHECK(GetRequestResult(req_id, &result, &error));
+  return {result, error};
+}
+
 Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
   // Return an OOM error to the client if we have hit the maximum number of
   // retries.
@@ -84,32 +104,36 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
     }
 
     status = Status::ObjectStoreFull("Object store full, should retry on timeout");
-  } else {
-    if (request->error == PlasmaError::OutOfMemory) {
-      RAY_LOG(ERROR) << "Not enough memory to create object " << request->object_id << " after " << num_retries_ << ", will return OutOfMemory to the client";
-    }
-
-    auto it = fulfilled_requests_.find(request->request_id);
-    RAY_CHECK(it != fulfilled_requests_.end());
-    RAY_CHECK(it->second == nullptr);
-    it->second = std::move(request);
-
-    num_retries_ = 0;
+  } else if (request->error == PlasmaError::OutOfMemory) {
+    RAY_LOG(ERROR) << "Not enough memory to create object " << request->object_id << " after " << num_retries_ << ", will return OutOfMemory to the client";
   }
 
   return status;
 }
 
 Status CreateRequestQueue::ProcessRequests() {
-  for (auto request_it = queue_.begin();
-      request_it != queue_.end(); ) {
+  while (!queue_.empty()) {
+    auto request_it = queue_.begin();
     auto status = ProcessRequest(*request_it);
     if (status.IsTransientObjectStoreFull() || status.IsObjectStoreFull()) {
       return status;
     }
-    request_it = queue_.erase(request_it);
+    FinishRequest(request_it);
   }
   return Status::OK();
+}
+
+void CreateRequestQueue::FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it) {
+  // Fulfill the request.
+  auto &request = *request_it;
+  auto it = fulfilled_requests_.find(request->request_id);
+  RAY_CHECK(it != fulfilled_requests_.end());
+  RAY_CHECK(it->second == nullptr);
+  it->second = std::move(request);
+  queue_.erase(request_it);
+
+  // Reset the number of retries since we are no longer trying this request.
+  num_retries_ = 0;
 }
 
 

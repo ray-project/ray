@@ -51,9 +51,21 @@ class CreateRequestQueue {
   /// \param client The client that sent the request. This is used as a key to
   /// drop this request if the client disconnects.
   /// \param create_callback A callback to attempt to create the object.
+  /// \return A request ID that can be used to get the result.
   uint64_t AddRequest(const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback);
 
   bool GetRequestResult(uint64_t req_id, PlasmaObject *result, PlasmaError *error);
+
+  /// Try to fulfill a request immediately, for clients that cannot retry.
+  ///
+  /// \param object_id The ID of the object to create.
+  /// \param client The client that sent the request. This is used as a key to
+  /// drop this request if the client disconnects.
+  /// \param create_callback A callback to attempt to create the object.
+  /// \return The result of the call. This will return an out-of-memory error
+  /// if there are other requests queued or there is not enough space left in
+  /// the object store, this will return an out-of-memory error.
+  std::pair<PlasmaObject, PlasmaError> TryRequestImmediately(const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback);
 
   /// Process requests in the queue.
   ///
@@ -97,9 +109,13 @@ class CreateRequestQueue {
     PlasmaObject result = {};
   };
 
-  /// Process a single request. Returns the PlasmaError returned by the request
-  /// handler.
+  /// Process a single request. Sets the request's error result to the error
+  /// returned by the request handler inside. Returns OK if the request can be
+  /// finished.
   Status ProcessRequest(std::unique_ptr<CreateRequest> &request);
+
+  /// Finish a queued request and remove it from the queue.
+  void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);
 
   uint64_t next_req_id_ = 1;
 
