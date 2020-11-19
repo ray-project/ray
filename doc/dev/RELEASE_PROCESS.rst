@@ -49,6 +49,11 @@ This document describes the process for creating new releases.
    These suite of tests are similar to the standard long running tests, except these actually run in a multi-node cluster instead of just a simulated one.
    These tests should also run for at least 24 hours without erroring or hanging.
 
+   **IMPORTANT**: check that the test are actually running (printing output regularly) and aren't
+   just stuck at an iteration. You must also check that the node CPU usage is stable
+   (and not increasing or decreasing over time, which indicates a leak). You can see the head node
+   and worker node CPU utilizations in the AWS console.
+
    3. Multi-node regression tests
 
    Follow the same instruction as long running stress tests. The large scale distributed
@@ -63,13 +68,14 @@ This document describes the process for creating new releases.
      It currently uses ``cluster_util`` to emulate the cluster testing. It will be converted to 
      real multi-node tests in the future. For now, just make sure the test succeed locally.
 
-   Make sure that these pass. For the RLlib regression tests, see the comment on the
-   file for the pass criteria. For the rest, it will be obvious if they passed.
-   This will use the autoscaler to start a bunch of machines and run some tests.
-   **Caution!**: By default, the stress tests will require expensive GPU instances.
+   Make sure that these pass. For the RLlib regression tests, there shouldn't be any errors
+   and the rewards should be similar to previous releases. For the rest, it will be obvious if
+   they passed.  This will use the autoscaler to start a bunch of machines and run some tests.
+
+   **IMPORTANT**: You must get signoff from the RLlib team for the RLlib test results.
 
    The summaries printed by each test should be checked in under
-   ``doc/dev/release_logs/<version>``.
+   ``doc/dev/release_logs/<version>`` on the **master** branch (make a pull request).
 
    4. Microbenchmarks
 

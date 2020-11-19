@@ -6,12 +6,15 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
+import yaml
 
 import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune.syncer import CommandBasedClient
+from ray.tune.integration.docker import DockerSyncer
+from ray.tune.integration.kubernetes import KubernetesSyncer
+from ray.tune.syncer import CommandBasedClient, detect_sync_to_driver
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -242,6 +245,50 @@ class TestSyncFunctionality(unittest.TestCase):
                 },
                 sync_config=sync_config).trials
             self.assertEqual(mock_sync.call_count, 0)
+
+    def testSyncDetection(self):
+        kubernetes_conf = {
+            "provider": {
+                "type": "kubernetes",
+                "namespace": "test_ray"
+            }
+        }
+        docker_conf = {
+            "docker": {
+                "image": "bogus"
+            },
+            "provider": {
+                "type": "aws"
+            }
+        }
+        aws_conf = {"provider": {"type": "aws"}}
+
+        with tempfile.TemporaryDirectory() as dir:
+            kubernetes_file = os.path.join(dir, "kubernetes.yaml")
+            with open(kubernetes_file, "wt") as fp:
+                yaml.safe_dump(kubernetes_conf, fp)
+
+            docker_file = os.path.join(dir, "docker.yaml")
+            with open(docker_file, "wt") as fp:
+                yaml.safe_dump(docker_conf, fp)
+
+            aws_file = os.path.join(dir, "aws.yaml")
+            with open(aws_file, "wt") as fp:
+                yaml.safe_dump(aws_conf, fp)
+
+            kubernetes_syncer = detect_sync_to_driver(None, kubernetes_file)
+            self.assertTrue(issubclass(kubernetes_syncer, KubernetesSyncer))
+            self.assertEqual(kubernetes_syncer._namespace, "test_ray")
+
+            docker_syncer = detect_sync_to_driver(None, docker_file)
+            self.assertTrue(issubclass(docker_syncer, DockerSyncer))
+
+            aws_syncer = detect_sync_to_driver(None, aws_file)
+            self.assertEqual(aws_syncer, None)
+
+            # Should still return DockerSyncer, since it was passed explicitly
+            syncer = detect_sync_to_driver(DockerSyncer, kubernetes_file)
+            self.assertTrue(issubclass(syncer, DockerSyncer))
 
 
 if __name__ == "__main__":

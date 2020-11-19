@@ -26,6 +26,7 @@ py_test_module_list(
     "test_error_ray_not_initialized.py",
     "test_gcs_fault_tolerance.py",
     "test_iter.py",
+    "test_mldataset.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
