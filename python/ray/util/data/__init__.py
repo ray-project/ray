@@ -4,7 +4,6 @@ from typing import Iterable
 import pandas as pd
 
 from ray.util.data.dataset import MLDataset
-from ray.util.data.interface import TensorDataset
 from ray.util.data.parquet import read_parquet
 from ray.util.iter import T, ParallelIterator
 
@@ -91,4 +90,4 @@ def from_parallel_iter(para_it: ParallelIterator[T],
     return MLDataset.from_parallel_it(para_it, batch_size, repeated)
 
 
-__all__ = ["from_parallel_iter", "read_parquet", "MLDataset", "TensorDataset"]
+__all__ = ["from_parallel_iter", "read_parquet", "MLDataset"]

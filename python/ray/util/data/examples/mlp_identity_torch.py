@@ -57,6 +57,7 @@ def main():
     trainer = TorchTrainer(
         num_workers=2,
         training_operator_cls=make_train_operator(torch_ds),
+        add_dist_sampler=False,
         config={"batch_size": 32})
     for i in range(10):
         trainer.train(num_steps=100)

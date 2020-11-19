@@ -3,10 +3,10 @@ from typing import Any, List, Optional
 
 import tensorflow as tf
 
-from ray.util.data import MLDataset, TensorDataset
+from ray.util.data import MLDataset
 
 
-class TFMLDataset(TensorDataset):
+class TFMLDataset:
     """ A TFMLDataset which converted from MLDataset
 
     .. code-block:: python

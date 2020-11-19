@@ -850,6 +850,7 @@ def test_torch_dataset(ray_start_4_cpus, use_local):
         training_operator_cls=operator,
         num_workers=2,
         use_local=use_local,
+        add_dist_sampler=False,
         config={"batch_size": 32})
     for i in range(10):
         trainer.train(num_steps=100)
