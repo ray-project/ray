@@ -198,6 +198,7 @@ Papers
    ray-overview/index.rst
    ray-libraries.rst
    installation.rst
+   versions.rst
 
 .. toctree::
    :hidden:
