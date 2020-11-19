@@ -100,7 +100,7 @@ def inspect_serializability(base_obj, name=None, depth=3, _failure_set=None):
         depth (int): Depth of the scope stack to walk through. Defaults to 3.
 
     Returns:
-        True if serializable.
+        bool: True if serializable.
         set: Set of objects that cloudpickle is unable to serialize.
     """
     top_level = False
