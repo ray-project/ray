@@ -142,7 +142,7 @@ class DataOrganizer:
 
         node_stats.pop("coreWorkersStats", None)
 
-        view_data = node_stats.get(node_stats["viewData"], [])
+        view_data = node_stats.get("viewData", [])
         ray_stats = cls._extract_view_data(
             view_data,
             {"object_store_used_memory", "object_store_available_memory"})
