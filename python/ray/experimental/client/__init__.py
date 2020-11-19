@@ -6,55 +6,46 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# _client_api has to be external to the API stub, below.
+# Otherwise, ray.remote() that contains ray.remote()
+# contains a reference to the RayAPIStub, therefore a
+# reference to the _client_api, and then tries to pickle
+# the thing.
 _client_api: Optional[APIImpl] = None
 
 
-def check_client_api():
-    global _client_api
-    if _client_api is None:
-        logger.info(
-            "No client API initialized: probably a worker, using core ray")
-        from ray.experimental.client.core_ray_api import set_client_api_as_ray
-        set_client_api_as_ray()
+class RayAPIStub:
+    def connect(self, conn_str):
+        global _client_api
+        from ray.experimental.client.worker import Worker
+        _client_worker = Worker(conn_str)
+        _client_api = ClientAPI(_client_worker)
+
+    def disconnect(self):
+        global _client_api
+        if _client_api is not None:
+            _client_api.close()
+        _client_api = None
+
+    def __getattr__(self, key: str):
+        global _client_api
+        self.__check_client_api()
+        return _client_api.__getattribute__(key)
+
+    def __check_client_api(self):
+        global _client_api
+        if _client_api is None:
+            from ray.experimental.client.server.core_ray_api import CoreRayAPI
+            _client_api = CoreRayAPI()
 
 
-def get(*args, **kwargs):
-    global _client_api
-    check_client_api()
-    return _client_api.get(*args, **kwargs)
+ray = RayAPIStub()
 
-
-def put(*args, **kwargs):
-    global _client_api
-    check_client_api()
-    return _client_api.put(*args, **kwargs)
-
-
-def remote(*args, **kwargs):
-    global _client_api
-    check_client_api()
-    return _client_api.remote(*args, **kwargs)
-
-
-def call_remote(f, *args, **kwargs):
-    global _client_api
-    check_client_api()
-    return _client_api.call_remote(f, *args, **kwargs)
-
-
-def connect(conn_str):
-    global _client_api
-    from ray.experimental.client.worker import Worker
-    _client_worker = Worker(conn_str)
-    _client_api = ClientAPI(_client_worker)
-
-
-def disconnect():
-    global _client_api
-    _client_api.close()
-    _client_api = None
-
-
-def _set_client_api(api: Optional[APIImpl]):
-    global _client_api
-    _client_api = api
+# Someday we might add methods in this module so that someone who
+# tries to `import ray_client as ray` -- as a module, instead of
+# `from ray_client import ray` -- as the API stub
+# still gets expected functionality. This is the way the ray package
+# worked in the past.
+#
+# This really calls for PEP 562: https://www.python.org/dev/peps/pep-0562/
+# But until Python 3.6 is EOL, here we are.

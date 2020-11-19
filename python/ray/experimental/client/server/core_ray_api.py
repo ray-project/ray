@@ -19,6 +19,9 @@ class CoreRayAPI(APIImpl):
     def put(self, *args, **kwargs):
         return ray.put(*args, **kwargs)
 
+    def wait(self, *args, **kwargs):
+        return ray.wait(*args, **kwargs)
+
     def remote(self, *args, **kwargs):
         return ray.remote(*args, **kwargs)
 
@@ -27,8 +30,3 @@ class CoreRayAPI(APIImpl):
 
     def close(self, *args, **kwargs):
         return None
-
-
-def set_client_api_as_ray():
-    ray_api = CoreRayAPI()
-    ray.experimental.client._set_client_api(ray_api)

@@ -143,7 +143,6 @@ install_requires = [
     "colorama",
     "colorful",
     "filelock",
-    "google",
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
