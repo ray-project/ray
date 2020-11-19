@@ -198,7 +198,6 @@ Papers
    ray-overview/index.rst
    ray-libraries.rst
    installation.rst
-   versions.rst
 
 .. toctree::
    :hidden:
@@ -311,6 +310,7 @@ Papers
 
    development.rst
    whitepaper.rst
+   versions.rst
    debugging.rst
    profiling.rst
    fault-tolerance.rst
