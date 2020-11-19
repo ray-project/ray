@@ -291,7 +291,7 @@ class TupleSpyModel(TFModelV2):
 class NestedSpacesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=5, local_mode=True)#TODO
+        ray.init(num_cpus=5)
 
     @classmethod
     def tearDownClass(cls):

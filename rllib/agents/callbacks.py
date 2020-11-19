@@ -6,7 +6,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.typing import AgentID, EnvID, PolicyID
+from ray.rllib.utils.typing import AgentID, PolicyID
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -31,10 +31,14 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+    def on_episode_start(self,
+                         *,
+                         worker: "RolloutWorker",
+                         base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
                          episode: MultiAgentEpisode,
-                         env_index: Optional[int] = None, **kwargs) -> None:
+                         env_index: Optional[int] = None,
+                         **kwargs) -> None:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -63,9 +67,13 @@ class DefaultCallbacks:
                 "episode": episode,
             })
 
-    def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+    def on_episode_step(self,
+                        *,
+                        worker: "RolloutWorker",
+                        base_env: BaseEnv,
                         episode: MultiAgentEpisode,
-                        env_index: Optional[int] = None, **kwargs) -> None:
+                        env_index: Optional[int] = None,
+                        **kwargs) -> None:
         """Runs on each episode step.
 
         Args:
@@ -91,10 +99,14 @@ class DefaultCallbacks:
                 "episode": episode
             })
 
-    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+    def on_episode_end(self,
+                       *,
+                       worker: "RolloutWorker",
+                       base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
                        episode: MultiAgentEpisode,
-                       env_index: Optional[int] = None, **kwargs) -> None:
+                       env_index: Optional[int] = None,
+                       **kwargs) -> None:
         """Runs when an episode is done.
 
         Args:

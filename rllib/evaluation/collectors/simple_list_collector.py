@@ -1,7 +1,7 @@
 import collections
 import logging
 import numpy as np
-from typing import Any, List, Dict, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Any, List, Dict, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import _SampleCollector
@@ -250,11 +250,12 @@ class _PolicyCollector:
         self.count = 0
         return batch
 
-    
+
 class _PolicyCollectorGroup:
     def __init__(self, policy_map):
         self.policy_collectors = {
-            pid: _PolicyCollector() for pid in policy_map.keys()
+            pid: _PolicyCollector()
+            for pid in policy_map.keys()
         }
         self.count = 0
 
@@ -319,15 +320,15 @@ class _SimpleListCollector(_SampleCollector):
         self.episode_steps[episode_id] += 1
         episode.length += 1
         assert episode.batch_builder is not None
+        env_steps = episode.batch_builder.count
+        num_observations = sum(
+            c.count for c in episode.batch_builder.policy_collectors.values())
 
-        #TODO: this is not correct.
-        env_steps = 0#sum(self.built_env_steps_per_bucket_id.values()) + \
-            #sum(self.episode_steps.values())
-        if (env_steps > self.large_batch_threshold
-                and log_once("large_batch_warning")):
+        if num_observations > self.large_batch_threshold and \
+                log_once("large_batch_warning"):
             logger.warning(
-                "More than {} env steps for episode {} ".format(
-                    env_steps, episode_id) +
+                "More than {} observations in {} env steps for "
+                "episode {} ".format(num_observations, env_steps, episode_id) +
                 "are buffered in the sampler. If this is more than you "
                 "expected, check that that you set a horizon on your "
                 "environment correctly and that it terminates at some point. "
@@ -522,7 +523,7 @@ class _SimpleListCollector(_SampleCollector):
             # training.
             policy_collector_group.policy_collectors[
                 pid].add_postprocessed_batch_for_training(
-                post_batch, policy.view_requirements)
+                    post_batch, policy.view_requirements)
 
         env_steps = self.episode_steps[episode_id]
         policy_collector_group.count += env_steps

@@ -117,7 +117,7 @@ class MultiServing(ExternalEnv):
 class TestExternalEnv(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(ignore_reinit_error=True, local_mode=True)#TODO
+        ray.init(ignore_reinit_error=True)
 
     @classmethod
     def tearDownClass(cls) -> None:

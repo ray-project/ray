@@ -160,7 +160,11 @@ class _SampleCollector(metaclass=ABCMeta):
             episode (MultiAgentEpisode): The Episode object for which
                 to post-process data.
             is_done (bool): Whether the given episode is actually terminated
-                (all agents are done).
+                (all agents are done OR we hit a hard horizon). If True, the
+                episode will no longer be used/continued and we may need to
+                recycle/erase it internally. If a soft-horizon is hit, the
+                episode will continue to be used and `is_done` should be set
+                to False here.
             check_dones (bool): Whether we need to check that all agents'
                 trajectories have dones=True at the end.
             build (bool): Whether to build a MultiAgentBatch from the given

@@ -1080,9 +1080,8 @@ def _process_observations_w_trajectory_view_api(
             episode=episode,
             env_index=env_id)
 
-        # Episode is done for all agents
-        # (dones[__all__] == True or hit horizon).
-        # Make sure postprocessor stays within one episode.
+        # Episode is done for all agents (dones[__all__] == True)
+        # or we hit the horizon.
         if all_agents_done:
             is_done = dones[env_id]["__all__"]
             check_dones = is_done and not no_done_at_end
@@ -1094,10 +1093,9 @@ def _process_observations_w_trajectory_view_api(
             # episodes.
             ma_sample_batch = _sample_collector.postprocess_episode(
                 episode,
-                is_done=is_done,
+                is_done=is_done or (hit_horizon and not soft_horizon),
                 check_dones=check_dones,
-                build=not multiple_episodes_in_batch
-            )
+                build=not multiple_episodes_in_batch)
             if ma_sample_batch:
                 outputs.append(ma_sample_batch)
 
