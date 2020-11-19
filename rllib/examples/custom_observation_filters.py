@@ -132,6 +132,10 @@ if __name__ == "__main__":
         "num_workers": 0,
     }
 
-    results = tune.run("PG", args.run, config=config, stop={"training_iteration": args.stop_iters})
+    results = tune.run(
+        "PG",
+        args.run,
+        config=config,
+        stop={"training_iteration": args.stop_iters})
 
     ray.shutdown()
