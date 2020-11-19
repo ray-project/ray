@@ -218,9 +218,14 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
     auto get_node_info_func = [this](const NodeID &node_id) {
       return gcs_client_->Nodes().Get(node_id);
     };
-    cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(
-        new ClusterTaskManager(self_node_id_, new_resource_scheduler_,
-                               fulfills_dependencies_func, get_node_info_func));
+    auto is_owner_alive = [this](const WorkerID &owner_worker_id,
+                                 const NodeID &owner_node_id) {
+      return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
+               failed_nodes_cache_.count(owner_node_id) > 0);
+    };
+    cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
+        self_node_id_, new_resource_scheduler_, fulfills_dependencies_func,
+        is_owner_alive, get_node_info_func));
   }
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
@@ -558,6 +563,36 @@ void NodeManager::HandleRequestObjectSpillage(
       });
 }
 
+void NodeManager::HandleReleaseUnusedBundles(
+    const rpc::ReleaseUnusedBundlesRequest &request,
+    rpc::ReleaseUnusedBundlesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
+  RAY_LOG(DEBUG) << "Releasing unused bundles.";
+  std::unordered_set<BundleID, pair_hash> in_use_bundles;
+  for (int index = 0; index < request.bundles_in_use_size(); ++index) {
+    const auto &bundle_id = request.bundles_in_use(index).bundle_id();
+    in_use_bundles.emplace(
+        std::make_pair(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                       bundle_id.bundle_index()));
+  }
+
+  // TODO(ffbin): Kill all workers that are currently associated with the unused bundles.
+  // At present, the worker does not have a bundle ID, so we cannot filter out the workers
+  // used by unused bundles. We will solve it in next pr.
+
+  // Return unused bundle resources.
+  for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
+    if (0 == in_use_bundles.count(iter->first)) {
+      ReturnBundleResources(*iter->second);
+      bundle_spec_map_.erase(iter++);
+    } else {
+      iter++;
+    }
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
 // under normal conditions and sometimes doesn't send a warning under actual deadlock
 // conditions. The current logic is to push a warning when: all running tasks are
@@ -764,6 +799,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
+      // TODO (Alex): Cancel all pending child tasks of the tasks whose owners have failed
+      // because the owner could've submitted lease requests before failing.
       if (!worker_id.IsNil()) {
         // If the failed worker was a leased worker's owner, then kill the leased worker.
         if (owner_worker_id == worker_id) {
@@ -1284,7 +1321,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 
   // If the worker was assigned a task, mark it as finished.
   if (!worker->GetAssignedTaskId().IsNil()) {
-    worker_idle = FinishAssignedTask(*worker);
+    worker_idle = FinishAssignedTask(worker);
   }
 
   if (worker_idle) {
@@ -1986,6 +2023,8 @@ bool NodeManager::PrepareBundle(
     // Register bundle state.
     bundle_state->state = CommitState::PREPARED;
     bundle_state_map_.emplace(bundle_id, bundle_state);
+    bundle_spec_map_.emplace(
+        bundle_id, std::make_shared<BundleSpecification>(bundle_spec.GetMessage()));
   }
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
 }
@@ -2509,7 +2548,10 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   });
 }
 
-bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
+bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {
+  // TODO (Alex): We should standardize to pass
+  // std::shared_ptr<WorkerInterface> instead of refs.
+  auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
@@ -2518,8 +2560,7 @@ bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
     task = worker.GetAssignedTask();
     // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ?
     if (worker.GetAllocatedInstances() != nullptr) {
-      new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
-      worker.ClearAllocatedInstances();
+      cluster_task_manager_->HandleTaskFinished(worker_ptr);
     }
   } else {
     // (See design_docs/task_states.rst for the state transition diagram.)

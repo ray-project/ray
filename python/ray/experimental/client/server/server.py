@@ -6,7 +6,6 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
-from ray.experimental.client.core_ray_api import set_client_api_as_ray
 from ray.experimental.client.common import convert_from_arg
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
@@ -34,6 +33,37 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.object_refs[objectref.binary()] = objectref
         logger.info("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary())
+
+    def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
+        object_refs = [cloudpickle.loads(o) for o in request.object_refs]
+        num_returns = request.num_returns
+        timeout = request.timeout
+        object_refs_ids = []
+        for object_ref in object_refs:
+            if object_ref.id not in self.object_refs:
+                return ray_client_pb2.WaitResponse(valid=False)
+            object_refs_ids.append(self.object_refs[object_ref.id])
+        try:
+            ready_object_refs, remaining_object_refs = ray.wait(
+                object_refs_ids,
+                num_returns=num_returns,
+                timeout=timeout if timeout != -1 else None)
+        except Exception:
+            # TODO(ameer): improve exception messages.
+            return ray_client_pb2.WaitResponse(valid=False)
+        logger.info("wait: %s %s" % (str(ready_object_refs),
+                                     str(remaining_object_refs)))
+        ready_object_ids = [
+            ready_object_ref.binary() for ready_object_ref in ready_object_refs
+        ]
+        remaining_object_ids = [
+            remaining_object_ref.binary()
+            for remaining_object_ref in remaining_object_refs
+        ]
+        return ray_client_pb2.WaitResponse(
+            valid=True,
+            ready_object_ids=ready_object_ids,
+            remaining_object_ids=remaining_object_ids)
 
     def Schedule(self, task, context=None):
         logger.info("schedule: %s" % task)
@@ -78,7 +108,6 @@ if __name__ == "__main__":
     logging.basicConfig(level="INFO")
     # TODO(barakmich): Perhaps wrap ray init
     ray.init()
-    set_client_api_as_ray()
     server = serve("0.0.0.0:50051")
     try:
         while True:
