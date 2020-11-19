@@ -74,10 +74,10 @@ def test_raylet_tempfiles(shutdown_only):
     assert top_levels.issuperset({"sockets", "logs"})
     log_files = set(os.listdir(node.get_logs_dir_path()))
     log_files_expected = {
-        "log_monitor.out", "log_monitor.err", "plasma_store.out",
-        "plasma_store.err", "monitor.out", "monitor.err", "redis-shard_0.out",
-        "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
-        "raylet.err", "gcs_server.out", "gcs_server.err"
+        "log_monitor.log", "plasma_store.out", "plasma_store.err",
+        "monitor.log", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
+        "redis.err", "raylet.out", "raylet.err", "gcs_server.out",
+        "gcs_server.err", "dashboard.log", "dashboard_agent.log"
     }
 
     for expected in log_files_expected:
