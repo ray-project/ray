@@ -66,7 +66,10 @@ class SimpleRollingStat:
 
 
 class CustomFilter(Filter):
-    """Filter that normalizes using mean and std from all obvs"""
+    """
+    Filter that normalizes by using a single mean
+    and std sampled from all obs inputs
+    """
     is_concurrent = False
 
     def __init__(self, shape):
