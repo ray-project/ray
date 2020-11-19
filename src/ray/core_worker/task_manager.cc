@@ -464,7 +464,7 @@ std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
   RAY_LOG(ERROR) << "NUMBER OF PENDING TASKS: " << num_pending_tasks_;
   for (auto it : submissible_tasks_) {
     RAY_LOG(ERROR) << "Getting tasks!! " << it.second.spec.TaskId();
-    if (it.second.pending and it.second.spec.ParentTaskId() == parent_task_id) {
+    if ((it.second.pending) && (it.second.spec.ParentTaskId() == parent_task_id)) {
       ret_vec.push_back(it.first);
     }
   }
