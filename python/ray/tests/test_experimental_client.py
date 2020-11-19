@@ -4,6 +4,21 @@ from ray.experimental.client import ray
 from ray.experimental.client.common import ClientObjectRef
 
 
+def test_generic_fallback(ray_start_regular_shared):
+    server = ray_client_server.serve("localhost:50051")
+    ray.connect("localhost:50051")
+
+    @ray.remote
+    def get_nodes():
+        return ray.nodes()  # Can access the full Ray API in remote methods.
+
+    nodes = ray.get(get_nodes.remote())
+    assert len(nodes) == 1, nodes
+
+    with pytest.raises(AttributeError):
+        print(ray.get_nodes())
+
+
 def test_put_get(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50051")
     ray.connect("localhost:50051")
