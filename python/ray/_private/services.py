@@ -170,6 +170,10 @@ def find_redis_address(address=None):
     The --redis-address here is what is now called the --address, but it
     appears in the default_worker.py and agent.py calls as --redis-address.
     """
+
+    if "RAY_ADDRESS" in os.environ:
+        return os.environ["RAY_ADDRESS"]
+
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:

@@ -269,6 +269,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   });
+  ++counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST];
 }
 
 void GcsPlacementGroupManager::HandleRemovePlacementGroup(
@@ -285,6 +286,7 @@ void GcsPlacementGroupManager::HandleRemovePlacementGroup(
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   });
+  ++counts_[CountType::REMOVE_PLACEMENT_GROUP_REQUEST];
 }
 
 void GcsPlacementGroupManager::RemovePlacementGroup(
@@ -363,6 +365,7 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
   if (!status.ok()) {
     on_done(status, boost::none);
   }
+  ++counts_[CountType::GET_PLACEMENT_GROUP_REQUEST];
 }
 
 void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
@@ -382,6 +385,7 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
   if (!status.ok()) {
     on_done(std::unordered_map<PlacementGroupID, PlacementGroupTableData>());
   }
+  ++counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST];
 }
 
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
@@ -470,6 +474,7 @@ void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
   auto callback = [this,
                    done](const std::unordered_map<PlacementGroupID,
                                                   rpc::PlacementGroupTableData> &result) {
+    std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
     for (auto &item : result) {
       auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
       if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
@@ -479,14 +484,41 @@ void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
             item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
           pending_placement_groups_.emplace_back(std::move(placement_group));
         }
+
+        if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
+            item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
+          const auto &bundles = item.second.bundles();
+          for (auto &bundle : bundles) {
+            node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
+          }
+        }
       }
     }
+
+    // Notify raylets to release unused bundles.
+    gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
 
     SchedulePendingPlacementGroups();
     RAY_LOG(INFO) << "Finished loading initial data.";
     done();
   };
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().GetAll(callback));
+}
+
+std::string GcsPlacementGroupManager::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsPlacementGroupManager: {CreatePlacementGroup request count: "
+         << counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST]
+         << ", RemovePlacementGroup request count: "
+         << counts_[CountType::REMOVE_PLACEMENT_GROUP_REQUEST]
+         << ", GetPlacementGroup request count: "
+         << counts_[CountType::GET_PLACEMENT_GROUP_REQUEST]
+         << ", GetAllPlacementGroup request count: "
+         << counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST]
+         << ", Registered placement groups count: " << registered_placement_groups_.size()
+         << ", Pending placement groups count: " << pending_placement_groups_.size()
+         << "}";
+  return stream.str();
 }
 
 }  // namespace gcs
