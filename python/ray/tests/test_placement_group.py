@@ -1168,7 +1168,7 @@ ray.shutdown()
             num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
-def test_create_placement_group_after_gcs_server_restarts(
+def test_create_placement_group_after_gcs_server_restart(
         ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2)
