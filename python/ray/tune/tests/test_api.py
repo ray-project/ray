@@ -1035,6 +1035,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         status = dict(Counter([trial.status for trial in out.trials]))
         self.assertGreaterEqual(status["TERMINATED"], 1)
+        self.assertLessEqual(status.get("PENDING", 0), 1)
 
     def testMetricCheckingEndToEnd(self):
         from ray import tune
