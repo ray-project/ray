@@ -1,44 +1,51 @@
-import ray
-from ray.experimental.client.worker import Worker
+from ray.experimental.client.api import ClientAPI
+from ray.experimental.client.api import APIImpl
 from typing import Optional
 
-_client_worker: Optional[Worker] = None
-_in_cluster: bool = True
+import logging
+
+logger = logging.getLogger(__name__)
+
+# _client_api has to be external to the API stub, below.
+# Otherwise, ray.remote() that contains ray.remote()
+# contains a reference to the RayAPIStub, therefore a
+# reference to the _client_api, and then tries to pickle
+# the thing.
+_client_api: Optional[APIImpl] = None
 
 
-def get(*args, **kwargs):
-    global _client_worker
-    global _in_cluster
-    if _in_cluster:
-        return ray.get(*args, **kwargs)
-    else:
-        return _client_worker.get(*args, **kwargs)
+class RayAPIStub:
+    def connect(self, conn_str):
+        global _client_api
+        from ray.experimental.client.worker import Worker
+        _client_worker = Worker(conn_str)
+        _client_api = ClientAPI(_client_worker)
+
+    def disconnect(self):
+        global _client_api
+        if _client_api is not None:
+            _client_api.close()
+        _client_api = None
+
+    def __getattr__(self, key: str):
+        global _client_api
+        self.__check_client_api()
+        return _client_api.__getattribute__(key)
+
+    def __check_client_api(self):
+        global _client_api
+        if _client_api is None:
+            from ray.experimental.client.server.core_ray_api import CoreRayAPI
+            _client_api = CoreRayAPI()
 
 
-def put(*args, **kwargs):
-    global _client_worker
-    global _in_cluster
-    if _in_cluster:
-        return ray.put(*args, **kwargs)
-    else:
-        return _client_worker.put(*args, **kwargs)
+ray = RayAPIStub()
 
-
-def remote(*args, **kwargs):
-    pass
-
-
-def connect(conn_str):
-    global _in_cluster
-    global _client_worker
-    _in_cluster = False
-    _client_worker = Worker(conn_str)
-
-
-def disconnect():
-    global _in_cluster
-    global _client_worker
-    if _client_worker is not None:
-        _client_worker.close()
-    _in_cluster = True
-    _client_worker = None
+# Someday we might add methods in this module so that someone who
+# tries to `import ray_client as ray` -- as a module, instead of
+# `from ray_client import ray` -- as the API stub
+# still gets expected functionality. This is the way the ray package
+# worked in the past.
+#
+# This really calls for PEP 562: https://www.python.org/dev/peps/pep-0562/
+# But until Python 3.6 is EOL, here we are.

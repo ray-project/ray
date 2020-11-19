@@ -4,7 +4,10 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementGroupState;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.placementgroup.PlacementGroupImpl;
+import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -38,6 +41,62 @@ public class PlacementGroupTest extends BaseTest {
 
     // Test calling an actor.
     Assert.assertEquals(Integer.valueOf(1), actor.task(Counter::getValue).remote().get());
+  }
+
+  @Test(groups = {"cluster"})
+  public void testGetPlacementGroup() {
+    PlacementGroupImpl firstPlacementGroup = (PlacementGroupImpl)PlacementGroupTestUtils
+        .createNameSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK,
+        1.0, "first_placement_group");
+
+    PlacementGroupImpl secondPlacementGroup = (PlacementGroupImpl)PlacementGroupTestUtils
+        .createNameSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK,
+        1.0, "second_placement_group");
+
+    PlacementGroupImpl firstPlacementGroupRes =
+        (PlacementGroupImpl)Ray.getPlacementGroup((firstPlacementGroup).getId());
+    PlacementGroupImpl secondPlacementGroupRes =
+        (PlacementGroupImpl)Ray.getPlacementGroup((secondPlacementGroup).getId());
+
+    Assert.assertNotNull(firstPlacementGroupRes);
+    Assert.assertNotNull(secondPlacementGroupRes);
+
+    Assert.assertEquals(firstPlacementGroup.getId(), firstPlacementGroupRes.getId());
+    Assert.assertEquals(firstPlacementGroup.getName(), firstPlacementGroupRes.getName());
+    Assert.assertEquals(firstPlacementGroupRes.getBundles().size(), 1);
+    Assert.assertEquals(firstPlacementGroupRes.getStrategy(), PlacementStrategy.PACK);
+
+    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
+    Assert.assertEquals(allPlacementGroup.size(), 2);
+
+    PlacementGroupImpl placementGroupRes = (PlacementGroupImpl)allPlacementGroup.get(0);
+    Assert.assertNotNull(placementGroupRes.getId());
+    PlacementGroupImpl expectPlacementGroup = placementGroupRes.getId()
+        .equals(firstPlacementGroup.getId()) ? firstPlacementGroup : secondPlacementGroup;
+
+    Assert.assertEquals(placementGroupRes.getName(), expectPlacementGroup.getName());
+    Assert.assertEquals(placementGroupRes.getBundles().size(),
+        expectPlacementGroup.getBundles().size());
+    Assert.assertEquals(placementGroupRes.getStrategy(), expectPlacementGroup.getStrategy());
+  }
+
+  @Test(groups = {"cluster"})
+  public void testRemovePlacementGroup() {
+    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup("CPU",
+        1, PlacementStrategy.PACK, 1.0, "first_placement_group");
+
+    PlacementGroupImpl secondPlacementGroup = (PlacementGroupImpl)PlacementGroupTestUtils
+        .createNameSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK,
+        1.0, "second_placement_group");
+
+    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
+    Assert.assertEquals(allPlacementGroup.size(), 2);
+
+    Ray.removePlacementGroup(secondPlacementGroup.getId());
+
+    PlacementGroupImpl removedPlacementGroup =
+        (PlacementGroupImpl)Ray.getPlacementGroup((secondPlacementGroup).getId());
+    Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
   }
 
   public void testCheckBundleIndex() {

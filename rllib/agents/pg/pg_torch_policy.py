@@ -5,7 +5,6 @@ PyTorch policy class used for PG.
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import view_requirements_fn
 from ray.rllib.agents.pg.utils import post_process_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -79,5 +78,4 @@ PGTorchPolicy = build_torch_policy(
     loss_fn=pg_torch_loss,
     stats_fn=pg_loss_stats,
     postprocess_fn=post_process_advantages,
-    view_requirements_fn=view_requirements_fn,
 )

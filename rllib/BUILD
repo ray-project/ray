@@ -234,6 +234,7 @@ py_test(
 )
 
 # Working, but takes a long time to learn (>15min).
+# Removed due to Higher API conflicts with Pytorch-Import tests
 ## MB-MPO
 #py_test(
 #    name = "run_regression_tests_pendulum_mbmpo_torch",
@@ -510,12 +511,13 @@ py_test(
 )
 
 # MBMPOTrainer
-py_test(
-    name = "test_mbmpo",
-    tags = ["agents_dir"],
-    size = "medium",
-    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
-)
+# Removed due to Higher API conflicts with Pytorch-Import tests
+#py_test(
+#    name = "test_mbmpo",
+#    tags = ["agents_dir"],
+#    size = "medium",
+#    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+#)
 
 # PGTrainer
 py_test(
@@ -1665,7 +1667,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_eval.py"],
-    args = ["--num-cpus=4"]
+    args = ["--num-cpus=4", "--as-test"]
 )
 
 py_test(
@@ -1674,7 +1676,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_eval.py"],
-    args = ["--torch", "--num-cpus=4"]
+    args = ["--num-cpus=4", "--as-test", "--torch"]
 )
 
 py_test(

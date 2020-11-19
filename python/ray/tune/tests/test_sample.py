@@ -412,7 +412,7 @@ class SearchSpaceTest(unittest.TestCase):
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": tune.sample.Integer(-15, -10).quantized(2),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
@@ -421,7 +421,7 @@ class SearchSpaceTest(unittest.TestCase):
         hyperopt_config = {
             "a": hp.choice("a", [2, 3, 4]),
             "b": {
-                "x": hp.randint("x", 5),
+                "x": hp.randint("x", -15, -10),
                 "y": 4,
                 "z": hp.loguniform("z", np.log(1e-4), np.log(1e-2))
             }
@@ -443,7 +443,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         self.assertEqual(config1, config2)
         self.assertIn(config1["a"], [2, 3, 4])
-        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertIn(config1["b"]["x"], list(range(-15, -10)))
         self.assertEqual(config1["b"]["y"], 4)
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)

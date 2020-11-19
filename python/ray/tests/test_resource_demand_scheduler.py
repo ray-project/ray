@@ -246,6 +246,13 @@ def test_add_min_workers_nodes():
             "min_workers": 99999,
             "max_workers": 99999,
         },
+        "gpubla": {
+            "resources": {
+                "GPU": 1
+            },
+            "min_workers": 10,
+            "max_workers": 0,
+        },
     }
     assert _add_min_workers_nodes([],
                                   {},
@@ -280,6 +287,18 @@ def test_add_min_workers_nodes():
         "m2.large": 50,
         "gpu": 99999
     }, {})
+
+    assert _add_min_workers_nodes([], {},
+                                  {"gpubla": types["gpubla"]}) == ([], {}, {})
+
+    types["gpubla"]["max_workers"] = 10
+    assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}) == ([{
+        "GPU": 1
+    }] * 10, {
+        "gpubla": 10
+    }, {
+        "gpubla": 10
+    })
 
 
 def test_get_nodes_to_launch_with_min_workers():
@@ -1002,9 +1021,10 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(MULTI_WORKER_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]"])
         get_or_create_head_node(
             MULTI_WORKER_CLUSTER,
-            config_path,
+            printable_config_file=config_path,
             no_restart=False,
             restart_only=False,
             yes=True,
@@ -1024,8 +1044,43 @@ class AutoscalingTest(unittest.TestCase):
             self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE),
             "empty_node")
 
+    def testGetOrCreateMultiNodeTypeCustomHeadResources(self):
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["empty_node"]["resources"] = {
+            "empty_resource_name": 1000
+        }
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        get_or_create_head_node(
+            config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        runner.assert_has_call("1.2.3.4", "empty_resource_name")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, "empty_node")
+        self.assertEqual(
+            self.provider.mock_nodes[0].node_config.get("FooProperty"), 42)
+        self.assertEqual(
+            self.provider.mock_nodes[0].node_config.get("TestProp"), 1)
+        self.assertEqual(
+            self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE),
+            "empty_node")
+
     def testScaleUpMinSanity(self):
-        config_path = self.write_config(MULTI_WORKER_CLUSTER)
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["m4.large"]["min_workers"] = \
+            config["min_workers"]
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
@@ -1109,11 +1164,9 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinWorkers(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["min_workers"] = 2
         config["max_workers"] = 50
         config["idle_timeout_minutes"] = 1
-        # Since config["min_workers"] > 1, the remaining worker is started
-        # with the default worker node type.
+        config["available_node_types"]["m4.large"]["min_workers"] = 1
         config["available_node_types"]["p2.8xlarge"]["min_workers"] = 1
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -1271,6 +1324,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1352,6 +1406,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1404,6 +1459,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(4)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1467,7 +1523,9 @@ class AutoscalingTest(unittest.TestCase):
                                    "p2x_image:nightly")
 
     def testUpdateConfig(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["m4.large"]["min_workers"] = \
+            config["min_workers"]
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -1480,7 +1538,7 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(2)
-        config["min_workers"] = 0
+        config["available_node_types"]["m4.large"]["min_workers"] = 0
         config["available_node_types"]["m4.large"]["node_config"][
             "field_changed"] = 1
         config_path = self.write_config(config)
