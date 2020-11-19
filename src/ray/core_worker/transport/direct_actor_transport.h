@@ -184,6 +184,10 @@ class CoreWorkerDirectActorTaskSubmitter
     /// actor failure.
     uint64_t num_completed_tasks = 0;
 
+    // TODO(simon): Doc
+    // NOTE(simon): consider absl::btree_set, but it requires updating abseil.
+    std::set<uint64_t> completed_tasks;
+
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
     absl::optional<rpc::KillActorRequest> pending_force_kill;

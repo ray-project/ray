@@ -260,20 +260,22 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   request->set_intended_worker_id(queue.worker_id);
+  // NOTE(simon): Check failed here!!! actor counter was 1 and caller_starts_at is 2
   RAY_CHECK(task_spec.ActorCounter() >= queue.caller_starts_at)
       << "actor counter " << task_spec.ActorCounter() << " " << queue.caller_starts_at;
   request->set_sequence_number(task_spec.ActorCounter() - queue.caller_starts_at);
 
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
-  const auto counter = task_spec.ActorCounter();
+  const auto actor_task_counter = task_spec.ActorCounter();
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id
-                 << " actor counter " << counter << " seq no "
+                 << " actor counter " << actor_task_counter << " seq no "
                  << request->sequence_number();
   rpc::Address addr(queue.rpc_client->Addr());
   queue.rpc_client->PushActorTask(
       std::move(request), skip_queue,
-      [this, addr, task_id, actor_id](Status status, const rpc::PushTaskReply &reply) {
+      [this, addr, task_id, actor_id, actor_task_counter](
+          Status status, const rpc::PushTaskReply &reply) {
         bool increment_completed_tasks = true;
         if (!status.ok()) {
           bool will_retry = task_finisher_->PendingTaskFailed(
@@ -290,6 +292,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           auto queue = client_queues_.find(actor_id);
           RAY_CHECK(queue != client_queues_.end());
           queue->second.num_completed_tasks++;
+          queue->second.completed_tasks.insert(actor_task_counter);
         }
       });
 }

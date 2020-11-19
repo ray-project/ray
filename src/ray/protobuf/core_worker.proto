@@ -89,6 +89,9 @@ message PushTaskRequest {
   int64 client_processed_up_to = 4;
   // Resource mapping ids assigned to the worker executing the task.
   repeated ResourceMapEntry resource_mapping = 5;
+  // Whether or not the worker should skip the execution of this task and
+  // only process it for book keeping purpose (i.e. track seqno).
+  bool should_skip_execution = 6;
 }
 
 message PushTaskReply {
