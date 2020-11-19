@@ -51,6 +51,9 @@ class TuneBOHB(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        seed (int): Optional random seed to initialize the random number
+            generator. Setting this should lead to identical initial
+            configurations at each run.
 
     Tune automatically converts search spaces to TuneBOHB's format:
 
@@ -103,7 +106,8 @@ class TuneBOHB(Searcher):
                  bohb_config: Optional[Dict] = None,
                  max_concurrent: int = 10,
                  metric: Optional[str] = None,
-                 mode: Optional[str] = None):
+                 mode: Optional[str] = None,
+                 seed: Optional[int] = None):
         from hpbandster.optimizers.config_generators.bohb import BOHB
         assert BOHB is not None, "HpBandSter must be installed!"
         if mode:
@@ -125,6 +129,7 @@ class TuneBOHB(Searcher):
                 space = self.convert_search_space(space)
 
         self._space = space
+        self._seed = seed
 
         super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
 
@@ -142,6 +147,9 @@ class TuneBOHB(Searcher):
             self._metric_op = -1.
         elif self._mode == "min":
             self._metric_op = 1.
+
+        if self._seed is not None:
+            self._space.seed(self._seed)
 
         bohb_config = self._bohb_config or {}
         self.bohber = BOHB(self._space, **bohb_config)
