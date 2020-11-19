@@ -3,7 +3,7 @@ Profiling for Ray Developers
 
 This document details, for Ray developers, how to analyze Ray performance.
 
-Getting stack trace of Ray C++ processes
+Getting a stack trace of Ray C++ processes
 ----------------------------------------
 
 You can use the following GDB command to view the current stack trace of any
