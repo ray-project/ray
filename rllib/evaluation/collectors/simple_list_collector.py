@@ -336,8 +336,7 @@ class _SimpleListCollector(_SampleCollector):
         episode = self.episodes[episode_id]
         self.episode_steps[episode_id] += 1
         episode.length += 1
-        if episode.length == 1:
-            episode.batch_builder = self.policy_collector_groups.pop() if self.policy_collector_groups else _PolicyCollectorGroup()
+        assert episode.batch_builder is not None
 
         #TODO: this is not correct.
         env_steps = 0#sum(self.built_env_steps_per_bucket_id.values()) + \
@@ -385,6 +384,8 @@ class _SimpleListCollector(_SampleCollector):
             view_requirements=view_reqs)
 
         self.episodes[episode.episode_id] = episode
+        if episode.batch_builder is None:
+            episode.batch_builder = self.policy_collector_groups.pop() if self.policy_collector_groups else _PolicyCollectorGroup(self.policy_map)
 
         self._add_to_next_inference_call(agent_key)
 
@@ -567,7 +568,7 @@ class _SimpleListCollector(_SampleCollector):
             Union[MultiAgentBatch, SampleBatch]:
 
         ma_batch = {}
-        for (pid, e_id), collector in episode.batch_builder.policy_collectors.items():
+        for pid, collector in episode.batch_builder.policy_collectors.items():
             if collector.count > 0:
                 ma_batch[pid] = collector.build()
         # Make PolicyCollector available for recycling.
@@ -587,6 +588,8 @@ class _SimpleListCollector(_SampleCollector):
         # Loop through ongoing episodes and see whether their length plus
         # what's already in the policy collectors reaches the fragment-len.
         for episode_id, episode in self.episodes.items():
+            #if episode.length == 0:
+            #    continue
             env_steps = episode.batch_builder.count + self.episode_steps[episode_id]
             # Reached the fragment-len -> We should build an MA-Batch.
             if env_steps >= self.rollout_fragment_length:
@@ -631,7 +634,7 @@ class _SimpleListCollector(_SampleCollector):
         """
         self.forward_pass_size[policy_id] = 0
 
-    #TODO
+    #TODO: remove
     def _OBSOLETED_get_policy_collectors(self, bucket_id=None):
         # Get any available bucket of PolicyCollectors.
         if bucket_id is None:

@@ -172,16 +172,15 @@ class _SampleCollector(metaclass=ABCMeta):
 
     @abstractmethod
     def build_multi_agent_batch(
-            self, env_steps: int, policy_collector_bucket_id: EnvID) -> \
+            self, env_steps: int, episode: MultiAgentEpisode) -> \
             Union[MultiAgentBatch, SampleBatch]:
         """Builds a MultiAgentBatch of size=env_steps from the collected data.
 
         Args:
             env_steps (int): The sum of all env-steps (across all agents) taken
                 so far.
-            policy_collector_bucket_id (EnvID): A unique ID (usually an env
-                ID), indicating the bucket of policy specific collectors (e.g.
-                _PolicyCollector), from which to build the multi-agent batch.
+            episode (MultiAgentEpisode): The episode that carries the
+                batch_builder property to use for building the MultiAgentBatch.
 
         Returns:
             Union[MultiAgentBatch, SampleBatch]: Returns the accumulated

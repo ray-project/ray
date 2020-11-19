@@ -1098,7 +1098,7 @@ def _process_observations_w_trajectory_view_api(
                 ma_sample_batch = \
                     _sample_collector.build_multi_agent_batch(
                         env_steps=episode.length,
-                        builders=episode.batch_builder)
+                        episode=episode)
                 outputs.append(ma_sample_batch)
 
             # Call each policy's Exploration.on_episode_end method.
