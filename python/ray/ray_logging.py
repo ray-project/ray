@@ -44,7 +44,7 @@ class StandardStreamInterceptor:
 
     def __init__(self, logger, intercept_stdout=True):
         self.logger = logger
-        assert len(self.logger.handlers) < 2, (
+        assert len(self.logger.handlers) == 1, (
             "Only one handler is allowed for interceptor logger."
         )
         self.intercept_stdout = intercept_stdout
@@ -52,6 +52,7 @@ class StandardStreamInterceptor:
     def write(self, message):
         """Redirect the original message to the logger."""
         self.logger.info(message)
+        return len(message)
 
     def flush(self):
         for handler in self.logger.handlers:
@@ -65,7 +66,6 @@ class StandardStreamInterceptor:
     def close(self):
         handler = self.logger.handlers[0]
         handler.close()
-        self.logger.removeHandler(handler)
 
     def fileno(self):
         handler = self.logger.handlers[0]
