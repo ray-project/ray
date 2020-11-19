@@ -240,7 +240,8 @@ class InboundRequest {
  public:
   InboundRequest(){};
   InboundRequest(std::function<void()> accept_callback,
-                 std::function<void()> reject_callback, TaskID task_id, bool has_dependencies)
+                 std::function<void()> reject_callback, TaskID task_id,
+                 bool has_dependencies)
       : accept_callback_(accept_callback),
         reject_callback_(reject_callback),
         task_id(task_id),
@@ -335,8 +336,7 @@ class SchedulingQueue {
  public:
   virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
                    std::function<void()> accept_request,
-                   std::function<void()> reject_request,
-                   TaskID task_id = TaskID::Nil(),
+                   std::function<void()> reject_request, TaskID task_id = TaskID::Nil(),
                    const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
@@ -362,7 +362,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
-           TaskID task_id = TaskID::Nil(), 
+           TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
     // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
     RAY_CHECK(seq_no != -1);
@@ -389,10 +389,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
-  // We don't cancel actor tasks, so we don't do anything here. 
-  bool CancelTaskIfFound(TaskID task_id) {
-    return false;
-  }
+  // We don't cancel actor tasks, so we don't do anything here.
+  bool CancelTaskIfFound(TaskID task_id) { return false; }
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
@@ -527,11 +525,13 @@ class NormalSchedulingQueue : public SchedulingQueue {
         InboundRequest(accept_request, reject_request, task_id, dependencies.size() > 0));
   }
 
-  // Search for an InboundRequest associated with the task that we are trying to cancel. If found, remove the InboundRequest from the queue and return true. Otherwise, return false.
+  // Search for an InboundRequest associated with the task that we are trying to cancel.
+  // If found, remove the InboundRequest from the queue and return true. Otherwise, return
+  // false.
   bool CancelTaskIfFound(TaskID task_id) {
     absl::MutexLock lock(&mu_);
     for (std::deque<InboundRequest>::iterator it = pending_normal_tasks_.begin();
-          it != pending_normal_tasks_.end(); ++it) {
+         it != pending_normal_tasks_.end(); ++it) {
       if (it->TaskID() == task_id) {
         pending_normal_tasks_.erase(it);
         return true;
