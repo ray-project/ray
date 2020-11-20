@@ -111,6 +111,7 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
             else:
                 _callable = func_or_class(*init_args)
 
+            assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
             self.backend = RayServeReplica(backend_tag, replica_tag, _callable,
                                            backend_config, is_function,
