@@ -824,10 +824,11 @@ class ServeController:
             await self.actor_reconciler._start_pending_backend_replicas(
                 self.configuration_store)
 
-            self.notify_replica_handles_changed()
+            await self.post_replica_startup(backend_tag)
 
-            # Set the backend config inside the router
-            # (particularly for max_concurrent_queries).
+    async def post_replica_operation(self, backend_tag: Optional[str]):
+        self.notify_replica_handles_changed()
+        if backend_tag:
             self.notify_backend_configs_changed()
             await self.broadcast_backend_config(backend_tag)
 
@@ -868,7 +869,7 @@ class ServeController:
             self._checkpoint()
             await self.actor_reconciler._stop_pending_backend_replicas()
 
-            self.notify_replica_handles_changed()
+            await self.post_replica_operation(None)
 
     async def update_backend_config(
             self, backend_tag: BackendTag,
@@ -909,10 +910,7 @@ class ServeController:
                 self.configuration_store)
             await self.actor_reconciler._stop_pending_backend_replicas()
 
-            self.notify_replica_handles_changed()
-            self.notify_backend_configs_changed()
-
-            await self.broadcast_backend_config(backend_tag)
+            self.post_replica_operation(backend_tag)
 
     async def broadcast_backend_config(self, backend_tag: BackendTag) -> None:
         backend_config = self.configuration_store.get_backend(
