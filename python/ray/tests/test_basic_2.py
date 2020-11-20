@@ -653,6 +653,10 @@ def test_load_code_from_local():
     # The driver starts a cluster with `ray.init(_load_code_from_local=True)`,
     # then creates a nested actor. The actor will be loaded from code in
     # worker.
+    #
+    # This tests the following two cases when `load_code_from_local=True`:
+    # 1) Load a nested class.
+    # 2) Load a class defined in the `__main__` module.
     code_test = """
 import os
 import ray
