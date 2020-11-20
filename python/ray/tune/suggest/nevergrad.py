@@ -53,8 +53,6 @@ class NevergradSearch(Searcher):
             you want hyperopt to run first to help the TPE algorithm
             make better suggestions for future parameters. Needs to be
             a list of dict of hyperopt-named variables.
-            Choice variables should be indicated by their index in the
-            list (see example)
         use_early_stopped_trials: Deprecated.
         max_concurrent: Deprecated.
 
@@ -73,7 +71,7 @@ class NevergradSearch(Searcher):
         current_best_params = [{
             "width": 10,
             "height": 0,
-            "activation": 0, # The index of "relu"
+            "activation": relu",
         }]
 
         ng_search = NevergradSearch(
