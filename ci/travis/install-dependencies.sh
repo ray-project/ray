@@ -283,7 +283,7 @@ install_dependencies() {
     fi
   fi
 
-  # Additional RLlib dependencies.
+  # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
     # install the following packages for testing on travis only

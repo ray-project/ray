@@ -5,3 +5,5 @@ torch>=1.6.0
 # Version requirement to match Tune
 torchvision>=0.6.0
 smart_open
+# For testing in MuJoCo-like envs (in PyBullet).
+pybullet
