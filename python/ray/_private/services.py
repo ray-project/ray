@@ -258,7 +258,15 @@ def get_address_info_from_redis_helper(redis_address,
             break
     if relevant_client is None:
         raise RuntimeError(
-            "Redis has started but no raylets have registered yet.")
+            f"This node has an IP address of {node_ip_address}, and Ray "
+            "expects this IP address to be either the Redis address or one of"
+            f" the Raylet addresses. Connected to Redis at {redis_address} and"
+            " found raylets at "
+            f"{', '.join(c['NodeManagerAddress'] for c in client_table)} but "
+            f"none of these match this node's IP {node_ip_address}. Are any of"
+            " these actually a different IP address for the same node?"
+            "You might need to provide --node-ip-address to specify the IP "
+            "address that the head should use when sending to this node.")
 
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
