@@ -770,14 +770,17 @@ ray::Status ObjectManager::ReceiveObjectChunk(const NodeID &client_id,
                                chunk_index);
   ray::Status status;
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
+  num_chunks_received_total_++;
   if (chunk_status.second.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
     std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
     buffer_pool_.SealChunk(object_id, chunk_index);
   } else {
-    RAY_LOG(WARNING) << "ReceiveObjectChunk index " << chunk_index << " of object "
-                     << object_id << " failed: " << chunk_status.second.message();
-    // TODO(hme): If the object isn't local, create a pull request for this chunk.
+    num_chunks_received_failed_++;
+    RAY_LOG(INFO) << "ReceiveObjectChunk index " << chunk_index << " of object "
+                  << object_id << " failed: " << chunk_status.second.message()
+                  << ", overall " << num_chunks_received_failed_ << "/"
+                  << num_chunks_received_total_ << " failed";
   }
   return status;
 }
@@ -899,6 +902,8 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_requests_.size();
   result << "\n- num buffered profile events: " << profile_events_.size();
+  result << "\n- num chunks received total: " << num_chunks_received_total_;
+  result << "\n- num chunks received failed: " << num_chunks_received_failed_;
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_->DebugString();

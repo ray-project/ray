@@ -339,8 +339,13 @@ Process WorkerPool::StartWorkerProcess(
   for (const auto &pair : override_environment_variables) {
     env[pair.first] = pair.second;
   }
-
+  // Start a process and measure the startup time.
+  auto start = std::chrono::high_resolution_clock::now();
   Process proc = StartProcess(worker_command_args, env);
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+  stats::ProcessStartupTimeMs.Record(duration.count());
+
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
