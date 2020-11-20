@@ -75,6 +75,25 @@ static Histogram HeartbeatReportMs(
     "heartbeats.",
     "ms", {100, 200, 400, 800, 1600, 3200, 6400, 15000, 30000});
 
+static Histogram ProcessStartupTimeMs("process_startup_time_ms",
+                                      "Time to start up a worker process.", "ms",
+                                      {1, 10, 100, 1000, 10000});
+
+static Gauge AvgNumScheduledTasks(
+    "avg_num_scheduled_tasks",
+    "Number of tasks that are queued on this node per second. It doesn't guarantee "
+    "that the task will be executed in this node. If the task is executed, it is "
+    "recorded as avg_num_executed_tasks. If the task is not executed and needs to be "
+    "scheduled in other nodes, it will be recorded as avg_num_spilled_back_tasks",
+    "tasks");
+
+static Gauge AvgNumExecutedTasks("avg_num_executed_tasks",
+                                 "Number of executed tasks on this node per second.",
+                                 "tasks");
+
+static Gauge AvgNumSpilledBackTasks("avg_num_spilled_back_tasks",
+                                    "Number of spilled back tasks per second.", "tasks");
+
 ///
 /// GCS Server Metrics
 ///
