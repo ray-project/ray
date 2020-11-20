@@ -115,7 +115,7 @@ the `examples folder <https://github.com/ray-project/xgboost_ray/tree/master/exa
 
 * `Simple sklearn breastcancer dataset example <https://github.com/ray-project/xgboost_ray/tree/master/examples/simple.py>`__ (requires `sklearn`)
 * `HIGGS classification example <https://github.com/ray-project/xgboost_ray/tree/master/examples/higgs.py>`__
-`[download dataset (2.6 GB)] <https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz>`__
+  * `[download dataset (2.6 GB)] <https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz>`__
 * `HIGGS classification example with Parquet <https://github.com/ray-project/xgboost_ray/tree/master/examples/higgs_parquet.py>`__ (uses the same dataset)
 * `Test data classification <https://github.com/ray-project/xgboost_ray/tree/master/examples/train_on_test_data.py>`__ (uses a self-generated dataset)
 
@@ -133,11 +133,3 @@ RayDMatrix
 ~~~~~~~~~~
 
 .. autoclass:: xgboost_ray.RayDMatrix
-
-.. autoclass:: xgboost_ray.RayFileType
-
-.. autoclass:: xgboost_ray.Data
-
-.. autoclass:: xgboost_ray.RayShardingMode
-
-.. autofunction:: xgboost_ray.combine_data
