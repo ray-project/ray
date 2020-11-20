@@ -148,7 +148,7 @@ public class ActorTest extends BaseTest {
   public interface ChildClassInterface {
 
     default String interfaceName() {
-      return getClass().getName();
+      return ChildClassInterface.class.getName();
     }
 
   }

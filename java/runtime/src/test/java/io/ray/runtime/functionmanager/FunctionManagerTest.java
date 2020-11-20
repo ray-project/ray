@@ -180,7 +180,7 @@ public class FunctionManagerTest {
     //   2, the constructor without signature
     //   3, bar with signature
     //   4, bar without signature
-    Assert.assertEquals(res.size(), 7);
+    Assert.assertEquals(res.size(), 11);
     Assert.assertTrue(res.containsKey(
         ImmutablePair.of(childClassBarDescriptor.name, childClassBarDescriptor.signature)));
     Assert.assertTrue(res.containsKey(
