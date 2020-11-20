@@ -552,11 +552,19 @@ class Trainer(Trainable):
             elif "." in env:
                 self.env_creator = \
                     lambda env_context: from_config(env, env_context)
-            # Try gym.
+            # Try gym/PyBullet.
             else:
-                import gym  # soft dependency
-                self.env_creator = \
-                    lambda env_context: gym.make(env, **env_context)
+
+                def _creator(env_context):
+                    import gym
+                    # Allow for PyBullet envs to be used as well (via string).
+                    try:
+                        import pybullet_envs
+                    except Exception as e:
+                        pass
+                    return gym.make(env, **env_context)
+
+                self.env_creator = _creator
         else:
             self.env_creator = lambda env_config: None
 
