@@ -67,7 +67,7 @@ class NevergradSearch(Searcher):
             "height": tune.uniform(-100, 100),
             "activation": tune.choice(["relu", "tanh"])
         }
-        
+
         current_best_params = [{
             "width": 10,
             "height": 0,
