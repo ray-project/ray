@@ -50,7 +50,11 @@ install_base() {
         # And then when you try to use Docker:
         # Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
         # There are ways to fix that, but it would be simpler to upgrade what they already have.
-        pkg_install_helper docker-ce docker-ce-cli containerd.io
+        # Unfortunately, whatever Travis is doing with the cache/index, docker-ce-cli and containerd.io are not available:
+        # Unable to locate package docker-ce-cli
+        # Unable to locate package containerd.io
+        # So we just upgrade docker-ce and cross our fingers.
+        pkg_install_helper docker-ce
         if [ -n "${TRAVIS-}" ]; then
           sudo usermod -a -G docker travis
         fi
