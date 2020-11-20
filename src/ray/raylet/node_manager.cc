@@ -485,10 +485,12 @@ void NodeManager::Heartbeat() {
     }
   }
 
-  // Add resource load by shape. This will be used by the new autoscaler.
-  auto resource_load = local_queues_.GetResourceLoadByShape(
-      RayConfig::instance().max_resource_shapes_per_load_report());
-  heartbeat_data->mutable_resource_load_by_shape()->Swap(&resource_load);
+  if (!new_scheduler_enabled_) {
+    // Add resource load by shape. This will be used by the new autoscaler.
+    auto resource_load = local_queues_.GetResourceLoadByShape(
+        RayConfig::instance().max_resource_shapes_per_load_report());
+    heartbeat_data->mutable_resource_load_by_shape()->Swap(&resource_load);
+  }
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
@@ -554,6 +556,36 @@ void NodeManager::HandleRequestObjectSpillage(
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
+}
+
+void NodeManager::HandleReleaseUnusedBundles(
+    const rpc::ReleaseUnusedBundlesRequest &request,
+    rpc::ReleaseUnusedBundlesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
+  RAY_LOG(DEBUG) << "Releasing unused bundles.";
+  std::unordered_set<BundleID, pair_hash> in_use_bundles;
+  for (int index = 0; index < request.bundles_in_use_size(); ++index) {
+    const auto &bundle_id = request.bundles_in_use(index).bundle_id();
+    in_use_bundles.emplace(
+        std::make_pair(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                       bundle_id.bundle_index()));
+  }
+
+  // TODO(ffbin): Kill all workers that are currently associated with the unused bundles.
+  // At present, the worker does not have a bundle ID, so we cannot filter out the workers
+  // used by unused bundles. We will solve it in next pr.
+
+  // Return unused bundle resources.
+  for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
+    if (0 == in_use_bundles.count(iter->first)) {
+      ReturnBundleResources(*iter->second);
+      bundle_spec_map_.erase(iter++);
+    } else {
+      iter++;
+    }
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
@@ -884,7 +916,7 @@ void NodeManager::HeartbeatAdded(const NodeID &client_id,
       ResourceSet remote_total(MapFromProtobuf(heartbeat_data.resources_total()));
       remote_resources.SetTotalResources(std::move(remote_total));
     }
-    if (heartbeat_data.resource_load_changed()) {
+    if (heartbeat_data.resources_available_changed()) {
       ResourceSet remote_available(MapFromProtobuf(heartbeat_data.resources_available()));
       remote_resources.SetAvailableResources(std::move(remote_available));
     }
@@ -908,6 +940,8 @@ void NodeManager::HeartbeatAdded(const NodeID &client_id,
     new_resource_scheduler_->AddOrUpdateNode(
         client_id.Binary(), remote_resources.GetTotalResources().GetResourceMap(),
         remote_resources.GetAvailableResources().GetResourceMap());
+    // TODO(swang): We could probably call this once per batch instead of once
+    // per node in the batch.
     ScheduleAndDispatch();
     return;
   }
@@ -1982,6 +2016,8 @@ bool NodeManager::PrepareBundle(
     // Register bundle state.
     bundle_state->state = CommitState::PREPARED;
     bundle_state_map_.emplace(bundle_id, bundle_state);
+    bundle_spec_map_.emplace(
+        bundle_id, std::make_shared<BundleSpecification>(bundle_spec.GetMessage()));
   }
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
 }

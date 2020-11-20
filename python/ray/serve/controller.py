@@ -45,8 +45,8 @@ NodeId = str
 
 class TrafficPolicy:
     def __init__(self, traffic_dict: Dict[str, float]) -> None:
-        self.traffic_dict = dict()
-        self.shadow_dict = dict()
+        self.traffic_dict: Dict[str, float] = dict()
+        self.shadow_dict: Dict[str, float] = dict()
         self.set_traffic_dict(traffic_dict)
 
     def set_traffic_dict(self, traffic_dict: Dict[str, float]) -> None:
@@ -70,6 +70,9 @@ class TrafficPolicy:
             del self.shadow_dict[backend]
         else:
             self.shadow_dict[backend] = proportion
+
+    def __repr__(self) -> str:
+        return f"<Traffic {self.traffic_dict}; Shadow {self.shadow_dict}>"
 
 
 class BackendInfo(BaseModel):
@@ -318,7 +321,6 @@ class ActorStateReconciler:
                         node_resource: 0.01
                     },
                 ).remote(
-                    node_id,
                     http_host,
                     http_port,
                     controller_name=self.controller_name,
@@ -484,7 +486,11 @@ class ServeController:
 
     def notify_replica_handles_changed(self):
         self.long_poll_host.notify_changed(
-            "worker_handles", self.actor_reconciler.backend_replicas)
+            "worker_handles", {
+                backend_tag: list(replica_dict.values())
+                for backend_tag, replica_dict in
+                self.actor_reconciler.backend_replicas.items()
+            })
 
     def notify_traffic_policies_changed(self):
         self.long_poll_host.notify_changed(
