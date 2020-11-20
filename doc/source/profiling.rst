@@ -4,7 +4,7 @@ Profiling for Ray Developers
 This document details, for Ray developers, how to analyze Ray performance.
 
 Getting a stack trace of Ray C++ processes
-----------------------------------------
+------------------------------------------
 
 You can use the following GDB command to view the current stack trace of any
 running Ray process (e.g., raylet). This can be useful for debugging 100% CPU
