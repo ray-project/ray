@@ -425,15 +425,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void KillWorker(std::shared_ptr<WorkerInterface> worker);
 
-  /// Kill a worker if the `filter_func` return true.
-  ///
-  /// \param worker The worker may be killed.
-  /// \param filter_func It is used to filter worker who need to be killed.
-  /// \return Void.
-  void KillWorkerWithFilter(
-      const std::shared_ptr<WorkerInterface> &worker,
-      std::function<bool(std::shared_ptr<WorkerInterface>)> filter_func = nullptr);
-
   /// The callback for handling an actor state transition (e.g., from ALIVE to
   /// DEAD), whether as a notification from the actor table or as a handler for
   /// a local actor's state transition. This method is idempotent and will ignore
