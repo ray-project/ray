@@ -767,7 +767,8 @@ class TFPolicy(Policy):
         self._debug_vars()
 
         # Callback handling.
-        self.callbacks.on_learn_on_batch(self, postprocessed_batch)
+        self.callbacks.on_learn_on_batch(
+            policy=self, train_batch=postprocessed_batch)
 
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(

@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABCMeta
 import logging
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -148,7 +148,8 @@ class _SampleCollector(metaclass=ABCMeta):
     def postprocess_episode(self,
                             episode: MultiAgentEpisode,
                             is_done: bool = False,
-                            check_dones: bool = False) -> None:
+                            check_dones: bool = False,
+                            build: bool = False) -> Optional[MultiAgentBatch]:
         """Postprocesses all agents' trajectories in a given episode.
 
         Generates (single-trajectory) SampleBatches for all Policies/Agents and
@@ -162,27 +163,22 @@ class _SampleCollector(metaclass=ABCMeta):
             episode (MultiAgentEpisode): The Episode object for which
                 to post-process data.
             is_done (bool): Whether the given episode is actually terminated
-                (all agents are done).
+                (all agents are done OR we hit a hard horizon). If True, the
+                episode will no longer be used/continued and we may need to
+                recycle/erase it internally. If a soft-horizon is hit, the
+                episode will continue to be used and `is_done` should be set
+                to False here.
             check_dones (bool): Whether we need to check that all agents'
                 trajectories have dones=True at the end.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def build_multi_agent_batch(self, env_steps: int, env_index: int) -> \
-            Union[MultiAgentBatch, SampleBatch]:
-        """Builds a MultiAgentBatch of size=env_steps from the collected data.
-
-        Args:
-            env_steps (int): The sum of all env-steps (across all agents) taken
-                so far.
-            env_index (int): The environment index (in a vector env) for which
-                to build the batch.
+            build (bool): Whether to build a MultiAgentBatch from the given
+                episode (and only that episode!) and return that
+                MultiAgentBatch. Used for batch_mode=`complete_episodes`.
 
         Returns:
-            Union[MultiAgentBatch, SampleBatch]: Returns the accumulated
-                sample batches for each policy inside one MultiAgentBatch
-                object (or a simple SampleBatch if only one policy).
+            Optional[MultiAgentBatch]: If `build` is True, the
+                SampleBatch or MultiAgentBatch built from `episode` (either
+                just from that episde or from the `_PolicyCollectorGroup`
+                in the `episode.batch_builder` property).
         """
         raise NotImplementedError
 

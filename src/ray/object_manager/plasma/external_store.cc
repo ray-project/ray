@@ -24,8 +24,8 @@
 
 namespace plasma {
 
-Status ExternalStores::ExtractStoreName(const std::string& endpoint,
-                                        std::string* store_name) {
+Status ExternalStores::ExtractStoreName(const std::string &endpoint,
+                                        std::string *store_name) {
   size_t off = endpoint.find_first_of(':');
   if (off == std::string::npos) {
     return Status::Invalid("Malformed endpoint " + endpoint);
@@ -34,12 +34,12 @@ Status ExternalStores::ExtractStoreName(const std::string& endpoint,
   return Status::OK();
 }
 
-void ExternalStores::RegisterStore(const std::string& store_name,
+void ExternalStores::RegisterStore(const std::string &store_name,
                                    std::shared_ptr<ExternalStore> store) {
   Stores().insert({store_name, store});
 }
 
-void ExternalStores::DeregisterStore(const std::string& store_name) {
+void ExternalStores::DeregisterStore(const std::string &store_name) {
   auto it = Stores().find(store_name);
   if (it == Stores().end()) {
     return;
@@ -47,7 +47,7 @@ void ExternalStores::DeregisterStore(const std::string& store_name) {
   Stores().erase(it);
 }
 
-std::shared_ptr<ExternalStore> ExternalStores::GetStore(const std::string& store_name) {
+std::shared_ptr<ExternalStore> ExternalStores::GetStore(const std::string &store_name) {
   auto it = Stores().find(store_name);
   if (it == Stores().end()) {
     return nullptr;
@@ -55,8 +55,8 @@ std::shared_ptr<ExternalStore> ExternalStores::GetStore(const std::string& store
   return it->second;
 }
 
-ExternalStores::StoreMap& ExternalStores::Stores() {
-  static auto* external_stores = new StoreMap();
+ExternalStores::StoreMap &ExternalStores::Stores() {
+  static auto *external_stores = new StoreMap();
   return *external_stores;
 }
 

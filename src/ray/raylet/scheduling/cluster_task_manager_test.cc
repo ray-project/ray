@@ -95,35 +95,52 @@ class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest()
       : id_(NodeID::FromRandom()),
-        single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary())),
+        scheduler_(CreateSingleNodeScheduler(id_.Binary())),
         fulfills_dependencies_calls_(0),
         dependencies_fulfilled_(true),
+        is_owner_alive_(true),
         node_info_calls_(0),
-        node_info_(boost::optional<rpc::GcsNodeInfo>{}),
-        task_manager_(id_, single_node_resource_scheduler_,
+        task_manager_(id_, scheduler_,
                       [this](const Task &_task) {
                         fulfills_dependencies_calls_++;
                         return dependencies_fulfilled_;
                       },
+                      [this](const WorkerID &worker_id, const NodeID &node_id) {
+                        return is_owner_alive_;
+                      },
                       [this](const NodeID &node_id) {
                         node_info_calls_++;
-                        return node_info_;
+                        return node_info_[node_id];
                       }) {}
 
   void SetUp() {}
 
   void Shutdown() {}
 
+  void AddNode(const NodeID &id, double num_cpus, double num_gpus = 0,
+               double memory = 0) {
+    std::unordered_map<std::string, double> node_resources;
+    node_resources[ray::kCPU_ResourceLabel] = num_cpus;
+    node_resources[ray::kGPU_ResourceLabel] = num_gpus;
+    node_resources[ray::kMemory_ResourceLabel] = memory;
+    scheduler_->AddOrUpdateNode(id.Binary(), node_resources, node_resources);
+
+    rpc::GcsNodeInfo info;
+    node_info_[id] = info;
+  }
+
   NodeID id_;
-  std::shared_ptr<ClusterResourceScheduler> single_node_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   int fulfills_dependencies_calls_;
   bool dependencies_fulfilled_;
 
+  bool is_owner_alive_;
+
   int node_info_calls_;
-  boost::optional<rpc::GcsNodeInfo> node_info_;
+  std::unordered_map<NodeID, boost::optional<rpc::GcsNodeInfo>> node_info_;
 
   ClusterTaskManager task_manager_;
 };
@@ -246,6 +263,55 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 2);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
+}
+
+TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
+  /*
+    Test the race condition in which a task is assigned to the local node, but
+    it cannot be run because a different task gets assigned the resources
+    first. The un-runnable task should eventually get spilled back to another
+    node.
+  */
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 5);
+
+  int num_callbacks = 0;
+  auto callback = [&]() { num_callbacks++; };
+
+  /* Blocked on starting a worker. */
+  auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}});
+  rpc::RequestWorkerLeaseReply local_reply;
+  task_manager_.QueueTask(task, &local_reply, callback);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_EQ(num_callbacks, 0);
+  ASSERT_EQ(leased_workers_.size(), 0);
+
+  /* This task can run but not at the same time as the first */
+  auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
+  rpc::RequestWorkerLeaseReply spillback_reply;
+  task_manager_.QueueTask(task2, &spillback_reply, callback);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_EQ(num_callbacks, 0);
+  ASSERT_EQ(leased_workers_.size(), 0);
+
+  // Two workers start. First task is dispatched now, but resources are no
+  // longer available for the second.
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  // Check that both tasks got removed from the queue.
+  ASSERT_EQ(num_callbacks, 2);
+  // The first task was dispatched.
+  ASSERT_EQ(leased_workers_.size(), 1);
+  // The second task was spilled.
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
+            remote_node_id.Binary());
 }
 
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
@@ -411,6 +477,39 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
       ASSERT_TRUE(found);
     }
   }
+}
+
+TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
+  /*
+    Test the race condition in which the owner of a task dies while the task is pending.
+    This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
+   */
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+
+  is_owner_alive_ = false;
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  is_owner_alive_ = true;
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
 }
 
 int main(int argc, char **argv) {
