@@ -251,10 +251,12 @@ def get_address_info_from_redis_helper(redis_address,
 
     relevant_client = None
     for client_info in client_table:
-        if "NodeUUID" in client_info:
-            if client_info["NodeUUID"] == node_uuid:
-                relevant_client = client_info
-                break
+        assert "NodeID" in client_info
+        # ray.state.GlobalState.node_table() renames node_id to NodeID
+        # and converts it to hex.
+        if client_info["NodeID"] == node_uuid:
+            relevant_client = client_info
+            break
         client_node_ip_address = client_info["NodeManagerAddress"]
         if (client_node_ip_address == node_ip_address
                 or (client_node_ip_address == "127.0.0.1"
