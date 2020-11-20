@@ -962,12 +962,27 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   switch (type) {
     case fb::MessageType::PlasmaCreateRequest: {
       const auto &object_id = GetCreateRequestObjectId(message);
-      auto req_id = create_request_queue_.AddRequest(object_id, client, [this, client, message](bool evict_if_full, PlasmaObject *result) {
-            return HandleCreateObjectRequest(client, message, evict_if_full, result);
-          });
-      RAY_LOG(DEBUG) << "Received create request for object " << object_id << " assigned request ID " << req_id;
-      ProcessCreateRequests();
-      ReplyToCreateClient(client, object_id, req_id);
+      const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
+
+      auto handle_create = [this, client, message](bool evict_if_full, PlasmaObject *result) {
+              return HandleCreateObjectRequest(client, message, evict_if_full, result);
+            };
+
+      if (request->try_immediately()) {
+        RAY_LOG(DEBUG) << "Received request to create object " << object_id << " immediately";
+        auto result_error = create_request_queue_.TryRequestImmediately(object_id, client, handle_create);
+        const auto &result = result_error.first;
+        const auto &error = result_error.second;
+        SendCreateReply(client, object_id, result, error);
+        if (error == PlasmaError::OK && result.device_num == 0) {
+          static_cast<void>(client->SendFd(result.store_fd));
+        }
+      } else {
+        auto req_id = create_request_queue_.AddRequest(object_id, client, handle_create);
+        RAY_LOG(DEBUG) << "Received create request for object " << object_id << " assigned request ID " << req_id;
+        ProcessCreateRequests();
+        ReplyToCreateClient(client, object_id, req_id);
+      }
     } break;
     case fb::MessageType::PlasmaCreateRetryRequest: {
       auto request = flatbuffers::GetRoot<fb::PlasmaCreateRetryRequest>(input);

@@ -2205,10 +2205,9 @@ void NodeManager::MarkObjectsAsFailed(
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
     std::shared_ptr<arrow::Buffer> data;
     Status status;
-    uint64_t retry_with_request_id;
-    status = store_client_.Create(object_id, ref.owner_address(), 0,
-                                  reinterpret_cast<const uint8_t *>(meta.c_str()),
-                                  meta.length(), &retry_with_request_id, &data);
+    status = store_client_.TryCreateImmediately(
+        object_id, ref.owner_address(), 0,
+        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data);
     if (status.ok()) {
       status = store_client_.Seal(object_id);
     }

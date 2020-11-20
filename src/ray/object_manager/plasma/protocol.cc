@@ -202,7 +202,8 @@ Status SendCreateRetryRequest(const std::shared_ptr<StoreConn> &store_conn, Obje
 
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
                          const ray::rpc::Address& owner_address,
-                         int64_t data_size, int64_t metadata_size, int device_num) {
+                         int64_t data_size, int64_t metadata_size, int device_num,
+                         bool try_immediately) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       fb::CreatePlasmaCreateRequest(fbb, fbb.CreateString(object_id.Binary()),
@@ -210,7 +211,7 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID 
                                     fbb.CreateString(owner_address.ip_address()),
                                     owner_address.port(),
                                     fbb.CreateString(owner_address.worker_id()),
-                                    data_size, metadata_size, device_num);
+                                    data_size, metadata_size, device_num, try_immediately);
   return PlasmaSend(store_conn, MessageType::PlasmaCreateRequest, &fbb, message);
 }
 
