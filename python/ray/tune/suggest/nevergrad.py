@@ -1,6 +1,6 @@
 import logging
 import pickle
-from typing import Dict, Optional, Union, List
+from typing import Dict, Optional, Union, List, Sequence
 
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized
@@ -69,11 +69,11 @@ class NevergradSearch(Searcher):
             "height": tune.uniform(-100, 100),
             "activation": tune.choice(["relu", "tanh"])
         }
-        
+
         current_best_params = [{
-            'width': 10,
-            'height': 0,
-            'activation': 0, # The index of "relu"
+            "width": 10,
+            "height": 0,
+            "activation": 0, # The index of "relu"
         }]
 
         ng_search = NevergradSearch(
@@ -128,8 +128,11 @@ class NevergradSearch(Searcher):
 
         if points_to_evaluate is None:
             self._points_to_evaluate = None
+        elif not isinstance(points_to_evaluate, Sequence):
+            raise ValueError(
+                f"Invalid object type passed for `points_to_evaluate`: {type(points_to_evaluate)}. "
+                f"Please pass a list of points (dictionaries) instead.")
         else:
-            assert isinstance(points_to_evaluate, (list, tuple))
             self._points_to_evaluate = points_to_evaluate
 
         if isinstance(space, dict) and space:
@@ -224,12 +227,13 @@ class NevergradSearch(Searcher):
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
 
-        if len(self._points_to_evaluate) > 0:
-            point_to_evaluate = self._points_to_evaluate.pop(0)
-            for key in self._space.value:
-                if isinstance(self._space[key], ng.p.Choice):
-                    point_to_evaluate[key] = self._space[key].choices.value[point_to_evaluate[key]]
-            self._nevergrad_opt.suggest(point_to_evaluate)
+        if self._points_to_evaluate is not None:
+            if len(self._points_to_evaluate) > 0:
+                point_to_evaluate = self._points_to_evaluate.pop(0)
+                for key in self._space.value:
+                    if isinstance(self._space[key], ng.p.Choice):
+                        point_to_evaluate[key] = self._space[key].choices.value[point_to_evaluate[key]]
+                self._nevergrad_opt.suggest(point_to_evaluate)
         suggested_config = self._nevergrad_opt.ask()
         
         self._live_trial_mapping[trial_id] = suggested_config

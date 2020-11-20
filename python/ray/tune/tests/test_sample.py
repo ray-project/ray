@@ -4,7 +4,6 @@ import unittest
 from ray import tune
 from ray.tune.suggest.variant_generator import generate_variants
 
-
 def _mock_objective(config):
     tune.report(**config)
 
@@ -566,6 +565,33 @@ class SearchSpaceTest(unittest.TestCase):
         config = searcher.suggest("0")
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
+    
+    def testNevergradBestParams(self):
+        from ray.tune.suggest.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        config = {
+            "a": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        best_params = [{"a": 0, "b": 1, "c": 1e-1},  {"a": 1, "b": 2, "c": 1e-2}]
+        best_params0, best_params1 = best_params[0], best_params[1]
+
+        searcher = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne, points_to_evaluate=best_params)
+        analysis = tune.run(
+            _mock_objective, config=config, metric="a", mode="max", search_alg=searcher, num_samples=5)
+
+        trial_config0 = analysis.trials[0].config
+        trial0 = {"a": trial_config0["a"], "b": trial_config0["b"], "c": trial_config0["c"]}
+        self.assertDictEqual(trial0, best_params0)
+
+        trial_config1 = analysis.trials[1].config
+        trial1 = {"a": trial_config1["a"], "b": trial_config1["b"], "c": trial_config1["c"]}
+        self.assertDictEqual(trial1, best_params1)
+
 
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
