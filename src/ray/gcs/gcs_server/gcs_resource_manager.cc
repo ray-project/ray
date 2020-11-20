@@ -32,39 +32,32 @@ const absl::flat_hash_map<NodeID, ResourceSet> &GcsResourceManager::GetClusterRe
   return cluster_resources_;
 }
 
-void GcsResourceManager::StartTransaction() {
-  RAY_CHECK(!is_transaction_in_progress_);
-  is_transaction_in_progress_ = true;
-}
-
-void GcsResourceManager::CommitTransaction() {
-  RAY_CHECK(is_transaction_in_progress_);
-  resource_changes_during_transaction_.clear();
-  is_transaction_in_progress_ = false;
-}
-
-void GcsResourceManager::RollbackTransaction() {
-  RAY_CHECK(is_transaction_in_progress_);
-  for (auto &resource_changes : resource_changes_during_transaction_) {
-    for (auto &resource : resource_changes.second) {
-      cluster_resources_[resource_changes.first].AddResources(resource);
-    }
-  }
-  resource_changes_during_transaction_.clear();
-  is_transaction_in_progress_ = false;
-}
-
-void GcsResourceManager::AcquireResource(const NodeID &node_id,
+bool GcsResourceManager::AcquireResource(const NodeID &node_id,
                                          const ResourceSet &required_resources) {
-  cluster_resources_[node_id].SubtractResourcesStrict(required_resources);
-  if (is_transaction_in_progress_) {
-    resource_changes_during_transaction_[node_id].push_back(required_resources);
+  auto iter = cluster_resources_.find(node_id);
+  if (iter == cluster_resources_.end()) {
+    RAY_LOG(INFO) << "Node " << node_id << " not exist.";
+    return false;
   }
+  if (!required_resources.IsSubset(iter->second)) {
+    RAY_LOG(INFO) << "Attempt to acquire unknown resource: "
+                  << required_resources.ToString()
+                  << ", node resource is: " << iter->second.ToString();
+    return false;
+  }
+  iter->second.SubtractResourcesStrict(required_resources);
+  return true;
 }
 
-void GcsResourceManager::ReleaseResource(const NodeID &node_id,
+bool GcsResourceManager::ReleaseResource(const NodeID &node_id,
                                          const ResourceSet &acquired_resources) {
-  cluster_resources_[node_id].AddResources(acquired_resources);
+  auto iter = cluster_resources_.find(node_id);
+  if (iter == cluster_resources_.end()) {
+    RAY_LOG(INFO) << "Node " << node_id << " not exist.";
+    return false;
+  }
+  iter->second.AddResources(acquired_resources);
+  return true;
 }
 
 }  // namespace gcs
