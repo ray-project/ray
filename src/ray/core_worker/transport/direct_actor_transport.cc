@@ -289,10 +289,33 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
 
         if (increment_completed_tasks) {
           absl::MutexLock lock(&mu_);
-          auto queue = client_queues_.find(actor_id);
-          RAY_CHECK(queue != client_queues_.end());
-          queue->second.num_completed_tasks++;
-          queue->second.completed_tasks.insert(actor_task_counter);
+          auto queue_pair = client_queues_.find(actor_id);
+          RAY_CHECK(queue_pair != client_queues_.end());
+          auto &queue = queue_pair->second;
+
+          // TODO: comment
+          queue.completed_tasks.insert(actor_task_counter);
+          auto min_completed_task_id = queue.completed_tasks.begin();
+          while (min_completed_task_id != queue.completed_tasks.end()) {
+            // num_completed_tasks is the number of task completed so far
+            //
+            RAY_LOG(ERROR) << "actor id " << actor_id
+                           << " in loop min_completed_task_id:" << *min_completed_task_id
+                           << " and queue.num_completed_tasks: "
+                           << queue.num_completed_tasks;
+            if (*min_completed_task_id == queue.num_completed_tasks) {
+              queue.num_completed_tasks++;
+              // increment the iterator and erase the old value
+              queue.completed_tasks.erase(min_completed_task_id++);
+            } else {
+              break;
+            }
+          }
+          RAY_LOG(ERROR) << "actor id " << actor_id
+                         << " got receipt from actor_task_counter " << actor_task_counter
+                         << " new num_completed_tasks " << queue.num_completed_tasks
+                         << " and size of completed_tasks set is "
+                         << queue.completed_tasks.size();
         }
       });
 }
