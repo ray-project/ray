@@ -7,7 +7,7 @@ from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import is_nan_or_inf, unflatten_dict
 
 try:
     import skopt as sko
@@ -63,6 +63,9 @@ class SkOptSearch(Searcher):
         pip install scikit-optimize
 
     This Search Algorithm requires you to pass in a `skopt Optimizer object`_.
+
+    This searcher will automatically filter out any NaN, inf or -inf
+    results.
 
     Parameters:
         optimizer (skopt.optimizer.Optimizer): Optimizer provided
@@ -268,8 +271,9 @@ class SkOptSearch(Searcher):
 
     def _process_result(self, trial_id: str, result: Dict):
         skopt_trial_info = self._live_trial_mapping[trial_id]
-        self._skopt_opt.tell(skopt_trial_info,
-                             self._metric_op * result[self._metric])
+        if result and not is_nan_or_inf(result[self._metric]):
+            self._skopt_opt.tell(skopt_trial_info,
+                                 self._metric_op * result[self._metric])
 
     def save(self, checkpoint_path: str):
         trials_object = (self._initial_points, self._skopt_opt)

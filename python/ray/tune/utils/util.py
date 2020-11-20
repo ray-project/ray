@@ -161,6 +161,10 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
+def is_nan_or_inf(value):
+    return np.isnan(value) or np.isinf(value)
+
+
 def env_integer(key, default):
     # TODO(rliaw): move into ray.constants
     if key in os.environ:
@@ -219,7 +223,7 @@ def deep_update(original,
         if isinstance(original.get(k), dict) and isinstance(value, dict):
             # Check old type vs old one. If different, override entire value.
             if k in override_all_if_type_changes and \
-                    "type" in value and "type" in original[k] and \
+                "type" in value and "type" in original[k] and \
                     value["type"] != original[k]["type"]:
                 original[k] = value
             # Allowed key -> ok to add new subkeys.
@@ -264,14 +268,15 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
 
 def unflatten_dict(dt, delimiter="/"):
     """Unflatten dict. Does not support unflattening lists."""
-    out = defaultdict(dict)
+    dict_type = type(dt)
+    out = dict_type()
     for key, val in dt.items():
         path = key.split(delimiter)
         item = out
         for k in path[:-1]:
-            item = item[k]
+            item = item.setdefault(k, dict_type())
         item[path[-1]] = val
-    return dict(out)
+    return out
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):

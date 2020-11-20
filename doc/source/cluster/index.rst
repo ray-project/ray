@@ -76,7 +76,7 @@ on each machine. To install Ray, follow the `installation instructions`_.
 
 To configure the Ray cluster to run Java code, you need to add the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
 
-.. _`installation instructions`: http://docs.ray.io/en/latest/installation.html
+.. _`installation instructions`: http://docs.ray.io/en/master/installation.html
 
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

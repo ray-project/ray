@@ -114,6 +114,8 @@ class AutoMLSearcher(SearchAlgorithm):
                 trial.param_config = param_config
                 trial.extra_arg = extra_arg
 
+                trial.invalidate_json_state()
+
                 trials.append(trial)
                 self._running_trials[trial.trial_id] = trial
 
@@ -142,6 +144,7 @@ class AutoMLSearcher(SearchAlgorithm):
                 or result[self.reward_attr] \
                 > trial.best_result[self.reward_attr]:
             trial.best_result = result
+            trial.invalidate_json_state()
 
         # Update job's best trial
         if self.best_trial is None \

@@ -19,6 +19,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
+import ray
 from ray.experimental.internal_kv import _internal_kv_get
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
@@ -35,6 +36,8 @@ from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
+from ray.autoscaler._private.event_system import (CreateClusterEvent,
+                                                  global_event_system)
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
@@ -104,22 +107,23 @@ def request_resources(num_cpus: Optional[int] = None,
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
 
-    This function is EXPERIMENTAL.
-
     Args:
-        num_cpus: int -- the number of CPU cores to request
-        bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
-            only has an effect if you've configured `available_node_types`
-            if your cluster config.
+        num_cpus (int): Scale the cluster to ensure this number of CPUs are
+            available. This request is persistent until another call to
+            request_resources() is made.
+        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
+            resource shapes can fit. This request is persistent until another
+            call to request_resources() is made.
     """
+    if not ray.is_initialized():
+        raise RuntimeError("Ray is not initialized yet")
     r = _redis()
-    if num_cpus is not None and num_cpus > 0:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-                  json.dumps({
-                      "CPU": num_cpus
-                  }))
+    to_request = []
+    if num_cpus:
+        to_request += [{"CPU": 1}] * num_cpus
     if bundles:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
+        to_request += bundles
+    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request))
 
 
 def create_or_update_cluster(config_file: str,
@@ -131,7 +135,7 @@ def create_or_update_cluster(config_file: str,
                              override_cluster_name: Optional[str] = None,
                              no_config_cache: bool = False,
                              redirect_command_output: Optional[bool] = False,
-                             use_login_shells: bool = True) -> None:
+                             use_login_shells: bool = True) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
@@ -165,6 +169,8 @@ def create_or_update_cluster(config_file: str,
     except yaml.scanner.ScannerError as e:
         handle_yaml_error(e)
         raise
+    global_event_system.execute_callback(CreateClusterEvent.up_started,
+                                         {"cluster_config": config})
 
     # todo: validate file_mounts, ssh keys, etc.
 
@@ -209,6 +215,7 @@ def create_or_update_cluster(config_file: str,
     try_logging_config(config)
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name)
+    return config
 
 
 CONFIG_CACHE_VERSION = 1
@@ -253,7 +260,6 @@ def _bootstrap_config(config: Dict[str, Any],
                 "This is normal if cluster launcher was updated.\n"
                 "Config will be re-resolved.",
                 config_cache.get("_version", "none"), CONFIG_CACHE_VERSION)
-    validate_config(config)
 
     importer = _NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
@@ -264,6 +270,13 @@ def _bootstrap_config(config: Dict[str, Any],
 
     cli_logger.print("Checking {} environment settings",
                      _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"]))
+
+    config = provider_cls.fillout_available_node_types_resources(config)
+
+    # NOTE: if `resources` field is missing, validate_config for non-AWS will
+    # fail (the schema error will ask the user to manually fill the resources)
+    # as we currently support autofilling resources for AWS instances only.
+    validate_config(config)
     resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
@@ -284,8 +297,8 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = prepare_config(config)
-    validate_config(config)
+
+    config = _bootstrap_config(config)
 
     cli_logger.confirm(yes, "Destroying cluster.", _abort=True)
 
@@ -466,7 +479,7 @@ def warn_about_bad_start_command(start_commands: List[str]) -> None:
 
 
 def get_or_create_head_node(config: Dict[str, Any],
-                            config_file: str,
+                            printable_config_file: str,
                             no_restart: bool,
                             restart_only: bool,
                             yes: bool,
@@ -474,11 +487,12 @@ def get_or_create_head_node(config: Dict[str, Any],
                             _provider: Optional[NodeProvider] = None,
                             _runner: ModuleType = subprocess) -> None:
     """Create the cluster head node, which in turn creates the workers."""
+    global_event_system.execute_callback(
+        CreateClusterEvent.cluster_booting_started)
     provider = (_provider or _get_node_provider(config["provider"],
                                                 config["cluster_name"]))
 
     config = copy.deepcopy(config)
-    config_file = os.path.abspath(config_file)
     head_node_tags = {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
     }
@@ -522,18 +536,25 @@ def get_or_create_head_node(config: Dict[str, Any],
                 _abort=True)
 
     cli_logger.newline()
-
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
     head_node_config = copy.deepcopy(config["head_node"])
+    head_node_resources = None
     if "head_node_type" in config:
-        head_node_tags[TAG_RAY_USER_NODE_TYPE] = config["head_node_type"]
-        head_node_config.update(config["available_node_types"][config[
-            "head_node_type"]]["node_config"])
+        head_node_type = config["head_node_type"]
+        head_node_tags[TAG_RAY_USER_NODE_TYPE] = head_node_type
+        head_config = config["available_node_types"][head_node_type]
+        head_node_config.update(head_config["node_config"])
+
+        # Not necessary to keep in sync with node_launcher.py
+        # Keep in sync with autoscaler.py _node_resources
+        head_node_resources = head_config.get("resources")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
     if head_node is None or provider.node_tags(head_node).get(
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
         with cli_logger.group("Acquiring an up-to-date head node"):
+            global_event_system.execute_callback(
+                CreateClusterEvent.acquiring_new_head_node)
             if head_node is not None:
                 cli_logger.print(
                     "Currently running head node is out-of-date with "
@@ -568,6 +589,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                         break
                     time.sleep(POLL_INTERVAL)
             cli_logger.newline()
+
+    global_event_system.execute_callback(CreateClusterEvent.head_node_acquired)
 
     with cli_logger.group(
             "Setting up head node",
@@ -646,6 +669,7 @@ def get_or_create_head_node(config: Dict[str, Any],
             runtime_hash=runtime_hash,
             file_mounts_contents_hash=file_mounts_contents_hash,
             is_head_node=True,
+            node_resources=head_node_resources,
             rsync_options={
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter")
@@ -662,6 +686,11 @@ def get_or_create_head_node(config: Dict[str, Any],
             cli_logger.abort("Failed to setup head node.")
             sys.exit(1)
 
+    global_event_system.execute_callback(
+        CreateClusterEvent.cluster_booting_completed, {
+            "head_node_id": head_node,
+        })
+
     monitor_str = "tail -n 100 -f /tmp/ray/session_latest/logs/monitor*"
     if override_cluster_name:
         modifiers = " --cluster-name={}".format(quote(override_cluster_name))
@@ -670,13 +699,15 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     cli_logger.newline()
     with cli_logger.group("Useful commands"):
+        printable_config_file = os.path.abspath(printable_config_file)
         cli_logger.print("Monitor autoscaling with")
         cli_logger.print(
-            cf.bold("  ray exec {}{} {}"), config_file, modifiers,
+            cf.bold("  ray exec {}{} {}"), printable_config_file, modifiers,
             quote(monitor_str))
 
         cli_logger.print("Connect to a terminal on the cluster head:")
-        cli_logger.print(cf.bold("  ray attach {}{}"), config_file, modifiers)
+        cli_logger.print(
+            cf.bold("  ray attach {}{}"), printable_config_file, modifiers)
 
         remote_shell_str = updater.cmd_runner.remote_shell_command_str()
         cli_logger.print("Get a remote shell to the cluster manually:")
@@ -1006,7 +1037,7 @@ def _get_worker_nodes(config: Dict[str, Any],
 
 
 def _get_head_node(config: Dict[str, Any],
-                   config_file: str,
+                   printable_config_file: str,
                    override_cluster_name: Optional[str],
                    create_if_needed: bool = False) -> str:
     provider = _get_node_provider(config["provider"], config["cluster_name"])
@@ -1021,13 +1052,16 @@ def _get_head_node(config: Dict[str, Any],
     elif create_if_needed:
         get_or_create_head_node(
             config,
-            config_file,
+            printable_config_file=printable_config_file,
             restart_only=False,
             no_restart=False,
             yes=True,
             override_cluster_name=override_cluster_name)
         return _get_head_node(
-            config, config_file, override_cluster_name, create_if_needed=False)
+            config,
+            printable_config_file,
+            override_cluster_name,
+            create_if_needed=False)
     else:
         raise RuntimeError("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))

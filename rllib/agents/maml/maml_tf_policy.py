@@ -309,12 +309,6 @@ class MAMLLoss(object):
 
 def maml_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
-
-    policy._loss_input_dict["split"] = tf1.placeholder(
-        tf.int32,
-        name="Meta-Update-Splitting",
-        shape=(policy.config["inner_adaptation_steps"] + 1,
-               policy.config["num_workers"]))
     policy.cur_lr = policy.config["lr"]
 
     if policy.config["worker_index"]:
@@ -412,6 +406,13 @@ def maml_optimizer_fn(policy, config):
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     KLCoeffMixin.__init__(policy, config)
+
+    # Create the `split` placeholder.
+    policy._loss_input_dict["split"] = tf1.placeholder(
+        tf.int32,
+        name="Meta-Update-Splitting",
+        shape=(policy.config["inner_adaptation_steps"] + 1,
+               policy.config["num_workers"]))
 
 
 MAMLTFPolicy = build_tf_policy(

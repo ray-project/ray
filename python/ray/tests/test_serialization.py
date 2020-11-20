@@ -543,6 +543,31 @@ def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
     assert new_obj() is None
 
 
+def test_buffer_alignment():
+    # Deserialized large numpy arrays should be 64-byte aligned.
+    x = np.random.normal(size=(10, 20, 30))
+    y = ray.get(ray.put(x))
+    assert y.ctypes.data % 64 == 0
+
+    # Unlike PyArrow, Ray aligns small numpy arrays to 8
+    # bytes to be memory efficient.
+    xs = [np.random.normal(size=i) for i in range(100)]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+    xs = [np.random.normal(size=i * (1, )) for i in range(20)]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+    xs = [np.random.normal(size=i * (5, )) for i in range(1, 8)]
+    xs = [xs[i][(i + 1) * (slice(1, 3), )] for i in range(len(xs))]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

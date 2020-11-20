@@ -5,10 +5,8 @@ import logging
 import os
 import time
 import traceback
-import types
 import warnings
 
-import ray.cloudpickle as cloudpickle
 from ray.services import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
@@ -21,8 +19,9 @@ from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
+from ray.tune.utils.serialization import TuneFunctionDecoder, \
+    TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
-from ray.utils import binary_to_hex, hex_to_binary
 from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
@@ -37,37 +36,6 @@ def _find_newest_ckpt(ckpt_dir):
         if fname.startswith("experiment_state") and fname.endswith(".json")
     ]
     return max(full_paths)
-
-
-class _TuneFunctionEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, types.FunctionType):
-            return self._to_cloudpickle(obj)
-        try:
-            return super(_TuneFunctionEncoder, self).default(obj)
-        except Exception:
-            logger.debug("Unable to encode. Falling back to cloudpickle.")
-            return self._to_cloudpickle(obj)
-
-    def _to_cloudpickle(self, obj):
-        return {
-            "_type": "CLOUDPICKLE_FALLBACK",
-            "value": binary_to_hex(cloudpickle.dumps(obj))
-        }
-
-
-class _TuneFunctionDecoder(json.JSONDecoder):
-    def __init__(self, *args, **kwargs):
-        json.JSONDecoder.__init__(
-            self, object_hook=self.object_hook, *args, **kwargs)
-
-    def object_hook(self, obj):
-        if obj.get("_type") == "CLOUDPICKLE_FALLBACK":
-            return self._from_cloudpickle(obj)
-        return obj
-
-    def _from_cloudpickle(self, obj):
-        return cloudpickle.loads(hex_to_binary(obj["value"]))
 
 
 class TrialRunner:
@@ -313,7 +281,7 @@ class TrialRunner:
         tmp_file_name = os.path.join(self._local_checkpoint_dir,
                                      ".tmp_checkpoint")
         with open(tmp_file_name, "w") as f:
-            json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
+            json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
 
         os.replace(tmp_file_name, self.checkpoint_file)
         self._search_alg.save_to_dir(
@@ -333,7 +301,7 @@ class TrialRunner:
         """
         newest_ckpt_path = _find_newest_ckpt(self._local_checkpoint_dir)
         with open(newest_ckpt_path, "r") as f:
-            runner_state = json.load(f, cls=_TuneFunctionDecoder)
+            runner_state = json.load(f, cls=TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
 
         logger.warning("".join([
@@ -346,8 +314,14 @@ class TrialRunner:
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
+        checkpoints = [
+            json.loads(cp, cls=TuneFunctionDecoder)
+            if isinstance(cp, str) else cp
+            for cp in runner_state["checkpoints"]
+        ]
+
         trials = []
-        for trial_cp in runner_state["checkpoints"]:
+        for trial_cp in checkpoints:
             new_trial = Trial(trial_cp["trainable_name"])
             new_trial.__setstate__(trial_cp)
             trials += [new_trial]

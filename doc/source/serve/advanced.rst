@@ -1,5 +1,5 @@
 ======================================
-Advanced Topics, Configurations, & FAQ
+Advanced Topics and Configurations
 ======================================
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload.
@@ -16,7 +16,7 @@ the properties of a particular backend.
 Scaling Out
 ===========
 
-To scale out a backend to multiple workers, simply configure the number of replicas.
+To scale out a backend to many instances, simply configure the number of replicas.
 
 .. code-block:: python
 
@@ -27,14 +27,14 @@ To scale out a backend to multiple workers, simply configure the number of repli
   config = {"num_replicas": 2}
   client.update_backend_config("my_scaled_endpoint_backend", config)
 
-This will scale up or down the number of workers that can accept requests.
+This will scale up or down the number of replicas that can accept requests.
 
 Using Resources (CPUs, GPUs)
 ============================
 
-To assign hardware resources per worker, you can pass resource requirements to
+To assign hardware resources per replica, you can pass resource requirements to
 ``ray_actor_options``.
-By default, each worker requires one CPU.
+By default, each replica requires one CPU.
 To learn about options to pass in, take a look at :ref:`Resources with Actor<actor-resource-guide>` guide.
 
 For example, to create a backend where each replica uses a single GPU, you can do the
@@ -49,7 +49,7 @@ Fractional Resources
 --------------------
 
 The resources specified in ``ray_actor_options`` can also be *fractional*.
-This allows you to flexibly share resources between workers.
+This allows you to flexibly share resources between replicas.
 For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
 The same could be done to multiplex over CPUs.
 
@@ -268,6 +268,25 @@ Ray Serve exposes important system metrics like the number of successful and
 errored requests through the Ray metrics monitoring infrastructure. By default,
 the metrics are exposed in Prometheus format on each node. See the
 `Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
+
+
+Reconfiguring Backends (Experimental)
+=====================================
+
+Suppose you want to update a parameter in your model without creating a whole
+new backend.  You can do this by writing a `reconfigure` method for the class
+underlying your backend.  At runtime, you can then pass in your new parameters
+by setting the `user_config` field of :mod:`BackendConfig <ray.serve.BackendConfig>`.
+
+The following simple example will make the usage clear:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_reconfigure.py
+
+The `reconfigure` method is called when the class is created if `user_config`
+is set.  In particular, it's also called when new replicas are created in the
+future, in case you decide to scale up your backend later.  The
+`reconfigure` method is also called each time `user_config` is updated via 
+:mod:`client.update_backend_config <ray.serve.api.Client.update_backend_config>`.
 
 Dependency Management
 =====================

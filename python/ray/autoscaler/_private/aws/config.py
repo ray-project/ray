@@ -17,6 +17,8 @@ from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
     handle_boto_error
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler._private.event_system import (CreateClusterEvent,
+                                                  global_event_system)
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +193,9 @@ def bootstrap_aws(config):
 
     # Configure SSH access, using an existing key pair if possible.
     config = _configure_key_pair(config)
+    global_event_system.execute_callback(
+        CreateClusterEvent.ssh_keypair_downloaded,
+        {"ssh_key_path": config["auth"]["ssh_private_key"]})
 
     # Pick a reasonable subnet if not specified by the user.
     config = _configure_subnet(config)

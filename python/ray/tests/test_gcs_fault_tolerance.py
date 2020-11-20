@@ -53,14 +53,16 @@ def test_gcs_server_restart(ray_start_regular):
     indirect=True)
 def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     ids = []
-    for i in range(0, 100):
+    # We reduce the number of actors because there are too many actors created
+    # and `Too many open files` error will be thrown.
+    for i in range(0, 20):
         actor = Increase.remote()
         ids.append(actor.method.remote(1))
 
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
 
-    ready, unready = ray.wait(ids, num_returns=100, timeout=240)
+    ready, unready = ray.wait(ids, num_returns=20, timeout=240)
     print("Ready objects is {}.".format(ready))
     print("Unready objects is {}.".format(unready))
     assert len(unready) == 0

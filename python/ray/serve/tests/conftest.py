@@ -11,8 +11,7 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
 
 @pytest.fixture(scope="session")
 def _shared_serve_instance():
-    # Uncomment the line below to turn on debug log for tests.
-    # os.environ["SERVE_LOG_DEBUG"] = "1"
+    os.environ["SERVE_LOG_DEBUG"] = "1"  # Turns on debug log for tests
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
         num_cpus=36,

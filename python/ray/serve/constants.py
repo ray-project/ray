@@ -34,3 +34,6 @@ DEFAULT_LATENCY_BUCKET_MS = [
     2000,
     5000,
 ]
+
+#: Name of backend reconfiguration method implemented by user.
+BACKEND_RECONFIGURE_METHOD = "reconfigure"
