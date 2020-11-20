@@ -263,7 +263,7 @@ class Curiosity(Exploration):
                 grads_and_vars = [(g, v) for g, v in zip(grads, self._optimizer_var_list) if g is not None]
                 update_op = self._optimizer.apply_gradients(grads_and_vars)
             else:
-                update_up = self._optimizer.minimize(loss, var_list=self._optimizer_var_list)
+                update_op = self._optimizer.minimize(loss, var_list=self._optimizer_var_list)
 
             # Return the squared l2 norm and the optimizer update op.
             return forward_l2_norm_sqared, update_op

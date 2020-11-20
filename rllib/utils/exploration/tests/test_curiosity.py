@@ -127,7 +127,7 @@ class TestCuriosity(unittest.TestCase):
 
     def test_curiosity_on_large_frozen_lake(self):
         config = ppo.DEFAULT_CONFIG.copy()
-        # A very large frozen-lake that's hard for a random policy to solve
+        # A very large frozen-lake that's hard for a random policy to solve
         # due to 0.0 feedback.
         config["env"] = "FrozenLake-v0"
         config["env_config"] = {
@@ -153,9 +153,10 @@ class TestCuriosity(unittest.TestCase):
         # Local only.
         config["num_workers"] = 0
         config["lr"] = 0.001
+        config["simple_optimizer"] = True
 
         num_iterations = 10
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             # W/ Curiosity. Expect to learn something.
             config["exploration_config"] = {
                 "type": "Curiosity",

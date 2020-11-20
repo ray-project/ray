@@ -10,8 +10,11 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
+
+tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
@@ -251,6 +254,7 @@ def build_tf_policy(
             if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
+                #self._sess.run(tf1.initialize_all_variables())
             # TODO: (sven) Allow tf-eager policy to have more than 1 optimizer.
             #  Just like torch Policy does.
             assert len(optimizers) == 1
