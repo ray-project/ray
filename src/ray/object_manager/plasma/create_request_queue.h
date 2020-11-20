@@ -94,7 +94,7 @@ class CreateRequestQueue {
   /// FIFO order. If the first request is not serviceable, this will break and
   /// the caller should try again later.
   ///
-  /// \return Bad PlasmaError for the first request in the queue if it failed to be
+  /// \return Bad status for the first request in the queue if it failed to be
   /// serviced, or OK if all requests were fulfilled.
   Status ProcessRequests();
 
@@ -141,6 +141,8 @@ class CreateRequestQueue {
   /// Finish a queued request and remove it from the queue.
   void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);
 
+  /// The next request ID to assign, so that the caller can get the results of
+  /// a request by retrying. Start at 1 because 0 means "do not retry".
   uint64_t next_req_id_ = 1;
 
   /// The maximum number of times to retry each request upon OOM.
