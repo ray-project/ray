@@ -62,6 +62,10 @@ class KubernetesSyncer(NodeSyncer):
                  local_dir: str,
                  remote_dir: str,
                  sync_client: Optional[SyncClient] = None):
+        if not kubernetes:
+            raise ImportError(
+                "kubernetes is not installed on this machine/container. "
+                "Try: pip install kubernetes")
         self.local_ip = services.get_node_ip_address()
         self.local_node = self._get_kubernetes_node_by_ip(self.local_ip)
         self.worker_ip = None
