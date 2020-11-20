@@ -370,8 +370,8 @@ class _PolicyCollector:
 class _PolicyCollectorGroup:
     def __init__(self, policy_map):
         self.policy_collectors = {
-            pid: _PolicyCollector()
-            for pid in policy_map.keys()
+            pid: _PolicyCollector(policy)
+            for pid, policy in policy_map.items()
         }
         self.count = 0
 
