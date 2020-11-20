@@ -1,13 +1,22 @@
 import os
 from typing import Any, Optional, Tuple
-
-import kubernetes
 import subprocess
 
 from ray import services, logger
 from ray.autoscaler._private.command_runner import KubernetesCommandRunner
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
+
+
+def try_import_kubernetes():
+    try:
+        import kubernetes
+    except ImportError:
+        kubernetes = None
+    return kubernetes
+
+
+kubernetes = try_import_kubernetes()
 
 
 def NamespacedKubernetesSyncer(namespace):
