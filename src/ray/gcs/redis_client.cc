@@ -134,8 +134,11 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) 
       shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
       Status portReachable = shard_contexts_[i]->PingPort(addresses[i], ports[i]);
       if (!portReachable.ok()) {
-        RAY_LOG(WARNING) << "Received Redis shard address " << addresses[i] << ":" << ports[i] << "from Redis head " << options_.server_ip_ << ":" << options_.server_port_ << ". " << portReachable.message() << " Since we successfully connected"
-                         << " to the address you provided " << options_.server_ip_ << ":"
+        RAY_LOG(WARNING) << "Received Redis shard address " << addresses[i] << ":"
+                         << ports[i] << "from Redis head " << options_.server_ip_ << ":"
+                         << options_.server_port_ << ". " << portReachable.message()
+                         << " Since we successfully connected to the address you "
+                         << "provided " << options_.server_ip_ << ":"
                          << options_.server_port_ << ", we will look for the shard at "
                          << options_.server_ip_ << ":" << ports[i];
         addresses[i] = options_.server_ip_;
