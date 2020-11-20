@@ -294,7 +294,7 @@ def build(build_python, build_java, build_cpp):
         SHELL = bazel_env.get("SHELL")
         if SHELL:
             bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
-        BAZEL_SH = bazel_env["BAZEL_SH"]
+        BAZEL_SH = bazel_env.get("BAZEL_SH", "")
         SYSTEMROOT = os.getenv("SystemRoot")
         wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
         if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
