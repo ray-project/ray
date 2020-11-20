@@ -99,4 +99,7 @@ public class TestUtils {
   public static int getNumWorkersPerProcess() {
     return Ray.task(TestUtils::getNumWorkersPerProcessRemoteFunction).remote().get();
   }
+
+  public static void setRayConfig(String... configList) {
+  }
 }

@@ -29,6 +29,11 @@ public class RayConfig {
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
 
+  /**
+   * Used by unit tests only.
+   */
+  private static String[] unitTestOverrides;
+
   private Config config;
 
   /**
@@ -265,6 +270,11 @@ public class RayConfig {
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties();
+    if (unitTestOverrides != null) {
+      for (String unitTestOverride : unitTestOverrides) {
+        config = config.withFallback(ConfigFactory.parseString(unitTestOverride));
+      }
+    }
     String configPath = System.getProperty("ray.config-file");
     if (Strings.isNullOrEmpty(configPath)) {
       config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
