@@ -69,7 +69,7 @@ class NevergradSearch(Searcher):
             "height": tune.uniform(-100, 100),
             "activation": tune.choice(["relu", "tanh"])
         }
-
+        
         current_best_params = [{
             "width": 10,
             "height": 0,
@@ -230,9 +230,6 @@ class NevergradSearch(Searcher):
         if self._points_to_evaluate is not None:
             if len(self._points_to_evaluate) > 0:
                 point_to_evaluate = self._points_to_evaluate.pop(0)
-                for key in self._space.value:
-                    if isinstance(self._space[key], ng.p.Choice):
-                        point_to_evaluate[key] = self._space[key].choices.value[point_to_evaluate[key]]
                 self._nevergrad_opt.suggest(point_to_evaluate)
         suggested_config = self._nevergrad_opt.ask()
         

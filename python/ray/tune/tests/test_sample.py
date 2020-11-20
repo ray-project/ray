@@ -571,27 +571,24 @@ class SearchSpaceTest(unittest.TestCase):
         import nevergrad as ng
 
         config = {
-            "a": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "metric": tune.sample.Categorical([1,2,3,4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
             "b": tune.sample.Integer(0, 5),
             "c": tune.sample.Float(1e-4, 1e-1).loguniform()
         }
 
-        best_params = [{"a": 0, "b": 1, "c": 1e-1},  {"a": 1, "b": 2, "c": 1e-2}]
+        best_params = [{"metric": 1, "a": "t1", "b": 1, "c": 1e-1},  {"metric": 2, "a": "t2", "b": 2, "c": 1e-2}]
         best_params0, best_params1 = best_params[0], best_params[1]
 
         searcher = NevergradSearch(
             optimizer=ng.optimizers.OnePlusOne, points_to_evaluate=best_params)
         analysis = tune.run(
-            _mock_objective, config=config, metric="a", mode="max", search_alg=searcher, num_samples=5)
+            _mock_objective, config=config, metric="metric", mode="max", search_alg=searcher, num_samples=5)
 
-        trial_config0 = analysis.trials[0].config
-        trial0 = {"a": trial_config0["a"], "b": trial_config0["b"], "c": trial_config0["c"]}
-        self.assertDictEqual(trial0, best_params0)
-
-        trial_config1 = analysis.trials[1].config
-        trial1 = {"a": trial_config1["a"], "b": trial_config1["b"], "c": trial_config1["c"]}
-        self.assertDictEqual(trial1, best_params1)
-
+        for i in range(len(best_params)):
+            trial_config = analysis.trials[i].config
+            trial_config_dict = {"metric": trial_config["metric"], "a": trial_config["a"], "b": trial_config["b"], "c": trial_config["c"]}
+            self.assertDictEqual(trial_config_dict, best_params[i])
 
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
