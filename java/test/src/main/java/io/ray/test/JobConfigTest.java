@@ -2,8 +2,8 @@ package io.ray.test;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.runtime.config.RayConfig;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -14,21 +14,12 @@ public class JobConfigTest extends BaseTest {
 
   @BeforeClass
   public void setupJobConfig() {
-    oldNumWorkersPerProcess = System.getProperty("ray.job.num-java-workers-per-process");
-    System.setProperty("ray.job.num-java-workers-per-process", "3");
-    System.setProperty("ray.job.jvm-options.0", "-DX=999");
-    System.setProperty("ray.job.jvm-options.1", "-DY=998");
-    System.setProperty("ray.job.worker-env.foo1", "bar1");
-    System.setProperty("ray.job.worker-env.foo2", "bar2");
-  }
-
-  @AfterClass
-  public void tearDownJobConfig() {
-    System.setProperty("ray.job.num-java-workers-per-process", oldNumWorkersPerProcess);
-    System.clearProperty("ray.job.jvm-options.0");
-    System.clearProperty("ray.job.jvm-options.1");
-    System.clearProperty("ray.job.worker-env.foo1");
-    System.clearProperty("ray.job.worker-env.foo2");
+    RayConfig.setClassLevel(
+        "ray.job.num-java-workers-per-process: 3",
+        "ray.job.jvm-options.0: -DX=999",
+        "ray.job.jvm-options.1: -DY=998",
+        "ray.job.worker-env.foo1: bar1",
+        "ray.job.worker-env.foo2: bar2");
   }
 
   public static String getJvmOptions(String propertyName) {

@@ -12,6 +12,7 @@ import io.ray.api.id.JobId;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -32,7 +33,11 @@ public class RayConfig {
   /**
    * Used by unit tests only.
    */
-  private static String[] unitTestOverrides;
+  private static String[] unitTestClassOverrides;
+  /**
+   * Used by unit tests only.
+   */
+  private static String[] unitTestMethodOverrides;
 
   private Config config;
 
@@ -269,12 +274,19 @@ public class RayConfig {
    */
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
-    Config config = ConfigFactory.systemProperties();
-    if (unitTestOverrides != null) {
-      for (String unitTestOverride : unitTestOverrides) {
+    Config config = ConfigFactory.empty();
+    // Unit test overrides have the highest priority.
+    if (unitTestMethodOverrides != null) {
+      for (String unitTestOverride : unitTestMethodOverrides) {
         config = config.withFallback(ConfigFactory.parseString(unitTestOverride));
       }
     }
+    if (unitTestClassOverrides != null) {
+      for (String unitTestOverride : unitTestClassOverrides) {
+        config = config.withFallback(ConfigFactory.parseString(unitTestOverride));
+      }
+    }
+    config = config.withFallback(ConfigFactory.systemProperties());
     String configPath = System.getProperty("ray.config-file");
     if (Strings.isNullOrEmpty(configPath)) {
       config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
@@ -285,4 +297,28 @@ public class RayConfig {
     return new RayConfig(config.withOnlyPath("ray"));
   }
 
+
+  /**
+   * Used by unit tests only.
+   */
+  public static void setClassLevel(String... configList) {
+    setUnitTestRayConfig("unitTestClassOverrides", configList);
+  }
+
+  /**
+   * Used by unit tests only.
+   */
+  public static void setMethodLevel(String... configList) {
+    setUnitTestRayConfig("unitTestMethodOverrides", configList);
+  }
+
+  private static void setUnitTestRayConfig(String fieldName, String... configList) {
+    try {
+      Field field = RayConfig.class.getField(fieldName);
+      field.setAccessible(true);
+      field.set(null, configList);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
 }
