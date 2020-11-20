@@ -50,8 +50,9 @@ def train_mnist(config, checkpoint_dir=None):
     per_worker_batch_size = 64
     num_workers = get_num_workers()
     global_batch_size = per_worker_batch_size * num_workers
-    multi_worker_dataset = mnist_dataset(global_batch_size, mini=config["use_mini"])
-    steps_per_epoch = 5 if config["use_mini"] else 70
+    multi_worker_dataset = mnist_dataset(
+        global_batch_size, mini=config.get("use_mini"))
+    steps_per_epoch = 5 if config.get("use_mini") else 70
     with strategy.scope():
         multi_worker_model = build_and_compile_cnn_model(config)
     multi_worker_model.fit(
