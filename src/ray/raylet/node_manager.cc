@@ -1199,7 +1199,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       std::make_shared<Worker>(job_id, worker_id, language, worker_type,
                                worker_ip_address, client, client_call_manager_));
 
-  auto send_reply_callback = [this, client](Status status, int assigned_port) {
+  auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
     std::vector<std::string> system_config_keys;
     std::vector<std::string> system_config_values;
@@ -1207,11 +1207,17 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       system_config_keys.push_back(kv.first);
       system_config_values.push_back(kv.second);
     }
+    
+    std::string serialized_job_config;
+    if (const auto *job_config = worker_pool_.GetJobConfig(job_id)) {
+      serialized_job_config = job_config->SerializeAsString();
+    }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, status.ok(), fbb.CreateString(status.ToString()),
         to_flatbuf(fbb, self_node_id_), assigned_port,
         string_vec_to_flatbuf(fbb, system_config_keys),
-        string_vec_to_flatbuf(fbb, system_config_values));
+        string_vec_to_flatbuf(fbb, internal_config_values));
+        fbb.CreateString(serialized_job_config));
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),

@@ -137,6 +137,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return Void.
   void HandleJobFinished(const JobID &job_id);
 
+  /// \brief Check get job config by the specified job id.
+  ///
+  /// \param job_id ID of the job.
+  /// \return Job config if given job is running, else nullptr.
+  const rpc::JobConfig *GetJobConfig(const JobID &job_id) const;
+
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///

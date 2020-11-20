@@ -1232,6 +1232,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool exiting_ = false;
 
   friend class CoreWorkerTest;
+
+  std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
 }  // namespace ray
