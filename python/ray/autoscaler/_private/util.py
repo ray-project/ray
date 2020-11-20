@@ -9,8 +9,7 @@ from typing import Any, Dict
 
 import ray
 import ray._private.services as services
-from ray.autoscaler._private.providers import _get_default_config, \
-    _NODE_PROVIDERS
+from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
@@ -131,27 +130,7 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
     defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
-    try:
-        defaults = _fillout_available_node_types_resources(defaults)
-    except ValueError:
-        # When the user uses a wrong instance type.
-        raise
-    except Exception:
-        # When the user is using e.g., staroid, but it is not installed.
-        logger.exception("Failed to autodetect node resources.")
     return defaults
-
-
-def _fillout_available_node_types_resources(
-        cluster_config: Dict[str, Any]) -> Dict[str, Any]:
-    """Fills out missing "resources" field for available_node_types."""
-    if "available_node_types" in cluster_config:
-        importer = _NODE_PROVIDERS.get(cluster_config["provider"]["type"])
-        if importer is not None:
-            provider_cls = importer(cluster_config["provider"])
-            return provider_cls.fillout_available_node_types_resources(
-                cluster_config)
-    return cluster_config
 
 
 def merge_setup_commands(config):

@@ -97,7 +97,7 @@ def add_click_options(options):
 @click.version_option()
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
-    ray.utils.setup_logger(level, logging_format)
+    ray.ray_logging.setup_logger(level, logging_format)
     cli_logger.set_format(format_tmpl=logging_format)
 
 
@@ -160,7 +160,7 @@ def debug(address):
     """Show all active breakpoints and exceptions in the Ray debugger."""
     from telnetlib import Telnet
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     while True:
@@ -691,6 +691,7 @@ def stop(force, verbose, log_style, log_color):
         ["log_monitor.py", False],
         ["reporter.py", False],
         ["dashboard.py", False],
+        ["new_dashboard/agent.py", False],
         ["ray_process_reaper.py", False],
     ]
 
@@ -1309,7 +1310,7 @@ def microbenchmark():
 def timeline(address):
     """Take a Chrome tracing timeline for a Ray cluster."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -1337,7 +1338,7 @@ def timeline(address):
 def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, _redis_password=redis_password)
     print(ray.internal.internal_api.memory_summary())
@@ -1352,7 +1353,7 @@ def memory(address, redis_password):
 def status(address):
     """Print cluster status, including autoscaling info."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     print(debug_status())
@@ -1367,7 +1368,7 @@ def status(address):
 def global_gc(address):
     """Trigger Python garbage collection on all cluster workers."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     ray.internal.internal_api.global_gc()

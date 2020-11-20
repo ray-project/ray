@@ -8,15 +8,22 @@ import numpy as np
 
 from ray.tune import Trainable
 from ray.tune.function_runner import wrap_function
-from ray.tune.integration.wandb import _WandbLoggingProcess, \
+from ray.tune.integration.wandb import WandbLoggerCallback, \
+    _WandbLoggingProcess, \
     _WANDB_QUEUE_END, WandbLogger, WANDB_ENV_VAR, WandbTrainableMixin, \
     wandb_mixin
 from ray.tune.result import TRIAL_INFO
 from ray.tune.trial import TrialInfo
 
-Trial = namedtuple("MockTrial",
-                   ["config", "trial_id", "trial_name", "trainable_name"])
-Trial.__str__ = lambda t: t.trial_name
+
+class Trial(
+        namedtuple("MockTrial",
+                   ["config", "trial_id", "trial_name", "trainable_name"])):
+    def __hash__(self):
+        return hash(self.trial_id)
+
+    def __str__(self):
+        return self.trial_name
 
 
 class _MockWandbLoggingProcess(_WandbLoggingProcess):
@@ -37,8 +44,20 @@ class _MockWandbLoggingProcess(_WandbLoggingProcess):
             self.logs.put(log)
 
 
-class WandbTestLogger(WandbLogger):
+class WandbTestExperimentLogger(WandbLoggerCallback):
     _logger_process_cls = _MockWandbLoggingProcess
+
+    @property
+    def trial_processes(self):
+        return self._trial_processes
+
+
+class WandbTestLogger(WandbLogger):
+    _experiment_logger_cls = WandbTestExperimentLogger
+
+    @property
+    def trial_process(self):
+        return self._trial_experiment_logger.trial_processes[self.trial]
 
 
 class _MockWandbAPI(object):
@@ -63,7 +82,7 @@ class WandbIntegrationTest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def testWandbLoggerConfig(self):
+    def testWandbLegacyLoggerConfig(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(trial_config, 0, "trial_0", "trainable")
 
@@ -115,11 +134,13 @@ class WandbIntegrationTest(unittest.TestCase):
         trial_config["wandb"] = {"project": "test_project"}
 
         logger = WandbTestLogger(trial_config, "/tmp", trial)
-        self.assertEqual(logger._wandb.kwargs["project"], "test_project")
-        self.assertEqual(logger._wandb.kwargs["id"], trial.trial_id)
-        self.assertEqual(logger._wandb.kwargs["name"], trial.trial_name)
-        self.assertEqual(logger._wandb.kwargs["group"], trial.trainable_name)
-        self.assertIn("config", logger._wandb._exclude)
+        self.assertEqual(logger.trial_process.kwargs["project"],
+                         "test_project")
+        self.assertEqual(logger.trial_process.kwargs["id"], trial.trial_id)
+        self.assertEqual(logger.trial_process.kwargs["name"], trial.trial_name)
+        self.assertEqual(logger.trial_process.kwargs["group"],
+                         trial.trainable_name)
+        self.assertIn("config", logger.trial_process._exclude)
 
         logger.close()
 
@@ -127,8 +148,8 @@ class WandbIntegrationTest(unittest.TestCase):
         trial_config["wandb"] = {"project": "test_project", "log_config": True}
 
         logger = WandbTestLogger(trial_config, "/tmp", trial)
-        self.assertNotIn("config", logger._wandb._exclude)
-        self.assertNotIn("metric", logger._wandb._exclude)
+        self.assertNotIn("config", logger.trial_process._exclude)
+        self.assertNotIn("metric", logger.trial_process._exclude)
 
         logger.close()
 
@@ -139,12 +160,12 @@ class WandbIntegrationTest(unittest.TestCase):
         }
 
         logger = WandbTestLogger(trial_config, "/tmp", trial)
-        self.assertIn("config", logger._wandb._exclude)
-        self.assertIn("metric", logger._wandb._exclude)
+        self.assertIn("config", logger.trial_process._exclude)
+        self.assertIn("metric", logger.trial_process._exclude)
 
         logger.close()
 
-    def testWandbLoggerReporting(self):
+    def testWandbLegacyLoggerReporting(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(trial_config, 0, "trial_0", "trainable")
 
@@ -166,7 +187,7 @@ class WandbIntegrationTest(unittest.TestCase):
 
         logger.on_result(r1)
 
-        logged = logger._wandb.logs.get(timeout=10)
+        logged = logger.trial_process.logs.get(timeout=10)
         self.assertIn("metric1", logged)
         self.assertNotIn("metric2", logged)
         self.assertIn("metric3", logged)
@@ -175,6 +196,106 @@ class WandbIntegrationTest(unittest.TestCase):
         self.assertNotIn("config", logged)
 
         logger.close()
+
+    def testWandbLoggerConfig(self):
+        trial_config = {"par1": 4, "par2": 9.12345678}
+        trial = Trial(trial_config, 0, "trial_0", "trainable")
+
+        if WANDB_ENV_VAR in os.environ:
+            del os.environ[WANDB_ENV_VAR]
+
+        # No API key
+        with self.assertRaises(ValueError):
+            logger = WandbTestExperimentLogger(project="test_project")
+
+        # API Key in config
+        logger = WandbTestExperimentLogger(
+            project="test_project", api_key="1234")
+        self.assertEqual(os.environ[WANDB_ENV_VAR], "1234")
+
+        del logger
+        del os.environ[WANDB_ENV_VAR]
+
+        # API Key file
+        with tempfile.NamedTemporaryFile("wt") as fp:
+            fp.write("5678")
+            fp.flush()
+
+            logger = WandbTestExperimentLogger(
+                project="test_project", api_key_file=fp.name)
+            self.assertEqual(os.environ[WANDB_ENV_VAR], "5678")
+
+        del logger
+        del os.environ[WANDB_ENV_VAR]
+
+        # API Key in env
+        os.environ[WANDB_ENV_VAR] = "9012"
+        logger = WandbTestExperimentLogger(project="test_project")
+        del logger
+
+        # From now on, the API key is in the env variable.
+
+        logger = WandbTestExperimentLogger(project="test_project")
+        logger.log_trial_start(trial)
+
+        self.assertEqual(logger.trial_processes[trial].kwargs["project"],
+                         "test_project")
+        self.assertEqual(logger.trial_processes[trial].kwargs["id"],
+                         trial.trial_id)
+        self.assertEqual(logger.trial_processes[trial].kwargs["name"],
+                         trial.trial_name)
+        self.assertEqual(logger.trial_processes[trial].kwargs["group"],
+                         trial.trainable_name)
+        self.assertIn("config", logger.trial_processes[trial]._exclude)
+
+        del logger
+
+        # log config.
+        logger = WandbTestExperimentLogger(
+            project="test_project", log_config=True)
+        logger.log_trial_start(trial)
+        self.assertNotIn("config", logger.trial_processes[trial]._exclude)
+        self.assertNotIn("metric", logger.trial_processes[trial]._exclude)
+
+        del logger
+
+        # Exclude metric.
+        logger = WandbTestExperimentLogger(
+            project="test_project", excludes=["metric"])
+        logger.log_trial_start(trial)
+        self.assertIn("config", logger.trial_processes[trial]._exclude)
+        self.assertIn("metric", logger.trial_processes[trial]._exclude)
+
+        del logger
+
+    def testWandbLoggerReporting(self):
+        trial_config = {"par1": 4, "par2": 9.12345678}
+        trial = Trial(trial_config, 0, "trial_0", "trainable")
+
+        logger = WandbTestExperimentLogger(
+            project="test_project", api_key="1234", excludes=["metric2"])
+        logger.on_trial_start(0, [], trial)
+
+        r1 = {
+            "metric1": 0.8,
+            "metric2": 1.4,
+            "metric3": np.asarray(32.0),
+            "metric4": np.float32(32.0),
+            "const": "text",
+            "config": trial_config
+        }
+
+        logger.on_trial_result(0, [], trial, r1)
+
+        logged = logger.trial_processes[trial].logs.get(timeout=10)
+        self.assertIn("metric1", logged)
+        self.assertNotIn("metric2", logged)
+        self.assertIn("metric3", logged)
+        self.assertIn("metric4", logged)
+        self.assertNotIn("const", logged)
+        self.assertNotIn("config", logged)
+
+        del logger
 
     def testWandbMixinConfig(self):
         config = {"par1": 4, "par2": 9.12345678}

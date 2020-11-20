@@ -107,13 +107,6 @@ def test_invalid_config_raises_exception(shutdown_only):
             "object_spilling_config": json.dumps(copied_config),
         })
 
-    with pytest.raises(ValueError):
-        copied_config = copy.deepcopy(file_system_object_spilling_config)
-        copied_config["params"].update({"directory_path": "not_exist_path"})
-        ray.init(_system_config={
-            "object_spilling_config": json.dumps(copied_config),
-        })
-
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")

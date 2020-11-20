@@ -5,13 +5,12 @@
 # In short, if you change it here, PLEASE also change it in setup.py.
 #
 # setup.py install_requires
-aiohttp
+aiohttp==3.7
 aioredis
 click >= 7.0
 colorama
 colorful
 filelock
-google
 gpustat
 grpcio >= 1.28.1
 jsonschema

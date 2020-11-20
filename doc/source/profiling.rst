@@ -1,8 +1,21 @@
 Profiling for Ray Developers
 ============================
 
-This document details, for Ray developers, how to use ``pprof`` to profile Ray
-binaries.
+This document details, for Ray developers, how to analyze Ray performance.
+
+Getting a stack trace of Ray C++ processes
+----------------------------------------
+
+You can use the following GDB command to view the current stack trace of any
+running Ray process (e.g., raylet). This can be useful for debugging 100% CPU
+utilization or infinite loops (simply run the command a few times to see what
+the process is stuck on).
+
+.. code-block:: shell
+
+ sudo gdb -batch -ex "thread apply all bt" -p <pid>
+ 
+Note that you can find the pid of the raylet with ``pgrep raylet``.
 
 Installation
 ------------

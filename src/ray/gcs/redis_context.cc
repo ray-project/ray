@@ -294,6 +294,9 @@ template <typename RedisContext, typename RedisConnectFunction>
 Status ConnectWithoutRetries(const std::string &address, int port,
                              const RedisConnectFunction &connect_function,
                              RedisContext **context, std::string &errorMessage) {
+  // This currently returns the errorMessage in two different ways,
+  // as an output parameter and in the Status::RedisError,
+  // because we're not sure whether we'll want to change what this returns.
   RedisContext *newContext = connect_function(address.c_str(), port);
   if (newContext == nullptr || (newContext)->err) {
     std::ostringstream oss(errorMessage);
@@ -324,16 +327,22 @@ Status ConnectWithRetries(const std::string &address, int port,
       ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
   while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
-      RAY_LOG(FATAL) << errorMessage;
+      RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
+                     << "to connect have all failed. The last error message was: "
+                     << errorMessage;
       break;
     }
     if (*context == nullptr) {
-      RAY_LOG(WARNING) << "Could not allocate Redis context, retrying.";
+      RAY_LOG(WARNING) << "Could not allocate Redis context, will retry in "
+                       << RayConfig::instance().redis_db_connect_wait_milliseconds()
+                       << " milliseconds.";
     }
     if ((*context)->err) {
       RAY_LOG(WARNING) << "Could not establish connection to Redis " << address << ":"
-                       << port << " (context.err = " << (*context)->err << ")"
-                       << ", retrying.";
+                       << port << " (context.err = " << (*context)->err
+                       << "), will retry in "
+                       << RayConfig::instance().redis_db_connect_wait_milliseconds()
+                       << " milliseconds.";
     }
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
