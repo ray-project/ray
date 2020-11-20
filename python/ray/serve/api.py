@@ -82,6 +82,22 @@ class Client:
         if not self._shutdown:
             ray.get(self._controller.shutdown.remote())
             ray.kill(self._controller, no_restart=True)
+
+            # Wait for the named actor entry gets removed as well.
+            num_tries = 0
+            while True:
+                try:
+                    ray.get_actor(self._controller_name)
+                    num_tries += 1
+                    if num_tries > 10:
+                        logger.info(
+                            "Waiting for controller actor be to removed "
+                            "from Ray actor registry. If this message "
+                            "occur too many times, please file a bug "
+                            "report.")
+                except ValueError:  # actor name is removed
+                    break
+
             self._shutdown = True
 
     @_ensure_connected
