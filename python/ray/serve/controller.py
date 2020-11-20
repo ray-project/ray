@@ -169,6 +169,7 @@ class ActorStateReconciler:
         # Wait on all creation task futures together.
         await asyncio.gather(*replica_started_futures)
 
+        # TODO(ilr) THis needs to be a post start call
         self.backend_replicas_to_start.clear()
 
     async def _start_backend_replicas(self, config_store: ConfigurationStore,
@@ -184,6 +185,7 @@ class ActorStateReconciler:
             replica_handle = await self._start_single_replica(
                 config_store, backend_tag, replica_tag, replica_name)
 
+        # TODO(ilr) This need to be a post start Call
         self.backend_replicas[backend_tag][replica_tag] = replica_handle
 
     def _scale_backend_replicas(self, backends: Dict[BackendTag, BackendInfo],
@@ -269,6 +271,7 @@ class ActorStateReconciler:
                 # successfully killed the worker or not.
                 ray.kill(replica, no_restart=True)
 
+        # TODO(ilr) This needs to be a post-start call
         self.backend_replicas_to_stop.clear()
 
     async def _start_single_replica(
