@@ -24,17 +24,23 @@
 
 namespace plasma {
 
-uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback) {
+uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id,
+                                        const std::shared_ptr<ClientInterface> &client,
+                                        const CreateObjectCallback &create_callback) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
   queue_.emplace_back(new CreateRequest(object_id, req_id, client, create_callback));
   return req_id;
 }
 
-bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result, PlasmaError *error) {
+bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
+                                          PlasmaError *error) {
   auto it = fulfilled_requests_.find(req_id);
   if (it == fulfilled_requests_.end()) {
-    RAY_LOG(ERROR) << "Object store client requested the result of a previous request to create an object, but the result has already been returned to the client. This client may hang because the creation request cannot be fulfilled.";
+    RAY_LOG(ERROR)
+        << "Object store client requested the result of a previous request to create an "
+           "object, but the result has already been returned to the client. This client "
+           "may hang because the creation request cannot be fulfilled.";
     return false;
   }
 
@@ -43,12 +49,14 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
   }
 
   *result = it->second->result;
-  *error= it->second->error;
+  *error = it->second->error;
   fulfilled_requests_.erase(it);
   return true;
 }
 
-std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback) {
+std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
+    const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
+    const CreateObjectCallback &create_callback) {
   PlasmaObject result = {};
 
   if (!queue_.empty()) {
@@ -94,10 +102,12 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
     // TODO(swang): Ask the raylet to spill enough space for multiple requests
     // at once, instead of just the head of the queue.
     num_retries_ = 0;
-    status = Status::TransientObjectStoreFull("Object store full, queueing creation request");
+    status =
+        Status::TransientObjectStoreFull("Object store full, queueing creation request");
   } else if (request->error == PlasmaError::OutOfMemory && should_retry_on_oom) {
     num_retries_++;
-    RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_ << " tries";
+    RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_
+                   << " tries";
 
     if (on_store_full_) {
       on_store_full_();
@@ -105,7 +115,9 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
 
     status = Status::ObjectStoreFull("Object store full, should retry on timeout");
   } else if (request->error == PlasmaError::OutOfMemory) {
-    RAY_LOG(ERROR) << "Not enough memory to create object " << request->object_id << " after " << num_retries_ << ", will return OutOfMemory to the client";
+    RAY_LOG(ERROR) << "Not enough memory to create object " << request->object_id
+                   << " after " << num_retries_
+                   << ", will return OutOfMemory to the client";
   }
 
   return status;
@@ -123,7 +135,8 @@ Status CreateRequestQueue::ProcessRequests() {
   return Status::OK();
 }
 
-void CreateRequestQueue::FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it) {
+void CreateRequestQueue::FinishRequest(
+    std::list<std::unique_ptr<CreateRequest>>::iterator request_it) {
   // Fulfill the request.
   auto &request = *request_it;
   auto it = fulfilled_requests_.find(request->request_id);
@@ -136,9 +149,9 @@ void CreateRequestQueue::FinishRequest(std::list<std::unique_ptr<CreateRequest>>
   num_retries_ = 0;
 }
 
-
-void CreateRequestQueue::RemoveDisconnectedClientRequests(const std::shared_ptr<ClientInterface> &client) {
-  for (auto it = queue_.begin(); it != queue_.end(); ) {
+void CreateRequestQueue::RemoveDisconnectedClientRequests(
+    const std::shared_ptr<ClientInterface> &client) {
+  for (auto it = queue_.begin(); it != queue_.end();) {
     if ((*it)->client == client) {
       fulfilled_requests_.erase((*it)->request_id);
       it = queue_.erase(it);
@@ -147,7 +160,7 @@ void CreateRequestQueue::RemoveDisconnectedClientRequests(const std::shared_ptr<
     }
   }
 
-  for (auto it = fulfilled_requests_.begin(); it != fulfilled_requests_.end(); ) {
+  for (auto it = fulfilled_requests_.begin(); it != fulfilled_requests_.end();) {
     if (it->second && it->second->client == client) {
       fulfilled_requests_.erase(it);
     }

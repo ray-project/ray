@@ -30,16 +30,17 @@ namespace plasma {
 
 class CreateRequestQueue {
  public:
-  using CreateObjectCallback = std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
+  using CreateObjectCallback =
+      std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
 
-  CreateRequestQueue(int32_t max_retries,
-      bool evict_if_full,
-      std::function<void()> on_store_full)
-    : max_retries_(max_retries),
-      evict_if_full_(evict_if_full),
-      on_store_full_(on_store_full) {
-        RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_ << " retries on OOM, evict if full? " << (evict_if_full_ ? 1 : 0);
-      }
+  CreateRequestQueue(int32_t max_retries, bool evict_if_full,
+                     std::function<void()> on_store_full)
+      : max_retries_(max_retries),
+        evict_if_full_(evict_if_full),
+        on_store_full_(on_store_full) {
+    RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_
+                   << " retries on OOM, evict if full? " << (evict_if_full_ ? 1 : 0);
+  }
 
   /// Add a request to the queue. The caller should use the returned request ID
   /// to later get the result of the request.
@@ -52,7 +53,9 @@ class CreateRequestQueue {
   /// drop this request if the client disconnects.
   /// \param create_callback A callback to attempt to create the object.
   /// \return A request ID that can be used to get the result.
-  uint64_t AddRequest(const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback);
+  uint64_t AddRequest(const ObjectID &object_id,
+                      const std::shared_ptr<ClientInterface> &client,
+                      const CreateObjectCallback &create_callback);
 
   bool GetRequestResult(uint64_t req_id, PlasmaObject *result, PlasmaError *error);
 
@@ -65,7 +68,9 @@ class CreateRequestQueue {
   /// \return The result of the call. This will return an out-of-memory error
   /// if there are other requests queued or there is not enough space left in
   /// the object store, this will return an out-of-memory error.
-  std::pair<PlasmaObject, PlasmaError> TryRequestImmediately(const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &create_callback);
+  std::pair<PlasmaObject, PlasmaError> TryRequestImmediately(
+      const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
+      const CreateObjectCallback &create_callback);
 
   /// Process requests in the queue.
   ///
@@ -84,10 +89,13 @@ class CreateRequestQueue {
 
  private:
   struct CreateRequest {
-    CreateRequest(const ObjectID &object_id, uint64_t request_id, const std::shared_ptr<ClientInterface> &client,
-        CreateObjectCallback create_callback)
-    : object_id(object_id), request_id(request_id), client(client),
-      create_callback(create_callback) {}
+    CreateRequest(const ObjectID &object_id, uint64_t request_id,
+                  const std::shared_ptr<ClientInterface> &client,
+                  CreateObjectCallback create_callback)
+        : object_id(object_id),
+          request_id(request_id),
+          client(client),
+          create_callback(create_callback) {}
 
     // The ObjectID to create.
     const ObjectID object_id;
@@ -145,7 +153,7 @@ class CreateRequestQueue {
   /// OutOfMemory error and we can just respond to them once there is enough
   /// space made, or after a timeout.
   std::list<std::unique_ptr<CreateRequest>> queue_;
-  
+
   absl::flat_hash_map<uint64_t, std::unique_ptr<CreateRequest>> fulfilled_requests_;
 
   friend class CreateRequestQueueTest;
