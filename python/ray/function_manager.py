@@ -361,7 +361,8 @@ class FunctionActorManager:
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())
         actor_class_info = {
-            "class_name": actor_creation_function_descriptor.class_name,
+            "class_name": actor_creation_function_descriptor.class_name.split(
+                ".")[-1],
             "module": actor_creation_function_descriptor.module_name,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
