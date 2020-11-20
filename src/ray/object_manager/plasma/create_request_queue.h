@@ -34,10 +34,10 @@ class CreateRequestQueue {
       std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
 
   CreateRequestQueue(int32_t max_retries, bool evict_if_full,
-                     std::function<void()> on_store_full)
+                     std::function<void()> trigger_global_gc)
       : max_retries_(max_retries),
         evict_if_full_(evict_if_full),
-        on_store_full_(on_store_full) {
+        trigger_global_gc_(trigger_global_gc) {
     RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_
                    << " retries on OOM, evict if full? " << (evict_if_full_ ? 1 : 0);
   }
@@ -57,6 +57,22 @@ class CreateRequestQueue {
                       const std::shared_ptr<ClientInterface> &client,
                       const CreateObjectCallback &create_callback);
 
+  /// Get the result of a request.
+  ///
+  /// This method should only be called with a request ID returned by a
+  /// previous call to add a request. The result will be popped, so this method
+  /// should not be called again with the same request ID once a result is
+  /// returned. If either of these is violated, an error will be returned.
+  ///
+  /// \param[in] req_id The request ID that was returned to the caller by a
+  /// previous call to add a request.
+  /// \param[out] result The resulting object information will be stored here,
+  /// if the request was finished and successful.
+  /// \param[out] error The error code returned by the creation handler will be
+  /// stored here, if the request finished. This will also return an error if
+  /// there is no information about this request ID.
+  /// \return Whether the result and error are ready. This returns false if the
+  /// request is still pending.
   bool GetRequestResult(uint64_t req_id, PlasmaObject *result, PlasmaError *error);
 
   /// Try to fulfill a request immediately, for clients that cannot retry.
@@ -138,8 +154,9 @@ class CreateRequestQueue {
   /// always try to evict.
   const bool evict_if_full_;
 
-  /// A callback to call if the object store is full.
-  const std::function<void()> on_store_full_;
+  /// A callback to trigger global GC in the cluster if the object store is
+  /// full.
+  const std::function<void()> trigger_global_gc_;
 
   /// Queue of object creation requests to respond to. Requests will be placed
   /// on this queue if the object store does not have enough room at the time
@@ -154,6 +171,9 @@ class CreateRequestQueue {
   /// space made, or after a timeout.
   std::list<std::unique_ptr<CreateRequest>> queue_;
 
+  /// A buffer of the results of fulfilled requests. The value will be null
+  /// while the request is pending and will be set once the request has
+  /// finished.
   absl::flat_hash_map<uint64_t, std::unique_ptr<CreateRequest>> fulfilled_requests_;
 
   friend class CreateRequestQueueTest;

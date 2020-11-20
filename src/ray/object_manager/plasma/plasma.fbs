@@ -91,6 +91,10 @@ enum PlasmaError:int {
   ObjectNotSealed,
   // Trying to delete an object but it's in use.
   ObjectInUse,
+  // An unexpected error occurred during object creation, such as trying to get
+  // the result of the same request twice. This is most likely due to a system
+  // bug in the plasma store or caller.
+  UnexpectedError,
 }
 
 // Plasma store messages

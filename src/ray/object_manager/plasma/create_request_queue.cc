@@ -41,7 +41,8 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
         << "Object store client requested the result of a previous request to create an "
            "object, but the result has already been returned to the client. This client "
            "may hang because the creation request cannot be fulfilled.";
-    return false;
+    *error = PlasmaError::UnexpectedError;
+    return true;
   }
 
   if (!it->second) {
@@ -109,8 +110,8 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
     RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_
                    << " tries";
 
-    if (on_store_full_) {
-      on_store_full_();
+    if (trigger_global_gc_) {
+      trigger_global_gc_();
     }
 
     status = Status::ObjectStoreFull("Object store full, should retry on timeout");

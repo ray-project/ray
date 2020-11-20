@@ -134,6 +134,9 @@ Status PlasmaErrorStatus(fb::PlasmaError plasma_error) {
   case fb::PlasmaError::TransientOutOfMemory:
     return Status::ObjectStoreFull(
         "object does not fit in the plasma store, spilling objects to make room");
+  case fb::PlasmaError::UnexpectedError:
+    return Status::UnknownError(
+        "an unexpected error occurred, likely due to a bug in the system or caller");
   default:
     RAY_LOG(FATAL) << "unknown plasma error code " << static_cast<int>(plasma_error);
   }
