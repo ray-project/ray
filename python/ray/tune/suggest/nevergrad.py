@@ -1,6 +1,6 @@
 import logging
 import pickle
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, List
 
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized
@@ -48,6 +48,13 @@ class NevergradSearch(Searcher):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want hyperopt to run first to help the TPE algorithm
+            make better suggestions for future parameters. Needs to be
+            a list of dict of hyperopt-named variables.
+            Choice variables should be indicated by their index in the
+            list (see example)
         use_early_stopped_trials: Deprecated.
         max_concurrent: Deprecated.
 
@@ -62,11 +69,18 @@ class NevergradSearch(Searcher):
             "height": tune.uniform(-100, 100),
             "activation": tune.choice(["relu", "tanh"])
         }
+        
+        current_best_params = [{
+            'width': 10,
+            'height': 0,
+            'activation': 0, # The index of "relu"
+        }]
 
         ng_search = NevergradSearch(
             optimizer=ng.optimizers.OnePlusOne,
             metric="mean_loss",
-            mode="min")
+            mode="min",
+            points_to_evaluate=current_best_params)
 
         run(my_trainable, config=config, search_alg=ng_search)
 
@@ -99,6 +113,7 @@ class NevergradSearch(Searcher):
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  max_concurrent: Optional[int] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  **kwargs):
         assert ng is not None, "Nevergrad must be installed!"
         if mode:
@@ -110,6 +125,12 @@ class NevergradSearch(Searcher):
         self._space = None
         self._opt_factory = None
         self._nevergrad_opt = None
+        
+        if points_to_evaluate is None:
+            self._points_to_evaluate = None
+        else:
+            assert isinstance(points_to_evaluate, (list, tuple))
+            self._points_to_evaluate = points_to_evaluate
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
@@ -202,7 +223,26 @@ class NevergradSearch(Searcher):
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
+        
+        if len(self._points_to_evaluate) > 0:
+            #logger.info(f"NS - space {self._space} - {type(self._space)}")
+            #logger.info(f"NS - space value {self._space.value} - {type(self._space.value)}")
+#             logger.info(f"NS - points_to_evaluate {self._points_to_evaluate}")
+            point_to_evaluate = self._points_to_evaluate.pop(0)
+            #logger.info(f"NS - point_to_evaluate {point_to_evaluate}")
+            #logger.info(f"NS - self._space {self._space} / {type(self._space)}")
+            for key in self._space.value:
+                #logger.info(f"NS - self._space[key] {key} {self._space[key]}")
+                #logger.info(f"NS - space iter {key}  - {self._space.value[key]} - {type(self._space.value[key])} - {point_to_evaluate[key]}")
+                if isinstance(self._space[key], ng.p.Choice):
+                    #logger.info(f"NS - space iter {key}  - {self._space[key].choices.value[point_to_evaluate[key]]} - {point_to_evaluate[key]}")
+                    # .choices[0].value
+                    point_to_evaluate[key] = self._space[key].choices.value[point_to_evaluate[key]]
+            #logger.info(f"NS - point_to_evaluate {point_to_evaluate}")
+            self._nevergrad_opt.suggest(point_to_evaluate)
         suggested_config = self._nevergrad_opt.ask()
+        #logger.info(f"NS - suggested_config {suggested_config}")
+        
         self._live_trial_mapping[trial_id] = suggested_config
         # in v0.2.0+, output of ask() is a Candidate,
         # with fields args and kwargs
