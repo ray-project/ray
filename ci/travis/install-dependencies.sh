@@ -38,7 +38,19 @@ install_base() {
       pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
         tmux gdb
       if [ "${LINUX_WHEELS-}" = 1 ]; then
-        pkg_install_helper docker.io
+        # Travis already has docker-ce 18.06 installed.
+        # If we install docker.io instead, it will stop the Docker service.
+        # Removing docker-ce (18.06.0~ce~3-0~ubuntu) ...
+        # Selecting previously unselected package containerd.
+        # Selecting previously unselected package docker.io.
+        # Created symlink /etc/systemd/system/multi-user.target.wants/containerd.service → /lib/systemd/system/containerd.service.
+        # Setting up docker.io (19.03.6-0ubuntu1~18.04.2) ...
+        # docker.service is a disabled or a static unit, not starting it.
+        # Job for docker.socket failed.
+        # And then when you try to use Docker:
+        # Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+        # There are ways to fix that, but it would be simpler to upgrade what they already have.
+        pkg_install_helper docker-ce docker-ce-cli containerd.io
         if [ -n "${TRAVIS-}" ]; then
           sudo usermod -a -G docker travis
         fi
