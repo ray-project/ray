@@ -4,6 +4,26 @@ ray.connect("localhost:50051")
 
 
 @ray.remote
+class HelloActor:
+    def __init__(self):
+        self.count = 0
+
+    def say_hello(self, whom):
+        self.count += 1
+        return ("Hello " + whom, self.count)
+
+actor = HelloActor.remote()
+s, count = ray.get(actor.say_hello.remote("you"))
+print(s, count)
+assert s == "hello you"
+assert count == 1
+s, count = ray.get(actor.say_hello.remote("world"))
+print(s, count)
+assert s == "hello world"
+assert count == 2
+
+
+@ray.remote
 def plus2(x):
     return x + 2
 
@@ -66,3 +86,4 @@ res = ray.wait([ref2, ref3, ref4, ref5], num_returns=4)
 print(res)
 assert [ref2, ref3, ref4, ref5] == res[0]
 assert [] == res[1]
+
