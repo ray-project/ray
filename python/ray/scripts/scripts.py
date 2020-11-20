@@ -160,7 +160,7 @@ def debug(address):
     """Show all active breakpoints and exceptions in the Ray debugger."""
     from telnetlib import Telnet
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     while True:
@@ -1309,7 +1309,7 @@ def microbenchmark():
 def timeline(address):
     """Take a Chrome tracing timeline for a Ray cluster."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -1337,7 +1337,7 @@ def timeline(address):
 def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, _redis_password=redis_password)
     print(ray.internal.internal_api.memory_summary())
@@ -1352,7 +1352,7 @@ def memory(address, redis_password):
 def status(address):
     """Print cluster status, including autoscaling info."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     print(debug_status())
@@ -1367,7 +1367,7 @@ def status(address):
 def global_gc(address):
     """Trigger Python garbage collection on all cluster workers."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     ray.internal.internal_api.global_gc()

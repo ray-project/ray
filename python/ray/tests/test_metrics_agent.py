@@ -1,4 +1,5 @@
 import json
+import pathlib
 from pprint import pformat
 from unittest.mock import MagicMock
 
@@ -7,6 +8,7 @@ import pytest
 from prometheus_client.parser import text_string_to_metric_families
 
 import ray
+from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Count, Histogram, Gauge
 from ray.test_utils import wait_for_condition, SignalActor
@@ -42,6 +44,20 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
     assert (set(get_metrics_export_address_from_node(nodes)) == set(
         loaded_json_data["targets"]))
+
+
+def test_prome_file_discovery_run_by_dashboard(shutdown_only):
+    ray.init(num_cpus=0)
+    global_node = ray.worker._global_node
+    temp_dir = global_node.get_temp_dir_path()
+
+    def is_service_discovery_exist():
+        for path in pathlib.Path(temp_dir).iterdir():
+            if PROMETHEUS_SERVICE_DISCOVERY_FILE in str(path):
+                return True
+        return False
+
+    wait_for_condition(is_service_discovery_exist)
 
 
 @pytest.fixture

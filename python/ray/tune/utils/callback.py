@@ -1,12 +1,11 @@
-import logging
-import os
 from typing import List, Optional
 
+import logging
+import os
+
 from ray.tune.callback import Callback
-from ray.tune.progress_reporter import TrialProgressCallback
-from ray.tune.syncer import SyncConfig
-from ray.tune.logger import CSVLoggerCallback, CSVLogger, \
-    LoggerCallback, \
+from ray.tune.syncer import SyncConfig, detect_sync_to_driver
+from ray.tune.logger import CSVLoggerCallback, CSVLogger, LoggerCallback, \
     JsonLoggerCallback, JsonLogger, LegacyLoggerCallback, Logger, \
     TBXLoggerCallback, TBXLogger
 from ray.tune.syncer import SyncerCallback
@@ -16,43 +15,13 @@ logger = logging.getLogger(__name__)
 
 def create_default_callbacks(callbacks: Optional[List[Callback]],
                              sync_config: SyncConfig,
-                             loggers: Optional[List[Logger]],
-                             metric: Optional[str] = None):
-    """Create default callbacks for `tune.run()`.
+                             loggers: Optional[List[Logger]]):
 
-    This function takes a list of existing callbacks and adds default
-    callbacks to it.
-
-    Specifically, three kinds of callbacks will be added:
-
-    1. Loggers. Ray Tune's experiment analysis relies on CSV and JSON logging.
-    2. Syncer. Ray Tune synchronizes logs and checkpoint between workers and
-       the head node.
-    2. Trial progress reporter. For reporting intermediate progress, like trial
-       results, Ray Tune uses a callback.
-
-    These callbacks will only be added if they don't already exist, i.e. if
-    they haven't been passed (and configured) by the user. A notable case
-    is when a Logger is passed, which is not a CSV or JSON logger - then
-    a CSV and JSON logger will still be created.
-
-    Lastly, this function will ensure that the Syncer callback comes after all
-    Logger callbacks, to ensure that the most up-to-date logs and checkpoints
-    are synced across nodes.
-
-    """
     callbacks = callbacks or []
     has_syncer_callback = False
     has_csv_logger = False
     has_json_logger = False
     has_tbx_logger = False
-
-    has_trial_progress_callback = any(
-        isinstance(c, TrialProgressCallback) for c in callbacks)
-
-    if not has_trial_progress_callback:
-        trial_progress_callback = TrialProgressCallback(metric=metric)
-        callbacks.append(trial_progress_callback)
 
     # Track syncer obj/index to move callback after loggers
     last_logger_index = None
@@ -115,8 +84,11 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
     # If no SyncerCallback was found, add
     if not has_syncer_callback and os.environ.get(
             "TUNE_DISABLE_AUTO_CALLBACK_SYNCER", "0") != "1":
-        syncer_callback = SyncerCallback(
-            sync_function=sync_config.sync_to_driver)
+
+        # Detect Docker and Kubernetes environments
+        _sync_to_driver = detect_sync_to_driver(sync_config.sync_to_driver)
+
+        syncer_callback = SyncerCallback(sync_function=_sync_to_driver)
         callbacks.append(syncer_callback)
         syncer_index = len(callbacks) - 1
 
