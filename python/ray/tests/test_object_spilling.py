@@ -9,6 +9,8 @@ import numpy as np
 import pytest
 import psutil
 import ray
+from ray.external_storage import (create_url_with_offsets,
+                                  parse_url_with_offsets)
 
 bucket_name = "object-spilling-test"
 spill_local_path = "/tmp/spill"
@@ -109,35 +111,16 @@ def test_invalid_config_raises_exception(shutdown_only):
         })
 
 
-def test_url_protocol(shutdown_only):
-    """Make sure the url protocol to create
-    internal/external url works as expected."""
-    ray.init(num_cpus=0)
-    from ray.external_storage import ExternalStorageURLProtocol
-    prefix = "ray"
-    protocol = ExternalStorageURLProtocol(prefix)
-    ref = ray.put(1)
-    object_size_in_bytes = 30
-    offsets_in_bytes = 15
-    object_id = ref.hex()
-    object_id_stored = ref.hex()
-    job_id = ray.JobID.nil().hex()
-
-    # Make sure internal url is properly created
-    internal_url = protocol.create_internal_url(
-        job_id=job_id,
-        object_id_stored=object_id_stored,
-        object_id=object_id,
-        object_size_in_bytes=object_size_in_bytes,
-        offsets_in_bytes=offsets_in_bytes)
-    external_url = protocol.produce_external_url_from_object_ref(ref)
-    assert external_url == protocol.produce_external_url(internal_url)
-    url_info = protocol.get_url_info(internal_url)
-    assert url_info.job_id == job_id
-    assert url_info.object_id_stored == object_id_stored
-    assert url_info.object_id == object_id
-    assert url_info.object_size_in_bytes == object_size_in_bytes
-    assert url_info.offsets_in_bytes == offsets_in_bytes
+def test_url_generation_and_parse():
+    url = "s3://abc/def/ray_good"
+    offsets_first = 10
+    offsets_end = 30
+    url_with_offsets = create_url_with_offsets(
+        url=url, offsets_first=offsets_first, offsets_end=offsets_end)
+    parsed_result = parse_url_with_offsets(url_with_offsets)
+    assert parsed_result.base_url == url
+    assert parsed_result.offsets_first == offsets_first
+    assert parsed_result.offsets_end == offsets_end
 
 
 @pytest.mark.skipif(
@@ -322,14 +305,11 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 30 * 1024 * 1024,
+            "min_spilling_size": 0,
         })
     replay_buffer = []
     solution_buffer = []
     buffer_length = 100
-
-    # Wait raylet for starting an IO worker.
-    time.sleep(1)
 
     # Create objects of more than 800 MiB.
     for _ in range(buffer_length):
@@ -401,9 +381,6 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
-
-    # Wait raylet for starting an IO worker.
-    time.sleep(1)
 
     # Create objects of more than 400 MiB.
     for _ in range(50):

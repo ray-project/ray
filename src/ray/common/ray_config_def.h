@@ -339,8 +339,8 @@ RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
 /// The maximum number of I/O worker that raylet starts.
 RAY_CONFIG(int, max_io_workers, 1)
 
-/// The minimum size that can be spilled. 100 MB by default.
-/// This value is recommended to be smaller than the plasma object size, but
-/// it will still work although it doesn't.
-/// Setting 0 for this config means that you don't fusion objects.
+/// Ray's object spilling fuses small objects into a single file before flushing them
+/// to optimize the performance.
+/// The minimum object size that can be spilled by each spill operation. 100 MB by
+/// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
