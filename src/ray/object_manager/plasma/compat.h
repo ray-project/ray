@@ -37,9 +37,9 @@ mach_port_t pthread_mach_thread_np(pthread_t);
                              // headers you need manually.
                              // (https://stackoverflow.com/a/8294669)
 #define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
-#endif  // #ifndef WIN32_LEAN_AND_MEAN
-#include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
-#endif  // #ifndef _WINDOWS_
+#endif                       // #ifndef WIN32_LEAN_AND_MEAN
+#include <Windows.h>         // Force inclusion of WinGDI here to resolve name conflict
+#endif                       // #ifndef _WINDOWS_
 #define MEMFD_TYPE HANDLE
 #define INVALID_FD NULL
 // https://docs.microsoft.com/en-us/windows/win32/winauto/32-bit-and-64-bit-interoperability
