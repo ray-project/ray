@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
