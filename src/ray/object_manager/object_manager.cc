@@ -902,8 +902,8 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_requests_.size();
   result << "\n- num buffered profile events: " << profile_events_.size();
-  result << "\n- num chunks received total: " << num_chunks_received_total_.size();
-  result << "\n- num chunks received failed: " << num_chunks_received_failed_.size();
+  result << "\n- num chunks received total: " << num_chunks_received_total_;
+  result << "\n- num chunks received failed: " << num_chunks_received_failed_;
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_->DebugString();
