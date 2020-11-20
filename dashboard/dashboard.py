@@ -21,6 +21,7 @@ import ray.ray_constants as ray_constants
 import ray._private.services
 import ray.utils
 from ray.ray_logging import setup_component_logger
+from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -189,6 +190,9 @@ if __name__ == "__main__":
             args.redis_address,
             redis_password=args.redis_password,
             log_dir=args.log_dir)
+        service_discovery = PrometheusServiceDiscoveryWriter(
+            args.redis_address, args.redis_password, args.temp_dir)
+        service_discovery.start()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:

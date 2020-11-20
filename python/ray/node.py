@@ -299,8 +299,8 @@ class Node:
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
                 env_resources = json.loads(env_string)
-                logger.info(
-                    f"Autosaler overriding resources: {env_resources}.")
+                logger.debug(
+                    f"Autoscaler overriding resources: {env_resources}.")
             num_cpus, num_gpus, memory, object_store_memory, resources = \
                 merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(

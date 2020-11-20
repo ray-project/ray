@@ -616,8 +616,7 @@ class AutoscalingTest(unittest.TestCase):
     def testAggressiveAutoscaling(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
-        config["max_workers"] = 20
-        config["initial_workers"] = 10
+        config["max_workers"] = 10
         config["idle_timeout_minutes"] = 0
         config["upscaling_speed"] = config["max_workers"]
         config_path = self.write_config(config)
