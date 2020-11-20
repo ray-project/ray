@@ -125,7 +125,7 @@ class NevergradSearch(Searcher):
         self._space = None
         self._opt_factory = None
         self._nevergrad_opt = None
-        
+
         if points_to_evaluate is None:
             self._points_to_evaluate = None
         else:
@@ -223,25 +223,14 @@ class NevergradSearch(Searcher):
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
-        
+
         if len(self._points_to_evaluate) > 0:
-            #logger.info(f"NS - space {self._space} - {type(self._space)}")
-            #logger.info(f"NS - space value {self._space.value} - {type(self._space.value)}")
-#             logger.info(f"NS - points_to_evaluate {self._points_to_evaluate}")
             point_to_evaluate = self._points_to_evaluate.pop(0)
-            #logger.info(f"NS - point_to_evaluate {point_to_evaluate}")
-            #logger.info(f"NS - self._space {self._space} / {type(self._space)}")
             for key in self._space.value:
-                #logger.info(f"NS - self._space[key] {key} {self._space[key]}")
-                #logger.info(f"NS - space iter {key}  - {self._space.value[key]} - {type(self._space.value[key])} - {point_to_evaluate[key]}")
                 if isinstance(self._space[key], ng.p.Choice):
-                    #logger.info(f"NS - space iter {key}  - {self._space[key].choices.value[point_to_evaluate[key]]} - {point_to_evaluate[key]}")
-                    # .choices[0].value
                     point_to_evaluate[key] = self._space[key].choices.value[point_to_evaluate[key]]
-            #logger.info(f"NS - point_to_evaluate {point_to_evaluate}")
             self._nevergrad_opt.suggest(point_to_evaluate)
         suggested_config = self._nevergrad_opt.ask()
-        #logger.info(f"NS - suggested_config {suggested_config}")
         
         self._live_trial_mapping[trial_id] = suggested_config
         # in v0.2.0+, output of ask() is a Candidate,
