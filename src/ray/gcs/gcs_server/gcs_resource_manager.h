@@ -20,19 +20,39 @@
 namespace ray {
 namespace gcs {
 
+/// Gcs resource manager interface.
+/// It is used for actor and placement group scheduling.
+/// Non-thread safe.
 class GcsResourceManagerInterface {
  public:
   virtual ~GcsResourceManagerInterface() {}
 
+  /// Get the resources of all nodes in the cluster.
+  ///
+  /// \return The resources of all nodes in the cluster.
   virtual const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterResources() const = 0;
 
+  /// Acquire resources from the specified node. It will deduct directly from the node
+  /// resource.
+  ///
+  /// \param node_id Id of a node.
+  /// \param required_resources Resources to apply for.
+  /// \return True if acquire resources successfully. False otherwise.
   virtual bool AcquireResource(const NodeID &node_id,
                                const ResourceSet &required_resources) = 0;
 
+  /// Release the resource of the specified node. It will be added directly to the node
+  /// resource.
+  ///
+  /// \param node_id Id of a node.
+  /// \param acquired_resources Resources to release.
+  /// \return True if release resources successfully. False otherwise.
   virtual bool ReleaseResource(const NodeID &node_id,
                                const ResourceSet &acquired_resources) = 0;
 };
 
+/// Gcs resource manager implementation. It obtains the available resources of nodes
+/// through heartbeat reporting. Non-thread safe.
 class GcsResourceManager : public GcsResourceManagerInterface {
  public:
   GcsResourceManager(GcsNodeManager &gcs_node_manager);
