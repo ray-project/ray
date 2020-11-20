@@ -118,7 +118,7 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
   } else if (request->error == PlasmaError::OutOfMemory) {
     RAY_LOG(ERROR) << "Not enough memory to create object " << request->object_id
                    << " after " << num_retries_
-                   << ", will return OutOfMemory to the client";
+                   << " tries, will return OutOfMemory to the client";
   }
 
   return status;

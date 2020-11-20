@@ -981,8 +981,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
           create_request_queue_.TryRequestImmediately(object_id, client, handle_create);
       const auto &result = result_error.first;
       const auto &error = result_error.second;
-      SendCreateReply(client, object_id, result, error);
-      if (error == PlasmaError::OK && result.device_num == 0) {
+      if (SendCreateReply(client, object_id, result, error).ok() &&
+          error == PlasmaError::OK && result.device_num == 0) {
         static_cast<void>(client->SendFd(result.store_fd));
       }
     } else {
@@ -997,8 +997,6 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     auto request = flatbuffers::GetRoot<fb::PlasmaCreateRetryRequest>(input);
     RAY_DCHECK(plasma::VerifyFlatbuffer(request, input, input_size));
     const auto &object_id = ObjectID::FromBinary(request->object_id()->str());
-    RAY_LOG(DEBUG) << "Received create retry request for object " << object_id
-                   << " request ID " << request->request_id();
     ReplyToCreateClient(client, object_id, request->request_id());
   } break;
   case fb::MessageType::PlasmaAbortRequest: {
@@ -1129,14 +1127,13 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   PlasmaError error;
   bool finished = create_request_queue_.GetRequestResult(req_id, &result, &error);
   if (finished) {
-    RAY_LOG(DEBUG) << "Finishing create request " << req_id;
-    SendCreateReply(client, object_id, result, error);
-    if (error == PlasmaError::OK && result.device_num == 0) {
+    RAY_LOG(DEBUG) << "Finishing create object " << object_id << " request ID " << req_id;
+    if (SendCreateReply(client, object_id, result, error).ok() &&
+        error == PlasmaError::OK && result.device_num == 0) {
       static_cast<void>(client->SendFd(result.store_fd));
     }
   } else {
-    RAY_LOG(DEBUG) << "Create request not finished, client should retry: " << req_id;
-    SendUnfinishedCreateReply(client, object_id, req_id);
+    static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
   }
 }
 
