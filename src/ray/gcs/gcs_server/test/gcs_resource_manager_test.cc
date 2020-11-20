@@ -16,6 +16,9 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
@@ -34,22 +37,60 @@ class GcsResourceManagerTest : public ::testing::Test {
     }));
     promise.get_future().get();
 
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        io_service_, io_service_, gcs_pub_sub_, gcs_table_storage_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(*gcs_node_manager_);
   }
 
   virtual ~GcsResourceManagerTest() {
     io_service_.stop();
     thread_io_service_->join();
+    gcs_node_manager_.reset();
   }
 
+  std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
+  std::shared_ptr<gcs::GcsResourceManagerInterface> gcs_resource_manager_;
+
+ private:
   boost::asio::io_service io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
+  std::shared_ptr<gcs::RedisClient> redis_client_;
+  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
   const std::chrono::milliseconds timeout_ms_{2000};
 };
 
-TEST_F(GcsResourceManagerTest, TestBasic) {}
+TEST_F(GcsResourceManagerTest, TestBasic) {
+  // Add node resources.
+  auto node_id = NodeID::FromRandom();
+  rpc::HeartbeatTableData heartbeat;
+  const std::string cpu_resource = "CPU";
+  heartbeat.set_client_id(node_id.Binary());
+  (*heartbeat.mutable_resources_available())[cpu_resource] = 10;
+  gcs_node_manager_->UpdateNodeRealtimeResources(node_id, heartbeat);
+
+  // Get and check cluster resources.
+  const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();
+  ASSERT_EQ(1, cluster_resource.size());
+
+  // Test `AcquireResource`.
+  std::unordered_map<std::string, double> resource_map;
+  resource_map[cpu_resource] = 10;
+  ResourceSet resource_set(resource_map);
+  ASSERT_FALSE(
+      gcs_resource_manager_->AcquireResource(NodeID::FromRandom(), resource_set));
+  ASSERT_TRUE(gcs_resource_manager_->AcquireResource(node_id, resource_set));
+  ASSERT_FALSE(gcs_resource_manager_->AcquireResource(node_id, resource_set));
+
+  // Test `ReleaseResource`.
+  ASSERT_FALSE(
+      gcs_resource_manager_->ReleaseResource(NodeID::FromRandom(), resource_set));
+  ASSERT_TRUE(gcs_resource_manager_->ReleaseResource(node_id, resource_set));
+  ASSERT_TRUE(gcs_resource_manager_->AcquireResource(node_id, resource_set));
+}
 
 }  // namespace ray
 

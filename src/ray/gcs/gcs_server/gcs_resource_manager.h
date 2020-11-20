@@ -24,18 +24,12 @@ class GcsResourceManagerInterface {
  public:
   virtual ~GcsResourceManagerInterface() {}
 
-  virtual void StartTransaction() = 0;
-
-  virtual void CommitTransaction() = 0;
-
-  virtual void RollbackTransaction() = 0;
-
   virtual const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterResources() const = 0;
 
-  virtual void AcquireResource(const NodeID &node_id,
+  virtual bool AcquireResource(const NodeID &node_id,
                                const ResourceSet &required_resources) = 0;
 
-  virtual void ReleaseResource(const NodeID &node_id,
+  virtual bool ReleaseResource(const NodeID &node_id,
                                const ResourceSet &acquired_resources) = 0;
 };
 
@@ -45,29 +39,15 @@ class GcsResourceManager : public GcsResourceManagerInterface {
 
   virtual ~GcsResourceManager() = default;
 
-  void StartTransaction();
-
-  void CommitTransaction();
-
-  void RollbackTransaction();
-
   const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterResources() const;
 
-  void AcquireResource(const NodeID &node_id, const ResourceSet &required_resources);
+  bool AcquireResource(const NodeID &node_id, const ResourceSet &required_resources);
 
-  void ReleaseResource(const NodeID &node_id, const ResourceSet &acquired_resources);
+  bool ReleaseResource(const NodeID &node_id, const ResourceSet &acquired_resources);
 
  private:
-  /// Check if there's any transaction going on.
-  bool IsTransactionInProgress() const { return is_transaction_in_progress_; }
-
-  bool is_transaction_in_progress_;
-
   /// Map from node id to the resources of the node.
   absl::flat_hash_map<NodeID, ResourceSet> cluster_resources_;
-
-  absl::flat_hash_map<NodeID, std::list<ResourceSet>>
-      resource_changes_during_transaction_;
 };
 
 }  // namespace gcs
