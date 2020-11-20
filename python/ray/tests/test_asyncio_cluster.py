@@ -14,8 +14,9 @@ async def test_asyncio_cluster_wait():
     cluster = Cluster()
     head_node = cluster.add_node()
     cluster.add_node(resources={"OTHER_NODE": 100})
+    assert cluster.address == head_node.redis_address
 
-    ray.init(address=head_node.address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=0, resources={"OTHER_NODE": 1})
     def get_array():
