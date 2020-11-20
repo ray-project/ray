@@ -238,7 +238,8 @@ def find_redis_address_or_die():
 
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
-                                       redis_password=None):
+                                       redis_password=None,
+                                       node_uuid=None):
     redis_ip_address, redis_port = redis_address.split(":")
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
@@ -250,6 +251,10 @@ def get_address_info_from_redis_helper(redis_address,
 
     relevant_client = None
     for client_info in client_table:
+        if "NodeUUID" in client_info:
+            if client_info["NodeUUID"] == node_uuid:
+                relevant_client = client_info
+                break
         client_node_ip_address = client_info["NodeManagerAddress"]
         if (client_node_ip_address == node_ip_address
                 or (client_node_ip_address == "127.0.0.1"
@@ -278,12 +283,14 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                redis_password=None):
+                                redis_password=None,
+                                node_uuid=None):
     counter = 0
     while True:
         try:
             return get_address_info_from_redis_helper(
-                redis_address, node_ip_address, redis_password=redis_password)
+                redis_address, node_ip_address, redis_password=redis_password,
+                node_uuid=node_uuid)
         except Exception:
             if counter == num_retries:
                 raise
