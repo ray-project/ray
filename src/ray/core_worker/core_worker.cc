@@ -38,15 +38,15 @@ void BuildCommonTaskSpec(
     const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id,
-    int64_t placement_group_bundle_index, bool placement_group_capture_child_tasks,
+    std::vector<ObjectID> *return_ids, const ray::BundleID &bundle_id,
+    bool placement_group_capture_child_tasks,
     const std::unordered_map<std::string, std::string> &override_environment_variables) {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources, placement_group_id, placement_group_bundle_index,
-      placement_group_capture_child_tasks, override_environment_variables);
+      required_placement_resources, bundle_id, placement_group_capture_child_tasks,
+      override_environment_variables);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1304,7 +1304,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries,
-                            PlacementOptions placement_options,
+                            BundleID placement_options,
                             bool placement_group_capture_child_tasks) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
@@ -1326,12 +1326,12 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   override_environment_variables.insert(current_override_environment_variables.begin(),
                                         current_override_environment_variables.end());
   // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(
-      builder, worker_context_.GetCurrentJobID(), task_id, task_name,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, task_options.num_returns, constrained_resources, required_resources,
-      return_ids, placement_options.first, placement_options.second,
-      placement_group_capture_child_tasks, override_environment_variables);
+  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, task_options.num_returns,
+                      constrained_resources, required_resources, return_ids,
+                      placement_options, placement_group_capture_child_tasks,
+                      override_environment_variables);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1385,8 +1385,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, &return_ids,
-                      actor_creation_options.placement_options.first,
-                      actor_creation_options.placement_options.second,
+                      actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
                       override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
@@ -1495,7 +1494,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, return_ids, PlacementGroupID::Nil(), -1,
+                      required_resources, return_ids,
+                      std::make_pair(PlacementGroupID::Nil(), -1),
                       true, /* placement_group_capture_child_tasks */
                       override_environment_variables);
   // NOTE: placement_group_capture_child_tasks and override_environment_variables will be

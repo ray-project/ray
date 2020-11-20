@@ -30,8 +30,6 @@ namespace ray {
 
 namespace raylet {
 
-typedef std::pair<PlacementGroupID, int64_t> BundleID;
-
 /// \class WorkerPoolInterface
 ///
 /// Used for new scheduler unit tests.

@@ -2527,8 +2527,7 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   if (task.GetTaskSpecification().IsDetachedActor()) {
     worker->MarkDetachedActor();
   }
-  worker->SetBundleId(
-      std::make_pair(spec.PlacementGroupId(), spec.PlacementGroupBundleIndex()));
+  worker->SetBundleId(spec.PlacementGroupBundleId());
 
   const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
   const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());

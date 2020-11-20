@@ -20,6 +20,7 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/client_connection.h"
@@ -103,7 +104,6 @@ struct NodeManagerConfig {
   uint64_t record_metrics_period_ms;
 };
 
-typedef std::pair<PlacementGroupID, int64_t> BundleID;
 struct pair_hash {
   template <class T1, class T2>
   std::size_t operator()(const std::pair<T1, T2> &pair) const {
@@ -424,6 +424,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker to kill.
   /// \return Void.
   void KillWorker(std::shared_ptr<WorkerInterface> worker);
+
+  /// Kill a worker if the `filter_func` return true.
+  ///
+  /// \param worker The worker may be killed.
+  /// \param filter_func It is used to filter worker who need to be killed.
+  /// \return Void.
+  void KillWorkerWithFilter(
+      const std::shared_ptr<WorkerInterface> &worker,
+      std::function<bool(std::shared_ptr<WorkerInterface>)> filter_func = nullptr);
 
   /// The callback for handling an actor state transition (e.g., from ALIVE to
   /// DEAD), whether as a notification from the actor table or as a handler for
