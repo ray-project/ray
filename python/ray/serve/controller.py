@@ -829,7 +829,6 @@ class ServeController:
             # Set the backend config inside the router
             # (particularly for max_concurrent_queries).
             self.notify_backend_configs_changed()
-            await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag: BackendTag) -> None:
         async with self.write_lock:
@@ -911,9 +910,6 @@ class ServeController:
 
             self.notify_replica_handles_changed()
             self.notify_backend_configs_changed()
-
-            # Remove this because we call notify_backend_configs_changed() above!!
-            await self.broadcast_backend_config(backend_tag)
 
     async def broadcast_backend_config(self, backend_tag: BackendTag) -> None:
 
