@@ -23,11 +23,8 @@ class PlasmaStoreRunner {
   }
 
   ray::SpaceReleasedCallback OnSpaceReleased() {
-    return [this]() {
-      main_service_.post([this]() {
-          store_->ProcessCreateRequests();
-        });
-    };
+    return
+        [this]() { main_service_.post([this]() { store_->ProcessCreateRequests(); }); };
   }
 
  private:

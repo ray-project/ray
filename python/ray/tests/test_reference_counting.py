@@ -10,7 +10,8 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor, put_object, wait_for_condition
+from ray.test_utils import SignalActor, put_object, wait_for_condition, \
+    new_scheduler_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,7 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({})
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="dynres notimpl")
 def test_actor_creation_task(ray_start_regular):
     @ray.remote
     def large_object():

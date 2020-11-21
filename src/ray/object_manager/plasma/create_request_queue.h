@@ -38,7 +38,8 @@ class CreateRequestQueue {
   /// serviceable.
   ///
   /// \param client The client that sent the request.
-  void AddRequest(const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &request_callback);
+  void AddRequest(const std::shared_ptr<ClientInterface> &client,
+                  const CreateObjectCallback &request_callback);
 
   /// Process requests in the queue.
   ///
@@ -67,7 +68,8 @@ class CreateRequestQueue {
   /// in the object store. Then, the client does not need to poll on an
   /// OutOfMemory error and we can just respond to them once there is enough
   /// space made, or after a timeout.
-  std::list<std::pair<const std::shared_ptr<ClientInterface>, const CreateObjectCallback>> queue_;
+  std::list<std::pair<const std::shared_ptr<ClientInterface>, const CreateObjectCallback>>
+      queue_;
 };
 
 }  // namespace plasma
