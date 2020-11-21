@@ -29,8 +29,7 @@ def test_controller_failure(serve_instance):
     client.create_backend("controller_failure:v1", function)
     client.create_endpoint(
         "controller_failure",
-        backend="controller_failure:v1",
-        route="/controller_failure")
+        backend="controller_failure:v1")
 
     assert request_with_retries(
         "/controller_failure", timeout=1).text == "hello1"
@@ -65,8 +64,7 @@ def test_controller_failure(serve_instance):
     ray.kill(client._controller, no_restart=False)
     client.create_endpoint(
         "controller_failure_2",
-        backend="controller_failure_2",
-        route="/controller_failure_2")
+        backend="controller_failure_2")
     ray.kill(client._controller, no_restart=False)
 
     for _ in range(10):
@@ -90,7 +88,7 @@ def test_http_proxy_failure(serve_instance):
 
     client.create_backend("proxy_failure:v1", function)
     client.create_endpoint(
-        "proxy_failure", backend="proxy_failure:v1", route="/proxy_failure")
+        "proxy_failure", backend="proxy_failure:v1")
 
     assert request_with_retries("/proxy_failure", timeout=1.0).text == "hello1"
 
@@ -129,7 +127,7 @@ def test_worker_restart(serve_instance):
 
     client.create_backend("worker_failure:v1", Worker1)
     client.create_endpoint(
-        "worker_failure", backend="worker_failure:v1", route="/worker_failure")
+        "worker_failure", backend="worker_failure:v1")
 
     # Get the PID of the worker.
     old_pid = request_with_retries("/worker_failure", timeout=1).text
@@ -185,7 +183,7 @@ def test_worker_replica_failure(serve_instance):
     client.update_backend_config(
         "replica_failure", BackendConfig(num_replicas=2))
     client.create_endpoint(
-        "replica_failure", backend="replica_failure", route="/replica_failure")
+        "replica_failure", backend="replica_failure")
 
     # Wait until both replicas have been started.
     responses = set()
@@ -228,9 +226,9 @@ def test_create_backend_idempotent(serve_instance):
 
     assert len(ray.get(controller.get_all_backends.remote())) == 1
     client.create_endpoint(
-        "my_endpoint", backend="my_backend", route="/my_route")
+        "my_endpoint", backend="my_backend")
 
-    assert requests.get("http://127.0.0.1:8000/my_route").text == "hello"
+    assert requests.get("http://127.0.0.1:8000/my_endpoint").text == "hello"
 
 
 def test_create_endpoint_idempotent(serve_instance):
@@ -246,12 +244,12 @@ def test_create_endpoint_idempotent(serve_instance):
     for i in range(10):
         ray.get(
             controller.create_endpoint.remote(
-                "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"]))
+                "my_endpoint", {"my_backend": 1.0}, ["GET"]))
 
     assert len(ray.get(controller.get_all_endpoints.remote())) == 1
-    assert requests.get("http://127.0.0.1:8000/my_route").text == "hello"
+    assert requests.get("http://127.0.0.1:8000/my_endpoint").text == "hello"
     resp = requests.get("http://127.0.0.1:8000/-/routes", timeout=0.5).json()
-    assert resp == {"/my_route": ["my_endpoint", ["GET"]]}
+    assert resp == {"/my_endpoint": ["GET"]}
 
 
 if __name__ == "__main__":

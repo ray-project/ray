@@ -16,7 +16,7 @@ def driver(flask_request):
     return "OK!"
 
 client.create_backend("driver", driver)
-client.create_endpoint("driver", backend="driver", route="/driver")
+client.create_endpoint("driver", backend="driver")
 """.format(ray.worker._global_node._redis_address)
     ray.test_utils.run_string_as_driver(script)
 

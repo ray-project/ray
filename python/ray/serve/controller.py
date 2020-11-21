@@ -93,7 +93,8 @@ class ConfigurationStore:
     backends: Dict[BackendTag, BackendInfo] = field(default_factory=dict)
     traffic_policies: Dict[EndpointTag, TrafficPolicy] = field(
         default_factory=dict)
-    routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = field(
+    # Maps endpoint to list of methods
+    endpoints: Dict[EndpointTag, Any] = field(
         default_factory=dict)
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
@@ -515,10 +516,14 @@ class ServeController:
         """Returns a dictionary of node ID to router actor handles."""
         return self.actor_reconciler.routers_cache
 
-    def get_router_config(self) -> Dict[str, Dict[str, Tuple[str, List[str]]]]:
+    def get_route_table(self) -> Dict[EndpointTag, Dict[str, Any]]:
         """Called by the router on startup to fetch required state."""
-        return self.configuration_store.routes
+        """Returns a dictionary of route to endpoint config."""
 
+        # Set route for each endpoint to '/endpoint_name'.
+        endpoints = self.configuration_store.endpoints
+        return {'/' + k : v for k, v in endpoints.items()}
+                
     def _checkpoint(self) -> None:
         """Checkpoint internal state and write it to the KV store."""
         assert self.write_lock.locked()
@@ -620,8 +625,7 @@ class ServeController:
     def get_all_endpoints(self) -> Dict[str, Dict[str, Any]]:
         """Returns a dictionary of endpoint to endpoint config."""
         endpoints = {}
-        for route, (endpoint,
-                    methods) in self.configuration_store.routes.items():
+        for endpoint, methods in self.configuration_store.endpoints.items():
             if endpoint in self.configuration_store.traffic_policies:
                 traffic_policy = self.configuration_store.traffic_policies[
                     endpoint]
@@ -632,7 +636,6 @@ class ServeController:
                 shadow_dict = {}
 
             endpoints[endpoint] = {
-                "route": route if route.startswith("/") else None,
                 "methods": methods,
                 "traffic": traffic_dict,
                 "shadows": shadow_dict,
@@ -694,36 +697,23 @@ class ServeController:
             self._checkpoint()
             self.notify_traffic_policies_changed()
 
-    # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
-    async def create_endpoint(self, endpoint: str,
-                              traffic_dict: Dict[str, float], route,
+    async def create_endpoint(self, endpoint: EndpointTag,
+                              traffic_dict: Dict[str, float],
                               methods) -> None:
-        """Create a new endpoint with the specified route and methods.
-
-        If the route is None, this is a "headless" endpoint that will not
-        be exposed over HTTP and can only be accessed via a handle.
-        """
+        """Create a new endpoint with the specified methods."""
         async with self.write_lock:
-            # If this is a headless endpoint with no route, key the endpoint
-            # based on its name.
-            # TODO(edoakes): we should probably just store routes and endpoints
-            # separately.
-            if route is None:
-                route = endpoint
-
             # TODO(edoakes): move this to client side.
             err_prefix = "Cannot create endpoint."
-            if route in self.configuration_store.routes:
+            if endpoint in self.configuration_store.endpoints:
 
                 # Ensures this method is idempotent
-                if self.configuration_store.routes[route] == (endpoint,
-                                                              methods):
+                if self.configuration_store.endpoints[endpoint] == methods:
                     return
 
                 else:
                     raise ValueError(
-                        "{} Route '{}' is already registered.".format(
-                            err_prefix, route))
+                        "{} Endpoint '{}' is already registered.".format(
+                            err_prefix, endpoint))
 
             if endpoint in self.get_all_endpoints():
                 raise ValueError(
@@ -731,19 +721,19 @@ class ServeController:
                         err_prefix, endpoint))
 
             logger.info(
-                "Registering route '{}' to endpoint '{}' with methods '{}'.".
-                format(route, endpoint, methods))
+                "Registering endpoint '{}' with methods '{}'.".
+                format(endpoint, methods))
 
-            self.configuration_store.routes[route] = (endpoint, methods)
+            self.configuration_store.endpoints[endpoint] = methods
 
             # NOTE(edoakes): checkpoint is written in self._set_traffic.
             await self._set_traffic(endpoint, traffic_dict)
             await asyncio.gather(*[
-                router.set_route_table.remote(self.configuration_store.routes)
+                router.set_route_table.remote(self.get_route_table())
                 for router in self.actor_reconciler.router_handles()
             ])
 
-    async def delete_endpoint(self, endpoint: str) -> None:
+    async def delete_endpoint(self, endpoint: EndpointTag) -> None:
         """Delete the specified endpoint.
 
         Does not modify any corresponding backends.
@@ -752,17 +742,13 @@ class ServeController:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified endpoint exists on the client.
-            for route, (route_endpoint,
-                        _) in self.configuration_store.routes.items():
-                if route_endpoint == endpoint:
-                    route_to_delete = route
-                    break
-            else:
+
+            if endpoint not in self.configuration_store.endpoints:
                 logger.info("Endpoint '{}' doesn't exist".format(endpoint))
                 return
 
-            # Remove the routing entry.
-            del self.configuration_store.routes[route_to_delete]
+            # Remove the endpoint entry.
+            del self.configuration_store.endpoints[endpoint]
 
             # Remove the traffic policy entry if it exists.
             if endpoint in self.configuration_store.traffic_policies:
@@ -776,7 +762,7 @@ class ServeController:
             self._checkpoint()
 
             await asyncio.gather(*[
-                router.set_route_table.remote(self.configuration_store.routes)
+                router.set_route_table.remote(self.get_route_table())
                 for router in self.actor_reconciler.router_handles()
             ])
 

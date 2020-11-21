@@ -32,7 +32,7 @@ class HTTPProxy:
         assert ray.is_initialized()
         controller = ray.get_actor(controller_name)
 
-        self.route_table = await controller.get_router_config.remote()
+        self.route_table = await controller.get_route_table.remote()
 
         self.request_counter = metrics.Count(
             "num_http_requests",
@@ -91,7 +91,7 @@ class HTTPProxy:
             return
 
         try:
-            endpoint_name, methods_allowed = self.route_table[current_path]
+            methods_allowed = self.route_table[current_path]
         except KeyError:
             error_message = (
                 "Path {} not found. "
@@ -109,6 +109,7 @@ class HTTPProxy:
 
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
+        endpoint_name = current_path[1:] # Strip initial '/' from route.
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.

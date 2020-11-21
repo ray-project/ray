@@ -23,14 +23,12 @@ def test_handle_in_endpoint(serve_instance):
     client.create_endpoint(
         "endpoint1",
         backend="endpoint1:v0",
-        route="/endpoint1",
         methods=["GET", "POST"])
 
     client.create_backend("endpoint2:v0", Endpoint2)
     client.create_endpoint(
         "endpoint2",
         backend="endpoint2:v0",
-        route="/endpoint2",
         methods=["GET", "POST"])
 
     assert requests.get("http://127.0.0.1:8000/endpoint2").text == "hello"
@@ -50,7 +48,7 @@ def test_handle_http_args(serve_instance):
 
     client.create_backend("backend", Endpoint)
     client.create_endpoint(
-        "endpoint", backend="backend", route="/endpoint", methods=["POST"])
+        "endpoint", backend="backend", methods=["POST"])
 
     ground_truth = {
         "args": {
@@ -91,14 +89,14 @@ def test_handle_inject_flask_request(serve_instance):
         return str(type(request))
 
     client.create_backend("echo:v0", echo_request_type)
-    client.create_endpoint("echo", backend="echo:v0", route="/echo")
+    client.create_endpoint("echo", backend="echo:v0")
 
     def wrapper_model(web_request):
         handle = serve.connect().get_handle("echo")
         return ray.get(handle.remote(web_request))
 
     client.create_backend("wrapper:v0", wrapper_model)
-    client.create_endpoint("wrapper", backend="wrapper:v0", route="/wrapper")
+    client.create_endpoint("wrapper", backend="wrapper:v0")
 
     for route in ["/echo", "/wrapper"]:
         resp = requests.get(f"http://127.0.0.1:8000{route}")

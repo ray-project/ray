@@ -90,28 +90,28 @@ class Client:
                         backend: str = None,
                         route: Optional[str] = None,
                         methods: List[str] = ["GET"]) -> None:
-        """Create a service endpoint given route_expression.
+        """Create a service endpoint.
 
         Args:
             endpoint_name (str): A name to associate to with the endpoint.
             backend (str, required): The backend that will serve requests to
                 this endpoint. To change this or split traffic among backends,
                 use `serve.set_traffic`.
-            route (str, optional): A string begin with "/". HTTP server will
-                use the string to match the path.
             methods(List[str], optional): The HTTP methods that are valid for
                 this endpoint.
         """
+        if route is not None:
+            raise ValueError(
+                "The 'route' keyword argument for create_endpoint is deprecated "
+                " as of Ray 1.0.2. Please call create_endpoint without 'route'. "
+                "The endpoint name will be used as the route; i.e. '/endpoint_name.'"
+            )
         if backend is None:
             raise TypeError("backend must be specified when creating "
                             "an endpoint.")
         elif not isinstance(backend, str):
             raise TypeError("backend must be a string, got {}.".format(
                 type(backend)))
-
-        if route is not None:
-            if not isinstance(route, str) or not route.startswith("/"):
-                raise TypeError("route must be a string starting with '/'.")
 
         if not isinstance(methods, list):
             raise TypeError(
@@ -121,13 +121,12 @@ class Client:
         endpoints = self.list_endpoints()
         if endpoint_name in endpoints:
             methods_old = endpoints[endpoint_name]["methods"]
-            route_old = endpoints[endpoint_name]["route"]
-            if sorted(methods_old) == sorted(methods) and route_old == route:
+            if sorted(methods_old) == sorted(methods):
                 raise ValueError(
-                    "Route '{}' is already registered to endpoint '{}' "
+                    "Endpoint '{}' is already "
                     "with methods '{}'.  To set the backend for this "
                     "endpoint, please use serve.set_traffic().".format(
-                        route, endpoint_name, methods))
+                        endpoint_name, methods))
 
         upper_methods = []
         for method in methods:
@@ -139,7 +138,7 @@ class Client:
 
         ray.get(
             self._controller.create_endpoint.remote(
-                endpoint_name, {backend: 1.0}, route, upper_methods))
+                endpoint_name, {backend: 1.0}, upper_methods))
 
     @_ensure_connected
     def delete_endpoint(self, endpoint: str) -> None:
