@@ -123,6 +123,26 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             offset += data_size_in_bytes
         return keys
 
+    def _size_check(self, metadata_len, buffer_len, obtained_data_size):
+        """Check whether or not the obtained_data_size is as expected.
+
+        Args:
+             metadata_len(int): Actual metadata length of the object.
+             buffer_len(int): Actual buffer length of the object.
+             obtained_data_size(int): Data size specified in the
+                url_with_offset.
+
+        Raises:
+            ValueError if obtained_data_size is different from
+            metadata_len + buffer_len + 16(first 8 bytes to store length).
+        """
+        data_size_in_bytes = metadata_len + buffer_len + 16
+        if data_size_in_bytes != obtained_data_size:
+            raise ValueError(
+                f"Obtained data has a size of {data_size_in_bytes}, "
+                "although it is supposed to have the "
+                f"size of {obtained_data_size}.")
+
     @abc.abstractmethod
     def spill_objects(self, object_refs) -> List[str]:
         """Spill objects to the external storage. Objects are specified
@@ -195,6 +215,7 @@ class FileSystemStorage(ExternalStorage):
                 f.seek(offset)
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
+                self._size_check(metadata_len, buf_len, parsed_result.size)
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, object_ref)
@@ -265,13 +286,15 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             base_url = parsed_result.base_url
             offset = parsed_result.offset
 
-            # To partial read from S3.
             with open(
                     base_url, "rb",
                     transport_params=self.transport_params) as f:
+                # smart open seek reads the file from offset-end_of_the_file
+                # when the seek is called.
                 f.seek(offset)
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
+                self._size_check(metadata_len, buf_len, parsed_result.size)
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, object_ref)

@@ -471,7 +471,7 @@ TEST_F(LocalObjectManagerTest,
   std::vector<std::unique_ptr<RayObject>> objects;
   int64_t total_size = 0;
   int64_t object_size = 1000;
-  int64_t object_len = 3;
+  size_t object_len = 3;
 
   for (size_t i = 0; i < object_len; i++) {
     ObjectID object_id = ObjectID::FromRandom();
