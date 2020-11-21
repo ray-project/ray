@@ -5,6 +5,7 @@ from ray import services
 from ray.autoscaler.sdk import rsync, configure_logging
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
+from ray.tune.utils import env_integer
 
 
 class DockerSyncer(NodeSyncer):
@@ -35,7 +36,7 @@ class DockerSyncer(NodeSyncer):
                  local_dir: str,
                  remote_dir: str,
                  sync_client: Optional[SyncClient] = None):
-        configure_logging(verbose=0)
+        configure_logging(verbosity=env_integer("TUNE_SYNCER_VERBOSITY", 0))
         self.local_ip = services.get_node_ip_address()
         self.worker_ip = None
 
