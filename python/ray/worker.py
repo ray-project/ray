@@ -304,6 +304,9 @@ class Worker:
                 whose values should be retrieved.
             timeout (float): timeout (float): The maximum amount of time in
                 seconds to wait before returning.
+        Returns:
+            list: List of deserialized objects
+            bool: Whether we want to drop into the debugger with this get
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -315,7 +318,11 @@ class Worker:
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
             object_refs, self.current_task_id, timeout_ms)
-        return self.deserialize_objects(data_metadata_pairs, object_refs)
+        drop_into_debugger = False
+        for (data, metadata) in data_metadata_pairs:
+            if len(metadata) >= 2 and metadata[1:2] == b"D":
+                drop_into_debugger = True
+        return self.deserialize_objects(data_metadata_pairs, object_refs), drop_into_debugger
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -1464,7 +1471,7 @@ def get(object_refs, *, timeout=None):
 
         global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values = worker.get_objects(object_refs, timeout=timeout)
+        values, drop_into_debugger = worker.get_objects(object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
@@ -1482,17 +1489,13 @@ def get(object_refs, *, timeout=None):
         if is_individual_id:
             values = values[0]
 
-        drop_into_debugger = False
-        # Put code here that tests for object_ids
-        print("XXX")
-        for object_ref in object_refs:
-            print("YYY", object_ref.hex())
-            key = "RAY_PDB_GET_{}".format(object_ref.hex())
-            data = ray.experimental.internal_kv._internal_kv_get(key)
-            print("data", data)
-            if data:
-                drop_into_debugger = True
         if drop_into_debugger:
+            print("XXX")
+            for object_ref in object_refs:
+                print("YYY", object_ref.hex())
+                key = "RAY_PDB_GET_{}".format(object_ref.hex())
+                data = ray.experimental.internal_kv._internal_kv_get(key)
+                print("data", data)
             ray.util.pdb.set_trace(breakpoint_uuid=data)
 
         return values

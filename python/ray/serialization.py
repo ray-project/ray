@@ -222,7 +222,7 @@ class SerializationContext:
     def _deserialize_msgpack_data(self, data, metadata):
         msgpack_data, pickle5_data = split_buffer(data)
 
-        if metadata == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
+        if metadata[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(pickle5_data)
         else:
             python_objects = []
@@ -240,17 +240,17 @@ class SerializationContext:
 
     def _deserialize_object(self, data, metadata, object_ref):
         if metadata:
-            if metadata in [
+            if metadata[0:1] in [
                     ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                     ray_constants.OBJECT_METADATA_TYPE_PYTHON
             ]:
                 return self._deserialize_msgpack_data(data, metadata)
             # Check if the object should be returned as raw bytes.
-            if metadata == ray_constants.OBJECT_METADATA_TYPE_RAW:
+            if metadata[0:1] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:
                     return b""
                 return data.to_pybytes()
-            elif metadata == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
+            elif metadata[0:1] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
                 obj = self._deserialize_msgpack_data(data, metadata)
                 return actor_handle_deserializer(obj)
             # Otherwise, return an exception object based on

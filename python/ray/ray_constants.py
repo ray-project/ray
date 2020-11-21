@@ -164,18 +164,18 @@ WORKER_PROCESS_TYPE_IO_WORKER = "ray::IOWorker"
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is cross language.
-OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
+OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"X"
 # A constant used as object metadata to indicate the object is python specific.
-OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
+OBJECT_METADATA_TYPE_PYTHON = b"P"
 # A constant used as object metadata to indicate the object is raw bytes.
-OBJECT_METADATA_TYPE_RAW = b"RAW"
+OBJECT_METADATA_TYPE_RAW = b"R"
 
 # A constant used as object metadata to indicate the object is an actor handle.
 # This value should be synchronized with the Java definition in
 # ObjectSerializer.java
 # TODO(fyrestone): Serialize the ActorHandle via the custom type feature
 # of XLANG.
-OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
+OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"A"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 

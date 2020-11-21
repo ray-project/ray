@@ -50,9 +50,9 @@ public class ArgumentsBuilder {
         value = ObjectSerializer.serialize(arg);
         if (language != Language.JAVA) {
           boolean isCrossData =
-              Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
-                  Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW) ||
-                  Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_ACTOR_HANDLE);
+              value.metadata[0] == ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE ||
+                  value.metadata[0] == ObjectSerializer.OBJECT_METADATA_TYPE_RAW ||
+                  value.metadata[0] == ObjectSerializer.OBJECT_METADATA_TYPE_ACTOR_HANDLE;
           if (!isCrossData) {
             throw new IllegalArgumentException(String.format("Can't transfer %s data to %s",
                 Arrays.toString(value.metadata), language.getValueDescriptor().getName()));

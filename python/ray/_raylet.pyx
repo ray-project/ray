@@ -293,7 +293,7 @@ cdef prepare_args(
             serialized_arg = worker.get_serialization_context().serialize(arg)
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
-                if metadata not in [
+                if metadata[0] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
                         ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
@@ -1379,8 +1379,10 @@ cdef class CoreWorker:
                 context = worker.get_serialization_context()
                 serialized_object = context.serialize(output)
                 data_sizes.push_back(serialized_object.total_bytes)
-                metadatas.push_back(
-                    string_to_buffer(serialized_object.metadata))
+                metadata = serialized_object.metadata
+                if ray.worker.global_worker.debugger_get:
+                    metadata += b"D"
+                metadatas.push_back(string_to_buffer(metadata))
                 serialized_objects.append(serialized_object)
                 contained_ids.push_back(
                     ObjectRefsToVector(serialized_object.contained_object_refs)
