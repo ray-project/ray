@@ -137,8 +137,8 @@ def main(args):
     stderr_interceptor = StandardStreamInterceptor(
         setup_and_get_worker_interceptor_logger(is_for_stdout=False),
         intercept_stdout=False)
-    # os.dup2(sys.stdout.fileno(), stdout_interceptor.fileno())
-    # os.dup2(sys.stderr.fileno(), stderr_interceptor.fileno())
+    os.dup2(stdout_interceptor.fileno(), sys.stdout.fileno())
+    os.dup2(stderr_interceptor.fileno(), sys.stderr.fileno())
     with redirect_stdout(stdout_interceptor):
         with redirect_stderr(stderr_interceptor):
             if mode == ray.WORKER_MODE:

@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 
 _default_handler = None
@@ -45,7 +46,7 @@ class StandardStreamInterceptor:
     def __init__(self, logger, intercept_stdout=True):
         self.logger = logger
         assert len(self.logger.handlers) == 1, (
-            "Only one handler is allowed for interceptor logger."
+            "Only one handler is allowed for the interceptor logger."
         )
         self.intercept_stdout = intercept_stdout
 
@@ -71,3 +72,20 @@ class StandardStreamInterceptor:
         handler = self.logger.handlers[0]
         return handler.stream.fileno()
 
+
+class DefaultWorkerRotatingFileHandler(RotatingFileHandler):
+    def __init__(self, filename, mode='a', maxBytes=0, backupCount=0,
+                 encoding=None, delay=False, errors=None):
+        super().__init__(
+            self,
+            filename,
+            mode,
+            maxBytes,
+            backupCount,
+            encoding=encoding,
+            delay=delay,
+            errors=errors)
+
+    def doRollover(self):
+        super().doRollover()
+        os.dup2()
