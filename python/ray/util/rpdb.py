@@ -200,7 +200,7 @@ def set_trace(breakpoint_uuid=None):
     Can be used within a Ray task or actor.
     """
     frame = sys._getframe().f_back
-    rdb = connect_ray_pdb(None, None, False, breakpoint_uuid.decode() if breakpoint_uuid else None
+    rdb = connect_ray_pdb(None, None, False, None, breakpoint_uuid.decode() if breakpoint_uuid else None)
     rdb.set_trace(frame=frame)
 
 

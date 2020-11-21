@@ -1369,6 +1369,8 @@ cdef class CoreWorker:
                 metadata = serialized_object.metadata
                 if ray.worker.global_worker.debugger_get_breakpoint:
                     metadata += b"D" + ray.worker.global_worker.debugger_get_breakpoint.encode()
+                    # Reset debugging context of this worker.
+                    ray.worker.global_worker.debugger_get_breakpoint = b""
                 metadatas.push_back(string_to_buffer(metadata))
                 serialized_objects.append(serialized_object)
                 contained_ids.push_back(
