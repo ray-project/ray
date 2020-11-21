@@ -389,8 +389,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
-  // We don't cancel actor tasks, so we don't do anything here.
-  bool CancelTaskIfFound(TaskID task_id) { return false; }
+  // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound results in a fatal error.
+  bool CancelTaskIfFound(TaskID task_id) { RAY_CHECK(false) << "Cannot cancel actor tasks"; }
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
