@@ -1197,8 +1197,8 @@ cc_test(
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
-        ":gcs_test_util_lib",
         ":gcs_server_test_util",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
