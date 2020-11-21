@@ -14,6 +14,9 @@ class DockerSyncer(NodeSyncer):
     without a custom sync client. The sync client defaults to
     ``DockerSyncClient`` instead.
 
+    Set the env var `TUNE_SYNCER_VERBOSITY` to increase verbosity
+    of syncing operations.
+
     .. note::
         This syncer only works with the Ray cluster launcher.
         If you use your own Docker setup, make sure the nodes can connect
