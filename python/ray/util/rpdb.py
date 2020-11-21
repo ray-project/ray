@@ -194,12 +194,16 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None, br
     return rdb
 
 
-def set_trace(host=None, port=None, patch_stdstreams=False, quiet=None, breakpoint_uuid=None):
+def set_trace(breakpoint_uuid=None):
+    """Interrupt the flow of the program and drop into the Ray debugger.
+
+    Can be used within a Ray task or actor.
+    """
     frame = sys._getframe().f_back
-    rdb = connect_ray_pdb(host, port, patch_stdstreams, quiet, breakpoint_uuid.decode() if breakpoint_uuid else None)
+    rdb = connect_ray_pdb(None, None, False, breakpoint_uuid.decode() if breakpoint_uuid else None
     rdb.set_trace(frame=frame)
 
 
-def post_mortem(host=None, port=None, patch_stdstreams=False, quiet=None):
-    rdb = connect_ray_pdb(host, port, patch_stdstreams, quiet)
+def post_mortem():
+    rdb = connect_ray_pdb(None, None, False, None)
     rdb.post_mortem()

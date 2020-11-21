@@ -81,7 +81,8 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                             num_bytes_required);
                       }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
-                    gcs_client_, object_directory_),
+                    gcs_client_, object_directory_,
+                    plasma::plasma_store_runner->OnSpaceReleased()),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {

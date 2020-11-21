@@ -234,6 +234,7 @@ py_test(
 )
 
 # Working, but takes a long time to learn (>15min).
+# Removed due to Higher API conflicts with Pytorch-Import tests
 ## MB-MPO
 #py_test(
 #    name = "run_regression_tests_pendulum_mbmpo_torch",
@@ -510,12 +511,13 @@ py_test(
 )
 
 # MBMPOTrainer
-py_test(
-    name = "test_mbmpo",
-    tags = ["agents_dir"],
-    size = "medium",
-    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
-)
+# Removed due to Higher API conflicts with Pytorch-Import tests
+#py_test(
+#    name = "test_mbmpo",
+#    tags = ["agents_dir"],
+#    size = "medium",
+#    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+#)
 
 # PGTrainer
 py_test(
@@ -1642,6 +1644,30 @@ py_test(
 )
 
 py_test(
+    name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/complex_struct_space.py"],
+    args = ["--framework=tf"],
+)
+
+py_test(
+    name = "examples/complex_struct_space_tf_eager", main = "examples/complex_struct_space.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/complex_struct_space.py"],
+    args = ["--framework=tfe"],
+)
+
+py_test(
+    name = "examples/complex_struct_space_torch", main = "examples/complex_struct_space.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/complex_struct_space.py"],
+    args = ["--framework=torch"],
+)
+
+py_test(
     name = "examples/custom_env_tf",
     main = "examples/custom_env.py",
     tags = ["examples", "examples_C"],
@@ -1665,7 +1691,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_eval.py"],
-    args = ["--num-cpus=4"]
+    args = ["--num-cpus=4", "--as-test"]
 )
 
 py_test(
@@ -1674,7 +1700,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_eval.py"],
-    args = ["--torch", "--num-cpus=4"]
+    args = ["--num-cpus=4", "--as-test", "--torch"]
 )
 
 py_test(
@@ -1693,30 +1719,6 @@ py_test(
     size = "small",
     srcs = ["examples/custom_fast_model.py"],
     args = ["--torch", "--stop-iters=1", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
-    tags = ["examples", "examples_C"],
-    size = "medium",
-    srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tf"],
-)
-
-py_test(
-    name = "examples/complex_struct_space_tf_eager", main = "examples/complex_struct_space.py",
-    tags = ["examples", "examples_C"],
-    size = "medium",
-    srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tfe"],
-)
-
-py_test(
-    name = "examples/complex_struct_space_torch", main = "examples/complex_struct_space.py",
-    tags = ["examples", "examples_C"],
-    size = "medium",
-    srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=torch"],
 )
 
 py_test(
@@ -1783,6 +1785,15 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
+    args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/custom_observation_filters",
+    main = "examples/custom_observation_filters.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_observation_filters.py"],
     args = ["--stop-iters=2"]
 )
 

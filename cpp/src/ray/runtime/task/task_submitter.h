@@ -15,11 +15,11 @@ class TaskSubmitter {
 
   virtual ~TaskSubmitter(){};
 
-  virtual ObjectID SubmitTask(const InvocationSpec &invocation) = 0;
+  virtual ObjectID SubmitTask(InvocationSpec &invocation) = 0;
 
-  virtual ActorID CreateActor(const InvocationSpec &invocation) = 0;
+  virtual ActorID CreateActor(InvocationSpec &invocation) = 0;
 
-  virtual ObjectID SubmitActorTask(const InvocationSpec &invocation) = 0;
+  virtual ObjectID SubmitActorTask(InvocationSpec &invocation) = 0;
 };
 }  // namespace api
 }  // namespace ray

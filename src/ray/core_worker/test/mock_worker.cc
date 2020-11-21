@@ -39,7 +39,6 @@ class MockWorker {
     options.language = Language::PYTHON;
     options.store_socket = store_socket;
     options.raylet_socket = raylet_socket;
-    options.job_id = JobID::FromInt(1);
     options.gcs_options = gcs_options;
     options.enable_logging = true;
     options.install_failure_signal_handler = true;

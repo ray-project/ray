@@ -32,8 +32,8 @@ client = serve.start(detached=True)
 
 @ray.remote
 class RandomKiller:
-    def __init__(self, client, kill_period_s=1):
-        self.client = client
+    def __init__(self, kill_period_s=1):
+        self.client = serve.connect()
         self.kill_period_s = kill_period_s
 
     def _get_all_serve_actors(self):
@@ -55,8 +55,8 @@ class RandomKiller:
 
 
 class RandomTest:
-    def __init__(self, client, max_endpoints=1):
-        self.client = client
+    def __init__(self, serve_client, max_endpoints=1):
+        self.client = serve_client
         self.max_endpoints = max_endpoints
         self.weighted_actions = [
             (self.create_endpoint, 1),
@@ -114,8 +114,8 @@ class RandomTest:
             iteration += 1
 
 
-random_killer = RandomKiller.remote(client)
+random_killer = RandomKiller.remote()
 random_killer.run.remote()
-# Subtract 4 from the CPUs available for master, router, HTTP proxy,
-# and metric monitor actors.
-RandomTest(client, max_endpoints=(num_nodes * cpus_per_node) - 4).run()
+# Subtract 1 CPU for the controller and 1 CPU from each node for the HTTP
+# server.
+RandomTest(client, max_endpoints=(num_nodes * (cpus_per_node - 1)) - 1).run()

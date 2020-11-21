@@ -60,6 +60,7 @@ class WorkerInterface {
   virtual bool AddBlockedTaskId(const TaskID &task_id) = 0;
   virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
   virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
+  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
   virtual void AssignJobId(const JobID &job_id) = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
@@ -107,7 +108,7 @@ class WorkerInterface {
 
   virtual Task &GetAssignedTask() = 0;
 
-  virtual void SetAssignedTask(Task &assigned_task) = 0;
+  virtual void SetAssignedTask(const Task &assigned_task) = 0;
 
   virtual bool IsRegistered() = 0;
 
@@ -121,8 +122,9 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const WorkerID &worker_id, const Language &language, rpc::WorkerType worker_type,
-         const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
+  Worker(const JobID &job_id, const WorkerID &worker_id, const Language &language,
+         rpc::WorkerType worker_type, const std::string &ip_address,
+         std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -149,6 +151,7 @@ class Worker : public WorkerInterface {
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
+  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
   void AssignJobId(const JobID &job_id);
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
@@ -207,7 +210,7 @@ class Worker : public WorkerInterface {
 
   Task &GetAssignedTask() { return assigned_task_; };
 
-  void SetAssignedTask(Task &assigned_task) { assigned_task_ = assigned_task; };
+  void SetAssignedTask(const Task &assigned_task) { assigned_task_ = assigned_task; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 

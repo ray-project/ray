@@ -1,4 +1,4 @@
-"""This test checks that Dragonfly is functional.
+"""This example demonstrates the usage of Dragonfly with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
@@ -9,7 +9,6 @@ from __future__ import print_function
 import numpy as np
 import time
 
-import ray
 from ray import tune
 from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
@@ -37,17 +36,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
-
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 50,
-        "config": {
-            "iterations": 100,
-            "LiNO3_vol": tune.uniform(0, 7),
-            "Li2SO4_vol": tune.uniform(0, 7),
-            "NaClO4_vol": tune.uniform(0, 7)
-        },
-    }
 
     # Optional: Pass the parameter space yourself
     # space = [{
@@ -75,11 +63,20 @@ if __name__ == "__main__":
     df_search = ConcurrencyLimiter(df_search, max_concurrent=4)
 
     scheduler = AsyncHyperBandScheduler()
-    tune.run(
+    analysis = tune.run(
         objective,
         metric="objective",
         mode="max",
         name="dragonfly_search",
         search_alg=df_search,
         scheduler=scheduler,
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 50,
+        config={
+            "iterations": 100,
+            "LiNO3_vol": tune.uniform(0, 7),
+            "Li2SO4_vol": tune.uniform(0, 7),
+            "NaClO4_vol": tune.uniform(0, 7)
+        },
+    )
+
+    print("Best hyperparameters found were: ", analysis.best_config)
