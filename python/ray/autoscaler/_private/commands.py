@@ -270,8 +270,10 @@ def _bootstrap_config(config: Dict[str, Any],
 
     cli_logger.print("Checking {} environment settings",
                      _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"]))
-
-    config = provider_cls.fillout_available_node_types_resources(config)
+    try:
+        config = provider_cls.fillout_available_node_types_resources(config)
+    except Exception:
+        logger.exception("Failed to autodetect node resources.")
 
     # NOTE: if `resources` field is missing, validate_config for non-AWS will
     # fail (the schema error will ask the user to manually fill the resources)
