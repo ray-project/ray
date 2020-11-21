@@ -2196,7 +2196,8 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
     success = options_.kill_main();
   } else if (!requested_task_running) {
-    // If the task is not currently running, check if it is in the worker's queue of normal tasks, and remove it if found. 
+    // If the task is not currently running, check if it is in the worker's queue of
+    // normal tasks, and remove it if found.
     success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
   }
   if (request.recursive()) {
