@@ -167,9 +167,7 @@ def debug(address):
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
 
-        print("A")
         for active_session in active_sessions:
-            print("B")
             if active_session.startswith(b"RAY_PDB_CONTINUE"):
                 print("Continuing pdb session in different process...")
                 key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
@@ -180,6 +178,7 @@ def debug(address):
                         host, port = session["pdb_address"].split(":")
                         with Telnet(host, int(port)) as tn:
                             tn.interact()
+                        ray.experimental.internal_kv._internal_kv_del(key)
                         continue
                     time.sleep(1.0)
 

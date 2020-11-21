@@ -1491,7 +1491,9 @@ def get(object_refs, *, timeout=None):
             values = values[0]
 
         if debugger_breakpoint != b"":
-            ray.util.pdb.set_trace(breakpoint_uuid=debugger_breakpoint)
+            frame = sys._getframe().f_back
+            rdb = ray.util.pdb.connect_ray_pdb(None, None, False, None, debugger_breakpoint.decode() if debugger_breakpoint else None)
+            rdb.set_trace(frame=frame)
 
         return values
 
