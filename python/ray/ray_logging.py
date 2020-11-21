@@ -92,7 +92,7 @@ class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
 
     def __init__(self,
                  filename,
-                 mode='a',
+                 mode="a",
                  maxBytes=0,
                  backupCount=0,
                  encoding=None,
