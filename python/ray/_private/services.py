@@ -291,7 +291,9 @@ def get_address_info_from_redis(redis_address,
     while True:
         try:
             return get_address_info_from_redis_helper(
-                redis_address, node_ip_address, redis_password=redis_password,
+                redis_address,
+                node_ip_address,
+                redis_password=redis_password,
                 node_uuid=node_uuid)
         except Exception:
             if counter == num_retries:
