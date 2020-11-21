@@ -97,7 +97,7 @@ if __name__ == "__main__":
                 print("Regression test PASSED")
                 break
             else:
-                print("Regression test FAILED on attempt {}", i + 1)
+                print("Regression test FAILED on attempt {}".format(i + 1))
 
         if not passed:
             print("Overall regression FAILED: Exiting with Error.")

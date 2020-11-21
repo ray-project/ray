@@ -1,6 +1,6 @@
 import atexit
 from functools import wraps
-import random
+import os
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -8,9 +8,10 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger, get_node_id_for_actor)
+                             get_random_letters, logger, get_conda_env_dir)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
+from ray.serve.env import CondaEnv
 from ray.actor import ActorHandle
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
@@ -41,6 +42,13 @@ class Client:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
+
+        # NOTE(simon): Used to cache client.get_handle(endpoint) call. It will
+        # mostly grow in size, it will only shrink when user calls the
+        # .remove_endpoint method. This is fine because we expect the number of
+        # endpoints to be fairly small. However, in case this dictionary does
+        # grow very big, we can replace it with a LRU cache instead.
+        self._handle_cache: Dict[str, ActorHandle] = dict()
 
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
@@ -114,7 +122,7 @@ class Client:
         if endpoint_name in endpoints:
             methods_old = endpoints[endpoint_name]["methods"]
             route_old = endpoints[endpoint_name]["route"]
-            if methods_old.sort() == methods.sort() and route_old == route:
+            if sorted(methods_old) == sorted(methods) and route_old == route:
                 raise ValueError(
                     "Route '{}' is already registered to endpoint '{}' "
                     "with methods '{}'.  To set the backend for this "
@@ -139,6 +147,8 @@ class Client:
 
         Does not delete any associated backends.
         """
+        if endpoint in self._handle_cache:
+            del self._handle_cache[endpoint]
         ray.get(self._controller.delete_endpoint.remote(endpoint))
 
     @_ensure_connected
@@ -163,7 +173,7 @@ class Client:
             config_options(dict, serve.BackendConfig): Backend config options
                 to update. Either a BackendConfig object or a dict mapping
                 strings to values for the following supported options:
-                - "num_replicas": number of worker processes to start up that
+                - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
                 - "max_batch_size": the maximum number of requests that will
                 be processed in one batch by this backend.
@@ -173,6 +183,9 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries
                 that will be sent to a replica of this backend
                 without receiving a response.
+                - "user_config" (experimental): Arguments to pass to the
+                reconfigure method of the backend. The reconfigure method is
+                called if "user_config" is not None.
         """
 
         if not isinstance(config_options, (BackendConfig, dict)):
@@ -198,8 +211,8 @@ class Client:
             func_or_class: Union[Callable, Type[Callable]],
             *actor_init_args: Any,
             ray_actor_options: Optional[Dict] = None,
-            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
-    ) -> None:
+            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
+            env: Optional[CondaEnv] = None) -> None:
         """Create a backend with the provided tag.
 
         The backend will serve requests with func_or_class.
@@ -215,7 +228,7 @@ class Client:
             config (dict, serve.BackendConfig, optional): configuration options
                 for this backend. Either a BackendConfig, or a dictionary
                 mapping strings to values for the following supported options:
-                - "num_replicas": number of worker processes to start up that
+                - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
                 - "max_batch_size": the maximum number of requests that will
                 be processed in one batch by this backend.
@@ -225,6 +238,15 @@ class Client:
                 - "max_concurrent_queries": the maximum number of queries that
                 will be sent to a replica of this backend without receiving a
                 response.
+                - "user_config" (experimental): Arguments to pass to the
+                reconfigure method of the backend. The reconfigure method is
+                called if "user_config" is not None.
+            env (serve.CondaEnv, optional): conda environment to run this
+                backend in.  Requires the caller to be running in an activated
+                conda environment (not necessarily ``env``), and requires
+                ``env`` to be an existing conda environment on all nodes.  If
+                ``env`` is not provided but conda is activated, the backend
+                will run in the conda environment of the caller.
         """
         if backend_tag in self.list_backends().keys():
             raise ValueError(
@@ -233,6 +255,20 @@ class Client:
 
         if config is None:
             config = {}
+        if ray_actor_options is None:
+            ray_actor_options = {}
+        if env is None:
+            # If conda is activated, default to conda env of this process.
+            if os.environ.get("CONDA_PREFIX"):
+                if "override_environment_variables" not in ray_actor_options:
+                    ray_actor_options["override_environment_variables"] = {}
+                ray_actor_options["override_environment_variables"].update({
+                    "PYTHONHOME": os.environ.get("CONDA_PREFIX")
+                })
+        else:
+            conda_env_dir = get_conda_env_dir(env.name)
+            ray_actor_options.update(
+                override_environment_variables={"PYTHONHOME": conda_env_dir})
         replica_config = ReplicaConfig(
             func_or_class,
             *actor_init_args,
@@ -240,6 +276,7 @@ class Client:
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
             is_blocking=replica_config.is_blocking)
+
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
                 **config, "internal_metadata": metadata
@@ -249,6 +286,7 @@ class Client:
                 update={"internal_metadata": metadata})
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
+
         backend_config._validate_complete()
         ray.get(
             self._controller.create_backend.remote(backend_tag, backend_config,
@@ -335,23 +373,10 @@ class Client:
                 self._controller.get_all_endpoints.remote()):
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
-        routers = list(ray.get(self._controller.get_routers.remote()).values())
-        current_node_id = ray.get_runtime_context().node_id.hex()
-
-        try:
-            router_chosen = next(
-                filter(lambda r: get_node_id_for_actor(r) == current_node_id,
-                       routers))
-        except StopIteration:
-            logger.warning(
-                f"When getting a handle for {endpoint_name}, Serve can't find "
-                "a router on the same node. Serve will use a random router.")
-            router_chosen = random.choice(routers)
-
-        return RayServeHandle(
-            router_chosen,
-            endpoint_name,
-        )
+        if endpoint_name not in self._handle_cache:
+            handle = RayServeHandle(self._controller, endpoint_name, sync=True)
+            self._handle_cache[endpoint_name] = handle
+        return self._handle_cache[endpoint_name]
 
 
 def start(detached: bool = False,

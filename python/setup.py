@@ -109,11 +109,10 @@ extras = {
         "dataclasses; python_version < '3.7'"
     ],
     "tune": [
-        "dataclasses; python_version < '3.7'",
-        "pandas",
-        "tabulate",
-        "tensorboardX",
-    ]
+        "dataclasses; python_version < '3.7'", "pandas", "tabulate",
+        "tensorboardX"
+    ],
+    "k8s": ["kubernetes"]
 }
 
 extras["rllib"] = extras["tune"] + [
@@ -144,7 +143,6 @@ install_requires = [
     "colorama",
     "colorful",
     "filelock",
-    "google",
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
@@ -468,7 +466,8 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli",
+            "ray-operator=ray.operator:main"
         ]
     },
     include_package_data=True,

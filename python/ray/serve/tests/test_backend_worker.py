@@ -6,11 +6,12 @@ import numpy as np
 import ray
 from ray import serve
 import ray.serve.context as context
-from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
+from ray.serve.backend_worker import create_backend_replica, wrap_to_ray_error
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Router, RequestMetadata
 from ray.serve.config import BackendConfig, BackendMetadata
 from ray.serve.exceptions import RayServeException
+from ray.serve.utils import get_random_letters
 
 pytestmark = pytest.mark.asyncio
 
@@ -26,7 +27,7 @@ def setup_worker(name,
     @ray.remote
     class WorkerActor:
         def __init__(self):
-            self.worker = create_backend_worker(func_or_class)(
+            self.worker = create_backend_replica(func_or_class)(
                 name, name + ":tag", init_args, backend_config,
                 controller_name)
 
@@ -46,26 +47,31 @@ def setup_worker(name,
 
 async def add_servable_to_router(servable, router, **kwargs):
     worker = setup_worker("backend", servable, **kwargs)
-    await router.add_new_worker.remote("backend", "replica", worker)
-    await router.set_traffic.remote("endpoint", TrafficPolicy({
-        "backend": 1.0
-    }))
+    await router._update_worker_handles.remote({"backend": [worker]})
+    await router._update_traffic_policies.remote({
+        "endpoint": TrafficPolicy({
+            "backend": 1.0
+        })
+    })
 
     if "backend_config" in kwargs:
-        await router.set_backend_config.remote("backend",
-                                               kwargs["backend_config"])
+        await router._update_backend_configs.remote({
+            "backend": kwargs["backend_config"]
+        })
     return worker
 
 
 def make_request_param(call_method="__call__"):
     return RequestMetadata(
-        "endpoint", context.TaskContext.Python, call_method=call_method)
+        get_random_letters(10),
+        "endpoint",
+        context.TaskContext.Python,
+        call_method=call_method)
 
 
 @pytest.fixture
-def router(serve_instance):
-    q = ray.remote(Router).remote()
-    ray.get(q.setup.remote("", serve_instance._controller_name))
+async def router(serve_instance):
+    q = ray.remote(Router).remote(serve_instance._controller)
     yield q
     ray.kill(q)
 
@@ -83,7 +89,8 @@ async def test_servable_function(serve_instance, router):
 
     for query in [333, 444, 555]:
         query_param = make_request_param()
-        result = await router.enqueue_request.remote(query_param, i=query)
+        result = await (await router.assign_request.remote(
+            query_param, i=query))
         assert result == query
 
 
@@ -99,7 +106,8 @@ async def test_servable_class(serve_instance, router):
 
     for query in [333, 444, 555]:
         query_param = make_request_param()
-        result = await router.enqueue_request.remote(query_param, i=query)
+        result = await (await router.assign_request.remote(
+            query_param, i=query))
         assert result == query + 3
 
 
@@ -114,16 +122,16 @@ async def test_task_runner_custom_method_single(serve_instance, router):
     _ = await add_servable_to_router(NonBatcher, router)
 
     query_param = make_request_param("a")
-    a_result = await router.enqueue_request.remote(query_param)
+    a_result = await (await router.assign_request.remote(query_param))
     assert a_result == "a"
 
     query_param = make_request_param("b")
-    b_result = await router.enqueue_request.remote(query_param)
+    b_result = await (await router.assign_request.remote(query_param))
     assert b_result == "b"
 
     query_param = make_request_param("non_exist")
     with pytest.raises(ray.exceptions.RayTaskError):
-        await router.enqueue_request.remote(query_param)
+        await (await router.assign_request.remote(query_param))
 
 
 async def test_task_runner_custom_method_batch(serve_instance, router):
@@ -145,8 +153,12 @@ async def test_task_runner_custom_method_batch(serve_instance, router):
     a_query_param = make_request_param("a")
     b_query_param = make_request_param("b")
 
-    futures = [router.enqueue_request.remote(a_query_param) for _ in range(2)]
-    futures += [router.enqueue_request.remote(b_query_param) for _ in range(2)]
+    futures = [
+        await router.assign_request.remote(a_query_param) for _ in range(2)
+    ]
+    futures += [
+        await router.assign_request.remote(b_query_param) for _ in range(2)
+    ]
 
     gathered = await asyncio.gather(*futures)
     assert set(gathered) == {"a-0", "a-1", "b-0", "b-1"}
@@ -172,14 +184,14 @@ async def test_servable_batch_error(serve_instance, router):
 
     with pytest.raises(RayServeException, match="doesn't preserve batch size"):
         different_size = make_request_param("error_different_size")
-        await router.enqueue_request.remote(different_size)
+        await (await router.assign_request.remote(different_size))
 
     with pytest.raises(RayServeException, match="iterable"):
         non_iterable = make_request_param("error_non_iterable")
-        await router.enqueue_request.remote(non_iterable)
+        await (await router.assign_request.remote(non_iterable))
 
     np_array = make_request_param("return_np_array")
-    result_np_value = await router.enqueue_request.remote(np_array)
+    result_np_value = await (await router.assign_request.remote(np_array))
     assert isinstance(result_np_value, np.int32)
 
 
@@ -196,8 +208,8 @@ async def test_task_runner_perform_batch(serve_instance, router):
     _ = await add_servable_to_router(batcher, router, backend_config=config)
 
     query_param = make_request_param()
-    my_batch_sizes = await asyncio.gather(
-        *[router.enqueue_request.remote(query_param) for _ in range(3)])
+    my_batch_sizes = await asyncio.gather(*[(
+        await router.assign_request.remote(query_param)) for _ in range(3)])
     assert my_batch_sizes == [2, 2, 1]
 
 
@@ -232,7 +244,7 @@ async def test_task_runner_perform_async(serve_instance, router):
     query_param = make_request_param()
 
     done, not_done = await asyncio.wait(
-        [router.enqueue_request.remote(query_param) for _ in range(10)],
+        [(await router.assign_request.remote(query_param)) for _ in range(10)],
         timeout=10)
     assert len(done) == 10
     for item in done:

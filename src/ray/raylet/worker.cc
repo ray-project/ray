@@ -26,7 +26,7 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const WorkerID &worker_id, const Language &language,
+Worker::Worker(const JobID &job_id, const WorkerID &worker_id, const Language &language,
                rpc::WorkerType worker_type, const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
@@ -37,6 +37,7 @@ Worker::Worker(const WorkerID &worker_id, const Language &language,
       assigned_port_(-1),
       port_(-1),
       connection_(connection),
+      assigned_job_id_(job_id),
       placement_group_id_(PlacementGroupID::Nil()),
       dead_(false),
       blocked_(false),
@@ -111,18 +112,8 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
 }
 
 void Worker::AssignJobId(const JobID &job_id) {
-  if (!RayConfig::instance().enable_multi_tenancy()) {
-    assigned_job_id_ = job_id;
-  } else {
-    if (!assigned_job_id_.IsNil()) {
-      RAY_CHECK(assigned_job_id_ == job_id)
-          << "The worker " << worker_id_ << " is already assigned to job "
-          << assigned_job_id_ << ". It cannot be reassigned to job " << job_id;
-    } else {
-      assigned_job_id_ = job_id;
-      RAY_LOG(INFO) << "Assigned worker " << worker_id_ << " to job " << job_id;
-    }
-  }
+  RAY_CHECK(!RayConfig::instance().enable_multi_tenancy());
+  assigned_job_id_ = job_id;
 }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }

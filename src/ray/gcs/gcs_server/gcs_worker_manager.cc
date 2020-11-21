@@ -40,45 +40,29 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   worker_failure_data->CopyFrom(request.worker_failure());
   worker_failure_data->set_is_alive(false);
 
-  // Before handle ReportWorkerFailureRequest, you should check if the worker is exists.
-  auto on_get_done = [this, worker_address, worker_id, node_id, worker_failure_data,
-                      reply, send_reply_callback](
-                         const Status &status,
-                         const boost::optional<WorkerTableData> &result) {
-    if (result) {
-      auto on_put_done = [this, worker_address, worker_id, node_id, worker_failure_data,
-                          reply, send_reply_callback](const Status &status) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to report worker failure, worker id = " << worker_id
-                         << ", node id = " << node_id
-                         << ", address = " << worker_address.ip_address();
-        } else {
-          stats::UnintentionalWorkerFailures.Record(1);
-          RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
-                                             worker_failure_data->SerializeAsString(),
-                                             nullptr));
-        }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-      };
-
-      // The worker exists in worker table, you can update the info of this worker.
-      Status report_status = gcs_table_storage_->WorkerTable().Put(
-          worker_id, *worker_failure_data, on_put_done);
-      if (!report_status.ok()) {
-        on_put_done(report_status);
-      }
+  auto on_done = [this, worker_address, worker_id, node_id, worker_failure_data, reply,
+                  send_reply_callback](const Status &status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to report worker failure, worker id = " << worker_id
+                     << ", node id = " << node_id
+                     << ", address = " << worker_address.ip_address();
     } else {
-      // The worker doesn't exists in worker table.
-      RAY_LOG(WARNING) << "Failed to report worker failure, the worker doesn't "
-                          "exist, worker id = "
-                       << worker_id << ", node id = " << node_id
-                       << ", address = " << worker_address.ip_address();
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      stats::UnintentionalWorkerFailures.Record(1);
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
+                                         worker_failure_data->SerializeAsString(),
+                                         nullptr));
     }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_get_done);
+
+  // As soon as the worker starts, it will register with GCS. It ensures that GCS receives
+  // the worker registration information first and then the worker failure message, so we
+  // delete the get operation. Related issues:
+  // https://github.com/ray-project/ray/pull/11599
+  Status status =
+      gcs_table_storage_->WorkerTable().Put(worker_id, *worker_failure_data, on_done);
   if (!status.ok()) {
-    on_get_done(status, boost::none);
+    on_done(status);
   }
 }
 

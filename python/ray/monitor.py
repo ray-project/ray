@@ -17,7 +17,7 @@ from ray.autoscaler._private.constants import \
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.utils import setup_logger
+from ray.ray_logging import setup_logger
 from ray._raylet import GlobalStateAccessor
 
 import redis
@@ -103,7 +103,8 @@ class Monitor:
         # Keep a mapping from raylet client ID to IP address to use
         # for updating the load metrics.
         self.raylet_id_to_ip_map = {}
-        self.load_metrics = LoadMetrics()
+        head_node_ip = redis_address.split(":")[0]
+        self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
                                                  self.load_metrics)

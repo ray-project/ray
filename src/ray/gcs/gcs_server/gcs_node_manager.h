@@ -166,8 +166,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                                    const rpc::HeartbeatTableData &heartbeat);
 
   /// Get cluster realtime resources.
-  const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
-      &GetClusterRealtimeResources() const;
+  const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterRealtimeResources() const;
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
@@ -175,6 +174,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param placement_group_load placement group load protobuf.
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
+
+  std::string DebugString() const;
 
  protected:
   class NodeFailureDetector {
@@ -206,10 +207,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
     /// Handle a heartbeat from a Raylet.
     ///
-    /// \param node_id The client ID of the Raylet that sent the heartbeat.
-    /// \param heartbeat_data The heartbeat sent by the client.
-    void HandleHeartbeat(const NodeID &node_id,
-                         const rpc::HeartbeatTableData &heartbeat_data);
+    /// \param node_id The node ID of the Raylet that sent the heartbeat.
+    void HandleHeartbeat(const NodeID &node_id);
 
    protected:
     /// A periodic timer that fires on every heartbeat period. Raylets that have
@@ -286,9 +285,27 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Cluster realtime resources.
-  absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>> cluster_realtime_resources_;
+  absl::flat_hash_map<NodeID, ResourceSet> cluster_realtime_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
+
+  // Debug info.
+  enum CountType {
+    REGISTER_NODE_REQUEST = 0,
+    UNREGISTER_NODE_REQUEST = 1,
+    GET_ALL_NODE_INFO_REQUEST = 2,
+    REPORT_HEARTBEAT_REQUEST = 3,
+    GET_HEARTBEAT_REQUEST = 4,
+    GET_ALL_HEARTBEAT_REQUEST = 5,
+    GET_RESOURCES_REQUEST = 6,
+    UPDATE_RESOURCES_REQUEST = 7,
+    DELETE_RESOURCES_REQUEST = 8,
+    SET_INTERNAL_CONFIG_REQUEST = 9,
+    GET_INTERNAL_CONFIG_REQUEST = 10,
+    GET_ALL_AVAILABLE_RESOURCES_REQUEST = 11,
+    CountType_MAX = 12,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs
