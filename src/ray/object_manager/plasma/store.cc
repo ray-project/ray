@@ -216,11 +216,11 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     // make room.
     if (space_needed > 0) {
       if (spill_objects_callback_) {
-        // If the space needed is too small, we'd like to bump up to the minimum spilling size.
-        // Cap the max size to be lower than the plasma store limit.
-        int64_t byte_to_spill = std::min(
-          PlasmaAllocator::GetFootprintLimit(),
-          std::max(space_needed, RayConfig::instance().min_spilling_size()));
+        // If the space needed is too small, we'd like to bump up to the minimum spilling
+        // size. Cap the max size to be lower than the plasma store limit.
+        int64_t byte_to_spill =
+            std::min(PlasmaAllocator::GetFootprintLimit(),
+                     std::max(space_needed, RayConfig::instance().min_spilling_size()));
         // Object spilling is asynchronous so that we do not block the plasma
         // store thread. Therefore the client must try again, even if enough
         // space will be made after the spill is complete.
