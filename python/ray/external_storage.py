@@ -119,10 +119,6 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             f.write(memoryview(buf))
             url_with_offset = create_url_with_offset(
                 url=url, offset=offset, size=data_size_in_bytes)
-            print("write ref: ", ref.hex())
-            print('url with offset, ', url_with_offset)
-            print("data size, ", buf_len)
-            print("offset, ", offset)
             keys.append(url_with_offset.encode())
             offset += data_size_in_bytes
         return keys
@@ -194,7 +190,6 @@ class FileSystemStorage(ExternalStorage):
             parsed_result = parse_url_with_offset(url_with_offset)
             base_url = parsed_result.base_url
             offset = parsed_result.offset
-            ref = ray.ObjectRef(bytes.fromhex(object_ref.hex()))
             # Read a part of the file and recover the object.
             with open(base_url, "rb") as f:
                 f.seek(offset)
@@ -202,7 +197,7 @@ class FileSystemStorage(ExternalStorage):
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
-                self._put_object_to_store(metadata, buf_len, f, ref)
+                self._put_object_to_store(metadata, buf_len, f, object_ref)
 
 
 class ExternalStorageSmartOpenImpl(ExternalStorage):
@@ -242,7 +237,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         self.uri = uri.strip("/")
         self.prefix = prefix
         self.override_transport_params = override_transport_params or {}
-        self.transport_params = {}
+        self.transport_params = {"defer_seek": True}
         self.transport_params.update(self.override_transport_params)
 
     def spill_objects(self, object_refs) -> List[str]:
@@ -268,36 +263,18 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             # Retrieve the information needed.
             parsed_result = parse_url_with_offset(url_with_offset)
             base_url = parsed_result.base_url
-            print("read. base url, ", base_url)
             offset = parsed_result.offset
-            print("offset, ", offset)
-            print("data size, ", parsed_result.size)
-            offset_end = offset + parsed_result.size
-            print("offset end, ", offset_end)
-            ref = ray.ObjectRef(bytes.fromhex(object_ref.hex()))
 
             # To partial read from S3.
             with open(
-                    base_url,
-                    "rb",
-                    transport_params=self._get_restore_transport_param(
-                        offset, offset_end)) as f:
+                    base_url, "rb",
+                    transport_params=self.transport_params) as f:
+                f.seek(offset)
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
-                print("metdata len, ", metadata_len)
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
-                print("buf len, ", buf_len)
                 metadata = f.read(metadata_len)
-                print("metadata: ", metadata)
                 # read remaining data to our buffer
-                self._put_object_to_store(metadata, buf_len, f, ref)
-
-    def _get_restore_transport_param(self, offset_first, offset_end):
-        # Add the range read argument.
-        return self.transport_params.copy().update({
-            "object_kwargs": {
-                "Range": f"bytes={offset_first}-{offset_end}"
-            }
-        })
+                self._put_object_to_store(metadata, buf_len, f, object_ref)
 
 
 _external_storage = NullStorage()

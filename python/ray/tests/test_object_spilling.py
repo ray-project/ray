@@ -12,7 +12,7 @@ import ray
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
 
-bucket_name = "sang-object-spilling-test"
+bucket_name = "object-spilling-test"
 spill_local_path = "/tmp/spill"
 file_system_object_spilling_config = {
     "type": "filesystem",
@@ -31,9 +31,9 @@ smart_open_object_spilling_config = {
 @pytest.fixture(
     scope="function",
     params=[
-        # file_system_object_spilling_config,
+        file_system_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
-        smart_open_object_spilling_config,
+        # smart_open_object_spilling_config,
     ])
 def object_spilling_config(request, tmpdir):
     if request.param["type"] == "filesystem":
@@ -113,13 +113,12 @@ def test_invalid_config_raises_exception(shutdown_only):
 
 def test_url_generation_and_parse():
     url = "s3://abc/def/ray_good"
-    offset_first = 10
+    offset = 10
     size = 30
-    url_with_offset = create_url_with_offset(
-        url=url, offset_first=offset_first, size=size)
+    url_with_offset = create_url_with_offset(url=url, offset=offset, size=size)
     parsed_result = parse_url_with_offset(url_with_offset)
     assert parsed_result.base_url == url
-    assert parsed_result.offset_first == offset_first
+    assert parsed_result.offset == offset
     assert parsed_result.size == size
 
 
@@ -305,11 +304,11 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 45 * 1024 * 1024,
+            "min_spilling_size": 0
         })
     replay_buffer = []
     solution_buffer = []
-    buffer_length = 7
+    buffer_length = 100
 
     # Create objects of more than 800 MiB.
     for _ in range(buffer_length):
@@ -322,17 +321,12 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             solution_buffer.append(arr)
 
     print("-----------------------------------")
-
     # randomly sample objects
-    for _ in range(15):
+    for _ in range(1000):
         index = random.choice([i for i in range(buffer_length)])
-        print(index)
         ref = replay_buffer[index]
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
-        print(ref.hex())
-        print(sample)
-        print(solution)
         assert np.array_equal(sample, solution)
 
 
@@ -422,26 +416,28 @@ def test_fusion_objects(tmp_path, shutdown_only):
             }),
             "min_spilling_size": min_spilling_size,
         })
-    arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
-
-    # Wait raylet for starting an IO worker.
-    time.sleep(1)
+    solution_buffer = []
+    buffer_length = 100
 
     # Create objects of more than 800 MiB.
-    for _ in range(100):
+    for _ in range(buffer_length):
         ref = None
         while ref is None:
+            multiplier = random.choice([1, 2, 3])
+            arr = np.random.rand(multiplier * 1024 * 1024)
             ref = ray.put(arr)
             replay_buffer.append(ref)
+            solution_buffer.append(arr)
 
     print("-----------------------------------")
-
     # randomly sample objects
-    for _ in range(100):
-        ref = random.choice(replay_buffer)
+    for _ in range(1000):
+        index = random.choice([i for i in range(buffer_length)])
+        ref = replay_buffer[index]
+        solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
-        assert np.array_equal(sample, arr)
+        assert np.array_equal(sample, solution)
 
     is_test_passing = False
     for path in temp_folder.iterdir():
