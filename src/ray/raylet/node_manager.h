@@ -743,9 +743,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ReconstructionPolicy reconstruction_policy_;
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
-  /// A mapping from actor ID to registration information about that actor
-  /// (including which node manager owns it).
-  std::unordered_map<ActorID, ActorRegistration> actor_registry_;
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
