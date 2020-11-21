@@ -175,7 +175,7 @@ def debug(address):
                 key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
                 while True:
                     data = ray.experimental.internal_kv._internal_kv_get(key)
-                    if data and data != "get":
+                    if data:
                         session = json.loads(data)
                         host, port = session["pdb_address"].split(":")
                         with Telnet(host, int(port)) as tn:

@@ -147,7 +147,7 @@ class RemotePdb(Pdb):
         # Tell the next task to drop into the debugger.
         ray.worker.global_worker.debugger_breakpoint = self._breakpoint_uuid
         # Tell the debug loop to connect to the next task.
-        _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid), "continue")
+        _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid), "")
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
@@ -156,8 +156,7 @@ class RemotePdb(Pdb):
         """get
         Skip to where the current task returns to.
         """
-        ray.worker.global_worker.debugger_get = self._breakpoint_uuid
-        _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid), "get", overwrite=True)
+        ray.worker.global_worker.debugger_get_breakpoint = self._breakpoint_uuid
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
