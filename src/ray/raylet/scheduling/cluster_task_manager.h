@@ -48,10 +48,12 @@ class ClusterTaskManager {
   /// the state of the cluster.
   /// \param fulfills_dependencies_func: Returns true if all of a task's
   /// dependencies are fulfilled.
-  /// \param gcs_client: A gcs client.
+  /// \param is_owner_alive: A callback which returns if the owner process is alive
+  /// (according to our ownership model). \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
+                     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
                      NodeInfoGetter get_node_info);
 
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
@@ -63,7 +65,12 @@ class ClusterTaskManager {
 
   /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
-  /// avaialable resources on the node.
+  /// available resources on the node.
+  ///
+  /// If there are not enough resources locally, up to one task per resource
+  /// shape (the task at the head of the queue) will get spilled back to a
+  /// different node.
+  ///
   /// \param worker_pool: The pool of workers which will be dispatched to.
   /// `worker_pool` state will be modified (idle workers will be popped) during
   /// dispatching.
@@ -106,12 +113,19 @@ class ClusterTaskManager {
   void Heartbeat(bool light_heartbeat_enabled,
                  std::shared_ptr<HeartbeatTableData> data) const;
 
-  std::string DebugString();
+  std::string DebugString() const;
 
  private:
+  /// Helper method to try dispatching a single task from the queue to an
+  /// available worker. Returns whether the task should be removed from the
+  /// queue and whether the worker was successfully leased to execute the work.
+  bool AttemptDispatchWork(const Work &work, std::shared_ptr<WorkerInterface> &worker,
+                           bool *worker_leased);
+
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::function<bool(const Task &)> fulfills_dependencies_func_;
+  std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   NodeInfoGetter get_node_info_;
 
   // TODO (Alex): Implement fair queuing for these queues
@@ -135,9 +149,7 @@ class ClusterTaskManager {
       const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
-  void Spillback(NodeID spillback_to, std::string address, int port,
-                 rpc::RequestWorkerLeaseReply *reply,
-                 std::function<void(void)> send_reply_callback);
+  void Spillback(const NodeID &spillback_to, const Work &work);
 };
 }  // namespace raylet
 }  // namespace ray

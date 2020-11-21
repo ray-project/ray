@@ -44,9 +44,9 @@ boto3_list = [{
         "DefaultVCpus": 1
     }
 }, {
-    "InstanceType": "m4.xlarge",
+    "InstanceType": "t3a.small",
     "VCpuInfo": {
-        "DefaultVCpus": 4
+        "DefaultVCpus": 2
     }
 }, {
     "InstanceType": "m4.4xlarge",
@@ -184,6 +184,10 @@ def _check_output_via_pattern(name, result):
 DEFAULT_TEST_CONFIG_PATH = str(
     Path(__file__).parent / "test_cli_patterns" / "test_ray_up_config.yaml")
 
+DOCKER_TEST_CONFIG_PATH = str(
+    Path(__file__).parent / "test_cli_patterns" /
+    "test_ray_up_docker_config.yaml")
+
 
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
@@ -210,12 +214,12 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
         # unfortunately, cutting out SSH prefixes and such
         # is, to put it lightly, non-trivial
         if "uptime" in command:
-            return PopenBehaviour(stdout="MOCKED uptime")
+            return PopenBehaviour(stdout=b"MOCKED uptime")
         if "rsync" in command:
-            return PopenBehaviour(stdout="MOCKED rsync")
+            return PopenBehaviour(stdout=b"MOCKED rsync")
         if "ray" in command:
-            return PopenBehaviour(stdout="MOCKED ray")
-        return PopenBehaviour(stdout="MOCKED GENERIC")
+            return PopenBehaviour(stdout=b"MOCKED ray")
+        return PopenBehaviour(stdout=b"MOCKED GENERIC")
 
     with _setup_popen_mock(commands_mock):
         # config cache does not work with mocks
@@ -232,6 +236,37 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
+def test_ray_up_docker(configure_lang, _unlink_test_ssh_key, configure_aws):
+    def commands_mock(command, stdin):
+        # if we want to have e.g. some commands fail,
+        # we can have overrides happen here.
+        # unfortunately, cutting out SSH prefixes and such
+        # is, to put it lightly, non-trivial
+        if ".Config.Env" in command:
+            return PopenBehaviour(stdout=b"{}")
+        if "uptime" in command:
+            return PopenBehaviour(stdout=b"MOCKED uptime")
+        if "rsync" in command:
+            return PopenBehaviour(stdout=b"MOCKED rsync")
+        if "ray" in command:
+            return PopenBehaviour(stdout=b"MOCKED ray")
+        return PopenBehaviour(stdout=b"MOCKED GENERIC")
+
+    with _setup_popen_mock(commands_mock):
+        # config cache does not work with mocks
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DOCKER_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-style=pretty", "--log-color", "False"
+        ])
+        _check_output_via_pattern("test_ray_up_docker.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
 def test_ray_up_record(configure_lang, _unlink_test_ssh_key, configure_aws):
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
@@ -239,12 +274,12 @@ def test_ray_up_record(configure_lang, _unlink_test_ssh_key, configure_aws):
         # unfortunately, cutting out SSH prefixes and such
         # is, to put it lightly, non-trivial
         if "uptime" in command:
-            return PopenBehaviour(stdout="MOCKED uptime")
+            return PopenBehaviour(stdout=b"MOCKED uptime")
         if "rsync" in command:
-            return PopenBehaviour(stdout="MOCKED rsync")
+            return PopenBehaviour(stdout=b"MOCKED rsync")
         if "ray" in command:
-            return PopenBehaviour(stdout="MOCKED ray")
-        return PopenBehaviour(stdout="MOCKED GENERIC")
+            return PopenBehaviour(stdout=b"MOCKED ray")
+        return PopenBehaviour(stdout=b"MOCKED GENERIC")
 
     with _setup_popen_mock(commands_mock):
         # config cache does not work with mocks
@@ -294,7 +329,7 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
         print("This is a test!")
-        return PopenBehaviour(stdout="This is a test!")
+        return PopenBehaviour(stdout=b"This is a test!")
 
     with _setup_popen_mock(commands_mock):
         runner = CliRunner()
@@ -327,7 +362,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
         #                  doesn't work with the mock for some reason
         if "rsync" not in command:
             print("This is a test!")
-        return PopenBehaviour(stdout="This is a test!")
+        return PopenBehaviour(stdout=b"This is a test!")
 
     with _setup_popen_mock(commands_mock):
         runner = CliRunner()

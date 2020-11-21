@@ -1518,7 +1518,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   }
 }
 
-Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
+Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,
+                              bool recursive) {
   if (actor_manager_->CheckActorHandleExists(object_id.TaskId().ActorId())) {
     return Status::Invalid("Actor task cancellation is not supported.");
   }
@@ -1527,14 +1528,34 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
     return Status::Invalid("No owner found for object.");
   }
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
-    return direct_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill);
+    return direct_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill,
+                                                    recursive);
   }
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
   if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
-    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill);
+    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
   return Status::OK();
+}
+
+Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
+  bool recursive_success = true;
+  for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
+    auto child_spec = task_manager_->GetTaskSpec(child_id);
+    if (child_spec.has_value()) {
+      auto result =
+          direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
+      recursive_success = recursive_success && result.ok();
+    } else {
+      recursive_success = false;
+    }
+  }
+  if (recursive_success) {
+    return Status::OK();
+  } else {
+    return Status::UnknownError("Recursive task cancelation failed--check warning logs.");
+  }
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) {
@@ -2157,8 +2178,8 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
 void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
                                         rpc::RemoteCancelTaskReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  auto status =
-      CancelTask(ObjectID::FromBinary(request.remote_object_id()), request.force_kill());
+  auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
+                           request.force_kill(), request.recursive());
   send_reply_callback(status, nullptr, nullptr);
 }
 
@@ -2173,6 +2194,12 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   if (success && !request.force_kill()) {
     RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
     success = options_.kill_main();
+  }
+  if (request.recursive()) {
+    auto recursive_cancel = CancelChildren(task_id, request.force_kill());
+    if (recursive_cancel.ok()) {
+      RAY_LOG(INFO) << "Recursive cancel failed!";
+    }
   }
 
   reply->set_attempt_succeeded(success);
