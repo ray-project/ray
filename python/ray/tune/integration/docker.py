@@ -36,7 +36,9 @@ class DockerSyncer(NodeSyncer):
                  local_dir: str,
                  remote_dir: str,
                  sync_client: Optional[SyncClient] = None):
-        configure_logging(verbosity=env_integer("TUNE_SYNCER_VERBOSITY", 0))
+        configure_logging(
+            log_style="record",
+            verbosity=env_integer("TUNE_SYNCER_VERBOSITY", 0))
         self.local_ip = services.get_node_ip_address()
         self.worker_ip = None
 

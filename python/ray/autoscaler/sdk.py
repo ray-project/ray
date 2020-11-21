@@ -207,7 +207,9 @@ def request_resources(num_cpus: Optional[int] = None,
     return commands.request_resources(num_cpus, bundles)
 
 
-def configure_logging(log_style=None, color_mode=None, verbosity=None):
+def configure_logging(log_style: Optional[str] = None,
+                      color_mode: Optional[str] = None,
+                      verbosity: Optional[int] = None):
     """Configures logging for cluster command calls.
 
     Args:
