@@ -2,16 +2,15 @@ import abc
 import os
 import urllib
 from collections import namedtuple
-from typing import List
+from typing import List, IO, Tuple
 
 import ray
 from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
 
 
-def create_url_with_offsets(*, url: str, offsets_first: int,
-                            offsets_end: int) -> str:
-    """Methods to create an url with offsets.
+def create_url_with_offset(*, url: str, offset: int, size: int) -> str:
+    """Methods to create an url with offset.
 
     When ray spills objects, it fuses multiple objects
     into one file to optimize the performance. That says, each object
@@ -23,45 +22,42 @@ def create_url_with_offsets(*, url: str, offsets_first: int,
     Created url_with_offset can be passed to the self._get_base_url method
     to parse the filename used to store files.
 
-    Example) file://path/to/file?offsets_first=""&offsets_end=""
+    Example) file://path/to/file?offset=""&size=""
 
     Args:
         url(str): url to the object stored in the external storage.
-        offsets_first(int): Offsets from the beginning of the file to
+        offset(int): Offset from the beginning of the file to
             the first bytes of this object.
-        offsets_end(int): Offsets from the beginning of the file to the
-            last bytes of this object.
+        size(int): Size of the object that is stored in the url.
+            It is used to calculate the last offset.
 
     Returns:
-        url_with_offsets stored internally to find
+        url_with_offset stored internally to find
         objects from external storage.
     """
-    return f"{url}?offsets_first={offsets_first}&offsets_end={offsets_end}"
+    return f"{url}?offset={offset}&size={size}"
 
 
-def parse_url_with_offsets(url_with_offsets: str) -> str:
-    """Parse url_with_offsets to retrieve information.
+def parse_url_with_offset(url_with_offset: str) -> Tuple[str, int, int]:
+    """Parse url_with_offset to retrieve information.
 
     base_url is the url where the object ref
     is stored in the external storage.
 
     Args:
-        url_with_offsets(str): url created by create_url_with_offsets.
+        url_with_offset(str): url created by create_url_with_offset.
 
     Returns:
-        named tuple of base_url, offsets_first, and offsets_end.
+        named tuple of base_url, offset, and size.
     """
-    parsed_result = urllib.parse.urlparse(url_with_offsets)
+    parsed_result = urllib.parse.urlparse(url_with_offset)
     query_dict = urllib.parse.parse_qs(parsed_result.query)
-    ParsedURL = namedtuple("ParsedURL", "base_url, offsets_first, offsets_end")
+    ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
     # Split by ? to remove the query from the url.
     base_url = parsed_result.geturl().split("?")[0]
-    offsets_first = int(query_dict["offsets_first"][0])
-    offsets_end = int(query_dict["offsets_end"][0])
-    return ParsedURL(
-        base_url=base_url,
-        offsets_first=offsets_first,
-        offsets_end=offsets_end)
+    offset = int(query_dict["offset"][0])
+    size = int(query_dict["size"][0])
+    return ParsedURL(base_url=base_url, offset=offset, size=size)
 
 
 class ExternalStorage(metaclass=abc.ABCMeta):
@@ -94,36 +90,41 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         worker.core_worker.put_file_like_object(metadata, data_size, file_like,
                                                 object_ref)
 
-    def _write_multiple_objects(self, f, object_refs, url) -> List[str]:
+    def _write_multiple_objects(self, f: IO, object_refs: List[ObjectRef],
+                                url: str) -> List[str]:
         """Fuse all given objects into a given file handle.
 
         Args:
-            f: File handle to fusion all given object refs.
-            object_refs: Object references to fusion to a single file.
-            url: url where the object ref is stored in the external storage.
+            f(IO): File handle to fusion all given object refs.
+            object_refs(list): Object references to fusion to a single file.
+            url(str): url where the object ref is stored
+                in the external storage.
 
         Return:
-            List of urls_with_offsets of fusioned objects.
+            List of urls_with_offset of fusioned objects.
             The order of returned keys are equivalent to the one
             with given object_refs.
         """
         keys = []
-        offsets = 0
+        offset = 0
         ray_object_pairs = self._get_objects_from_store(object_refs)
         for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
             metadata_len = len(metadata)
             buf_len = len(buf)
-            object_size_in_bytes = metadata_len + buf_len + 16
+            # 16 bytes to store metadata and buffer length.
+            data_size_in_bytes = metadata_len + buf_len + 16
             f.write(metadata_len.to_bytes(8, byteorder="little"))
             f.write(buf_len.to_bytes(8, byteorder="little"))
             f.write(metadata)
             f.write(memoryview(buf))
-            url_with_offsets = create_url_with_offsets(
-                url=url,
-                offsets_first=offsets,
-                offsets_end=offsets + object_size_in_bytes)
-            keys.append(url_with_offsets.encode())
-            offsets += object_size_in_bytes
+            url_with_offset = create_url_with_offset(
+                url=url, offset=offset, size=data_size_in_bytes)
+            print("write ref: ", ref.hex())
+            print('url with offset, ', url_with_offset)
+            print("data size, ", buf_len)
+            print("offset, ", offset)
+            keys.append(url_with_offset.encode())
+            offset += data_size_in_bytes
         return keys
 
     @abc.abstractmethod
@@ -134,17 +135,17 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         Args:
             object_refs: The list of the refs of the objects to be spilled.
         Returns:
-            A list of internal URLs with object offsets.
+            A list of internal URLs with object offset.
         """
 
     @abc.abstractmethod
     def restore_spilled_objects(self, object_refs: List[ObjectRef],
-                                url_with_offsets_list: List[str]):
+                                url_with_offset_list: List[str]):
         """Restore objects from the external storage.
 
         Args:
             object_refs: List of object IDs (note that it is not ref).
-            url_with_offsets_list: List of url_with_offsets.
+            url_with_offset_list: List of url_with_offset.
         """
 
 
@@ -154,7 +155,7 @@ class NullStorage(ExternalStorage):
     def spill_objects(self, object_refs) -> List[str]:
         raise NotImplementedError("External storage is not initialized")
 
-    def restore_spilled_objects(self, object_refs, url_with_offsets_list):
+    def restore_spilled_objects(self, object_refs, url_with_offset_list):
         raise NotImplementedError("External storage is not initialized")
 
 
@@ -185,19 +186,18 @@ class FileSystemStorage(ExternalStorage):
             return self._write_multiple_objects(f, object_refs, url)
 
     def restore_spilled_objects(self, object_refs: List[ObjectRef],
-                                url_with_offsets_list: List[str]):
+                                url_with_offset_list: List[str]):
         for i in range(len(object_refs)):
             object_ref = object_refs[i]
-            url_with_offsets = url_with_offsets_list[i].decode()
-
+            url_with_offset = url_with_offset_list[i].decode()
             # Retrieve the information needed.
-            parsed_result = parse_url_with_offsets(url_with_offsets)
+            parsed_result = parse_url_with_offset(url_with_offset)
             base_url = parsed_result.base_url
-            offsets_first = parsed_result.offsets_first
+            offset = parsed_result.offset
             ref = ray.ObjectRef(bytes.fromhex(object_ref.hex()))
             # Read a part of the file and recover the object.
             with open(base_url, "rb") as f:
-                f.seek(offsets_first)
+                f.seek(offset)
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata = f.read(metadata_len)
@@ -259,17 +259,21 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             return self._write_multiple_objects(file_like, object_refs, url)
 
     def restore_spilled_objects(self, object_refs: List[ObjectRef],
-                                url_with_offsets_list: List[str]):
+                                url_with_offset_list: List[str]):
         from smart_open import open
         for i in range(len(object_refs)):
             object_ref = object_refs[i]
-            url_with_offsets = url_with_offsets_list[i].decode()
+            url_with_offset = url_with_offset_list[i].decode()
 
             # Retrieve the information needed.
-            parsed_result = parse_url_with_offsets(url_with_offsets)
+            parsed_result = parse_url_with_offset(url_with_offset)
             base_url = parsed_result.base_url
-            offsets_first = parsed_result.offsets_first
-            offsets_end = parsed_result.offsets_end
+            print("read. base url, ", base_url)
+            offset = parsed_result.offset
+            print("offset, ", offset)
+            print("data size, ", parsed_result.size)
+            offset_end = offset + parsed_result.size
+            print("offset end, ", offset_end)
             ref = ray.ObjectRef(bytes.fromhex(object_ref.hex()))
 
             # To partial read from S3.
@@ -277,18 +281,21 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                     base_url,
                     "rb",
                     transport_params=self._get_restore_transport_param(
-                        offsets_first, offsets_end)) as f:
+                        offset, offset_end)) as f:
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
+                print("metdata len, ", metadata_len)
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
+                print("buf len, ", buf_len)
                 metadata = f.read(metadata_len)
+                print("metadata: ", metadata)
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, ref)
 
-    def _get_restore_transport_param(self, offsets_first, offsets_end):
+    def _get_restore_transport_param(self, offset_first, offset_end):
         # Add the range read argument.
         return self.transport_params.copy().update({
             "object_kwargs": {
-                "Range": f"bytes={offsets_first}-{offsets_end}"
+                "Range": f"bytes={offset_first}-{offset_end}"
             }
         })
 
@@ -330,12 +337,12 @@ def spill_objects(object_refs):
 
 
 def restore_spilled_objects(object_refs: List[ObjectRef],
-                            url_with_offsets_list: List[str]):
+                            url_with_offset_list: List[str]):
     """Restore objects from the external storage.
 
     Args:
         object_refs: List of object IDs (note that it is not ref).
-        url_with_offsets_list: List of url_with_offsets.
+        url_with_offset_list: List of url_with_offset.
     """
     _external_storage.restore_spilled_objects(object_refs,
-                                              url_with_offsets_list)
+                                              url_with_offset_list)
