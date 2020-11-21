@@ -5,7 +5,7 @@ import time
 
 import pytest
 import ray
-from ray.test_utils import check_call_ray
+from ray.test_utils import check_call_ray, wait_for_condition
 
 
 def unix_socket_create_path(name):
@@ -81,7 +81,7 @@ def test_raylet_tempfiles(shutdown_only):
     }
 
     for expected in log_files_expected:
-        assert expected in log_files
+        wait_for_condition(lambda: expected in log_files)
     assert log_files_expected.issubset(log_files)
     assert log_files.issuperset(log_files_expected)
 
