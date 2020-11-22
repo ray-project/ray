@@ -113,7 +113,9 @@ class AxSearch(Searcher):
                  ax_client: Optional[AxClient] = None,
                  use_early_stopped_trials: Optional[bool] = None,
                  max_concurrent: Optional[int] = None):
-        assert ax is not None, "Ax must be installed!"
+        assert ax is not None, """Ax must be installed!
+            You can install AxSearch with the command:
+            `pip install ax-platform sqlalchemy`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
