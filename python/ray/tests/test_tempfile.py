@@ -5,7 +5,7 @@ import time
 
 import pytest
 import ray
-from ray.test_utils import check_call_ray, wait_for_condition
+from ray.test_utils import check_call_ray
 
 
 def unix_socket_create_path(name):
