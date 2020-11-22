@@ -832,37 +832,6 @@ class GlobalState:
 
         return dict(total_available_resources)
 
-    def actor_checkpoint_info(self, actor_id):
-        """Get checkpoint info for the given actor id.
-         Args:
-            actor_id: Actor's ID.
-         Returns:
-            A dictionary with information about the actor's checkpoint IDs and
-            their timestamps.
-        """
-        self._check_connected()
-        message = self._execute_command(
-            actor_id,
-            "RAY.TABLE_LOOKUP",
-            gcs_utils.TablePrefix.Value("ACTOR_CHECKPOINT_ID"),
-            "",
-            actor_id.binary(),
-        )
-        if message is None:
-            return None
-        gcs_entry = gcs_utils.GcsEntry.FromString(message)
-        entry = gcs_utils.ActorCheckpointIdData.FromString(
-            gcs_entry.entries[0])
-        checkpoint_ids = [
-            ray.ActorCheckpointID(checkpoint_id)
-            for checkpoint_id in entry.checkpoint_ids
-        ]
-        return {
-            "ActorID": ray.utils.binary_to_hex(entry.actor_id),
-            "CheckpointIds": checkpoint_ids,
-            "Timestamps": list(entry.timestamps),
-        }
-
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""

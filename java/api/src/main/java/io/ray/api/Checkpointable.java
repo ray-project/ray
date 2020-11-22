@@ -85,16 +85,4 @@ public interface Checkpointable {
    *     restart from the beginning.
    */
   UniqueId loadCheckpoint(ActorId actorId, List<Checkpoint> availableCheckpoints);
-
-  /**
-   * Delete an expired checkpoint;
-   *
-   * This method will be called when an checkpoint is expired. You should implement this method to
-   * delete your application checkpoint data. Note, the maximum number of checkpoints kept in the
-   * backend can be configured at `RayConfig.num_actor_checkpoints_to_keep`.
-   *
-   * @param actorId ID of the actor.
-   * @param checkpointId ID of the checkpoint that has expired.
-   */
-  void checkpointExpired(ActorId actorId, UniqueId checkpointId);
 }

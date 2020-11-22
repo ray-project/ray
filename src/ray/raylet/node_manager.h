@@ -27,7 +27,6 @@
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/object_manager/object_manager.h"
-#include "ray/raylet/actor_registration.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
@@ -553,18 +552,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
-  /// Process client message of PrepareActorCheckpointRequest.
-  ///
-  /// \param client The client that sent the message.
-  /// \param message_data A pointer to the message data.
-  void ProcessPrepareActorCheckpointRequest(
-      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
-
-  /// Process client message of NotifyActorResumedFromCheckpoint.
-  ///
-  /// \param message_data A pointer to the message data.
-  void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
-
   /// Process client message of SetResourceRequest
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
@@ -750,9 +737,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ReconstructionPolicy reconstruction_policy_;
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
-  /// This map stores actor ID to the ID of the checkpoint that will be used to
-  /// restore the actor.
-  std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 
   std::unique_ptr<AgentManager> agent_manager_;
 

@@ -67,17 +67,6 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncUnsubscribe(const ActorID &actor_id) override;
 
-  Status AsyncAddCheckpoint(const std::shared_ptr<ActorCheckpointData> &data_ptr,
-                            const StatusCallback &callback) override;
-
-  Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-      const OptionalItemCallback<ActorCheckpointData> &callback) override;
-
-  Status AsyncGetCheckpointID(
-      const ActorID &actor_id,
-      const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
-
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
   bool IsActorUnsubscribed(const ActorID &actor_id) override { return false; }
@@ -86,17 +75,6 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
   virtual std::vector<ActorID> GetAllActorID() const;
   virtual Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const;
 
- private:
-  /// Add checkpoint id to GCS asynchronously.
-  ///
-  /// \param actor_id The ID of actor that the checkpoint belongs to.
-  /// \param checkpoint_id The ID of checkpoint that will be added to GCS.
-  /// \return Status
-  Status AsyncAddCheckpointID(const ActorID &actor_id,
-                              const ActorCheckpointID &checkpoint_id,
-                              const StatusCallback &callback);
-
- protected:
   RedisGcsClient *client_impl_{nullptr};
   // Use a random NodeID for actor subscription. Because:
   // If we use NodeID::Nil, GCS will still send all actors' updates to this GCS Client.

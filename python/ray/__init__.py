@@ -63,7 +63,6 @@ if os.path.exists(so_path):
 import ray._raylet  # noqa: E402
 
 from ray._raylet import (
-    ActorCheckpointID,
     ActorClassID,
     ActorID,
     NodeID,
@@ -149,7 +148,6 @@ __all__ = [
 
 # ID types
 __all__ += [
-    "ActorCheckpointID",
     "ActorClassID",
     "ActorID",
     "NodeID",

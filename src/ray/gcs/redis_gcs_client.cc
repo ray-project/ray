@@ -63,8 +63,6 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts, this));
   profile_table_.reset(new ProfileTable(shard_contexts, this));
-  actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts, this));
-  actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts, this));
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
   worker_table_.reset(new WorkerTable(shard_contexts, this));
 
@@ -137,14 +135,6 @@ HeartbeatBatchTable &RedisGcsClient::heartbeat_batch_table() {
 JobTable &RedisGcsClient::job_table() { return *job_table_; }
 
 ProfileTable &RedisGcsClient::profile_table() { return *profile_table_; }
-
-ActorCheckpointTable &RedisGcsClient::actor_checkpoint_table() {
-  return *actor_checkpoint_table_;
-}
-
-ActorCheckpointIdTable &RedisGcsClient::actor_checkpoint_id_table() {
-  return *actor_checkpoint_id_table_;
-}
 
 DynamicResourceTable &RedisGcsClient::resource_table() { return *resource_table_; }
 

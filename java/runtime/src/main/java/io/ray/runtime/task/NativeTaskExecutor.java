@@ -15,9 +15,6 @@ import java.util.List;
  */
 public class NativeTaskExecutor extends TaskExecutor<NativeTaskExecutor.NativeActorContext> {
 
-  // TODO(hchen): Use the C++ config.
-  private static final int NUM_ACTOR_CHECKPOINTS_TO_KEEP = 20;
-
   static class NativeActorContext extends TaskExecutor.ActorContext {
 
     /**
@@ -49,63 +46,4 @@ public class NativeTaskExecutor extends TaskExecutor<NativeTaskExecutor.NativeAc
     // This is to make sure no memory leak when `Ray.exitActor()` is called.
     removeActorContext(new UniqueId(workerIdBytes));
   }
-
-  @Override
-  protected void maybeSaveCheckpoint(Object actor, ActorId actorId) {
-    if (!(actor instanceof Checkpointable)) {
-      return;
-    }
-    NativeActorContext actorContext = getActorContext();
-    CheckpointContext checkpointContext = new CheckpointContext(actorId,
-        ++actorContext.numTasksSinceLastCheckpoint,
-        System.currentTimeMillis() - actorContext.lastCheckpointTimestamp);
-    Checkpointable checkpointable = (Checkpointable) actor;
-    if (!checkpointable.shouldCheckpoint(checkpointContext)) {
-      return;
-    }
-    actorContext.numTasksSinceLastCheckpoint = 0;
-    actorContext.lastCheckpointTimestamp = System.currentTimeMillis();
-    UniqueId checkpointId = new UniqueId(nativePrepareCheckpoint());
-    List<UniqueId> checkpointIds = actorContext.checkpointIds;
-    checkpointIds.add(checkpointId);
-    if (checkpointIds.size() > NUM_ACTOR_CHECKPOINTS_TO_KEEP) {
-      ((Checkpointable) actor).checkpointExpired(actorId, checkpointIds.get(0));
-      checkpointIds.remove(0);
-    }
-    checkpointable.saveCheckpoint(actorId, checkpointId);
-  }
-
-  @Override
-  protected void maybeLoadCheckpoint(Object actor, ActorId actorId) {
-    if (!(actor instanceof Checkpointable)) {
-      return;
-    }
-    NativeActorContext actorContext = getActorContext();
-    actorContext.numTasksSinceLastCheckpoint = 0;
-    actorContext.lastCheckpointTimestamp = System.currentTimeMillis();
-    actorContext.checkpointIds = new ArrayList<>();
-    List<Checkpoint> availableCheckpoints
-        = runtime.getGcsClient().getCheckpointsForActor(actorId);
-    if (availableCheckpoints.isEmpty()) {
-      return;
-    }
-    UniqueId checkpointId = ((Checkpointable) actor).loadCheckpoint(actorId, availableCheckpoints);
-    if (checkpointId != null) {
-      boolean checkpointValid = false;
-      for (Checkpoint checkpoint : availableCheckpoints) {
-        if (checkpoint.checkpointId.equals(checkpointId)) {
-          checkpointValid = true;
-          break;
-        }
-      }
-      Preconditions.checkArgument(checkpointValid,
-          "'loadCheckpoint' must return a checkpoint ID that exists in the "
-              + "'availableCheckpoints' list, or null.");
-      nativeNotifyActorResumedFromCheckpoint(checkpointId.getBytes());
-    }
-  }
-
-  private static native byte[] nativePrepareCheckpoint();
-
-  private static native void nativeNotifyActorResumedFromCheckpoint(byte[] checkpointId);
 }

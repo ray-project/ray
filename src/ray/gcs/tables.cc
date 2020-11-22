@@ -822,41 +822,6 @@ Status ActorTable::Get(const ray::ActorID &actor_id,
   return Status::OK();
 }
 
-Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
-                                               const ActorID &actor_id,
-                                               const ActorCheckpointID &checkpoint_id,
-                                               const WriteCallback &done) {
-  auto lookup_callback = [this, checkpoint_id, job_id, actor_id, done](
-                             ray::gcs::RedisGcsClient *client, const ActorID &id,
-                             const ActorCheckpointIdData &data) {
-    std::shared_ptr<ActorCheckpointIdData> copy =
-        std::make_shared<ActorCheckpointIdData>(data);
-    copy->add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
-    copy->add_checkpoint_ids(checkpoint_id.Binary());
-    // TODO(swang): This is a temporary value while we deprecate the actor
-    // checkpoint table.
-    auto num_to_keep = 20;
-    while (copy->timestamps().size() > num_to_keep) {
-      // Delete the checkpoint from actor checkpoint table.
-      const auto &to_delete = ActorCheckpointID::FromBinary(copy->checkpoint_ids(0));
-      copy->mutable_checkpoint_ids()->erase(copy->mutable_checkpoint_ids()->begin());
-      copy->mutable_timestamps()->erase(copy->mutable_timestamps()->begin());
-      client_->actor_checkpoint_table().Delete(job_id, to_delete);
-    }
-    RAY_CHECK_OK(Add(job_id, actor_id, copy, done));
-  };
-  auto failure_callback = [this, checkpoint_id, job_id, actor_id, done](
-                              ray::gcs::RedisGcsClient *client, const ActorID &id) {
-    std::shared_ptr<ActorCheckpointIdData> data =
-        std::make_shared<ActorCheckpointIdData>();
-    data->set_actor_id(id.Binary());
-    data->add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
-    *data->add_checkpoint_ids() = checkpoint_id.Binary();
-    RAY_CHECK_OK(Add(job_id, actor_id, data, done));
-  };
-  return Lookup(job_id, actor_id, lookup_callback, failure_callback);
-}
-
 template class Log<ObjectID, ObjectTableData>;
 template class Set<ObjectID, ObjectTableData>;
 template class Log<TaskID, TaskTableData>;
@@ -872,8 +837,6 @@ template class Log<UniqueID, ProfileTableData>;
 template class Log<NodeID, HeartbeatTableData>;
 template class Log<NodeID, HeartbeatBatchTableData>;
 template class Log<WorkerID, WorkerTableData>;
-template class Table<ActorCheckpointID, ActorCheckpointData>;
-template class Table<ActorID, ActorCheckpointIdData>;
 template class Table<WorkerID, WorkerTableData>;
 template class Table<ActorID, ActorTableData>;
 

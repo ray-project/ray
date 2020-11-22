@@ -1158,12 +1158,6 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
       RAY_CHECK_OK(gcs_client_->Tasks().AsyncDelete(creating_task_ids, nullptr));
     }
   } break;
-  case protocol::MessageType::PrepareActorCheckpointRequest: {
-    ProcessPrepareActorCheckpointRequest(client, message_data);
-  } break;
-  case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
-    ProcessNotifyActorResumedFromCheckpoint(message_data);
-  } break;
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);
   } break;
@@ -1576,17 +1570,6 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-}
-
-void NodeManager::ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data) {
-  auto message =
-      flatbuffers::GetRoot<protocol::NotifyActorResumedFromCheckpoint>(message_data);
-  ActorID actor_id = from_flatbuf<ActorID>(*message->actor_id());
-  ActorCheckpointID checkpoint_id =
-      from_flatbuf<ActorCheckpointID>(*message->checkpoint_id());
-  RAY_LOG(DEBUG) << "Actor " << actor_id << " was resumed from checkpoint "
-                 << checkpoint_id;
-  checkpoint_id_to_restore_.emplace(actor_id, checkpoint_id);
 }
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
@@ -2100,12 +2083,6 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed because of error "
                  << ErrorType_Name(error_type) << ".";
-  // If this was an actor creation task that tried to resume from a checkpoint,
-  // then erase it here since the task did not finish.
-  if (spec.IsActorCreationTask()) {
-    ActorID actor_id = spec.ActorCreationId();
-    checkpoint_id_to_restore_.erase(actor_id);
-  }
   // Loop over the return IDs (except the dummy ID) and store a fake object in
   // the object store.
   int64_t num_returns = spec.NumReturns();

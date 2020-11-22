@@ -282,32 +282,6 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
   return conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
 
-Status raylet::RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
-                                                    ActorCheckpointID *checkpoint_id) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreatePrepareActorCheckpointRequest(fbb, to_flatbuf(fbb, actor_id));
-  fbb.Finish(message);
-
-  std::vector<uint8_t> reply;
-  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::PrepareActorCheckpointRequest,
-                                              MessageType::PrepareActorCheckpointReply,
-                                              &reply, &fbb));
-  auto reply_message =
-      flatbuffers::GetRoot<protocol::PrepareActorCheckpointReply>(reply.data());
-  *checkpoint_id = ActorCheckpointID::FromBinary(reply_message->checkpoint_id()->str());
-  return Status::OK();
-}
-
-Status raylet::RayletClient::NotifyActorResumedFromCheckpoint(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyActorResumedFromCheckpoint(
-      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, checkpoint_id));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyActorResumedFromCheckpoint, &fbb);
-}
-
 Status raylet::RayletClient::SetResource(const std::string &resource_name,
                                          const double capacity, const NodeID &client_Id) {
   flatbuffers::FlatBufferBuilder fbb;
