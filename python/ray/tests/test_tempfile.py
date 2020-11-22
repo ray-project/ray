@@ -81,7 +81,8 @@ def test_raylet_tempfiles(shutdown_only):
     }
 
     for expected in log_files_expected:
-        wait_for_condition(lambda: expected in log_files)
+        print(log_files)
+        assert expected in log_files
     assert log_files_expected.issubset(log_files)
     assert log_files.issuperset(log_files_expected)
 
