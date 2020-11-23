@@ -55,11 +55,14 @@ class Categorical(TFActionDistribution):
     def __init__(self,
                  inputs: List[TensorType],
                  model: ModelV2 = None,
-                 temperature: float = 1.0):
-        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-        # Allow softmax formula w/ temperature != 1.0:
-        # Divide inputs by temperature.
-        super().__init__(inputs / temperature, model)
+                 temperature: float = 1.0,
+                 output_type: str = "logits"):
+        if output_type == "logits" and temperature != 1.0:
+            assert temperature > 0.0, \
+                "Categorical `temperature` must be > 0.0!"
+            inputs /= temperature
+        self.output_type = output_type
+        super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
@@ -92,7 +95,11 @@ class Categorical(TFActionDistribution):
 
     @override(TFActionDistribution)
     def _build_sample_op(self) -> TensorType:
-        return tf.squeeze(tf.random.categorical(self.inputs, 1), axis=1)
+        if self.output_type == "logits":
+            return tf.squeeze(tf.random.categorical(self.inputs, 1), axis=1)
+        else:
+            return tfp.distributions.Categorical(
+                probs=self.inputs, dtype=tf.int64).sample()
 
     @staticmethod
     @override(ActionDistribution)
@@ -103,12 +110,15 @@ class Categorical(TFActionDistribution):
 class MultiCategorical(TFActionDistribution):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
-    def __init__(self, inputs: List[TensorType], model: ModelV2,
-                 input_lens: Union[List[int], np.ndarray, Tuple[int, ...]]):
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: ModelV2,
+                 input_lens: Union[List[int], np.ndarray, Tuple[int, ...]],
+                 output_type: str = "logits"):
         # skip TFActionDistribution init
         ActionDistribution.__init__(self, inputs, model)
         self.cats = [
-            Categorical(input_, model)
+            Categorical(input_, model, output_type=output_type)
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.sample_op = self._build_sample_op()

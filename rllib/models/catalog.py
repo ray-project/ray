@@ -50,6 +50,8 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "no_final_linear": False,
     # Whether layers should be shared for the value function.
     "vf_share_layers": True,
+    # Whether a model outputs "logits" or "probs" (normalized values).
+    "output_type": "logits",
 
     # == LSTM ==
     # Whether to wrap the model with an LSTM.
@@ -174,6 +176,11 @@ class ModelCatalog:
         elif isinstance(action_space, gym.spaces.Discrete):
             dist_cls = (TorchCategorical
                         if framework == "torch" else Categorical)
+            return partial(
+                dist_cls, output_type=config.get(
+                    "output_type",
+                    "logits")), dist_cls.required_model_output_shape(
+                        action_space, config)
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
@@ -193,8 +200,11 @@ class ModelCatalog:
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             dist_cls = TorchMultiCategorical if framework == "torch" else \
                 MultiCategorical
-            return partial(dist_cls, input_lens=action_space.nvec), \
-                int(sum(action_space.nvec))
+            return partial(
+                dist_cls,
+                input_lens=action_space.nvec,
+                output_type=config.get("output_type", "logits")), int(
+                    sum(action_space.nvec))
         # Unknown type -> Error.
         else:
             raise NotImplementedError("Unsupported args: {} {}".format(

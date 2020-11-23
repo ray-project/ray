@@ -63,14 +63,19 @@ class TorchCategorical(TorchDistributionWrapper):
     def __init__(self,
                  inputs: List[TensorType],
                  model: TorchModelV2 = None,
-                 temperature: float = 1.0):
-        if temperature != 1.0:
+                 temperature: float = 1.0,
+                 output_type: str = "logits"):
+        if output_type == "logits" and temperature != 1.0:
             assert temperature > 0.0, \
                 "Categorical `temperature` must be > 0.0!"
             inputs /= temperature
         super().__init__(inputs, model)
-        self.dist = torch.distributions.categorical.Categorical(
-            logits=self.inputs)
+        if output_type == "logits":
+            self.dist = torch.distributions.categorical.Categorical(
+                logits=self.inputs)
+        else:
+            self.dist = torch.distributions.categorical.Categorical(
+                probs=self.inputs)
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
@@ -89,15 +94,24 @@ class TorchMultiCategorical(TorchDistributionWrapper):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
     @override(TorchDistributionWrapper)
-    def __init__(self, inputs: List[TensorType], model: TorchModelV2,
-                 input_lens: Union[List[int], np.ndarray, Tuple[int, ...]]):
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: TorchModelV2,
+                 input_lens: Union[List[int], np.ndarray, Tuple[int, ...]],
+                 output_type: str = "logits"):
         super().__init__(inputs, model)
         # If input_lens is np.ndarray or list, force-make it a tuple.
         inputs_split = self.inputs.split(tuple(input_lens), dim=1)
-        self.cats = [
-            torch.distributions.categorical.Categorical(logits=input_)
-            for input_ in inputs_split
-        ]
+        if output_type == "logits":
+            self.cats = [
+                torch.distributions.categorical.Categorical(logits=input_)
+                for input_ in inputs_split
+            ]
+        else:
+            self.cats = [
+                torch.distributions.categorical.Categorical(probs=input_)
+                for input_ in inputs_split
+            ]
 
     @override(TorchDistributionWrapper)
     def sample(self) -> TensorType:

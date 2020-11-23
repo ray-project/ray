@@ -50,7 +50,7 @@ class TestDistributions(unittest.TestCase):
                 # log standard deviations, and should therefore be
                 # the log of a positive number >= 1.
                 inputs[batch_item][num] = np.log(
-                    max(1, np.random.choice((extreme_values))))
+                    max(1, np.random.choice(extreme_values)))
 
         dist = distribution_cls(inputs, {}, **(extra_kwargs or {}))
         for _ in range(100):
@@ -86,52 +86,61 @@ class TestDistributions(unittest.TestCase):
         values_space = Box(
             0, num_categories - 1, shape=(batch_size, ), dtype=np.int32)
 
-        inputs = inputs_space.sample()
+        for output_type in ("logits", "probs"):
+            for fw, sess in framework_iterator(session=True):
+                inputs = inputs_space.sample()
+                if output_type == "probs":
+                    inputs = softmax(inputs)
 
-        for fw, sess in framework_iterator(session=True):
-            # Create the correct distribution object.
-            cls = Categorical if fw != "torch" else TorchCategorical
-            categorical = cls(inputs, {})
+                # Create the correct distribution object.
+                cls = Categorical if fw != "torch" else TorchCategorical
 
-            # Do a stability test using extreme NN outputs to see whether
-            # sampling and logp'ing result in NaN or +/-inf values.
-            self._stability_test(
-                cls,
-                inputs_space.shape,
-                fw=fw,
-                sess=sess,
-                bounds=(0, num_categories - 1))
+                # Do a stability test using extreme NN outputs to see whether
+                # sampling and logp'ing result in NaN or +/-inf values.
+                # This test is applied only when a model outputs logits
+                # - in case of valid probs there is no chance for NaNs or
+                # +/-infs values.
+                if output_type == "logits":
+                    self._stability_test(
+                        cls,
+                        inputs_space.shape,
+                        fw=fw,
+                        sess=sess,
+                        bounds=(0, num_categories - 1))
 
-            # Batch of size=3 and deterministic (True).
-            expected = np.transpose(np.argmax(inputs, axis=-1))
-            # Sample, expect always max value
-            # (max likelihood for deterministic draw).
-            out = categorical.deterministic_sample()
-            check(out, expected)
+                categorical = cls(inputs, {}, output_type=output_type)
 
-            # Batch of size=3 and non-deterministic -> expect roughly the mean.
-            out = categorical.sample()
-            check(
-                tf.reduce_mean(out)
-                if fw != "torch" else torch.mean(out.float()),
-                1.0,
-                decimals=0)
+                # Batch of size=3 and deterministic (True).
+                expected = np.transpose(np.argmax(inputs, axis=-1))
+                # Sample, expect always max value
+                # (max likelihood for deterministic draw).
+                out = categorical.deterministic_sample()
+                check(out, expected)
 
-            # Test log-likelihood outputs.
-            probs = softmax(inputs)
-            values = values_space.sample()
+                # Batch of size=3 and non-deterministic -> expect roughly the mean.
+                out = categorical.sample()
+                check(
+                    tf.reduce_mean(out)
+                    if fw != "torch" else torch.mean(out.float()),
+                    1.0,
+                    decimals=0)
 
-            out = categorical.logp(values
-                                   if fw != "torch" else torch.Tensor(values))
-            expected = []
-            for i in range(batch_size):
-                expected.append(np.sum(np.log(np.array(probs[i][values[i]]))))
-            check(out, expected, decimals=4)
+                # Test log-likelihood outputs.
+                probs = softmax(inputs) if output_type == "logits" else inputs
+                values = values_space.sample()
 
-            # Test entropy outputs.
-            out = categorical.entropy()
-            expected_entropy = -np.sum(probs * np.log(probs), -1)
-            check(out, expected_entropy)
+                out = categorical.logp(values if fw != "torch" else
+                                       torch.Tensor(values))
+                expected = []
+                for i in range(batch_size):
+                    expected.append(
+                        np.sum(np.log(np.array(probs[i][values[i]]))))
+                check(out, expected, decimals=4)
+
+                # Test entropy outputs.
+                out = categorical.entropy()
+                expected_entropy = -np.sum(probs * np.log(probs), -1)
+                check(out, expected_entropy)
 
     def test_multi_categorical(self):
         batch_size = 100
@@ -148,62 +157,80 @@ class TestDistributions(unittest.TestCase):
             shape=(num_sub_distributions, batch_size),
             dtype=np.int32)
 
-        inputs = inputs_space.sample()
-        input_lengths = [num_categories] * num_sub_distributions
-        inputs_split = np.split(inputs, num_sub_distributions, axis=1)
+        for output_type in ("logits", "probs"):
+            for fw, sess in framework_iterator(session=True):
+                inputs = inputs_space.sample()
+                input_lengths = [num_categories] * num_sub_distributions
+                inputs_split = np.split(inputs, num_sub_distributions, axis=1)
 
-        for fw, sess in framework_iterator(session=True):
-            # Create the correct distribution object.
-            cls = MultiCategorical if fw != "torch" else TorchMultiCategorical
-            multi_categorical = cls(inputs, None, input_lengths)
+                # For probs we need to first split outputs, compute
+                # their softmax values and merge them back.
+                if output_type == "probs":
+                    inputs_split = [
+                        softmax(input_split) for input_split in inputs_split
+                    ]
+                    inputs = np.concatenate(inputs_split, axis=1)
 
-            # Do a stability test using extreme NN outputs to see whether
-            # sampling and logp'ing result in NaN or +/-inf values.
-            self._stability_test(
-                cls,
-                inputs_space.shape,
-                fw=fw,
-                sess=sess,
-                bounds=(0, num_categories - 1),
-                extra_kwargs={"input_lens": input_lengths})
+                # Create the correct distribution object.
+                cls = MultiCategorical if fw != "torch" else TorchMultiCategorical
 
-            # Batch of size=3 and deterministic (True).
-            expected = np.transpose(np.argmax(inputs_split, axis=-1))
-            # Sample, expect always max value
-            # (max likelihood for deterministic draw).
-            out = multi_categorical.deterministic_sample()
-            check(out, expected)
+                # Do a stability test using extreme NN outputs to see whether
+                # sampling and logp'ing result in NaN or +/-inf values.
+                # This test is applied only when a model outputs logits
+                # - in case of valid probs there is no chance for NaNs or
+                # +/-infs values.
+                if output_type == "logits":
+                    self._stability_test(
+                        cls,
+                        inputs_space.shape,
+                        fw=fw,
+                        sess=sess,
+                        bounds=(0, num_categories - 1),
+                        extra_kwargs={"input_lens": input_lengths})
 
-            # Batch of size=3 and non-deterministic -> expect roughly the mean.
-            out = multi_categorical.sample()
-            check(
-                tf.reduce_mean(out)
-                if fw != "torch" else torch.mean(out.float()),
-                1.0,
-                decimals=0)
+                multi_categorical = cls(
+                    inputs, None, input_lengths, output_type=output_type)
 
-            # Test log-likelihood outputs.
-            probs = softmax(inputs_split)
-            values = values_space.sample()
+                # Batch of size=3 and deterministic (True).
+                expected = np.transpose(np.argmax(inputs_split, axis=-1))
+                # Sample, expect always max value
+                # (max likelihood for deterministic draw).
+                out = multi_categorical.deterministic_sample()
+                check(out, expected)
 
-            out = multi_categorical.logp(values if fw != "torch" else [
-                torch.Tensor(values[i]) for i in range(num_sub_distributions)
-            ])  # v in np.stack(values, 1)])
-            expected = []
-            for i in range(batch_size):
-                expected.append(
-                    np.sum(
-                        np.log(
-                            np.array([
-                                probs[j][i][values[j][i]]
-                                for j in range(num_sub_distributions)
-                            ]))))
-            check(out, expected, decimals=4)
+                # Batch of size=3 and non-deterministic -> expect roughly the mean.
+                out = multi_categorical.sample()
+                check(
+                    tf.reduce_mean(out)
+                    if fw != "torch" else torch.mean(out.float()),
+                    1.0,
+                    decimals=0)
 
-            # Test entropy outputs.
-            out = multi_categorical.entropy()
-            expected_entropy = -np.sum(np.sum(probs * np.log(probs), 0), -1)
-            check(out, expected_entropy)
+                # Test log-likelihood outputs.
+                probs = softmax(
+                    inputs_split) if output_type == "logits" else inputs_split
+                values = values_space.sample()
+
+                out = multi_categorical.logp(values if fw != "torch" else [
+                    torch.Tensor(values[i])
+                    for i in range(num_sub_distributions)
+                ])  # v in np.stack(values, 1)])
+                expected = []
+                for i in range(batch_size):
+                    expected.append(
+                        np.sum(
+                            np.log(
+                                np.array([
+                                    probs[j][i][values[j][i]]
+                                    for j in range(num_sub_distributions)
+                                ]))))
+                check(out, expected, decimals=4)
+
+                # Test entropy outputs.
+                out = multi_categorical.entropy()
+                expected_entropy = -np.sum(
+                    np.sum(probs * np.log(probs), 0), -1)
+                check(out, expected_entropy)
 
     def test_squashed_gaussian(self):
         """Tests the SquashedGaussian ActionDistribution for all frameworks."""
