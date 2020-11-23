@@ -284,8 +284,10 @@ class NodeUpdater:
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
             # When resuming from a stopped instance the runtime_hash may be the
             # same, but the container will not be started.
-            self.cmd_runner.run_init(
+            init_required = self.cmd_runner.run_init(
                 as_head=self.is_head_node, file_mounts=self.file_mounts)
+            if init_required:
+                node_tags.get[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
 
         # runtime_hash will only change whenever the user restarts
         # or updates their cluster with `get_or_create_head_node`
@@ -314,6 +316,7 @@ class NodeUpdater:
             # Only run setup commands if runtime_hash has changed because
             # we don't want to run setup_commands every time the head node
             # file_mounts folders have changed.
+            # TODO(ilr) Docker may need to override self.runtime_hash (or vice versa)
             if node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash:
                 # Run init commands
                 self.provider.set_node_tags(
