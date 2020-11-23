@@ -711,27 +711,10 @@ class DockerCommandRunner(CommandRunnerInterface):
         for mnt in BOOTSTRAP_MOUNTS:
             cleaned_bind_mounts.pop(mnt, None)
 
-        if not self._check_container_status():
-            # Get home directory
-            image_env = self.ssh_command_runner.run(
-                "docker inspect -f '{{json .Config.Env}}' " + image,
-                with_output=True).decode().strip()
-            home_directory = "/root"
-            for env_var in json.loads(image_env):
-                if env_var.startswith("HOME="):
-                    home_directory = env_var.split("HOME=")[1]
-                    break
+        docker_run_executed = False
 
-            start_command = docker_start_cmds(
-                self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
-                self.container_name,
-                self.docker_config.get(
-                    "run_options", []) + self.docker_config.get(
-                        f"{'head' if as_head else 'worker'}_run_options", []) +
-                self._configure_runtime() + self._auto_configure_shm(),
-                self.ssh_command_runner.cluster_name, home_directory)
-            self.run(start_command, run_env="host")
-        else:
+        is_container_running = self._check_container_status()
+        if is_container_running:
             running_image = self.run(
                 check_docker_image(self.container_name),
                 with_output=True,
@@ -753,13 +736,44 @@ class DockerCommandRunner(CommandRunnerInterface):
                 for remote, local in cleaned_bind_mounts.items():
                     remote = self._docker_expand_user(remote)
                     if remote not in active_remote_mounts:
-                        cli_logger.error(
-                            "Please ray stop & restart cluster to "
-                            f"allow mount {remote}:{local} to take hold")
+                        try:
+                            is_container_running = not cli_logger.confirm(
+                                False,
+                                "This Docker Container is already Running, Do "
+                                "you want to restart the Docker container on "
+                                "this node?")
+                        except ValueError as e:
+                            cli_logger.print(str(e))
+                        if is_container_running:
+                            cli_logger.error(
+                                "Please ray stop & restart cluster to "
+                                f"allow mount {remote}:{local} to take hold")
             except json.JSONDecodeError:
                 cli_logger.verbose(
                     "Unable to check if file_mounts specified in the YAML "
                     "differ from those on the running container.")
+
+        if not self._check_container_status():
+            # Get home directory
+            image_env = self.ssh_command_runner.run(
+                "docker inspect -f '{{json .Config.Env}}' " + image,
+                with_output=True).decode().strip()
+            home_directory = "/root"
+            for env_var in json.loads(image_env):
+                if env_var.startswith("HOME="):
+                    home_directory = env_var.split("HOME=")[1]
+                    break
+
+            start_command = docker_start_cmds(
+                self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
+                self.container_name,
+                self.docker_config.get(
+                    "run_options", []) + self.docker_config.get(
+                        f"{'head' if as_head else 'worker'}_run_options", []) +
+                self._configure_runtime() + self._auto_configure_shm(),
+                self.ssh_command_runner.cluster_name, home_directory)
+            self.run(start_command, run_env="host")
+            docker_run_executed = True
 
         # Explicitly copy in ray bootstrap files.
         for mount in BOOTSTRAP_MOUNTS:
@@ -772,6 +786,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True
+        return docker_run_executed
 
     def _configure_runtime(self):
         if self.docker_config.get("disable_automatic_runtime_detection"):
