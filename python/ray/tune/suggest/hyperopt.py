@@ -132,6 +132,7 @@ class HyperOptSearch(Searcher):
             gamma: float = 0.25,
             max_concurrent: Optional[int] = None,
             use_early_stopped_trials: Optional[bool] = None,
+            **kwargs
     ):
         assert hpo is not None, (
             "HyperOpt must be installed! Run `pip install hyperopt`.")

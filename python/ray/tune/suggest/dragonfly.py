@@ -151,8 +151,7 @@ class DragonflySearch(Searcher):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        super(DragonflySearch, self).__init__(
-            metric=metric, mode=mode, **kwargs)
+        super(DragonflySearch, self).__init__(metric=self._metric, mode=mode)
 
         self._opt_arg = optimizer
         self._domain = domain

@@ -107,7 +107,8 @@ class TuneBOHB(Searcher):
                  max_concurrent: int = 10,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 seed: Optional[int] = None):
+                 seed: Optional[int] = None,
+                 **kwargs):
         from hpbandster.optimizers.config_generators.bohb import BOHB
         assert BOHB is not None, """HpBandSter must be installed!
             You can install HpBandSter with the command:

@@ -115,6 +115,7 @@ class NevergradSearch(Searcher):
                  mode: Optional[str] = None,
                  max_concurrent: Optional[int] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
+                 use_early_stopped_trials: Optional[bool] = None
                  **kwargs):
         assert ng is not None, """Nevergrad must be installed!
             You can install Nevergrad with the command:
@@ -123,7 +124,10 @@ class NevergradSearch(Searcher):
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
         super(NevergradSearch, self).__init__(
-            metric=metric, mode=mode, max_concurrent=max_concurrent, **kwargs)
+            metric=metric,
+            mode=mode,
+            max_concurrent=max_concurrent,
+            use_early_stopped_trials=use_early_stopped_trials)
 
         self._space = None
         self._opt_factory = None
