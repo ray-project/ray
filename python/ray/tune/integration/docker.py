@@ -15,7 +15,7 @@ class DockerSyncer(NodeSyncer):
     ``DockerSyncClient`` instead.
 
     Set the env var `TUNE_SYNCER_VERBOSITY` to increase verbosity
-    of syncing operations.
+    of syncing operations (0, 1, 2, 3). Defaults to 0.
 
     .. note::
         This syncer only works with the Ray cluster launcher.
