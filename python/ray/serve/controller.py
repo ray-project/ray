@@ -162,28 +162,32 @@ class ActorStateReconciler:
                 items():
             for replica_tag in replicas_to_create:
                 replica_handle = self._start_backend_replicas(
-                    config_store, backend_tag, replica_tag))
-                fut_to_replica_info[replica_handle.ready.remote().as_future()] = (
-                    backend_tag, replica_tag, replica_handle)
+                    config_store, backend_tag, replica_tag)
+                ready_future = replica_handle.ready.remote().as_future()
+                fut_to_replica_info[ready_future] = (backend_tag, replica_tag,
+                                                     replica_handle)
 
         prev_warning = time.time()
-        while fut_to_replica_handle:
+        while fut_to_replica_info:
             if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
                 prev_warning = time.time()
-                logger.warning("Waited {}s for replicas to start up. Make "
+                logger.warning("Waited {:.2f}s for replicas to start up. Make "
                                "sure there are enough resources to create the "
-                               "replicas.")
+                               "replicas.".format(time.time() - prev_warning))
 
-            done, pending = await asyncio.wait(list(fut_to_replica_handle.keys()), timeout=1)
+            done, pending = await asyncio.wait(
+                list(fut_to_replica_info.keys()), timeout=1)
             for fut in done:
-                backend_tag, replica_tag, replica_handle = ref_to_replica_handle.pop(fut)
-                self.backend_replicas[backend_tag][replica_tag] = replica_handle
+                (backend_tag, replica_tag,
+                 replica_handle) = fut_to_replica_info.pop(fut)
+                self.backend_replicas[backend_tag][
+                    replica_tag] = replica_handle
 
         self.backend_replicas_to_start.clear()
 
-    async def _start_backend_replicas(self, config_store: ConfigurationStore,
-                                      backend_tag: BackendTag,
-                                      replica_tag: ReplicaTag) -> ray.ActorHandle:
+    async def _start_backend_replicas(
+            self, config_store: ConfigurationStore, backend_tag: BackendTag,
+            replica_tag: ReplicaTag) -> ray.ActorHandle:
         """Start a replica and return its actor handle.
 
         Checks if the named actor already exists before starting a new one.
@@ -213,7 +217,6 @@ class ActorStateReconciler:
                     backend_info.backend_config, self.controller_name)
 
         return replica_handle
-
 
     def _scale_backend_replicas(self, backends: Dict[BackendTag, BackendInfo],
                                 backend_tag: BackendTag,
