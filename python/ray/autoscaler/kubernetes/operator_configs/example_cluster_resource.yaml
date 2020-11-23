@@ -14,8 +14,6 @@ spec:
       kind: Pod
       metadata:
         generateName: test-cluster-ray-head-
-        labels:
-          component: ray-head
       spec:
         restartPolicy: Never
 
@@ -47,7 +45,7 @@ spec:
             name: dshm
           resources:
             requests:
-              cpu: 1000m
+              cpu: 1
               memory: 512Mi
             limits:
               # The maximum memory that this pod is allowed to use. The
@@ -58,14 +56,6 @@ spec:
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
               memory: 512Mi
-          env:
-          # The pod uses this as an argument to 'ray start' command so that
-          # Ray can spawn the correct number of processes. Omitting this
-          # may lead to degraded performance.
-          - name: MYCPUREQUEST
-            valueFrom:
-              resourceFieldRef:
-                resource: requests.cpu
   - name: worker-nodes
     minWorkers: 1
     maxWorkers: 2
@@ -74,8 +64,6 @@ spec:
       kind: Pod
       metadata:
         generateName: test-cluster-ray-worker-
-        labels:
-          component: ray-worker
       spec:
         restartPolicy: Never
         volumes:
@@ -100,8 +88,12 @@ spec:
               memory: 512Mi
             limits:
               memory: 512Mi
-          env:
-          - name: MYCPUREQUEST
-            valueFrom:
-              resourceFieldRef:
-                resource: requests.cpu
+  # Commands to start Ray on the head node. You don't need to change this.
+  # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
+  headStartRayCommands:
+      - ray stop
+      - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076  --dashboard-host 0.0.0.0
+  # Commands to start Ray on worker nodes. You don't need to change this.
+  workerStartRayCommands:
+      - ray stop
+      - ulimit -n 65536; ray start  --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

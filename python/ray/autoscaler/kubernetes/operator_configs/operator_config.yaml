@@ -49,6 +49,7 @@ spec:
       limits:
         memory: 2Gi
 ---
+
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -73,6 +74,12 @@ spec:
         properties:
           spec:
             type: object
+            required:
+            - podTypes
+            - headPodType
+            - workerDefaultPodType
+            - headStartRayCommands
+            - workerStartRayCommands
             properties:
               maxWorkers:
                 description: The maximum number of workers nodes to launch in addition to the
@@ -117,7 +124,8 @@ spec:
                         descritpion: Name of the Pod type.
                       podConfig:
                         type: object
-                        description: Pod configuration. (Pod properties currently not validated by this CRD.)
+                        description: Pod configuration. (Validated by operator.)
+                        x-kubernetes-preserve-unknown-fields: true 
                       minWorkers:
                         type: integer
                       maxWorkers:
@@ -127,5 +135,17 @@ spec:
                 type: string
               workerDefaultPodType:
                 description: Specifies the default worker node type.
-                type: string
+                type: string 
+              headStartRayCommands:
+                description: Commands to start Ray on the head node.
+                type: array
+                items:
+                  type: string
+                  description: shell command
+              workerStartRayCommands: 
+                description: Commands to start Ray on worker nodes.
+                type: array
+                items:
+                  type: string
+                  description: shell command
 
