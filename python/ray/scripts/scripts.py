@@ -162,7 +162,7 @@ def debug(address):
     if not address:
         address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address)
+    ray.init(address=address, log_to_driver=False)
     while True:
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
