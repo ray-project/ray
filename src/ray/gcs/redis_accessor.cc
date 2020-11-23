@@ -497,9 +497,9 @@ RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
       resource_sub_executor_(client_impl_->resource_table()),
       heartbeat_batch_sub_executor_(client_impl->heartbeat_batch_table()) {}
 
-Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.Connect(local_node_info);
+Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
+                                           const StatusCallback &callback) {
+  return AsyncRegister(local_node_info, callback);
 }
 
 Status RedisNodeInfoAccessor::UnregisterSelf() {

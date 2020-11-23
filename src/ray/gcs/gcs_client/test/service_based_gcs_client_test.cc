@@ -288,7 +288,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
-    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info);
+    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info, nullptr);
     return status.ok();
   }
 
