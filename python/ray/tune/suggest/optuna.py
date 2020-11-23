@@ -108,7 +108,8 @@ class OptunaSearch(Searcher):
                  space: Optional[Union[Dict, List[Tuple]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 sampler: Optional[BaseSampler] = None):
+                 sampler: Optional[BaseSampler] = None,
+                 **kwargs):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
         super(OptunaSearch, self).__init__(

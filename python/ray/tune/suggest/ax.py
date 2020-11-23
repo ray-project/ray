@@ -112,7 +112,8 @@ class AxSearch(Searcher):
                  outcome_constraints: Optional[List] = None,
                  ax_client: Optional[AxClient] = None,
                  use_early_stopped_trials: Optional[bool] = None,
-                 max_concurrent: Optional[int] = None):
+                 max_concurrent: Optional[int] = None,
+                 **kwargs):
         assert ax is not None, """Ax must be installed!
             You can install AxSearch with the command:
             `pip install ax-platform sqlalchemy`."""

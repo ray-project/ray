@@ -182,7 +182,7 @@ class SigOptSearch(Searcher):
         else:
             self.experiment = self.conn.experiments(experiment_id).fetch()
 
-        super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
+        super(SigOptSearch, self).__init__(metric=metric, mode=mode)
 
     def suggest(self, trial_id: str):
         if self._max_concurrent:

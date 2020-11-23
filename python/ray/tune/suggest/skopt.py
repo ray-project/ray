@@ -138,7 +138,8 @@ class SkOptSearch(Searcher):
                  points_to_evaluate: Optional[List[List]] = None,
                  evaluated_rewards: Optional[List] = None,
                  max_concurrent: Optional[int] = None,
-                 use_early_stopped_trials: Optional[bool] = None):
+                 use_early_stopped_trials: Optional[bool] = None,
+                 **kwargs):
         assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
             `pip install scikit-optimize`."""

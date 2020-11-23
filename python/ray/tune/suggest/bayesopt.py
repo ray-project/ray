@@ -117,7 +117,8 @@ class BayesOptSearch(Searcher):
                  skip_duplicate: bool = True,
                  analysis: Optional[ExperimentAnalysis] = None,
                  max_concurrent: Optional[int] = None,
-                 use_early_stopped_trials: Optional[bool] = None):
+                 use_early_stopped_trials: Optional[bool] = None,
+                 **kwargs):
         """Instantiate new BayesOptSearch object.
 
         Args:
