@@ -100,23 +100,11 @@ class GcsScheduleStrategy {
  public:
   GcsScheduleStrategy(
       std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
-      : is_transaction_in_progress_(false), cluster_resources_(cluster_resources) {}
+      : cluster_resources_(cluster_resources) {}
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context) = 0;
-
-  /// Handle placement group creation task failure. This should be called when scheduling
-  /// a placement group creation task is infeasible.
-  ///
-  /// \return Void.
-  void OnPlacementGroupCreationFailed();
-
-  /// Handle placement group creation task success. This should be called when the
-  /// placement group creation task has been scheduled successfully.
-  ///
-  /// \return Void.
-  void OnPlacementGroupCreationSuccess();
 
  protected:
   /// Get cluster resources.
@@ -124,20 +112,10 @@ class GcsScheduleStrategy {
   /// \return The cluster resources.
   std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> GetClusterResources();
 
-  /// Start the transaction to acquire resources.
+  /// Reset acquired resources.
   ///
   /// \return Void.
-  void StartAcquireResourceTransaction();
-
-  /// Commit the transaction to acquire resources.
-  ///
-  /// \return Void.
-  void CommitAcquireResourceTransaction();
-
-  /// Rollback the transaction to acquire resources.
-  ///
-  /// \return Void.
-  void RollbackAcquireResourceTransaction();
+  void ResetAcquiredResources();
 
   /// Records the acquisition of resources from the specified node.
   ///
@@ -147,13 +125,15 @@ class GcsScheduleStrategy {
   void RecordResourceAcquisition(const NodeID &node_id,
                                  const ResourceSet &required_resources);
 
- private:
-  bool is_transaction_in_progress_;
+  /// Return acquired resources.
+  ///
+  /// \return Void.
+  void ReturnAcquiredResources();
 
   std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources_;
 
-  absl::flat_hash_map<NodeID, std::list<ResourceSet>>
-      resource_changes_during_transaction_;
+ private:
+  absl::flat_hash_map<NodeID, std::list<ResourceSet>> acquired_resources_;
 };
 
 /// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
@@ -216,7 +196,8 @@ enum class LeasingState {
 class LeaseStatusTracker {
  public:
   LeaseStatusTracker(std::shared_ptr<GcsPlacementGroup> placement_group,
-                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles);
+                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
+                     ScheduleMap &schedule_map);
   ~LeaseStatusTracker() = default;
 
   /// Indicate the tracker that prepare requests are sent to a specific node.
@@ -281,10 +262,15 @@ class LeaseStatusTracker {
   /// \return Location of bundles that succeed to prepare resources on a node.
   const std::shared_ptr<BundleLocations> &GetPreparedBundleLocations() const;
 
-  /// This method returns bundle locations that succeed to commit resources.
+  /// This method returns bundle locations that failed to commit resources.
   ///
-  /// \return Location of bundles that succeed to commit resources on a node.
+  /// \return Location of bundles that failed to commit resources on a node.
   const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
+
+  /// This method returns bundle locations.
+  ///
+  /// \return Location of bundles.
+  const std::shared_ptr<BundleLocations> &GetBundleLocations() const;
 
   /// Return the leasing state.
   ///
@@ -335,6 +321,9 @@ class LeaseStatusTracker {
 
   /// Bundles to schedule.
   std::vector<std::shared_ptr<BundleSpecification>> bundles_to_schedule_;
+
+  /// Location of bundles.
+  std::shared_ptr<BundleLocations> bundle_locations_;
 };
 
 /// A data structure that helps fast bundle location lookup.
@@ -537,6 +526,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void DestroyPlacementGroupCommittedBundleResources(
       const PlacementGroupID &placement_group_id);
 
+  /// Return the bundle resources to the cluster resources.
+  void ReturnBundleResources(const std::shared_ptr<BundleLocations> bundle_locations);
+
   /// Generate schedule context.
   std::unique_ptr<ScheduleContext> GetScheduleContext(
       const PlacementGroupID &placement_group_id);
@@ -548,7 +540,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
   /// Reference of GcsNodeManager.
-  const GcsNodeManager &gcs_node_manager_;
+  GcsNodeManager &gcs_node_manager_;
 
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<NodeID, std::shared_ptr<ResourceReserveInterface>>
