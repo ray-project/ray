@@ -139,7 +139,7 @@ class GcsScheduleStrategy {
   /// \return Void.
   void RollbackAcquireResourceTransaction();
 
-  /// Acquire resources from the specified node.
+  /// Records the acquisition of resources from the specified node.
   ///
   /// \param node_id Id of a node.
   /// \param required_resources Resources to apply for.
