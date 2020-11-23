@@ -131,6 +131,8 @@ class StandardAutoscaler:
             if _internal_kv_initialized():
                 _internal_kv_put(
                     DEBUG_AUTOSCALING_ERROR, str(e), overwrite=True)
+            # Don't abort the autoscaler if the K8s API server is down.
+            # https://github.com/ray-project/ray/issues/12255
             is_k8s_connection_error = (
                 self.config["provider"]["type"] == "kubernetes"
                 and isinstance(e, MaxRetryError))
