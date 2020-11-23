@@ -23,6 +23,10 @@
 #include <thread>
 #include <unordered_map>
 
+#ifdef _WIN32
+#include <process.h> // to ensure getpid() on Windows
+#endif
+
 // Portable code for unreachable
 #if defined(_MSC_VER)
 #define UNREACHABLE __assume(0)
