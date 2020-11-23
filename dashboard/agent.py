@@ -87,17 +87,15 @@ class DashboardAgent(object):
         return modules
 
     async def run(self):
-        ppid = os.environ.get("RAY_NODE_PID")
-        if ppid is not None:
-            ppid = int(ppid)
-        logger.info("Parent pid is %s", ppid)
-
         async def _check_parent():
             """Check if raylet is dead."""
             curr_proc = psutil.Process()
+            ppid = os.environ.get("RAY_NODE_PID")
+            if ppid is not None:
+                ppid = int(ppid)
+            logger.info("Parent pid is %s", ppid)
             while True:
                 parent = curr_proc.parent()
-                nonlocal ppid
                 if parent is None or parent.pid == 1 or (ppid and
                                                          ppid != parent.pid):
                     logger.error("raylet is dead, agent will die because "
