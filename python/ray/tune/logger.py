@@ -190,7 +190,7 @@ class TBXLogger(Logger):
     """
 
     VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list,
-                     NoneType)
+                     type(None))
 
     def _init(self):
         try:
