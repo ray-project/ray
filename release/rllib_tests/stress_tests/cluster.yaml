@@ -23,6 +23,11 @@ target_utilization_fraction: 0.8
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
 
+docker:
+    image: anyscale/ray-ml:latest-gpu
+    container_name: ray_container
+    pull_before_run: False
+
 # Cloud-provider specific configuration.
 provider:
     type: aws
@@ -44,7 +49,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: p3.16xlarge
-    ImageId: ami-07728e9e2742b0662 # Deep Learning AMI (Ubuntu 16.04)
+    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
@@ -86,7 +91,9 @@ file_mounts: {
 }
 
 # List of shell commands to run to set up nodes.
-setup_commands: []
+setup_commands:
+    - apt-get install -y libglib2.0-0
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
@@ -96,10 +103,10 @@ worker_setup_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
-    - source activate tensorflow_p36 && ray stop
-    - ulimit -n 65536; source activate tensorflow_p36 && OMP_NUM_THREADS=1 ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray stop
+    - ulimit -n 65536; OMP_NUM_THREADS=1 ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
-    - source activate tensorflow_p36 && ray stop
-    - ulimit -n 65536; source activate tensorflow_p36 && OMP_NUM_THREADS=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ray stop
+    - ulimit -n 65536; OMP_NUM_THREADS=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

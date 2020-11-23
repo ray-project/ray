@@ -45,9 +45,10 @@ echo "workload: ignored"
 wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux2014_x86_64.whl"
 
 conda uninstall -y terminado
-source activate tensorflow_p36 && pip install -U pip
-source activate tensorflow_p36 && pip install -U "$wheel"
+pip install -U pip
+pip install -U "$wheel"
+pip install terminado
 
 # Run all test cases, but with a forced num_gpus=1.
 # TODO: (sven) chose correct dir and run over all RLlib tests and example scripts!
-source activate tensorflow_p36 && export RAY_FORCE_NUM_GPUS=1 && cd ~ && python -m pytest test_attention_net_learning.py
+export RAY_FORCE_NUM_GPUS=1 && cd ~ && python -m pytest test_attention_net_learning.py
