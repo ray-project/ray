@@ -34,7 +34,7 @@ class Analysis:
         default_metric (str): Default metric for comparing results. Can be
             overwritten with the ``metric`` parameter in the respective
             functions. If None but a mode was passed, the anonymous metric
-            `_metric` will be used per default.
+            `ray.tune.result.DEFAULT_METRIC` will be used per default.
         default_mode (str): Default mode for comparing results. Has to be one
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
