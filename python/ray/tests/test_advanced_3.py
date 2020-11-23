@@ -476,7 +476,6 @@ def test_decorated_function(ray_start_regular):
     assert ray.get(result_id) == (3, 2, 1, 5)
 
 
-
 def test_export_after_shutdown(ray_start_regular):
     # This test checks that we can use actor and remote function definitions
     # across multiple Ray sessions.
