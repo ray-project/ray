@@ -171,11 +171,11 @@ ScheduleMap GcsSpreadStrategy::Schedule(
       }
     }
 
-    // We've traversed all the nodes from `iter_begin` to `candidate_nodes.end()`, but we
+    // We've traversed all the nodes from `iter_begin` to `candidate_nodes->end()`, but we
     // haven't found one that meets the requirements.
-    // If `iter_begin` is `candidate_nodes.begin()`, it means that all nodes are not
+    // If `iter_begin` is `candidate_nodes->begin()`, it means that all nodes are not
     // satisfied, we will return directly. Otherwise, we will traverse the nodes from
-    // `candidate_nodes.begin()` to `iter_begin` to find the nodes that meet the
+    // `candidate_nodes->begin()` to `iter_begin` to find the nodes that meet the
     // requirements.
     if (iter == candidate_nodes.end()) {
       if (iter_begin != candidate_nodes.begin()) {
@@ -197,7 +197,7 @@ ScheduleMap GcsSpreadStrategy::Schedule(
         break;
       }
     }
-    // NOTE: If `iter == candidate_nodes.end()`, ++iter causes crash.
+    // NOTE: If `iter == candidate_nodes->end()`, ++iter causes crash.
     iter_begin = ++iter;
   }
 
@@ -218,7 +218,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
   const auto &candidate_nodes = context->cluster_resources_;
 
   // The number of bundles is more than the number of nodes, scheduling fails.
-  if (bundles.size() > candidate_nodes.size()) {
+  if (bundles.size() > candidate_nodes->size()) {
     return schedule_map;
   }
 
@@ -237,7 +237,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     }
 
     // Node resource is not satisfied, scheduling failed.
-    if (iter == candidate_nodes.end()) {
+    if (iter == candidate_nodes->end()) {
       break;
     }
   }
@@ -295,16 +295,28 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
     // handle this case properly.
-    PrepareResources(bundle, gcs_node_manager_.GetNode(node_id),
-                     [this, bundle, node_id, lease_status_tracker, failure_callback,
-                      success_callback](const Status &status) {
-                       lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
-                                                                        status);
-                       if (lease_status_tracker->AllPrepareRequestsReturned()) {
-                         OnAllBundlePrepareRequestReturned(
-                             lease_status_tracker, failure_callback, success_callback);
-                       }
-                     });
+    PrepareResources(
+        bundle, gcs_node_manager_.GetNode(node_id),
+        [this, bundle, node_id, lease_status_tracker, failure_callback,
+         success_callback](const Status &status) {
+          lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle, status);
+          if (lease_status_tracker->AllPrepareRequestsReturned()) {
+            auto on_failure = [this, failure_callback](
+                                  std::shared_ptr<GcsPlacementGroup> placement_group) {
+              scheduler_strategies_[placement_group->GetStrategy()]
+                  ->OnPlacementGroupCreationFailed();
+              failure_callback(placement_group);
+            };
+            auto on_success = [this, success_callback](
+                                  std::shared_ptr<GcsPlacementGroup> placement_group) {
+              scheduler_strategies_[placement_group->GetStrategy()]
+                  ->OnPlacementGroupCreationSuccess();
+              success_callback(placement_group);
+            };
+            OnAllBundlePrepareRequestReturned(lease_status_tracker, on_failure,
+                                              on_success);
+          }
+        });
   }
 }
 
