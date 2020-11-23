@@ -86,66 +86,74 @@ class GcsPlacementGroupSchedulerInterface {
 class ScheduleContext {
  public:
   ScheduleContext(std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
-                  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations,
-                  const GcsNodeManager &node_manager)
+                  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations)
       : node_to_bundles_(std::move(node_to_bundles)),
-        bundle_locations_(bundle_locations),
-        node_manager_(node_manager) {}
+        bundle_locations_(bundle_locations) {}
 
   // Key is node id, value is the number of bundles on the node.
   const std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles_;
   // The locations of existing bundles for this placement group.
   const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
-
-  const GcsNodeManager &node_manager_;
 };
 
 class GcsScheduleStrategy {
  public:
+  GcsScheduleStrategy(
+      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
+      : is_transaction_in_progress_(false), cluster_resources_(cluster_resources) {}
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context) = 0;
 
+  /// Handle placement group creation task failure. This should be called when scheduling
+  /// a placement group creation task is infeasible.
+  ///
+  /// \return Void.
+  void OnPlacementGroupCreationFailed();
+
+  /// Handle placement group creation task success. This should be called when the
+  /// placement group creation task has been scheduled successfully.
+  ///
+  /// \return Void.
   void OnPlacementGroupCreationSuccess();
 
-  /// Handle actor creation task failure. This should be called when scheduling
-  /// an actor creation task is infeasible.
-  ///
-  /// \param actor The actor whose creation task is infeasible.
-  void OnPlacementGroupCreationFailed(std::shared_ptr<GcsActor> actor);
-
-  /// Handle actor creation task success. This should be called when the actor
-  /// creation task has been scheduled successfully.
-  ///
-  /// \param actor The actor that has been created.
-  void OnPlacementGroupCreationSuccess(const std::shared_ptr<GcsActor> &actor);
-
  protected:
+  /// Get cluster resources.
+  ///
+  /// \return The cluster resources.
+  std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> GetClusterResources();
 
-  void StartTransaction();
+  /// Start the transaction to acquire resources.
+  ///
+  /// \return Void.
+  void StartAcquireResourceTransaction();
 
-  void CommitTransaction();
+  /// Commit the transaction to acquire resources.
+  ///
+  /// \return Void.
+  void CommitAcquireResourceTransaction();
 
-  void RollbackTransaction();
+  /// Rollback the transaction to acquire resources.
+  ///
+  /// \return Void.
+  void RollbackAcquireResourceTransaction();
 
-  /// Acquire resources from the specified node. It will deduct directly from the node
-  /// resource.
+  /// Acquire resources from the specified node.
   ///
   /// \param node_id Id of a node.
   /// \param required_resources Resources to apply for.
-  /// \return True if acquire resources successfully. False otherwise.
-  void AcquireResource(const NodeID &node_id,
-                       const ResourceSet &required_resources);
+  /// \return Void.
+  void RecordResourceAcquisition(const NodeID &node_id,
+                                 const ResourceSet &required_resources);
 
-  /// Release the resource of the specified node. It will be added directly to the node
-  /// resource.
-  ///
-  /// \param node_id Id of a node.
-  /// \param acquired_resources Resources to release.
-  /// \return True if release resources successfully. False otherwise.
-  void ReleaseResource(const NodeID &node_id,
-                       const ResourceSet &acquired_resources);
+ private:
+  bool is_transaction_in_progress_;
+
+  std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources_;
+
+  absl::flat_hash_map<NodeID, std::list<ResourceSet>>
+      resource_changes_during_transaction_;
 };
 
 /// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
@@ -153,6 +161,9 @@ class GcsScheduleStrategy {
 /// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
+  GcsPackStrategy(
+      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
+      : GcsScheduleStrategy(cluster_resources) {}
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -160,6 +171,9 @@ class GcsPackStrategy : public GcsScheduleStrategy {
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
+  GcsSpreadStrategy(
+      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
+      : GcsScheduleStrategy(cluster_resources) {}
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -168,6 +182,9 @@ class GcsSpreadStrategy : public GcsScheduleStrategy {
 /// node does not have enough resources, it will fail to schedule.
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
+  GcsStrictPackStrategy(
+      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
+      : GcsScheduleStrategy(cluster_resources) {}
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -177,6 +194,9 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 /// If the node resource is insufficient, it will fail to schedule.
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
+  GcsStrictSpreadStrategy(
+      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
+      : GcsScheduleStrategy(cluster_resources) {}
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -388,7 +408,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   GcsPlacementGroupScheduler(
       boost::asio::io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      const GcsNodeManager &gcs_node_manager,
+      GcsNodeManager &gcs_node_manager,
       ReserveResourceClientFactoryFn lease_client_factory = nullptr);
 
   virtual ~GcsPlacementGroupScheduler() = default;
