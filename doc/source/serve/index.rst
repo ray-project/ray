@@ -18,7 +18,7 @@ For users, Ray Serve is:
 - **Framework Agnostic**: Use the same toolkit to serve everything from deep learning models
   built with frameworks like :ref:`PyTorch <serve-pytorch-tutorial>`,
   :ref:`Tensorflow, and Keras <serve-tensorflow-tutorial>`, to :ref:`Scikit-Learn <serve-sklearn-tutorial>` models, to arbitrary business logic.
-- **Python First**: Configure your model serving with pure Python code--no more YAML or
+- **Python First**: Configure your model serving with pure Python code---no more YAML or
   JSON configs.
 
 As a library, Ray Serve enables:
@@ -64,7 +64,7 @@ Why Ray Serve?
 ==============
 
 There are generally two ways of serving machine learning applications, both with serious limitations:
-you can build using a **traditional webserver** - your own Flask app or you can use a cloud hosted solution.
+you can build using a **traditional webserver**---your own Flask app---or you can use a cloud-hosted solution.
 
 The first approach is easy to get started with, but it's hard to scale each component. The second approach
 requires vendor lock-in (SageMaker), framework specific tooling (TFServing), and a general
@@ -80,7 +80,7 @@ When should I use Ray Serve?
 ----------------------------
 
 Ray Serve is a simple (but flexible) tool for deploying, operating, and monitoring Python based machine learning models.
-Ray Serve excels when scaling out to serve models in production is a necessity. This might be because of large scale batch processing
+Ray Serve excels when scaling out to serve models in production is a necessity. This might be because of large-scale batch processing
 requirements or because you're going to serve a number of models behind different endpoints and may need to run A/B tests or control
 traffic between different models.
 
