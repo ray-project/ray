@@ -871,17 +871,17 @@ class ServeController:
             self.notify_replica_handles_changed()
 
     async def update_backend_config(self, backend_tag: BackendTag,
-                                    config_update: BackendConfig) -> None:
+                                    config_options: BackendConfig) -> None:
         """Set the config for the specified backend."""
         async with self.write_lock:
             assert (self.configuration_store.get_backend(backend_tag)
                     ), "Backend {} is not registered.".format(backend_tag)
-            assert isinstance(config, BackendConfig)
+            assert isinstance(config_options, BackendConfig)
 
             stored_backend_config = self.configuration_store.get_backend(
                 backend_tag).backend_config
             backend_config = stored_backend_config.copy(
-                update=config_update.dict(exclude_unset=True))
+                update=config_options.dict(exclude_unset=True))
             backend_config._validate_complete()
             self.configuration_store.get_backend(
                 backend_tag).backend_config = backend_config
