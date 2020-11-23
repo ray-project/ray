@@ -185,9 +185,9 @@ class ActorStateReconciler:
 
         self.backend_replicas_to_start.clear()
 
-    async def _start_backend_replica(
-            self, config_store: ConfigurationStore, backend_tag: BackendTag,
-            replica_tag: ReplicaTag) -> ray.ActorHandle:
+    async def _start_backend_replica(self, config_store: ConfigurationStore,
+                                     backend_tag: BackendTag,
+                                     replica_tag: ReplicaTag) -> ActorHandle:
         """Start a replica and return its actor handle.
 
         Checks if the named actor already exists before starting a new one.
