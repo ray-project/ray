@@ -562,7 +562,8 @@ class Trainer(Trainable):
                     # `env=CartPoleContinuousBulletEnv-v0`.
                     try:
                         import pybullet_envs
-                    except Exception as e:
+                        pybullet_envs.getList()
+                    except (ModuleNotFoundError, ImportError):
                         pass
                     return gym.make(env, **env_context)
 
