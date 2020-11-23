@@ -208,9 +208,9 @@ class BayesOptSearch(Searcher):
 
         self.optimizer = None
         if space:
-            self.setup_optimizer()
+            self._setup_optimizer()
 
-    def setup_optimizer(self):
+    def _setup_optimizer(self):
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
@@ -237,7 +237,7 @@ class BayesOptSearch(Searcher):
         elif self._mode == "min":
             self._metric_op = -1.
 
-        self.setup_optimizer()
+        self._setup_optimizer()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

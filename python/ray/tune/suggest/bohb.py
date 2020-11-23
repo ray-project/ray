@@ -134,9 +134,9 @@ class TuneBOHB(Searcher):
         super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
 
         if self._space:
-            self.setup_bohb()
+            self._setup_bohb()
 
-    def setup_bohb(self):
+    def _setup_bohb(self):
         from hpbandster.optimizers.config_generators.bohb import BOHB
 
         if self._metric is None and self._mode:
@@ -166,7 +166,7 @@ class TuneBOHB(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_bohb()
+        self._setup_bohb()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

@@ -140,9 +140,9 @@ class OptunaSearch(Searcher):
         self._ot_trials = {}
         self._ot_study = None
         if self._space:
-            self.setup_study(mode)
+            self._setup_study(mode)
 
-    def setup_study(self, mode: str):
+    def _setup_study(self, mode: str):
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
@@ -166,7 +166,7 @@ class OptunaSearch(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_study(mode)
+        self._setup_study(mode)
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

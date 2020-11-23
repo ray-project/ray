@@ -187,11 +187,11 @@ class SkOptSearch(Searcher):
 
         self._skopt_opt = optimizer
         if self._skopt_opt or self._space:
-            self.setup_skopt()
+            self._setup_skopt()
 
         self._live_trial_mapping = {}
 
-    def setup_skopt(self):
+    def _setup_skopt(self):
         _validate_warmstart(self._parameter_names, self._points_to_evaluate,
                             self._evaluated_rewards)
 
@@ -235,7 +235,7 @@ class SkOptSearch(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_skopt()
+        self._setup_skopt()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

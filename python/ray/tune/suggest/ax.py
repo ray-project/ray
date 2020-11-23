@@ -47,7 +47,7 @@ class AxSearch(Searcher):
             experiment. This metric must be present in `raw_data` argument
             to `log_data`. This metric must also be present in the dict
             reported/returned by the Trainable. If None but a mode was passed,
-            the anonymous metric `_metric` will be used per default.
+            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute. Defaults to "max".
         parameter_constraints (list[str]): Parameter constraints, such as
@@ -146,9 +146,9 @@ class AxSearch(Searcher):
         self._live_trial_mapping = {}
 
         if self._ax or self._space:
-            self.setup_experiment()
+            self._setup_experiment()
 
-    def setup_experiment(self):
+    def _setup_experiment(self):
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
@@ -205,7 +205,7 @@ class AxSearch(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_experiment()
+        self._setup_experiment()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

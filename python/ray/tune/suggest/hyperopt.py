@@ -181,9 +181,9 @@ class HyperOptSearch(Searcher):
                         par="space", cls=type(self)))
                 space = self.convert_search_space(space)
             self._space = space
-            self.setup_hyperopt()
+            self._setup_hyperopt()
 
-    def setup_hyperopt(self):
+    def _setup_hyperopt(self):
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
@@ -207,7 +207,7 @@ class HyperOptSearch(Searcher):
         elif self._mode == "min":
             self.metric_op = 1.
 
-        self.setup_hyperopt()
+        self._setup_hyperopt()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

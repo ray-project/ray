@@ -180,9 +180,9 @@ class DragonflySearch(Searcher):
             self._opt = optimizer
             self.init_dragonfly()
         elif self._space:
-            self.setup_dragonfly()
+            self._setup_dragonfly()
 
-    def setup_dragonfly(self):
+    def _setup_dragonfly(self):
         """Setup dragonfly when no optimizer has been passed."""
         assert not self._opt, "Optimizer already set."
 
@@ -277,7 +277,7 @@ class DragonflySearch(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_dragonfly()
+        self._setup_dragonfly()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

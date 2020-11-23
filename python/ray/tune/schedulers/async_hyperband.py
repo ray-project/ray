@@ -28,7 +28,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             is that the attribute should increase monotonically.
         metric (str): The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
-            the anonymous metric `_metric` will be used per default.
+            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         max_t (float): max time units per trial. Trials will be stopped after

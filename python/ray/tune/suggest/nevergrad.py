@@ -143,9 +143,9 @@ class NevergradSearch(Searcher):
         self.max_concurrent = max_concurrent
 
         if self._nevergrad_opt or self._space:
-            self.setup_nevergrad()
+            self._setup_nevergrad()
 
-    def setup_nevergrad(self):
+    def _setup_nevergrad(self):
         if self._opt_factory:
             self._nevergrad_opt = self._opt_factory(self._space)
 
@@ -191,7 +191,7 @@ class NevergradSearch(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_nevergrad()
+        self._setup_nevergrad()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

@@ -172,9 +172,9 @@ class ZOOptSearch(Searcher):
         super(ZOOptSearch, self).__init__(metric=self._metric, mode=mode)
 
         if self._dim_dict:
-            self.setup_zoopt()
+            self._setup_zoopt()
 
-    def setup_zoopt(self):
+    def _setup_zoopt(self):
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
@@ -208,7 +208,7 @@ class ZOOptSearch(Searcher):
         elif self._mode == "min":
             self._metric_op = 1.
 
-        self.setup_zoopt()
+        self._setup_zoopt()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
