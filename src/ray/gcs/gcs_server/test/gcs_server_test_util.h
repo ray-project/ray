@@ -306,7 +306,7 @@ struct GcsServerMocker {
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
    public:
     Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
-                        const StatusCallback &callback) override {
+                        const StatusCallback &callback) {
       return Status::NotImplemented("");
     }
 
