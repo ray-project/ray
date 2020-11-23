@@ -293,9 +293,14 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         """
         module_name = object.__module__
         if module_name == "__main__":
-            file_path = inspect.getfile(object)
-            module_name = inspect.getmodulename(file_path)
-        return module_name or ""
+            try:
+                file_path = inspect.getfile(object)
+                n = inspect.getmodulename(file_path)
+                if n:
+                    module_name = n
+            except TypeError:
+                pass
+        return module_name
 
     def is_actor_method(self):
         """Wether this function descriptor is an actor method.
