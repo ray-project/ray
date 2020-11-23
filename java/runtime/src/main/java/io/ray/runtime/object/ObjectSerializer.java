@@ -69,7 +69,7 @@ public class ObjectSerializer {
           return ByteBuffer.wrap(data);
         }
         return data;
-      } else if (meta[0] == OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
+      } else if (meta[0] == OBJECT_METADATA_TYPE_CROSS_LANGUAGE ||
           meta[0] == OBJECT_METADATA_TYPE_JAVA) {
         return Serializer.decode(data, objectType);
       } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
@@ -120,7 +120,8 @@ public class ObjectSerializer {
     } else if (object instanceof byte[]) {
       // If the object is a byte array, skip serializing it and use a special metadata to
       // indicate it's raw binary. So that this object can also be read by Python.
-      return new NativeRayObject((byte[]) object, {OBJECT_METADATA_TYPE_RAW});
+      byte[] metadata = {OBJECT_METADATA_TYPE_RAW};
+      return new NativeRayObject((byte[]) object, metadata);
     } else if (object instanceof ByteBuffer) {
       // Serialize ByteBuffer to raw bytes.
       ByteBuffer buffer = (ByteBuffer) object;
@@ -131,7 +132,8 @@ public class ObjectSerializer {
         bytes = new byte[buffer.remaining()];
         buffer.get(bytes);
       }
-      return new NativeRayObject(bytes, {OBJECT_METADATA_TYPE_RAW});
+      byte[] metadata = {OBJECT_METADATA_TYPE_RAW};
+      return new NativeRayObject(bytes, metadata);
     } else if (object instanceof RayTaskException) {
       RayTaskException taskException = (RayTaskException) object;
       byte[] serializedBytes = Serializer.encode(taskException.toBytes()).getLeft();
@@ -146,14 +148,17 @@ public class ObjectSerializer {
       // serializedBytes is MessagePack serialized bytes
       // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
       // any other type should be the MessagePack serialized bytes.
-      return new NativeRayObject(serializedBytes, {OBJECT_METADATA_TYPE_ACTOR_HANDLE});
+      byte[] metadata = {OBJECT_METADATA_TYPE_ACTOR_HANDLE};
+      return new NativeRayObject(serializedBytes, metadata);
     } else {
       try {
         Pair<byte[], Boolean> serialized = Serializer.encode(object);
+        byte[] xlang_metadata = {OBJECT_METADATA_TYPE_CROSS_LANGUAGE};
+        byte[] java_metadata = {OBJECT_METADATA_TYPE_JAVA};
         NativeRayObject nativeRayObject = new NativeRayObject(serialized.getLeft(),
             serialized.getRight()
-                ? {OBJECT_METADATA_TYPE_CROSS_LANGUAGE}
-                : {OBJECT_METADATA_TYPE_JAVA});
+                ? xlang_metadata
+                : java_metadata);
         nativeRayObject.setContainedObjectIds(getAndClearContainedObjectIds());
         return nativeRayObject;
       } catch (Exception e) {
