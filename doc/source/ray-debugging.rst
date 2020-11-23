@@ -10,8 +10,11 @@ drop into a PDB session that you can then use to:
 - Move up or down the stack
 
 .. note::
+    To use this feature, you need to install a **nightly Ray wheel**.
+    See :ref:`install-nightlies` for instructions.
 
-    It is currently an experimental feature and under active development. Interfaces are subject to change.
+    The Ray debugger is currently experimental and under active development.
+    Interfaces are subject to change.
 
 Getting Started
 ---------------
