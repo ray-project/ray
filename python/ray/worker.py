@@ -322,7 +322,7 @@ class Worker:
             object_refs, self.current_task_id, timeout_ms)
         debugger_breakpoint = b""
         for (data, metadata) in data_metadata_pairs:
-            if len(metadata) >= 2 and metadata[1:2] == b"D":
+            if metadata and len(metadata) >= 2 and metadata[1:2] == b"D":
                 debugger_breakpoint = metadata[2:]
         return self.deserialize_objects(data_metadata_pairs, object_refs), debugger_breakpoint
 
