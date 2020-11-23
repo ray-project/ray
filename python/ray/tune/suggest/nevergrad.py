@@ -128,7 +128,8 @@ class NevergradSearch(Searcher):
             self._points_to_evaluate = None
         elif not isinstance(points_to_evaluate, Sequence):
             raise ValueError(
-                f"Invalid object type passed for `points_to_evaluate`: {type(points_to_evaluate)}. "
+                f"Invalid object type passed for `points_to_evaluate`: "
+                "{type(points_to_evaluate)}. "
                 f"Please pass a list of points (dictionaries) instead.")
         else:
             self._points_to_evaluate = list(points_to_evaluate)
@@ -230,7 +231,7 @@ class NevergradSearch(Searcher):
                 point_to_evaluate = self._points_to_evaluate.pop(0)
                 self._nevergrad_opt.suggest(point_to_evaluate)
         suggested_config = self._nevergrad_opt.ask()
-        
+
         self._live_trial_mapping[trial_id] = suggested_config
         # in v0.2.0+, output of ask() is a Candidate,
         # with fields args and kwargs
