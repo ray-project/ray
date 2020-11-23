@@ -432,13 +432,14 @@ class GlobalState:
             "placement_group_id": binary_to_hex(
                 placement_group_info.placement_group_id),
             "name": placement_group_info.name,
-            "bundles": {
+            "bundles": [
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
-                bundle.bundle_id.bundle_index:
-                MessageToDict(bundle)["unitResources"]
+                (bundle.bundle_id.bundle_index,
+                MessageToDict(bundle)["unitResources"],
+                binary_to_hex(bundle.node_id) if bundle.node_id is not None else None)
                 for bundle in placement_group_info.bundles
-            },
+            ],
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
         }

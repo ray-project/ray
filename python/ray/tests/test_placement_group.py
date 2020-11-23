@@ -23,6 +23,59 @@ class Increase:
         return x + 2
 
 
+def test_placement_group_implicit_resource(ray_start_cluster):
+    @ray.remote(num_cpus=0)   # No resource specified for this actor.
+    class Actor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+
+    cluster = ray_start_cluster
+    num_nodes = 5   # Five node in this cluster.
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="PACK",
+        bundles=[
+            {
+                "CPU": 1
+            }
+        ])
+    ray.get(placement_group.ready())   # Make sure this placement group has created.
+
+    actors = []
+    for _ in range(5):      # We create five actors here.
+        actors.append(Actor.options(
+            placement_group=placement_group,
+            placement_group_bundle_index=0).remote())
+
+    def is_actor_created():
+        states = []
+        for func_actor in actors:
+            func_actor_infos = ray.actors()
+            func_actor_info = func_actor_infos.get(func_actor._actor_id.hex())
+            states.append(func_actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE)
+        return all(states)
+
+    wait_for_condition(is_actor_created, timeout=20)  # Make sure this actor has created.
+
+    # Get the node which this placement group is located.
+    result = ray.util.placement_group_table(placement_group)
+    node_of_pg = result["bundles"][0][2]  # Must not None.
+
+    # Get the node which this actor is located.
+    actor_infos = ray.actors()
+    for actor in actors:
+        actor_info = actor_infos.get(actor._actor_id.hex())
+        node_of_actor = actor_info["Address"]["NodeID"]
+        assert node_of_actor == node_of_pg
+
+
 def test_placement_group_pack(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
@@ -408,7 +461,7 @@ def test_placement_group_table(ray_start_cluster):
     assert result["name"] == name
     assert result["strategy"] == strategy
     for i in range(len(bundles)):
-        assert bundles[i] == result["bundles"][i]
+        assert bundles[i] == result["bundles"][i][1]
     assert result["state"] == "PENDING"
 
     # Now the placement group should be scheduled.
