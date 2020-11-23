@@ -33,7 +33,7 @@ from ray.autoscaler._private.constants import RAY_HOME
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
-NODE_START_WAIT_S = 300
+NODE_START_WAIT_S = int(os.environ.get("RAY_NODE_START_WAIT_S", 900))
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
