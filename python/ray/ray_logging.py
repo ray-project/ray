@@ -129,8 +129,7 @@ def setup_and_get_worker_interceptor_logger(args,
                                             is_for_stdout: bool = True):
     """Setup a logger to be used to intercept worker log messages.
 
-    NOTE: The method is not idempotent. Also, this method is only meant
-    to be used within default_worker.py.
+    NOTE: This method is only meant to be used within default_worker.py.
 
     Ray worker logs should be treated in a special way because
     there's a need to intercept stdout and stderr to support various
@@ -151,6 +150,8 @@ def setup_and_get_worker_interceptor_logger(args,
     """
     file_extension = "out" if is_for_stdout else "err"
     logger = logging.getLogger(f"ray_default_worker_{file_extension}")
+    if len(logger.handlers) == 1:
+        return logger
     logger.setLevel(logging.INFO)
     # TODO(sang): This is how the job id is propagated to workers now.
     # But eventually, it will be clearer to just pass the job id.
