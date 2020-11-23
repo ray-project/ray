@@ -105,7 +105,7 @@ class GcsScheduleStrategy {
  public:
   GcsScheduleStrategy(
       std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
-      : is_transaction_in_progress_(false), cluster_resources_(cluster_resources) {}
+      : cluster_resources_(cluster_resources) {}
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
@@ -184,7 +184,8 @@ enum class LeasingState {
 class LeaseStatusTracker {
  public:
   LeaseStatusTracker(std::shared_ptr<GcsPlacementGroup> placement_group,
-                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles);
+                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
+                     ScheduleMap &schedule_map);
   ~LeaseStatusTracker() = default;
 
   /// Indicate the tracker that prepare requests are sent to a specific node.
@@ -254,6 +255,11 @@ class LeaseStatusTracker {
   /// \return Location of bundles that failed to commit resources on a node.
   const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
 
+  /// This method returns bundle locations.
+  ///
+  /// \return Location of bundles.
+  const std::shared_ptr<BundleLocations> &GetBundleLocations() const;
+
   /// Return the leasing state.
   ///
   /// \return Leasing state.
@@ -303,6 +309,9 @@ class LeaseStatusTracker {
 
   /// Bundles to schedule.
   std::vector<std::shared_ptr<BundleSpecification>> bundles_to_schedule_;
+
+  /// Location of bundles.
+  std::shared_ptr<BundleLocations> bundle_locations_;
 };
 
 /// A data structure that helps fast bundle location lookup.
@@ -507,6 +516,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void DestroyPlacementGroupCommittedBundleResources(
       const PlacementGroupID &placement_group_id);
 
+  /// Return the bundle resources to the cluster resources.
+  void ReturnBundleResources(const std::shared_ptr<BundleLocations> bundle_locations);
+
   /// Generate schedule context.
   std::unique_ptr<ScheduleContext> GetScheduleContext(
       const PlacementGroupID &placement_group_id);
@@ -518,7 +530,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
   /// Reference of GcsNodeManager.
-  const GcsNodeManager &gcs_node_manager_;
+  GcsNodeManager &gcs_node_manager_;
 
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
