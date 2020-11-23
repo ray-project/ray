@@ -32,6 +32,7 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
                 << ", port: " << agent_port_ << ", pid: " << agent_pid_;
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
+  reply->set_ppid(getpid());
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
