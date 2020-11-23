@@ -32,12 +32,6 @@ class ClientRemoteFunc:
     def __repr__(self):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self.id)
 
-    def set_remote_func(self, func):
-        self._raylet_remote_func = func
-
-    def run_remote_func(self, *args, **kwargs):
-        self._raylet_remote_func.remote(*args, **kwargs)
-
 
 def convert_from_arg(pb) -> Any:
     if pb.local == ray_client_pb2.Arg.Locality.REFERENCE:
