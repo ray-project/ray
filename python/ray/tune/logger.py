@@ -189,8 +189,8 @@ class TBXLogger(Logger):
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
 
-    # NoneType is not supported on the last TBX release yet.
-    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
+    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list,
+                     NoneType)
 
     def _init(self):
         try:

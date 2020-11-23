@@ -56,7 +56,8 @@ class LoggerSuite(unittest.TestCase):
                 }
             },
             "d": np.int64(1),
-            "e": np.bool8(True)
+            "e": np.bool8(True),
+            "f": None,
         }
         t = Trial(evaluated_params=config, trial_id="tbx")
         logger = TBXLogger(config=config, logdir=self.test_dir, trial=t)
