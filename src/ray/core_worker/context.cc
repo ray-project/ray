@@ -68,7 +68,7 @@ struct WorkerThreadContext {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_counter_ == 0);
     SetCurrentTaskId(task_spec.TaskId());
-    SetCurrentPlacementGroupId(task_spec.PlacementGroupId());
+    SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
     SetPlacementGroupCaptureChildTasks(task_spec.PlacementGroupCaptureChildTasks());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
@@ -192,7 +192,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
     is_detached_actor_ = task_spec.IsDetachedActor();
-    current_actor_placement_group_id_ = task_spec.PlacementGroupId();
+    current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
     override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorTask()) {
