@@ -166,9 +166,10 @@ class ActorStateReconciler:
                 fut_to_replica_info[replica_handle.ready.remote().as_future()] = (
                     backend_tag, replica_tag, replica_handle)
 
-        start = time.time()
+        prev_warning = time.time()
         while fut_to_replica_handle:
-            if time.time() - start > REPLICA_STARTUP_TIME_WARNING_S:
+            if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
+                prev_warning = time.time()
                 logger.warning("Waited {}s for replicas to start up. Make "
                                "sure there are enough resources to create the "
                                "replicas.")
