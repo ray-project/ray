@@ -192,9 +192,7 @@ class Client:
             raise TypeError(
                 "config_options must be a BackendConfig or dictionary.")
         if isinstance(config_options, dict):
-            config_options = BackendConfig.parse_obj({
-                **config, "internal_metadata": metadata
-            })
+            config_options = BackendConfig.parse_obj(config)
         config_options._validate_complete()
         ray.get(
             self._controller.update_backend_config.remote(
