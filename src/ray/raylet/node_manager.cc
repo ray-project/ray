@@ -341,6 +341,15 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
   });
 }
 
+void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker) {
+  // We should disconnect the client first. Otherwise, we'll remove bundle resources
+  // before actual resources are returned. Subsequent disconnect request that comes
+  // due to worker dead will be ignored.
+  ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+  worker->MarkDead();
+  KillWorker(worker);
+}
+
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
   RAY_CHECK(!job_data.is_dead());
@@ -578,12 +587,7 @@ void NodeManager::HandleReleaseUnusedBundles(
           << ", task id: " << worker->GetAssignedTaskId()
           << ", actor id: " << worker->GetActorId()
           << ", worker id: " << worker->WorkerId();
-      // We should disconnect the client first. Otherwise, we'll remove bundle resources
-      // before actual resources are returned. Subsequent disconnect request that comes
-      // due to worker dead will be ignored.
-      ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
-      worker->MarkDead();
-      KillWorker(worker);
+      DestroyWorker(worker);
     }
   }
 
@@ -1830,12 +1834,7 @@ void NodeManager::HandleCancelResourceReserve(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    // We should disconnect the client first. Otherwise, we'll remove bundle resources
-    // before actual resources are returned. Subsequent disconnect request that comes
-    // due to worker dead will be ignored.
-    ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
-    worker->MarkDead();
-    KillWorker(worker);
+    DestroyWorker(worker);
   }
 
   // Return bundle resources.
