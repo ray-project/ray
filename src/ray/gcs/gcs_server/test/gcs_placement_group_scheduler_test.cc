@@ -1014,6 +1014,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestReleaseUnusedBundles) {
+  SchedulePlacementGroupSuccessTest(rpc::PlacementStrategy::SPREAD);
+  std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundle;
+  scheduler_->ReleaseUnusedBundles(node_to_bundle);
+  ASSERT_EQ(1, raylet_clients_[0]->num_release_unused_bundles_requested);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

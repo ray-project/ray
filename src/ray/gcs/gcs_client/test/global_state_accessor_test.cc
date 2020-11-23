@@ -206,17 +206,59 @@ TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
   auto node_table = global_state_->GetAllNodeInfo();
   ASSERT_EQ(node_table.size(), 1);
 
-  // Report heartbeat
+  // Report heartbeat first time.
   std::promise<bool> promise1;
-  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_table_data->node_id());
+  auto heartbeat1 = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat1->set_client_id(node_table_data->node_id());
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
-      heartbeat, [&promise1](Status status) { promise1.set_value(status.ok()); }));
+      heartbeat1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
   WaitReady(promise1.get_future(), timeout_ms_);
 
   heartbeats = global_state_->GetAllHeartbeat();
   heartbeat_batch_data.ParseFromString(*heartbeats.get());
   ASSERT_EQ(heartbeat_batch_data.batch_size(), 1);
+
+  // Report heartbeat with resources changed.
+  std::promise<bool> promise2;
+  auto heartbeat2 = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat2->set_client_id(node_table_data->node_id());
+  (*heartbeat2->mutable_resources_total())["CPU"] = 1;
+  (*heartbeat2->mutable_resources_total())["GPU"] = 10;
+  heartbeat2->set_resources_available_changed(true);
+  (*heartbeat2->mutable_resources_available())["GPU"] = 5;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
+      heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
+  WaitReady(promise2.get_future(), timeout_ms_);
+
+  heartbeats = global_state_->GetAllHeartbeat();
+  heartbeat_batch_data.ParseFromString(*heartbeats.get());
+  ASSERT_EQ(heartbeat_batch_data.batch_size(), 1);
+  auto heartbeat_data = heartbeat_batch_data.mutable_batch()->at(0);
+  ASSERT_EQ(heartbeat_data.resources_total_size(), 2);
+  ASSERT_EQ((*heartbeat_data.mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*heartbeat_data.mutable_resources_total())["GPU"], 10.0);
+  ASSERT_EQ(heartbeat_data.resources_available_size(), 1);
+  ASSERT_EQ((*heartbeat_data.mutable_resources_available())["GPU"], 5.0);
+
+  // Report heartbeat with resources unchanged. (Only works with light heartbeat enabled)
+  std::promise<bool> promise3;
+  auto heartbeat3 = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat3->set_client_id(node_table_data->node_id());
+  (*heartbeat3->mutable_resources_available())["CPU"] = 1;
+  (*heartbeat3->mutable_resources_available())["GPU"] = 6;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
+      heartbeat3, [&promise3](Status status) { promise3.set_value(status.ok()); }));
+  WaitReady(promise3.get_future(), timeout_ms_);
+
+  heartbeats = global_state_->GetAllHeartbeat();
+  heartbeat_batch_data.ParseFromString(*heartbeats.get());
+  ASSERT_EQ(heartbeat_batch_data.batch_size(), 1);
+  heartbeat_data = heartbeat_batch_data.mutable_batch()->at(0);
+  ASSERT_EQ(heartbeat_data.resources_total_size(), 2);
+  ASSERT_EQ((*heartbeat_data.mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*heartbeat_data.mutable_resources_total())["GPU"], 10.0);
+  ASSERT_EQ(heartbeat_data.resources_available_size(), 1);
+  ASSERT_EQ((*heartbeat_data.mutable_resources_available())["GPU"], 5.0);
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
