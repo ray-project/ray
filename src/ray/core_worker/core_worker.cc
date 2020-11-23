@@ -39,15 +39,15 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id,
-    bool placement_group_capture_child_tasks,
-    const std::string debugger_breakpoint,
+    bool placement_group_capture_child_tasks, const std::string debugger_breakpoint,
     const std::unordered_map<std::string, std::string> &override_environment_variables) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(
-      task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
-      current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources, placement_group_id,
-      placement_group_capture_child_tasks, debugger_breakpoint, override_environment_variables);
+  builder.SetCommonTaskSpec(task_id, name, function.GetLanguage(),
+                            function.GetFunctionDescriptor(), job_id, current_task_id,
+                            task_index, caller_id, address, num_returns,
+                            required_resources, required_placement_resources,
+                            placement_group_id, placement_group_capture_child_tasks,
+                            debugger_breakpoint, override_environment_variables);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1307,7 +1307,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             std::vector<ObjectID> *return_ids, int max_retries,
                             PlacementOptions placement_options,
                             bool placement_group_capture_child_tasks,
-                            const std::string& debugger_breakpoint) {
+                            const std::string &debugger_breakpoint) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -1499,7 +1499,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, return_ids, PlacementGroupID::Nil(),
                       true, /* placement_group_capture_child_tasks */
-                      "", /* debugger_breakpoint */
+                      "",   /* debugger_breakpoint */
                       override_environment_variables);
   // NOTE: placement_group_capture_child_tasks and override_environment_variables will be
   // ignored in the actor because we should always follow the actor's option.

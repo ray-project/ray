@@ -61,8 +61,7 @@ struct CoreWorkerOptions {
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids,
-      const std::string& debugger_breakpoint,
+      const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerOptions()
@@ -652,7 +651,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
                   int max_retries, PlacementOptions placement_options,
                   bool placement_group_capture_child_tasks,
-                  const std::string& debugger_breakpoint);
+                  const std::string &debugger_breakpoint);
 
   /// Create an actor.
   ///
