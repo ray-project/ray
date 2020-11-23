@@ -107,7 +107,7 @@ class GcsScheduleStrategy {
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context) = 0;
-
+  
  protected:
   /// Judge whether the remaining resources are sufficient for allocate.
   ///
