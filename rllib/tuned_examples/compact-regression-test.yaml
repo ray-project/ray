@@ -4,7 +4,7 @@
 # rewards reached seem reasonably in line with previous results.
 #
 # You can find the reference results here:
-# https://github.com/ray-project/ray/tree/master/doc/dev/release_logs
+# https://github.com/ray-project/ray/tree/master/release/release_logs
 atari-impala:
     env: BreakoutNoFrameskip-v4
     run: IMPALA
