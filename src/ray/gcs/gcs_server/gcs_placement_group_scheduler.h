@@ -106,6 +106,46 @@ class GcsScheduleStrategy {
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context) = 0;
+
+  void OnPlacementGroupCreationSuccess();
+
+  /// Handle actor creation task failure. This should be called when scheduling
+  /// an actor creation task is infeasible.
+  ///
+  /// \param actor The actor whose creation task is infeasible.
+  void OnPlacementGroupCreationFailed(std::shared_ptr<GcsActor> actor);
+
+  /// Handle actor creation task success. This should be called when the actor
+  /// creation task has been scheduled successfully.
+  ///
+  /// \param actor The actor that has been created.
+  void OnPlacementGroupCreationSuccess(const std::shared_ptr<GcsActor> &actor);
+
+ protected:
+
+  void StartTransaction();
+
+  void CommitTransaction();
+
+  void RollbackTransaction();
+
+  /// Acquire resources from the specified node. It will deduct directly from the node
+  /// resource.
+  ///
+  /// \param node_id Id of a node.
+  /// \param required_resources Resources to apply for.
+  /// \return True if acquire resources successfully. False otherwise.
+  void AcquireResource(const NodeID &node_id,
+                       const ResourceSet &required_resources);
+
+  /// Release the resource of the specified node. It will be added directly to the node
+  /// resource.
+  ///
+  /// \param node_id Id of a node.
+  /// \param acquired_resources Resources to release.
+  /// \return True if release resources successfully. False otherwise.
+  void ReleaseResource(const NodeID &node_id,
+                       const ResourceSet &acquired_resources);
 };
 
 /// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
