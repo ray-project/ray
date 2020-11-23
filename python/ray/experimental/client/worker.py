@@ -4,9 +4,9 @@ to the server.
 """
 from typing import List
 
+import ray.cloudpickle as cloudpickle
 import grpc
 
-from ray import cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg

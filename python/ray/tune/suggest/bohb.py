@@ -106,7 +106,9 @@ class TuneBOHB(Searcher):
                  mode: Optional[str] = None,
                  seed: Optional[int] = None):
         from hpbandster.optimizers.config_generators.bohb import BOHB
-        assert BOHB is not None, "HpBandSter must be installed!"
+        assert BOHB is not None, """HpBandSter must be installed!
+            You can install HpBandSter with the command:
+            `pip install hpbandster ConfigSpace`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self._max_concurrent = max_concurrent
