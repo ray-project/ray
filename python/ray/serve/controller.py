@@ -161,7 +161,7 @@ class ActorStateReconciler:
         for backend_tag, replicas_to_create in self.backend_replicas_to_start.\
                 items():
             for replica_tag in replicas_to_create:
-                replica_handle = self._start_backend_replicas(
+                replica_handle = self._start_backend_replica(
                     config_store, backend_tag, replica_tag)
                 ready_future = replica_handle.ready.remote().as_future()
                 fut_to_replica_info[ready_future] = (backend_tag, replica_tag,
@@ -185,7 +185,7 @@ class ActorStateReconciler:
 
         self.backend_replicas_to_start.clear()
 
-    async def _start_backend_replicas(
+    async def _start_backend_replica(
             self, config_store: ConfigurationStore, backend_tag: BackendTag,
             replica_tag: ReplicaTag) -> ray.ActorHandle:
         """Start a replica and return its actor handle.
