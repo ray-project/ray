@@ -131,7 +131,7 @@ class NevergradSearch(Searcher):
                 f"Invalid object type passed for `points_to_evaluate`: {type(points_to_evaluate)}. "
                 f"Please pass a list of points (dictionaries) instead.")
         else:
-            self._points_to_evaluate = points_to_evaluate
+            self._points_to_evaluate = list(points_to_evaluate)
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
