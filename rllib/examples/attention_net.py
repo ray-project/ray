@@ -74,9 +74,9 @@ if __name__ == "__main__":
     }
 
     #TODO
-    #from ray.rllib.agents.ppo import PPOTrainer
-    #trainer = PPOTrainer(config)
-    #trainer.train()
+    from ray.rllib.agents.ppo import PPOTrainer
+    trainer = PPOTrainer(config)
+    trainer.train()
     results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
