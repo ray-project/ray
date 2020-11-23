@@ -466,21 +466,6 @@ _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
-def print_failed_task(task_status):
-    """Print information about failed tasks.
-
-    Args:
-        task_status (Dict): A dictionary containing the name, operationid, and
-            error message for a failed task.
-    """
-    logger.error(f"""
-      Error: Task failed
-        Function Name: {task_status["function_name"]}
-        Task ID: {task_status["operationid"]}
-        Error Message: \n{task_status["error_message"]}
-    """)
-
-
 def init(
         address=None,
         *,
