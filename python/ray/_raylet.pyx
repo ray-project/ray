@@ -293,7 +293,7 @@ cdef prepare_args(
             serialized_arg = worker.get_serialization_context().serialize(arg)
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
-                if metadata[0] not in [
+                if metadata[0:1] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
                         ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:

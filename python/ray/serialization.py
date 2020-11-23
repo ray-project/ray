@@ -222,7 +222,7 @@ class SerializationContext:
     def _deserialize_msgpack_data(self, data, metadata):
         msgpack_data, pickle5_data = split_buffer(data)
 
-        if metadata[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
+        if metadata[0:1] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(pickle5_data)
         else:
             python_objects = []
