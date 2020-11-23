@@ -11,6 +11,8 @@ def env_integer(key, default):
         return int(os.environ[key])
     return default
 
+# How long to wait for a node to start, in seconds
+NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
