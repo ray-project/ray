@@ -103,7 +103,9 @@ class NevergradSearch(Searcher):
                  mode: Optional[str] = None,
                  max_concurrent: Optional[int] = None,
                  **kwargs):
-        assert ng is not None, "Nevergrad must be installed!"
+        assert ng is not None, """Nevergrad must be installed!
+            You can install Nevergrad with the command:
+            `pip install nevergrad`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 

@@ -55,7 +55,7 @@ class AxSearch(Searcher):
         outcome_constraints (list[str]): Outcome constraints of form
             "metric_name >= bound", like "m1 <= 3."
         ax_client (AxClient): Optional AxClient instance. If this is set, do
-            not pass any values to these parameters: `space`, `objective_name`,
+            not pass any values to these parameters: `space`, `metric`,
             `parameter_constraints`, `outcome_constraints`.
         use_early_stopped_trials: Deprecated.
         max_concurrent (int): Deprecated.
@@ -77,7 +77,7 @@ class AxSearch(Searcher):
                 intermediate_result = config["x1"] + config["x2"] * i
                 tune.report(score=intermediate_result)
 
-        ax_search = AxSearch(objective_name="score")
+        ax_search = AxSearch(metric="score")
         tune.run(
             config=config,
             easy_objective,
@@ -101,7 +101,7 @@ class AxSearch(Searcher):
                 intermediate_result = config["x1"] + config["x2"] * i
                 tune.report(score=intermediate_result)
 
-        ax_search = AxSearch(space=parameters, objective_name="score")
+        ax_search = AxSearch(space=parameters, metric="score")
         tune.run(easy_objective, search_alg=ax_search)
 
     """
@@ -115,7 +115,9 @@ class AxSearch(Searcher):
                  ax_client: Optional[AxClient] = None,
                  use_early_stopped_trials: Optional[bool] = None,
                  max_concurrent: Optional[int] = None):
-        assert ax is not None, "Ax must be installed!"
+        assert ax is not None, """Ax must be installed!
+            You can install AxSearch with the command:
+            `pip install ax-platform sqlalchemy`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 

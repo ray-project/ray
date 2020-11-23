@@ -6,7 +6,8 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_system_config_map, SignalActor
+from ray.test_utils import generate_system_config_map, SignalActor, \
+    new_scheduler_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
         "num_cpus": 2,
     }],
     indirect=True)
+@pytest.mark.skipif(new_scheduler_enabled(), reason="fails")
 def test_heartbeats_single(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 

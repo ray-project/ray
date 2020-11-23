@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -xe
+
 ray_version=""
 commit=""
 ray_branch=""
@@ -47,14 +49,12 @@ echo "commit: $commit"
 echo "branch: $ray_branch"
 echo "workload: $workload"
 
-wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp38-cp38-manylinux2014_x86_64.whl"
+wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp37-cp37m-manylinux2014_x86_64.whl"
 
-
-echo set-window-option -g mouse on > ~/.tmux.conf
-echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc
 pip uninstall -y -q ray
 pip install --upgrade pip
 pip install -U "$wheel"
 
 unset RAY_ADDRESS
+ray stop --force
 OMP_NUM_THREADS=64 ray microbenchmark
