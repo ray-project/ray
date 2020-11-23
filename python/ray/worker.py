@@ -122,9 +122,6 @@ class Worker:
         # Index of the current session. This number will
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
-        # Functions to run to process the values returned by ray.get. Each
-        # postprocessor must take two arguments ("object_refs", and "values").
-        self._post_get_hooks = []
 
     @property
     def connected(self):
@@ -842,7 +839,6 @@ def shutdown(_exiting_interpreter=False):
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
-    global_worker._post_get_hooks = []
 
 
 atexit.register(shutdown, True)
@@ -1332,7 +1328,7 @@ def show_in_dashboard(message, key="", dtype="text"):
     worker.core_worker.set_webui_display(key.encode(), message_encoded)
 
 
-# Global varaible to make sure we only send out the warning once
+# Global variable to make sure we only send out the warning once.
 blocking_get_inside_async_warned = False
 
 
@@ -1399,10 +1395,6 @@ def get(object_refs, *, timeout=None):
                     raise value.as_instanceof_cause()
                 else:
                     raise value
-
-        # Run post processors.
-        for post_processor in worker._post_get_hooks:
-            values = post_processor(object_refs, values)
 
         if is_individual_id:
             values = values[0]
