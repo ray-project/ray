@@ -31,7 +31,6 @@ message RegisterAgentRequest {
 
 message RegisterAgentReply {
   AgentRpcStatus status = 1;
-  int32 ppid = 2;
 }
 
 service AgentManagerService {

@@ -87,7 +87,10 @@ class DashboardAgent(object):
         return modules
 
     async def run(self):
-        ppid = None
+        ppid = os.environ.get("RAY_NODE_PID")
+        if ppid is not None:
+            ppid = int(ppid)
+        logger.info("Parent pid is %s", ppid)
 
         async def _check_parent():
             """Check if raylet is dead."""
@@ -170,13 +173,11 @@ class DashboardAgent(object):
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
             self.aiogrpc_raylet_channel)
 
-        reply = await raylet_stub.RegisterAgent(
+        await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
                 agent_pid=os.getpid(),
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip))
-        ppid = reply.ppid
-        logger.info("Parent pid is %s", ppid)
 
         await asyncio.gather(check_parent_task,
                              *(m.run(self.server) for m in modules))

@@ -32,7 +32,6 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
                 << ", port: " << agent_port_ << ", pid: " << agent_pid_;
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
-  reply->set_ppid(getpid());
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
@@ -59,8 +58,10 @@ void AgentManager::StartAgent() {
   }
   argv.push_back(NULL);
   // Set node id to agent.
+  static std::string pid_string = std::to_string(getpid());
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
+  env.insert({"RAY_NODE_PID", pid_string});
   Process child(argv.data(), nullptr, ec, false, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
