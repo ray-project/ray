@@ -436,8 +436,9 @@ class GlobalState:
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
                 (bundle.bundle_id.bundle_index,
-                MessageToDict(bundle)["unitResources"],
-                binary_to_hex(bundle.node_id) if bundle.node_id is not None else None)
+                 MessageToDict(bundle)["unitResources"],
+                 binary_to_hex(bundle.node_id)
+                 if bundle.node_id is not None else None)
                 for bundle in placement_group_info.bundles
             ],
             "strategy": get_strategy(placement_group_info.strategy),

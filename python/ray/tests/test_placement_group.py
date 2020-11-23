@@ -24,7 +24,7 @@ class Increase:
 
 
 def test_placement_group_implicit_resource(ray_start_cluster):
-    @ray.remote(num_cpus=0)   # No resource specified for this actor.
+    @ray.remote(num_cpus=0)  # No resource specified for this actor.
     class Actor(object):
         def __init__(self):
             self.n = 0
@@ -33,36 +33,36 @@ def test_placement_group_implicit_resource(ray_start_cluster):
             return self.n
 
     cluster = ray_start_cluster
-    num_nodes = 5   # Five node in this cluster.
+    num_nodes = 5  # Five node in this cluster.
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
-        name="name",
-        strategy="PACK",
-        bundles=[
-            {
-                "CPU": 1
-            }
-        ])
-    ray.get(placement_group.ready())   # Make sure this placement group has created.
+        name="name", strategy="PACK", bundles=[{
+            "CPU": 1
+        }])
+    ray.get(
+        placement_group.ready())  # Make sure this placement group has created.
 
     actors = []
-    for _ in range(5):      # We create five actors here.
-        actors.append(Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=0).remote())
+    for _ in range(5):  # We create five actors here.
+        actors.append(
+            Actor.options(
+                placement_group=placement_group,
+                placement_group_bundle_index=0).remote())
 
     def is_actor_created():
         states = []
         for func_actor in actors:
             func_actor_infos = ray.actors()
             func_actor_info = func_actor_infos.get(func_actor._actor_id.hex())
-            states.append(func_actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE)
+            states.append(
+                func_actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE)
         return all(states)
 
-    wait_for_condition(is_actor_created, timeout=20)  # Make sure this actor has created.
+    wait_for_condition(
+        is_actor_created, timeout=20)  # Make sure this actor has created.
 
     # Get the node which this placement group is located.
     result = ray.util.placement_group_table(placement_group)

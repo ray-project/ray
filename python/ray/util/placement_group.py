@@ -120,7 +120,9 @@ class PlacementGroup:
                 pg_info = ray.state.state.placement_group_table(self.id)
                 if pg_info:
                     print(pg_info)
-                    self.bundle_cache = [info[1] for info in pg_info["bundles"]]
+                    self.bundle_cache = [
+                        info[1] for info in pg_info["bundles"]
+                    ]
                     return
                 time.sleep(WAIT_INTERVAL)
                 timeout_cnt += 1
