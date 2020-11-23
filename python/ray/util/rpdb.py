@@ -162,7 +162,9 @@ class RemotePdb(Pdb):
         return Pdb.do_continue(self, arg)
 
 
-def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None, breakpoint_uuid=None):
+def connect_ray_pdb(
+    host=None, port=None, patch_stdstreams=False, quiet=None,
+    breakpoint_uuid=None):
     """
     Opens a remote PDB on first available port.
     """
@@ -175,7 +177,8 @@ def connect_ray_pdb(host=None, port=None, patch_stdstreams=False, quiet=None, br
     if not breakpoint_uuid:
         breakpoint_uuid = uuid.uuid4().hex
     rdb = RemotePdb(
-        breakpoint_uuid=breakpoint_uuid, host=host, port=port, patch_stdstreams=patch_stdstreams, quiet=quiet)
+        breakpoint_uuid=breakpoint_uuid, host=host, port=port,
+        patch_stdstreams=patch_stdstreams, quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
     pdb_address = "{}:{}".format(sockname[0], sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
@@ -200,7 +203,9 @@ def set_trace(breakpoint_uuid=None):
     Can be used within a Ray task or actor.
     """
     frame = sys._getframe().f_back
-    rdb = connect_ray_pdb(None, None, False, None, breakpoint_uuid.decode() if breakpoint_uuid else None)
+    rdb = connect_ray_pdb(
+        None, None, False, None,
+        breakpoint_uuid.decode() if breakpoint_uuid else None)
     rdb.set_trace(frame=frame)
 
 
