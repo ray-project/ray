@@ -250,6 +250,7 @@ class GTrXLNet(RecurrentNetwork):
             shape=(), dtype=tf.bool, batch_size=1, name="is_training")
 
         # Map observation dim to input/output transformer (attention) dim.
+        #TODO: why is there no ReLU here? Shouldn't this match the transformer outputs?
         E_out = tf.keras.layers.Dense(self.attn_dim)(input_layer)
         # Output, collected and concat'd to build the internal, tau-len
         # Memory units used for additional contextual information.

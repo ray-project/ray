@@ -74,9 +74,40 @@ if __name__ == "__main__":
     }
 
     #TODO
+    from ray.rllib.utils.numpy import fc, relu
     from ray.rllib.agents.ppo import PPOTrainer
+    import tree
+    from ray.rllib.utils.framework import try_import_tf
+    tf1, tf, tfv = try_import_tf()
+    import numpy as np
     trainer = PPOTrainer(config)
-    trainer.train()
+    pol = trainer.get_policy()
+    # Load weights from numpy file.
+    weights = np.load("attention_net_weights.npz")
+    keys = list(pol.get_weights().keys())
+    weights_dict = {k: v for k, v in zip(keys, list(weights.values()))}
+    pol.set_weights(weights_dict)
+
+    # Load the input batch.
+    inputs = np.load("attention_net_input_batch.npz")
+    input_dict = {
+        "obs": inputs["obs"]
+    }
+    obs_state = inputs["state_0"]
+    mem_0 = inputs["state_1"]
+
+    # Push obs through the first Dense to get the actual memory inputs.
+    mem_0_calculated = fc(obs_state, weights_dict["default_policy/dense/kernel"])
+    'default_policy/dense/kernel'
+    seq_lens = [1]
+    attention_net = pol.model
+    # Test call.
+    out = attention_net({"obs": tf.convert_to_tensor(input_dict["obs"], dtype=tf.float32)}, [tf.convert_to_tensor(s, dtype=tf.float32) for s in states], seq_lens)
+    out_numpy = tree.map_structure(lambda c: c.numpy(), out)
+    # Save output.
+    np.savez("attention_net_output", *tree.flatten(out_numpy))
+
+    quit()
     results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
