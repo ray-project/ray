@@ -106,7 +106,7 @@ You can also have Ray Serve batch requests for performance. In order to do use t
 
   config = {"max_batch_size": 5}
   client.create_backend("counter1", BatchingExample, config=config)
-  client.create_endpoint("counter1", backend="counter1", route="/increment")
+  client.create_endpoint("increment", backend="counter1")
 
 Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
 dive.
@@ -126,7 +126,7 @@ For example, here we split traffic 50/50 between two backends:
   client.create_backend("backend1", MyClass1)
   client.create_backend("backend2", MyClass2)
 
-  client.create_endpoint("fifty-fifty", backend="backend1", route="/fifty")
+  client.create_endpoint("fifty-fifty", backend="backend1")
   client.set_traffic("fifty-fifty", {"backend1": 0.5, "backend2": 0.5})
 
 Each request is routed randomly between the backends in the traffic dictionary according to the provided weights.
@@ -142,21 +142,21 @@ Canary Deployments
   client.create_backend("default_backend", MyClass)
 
   # Initially, set all traffic to be served by the "default" backend.
-  client.create_endpoint("canary_endpoint", backend="default_backend", route="/canary-test")
+  client.create_endpoint("canary-test", backend="default_backend")
 
   # Add a second backend and route 1% of the traffic to it.
   client.create_backend("new_backend", MyNewClass)
-  client.set_traffic("canary_endpoint", {"default_backend": 0.99, "new_backend": 0.01})
+  client.set_traffic("canary-test", {"default_backend": 0.99, "new_backend": 0.01})
 
   # Add a third backend that serves another 1% of the traffic.
   client.create_backend("new_backend2", MyNewClass2)
-  client.set_traffic("canary_endpoint", {"default_backend": 0.98, "new_backend": 0.01, "new_backend2": 0.01})
+  client.set_traffic("canary-test", {"default_backend": 0.98, "new_backend": 0.01, "new_backend2": 0.01})
 
   # Route all traffic to the new, better backend.
-  client.set_traffic("canary_endpoint", {"new_backend": 1.0})
+  client.set_traffic("canary-test", {"new_backend": 1.0})
 
   # Or, if not so succesful, revert to the "default" backend for all traffic.
-  client.set_traffic("canary_endpoint", {"default_backend": 1.0})
+  client.set_traffic("canary-test", {"default_backend": 1.0})
 
 Incremental Rollout
 -------------------
@@ -170,17 +170,17 @@ In the example below, we do this repeatedly in one script, but in practice this 
   client.create_backend("existing_backend", MyClass)
 
   # Initially, all traffic is served by the existing backend.
-  client.create_endpoint("incremental_endpoint", backend="existing_backend", route="/incremental")
+  client.create_endpoint("incremental", backend="existing_backend")
 
   # Then we can slowly increase the proportion of traffic served by the new backend.
   client.create_backend("new_backend", MyNewClass)
-  client.set_traffic("incremental_endpoint", {"existing_backend": 0.9, "new_backend": 0.1})
-  client.set_traffic("incremental_endpoint", {"existing_backend": 0.8, "new_backend": 0.2})
-  client.set_traffic("incremental_endpoint", {"existing_backend": 0.5, "new_backend": 0.5})
-  client.set_traffic("incremental_endpoint", {"new_backend": 1.0})
+  client.set_traffic("incremental", {"existing_backend": 0.9, "new_backend": 0.1})
+  client.set_traffic("incremental", {"existing_backend": 0.8, "new_backend": 0.2})
+  client.set_traffic("incremental", {"existing_backend": 0.5, "new_backend": 0.5})
+  client.set_traffic("incremental", {"new_backend": 1.0})
 
   # At any time, we can roll back to the existing backend.
-  client.set_traffic("incremental_endpoint", {"existing_backend": 1.0})
+  client.set_traffic("incremental", {"existing_backend": 1.0})
 
 .. _session-affinity:
 
@@ -200,7 +200,7 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or :
   requests.get("127.0.0.1:8000/api", headers={"X-SERVE-SHARD-KEY": session_id})
 
   # Specifying the shard key in a call made via serve handle.
-  handle = client.get_handle("api_endpoint")
+  handle = client.get_handle("api")
   handler.options(shard_key=session_id).remote(args)
 
 .. _serve-shadow-testing:
@@ -218,7 +218,7 @@ This is demonstrated in the example below, where we create an endpoint serviced 
   client.create_backend("existing_backend", MyClass)
 
   # All traffic is served by the existing backend.
-  client.create_endpoint("shadowed_endpoint", backend="existing_backend", route="/shadow")
+  client.create_endpoint("shadow", backend="existing_backend")
 
   # Create two new backends that we want to test.
   client.create_backend("new_backend_1", MyNewClass)
@@ -229,13 +229,13 @@ This is demonstrated in the example below, where we create an endpoint serviced 
   # *additionally* sent to these backends.
 
   # Send 50% of all queries to the endpoint new_backend_1.
-  client.shadow_traffic("shadowed_endpoint", "new_backend_1", 0.5)
+  client.shadow_traffic("shadow", "new_backend_1", 0.5)
   # Send 10% of all queries to the endpoint new_backend_2.
-  client.shadow_traffic("shadowed_endpoint", "new_backend_2", 0.1)
+  client.shadow_traffic("shadow", "new_backend_2", 0.1)
 
   # Stop shadowing traffic to the backends.
-  client.shadow_traffic("shadowed_endpoint", "new_backend_1", 0)
-  client.shadow_traffic("shadowed_endpoint", "new_backend_2", 0)
+  client.shadow_traffic("shadow", "new_backend_1", 0)
+  client.shadow_traffic("shadow", "new_backend_2", 0)
 
 .. _serve-model-composition:
 

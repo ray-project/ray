@@ -5,7 +5,7 @@ import os
 import random
 import time
 from dataclasses import dataclass, field
-from typing import Union, Dict, Any, List, Optional, Tuple
+from typing import Union, Dict, Any, List, Optional
 from pydantic import BaseModel
 
 import ray
@@ -94,8 +94,7 @@ class ConfigurationStore:
     traffic_policies: Dict[EndpointTag, TrafficPolicy] = field(
         default_factory=dict)
     # Maps endpoint to list of methods
-    endpoints: Dict[EndpointTag, Any] = field(
-        default_factory=dict)
+    endpoints: Dict[EndpointTag, Any] = field(default_factory=dict)
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
         return {
@@ -522,8 +521,8 @@ class ServeController:
 
         # Set route for each endpoint to '/endpoint_name'.
         endpoints = self.configuration_store.endpoints
-        return {'/' + k : v for k, v in endpoints.items()}
-                
+        return {"/" + k: v for k, v in endpoints.items()}
+
     def _checkpoint(self) -> None:
         """Checkpoint internal state and write it to the KV store."""
         assert self.write_lock.locked()
@@ -698,8 +697,7 @@ class ServeController:
             self.notify_traffic_policies_changed()
 
     async def create_endpoint(self, endpoint: EndpointTag,
-                              traffic_dict: Dict[str, float],
-                              methods) -> None:
+                              traffic_dict: Dict[str, float], methods) -> None:
         """Create a new endpoint with the specified methods."""
         async with self.write_lock:
             # TODO(edoakes): move this to client side.
@@ -720,9 +718,8 @@ class ServeController:
                     "{} Endpoint '{}' is already registered.".format(
                         err_prefix, endpoint))
 
-            logger.info(
-                "Registering endpoint '{}' with methods '{}'.".
-                format(endpoint, methods))
+            logger.info("Registering endpoint '{}' with methods '{}'.".format(
+                endpoint, methods))
 
             self.configuration_store.endpoints[endpoint] = methods
 

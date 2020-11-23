@@ -109,7 +109,7 @@ class HTTPProxy:
 
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
-        endpoint_name = current_path[1:] # Strip initial '/' from route.
+        endpoint_name = current_path[1:]  # Strip initial '/' from route.
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.

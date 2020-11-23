@@ -22,8 +22,7 @@ def test_e2e(serve_instance):
         return {"method": flask_request.method}
 
     client.create_backend("echo:v1", function)
-    client.create_endpoint(
-        "api", backend="echo:v1", methods=["GET", "POST"])
+    client.create_endpoint("api", backend="echo:v1", methods=["GET", "POST"])
 
     retry_count = 5
     timeout_sleep = 0.5
@@ -149,7 +148,6 @@ def test_reject_duplicate_endpoint(serve_instance):
         client.create_endpoint(endpoint_name, backend="backend2")
 
 
-
 def test_set_traffic_missing_data(serve_instance):
     client = serve_instance
 
@@ -230,8 +228,7 @@ def test_batching(serve_instance, use_legacy_config):
     } if use_legacy_config else BackendConfig(
         max_batch_size=5, batch_wait_timeout=1)
     client.create_backend("counter:v11", BatchingExample, config=config)
-    client.create_endpoint(
-        "increment2", backend="counter:v11")
+    client.create_endpoint("increment2", backend="counter:v11")
 
     # Keep checking the routing table until /increment is populated
     while "/increment2" not in requests.get(
@@ -268,8 +265,7 @@ def test_batching_exception(serve_instance, use_legacy_config):
         "max_batch_size": 5
     } if use_legacy_config else BackendConfig(max_batch_size=5)
     client.create_backend("exception:v1", NoListReturned, config=config)
-    client.create_endpoint(
-        "exception-test", backend="exception:v1")
+    client.create_endpoint("exception-test", backend="exception:v1")
 
     handle = client.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -324,8 +320,7 @@ def test_delete_backend(serve_instance):
         return "hello"
 
     client.create_backend("delete:v1", function)
-    client.create_endpoint(
-        "delete_backend", backend="delete:v1")
+    client.create_endpoint("delete_backend", backend="delete:v1")
 
     assert requests.get("http://127.0.0.1:8000/delete_backend").text == "hello"
 
@@ -382,7 +377,6 @@ def test_delete_endpoint(serve_instance):
     client.delete_endpoint(endpoint_name)
     client.create_endpoint(endpoint_name, backend=backend_name)
 
-
     assert requests.get(
         "http://127.0.0.1:8000/delete_endpoint").text == "hello"
     handle = client.get_handle(endpoint_name)
@@ -404,8 +398,7 @@ def test_shard_key(serve_instance):
         traffic_dict[backend_name] = 1.0 / num_backends
         client.create_backend(backend_name, function)
 
-    client.create_endpoint(
-        "shard", backend=list(traffic_dict.keys())[0])
+    client.create_endpoint("shard", backend=list(traffic_dict.keys())[0])
     client.set_traffic("shard", traffic_dict)
 
     def do_request(shard_key):

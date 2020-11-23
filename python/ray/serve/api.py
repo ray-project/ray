@@ -102,10 +102,10 @@ class Client:
         """
         if route is not None:
             raise ValueError(
-                "The 'route' keyword argument for create_endpoint is deprecated "
-                " as of Ray 1.0.2. Please call create_endpoint without 'route'. "
-                "The endpoint name will be used as the route; i.e. '/endpoint_name.'"
-            )
+                "The 'route' keyword argument for create_endpoint is "
+                "deprecated as of Ray 1.0.2. Please call create_endpoint "
+                "without 'route'. The endpoint name will be used as the "
+                "route; i.e. '/endpoint_name.'")
         if backend is None:
             raise TypeError("backend must be specified when creating "
                             "an endpoint.")

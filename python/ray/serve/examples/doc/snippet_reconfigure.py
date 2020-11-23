@@ -25,9 +25,9 @@ class Threshold:
 
 backend_config = BackendConfig(user_config={"threshold": 0.01})
 client.create_backend("threshold", Threshold, config=backend_config)
-client.create_endpoint("threshold", backend="threshold", route="/threshold")
-print(requests.get("http://127.0.0.1:8000/threshold").text)  # true, probably
+client.create_endpoint("threshold", backend="threshold")
+print(requests.get("http://127.0.0.1:8000/threshold").text)  # likely True
 
 backend_config = BackendConfig(user_config={"threshold": 0.99})
 client.update_backend_config("threshold", backend_config)
-print(requests.get("http://127.0.0.1:8000/threshold").text)  # false, probably
+print(requests.get("http://127.0.0.1:8000/threshold").text)  # likely False

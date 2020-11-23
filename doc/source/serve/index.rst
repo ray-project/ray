@@ -18,7 +18,7 @@ For users, Ray Serve is:
 - **Framework Agnostic**: Use the same toolkit to serve everything from deep learning models
   built with frameworks like :ref:`PyTorch <serve-pytorch-tutorial>`,
   :ref:`Tensorflow, and Keras <serve-tensorflow-tutorial>`, to :ref:`Scikit-Learn <serve-sklearn-tutorial>` models, to arbitrary business logic.
-- **Python First**: Configure your model serving with pure Python code - no more YAML or
+- **Python First**: Configure your model serving with pure Python code--no more YAML or
   JSON configs.
 
 As a library, Ray Serve enables:

@@ -21,15 +21,11 @@ def test_handle_in_endpoint(serve_instance):
 
     client.create_backend("endpoint1:v0", Endpoint1)
     client.create_endpoint(
-        "endpoint1",
-        backend="endpoint1:v0",
-        methods=["GET", "POST"])
+        "endpoint1", backend="endpoint1:v0", methods=["GET", "POST"])
 
     client.create_backend("endpoint2:v0", Endpoint2)
     client.create_endpoint(
-        "endpoint2",
-        backend="endpoint2:v0",
-        methods=["GET", "POST"])
+        "endpoint2", backend="endpoint2:v0", methods=["GET", "POST"])
 
     assert requests.get("http://127.0.0.1:8000/endpoint2").text == "hello"
 
@@ -47,8 +43,7 @@ def test_handle_http_args(serve_instance):
             }
 
     client.create_backend("backend", Endpoint)
-    client.create_endpoint(
-        "endpoint", backend="backend", methods=["POST"])
+    client.create_endpoint("endpoint", backend="backend", methods=["POST"])
 
     ground_truth = {
         "args": {

@@ -55,8 +55,7 @@ client.create_endpoint("model_two", backend="model_two")
 # function, Ray Serve sets the limit to a high number.
 client.create_backend(
     "composed_backend", ComposedModel, config={"max_concurrent_queries": 10})
-client.create_endpoint(
-    "composed", backend="composed_backend", route="/composed")
+client.create_endpoint("composed", backend="composed_backend")
 
 for _ in range(5):
     resp = requests.get("http://127.0.0.1:8000/composed", data="hey!")

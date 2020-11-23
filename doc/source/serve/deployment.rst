@@ -105,7 +105,7 @@ these two models.
 
 .. code::
 
-    client.set_traffic("iris_classifier", {"lr:v2": 0.25, "lr:v1": 0.75})
+    client.set_traffic("iris-classifier", {"lr:v2": 0.25, "lr:v1": 0.75})
 
 While this is a simple operation, you may want to see :ref:`serve-split-traffic` for more information.
 One thing you may want to consider as well is

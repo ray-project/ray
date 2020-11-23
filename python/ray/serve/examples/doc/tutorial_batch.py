@@ -32,8 +32,7 @@ ray.init(num_cpus=8)
 # __doc_deploy_begin__
 client = serve.start()
 client.create_backend("adder:v0", batch_adder_v0, config={"max_batch_size": 4})
-client.create_endpoint(
-    "adder", backend="adder:v0", route="/adder", methods=["GET"])
+client.create_endpoint("adder", backend="adder:v0", methods=["GET"])
 # __doc_deploy_end__
 
 

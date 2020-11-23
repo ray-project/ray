@@ -51,10 +51,7 @@ ray.init(num_cpus=8)
 client = serve.start()
 client.create_backend("resnet18:v0", ImageModel)
 client.create_endpoint(
-    "predictor",
-    backend="resnet18:v0",
-    route="/image_predict",
-    methods=["POST"])
+    "image-predict", backend="resnet18:v0", methods=["POST"])
 # __doc_deploy_end__
 
 # __doc_query_begin__
@@ -63,7 +60,7 @@ ray_logo_bytes = requests.get(
     "master/doc/source/images/ray_header_logo.png").content
 
 resp = requests.post(
-    "http://localhost:8000/image_predict", data=ray_logo_bytes)
+    "http://localhost:8000/image-predict", data=ray_logo_bytes)
 print(resp.json())
 # Output
 # {'class_index': 463}

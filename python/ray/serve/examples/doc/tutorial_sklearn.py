@@ -75,7 +75,7 @@ ray.init(num_cpus=8)
 # __doc_deploy_begin__
 client = serve.start()
 client.create_backend("lr:v1", BoostingModel)
-client.create_endpoint("iris_classifier", backend="lr:v1", route="/regressor")
+client.create_endpoint("iris-classifier", backend="lr:v1")
 # __doc_deploy_end__
 
 # __doc_query_begin__
@@ -86,7 +86,7 @@ sample_request_input = {
     "petal width": 0.9,
 }
 response = requests.get(
-    "http://localhost:8000/regressor", json=sample_request_input)
+    "http://localhost:8000/iris-classifier", json=sample_request_input)
 print(response.text)
 # Result:
 # {

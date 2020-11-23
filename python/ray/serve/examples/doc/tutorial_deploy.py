@@ -71,7 +71,7 @@ ray.init(address="auto")
 # listen on 0.0.0.0 to make the HTTP server accessible from other machines.
 client = serve.start(http_host="0.0.0.0")
 client.create_backend("lr:v1", BoostingModel)
-client.create_endpoint("iris_classifier", backend="lr:v1", route="/regressor")
+client.create_endpoint("iris-classifier", backend="lr:v1")
 # __doc_create_deploy_end__
 
 # __doc_query_begin__
@@ -84,15 +84,15 @@ sample_request_input = {
     "petal width": 0.9,
 }
 response = requests.get(
-    "http://localhost:8000/regressor", json=sample_request_input)
+    "http://localhost:8000/iris-classifier", json=sample_request_input)
 print(response.text)
 # Result:
 # {
 #  "result": "setosa",
 #  "version": "v1"
 # }
-# this result may vary, since the training parameters may change.
-# as we update this model, this result will also change over time.
+# This result may vary, since the training parameters may change.
+# As we update this model, this result will also change over time.
 # __doc_query_end__
 
 
@@ -165,5 +165,5 @@ class BoostingModelv2:
 
 client = serve.connect()
 client.create_backend("lr:v2", BoostingModelv2)
-client.set_traffic("iris_classifier", {"lr:v2": 0.25, "lr:v1": 0.75})
+client.set_traffic("iris-classifier", {"lr:v2": 0.25, "lr:v1": 0.75})
 # __doc_create_deploy_2_end__

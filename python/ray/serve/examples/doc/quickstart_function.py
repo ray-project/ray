@@ -11,7 +11,7 @@ def echo(flask_request):
 
 
 client.create_backend("hello", echo)
-client.create_endpoint("hello", backend="hello", route="/hello")
+client.create_endpoint("greet", backend="hello")
 
-print(requests.get("http://127.0.0.1:8000/hello").text)
+print(requests.get("http://127.0.0.1:8000/greet").text)
 # > hello serve!

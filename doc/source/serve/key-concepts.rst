@@ -54,10 +54,10 @@ Note that a backend cannot be deleted while it is in use by an endpoint because 
       'simple_backend': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
       'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
   }
-  >> client.delete_backend("simple_backend")
+  >> client.delete_backend("simple_backend_class")
   >> client.list_backends()
   {
-      'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+      'simple_backend': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
   }
 
 .. _`serve-endpoint`:
@@ -73,7 +73,7 @@ For information on how to do this, please see :ref:`serve-split-traffic`.
 
 .. code-block:: python
 
-  client.create_endpoint("simple_endpoint", backend="simple_backend", route="/simple", methods=["GET"])
+  client.create_endpoint("simple-endpoint", backend="simple_backend", methods=["GET"])
 
 After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified backend.
 We can query the model to verify that it's working.
@@ -81,14 +81,16 @@ We can query the model to verify that it's working.
 .. code-block:: python
 
   import requests
-  print(requests.get("http://127.0.0.1:8000/simple").text)
+  print(requests.get("http://127.0.0.1:8000/simple-endpoint").text)
 
 To view all of the existing endpoints that have created, use :mod:`client.list_endpoints <ray.serve.api.Client.list_endpoints>`.
 
 .. code-block:: python
 
   >>> client.list_endpoints()
-  {'simple_endpoint': {'route': '/simple', 'methods': ['GET'], 'traffic': {}}}
+  {'simple-endpoint': {'methods': ['GET'],
+    'traffic': {'simple_backend': 1.0},
+    'shadows': {}}}
 
 You can also delete an endpoint using :mod:`client.delete_endpoint <ray.serve.api.Client.delete_endpoint>`.
 Endpoints and backends are independent, so deleting an endpoint will not delete its backends.
@@ -96,4 +98,4 @@ However, an endpoint must be deleted in order to delete the backends that serve 
 
 .. code-block:: python
 
-  client.delete_endpoint("simple_endpoint")
+  client.delete_endpoint("simple-endpoint")

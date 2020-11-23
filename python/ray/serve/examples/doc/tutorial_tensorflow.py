@@ -73,12 +73,12 @@ ray.init(num_cpus=8)
 # __doc_deploy_begin__
 client = serve.start()
 client.create_backend("tf:v1", TFMnistModel, TRAINED_MODEL_PATH)
-client.create_endpoint("tf_classifier", backend="tf:v1", route="/mnist")
+client.create_endpoint("tf-classifier", backend="tf:v1")
 # __doc_deploy_end__
 
 # __doc_query_begin__
 resp = requests.get(
-    "http://localhost:8000/mnist",
+    "http://localhost:8000/tf-classifier",
     json={"array": np.random.randn(28 * 28).tolist()})
 print(resp.json())
 # {

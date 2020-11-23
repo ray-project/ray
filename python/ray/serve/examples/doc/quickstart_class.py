@@ -15,8 +15,8 @@ class Counter:
         return {"current_counter": self.count}
 
 
-client.create_backend("counter", Counter)
-client.create_endpoint("counter", backend="counter", route="/counter")
+client.create_backend("simple_counter", Counter)
+client.create_endpoint("counter", backend="simple_counter")
 
 print(requests.get("http://127.0.0.1:8000/counter").json())
 # > {"current_counter": 1}
