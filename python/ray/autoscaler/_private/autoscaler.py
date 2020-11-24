@@ -1,5 +1,6 @@
 from collections import defaultdict, namedtuple
 from typing import Any, Optional, Dict, List
+from urllib3.exceptions import MaxRetryError
 import copy
 import logging
 import math
@@ -130,7 +131,13 @@ class StandardAutoscaler:
             if _internal_kv_initialized():
                 _internal_kv_put(
                     DEBUG_AUTOSCALING_ERROR, str(e), overwrite=True)
-            self.num_failures += 1
+            # Don't abort the autoscaler if the K8s API server is down.
+            # https://github.com/ray-project/ray/issues/12255
+            is_k8s_connection_error = (
+                self.config["provider"]["type"] == "kubernetes"
+                and isinstance(e, MaxRetryError))
+            if not is_k8s_connection_error:
+                self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: "
                                 "Too many errors, abort.")

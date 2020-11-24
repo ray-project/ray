@@ -74,7 +74,7 @@ To run a set of single-node Ray microbenchmarks, use:
 
   ray microbenchmark
 
-You can find the microbenchmark results for Ray releases in the `GitHub release logs <https://github.com/ray-project/ray/tree/master/doc/dev/release_logs>`__.
+You can find the microbenchmark results for Ray releases in the `GitHub release logs <https://github.com/ray-project/ray/tree/master/release/release_logs>`__.
 
 References
 ----------
