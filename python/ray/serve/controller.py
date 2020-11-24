@@ -5,7 +5,7 @@ import os
 import random
 import time
 from dataclasses import dataclass, field
-from typing import Union, Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 from pydantic import BaseModel
 
 import ray
@@ -578,7 +578,7 @@ class ServeController:
                 self.backend_stats[backend], info.backend_config.num_replicas)
             if new_num_replicas > 0:
                 await self.update_backend_config(
-                    backend, {"num_replicas": new_num_replicas})
+                    backend, BackendConfig(num_replicas=new_num_replicas))
 
     async def run_control_loop(self) -> None:
         while True:
@@ -870,24 +870,18 @@ class ServeController:
 
             self.notify_replica_handles_changed()
 
-    async def update_backend_config(
-            self, backend_tag: BackendTag,
-            config_options: "Union[BackendConfig, Dict[str, Any]]") -> None:
+    async def update_backend_config(self, backend_tag: BackendTag,
+                                    config_options: BackendConfig) -> None:
         """Set the config for the specified backend."""
         async with self.write_lock:
             assert (self.configuration_store.get_backend(backend_tag)
                     ), "Backend {} is not registered.".format(backend_tag)
-            assert isinstance(config_options, BackendConfig) or isinstance(
-                config_options, dict)
-
-            if isinstance(config_options, BackendConfig):
-                update_data = config_options.dict(exclude_unset=True)
-            elif isinstance(config_options, dict):
-                update_data = config_options
+            assert isinstance(config_options, BackendConfig)
 
             stored_backend_config = self.configuration_store.get_backend(
                 backend_tag).backend_config
-            backend_config = stored_backend_config.copy(update=update_data)
+            backend_config = stored_backend_config.copy(
+                update=config_options.dict(exclude_unset=True))
             backend_config._validate_complete()
             self.configuration_store.get_backend(
                 backend_tag).backend_config = backend_config
