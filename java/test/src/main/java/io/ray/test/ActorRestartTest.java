@@ -1,14 +1,10 @@
 package io.ray.test;
 
 import io.ray.api.ActorHandle;
-import io.ray.api.Checkpointable;
 import io.ray.api.Ray;
-import io.ray.api.id.ActorId;
-import io.ray.api.id.UniqueId;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
