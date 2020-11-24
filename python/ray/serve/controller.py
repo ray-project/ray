@@ -167,13 +167,14 @@ class ActorStateReconciler:
                 fut_to_replica_info[ready_future] = (backend_tag, replica_tag,
                                                      replica_handle)
 
-        prev_warning = time.time()
+        start = time.time()
+        prev_warning = start
         while fut_to_replica_info:
             if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
                 prev_warning = time.time()
                 logger.warning("Waited {:.2f}s for replicas to start up. Make "
                                "sure there are enough resources to create the "
-                               "replicas.".format(time.time() - prev_warning))
+                               "replicas.".format(time.time() - start))
 
             done, pending = await asyncio.wait(
                 list(fut_to_replica_info.keys()), timeout=1)
