@@ -12,8 +12,8 @@ from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
+                             RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -614,13 +614,19 @@ class TrialRunner:
         in the last result. If the only item is `done=True`, this
         means that no result was ever received and the trial just
         returned. This is also okay and will not raise an error.
+
+        This will ignore checking for the DEFAULT_METRIC.
         """
         if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
                               0)) != 1 and (len(result) > 1
                                             or "done" not in result):
-            base_metric = self._metric
-            scheduler_metric = self._scheduler_alg.metric
-            search_metrics = self._search_alg.metric
+            base_metric = self._metric \
+                if self._metric != DEFAULT_METRIC else None
+            scheduler_metric = self._scheduler_alg.metric \
+                if self._scheduler_alg.metric != DEFAULT_METRIC else None
+            search_metrics = self._search_alg.metric \
+                if self._search_alg.metric != DEFAULT_METRIC else None
+
             if isinstance(search_metrics, str):
                 search_metrics = [search_metrics]
 

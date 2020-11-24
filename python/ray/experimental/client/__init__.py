@@ -30,7 +30,7 @@ class RayAPIStub:
     def __getattr__(self, key: str):
         global _client_api
         self.__check_client_api()
-        return _client_api.__getattribute__(key)
+        return getattr(_client_api, key)
 
     def __check_client_api(self):
         global _client_api
