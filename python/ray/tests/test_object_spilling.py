@@ -135,7 +135,6 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
                 pinned_objects.add(ref)
             except ray.exceptions.ObjectStoreFullError:
                 ref_to_spill = pinned_objects.pop()
-                for r in replay_buffer:
                 ray.experimental.force_spill_objects([ref_to_spill])
 
     def is_worker(cmdline):
