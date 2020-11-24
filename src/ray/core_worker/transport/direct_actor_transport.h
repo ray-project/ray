@@ -186,7 +186,11 @@ class CoreWorkerDirectActorTaskSubmitter
     /// actor failure.
     uint64_t num_completed_tasks = 0;
 
-    // TODO(simon): Doc
+    /// The temporary container for tasks completed out of order. It can happen in
+    /// async or threaded actor mode. This map is used to store the seqno and task
+    /// spec for (1) increment num_completed_tasks later when the in order tasks are
+    /// returned (2) resend the tasks to restarted actor so retried tasks can maintain
+    /// ordering.
     // NOTE(simon): consider absl::btree_set, but it requires updating abseil.
     std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
 
@@ -212,6 +216,8 @@ class CoreWorkerDirectActorTaskSubmitter
   /// `mutex_` before calling this function.
   ///
   /// \param[in] actor_id Actor ID.
+  /// \param[in] send_out_of_order_tasks Whether or not to send previous stored tasks that
+  /// were completed out of order.
   /// \return Void.
   void SendPendingTasks(const ActorID &actor_id, bool send_out_of_order_tasks = false)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -233,13 +239,13 @@ class CoreWorkerDirectActorTaskSubmitter
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);
 
-  /// Resolve direct call object dependencies;
+  /// Resolve direct call object dependencies.
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
-  // TODO(simon): doc
+  /// Used for out of order task re-submission.
   boost::asio::io_service &io_service_;
 
   friend class CoreWorkerTest;
@@ -446,6 +452,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
       auto request = head->second;
 
       if (request.CanSkipExecution()) {
+        // Directly skip the execution of the task, this can happen during async actor
+        // reconstruction and task retries.
         request.SkipExecution();
       } else if (is_asyncio_) {
         // Process async actor task.

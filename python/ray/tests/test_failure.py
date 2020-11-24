@@ -1304,11 +1304,11 @@ def test_async_actor_task_retries(ray_start_regular):
             self.should_exit = False
 
         def set_should_exit(self):
-            print("set_should_exit called")
+            print("DyingActor.set_should_exit called")
             self.should_exit = True
 
         async def get(self, x, wait=False):
-            print(f"get with {x} called, wait={wait}")
+            print(f"DyingActor.get called with x={x}, wait={wait}")
             if self.should_exit:
                 os._exit(0)
             if wait:
@@ -1316,14 +1316,14 @@ def test_async_actor_task_retries(ray_start_regular):
             return x
 
     # Normal in order actor task retries should work
-    # dying = DyingActor.options(
-    #     max_restarts=-1,
-    #     max_task_retries=-1,
-    # ).remote()
+    dying = DyingActor.options(
+        max_restarts=-1,
+        max_task_retries=-1,
+    ).remote()
 
-    # assert ray.get(dying.get.remote(1)) == 1
-    # ray.get(dying.set_should_exit.remote())
-    # assert ray.get(dying.get.remote(42)) == 42
+    assert ray.get(dying.get.remote(1)) == 1
+    ray.get(dying.set_should_exit.remote())
+    assert ray.get(dying.get.remote(42)) == 42
 
     # Now let's try out of order retries:
     # Task seqno 0 will return
@@ -1350,12 +1350,8 @@ def test_async_actor_task_retries(ray_start_regular):
     # At this point the actor should be restarted. The two pending tasks
     # [ref_1, ref_3] should be retried, but not the completed tasks [ref_0,
     # ref_2]. Critically, if ref_2 was retried, ref_3 can never return.
-    print("sending signal")
     ray.get(signal.send.remote())
-    ray.get(signal.wait.remote())
-    print("made sure signal is clear")
     assert ray.get(ref_1) == 1
-    print("got ref_1")
     assert ray.get(ref_3) == 3
 
 
