@@ -178,6 +178,11 @@ WORKER_PROCESS_TYPE_RESTORE_WORKER = (
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
+# The object metadata field uses the following format: The first character
+# indicates the type of object (CROSS_LANGUAGE, PYTHON, RAW, ACTOR_HANDLE)
+# according to the variables below. After that comes an optional debug string
+# that starts with the DEBUG_PREFIX.
+
 # A constant used as object metadata to indicate the object is cross language.
 OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"X"
 # A constant used as object metadata to indicate the object is python specific.
@@ -191,6 +196,9 @@ OBJECT_METADATA_TYPE_RAW = b"R"
 # TODO(fyrestone): Serialize the ActorHandle via the custom type feature
 # of XLANG.
 OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"A"
+
+# A constant indicating the debugging part of the metadata (see above).
+OBJECT_METADATA_DEBUG_PREFIX = b"D"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
