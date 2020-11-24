@@ -92,8 +92,6 @@ class TrXLNet(RecurrentNetwork):
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
 
-        pos_embedding = relative_position_embedding(self.max_seq_len, attn_dim)
-
         inputs = tf.keras.layers.Input(
             shape=(self.max_seq_len, self.obs_dim), name="inputs")
         E_out = tf.keras.layers.Dense(attn_dim)(inputs)
@@ -104,7 +102,6 @@ class TrXLNet(RecurrentNetwork):
                     out_dim=attn_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
-                    rel_pos_encoder=pos_embedding,
                     input_layernorm=False,
                     output_activation=None),
                 fan_in_layer=None)(E_out)
@@ -225,16 +222,6 @@ class GTrXLNet(RecurrentNetwork):
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
 
-        # Constant (non-trainable) sinusoid rel pos encoding matrices
-        # (use different ones for inference and training due to the different
-        # memory sizes used).
-        # For inference, we prepend the memory to the current timestep's input.
-        Phi_inf = relative_position_embedding(self.memory_inference + 1,
-                                              self.attn_dim)
-        # For training, we prepend the memory to the input sequence.
-        Phi_train = relative_position_embedding(
-            self.memory_training + self.max_seq_len, self.attn_dim)
-
         # Raw observation input (plus (None) time axis).
         input_layer = tf.keras.layers.Input(
             shape=(None, self.obs_dim), name="inputs")
@@ -247,7 +234,6 @@ class GTrXLNet(RecurrentNetwork):
         ]
 
         # Map observation dim to input/output transformer (attention) dim.
-        #TODO: why is there no ReLU here? Shouldn't this match the transformer outputs?
         E_out = tf.keras.layers.Dense(self.attn_dim)(input_layer)
         # Output, collected and concat'd to build the internal, tau-len
         # Memory units used for additional contextual information.
@@ -261,8 +247,6 @@ class GTrXLNet(RecurrentNetwork):
                     out_dim=self.attn_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
-                    #rel_pos_encoder_inference=Phi_inf,
-                    #rel_pos_encoder_training=Phi_train,
                     input_layernorm=True,
                     output_activation=tf.nn.relu),
                 fan_in_layer=GRUGate(init_gate_bias),
@@ -316,7 +300,7 @@ class GTrXLNet(RecurrentNetwork):
     def forward(self, input_dict, state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         assert seq_lens is not None
-       
+
         # Add the time dim to observations.
         B = tf.shape(seq_lens)[0]
         observations = input_dict[SampleBatch.OBS]
@@ -377,23 +361,3 @@ class GTrXLNet(RecurrentNetwork):
             train_batch[k] = initial_states[i]
         train_batch["seq_lens"] = np.array(seq_lens)
         return train_batch
-
-
-def relative_position_embedding(seq_length: int, out_dim: int) -> TensorType:
-    """Creates a [seq_length x seq_length] matrix for rel. pos encoding.
-
-    Denoted as Phi in [2] and [3]. Phi is the standard sinusoid encoding
-    matrix.
-
-    Args:
-        seq_length (int): The max. sequence length (time axis).
-        out_dim (int): The number of nodes to go into the first Tranformer
-            layer with.
-
-    Returns:
-        tf.Tensor: The encoding matrix Phi.
-    """
-    inverse_freq = 1 / (10000**(tf.range(0, out_dim, 2.0) / out_dim))
-    pos_offsets = tf.range(seq_length - 1., -1., -1.)
-    inputs = pos_offsets[:, None] * inverse_freq[None, :]
-    return tf.concat((tf.sin(inputs), tf.cos(inputs)), axis=-1)

@@ -48,7 +48,11 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         self._uvar = self.add_weight(shape=(num_heads, head_dim))
         self._vvar = self.add_weight(shape=(num_heads, head_dim))
 
-        # Positional Embedding layer .
+        # Constant (non-trainable) sinusoid rel pos encoding matrix, which
+        # depends on this incoming time dimension.
+        # For inference, we prepend the memory to the current timestep's
+        # input: Tau + 1. For training, we prepend the memory to the input
+        # sequence: Tau + T.
         self._pos_embedding = PositionalEmbedding(out_dim)
         self._pos_proj = tf.keras.layers.Dense(
             num_heads * head_dim, use_bias=False)
@@ -57,8 +61,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         if input_layernorm:
             self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
-    def call(self,
-             inputs: TensorType,
+    def call(self, inputs: TensorType,
              memory: Optional[TensorType] = None) -> TensorType:
         T = tf.shape(inputs)[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads

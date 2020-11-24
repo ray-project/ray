@@ -190,9 +190,8 @@ class DynamicTFPolicy(TFPolicy):
                 self._state_inputs = [
                     get_placeholder(
                         space=vr.space,
-                        time_axis=not isinstance(vr.data_rel_pos, int))
-                    for k, vr in
-                    self.model.inference_view_requirements.items()
+                        time_axis=not isinstance(vr.data_rel_pos, int)) for k,
+                    vr in self.model.inference_view_requirements.items()
                     if k.startswith("state_in_")
                 ]
             else:
@@ -429,26 +428,14 @@ class DynamicTFPolicy(TFPolicy):
             mo = re.match("state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
-                #sample = [view_req.space.sample()]
-                #dummy_batch[view_col] = np.zeros_like(
-                #    [sample] if isinstance(view_req.data_rel_pos_to,
-                #                           int) else sample)
             # State-outs (no placeholders needed).
             elif view_col.startswith("state_out_"):
                 continue
-                #dummy_batch[view_col] = np.zeros_like(
-                #    [view_req.space.sample()])
             # Skip action dist inputs placeholder (do later).
             elif view_col == SampleBatch.ACTION_DIST_INPUTS:
                 continue
             elif view_col in existing_inputs:
                 input_dict[view_col] = existing_inputs[view_col]
-                #dummy_batch[view_col] = np.zeros(
-                #    shape=[
-                #        1 if s is None else s
-                #        for s in existing_inputs[view_col].shape.as_list()
-                #    ],
-                #    dtype=existing_inputs[view_col].dtype.as_numpy_dtype)
             # All others.
             else:
                 time_axis = not isinstance(view_req.data_rel_pos, int)
@@ -459,9 +446,6 @@ class DynamicTFPolicy(TFPolicy):
                         space=view_req.space,
                         name=view_col,
                         time_axis=time_axis)
-                sample = view_req.space.sample()
-                #dummy_batch[view_col] = np.zeros_like([sample] if not time_axis
-                #                                      else [[sample]])
         dummy_batch = self._get_dummy_batch_from_view_requirements()
 
         return input_dict, dummy_batch

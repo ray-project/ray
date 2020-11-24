@@ -161,9 +161,12 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                                     dtype=v.dtype,
                                     shape=shape,
                                     name="kwarg_{}".format(k))
-                        symbolic_out[0] = fn(*args_placeholders, **kwargs_placeholders)
+                        symbolic_out[0] = fn(*args_placeholders,
+                                             **kwargs_placeholders)
                 feed_dict = dict(zip(args_placeholders, args))
-                feed_dict.update({kwargs_placeholders[k]: kwargs[k] for k in kwargs.keys()})
+                feed_dict.update(
+                    {kwargs_placeholders[k]: kwargs[k]
+                     for k in kwargs.keys()})
                 ret = session_or_none.run(symbolic_out[0], feed_dict)
                 return ret
 

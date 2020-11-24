@@ -26,7 +26,7 @@ class DebugCounterEnv(gym.Env):
     def step(self, action):
         self.i += 1
         return self._get_obs(), float(self.i % 3), \
-               self.i >= 15 + self.start_at_t, {}
+            self.i >= 15 + self.start_at_t, {}
 
     def _get_obs(self):
         return np.array([self.i], dtype=np.float32)

@@ -226,11 +226,10 @@ class _AgentCollector:
         for col, data in single_row.items():
             if col in self.buffers:
                 continue
-            shift = self.shift_before - \
-                    (1 if col in
-                          [SampleBatch.OBS, SampleBatch.EPS_ID,
-                           SampleBatch.AGENT_INDEX, "env_id", "t"]
-                     else 0)
+            shift = self.shift_before - (1 if col in [
+                SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                "env_id", "t"
+            ] else 0)
             # Python primitive or dict (e.g. INFOs).
             if isinstance(data, (int, float, bool, str, dict)):
                 self.buffers[col] = [0 for _ in range(shift)]
@@ -276,8 +275,8 @@ class _AgentCollector:
                 time_indices = abs_pos + view_req.data_rel_pos
 
             if isinstance(time_indices, tuple):
-                data = self.buffers[data_col][time_indices[
-                    0]:time_indices[1] + 1]
+                data = self.buffers[data_col][time_indices[0]:time_indices[1] +
+                                              1]
             else:
                 data = self.buffers[data_col][time_indices]
             # Create batches of 1 (single-agent input-dict).
@@ -457,8 +456,8 @@ class _SimpleListCollector(_SampleCollector):
 
     @override(_SampleCollector)
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
-                     env_id: EnvID, policy_id: PolicyID,
-                     t: int, init_obs: TensorType) -> None:
+                     env_id: EnvID, policy_id: PolicyID, t: int,
+                     init_obs: TensorType) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
         if agent_key not in self.agent_key_to_policy_id:

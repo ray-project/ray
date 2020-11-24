@@ -93,7 +93,7 @@ def minibatches(samples, sgd_minibatch_size):
         while i < samples.count:
             slices.append((i, i + sgd_minibatch_size))
             i += sgd_minibatch_size
-    #TODOrandom.shuffle(slices)
+    random.shuffle(slices)
 
     for i, j in slices:
         yield samples.slice(i, j)

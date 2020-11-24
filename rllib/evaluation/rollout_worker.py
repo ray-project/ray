@@ -162,7 +162,7 @@ class RolloutWorker(ParallelIteratorWorker):
             monitor_path: str = None,
             log_dir: str = None,
             log_level: str = None,
-            callbacks: Type["DefaultCallbacks"] = None,
+            callbacks: Type[DefaultCallbacks] = None,
             input_creator: Callable[[
                 IOContext
             ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),
@@ -342,7 +342,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
             from ray.rllib.agents.callbacks import DefaultCallbacks
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+            self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}

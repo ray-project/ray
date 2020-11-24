@@ -9,7 +9,6 @@ import ray
 import ray.experimental.tf_utils
 from ray.util.debug import log_once
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
-from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -174,11 +173,6 @@ class TFPolicy(Policy):
             raise ValueError(
                 "Number of state input and output tensors must match, got: "
                 "{} vs {}".format(self._state_inputs, self._state_outputs))
-        #if len(self.get_initial_state()) != len(self._state_inputs):
-        #    raise ValueError(
-        #        "Length of initial state must match number of state inputs, "
-        #        "got: {} vs {}".format(self.get_initial_state(),
-        #                               self._state_inputs))
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
@@ -804,15 +798,9 @@ class TFPolicy(Policy):
 
         # Get batch ready for RNNs/Attention Nets, etc.
         train_batch = self.model.preprocess_train_batch(train_batch)
-        #pad_batch_to_sequences_of_same_size(
-        #    batch,
-        #    shuffle=shuffle,
-        #    max_seq_len=self._max_seq_len,
-        #    batch_divisibility_req=self._batch_divisibility_req,
-        #    feature_keys=[
-        #        k for k in self._loss_input_dict.keys() if k != "seq_lens"
-        #    ],
-        #)
+
+        # Mark the batch as "is_training" so the Model can use this
+        # information.
         train_batch["is_training"] = True
 
         # Build the feed dict from the batch.

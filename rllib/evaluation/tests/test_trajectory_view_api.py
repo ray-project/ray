@@ -35,13 +35,12 @@ class MyCallbacks(DefaultCallbacks):
             current = o
             if o == 15:
                 current = None
-        print(policy, train_batch)
 
 
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -153,9 +152,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["num_sgd_iter"] = 5
         config["num_workers"] = 0
         config["callbacks"] = MyCallbacks
-        config["env_config"] = {"config": {"start_at_t": 1}}  # first obs is [1.0]
+        config["env_config"] = {
+            "config": {
+                "start_at_t": 1
+            }
+        }  # first obs is [1.0]
 
-        for _ in framework_iterator(config, frameworks="tf2"):#TODO: all
+        for _ in framework_iterator(config, frameworks="tf2"):
             trainer = ppo.PPOTrainer(
                 config,
                 env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
@@ -200,7 +203,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "policy_mapping_fn": policy_fn,
         }
         num_iterations = 2
-        for _ in framework_iterator(config, frameworks="torch"):#TODO: all
+        for _ in framework_iterator(config, frameworks="torch"):
             print("w/ traj. view API")
             config["_use_trajectory_view_api"] = True
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
@@ -323,8 +326,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         max_seq_len = 50
         rollout_fragment_length = 201
         policies = {
-            "pol0": (
-            EpisodeEnvAwareAttentionPolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space,
+                     {}),
         }
 
         def policy_fn(agent_id):
@@ -349,9 +352,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             num_envs=1,
         )
         batch = rollout_worker_w_api.sample()
-        analyze_attention_batch(batch)
-        #TODO: batch state_in seems off by 1 timestep!!
-        print(end="")
+        print(batch)
 
 
 def analyze_rnn_batch(batch, max_seq_len):

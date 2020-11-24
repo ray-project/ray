@@ -99,8 +99,10 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
         self.model = _fake_model()
         self.model.inference_view_requirements = {
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            SampleBatch.EPS_ID: ViewRequirement(), "env_id": ViewRequirement(),
-            "t": ViewRequirement(), SampleBatch.OBS: ViewRequirement(),
+            SampleBatch.EPS_ID: ViewRequirement(),
+            "env_id": ViewRequirement(),
+            "t": ViewRequirement(),
+            SampleBatch.OBS: ViewRequirement(),
             "state_in_0": ViewRequirement(
                 "state_out_0",
                 # Provide state outs -50 to -1 as "state-in".
@@ -108,11 +110,11 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
                 # Repeat the incoming state every n time steps (usually max seq
                 # len).
                 batch_repeat_value=self.config["model"]["max_seq_len"],
-                space=self.state_space)}
+                space=self.state_space)
+        }
 
-        self.view_requirements = dict(
-            super()._get_default_view_requirements(),
-            **self.model.inference_view_requirements)
+        self.view_requirements = dict(super()._get_default_view_requirements(),
+                                      **self.model.inference_view_requirements)
 
     @override(Policy)
     def is_recurrent(self):
@@ -131,9 +133,7 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
             input_dict[SampleBatch.AGENT_INDEX][i],
             input_dict[SampleBatch.EPS_ID][i], input_dict["env_id"][i]
         ] for i, _ in enumerate(input_dict["obs"])])
-        states = [
-            np.array([[ts[i]] for i in range(len(input_dict["obs"]))])
-        ]
+        states = [np.array([[ts[i]] for i in range(len(input_dict["obs"]))])]
         self.global_timestep += 1
         return actions, states, {}
 
