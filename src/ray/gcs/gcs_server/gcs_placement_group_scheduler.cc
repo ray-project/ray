@@ -322,10 +322,18 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     const PlacementGroupID &placement_group_id) {
-  // There could be leasing bundles and committed bundles at the same time if placement
-  // groups are rescheduling.
-  DestroyPlacementGroupPreparedBundleResources(placement_group_id);
-  DestroyPlacementGroupCommittedBundleResources(placement_group_id);
+  auto &bundle_locations =
+      committed_bundle_location_index_.GetBundleLocations(placement_group_id);
+  if (bundle_locations.has_value()) {
+    // There could be leasing bundles and committed bundles at the same time if placement
+    // groups are rescheduling, so we need to destroy prepared bundles and committed
+    // bundles at the same time.
+    DestroyPlacementGroupPreparedBundleResources(placement_group_id);
+    DestroyPlacementGroupCommittedBundleResources(placement_group_id);
+
+    // Return destroyed bundles resources to the cluster resource.
+    ReturnBundleResources(bundle_locations.value());
+  }
 }
 
 void GcsPlacementGroupScheduler::MarkScheduleCancelled(
@@ -539,9 +547,14 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   committed_bundle_location_index_.AddBundleLocations(placement_group_id,
                                                       prepared_bundle_locations);
 
-  // If the placement group scheduling has been cancelled, destroy them.
+  // NOTE: If the placement group scheduling has been cancelled, we just need to destroy
+  // the committed bundles. The reason is that only `RemovePlacementGroup` will mark the
+  // state of placement group as `CANCELLED` and it will also destroy all prepared and
+  // committed bundles of the placement group.
+  // However, it cannot destroy the newly submitted bundles in this scheduling, so we need
+  // to destroy them separately.
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
-    DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
+    DestroyPlacementGroupCommittedBundleResources(placement_group_id);
     ReturnBundleResources(lease_status_tracker->GetBundleLocations());
     schedule_failure_handler(placement_group);
     return;
