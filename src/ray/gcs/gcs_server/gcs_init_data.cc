@@ -17,7 +17,7 @@
 namespace ray {
 namespace gcs {
 void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
-  // There are 5 kinds of table data need to be loaded.
+  // There are 6 kinds of table data need to be loaded.
   auto count_down = std::make_shared<int>(6);
   auto on_load_finished = [count_down, on_done] {
     if (--(*count_down) == 0) {

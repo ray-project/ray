@@ -64,6 +64,7 @@ class GcsInitData {
     return actor_table_data_;
   }
 
+  /// Get placement group metadata.
   const std::unordered_map<PlacementGroupID, rpc::PlacementGroupTableData>
       &PlacementGroups() const {
     return placement_group_table_data_;

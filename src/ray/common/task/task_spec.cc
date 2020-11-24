@@ -43,8 +43,9 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
   return sched_cls_id;
 }
 
-const PlacementGroupID TaskSpecification::PlacementGroupId() const {
-  return PlacementGroupID::FromBinary(message_->placement_group_id());
+const BundleID TaskSpecification::PlacementGroupBundleId() const {
+  return std::make_pair(PlacementGroupID::FromBinary(message_->placement_group_id()),
+                        message_->placement_group_bundle_index());
 }
 
 bool TaskSpecification::PlacementGroupCaptureChildTasks() const {

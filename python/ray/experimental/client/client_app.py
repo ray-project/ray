@@ -1,4 +1,4 @@
-import ray.experimental.client as ray
+from ray.experimental.client import ray
 
 ray.connect("localhost:50051")
 
@@ -18,6 +18,14 @@ def fact(x):
     # So we're on the right track!
     return ray.get(fact.remote(x - 1)) * x
 
+
+@ray.remote
+def get_nodes():
+    return ray.nodes()  # Can access the full Ray API in remote methods.
+
+
+print("Cluster nodes", ray.get(get_nodes.remote()))
+print(ray.nodes())
 
 objectref = ray.put("hello world")
 
@@ -43,3 +51,18 @@ print(ray.get(ref3))
 ref4 = fact.remote(5)
 # `120`
 print(ray.get(ref4))
+
+ref5 = fact.remote(10)
+
+print([ref2, ref3, ref4, ref5])
+# should return ref2, ref3, ref4
+res = ray.wait([ref5, ref2, ref3, ref4], num_returns=3)
+print(res)
+assert [ref2, ref3, ref4] == res[0]
+assert [ref5] == res[1]
+
+# should return ref2, ref3, ref4, ref5
+res = ray.wait([ref2, ref3, ref4, ref5], num_returns=4)
+print(res)
+assert [ref2, ref3, ref4, ref5] == res[0]
+assert [] == res[1]

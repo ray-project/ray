@@ -398,14 +398,14 @@ class RayTrialExecutor(TrialExecutor):
             trial (Trial): Trial to be reset.
             new_config (dict): New configuration for Trial trainable.
             new_experiment_tag (str): New experiment name for trial.
-            logger_creator (Callable[[Dict], Logger]): A function that
-                instantiates a logger on the actor process.
+            logger_creator (Optional[Callable[[Dict], Logger]]): Function
+                that instantiates a logger on the actor process.
 
         Returns:
             True if `reset_config` is successful else False.
         """
-        trial.experiment_tag = new_experiment_tag
-        trial.config = new_config
+        trial.set_experiment_tag(new_experiment_tag)
+        trial.set_config(new_config)
         trainable = trial.runner
         with self._change_working_directory(trial):
             with warn_if_slow("reset"):

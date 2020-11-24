@@ -26,6 +26,7 @@ class TrialExecutor:
         """
         self._queue_trials = queue_trials
         self._cached_trial_state = {}
+        self._trials_to_cache = set()
 
     def set_status(self, trial, status):
         """Sets status and checkpoints metadata if needed.
@@ -59,14 +60,18 @@ class TrialExecutor:
             return
         try:
             logger.debug("Trial %s: Saving trial metadata.", trial)
-            self._cached_trial_state[trial.trial_id] = trial.__getstate__()
+            # Lazy cache trials
+            self._trials_to_cache.add(trial)
         except Exception:
             logger.exception("Trial %s: Error checkpointing trial metadata.",
                              trial)
 
     def get_checkpoints(self):
         """Returns a copy of mapping of the trial ID to pickled metadata."""
-        return self._cached_trial_state.copy()
+        for trial in self._trials_to_cache:
+            self._cached_trial_state[trial.trial_id] = trial.get_json_state()
+        self._trials_to_cache.clear()
+        return self._cached_trial_state
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
