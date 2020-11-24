@@ -241,7 +241,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   auto head = requests.begin();
   while (head != requests.end() &&
          (/*seqno*/ head->first <= client_queue.next_send_position) &&
-         (/*dependencies_resolved*/ head->second.second) {
+         (/*dependencies_resolved*/ head->second.second)) {
     // If the task has been sent before, skip the other tasks in the send
     // queue.
     bool skip_queue = head->first < client_queue.next_send_position;
@@ -256,13 +256,12 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   // Send all out of order compeleted tasks to the actor.
   if (send_out_of_order_tasks) {
     for (const auto &completed_task : client_queue.out_of_order_completed_tasks) {
-      auto &id = completed_task.first;
       // Making an copy here because we are flipping a flag and the original value is
       // const.
       TaskSpecification task_spec = completed_task.second;
       // Calling SubmitTask in event loop to avoid deadlock condition. SubmitTask holds
       // the mu_ and calls this method, we can't call SubmitTask recursively.
-      io_service_.post([this, task_spec, id]() mutable {
+      io_service_.post([this, task_spec]() mutable {
         task_spec.GetMutableMessage().set_skip_execution(true);
         // Call SubmitTask instead of PushActorTask here because we need to re-add the
         // task to the task queue.
