@@ -29,11 +29,18 @@ message Arg {
   Type type = 4;
 }
 
+enum RemoteExecType {
+  FUNCTION = 0;
+  ACTOR = 1;
+  METHOD = 2;
+  STATIC_METHOD = 3;
+}
+
 message ClientTask {
-  // Optionally Provided Task Name
-  string name = 1;
-  bytes payload_id = 2;
-  repeated Arg args = 3;
+  RemoteExecType type = 1;
+  string name = 2;
+  bytes payload_id = 3;
+  repeated Arg args = 4;
 }
 
 message ClientTaskTicket {
