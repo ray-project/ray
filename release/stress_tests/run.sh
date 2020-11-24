@@ -38,7 +38,7 @@ echo "commit: $commit"
 echo "branch: $ray_branch"
 echo "workload: $workload"
 
-wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux1_x86_64.whl"
+wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux2014_x86_64.whl"
 
 # Install Anaconda.
 wget --quiet https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true

@@ -41,8 +41,8 @@ class TestPG(unittest.TestCase):
 
         # Fake CartPole episode of n time steps.
         train_batch = {
-            SampleBatch.OBS: np.array([[0.1, 0.2, 0.3, 0.4],
-                                       [0.5, 0.6, 0.7, 0.8],
+            SampleBatch.OBS: np.array([[0.1, 0.2, 0.3,
+                                        0.4], [0.5, 0.6, 0.7, 0.8],
                                        [0.9, 1.0, 1.1, 1.2]]),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
             SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
@@ -63,8 +63,8 @@ class TestPG(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 1.0 + 0.99 * 1.0 + 1.0, 0.99 * 1.0 + 1.0, 1.0] =
             # [2.9701, 1.99, 1.0]
-            train_batch_ = pg.post_process_advantages(
-                policy, train_batch.copy())
+            train_batch_ = pg.post_process_advantages(policy,
+                                                      train_batch.copy())
             if fw == "torch":
                 train_batch_ = policy._lazy_tensor_dict(train_batch_)
 

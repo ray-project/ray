@@ -211,21 +211,23 @@ def build_tf_policy(
                 if extra_action_fetches_fn is None:
                     policy._extra_action_fetches = {}
                 else:
+                    policy._extra_action_fetches = extra_action_fetches_fn(
+                        policy)
                     policy._extra_action_fetches = extra_action_fetches_fn(policy)
                     #TODO: remove this in favor of torch/eager way.
                     # Update default view requirements by extra action fetches.
-                    if view_requirements_fn is None and config[
-                        "_use_trajectory_view_api"]:
-                        extra_fetches = policy.extra_compute_action_fetches()
-                        for key, value in extra_fetches.items():
-                            if key not in policy.view_requirements:
-                                policy._input_dict[key] = get_placeholder(
-                                    value=value)
-                                policy._dummy_batch[key] = np.zeros(
-                                    shape=[1 if s is None else s for s in
-                                           value.shape.as_list()],
-                                    dtype=np.float32)
-                                policy.view_requirements[key] = ViewRequirement()
+                    #if view_requirements_fn is None and config[
+                    #    "_use_trajectory_view_api"]:
+                    #    extra_fetches = policy.extra_compute_action_fetches()
+                    #    for key, value in extra_fetches.items():
+                    #        if key not in policy.view_requirements:
+                    #            policy._input_dict[key] = get_placeholder(
+                    #                value=value)
+                    #            policy._dummy_batch[key] = np.zeros(
+                    #                shape=[1 if s is None else s for s in
+                    #                       value.shape.as_list()],
+                    #                dtype=np.float32)
+                    #            policy.view_requirements[key] = ViewRequirement()
 
             DynamicTFPolicy.__init__(
                 self,
@@ -247,6 +249,9 @@ def build_tf_policy(
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
+
+            # Got to reset global_timestep again after this fake run-through.
+            self.global_timestep = 0
 
         @override(Policy)
         def postprocess_trajectory(self,

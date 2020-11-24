@@ -27,16 +27,15 @@ logger = logging.getLogger(__name__)
 
 class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                         TrainerOptimizersMixin):
-    def _configure_amp(self, amp, models, optimizers):
+    def _configure_amp(self, amp, models, optimizers, apex_args=None):
         assert len(models) == 1
         model = models[0]
         assert isinstance(model, ptl.LightningModule)
-        amp_level = self._apex_args.get("opt_level", "O2")
         model, optimizers = model.configure_apex(
-            amp, model, optimizers, amp_level=amp_level)
+            amp, model, optimizers, amp_level="O2")
         return [model], optimizers
 
-    def _configure_ddp(self, models, device_ids):
+    def _configure_ddp(self, models, device_ids, ddp_args=None):
         assert len(models) == 1
         model = models[0]
         assert isinstance(model, ptl.LightningModule)

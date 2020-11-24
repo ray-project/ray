@@ -5,6 +5,8 @@ cartpole-maml:
     stop:
         training_iteration: 100   
     config:
+        # Works with both frameworks, "tf" and "torch".
+        framework: torch
         horizon: 200
         rollout_fragment_length: 200
         num_envs_per_worker: 10
@@ -24,4 +26,3 @@ cartpole-maml:
         use_meta_env: False
         model:
             fcnet_hiddens: [64, 64]
-            free_log_std: True

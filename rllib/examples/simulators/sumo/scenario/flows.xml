@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<routes>
+    <flow id="veh" from="road" to="road" period="1" begin="0.0" end="3600.0"/>
+</routes>

@@ -35,7 +35,7 @@ def make_sample_batch(i):
 
 class AgentIOTest(unittest.TestCase):
     def setUp(self):
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=1, ignore_reinit_error=True)
         self.test_dir = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -105,6 +105,8 @@ class AgentIOTest(unittest.TestCase):
                         # just for testing.
                         data["rewards"] = data["advantages"]
                         del data["advantages"]
+                        if "value_targets" in data:
+                            del data["value_targets"]
                         out.append(data)
                 with open(path, "w") as f:
                     for data in out:

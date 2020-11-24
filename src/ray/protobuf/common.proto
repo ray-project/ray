@@ -29,7 +29,9 @@ enum Language {
 enum WorkerType {
   WORKER = 0;
   DRIVER = 1;
-  IO_WORKER = 2;
+  // IO worker types.
+  SPILL_WORKER = 2;
+  RESTORE_WORKER = 3;
 }
 
 // Type of a task.
@@ -188,10 +190,12 @@ message TaskSpec {
   int32 max_retries = 17;
   // Placement group that is associated with this task.
   bytes placement_group_id = 18;
+  // Placement group bundle that is associated with this task.
+  int64 placement_group_bundle_index = 19;
   // Whether or not this task should capture parent's placement group automatically.
-  bool placement_group_capture_child_tasks = 19;
+  bool placement_group_capture_child_tasks = 20;
   // Environment variables to override for this task
-  map<string, string> override_environment_variables = 20;
+  map<string, string> override_environment_variables = 21;
 }
 
 message Bundle {

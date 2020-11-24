@@ -6,13 +6,16 @@ import io.ray.api.Checkpointable.Checkpoint;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.JobId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.TablePrefix;
+import io.ray.runtime.placementgroup.PlacementGroupUtils;
 import io.ray.runtime.util.IdUtil;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,6 +53,30 @@ public class GcsClient {
       return new RedisClient(new String(address), redisPassword);
     }).collect(Collectors.toList());
     globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
+  }
+
+  /**
+   * Get placement group by {@link PlacementGroupId}
+   * @param placementGroupId Id of placement group.
+   * @return The placement group.
+   */
+  public PlacementGroup getPlacementGroupInfo(PlacementGroupId placementGroupId) {
+    byte[] result = globalStateAccessor.getPlacementGroupInfo(placementGroupId);
+    return PlacementGroupUtils.generatePlacementGroupFromByteArray(result);
+  }
+
+  /**
+   * Get all placement groups in this cluster.
+   * @return All placement groups.
+   */
+  public List<PlacementGroup> getAllPlacementGroupInfo() {
+    List<byte[]> results = globalStateAccessor.getAllPlacementGroupInfo();
+
+    List<PlacementGroup> placementGroups = new ArrayList<>();
+    for (byte[] result : results) {
+      placementGroups.add(PlacementGroupUtils.generatePlacementGroupFromByteArray(result));
+    }
+    return placementGroups;
   }
 
   public List<NodeInfo> getAllNodeInfo() {

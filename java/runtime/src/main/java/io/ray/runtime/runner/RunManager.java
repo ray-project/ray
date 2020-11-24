@@ -257,6 +257,10 @@ public class RunManager {
     final File redisServerFile = BinaryFileUtil.getNativeFile(
         rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
     Preconditions.checkState(redisServerFile.setExecutable(true));
+    // The redis module file.
+    File redisModule = BinaryFileUtil.getNativeFile(
+        rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME);
+    Preconditions.checkState(redisModule.setExecutable(true));
     List<String> command = Lists.newArrayList(
         // The redis-server executable file.
         redisServerFile.getAbsolutePath(),
@@ -268,8 +272,7 @@ public class RunManager {
         "warning",
         "--loadmodule",
         // The redis module file.
-        BinaryFileUtil.getNativeFile(
-            rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME).getAbsolutePath()
+        redisModule.getAbsolutePath()
     );
 
     if (!Strings.isNullOrEmpty(password)) {

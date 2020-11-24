@@ -6,8 +6,7 @@ py_library(
 )
 
 serve_tests_srcs = glob(["tests/*.py"],
-     exclude=["tests/test_controller_crashes.py",
-              "tests/test_serve.py",
+     exclude=["tests/test_serve.py",
              ])
 
 py_test(
@@ -36,13 +35,14 @@ py_test(
 )
 
 
-py_test(
-    name = "test_failure",
-    size = "medium",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
+# TODO(simon): Test skipped until #11683 fixed.
+# py_test(
+#     name = "test_failure",
+#     size = "medium",
+#     srcs = serve_tests_srcs,
+#     tags = ["exclusive"],
+#     deps = [":serve_lib"],
+# )
 
 
 py_test(
@@ -88,6 +88,13 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_long_poll",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
 
 py_test(
     name = "test_standalone",
@@ -107,14 +114,15 @@ py_test(
 
 
 # Runs test_api and test_failure with injected failures in the controller.
-# TODO(edoakes): reenable this once we're using GCS actor fault tolerance.
+# TODO(simon): Tests are disabled until #11683 is fixed.
 # py_test(
-    # name = "test_controller_crashes",
-    # size = "medium",
-    # srcs = glob(["tests/test_controller_crashes.py",
-                 # "tests/test_api.py",
-                 # "tests/test_failure.py"],
-                # exclude=["tests/test_serve.py"]),
+#     name = "test_controller_crashes",
+#     size = "large",
+#     srcs = glob(["tests/test_controller_crashes.py",
+#                 "tests/test_api.py",
+#                 "tests/test_failure.py",
+#                 "**/conftest.py"],
+#                 exclude=["tests/test_serve.py"]),
 # )
 
 py_test(

@@ -45,6 +45,10 @@ DEFAULT_CONFIG = with_common_config({
         "num_envs_per_worker": 1,
         "observation_filter": "NoFilter"
     },
+
+    # Use the new "trajectory view API" to collect samples and produce
+    # model- and policy inputs.
+    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable

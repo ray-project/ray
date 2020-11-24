@@ -12,10 +12,12 @@ from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.utils import setup_logger
+from ray.ray_logging import setup_logger
 from ray._raylet import GlobalStateAccessor
 
 import redis
@@ -56,9 +58,17 @@ def parse_resource_demands(resource_load_by_shape):
                 backlog_queue = waiting_bundles
             for _ in range(resource_demand_pb.backlog_size):
                 backlog_queue.append(request_shape)
+            if len(waiting_bundles+infeasible_bundles) > \
+                    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE:
+                break
     except Exception:
         logger.exception("Failed to parse resource demands.")
-    return waiting_bundles, infeasible_bundles
+
+    # Bound the total number of bundles to 2xMAX_RESOURCE_DEMAND_VECTOR_SIZE.
+    # This guarantees the resource demand scheduler bin packing algorithm takes
+    # a reasonable amount of time to run.
+    return waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE], \
+        infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
 
 
 class Monitor:
@@ -93,7 +103,8 @@ class Monitor:
         # Keep a mapping from raylet client ID to IP address to use
         # for updating the load metrics.
         self.raylet_id_to_ip_map = {}
-        self.load_metrics = LoadMetrics()
+        head_node_ip = redis_address.split(":")[0]
+        self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
                                                  self.load_metrics)

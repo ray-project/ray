@@ -7,11 +7,12 @@ import logging
 import pickle
 from typing import Dict, List, Optional, Union
 
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict
+from ray.tune.utils.util import flatten_dict, is_nan_or_inf
 
 try:  # Python 3 only -- needed for lint test.
     import dragonfly
@@ -47,6 +48,9 @@ class DragonflySearch(Searcher):
     This interface requires using FunctionCallers and optimizers provided by
     Dragonfly.
 
+    This searcher will automatically filter out any NaN, inf or -inf
+    results.
+
     Parameters:
         optimizer (dragonfly.opt.BlackboxOptimiser|str): Optimizer provided
             from dragonfly. Choose an optimiser that extends BlackboxOptimiser.
@@ -59,7 +63,9 @@ class DragonflySearch(Searcher):
             an optimizer as the `optimizer` argument. Defines the search space
             and requires a `domain` to be set. Can be automatically converted
             from the `config` dict passed to `tune.run()`.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list of lists): A list of points you'd like to run
@@ -131,7 +137,7 @@ class DragonflySearch(Searcher):
     """
 
     def __init__(self,
-                 optimizer: Optional[BlackboxOptimiser] = None,
+                 optimizer: Optional[Union[str, BlackboxOptimiser]] = None,
                  domain: Optional[str] = None,
                  space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
@@ -174,9 +180,9 @@ class DragonflySearch(Searcher):
             self._opt = optimizer
             self.init_dragonfly()
         elif self._space:
-            self.setup_dragonfly()
+            self._setup_dragonfly()
 
-    def setup_dragonfly(self):
+    def _setup_dragonfly(self):
         """Setup dragonfly when no optimizer has been passed."""
         assert not self._opt, "Optimizer already set."
 
@@ -256,6 +262,10 @@ class DragonflySearch(Searcher):
         elif self._mode == "max":
             self._metric_op = 1.
 
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         if self._opt:
@@ -267,7 +277,7 @@ class DragonflySearch(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_dragonfly()
+        self._setup_dragonfly()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
@@ -304,7 +314,7 @@ class DragonflySearch(Searcher):
                           error: bool = False):
         """Passes result to Dragonfly unless early terminated or errored."""
         trial_info = self._live_trial_mapping.pop(trial_id)
-        if result:
+        if result and not is_nan_or_inf(result[self._metric]):
             self._opt.tell([(trial_info,
                              self._metric_op * result[self._metric])])
 
@@ -357,5 +367,4 @@ class DragonflySearch(Searcher):
             resolve_value("/".join(path), domain)
             for path, domain in domain_vars
         ]
-
         return space

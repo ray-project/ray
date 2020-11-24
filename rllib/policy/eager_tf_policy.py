@@ -4,19 +4,16 @@ It supports both traced and non-traced eager execution modes."""
 
 import functools
 import logging
-import numpy as np
-from gym.spaces import Tuple, Dict
 
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import initialize_loss_with_dummy_batch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.tf_ops import convert_to_non_tf_type
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
@@ -28,8 +25,13 @@ def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
         x = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
         return tf.nest.map_structure(_convert_to_tf, x)
-    if isinstance(x, Policy):
+    elif isinstance(x, Policy):
         return x
+    # Special handling of "Repeated" values.
+    elif isinstance(x, RepeatedValues):
+        return RepeatedValues(
+            tf.nest.map_structure(_convert_to_tf, x.values), x.lengths,
+            x.max_len)
 
     if x is not None:
         d = dtype
@@ -255,7 +257,7 @@ def build_eager_tf_policy(name,
                     framework=self.framework,
                 )
             # Auto-update model's inference view requirements, if recurrent.
-            self.model.update_view_requirements_from_init_state()
+            self._update_model_inference_view_requirements_from_init_state()
 
             self.exploration = self._create_exploration()
             self._state_in = [
@@ -265,7 +267,7 @@ def build_eager_tf_policy(name,
 
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
-                self.view_requirements = view_requirements_fn(self)
+                self.view_requirements.update(view_requirements_fn(self))
             # Combine view_requirements for Model and Policy.
             self.view_requirements.update(
                 self.model.inference_view_requirements)
@@ -273,8 +275,10 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            initialize_loss_with_dummy_batch(
-                self, auto=view_requirements_fn is None)
+            self._initialize_loss_from_dummy_batch(
+                auto_remove_unneeded_view_reqs=True,
+                stats_fn=stats_fn,
+            )
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -285,7 +289,7 @@ def build_eager_tf_policy(name,
             if after_init:
                 after_init(self, observation_space, action_space, config)
 
-            # Got to reset global_timestep again after fake run-throughs.
+            # Got to reset global_timestep again after this fake run-through.
             self.global_timestep = 0
 
         @override(Policy)
@@ -302,14 +306,18 @@ def build_eager_tf_policy(name,
             return sample_batch
 
         @override(Policy)
-        def learn_on_batch(self, samples):
+        def learn_on_batch(self, postprocessed_batch):
+            # Callback handling.
+            self.callbacks.on_learn_on_batch(
+                policy=self, train_batch=postprocessed_batch)
+
             # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
-                samples,
+                postprocessed_batch,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
                 batch_divisibility_req=self.batch_divisibility_req)
-            return self._learn_on_batch_eager(samples)
+            return self._learn_on_batch_eager(postprocessed_batch)
 
         @convert_eager_inputs
         @convert_eager_outputs
@@ -639,91 +647,9 @@ def build_eager_tf_policy(name,
                 })
             return fetches
 
-        def _initialize_loss_with_dummy_batch(self):
-            self._dummy_batch = self._get_dummy_batch(self.view_requirements, batch_size=4)
-            input_dict = self._lazy_tensor_dict(self._dummy_batch)
-
-            # TODO: (sven) try to get rid of this call.
-            if action_distribution_fn:
-                _, self.dist_class, _ = action_distribution_fn(
-                    self, self.model, input_dict[SampleBatch.CUR_OBS])
-            self.compute_actions_from_input_dict(input_dict)
-
-            # Dummy forward pass to initialize any policy attributes, etc.
-            #dummy_batch = {
-            #    SampleBatch.CUR_OBS: np.array(
-            #        [self.observation_space.sample()]),
-            #    SampleBatch.NEXT_OBS: np.array(
-            #        [self.observation_space.sample()]),
-            #    SampleBatch.DONES: np.array([False], dtype=np.bool),
-            #    SampleBatch.REWARDS: np.array([0], dtype=np.float32),
-            #}
-            #if isinstance(self.action_space, (Dict, Tuple)):
-            #    dummy_batch[SampleBatch.ACTIONS] = [
-            #        flatten_to_single_ndarray(self.action_space.sample())
-            #    ]
-            #else:
-            #    dummy_batch[SampleBatch.ACTIONS] = tf.nest.map_structure(
-            #        lambda c: np.array([c]), self.action_space.sample())
-
-            #if obs_include_prev_action_reward:
-            #    dummy_batch.update({
-            #        SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
-            #        SampleBatch.PREV_REWARDS: dummy_batch[SampleBatch.REWARDS],
-            #    })
-            #for i, h in enumerate(self._state_in):
-            #    dummy_batch["state_in_{}".format(i)] = h
-            #    dummy_batch["state_out_{}".format(i)] = h
-
-            #if self._state_in:
-            #    dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
-
-            # Convert everything to tensors.
-            #dummy_batch = tf.nest.map_structure(tf1.convert_to_tensor,
-            #                                    dummy_batch)
-
-            ## for IMPALA which expects a certain sample batch size.
-            #def tile_to(tensor, n):
-            #    return tf.tile(tensor,
-            #                   [n] + [1 for _ in tensor.shape.as_list()[1:]])
-
-            #if get_batch_divisibility_req:
-            #    dummy_batch = tf.nest.map_structure(
-            #        lambda c: tile_to(c, get_batch_divisibility_req(self)),
-            #        dummy_batch)
-            i = 0
-            self._state_in = []
-            while "state_in_{}".format(i) in self._dummy_batch:
-                self._state_in.append(self._dummy_batch["state_in_{}".format(i)])
-                i += 1
-
-            # Execute a forward pass to get self.action_dist etc initialized,
-            # and also obtain the extra action fetches
-            #_, _, fetches = self.compute_actions(
-            #    dummy_batch[SampleBatch.CUR_OBS],
-            #    self._state_in,
-            #    dummy_batch.get(SampleBatch.PREV_ACTIONS),
-            #    dummy_batch.get(SampleBatch.PREV_REWARDS),
-            #    explore=False)
-            #dummy_batch.update(fetches)
-
-            #postprocessed_batch = self.postprocess_trajectory(
-            #    SampleBatch(dummy_batch))
-
-            # model forward pass for the loss (needed after postprocess to
-            # overwrite any tensor state from that call)
-            #self.model.from_batch(dummy_batch)
-
-            #postprocessed_batch = tf.nest.map_structure(
-            #    lambda c: tf.convert_to_tensor(c), postprocessed_batch.data)
-
-            loss_fn(self, self.model, self.dist_class, postprocessed_batch)
-            if stats_fn:
-                stats_fn(self, postprocessed_batch)
-
         def _lazy_tensor_dict(self, postprocessed_batch):
             train_batch = UsageTrackingDict(postprocessed_batch)
-            train_batch.set_get_interceptor(tf.convert_to_tensor)
+            train_batch.set_get_interceptor(_convert_to_tf)
             return train_batch
 
         def _lazy_numpy_dict(self, postprocessed_batch):

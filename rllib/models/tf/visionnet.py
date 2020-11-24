@@ -1,7 +1,11 @@
+from typing import Dict, List
+import gym
+
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.framework import get_activation_fn, try_import_tf
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -9,8 +13,9 @@ tf1, tf, tfv = try_import_tf()
 class VisionNetwork(TFModelV2):
     """Generic vision network implemented in ModelV2 API."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
         if not model_config.get("conv_filters"):
             model_config["conv_filters"] = get_filter_config(obs_space.shape)
 
@@ -137,7 +142,9 @@ class VisionNetwork(TFModelV2):
         self.base_model = tf.keras.Model(inputs, [conv_out, value_out])
         self.register_variables(self.base_model.variables)
 
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         # Explicit cast to float32 needed in eager.
         model_out, self._value_out = self.base_model(
             tf.cast(input_dict["obs"], tf.float32))
@@ -148,5 +155,5 @@ class VisionNetwork(TFModelV2):
         else:
             return tf.squeeze(model_out, axis=[1, 2]), state
 
-    def value_function(self):
+    def value_function(self) -> TensorType:
         return tf.reshape(self._value_out, [-1])

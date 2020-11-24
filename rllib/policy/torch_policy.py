@@ -111,7 +111,7 @@ class TorchPolicy(Policy):
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
         # Auto-update model's inference view requirements, if recurrent.
-        self.model.update_view_requirements_from_init_state()
+        self._update_model_inference_view_requirements_from_init_state()
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.inference_view_requirements)
 
@@ -295,6 +295,10 @@ class TorchPolicy(Policy):
             if prev_reward_batch is not None:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
+            state_batches = [
+                convert_to_torch_tensor(s, self.device)
+                for s in (state_batches or [])
+            ]
 
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
@@ -321,6 +325,10 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+        # Callback handling.
+        self.callbacks.on_learn_on_batch(
+            policy=self, train_batch=postprocessed_batch)
+
         # Compute gradients (will calculate all losses and `backward()`
         # them to get the grads).
         grads, fetches = self.compute_gradients(postprocessed_batch)

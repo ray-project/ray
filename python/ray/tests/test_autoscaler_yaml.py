@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from ray.autoscaler._private.util import prepare_config, validate_config
+from ray.autoscaler._private.providers import _NODE_PROVIDERS
+
 from ray.test_utils import recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -20,11 +22,20 @@ CONFIG_PATHS += recursive_fnmatch(
     os.path.join(RAY_PATH, "tune", "examples"), "*.yaml")
 
 
+def ignore_k8s_operator_configs(paths):
+    return [
+        path for path in paths if "kubernetes/operator_configs" not in path
+    ]
+
+
+CONFIG_PATHS = ignore_k8s_operator_configs(CONFIG_PATHS)
+
+
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
             if "aws/example-multi-node-type.yaml" in config_path:
-                # This is tested in testValidateDefaultConfigAWSMultiNodeTypes.
+                # aws is tested in testValidateDefaultConfigAWSMultiNodeTypes.
                 continue
             with open(config_path) as f:
                 config = yaml.safe_load(f)
@@ -102,12 +113,19 @@ class AutoscalingConfigTest(unittest.TestCase):
                 boto3=boto3_mock,
         ):
             new_config = prepare_config(new_config)
+            importer = _NODE_PROVIDERS.get(new_config["provider"]["type"])
+            provider_cls = importer(new_config["provider"])
 
-        try:
-            validate_config(new_config)
-            expected_available_node_types == new_config["available_node_types"]
-        except Exception:
-            self.fail("Config did not pass multi node types auto fill test!")
+            try:
+                new_config = \
+                    provider_cls.fillout_available_node_types_resources(
+                        new_config)
+                validate_config(new_config)
+                expected_available_node_types == new_config[
+                    "available_node_types"]
+            except Exception:
+                self.fail(
+                    "Config did not pass multi node types auto fill test!")
 
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \

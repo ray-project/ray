@@ -412,7 +412,7 @@ class SearchSpaceTest(unittest.TestCase):
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": tune.sample.Integer(-15, -10).quantized(2),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
@@ -421,7 +421,7 @@ class SearchSpaceTest(unittest.TestCase):
         hyperopt_config = {
             "a": hp.choice("a", [2, 3, 4]),
             "b": {
-                "x": hp.randint("x", 5),
+                "x": hp.randint("x", -15, -10),
                 "y": 4,
                 "z": hp.loguniform("z", np.log(1e-4), np.log(1e-2))
             }
@@ -443,7 +443,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         self.assertEqual(config1, config2)
         self.assertIn(config1["a"], [2, 3, 4])
-        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertIn(config1["b"]["x"], list(range(-15, -10)))
         self.assertEqual(config1["b"]["y"], 4)
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
@@ -566,6 +566,49 @@ class SearchSpaceTest(unittest.TestCase):
         config = searcher.suggest("0")
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
+
+    def testNevergradBestParams(self):
+        from ray.tune.suggest.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        best_params = [{
+            "metric": 1,
+            "a": "t1",
+            "b": 1,
+            "c": 1e-1
+        }, {
+            "metric": 2,
+            "a": "t2",
+            "b": 2,
+            "c": 1e-2
+        }]
+
+        searcher = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne, points_to_evaluate=best_params)
+        analysis = tune.run(
+            _mock_objective,
+            config=config,
+            metric="metric",
+            mode="max",
+            search_alg=searcher,
+            num_samples=5)
+
+        for i in range(len(best_params)):
+            trial_config = analysis.trials[i].config
+            trial_config_dict = {
+                "metric": trial_config["metric"],
+                "a": trial_config["a"],
+                "b": trial_config["b"],
+                "c": trial_config["c"]
+            }
+            self.assertDictEqual(trial_config_dict, best_params[i])
 
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param

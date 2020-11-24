@@ -402,6 +402,25 @@ void raylet::RayletClient::CancelResourceReserve(
   grpc_client_->CancelResourceReserve(request, callback);
 }
 
+void raylet::RayletClient::ReleaseUnusedBundles(
+    const std::vector<rpc::Bundle> &bundles_in_use,
+    const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) {
+  rpc::ReleaseUnusedBundlesRequest request;
+  for (auto &bundle : bundles_in_use) {
+    request.add_bundles_in_use()->CopyFrom(bundle);
+  }
+  grpc_client_->ReleaseUnusedBundles(
+      request,
+      [callback](const Status &status, const rpc::ReleaseUnusedBundlesReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Error releasing bundles from raylet, the raylet may have died:"
+              << status;
+        }
+        callback(status, reply);
+      });
+}
+
 void raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
