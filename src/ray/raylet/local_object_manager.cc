@@ -22,6 +22,7 @@ namespace raylet {
 void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
                                     std::vector<std::unique_ptr<RayObject>> &&objects) {
   absl::MutexLock lock(&mutex_);
+  RAY_CHECK(object_pinning_enabled_);
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];
@@ -59,16 +60,15 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   {
-    absl::MutexLock lock(&mutex_);
-    RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-    // The object should be in one of these stats; pinned, spilling, or spilled.
-    RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
-              (spilled_objects_url_.count(object_id) > 0) ||
-              (objects_pending_spill_.count(object_id) > 0));
-    pinned_objects_.erase(object_id);
-    // We don't filter non-spilled objects here because that will be addressed when the
-    // queue is processed.
-    spilled_object_pending_delete_.push(object_id);
+    if (object_pinning_enabled_) {
+      absl::MutexLock lock(&mutex_);
+      RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+      // The object should be in one of these stats; pinned, spilling, or spilled.
+      RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
+                (spilled_objects_url_.count(object_id) > 0) ||
+                (objects_pending_spill_.count(object_id) > 0));
+      pinned_objects_.erase(object_id);
+    }
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -98,6 +98,7 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
 }
 
 int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
+  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
     return num_bytes_required;
@@ -138,6 +139,7 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
                                       std::function<void(const ray::Status &)> callback) {
+  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   absl::MutexLock lock(&mutex_);
   SpillObjectsInternal(object_ids, callback);
 }
@@ -256,6 +258,7 @@ void LocalObjectManager::AddSpilledUrls(
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
+  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
@@ -281,20 +284,37 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   });
 }
 
+void LocalObjectManager::DeleteSpilledObjectIfNecessary(const ObjectID object_id) {
+  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
+  RAY_LOG(ERROR) << "Sang deleting object: " << object_id;
+  absl::MutexLock lock(&mutex_);
+  // We don't filter non-spilled objects here because that will be addressed when the
+  // queue is processed.
+  spilled_object_pending_delete_.push(object_id);
+}
+
 void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) {
+  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   absl::MutexLock lock(&mutex_);
   std::vector<std::string> object_urls_to_delete;
   while (!spilled_object_pending_delete_.empty() &&
          object_urls_to_delete.size() < max_batch_size) {
+    RAY_LOG(ERROR) << "Sang process entires";
     auto &object_id = spilled_object_pending_delete_.front();
-    RAY_CHECK(pinned_objects_.count(object_id) == 0)
-        << "Pinned objects cannot be in the deletion_queue. It must be anomaly. Please "
-           "create a Github issue if you see this error.";
     // If the object is still spilling, do nothing. This will block other entries to be
     // processed, but it should be fine because the spilling will be eventually done, and
     // deleting objects is the low priority tasks.
     // This will instead enable simpler logic after this block.
     if (objects_pending_spill_.count(object_id) != 0) {
+      break;
+    }
+
+    // If the object is still pinned, do nothing. This can happen because when the object
+    // reference is deleted, core worker sends 2 requests almost at the same time (one to
+    // reply to WaitForObjectEviction and the other for deleting objects), and grpc
+    // doesn't guarantee the ordering here. This will eventually be resolved.
+    if (pinned_objects_.count(object_id) != 0) {
+      RAY_LOG(ERROR) << "Weird";
       break;
     }
 
@@ -343,6 +363,12 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
 }
 
 void LocalObjectManager::DoPeriodicOperations() {
+  if (!object_pinning_enabled_) {
+    // Periodic operations are used only for object spilling which is currently
+    // unavailable when object pinning is disabled.
+    return;
+  }
+  RAY_LOG(ERROR) << "Sang periodic ops";
   execute_after(io_context_,
                 [this]() {
                   ProcessSpilledObjectsDeleteQueue(delete_batch_size_);

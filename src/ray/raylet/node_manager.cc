@@ -161,6 +161,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       local_object_manager_(io_service_, RayConfig::instance().free_objects_batch_size(),
                             RayConfig::instance().free_objects_period_milliseconds(),
                             worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
+                            /* object_pinning_enabled */ config.object_pinning_enabled,
                             [this](const std::vector<ObjectID> &object_ids) {
                               object_manager_.FreeObjects(object_ids,
                                                           /*local_only=*/false);
@@ -557,15 +558,11 @@ void NodeManager::HandleRequestObjectSpillage(
 void NodeManager::HandleDeleteSpilledObject(
     const rpc::DeleteSpilledObjectRequest &request, rpc::DeleteSpilledObjectReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // SANG-TODO fix it.
-  local_object_manager_.SpillObjects(
-      {ObjectID::FromBinary(request.object_id())},
-      [reply, send_reply_callback](const ray::Status &status) {
-        if (status.ok()) {
-          reply->set_success(true);
-        }
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      });
+  if (object_pinning_enabled_) {
+    local_object_manager_.DeleteSpilledObjectIfNecessary(
+        ObjectID::FromBinary(request.object_id()));
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleReleaseUnusedBundles(

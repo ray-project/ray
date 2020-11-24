@@ -38,6 +38,7 @@ class LocalObjectManager {
                      IOWorkerPoolInterface &io_worker_pool,
                      gcs::ObjectInfoAccessor &object_info_accessor,
                      rpc::CoreWorkerClientPool &owner_client_pool,
+                     bool object_pinning_enabled,
                      std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
                      SpaceReleasedCallback on_objects_spilled)
       : io_context_(io_context),
@@ -46,6 +47,7 @@ class LocalObjectManager {
         io_worker_pool_(io_worker_pool),
         object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
+        object_pinning_enabled_(object_pinning_enabled),
         on_objects_freed_(on_objects_freed),
         on_objects_spilled_(on_objects_spilled),
         last_free_objects_at_ms_(current_time_ms()) {
@@ -96,6 +98,11 @@ class LocalObjectManager {
 
   /// Try to clear any objects that have been freed.
   void FlushFreeObjectsIfNeeded(int64_t now_ms);
+
+  /// Delete a given spilled object if necessary.
+  ///
+  /// \param object_id Object id to delete.
+  void DeleteSpilledObjectIfNecessary(const ObjectID object_id);
 
   /// Judge if objects are deletable from pending_delete_queue and delete them if
   /// necessary.
@@ -152,6 +159,9 @@ class LocalObjectManager {
   /// Cache of gRPC clients to owners of objects pinned on
   /// this node.
   rpc::CoreWorkerClientPool &owner_client_pool_;
+
+  /// Whether to enable pinning for plasma objects.
+  bool object_pinning_enabled_;
 
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;

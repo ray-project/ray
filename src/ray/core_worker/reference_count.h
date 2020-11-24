@@ -21,11 +21,13 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
@@ -61,11 +63,13 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
                    bool distributed_ref_counting_enabled = true,
                    bool lineage_pinning_enabled = false,
-                   rpc::ClientFactoryFn client_factory = nullptr)
+                   rpc::ClientFactoryFn client_factory = nullptr,
+                   std::shared_ptr<raylet::RayletClient> local_raylet_client = nullptr)
       : rpc_address_(rpc_address),
         distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        borrower_pool_(client_factory) {}
+        borrower_pool_(client_factory),
+        local_raylet_client_(local_raylet_client) {}
 
   ~ReferenceCounter() {}
 
@@ -682,6 +686,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// uses this client to request a notification from borrowers once the
   /// borrower's ref count for the ID goes to 0.
   rpc::CoreWorkerClientPool borrower_pool_;
+
+  /// Client to communicate with the local raylet.
+  std::shared_ptr<raylet::RayletClient> local_raylet_client_;
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;

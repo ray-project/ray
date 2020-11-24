@@ -418,6 +418,7 @@ def test_delete_objects(tmp_path, shutdown_only):
         return num_files == 0
 
     del replay_buffer
+    del ref
     wait_for_condition(is_dir_empty)
 
 
@@ -462,12 +463,14 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     def is_dir_empty():
         num_files = 0
         for path in temp_folder.iterdir():
+            print(path)
             num_files += 1
         return num_files == 0
 
     # After all, make sure all objects are killed without race condition.
     del replay_buffer
-    wait_for_condition(is_dir_empty)
+    del ref
+    wait_for_condition(is_dir_empty, timeout=1000)
 
 
 if __name__ == "__main__":
