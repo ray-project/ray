@@ -21,15 +21,17 @@ kubectl -n raytest apply -f python/ray/autoscaler/kubernetes/operator_configs/op
 
 import yaml
 
-from ray._private.services import address, start_monitor
+from ray._private.services import address
 from ray.autoscaler._private.commands import create_or_update_cluster
+from ray.monitor import Monitor
 from ray.operator.util import (
     CLUSTER_CONFIG_PATH,
-    get_logs,
     get_ray_head_pod_ip,
     prepare_ray_cluster_config,
 )
-from ray import ray_constants
+from ray.ray_constants import (DEFAULT_PORT, LOGGER_FORMAT,
+                               REDIS_DEFAULT_PASSWORD)
+from ray.ray_logging import setup_logger
 
 
 def main():
@@ -48,16 +50,19 @@ def main():
 
     ray_head_pod_ip = get_ray_head_pod_ip(config)
     # TODO: Add support for user-specified redis port and password
-    redis_address = address(ray_head_pod_ip, ray_constants.DEFAULT_PORT)
-    stderr_file, stdout_file = get_logs()
-
-    start_monitor(
+    redis_address = address(ray_head_pod_ip, DEFAULT_PORT)
+    monitor = Monitor(redis_address, CLUSTER_CONFIG_PATH,
+                      REDIS_DEFAULT_PASSWORD)
+    monitor.run()
+    # stderr_file, stdout_file = get_logs()
+    """start_monitor(
         redis_address,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         autoscaling_config=CLUSTER_CONFIG_PATH,
-        redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)"""
 
 
 if __name__ == "__main__":
+    setup_logger("DEBUG", LOGGER_FORMAT)
     main()
