@@ -1301,6 +1301,7 @@ def test_async_actor_task_retries(ray_start_regular):
     @ray.remote
     class DyingActor:
         def __init__(self):
+            print("DyingActor init called")
             self.should_exit = False
 
         def set_should_exit(self):
@@ -1350,9 +1351,13 @@ def test_async_actor_task_retries(ray_start_regular):
     # At this point the actor should be restarted. The two pending tasks
     # [ref_1, ref_3] should be retried, but not the completed tasks [ref_0,
     # ref_2]. Critically, if ref_2 was retried, ref_3 can never return.
+    print("sending signal")
     ray.get(signal.send.remote())
+    ray.get(signal.wait.remote())
+    print("made sure signal is clear")
     assert ray.get(ref_1) == 1
-    # assert ray.get(ref_3) == 3
+    print("got ref_1")
+    assert ray.get(ref_3) == 3
 
 
 if __name__ == "__main__":

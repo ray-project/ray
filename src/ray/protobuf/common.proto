@@ -194,6 +194,8 @@ message TaskSpec {
   bool placement_group_capture_child_tasks = 19;
   // Environment variables to override for this task
   map<string, string> override_environment_variables = 20;
+  // TODO: doc
+  bool skip_execution = 21;
 }
 
 message Bundle {

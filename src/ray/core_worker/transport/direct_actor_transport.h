@@ -66,10 +66,12 @@ class CoreWorkerDirectActorTaskSubmitter
   CoreWorkerDirectActorTaskSubmitter(
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<TaskFinisherInterface> task_finisher)
+      std::shared_ptr<TaskFinisherInterface> task_finisher,
+      boost::asio::io_service &io_service)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher),
-        task_finisher_(task_finisher) {}
+        task_finisher_(task_finisher),
+        io_service_(io_service) {}
 
   /// Add an actor queue. This should be called whenever a reference to an
   /// actor is created in the language frontend.
@@ -186,7 +188,7 @@ class CoreWorkerDirectActorTaskSubmitter
 
     // TODO(simon): Doc
     // NOTE(simon): consider absl::btree_set, but it requires updating abseil.
-    std::set<uint64_t> completed_tasks;
+    std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
@@ -211,7 +213,8 @@ class CoreWorkerDirectActorTaskSubmitter
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void SendPendingTasks(const ActorID &actor_id, bool send_out_of_order_tasks = false)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -236,6 +239,9 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Used to complete tasks.
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
+  // TODO(simon): doc
+  boost::asio::io_service &io_service_;
+
   friend class CoreWorkerTest;
 };
 
@@ -244,13 +250,22 @@ class InboundRequest {
  public:
   InboundRequest(){};
   InboundRequest(std::function<void()> accept_callback,
-                 std::function<void()> reject_callback, bool has_dependencies)
+                 std::function<void()> reject_callback, bool has_dependencies,
+                 bool skip_execution = false,
+                 const std::function<void()> &skip_callback = {})
       : accept_callback_(accept_callback),
         reject_callback_(reject_callback),
-        has_pending_dependencies_(has_dependencies) {}
+        has_pending_dependencies_(has_dependencies),
+        skip_execution_(skip_execution),
+        skip_callback_(skip_callback) {}
 
   void Accept() { accept_callback_(); }
   void Cancel() { reject_callback_(); }
+  void SkipExecution() {
+    RAY_CHECK(skip_execution_);
+    skip_callback_();
+  }
+  bool CanSkipExecution() { return skip_execution_; }
   bool CanExecute() const { return !has_pending_dependencies_; }
   void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
@@ -258,6 +273,8 @@ class InboundRequest {
   std::function<void()> accept_callback_;
   std::function<void()> reject_callback_;
   bool has_pending_dependencies_;
+  bool skip_execution_;
+  std::function<void()> skip_callback_;
 };
 
 /// Waits for an object dependency to become available. Abstract for testing.
@@ -337,7 +354,9 @@ class SchedulingQueue {
   virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
                    std::function<void()> accept_request,
                    std::function<void()> reject_request,
-                   const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
+                   const std::vector<rpc::ObjectReference> &dependencies = {},
+                   bool skip_execution = false,
+                   const std::function<void()> &skip_request = {}) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
   virtual ~SchedulingQueue(){};
@@ -361,7 +380,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
-           const std::vector<rpc::ObjectReference> &dependencies = {}) {
+           const std::vector<rpc::ObjectReference> &dependencies = {},
+           bool skip_execution = false, const std::function<void()> &skip_request = {}) {
     // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
     RAY_CHECK(seq_no != -1);
 
@@ -373,7 +393,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
     }
     RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
     pending_actor_tasks_[seq_no] =
-        InboundRequest(accept_request, reject_request, dependencies.size() > 0);
+        InboundRequest(accept_request, reject_request, dependencies.size() > 0,
+                       skip_execution, skip_request);
     if (dependencies.size() > 0) {
       waiter_.Wait(dependencies, [seq_no, this]() {
         RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
@@ -424,7 +445,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
       auto head = pending_actor_tasks_.begin();
       auto request = head->second;
 
-      if (is_asyncio_) {
+      if (request.CanSkipExecution()) {
+        request.SkipExecution();
+      } else if (is_asyncio_) {
         // Process async actor task.
         fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
       } else if (pool_) {
@@ -510,7 +533,8 @@ class NormalSchedulingQueue : public SchedulingQueue {
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
-           const std::vector<rpc::ObjectReference> &dependencies = {}) {
+           const std::vector<rpc::ObjectReference> &dependencies = {},
+           bool skip_execution = false, const std::function<void()> &skip_request = {}) {
     absl::MutexLock lock(&mu_);
     // Normal tasks should not have ordering constraints.
     RAY_CHECK(seq_no == -1);

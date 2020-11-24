@@ -436,6 +436,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_,
+      /*retry_task_callback*/
       [this](TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
@@ -496,7 +497,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
-                                             task_manager_));
+                                             task_manager_, io_service_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
