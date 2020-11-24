@@ -18,7 +18,6 @@ from ray.tune.syncer import wait_for_sync, set_sync_periods, \
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import FIFOScheduler
-from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +70,7 @@ def run(
         checkpoint_score_attr=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
-        verbose=Verbosity.V3_TRIAL_DETAILS,
+        verbose=2,
         progress_reporter=None,
         log_to_file=False,
         trial_name_creator=None,
@@ -189,9 +188,8 @@ def run(
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
             This has no effect when using the Functional Training API.
-        verbose (int): 0, 1, 2, or 3. Verbosity mode. 0 = silent,
-            1 = only status updates, 2 = status and brief trial results,
-            3 = status and detailed trial results. Defaults to 3.
+        verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
+            1 = only status updates, 2 = status and trial results.
         progress_reporter (ProgressReporter): Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
@@ -248,7 +246,7 @@ def run(
             trial (of ERROR state) when the experiments complete.
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
-            ``ray.tune.trial_runner.Callback`` class. If not passed,
+            ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
 
@@ -282,8 +280,6 @@ def run(
         raise ValueError(
             "The `mode` parameter passed to `tune.run()` has to be one of "
             "['min', 'max']")
-
-    set_verbosity(verbose)
 
     config = config or {}
     sync_config = sync_config or SyncConfig()
@@ -357,9 +353,9 @@ def run(
             "own `metric` and `mode` parameters. Either remove the arguments "
             "from your scheduler or from your call to `tune.run()`")
 
-    # Create syncer callbacks
+    # Create logger and syncer callbacks
     callbacks = create_default_callbacks(
-        callbacks, sync_config, metric=metric, loggers=loggers)
+        callbacks, sync_config, loggers=loggers)
 
     runner = TrialRunner(
         search_alg=search_alg,
@@ -370,6 +366,7 @@ def run(
         stopper=experiments[0].stopper,
         resume=resume,
         server_port=server_port,
+        verbose=bool(verbose > 1),
         fail_fast=fail_fast,
         trial_executor=trial_executor,
         callbacks=callbacks,
@@ -383,8 +380,7 @@ def run(
 
     if progress_reporter is None:
         if IS_NOTEBOOK:
-            progress_reporter = JupyterNotebookReporter(
-                overwrite=not has_verbosity(Verbosity.V2_TRIAL_NORM))
+            progress_reporter = JupyterNotebookReporter(overwrite=verbose < 2)
         else:
             progress_reporter = CLIReporter()
 
@@ -417,7 +413,7 @@ def run(
     tune_start = time.time()
     while not runner.is_finished():
         runner.step()
-        if has_verbosity(Verbosity.V1_EXPERIMENT):
+        if verbose:
             _report_progress(runner, progress_reporter)
     tune_taken = time.time() - tune_start
 
@@ -426,7 +422,7 @@ def run(
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
-    if has_verbosity(Verbosity.V1_EXPERIMENT):
+    if verbose:
         _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
@@ -444,9 +440,8 @@ def run(
             logger.error("Trials did not complete: %s", incomplete_trials)
 
     all_taken = time.time() - all_start
-    if has_verbosity(Verbosity.V1_EXPERIMENT):
-        logger.info(f"Total run time: {all_taken:.2f} seconds "
-                    f"({tune_taken:.2f} seconds for the tuning loop).")
+    logger.info(f"Total run time: {all_taken:.2f} seconds "
+                f"({tune_taken:.2f} seconds for the tuning loop).")
 
     trials = runner.get_trials()
     return ExperimentAnalysis(
@@ -459,7 +454,7 @@ def run(
 def run_experiments(experiments,
                     scheduler=None,
                     server_port=None,
-                    verbose=Verbosity.V3_TRIAL_DETAILS,
+                    verbose=2,
                     progress_reporter=None,
                     resume=False,
                     queue_trials=False,

@@ -26,17 +26,17 @@
 
 namespace plasma {
 
-QuotaAwarePolicy::QuotaAwarePolicy(PlasmaStoreInfo* store_info, int64_t max_size)
+QuotaAwarePolicy::QuotaAwarePolicy(PlasmaStoreInfo *store_info, int64_t max_size)
     : EvictionPolicy(store_info, max_size) {}
 
-bool QuotaAwarePolicy::HasQuota(Client* client, bool is_create) {
+bool QuotaAwarePolicy::HasQuota(Client *client, bool is_create) {
   if (!is_create) {
     return false;  // no quota enforcement on read requests yet
   }
   return per_client_cache_.find(client) != per_client_cache_.end();
 }
 
-void QuotaAwarePolicy::ObjectCreated(const ObjectID& object_id, Client* client,
+void QuotaAwarePolicy::ObjectCreated(const ObjectID &object_id, Client *client,
                                      bool is_create) {
   if (HasQuota(client, is_create)) {
     per_client_cache_[client]->Add(object_id, GetObjectSize(object_id));
@@ -46,7 +46,7 @@ void QuotaAwarePolicy::ObjectCreated(const ObjectID& object_id, Client* client,
   }
 }
 
-bool QuotaAwarePolicy::SetClientQuota(Client* client, int64_t output_memory_quota) {
+bool QuotaAwarePolicy::SetClientQuota(Client *client, int64_t output_memory_quota) {
   if (per_client_cache_.find(client) != per_client_cache_.end()) {
     RAY_LOG(WARNING) << "Cannot change the client quota once set";
     return false;
@@ -65,17 +65,16 @@ bool QuotaAwarePolicy::SetClientQuota(Client* client, int64_t output_memory_quot
   return true;
 }
 
-bool QuotaAwarePolicy::EnforcePerClientQuota(Client* client, int64_t size, bool is_create,
-                                             std::vector<ObjectID>* objects_to_evict) {
+bool QuotaAwarePolicy::EnforcePerClientQuota(Client *client, int64_t size, bool is_create,
+                                             std::vector<ObjectID> *objects_to_evict) {
   if (!HasQuota(client, is_create)) {
     return true;
   }
 
-  auto& client_cache = per_client_cache_[client];
+  auto &client_cache = per_client_cache_[client];
   if (size > client_cache->Capacity()) {
-    RAY_LOG(WARNING) << "object too large (" << size
-                       << " bytes) to fit in client quota " << client_cache->Capacity()
-                       << " " << DebugString();
+    RAY_LOG(WARNING) << "object too large (" << size << " bytes) to fit in client quota "
+                     << client_cache->Capacity() << " " << DebugString();
     return false;
   }
 
@@ -87,7 +86,7 @@ bool QuotaAwarePolicy::EnforcePerClientQuota(Client* client, int64_t size, bool 
   if (space_to_free > 0) {
     std::vector<ObjectID> candidates;
     client_cache->ChooseObjectsToEvict(space_to_free, &candidates);
-    for (ObjectID& object_id : candidates) {
+    for (ObjectID &object_id : candidates) {
       if (shared_for_read_.count(object_id)) {
         // Pinned so we can't evict it, so demote the object to global LRU instead.
         // We an do this by simply removing it from all data structures, so that
@@ -103,7 +102,7 @@ bool QuotaAwarePolicy::EnforcePerClientQuota(Client* client, int64_t size, bool 
   return true;
 }
 
-void QuotaAwarePolicy::BeginObjectAccess(const ObjectID& object_id) {
+void QuotaAwarePolicy::BeginObjectAccess(const ObjectID &object_id) {
   if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
     shared_for_read_.insert(object_id);
     pinned_memory_bytes_ += GetObjectSize(object_id);
@@ -112,7 +111,7 @@ void QuotaAwarePolicy::BeginObjectAccess(const ObjectID& object_id) {
   EvictionPolicy::BeginObjectAccess(object_id);
 }
 
-void QuotaAwarePolicy::EndObjectAccess(const ObjectID& object_id) {
+void QuotaAwarePolicy::EndObjectAccess(const ObjectID &object_id) {
   if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
     shared_for_read_.erase(object_id);
     pinned_memory_bytes_ -= GetObjectSize(object_id);
@@ -121,7 +120,7 @@ void QuotaAwarePolicy::EndObjectAccess(const ObjectID& object_id) {
   EvictionPolicy::EndObjectAccess(object_id);
 }
 
-void QuotaAwarePolicy::RemoveObject(const ObjectID& object_id) {
+void QuotaAwarePolicy::RemoveObject(const ObjectID &object_id) {
   if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
     per_client_cache_[owned_by_client_[object_id]]->Remove(object_id);
     owned_by_client_.erase(object_id);
@@ -131,8 +130,8 @@ void QuotaAwarePolicy::RemoveObject(const ObjectID& object_id) {
   EvictionPolicy::RemoveObject(object_id);
 }
 
-void QuotaAwarePolicy::RefreshObjects(const std::vector<ObjectID>& object_ids) {
-  for (const auto& object_id : object_ids) {
+void QuotaAwarePolicy::RefreshObjects(const std::vector<ObjectID> &object_ids) {
+  for (const auto &object_id : object_ids) {
     if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
       int64_t size = per_client_cache_[owned_by_client_[object_id]]->Remove(object_id);
       per_client_cache_[owned_by_client_[object_id]]->Add(object_id, size);
@@ -141,14 +140,14 @@ void QuotaAwarePolicy::RefreshObjects(const std::vector<ObjectID>& object_ids) {
   EvictionPolicy::RefreshObjects(object_ids);
 }
 
-void QuotaAwarePolicy::ClientDisconnected(Client* client) {
+void QuotaAwarePolicy::ClientDisconnected(Client *client) {
   if (per_client_cache_.find(client) == per_client_cache_.end()) {
     return;
   }
   // return capacity back to global LRU
   cache_.AdjustCapacity(per_client_cache_[client]->Capacity());
   // clean up any entries used to track this client's quota usage
-  per_client_cache_[client]->Foreach([this](const ObjectID& obj) {
+  per_client_cache_[client]->Foreach([this](const ObjectID &obj) {
     if (!shared_for_read_.count(obj)) {
       // only add it to the global LRU if we have it in pinned mode
       // otherwise, EndObjectAccess will add it later
@@ -169,7 +168,7 @@ std::string QuotaAwarePolicy::DebugString() const {
   result << "\nallocation limit: " << PlasmaAllocator::GetFootprintLimit();
   result << "\npinned bytes: " << pinned_memory_bytes_;
   result << cache_.DebugString();
-  for (const auto& pair : per_client_cache_) {
+  for (const auto &pair : per_client_cache_) {
     result << pair.second->DebugString();
   }
   return result.str();

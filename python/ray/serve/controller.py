@@ -938,9 +938,3 @@ class ServeController:
             for replica in self.actor_reconciler.get_replica_handles():
                 ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
-
-    async def report_queue_lengths(self, router_name: str,
-                                   queue_lengths: Dict[str, int]):
-        # TODO: remove old router stats when removing them.
-        for backend, queue_length in queue_lengths.items():
-            self.backend_stats[backend][router_name] = queue_length

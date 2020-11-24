@@ -20,6 +20,7 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/client_connection.h"
@@ -99,9 +100,10 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The raylet config list of this node.
   std::unordered_map<std::string, std::string> raylet_config;
+  // The time between record metrics in milliseconds, or -1 to disable.
+  uint64_t record_metrics_period_ms;
 };
 
-typedef std::pair<PlacementGroupID, int64_t> BundleID;
 struct pair_hash {
   template <class T1, class T2>
   std::size_t operator()(const std::pair<T1, T2> &pair) const {
@@ -284,7 +286,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for direct actor creation calls, which should never be
   /// returned to idle.
-  bool FinishAssignedTask(WorkerInterface &worker);
+  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
+
   /// Helper function to produce actor table data for a newly created actor.
   ///
   /// \param task_spec Task specification of the actor creation task that created the
@@ -421,6 +424,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker to kill.
   /// \return Void.
   void KillWorker(std::shared_ptr<WorkerInterface> worker);
+
+  /// Destroy a worker.
+  /// We will disconnect the worker connection first and then kill the worker.
+  ///
+  /// \param worker The worker to destroy.
+  /// \return Void.
+  void DestroyWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// The callback for handling an actor state transition (e.g., from ALIVE to
   /// DEAD), whether as a notification from the actor table or as a handler for
@@ -822,6 +832,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
       bundle_spec_map_;
+
+  /// Fields that are used to report metrics.
+  /// The period between debug state dumps.
+  int64_t record_metrics_period_;
+
+  /// Last time metrics are recorded.
+  uint64_t metrics_last_recorded_time_ms_;
+
+  /// Number of tasks that are received and scheduled.
+  uint64_t metrics_num_task_scheduled_;
+
+  /// Number of tasks that are executed at this node.
+  uint64_t metrics_num_task_executed_;
+
+  /// Number of tasks that are spilled back to other nodes.
+  uint64_t metrics_num_task_spilled_back_;
 };
 
 }  // namespace raylet
