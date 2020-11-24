@@ -24,13 +24,13 @@
 
 namespace plasma {
 
-void CreateRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client, const CreateObjectCallback &request_callback) {
+void CreateRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
+                                    const CreateObjectCallback &request_callback) {
   queue_.push_back({client, request_callback});
 }
 
 Status CreateRequestQueue::ProcessRequests() {
-  for (auto request_it = queue_.begin();
-      request_it != queue_.end(); ) {
+  for (auto request_it = queue_.begin(); request_it != queue_.end();) {
     auto status = request_it->second();
     if (status.IsTransientObjectStoreFull()) {
       return status;
@@ -40,9 +40,9 @@ Status CreateRequestQueue::ProcessRequests() {
   return Status::OK();
 }
 
-
-void CreateRequestQueue::RemoveDisconnectedClientRequests(const std::shared_ptr<ClientInterface> &client) {
-  for (auto it = queue_.begin(); it != queue_.end(); ) {
+void CreateRequestQueue::RemoveDisconnectedClientRequests(
+    const std::shared_ptr<ClientInterface> &client) {
+  for (auto it = queue_.begin(); it != queue_.end();) {
     if (it->first == client) {
       it = queue_.erase(it);
     } else {

@@ -35,14 +35,35 @@ class InvalidValuesTest(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def testBayesOpt(self):
-        from ray.tune.suggest.bayesopt import BayesOptSearch
+    def testAx(self):
+        from ray.tune.suggest.ax import AxSearch
+        from ax.service.ax_client import AxClient
 
-        np.random.seed(1234)  # At least one nan, inf, -inf and float
+        converted_config = AxSearch.convert_search_space(self.config)
+        # At least one nan, inf, -inf and float
+        client = AxClient(random_seed=4321)
+        client.create_experiment(
+            parameters=converted_config, objective_name="_metric")
+        searcher = AxSearch(ax_client=client, metric="_metric", mode="max")
 
         out = tune.run(
             _invalid_objective,
-            search_alg=BayesOptSearch(),
+            search_alg=searcher,
+            metric="_metric",
+            mode="max",
+            num_samples=4,
+            reuse_actors=False)
+
+        best_trial = out.best_trial
+        self.assertLessEqual(best_trial.config["report"], 2.0)
+
+    def testBayesOpt(self):
+        from ray.tune.suggest.bayesopt import BayesOptSearch
+
+        out = tune.run(
+            _invalid_objective,
+            # At least one nan, inf, -inf and float
+            search_alg=BayesOptSearch(random_state=1234),
             config=self.config,
             metric="_metric",
             mode="max",
@@ -55,13 +76,10 @@ class InvalidValuesTest(unittest.TestCase):
     def testBOHB(self):
         from ray.tune.suggest.bohb import TuneBOHB
 
-        converted_config = TuneBOHB.convert_search_space(self.config)
-        converted_config.seed(1000)  # At least one nan, inf, -inf and float
-
         out = tune.run(
             _invalid_objective,
-            search_alg=TuneBOHB(
-                space=converted_config, metric="_metric", mode="max"),
+            search_alg=TuneBOHB(seed=1000),
+            config=self.config,
             metric="_metric",
             mode="max",
             num_samples=8,

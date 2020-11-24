@@ -691,6 +691,7 @@ def stop(force, verbose, log_style, log_color):
         ["log_monitor.py", False],
         ["reporter.py", False],
         ["dashboard.py", False],
+        ["new_dashboard/agent.py", False],
         ["ray_process_reaper.py", False],
     ]
 
