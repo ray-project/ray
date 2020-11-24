@@ -39,6 +39,7 @@ run_experiments({
         "config": {
             "num_workers": 8,
             "num_gpus": 0,
+            "num_sgd_iter": 1,
         },
         "stop": {
             "timesteps_total": 1,
