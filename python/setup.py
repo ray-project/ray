@@ -78,7 +78,7 @@ ray_autoscaler_files = [
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
-    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/_private/kubernetes/kubectl-rsync.sh",
     "ray/autoscaler/staroid/defaults.yaml",
     "ray/autoscaler/ray-schema.json",
 ]
