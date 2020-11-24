@@ -612,17 +612,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
 void BundleLocationIndex::AddBundleLocations(
     const PlacementGroupID &placement_group_id,
     std::shared_ptr<BundleLocations> bundle_locations) {
-  // Update `placement_group_to_bundle_locations_`.
-  // The placement group may be scheduled several times to succeed, so we need to merge
-  // `bundle_locations` instead of covering it directly.
-  auto iter = placement_group_to_bundle_locations_.find(placement_group_id);
-  if (iter == placement_group_to_bundle_locations_.end()) {
-    placement_group_to_bundle_locations_.emplace(placement_group_id, bundle_locations);
-  } else {
-    iter->second->insert(bundle_locations->begin(), bundle_locations->end());
-  }
-
-  // Update `node_to_leased_bundles_`.
+  placement_group_to_bundle_locations_.emplace(placement_group_id, bundle_locations);
   for (auto iter : *bundle_locations) {
     const auto &node_id = iter.second.first;
     if (!node_to_leased_bundles_.contains(node_id)) {
