@@ -138,8 +138,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id Object id
   /// \param client_id Remote server client id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id,
-                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
+  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
 
   /// Get the rpc client according to the client ID
   ///

@@ -40,6 +40,11 @@ struct RemoteConnectionInfo {
   uint16_t port;
 };
 
+/// Callback for object location notifications.
+using OnLocationsFound =
+    std::function<void(const ray::ObjectID &object_id,
+                       const std::unordered_set<ray::NodeID> &, const std::string &)>;
+
 class ObjectDirectoryInterface {
  public:
   virtual ~ObjectDirectoryInterface() {}
@@ -57,11 +62,6 @@ class ObjectDirectoryInterface {
   ///
   /// \return A vector of information for all connected remote object managers.
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
-
-  /// Callback for object location notifications.
-  using OnLocationsFound =
-      std::function<void(const ray::ObjectID &object_id,
-                         const std::unordered_set<ray::NodeID> &, const std::string &)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///

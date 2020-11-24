@@ -2,32 +2,135 @@
 
 namespace ray {
 
-  PullManager::PullManager(std::unordered_map<ObjectID, LocalObjectInfo> *local_objects,
-                           std::unordered_map<ObjectID, PullRequest> *pull_requests
-                           ) :
-                           local_objects_(local_objects),
-                             pull_requests_(pull_requests)
-                           {
+PullManager::PullManager(
+    NodeID &self_node_id, const ObjectManagerConfig &config,
+    std::shared_ptr<ObjectDirectoryInterface> &object_directory,
+    UniqueID &object_directory_pull_callback_id,
+    std::unordered_map<ObjectID, LocalObjectInfo> *local_objects,
+    std::unordered_map<ObjectID, PullRequest> *pull_requests,
+    const std::function<void(const ObjectID &, const NodeID &)> &send_pull_request,
+    const std::function<int(int)> &get_rand_int,
+    const RestoreSpilledObjectCallback &restore_spilled_object)
 
-}
+    : self_node_id_(self_node_id),
+      config_(config),
+      object_directory_(object_directory),
+      object_directory_pull_callback_id_(object_directory_pull_callback_id),
+      local_objects_(local_objects),
+      pull_requests_(pull_requests),
+      send_pull_request_(send_pull_request),
+      get_rand_int_(get_rand_int),
+      restore_spilled_object_(restore_spilled_object) {}
 
-Status PullManager::Pull(const ObjectID &object_id,
-                                const rpc::Address &owner_address) {
-
-  RAY_LOG(DEBUG) << "Pull " << " of object " << object_id;
+Status PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
+  RAY_LOG(DEBUG) << "Pull "
+                 << " of object " << object_id;
   // Check if object is already local.
   if (local_objects_->count(object_id) != 0) {
     RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
     return ray::Status::OK();
   }
-  if (pull_requests_.find(object_id) != pull_requests_.end()) {
+  if (pull_requests_->find(object_id) != pull_requests_->end()) {
     RAY_LOG(DEBUG) << object_id << " has inflight pull_requests, skipping.";
     return ray::Status::OK();
   }
 
+  pull_requests_->emplace(object_id, PullRequest());
 
-  return Status::OK();
+  const auto &callback = [this](const ObjectID &object_id,
+                                const std::unordered_set<NodeID> &client_ids,
+                                const std::string &spilled_url) {
+    // Exit if the Pull request has already been fulfilled or canceled.
+    auto it = pull_requests_->find(object_id);
+    if (it == pull_requests_->end()) {
+      return;
+    }
+    // Reset the list of clients that are now expected to have the object.
+    // NOTE(swang): Since we are overwriting the previous list of clients,
+    // we may end up sending a duplicate request to the same client as
+    // before.
+    it->second.client_locations =
+        std::vector<NodeID>(client_ids.begin(), client_ids.end());
+    if (!spilled_url.empty()) {
+      // Try to restore the spilled object.
+      restore_spilled_object_(object_id, spilled_url,
+                              [this, object_id](const ray::Status &status) {
+                                // Fall back to fetching from another object manager.
+                                if (!status.ok()) {
+                                  TryPull(object_id);
+                                }
+                              });
+    } else if (it->second.client_locations.empty()) {
+      // The object locations are now empty, so we should wait for the next
+      // notification about a new object location.  Cancel the timer until
+      // the next Pull attempt since there are no more clients to try.
+      if (it->second.retry_timer != nullptr) {
+        it->second.retry_timer->cancel();
+        it->second.timer_set = false;
+      }
+    } else {
+      // New object locations were found, so begin trying to pull from a
+      // client. This will be called every time a new client location
+      // appears.
+      TryPull(object_id);
+    }
+  };
+
+  // Subscribe to object notifications. A notification will be received every
+  // time the set of client IDs for the object changes. Notifications will also
+  // be received if the list of locations is empty. The set of client IDs has
+  // no ordering guarantee between notifications.
+  return object_directory_->SubscribeObjectLocations(object_directory_pull_callback_id_,
+                                                     object_id, owner_address, callback);
 }
 
+void PullManager::TryPull(const ObjectID &object_id) {
+  auto it = pull_requests_->find(object_id);
+  if (it == pull_requests_->end()) {
+    return;
+  }
 
+  auto &node_vector = it->second.client_locations;
+
+  // The timer should never fire if there are no expected client locations.
+  if (node_vector.empty()) {
+    return;
+  }
+
+  RAY_CHECK(local_objects_->count(object_id) == 0);
+  // Make sure that there is at least one client which is not the local client.
+  // TODO(rkn): It may actually be possible for this check to fail.
+  if (node_vector.size() == 1 && node_vector[0] == self_node_id_) {
+    RAY_LOG(WARNING) << "The object manager with ID " << self_node_id_
+                     << " is trying to pull object " << object_id
+                     << " but the object table suggests that this object manager "
+                     << "already has the object. The object may have been evicted. It is "
+                     << "most likely due to memory pressure, object pull has been "
+                     << "requested before object location is updated.";
+    it->second.timer_set = false;
+    return;
+  }
+
+  // Choose a random client to pull the object from.
+  // Generate a random index.
+  int node_index = get_rand_int_(node_vector.size());
+  NodeID node_id = node_vector[node_index];
+  // If the object manager somehow ended up choosing itself, choose a different
+  // object manager.
+  if (node_id == self_node_id_) {
+    std::swap(node_vector[node_index], node_vector[node_vector.size() - 1]);
+    node_vector.pop_back();
+    RAY_LOG(WARNING)
+        << "The object manager with ID " << self_node_id_ << " is trying to pull object "
+        << object_id << " but the object table suggests that this object manager "
+        << "already has the object. It is most likely due to memory pressure, object "
+        << "pull has been requested before object location is updated.";
+    node_id = node_vector[node_index % node_vector.size()];
+    RAY_CHECK(node_id != self_node_id_);
+  }
+
+  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
+                 << " of object " << object_id;
 }
+
+}  // namespace ray

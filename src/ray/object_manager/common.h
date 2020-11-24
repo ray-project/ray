@@ -59,4 +59,7 @@ struct LocalObjectInfo {
   object_manager::protocol::ObjectInfoT object_info;
 };
 
+using RestoreSpilledObjectCallback = std::function<void(
+    const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
+
 }  // namespace ray
