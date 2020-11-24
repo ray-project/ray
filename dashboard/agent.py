@@ -90,9 +90,7 @@ class DashboardAgent(object):
         async def _check_parent():
             """Check if raylet is dead."""
             curr_proc = psutil.Process()
-            ppid = os.environ.get("RAY_NODE_PID")
-            if ppid is not None:
-                ppid = int(ppid)
+            ppid = int(os.environ["RAY_NODE_PID"])
             logger.info("Parent pid is %s", ppid)
             while True:
                 parent = curr_proc.parent()
