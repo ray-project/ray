@@ -8,6 +8,38 @@ from ray.rllib.utils.typing import TensorType, Any
 torch, nn = try_import_torch()
 
 
+class RelativePositionEmbedding(nn.Module):
+    """Creates a [seq_length x seq_length] matrix for rel. pos encoding.
+
+    Denoted as Phi in [2] and [3]. Phi is the standard sinusoid encoding
+    matrix.
+
+    Args:
+        seq_length (int): The max. sequence length (time axis).
+        out_dim (int): The number of nodes to go into the first Tranformer
+            layer with.
+
+    Returns:
+        torch.Tensor: The encoding matrix Phi.
+    """
+    def __init__(self, out_dim, **kwargs):
+        super().__init__()
+        self.out_dim = out_dim
+
+        out_range = torch.arange(0, self.out_dim, 2.0)
+        inverse_freq = 1 / (10000**(out_range / self.out_dim))
+        self.register_buffer("inverse_freq", inverse_freq)
+
+    def forward(self, seq_length):
+        pos_input = torch.arange(
+            seq_length - 1, -1, -1.0, dtype=torch.float).to(
+            self.inverse_freq.device)
+        sinusoid_input = torch.einsum("i,j->ij", pos_input, self.inverse_freq)
+        pos_embeddings = torch.cat(
+            [torch.sin(sinusoid_input), torch.cos(sinusoid_input)], dim=-1)
+        return pos_embeddings[:, None, :]
+
+
 class RelativeMultiHeadAttention(nn.Module):
     """A RelativeMultiHeadAttention layer as described in [3].
 
@@ -19,8 +51,6 @@ class RelativeMultiHeadAttention(nn.Module):
                  out_dim: int,
                  num_heads: int,
                  head_dim: int,
-                 rel_pos_encoder_inference: nn.Module,
-                 rel_pos_encoder_training: nn.Module,
                  input_layernorm: bool = False,
                  output_activation: Union[str, callable] = None,
                  **kwargs):
@@ -28,17 +58,12 @@ class RelativeMultiHeadAttention(nn.Module):
 
         Args:
             in_dim (int):
-            out_dim (int):
+            out_dim (int): The output dimension of this module. Also known as
+                "attention dim".
             num_heads (int): The number of attention heads to use.
                 Denoted `H` in [2].
             head_dim (int): The dimension of a single(!) attention head
                 Denoted `D` in [2].
-            rel_pos_encoder_inference (nn.Module): TF op to be used as
-                relative positional encoders of the inference (action
-                computation) input sequence(s).
-            rel_pos_encoder_training (nn.Module): TF op to be used as
-                relative positional encoders of the train batch input
-                sequence(s).
             input_layernorm (bool): Whether to prepend a LayerNorm before
                 everything else. Should be True for building a GTrXL.
             output_activation (Union[str, callable]): Optional activation
@@ -71,16 +96,12 @@ class RelativeMultiHeadAttention(nn.Module):
 
         self._pos_proj = SlimFC(
             in_size=in_dim, out_size=num_heads * head_dim, use_bias=False)
-        self._rel_pos_encoder_inference = rel_pos_encoder_inference
-        self._rel_pos_encoder_training = rel_pos_encoder_training
+        self._rel_pos_embedding = RelativePositionEmbedding(out_dim)
 
         self._input_layernorm = None
 
         if input_layernorm:
             self._input_layernorm = torch.nn.LayerNorm(in_dim)
-
-        # Go into eval mode by default.
-        self.eval()
 
     def forward(self, inputs: TensorType,
                 memory: TensorType = None) -> TensorType:
@@ -91,7 +112,6 @@ class RelativeMultiHeadAttention(nn.Module):
         # Add previous memory chunk (as const, w/o gradient) to input.
         # Tau (number of (prev) time slices in each memory chunk).
         Tau = list(memory.shape)[1]
-        #memory.requires_grad_(False)
         inputs = torch.cat((memory.detach(), inputs), dim=1)
 
         # Apply the Layer-Norm.
@@ -108,13 +128,8 @@ class RelativeMultiHeadAttention(nn.Module):
         keys = torch.reshape(keys, [-1, Tau + T, H, d])
         values = torch.reshape(values, [-1, Tau + T, H, d])
 
-        R = self._pos_proj(
-            self._rel_pos_encoder_training if self.training
-            else self._rel_pos_encoder_inference)
-        try:#TODO
-            R = torch.reshape(R, [Tau + T, H, d])
-        except Exception as e:
-            raise e
+        R = self._pos_proj(self._rel_pos_embedding(Tau + T))
+        R = torch.reshape(R, [Tau + T, H, d])
 
         # b=batch
         # i and j=time indices (i=max-timesteps (inputs); j=Tau memory space)

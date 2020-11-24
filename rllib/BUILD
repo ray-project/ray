@@ -1466,7 +1466,7 @@ py_test(
     name = "examples/attention_net_tf",
     main = "examples/attention_net.py",
     tags = ["examples", "examples_A"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/attention_net.py"],
     args = ["--as-test", "--stop-reward=80"]
 )
@@ -1475,9 +1475,9 @@ py_test(
     name = "examples/attention_net_torch",
     main = "examples/attention_net.py",
     tags = ["examples", "examples_A"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--torch", "--stop-reward=80"]
+    args = ["--as-test", "--stop-reward=80", "--torch"]
 )
 
 py_test(

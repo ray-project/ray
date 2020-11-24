@@ -215,7 +215,7 @@ class ValueNetworkMixin:
             # "view". It's a single-timestep (last one in trajectory) input_dict.
             if config["_use_trajectory_view_api"]:
 
-                def value(input_dict):
+                def value(**input_dict):
                     model_out, _ = self.model.from_batch(
                         convert_to_torch_tensor(input_dict, self.device),
                         is_training=False)

@@ -107,19 +107,19 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
 
-        # Constant (non-trainable) sinusoid rel pos encoding matrices
-        # (use different ones for inference and training due to the different
-        # memory sizes used).
-        # For inference, we prepend the memory to the current timestep's input.
-        self.Phi_inf = nn.Parameter(relative_position_embedding(
-            self.memory_inference + 1, self.attn_dim))
-        self.Phi_inf.requires_grad = False
-        self.register_parameter("Phi_inf", self.Phi_inf)
-        # For training, we prepend the memory to the input sequence.
-        self.Phi_train = nn.Parameter(relative_position_embedding(
-            self.memory_training + self.max_seq_len, self.attn_dim))
-        self.Phi_train.requires_grad = False
-        self.register_parameter("Phi_train", self.Phi_train)
+        ## Constant (non-trainable) sinusoid rel pos encoding matrices
+        ## (use different ones for inference and training due to the different
+        ## memory sizes used).
+        ## For inference, we prepend the memory to the current timestep's input.
+        #self.Phi_inf = nn.Parameter(relative_position_embedding(
+        #    self.memory_inference + 1, self.attn_dim))
+        #self.Phi_inf.requires_grad = False
+        #self.register_parameter("Phi_inf", self.Phi_inf)
+        ## For training, we prepend the memory to the input sequence.
+        #self.Phi_train = nn.Parameter(relative_position_embedding(
+        #    self.memory_training + self.max_seq_len, self.attn_dim))
+        #self.Phi_train.requires_grad = False
+        #self.register_parameter("Phi_train", self.Phi_train)
 
         self.linear_layer = SlimFC(
             in_size=self.obs_dim, out_size=self.attn_dim)
@@ -136,8 +136,6 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                     out_dim=self.attn_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
-                    rel_pos_encoder_inference=self.Phi_inf,
-                    rel_pos_encoder_training=self.Phi_train,
                     input_layernorm=True,
                     output_activation=nn.ReLU),
                 fan_in_layer=GRUGate(self.attn_dim, init_gate_bias))
@@ -242,12 +240,6 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         assert seq_lens is not None
 
-        # Set correct mode.
-        if input_dict.get("is_training", False):
-            self.train()
-        else:
-            self.eval()
-
         # Add the needed batch rank (tf Models' Input requires this).
         observations = input_dict[SampleBatch.OBS]
         # Add the time dim to observations.
@@ -293,24 +285,3 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
     def preprocess_train_batch(self, train_batch):
         return preprocess_train_batch_attention_nets(
             train_batch, max_seq_len=self.model_config["max_seq_len"])
-
-
-def relative_position_embedding(seq_length: int, out_dim: int):
-    """Creates a [seq_length x seq_length] matrix for rel. pos encoding.
-
-    Denoted as Phi in [2] and [3]. Phi is the standard sinusoid encoding
-    matrix.
-
-    Args:
-        seq_length (int): The max. sequence length (time axis).
-        out_dim (int): The number of nodes to go into the first Tranformer
-            layer with.
-
-    Returns:
-        torch.Tensor: The encoding matrix Phi.
-    """
-    out_range = torch.arange(0, out_dim, 2.0)
-    pos_offsets = torch.arange(seq_length - 1., -1., -1.)
-    inverse_freq = 1 / (10000**(out_range / out_dim))
-    inputs = pos_offsets[:, None] * inverse_freq[None, :]
-    return torch.cat((torch.sin(inputs), torch.cos(inputs)), dim=-1)
