@@ -668,7 +668,8 @@ class A:
             return "OK"
 
 if __name__ == "__main__":
-    ray.init(_load_code_from_local=True)
+    current_path = os.path.dirname(__file__)
+    ray.init(_load_code_from_local=True, _code_search_path=current_path)
     b = A.B.remote()
     print(ray.get(b.get.remote()))
 """
