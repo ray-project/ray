@@ -30,3 +30,9 @@ class CoreRayAPI(APIImpl):
 
     def close(self, *args, **kwargs):
         return None
+
+    # Allow for generic fallback to ray.* in remote methods. This allows calls
+    # like ray.nodes() to be run in remote functions even though the client
+    # doesn't currently support them.
+    def __getattr__(self, key: str):
+        return getattr(ray, key)

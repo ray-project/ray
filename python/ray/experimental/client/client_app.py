@@ -19,6 +19,14 @@ def fact(x):
     return ray.get(fact.remote(x - 1)) * x
 
 
+@ray.remote
+def get_nodes():
+    return ray.nodes()  # Can access the full Ray API in remote methods.
+
+
+print("Cluster nodes", ray.get(get_nodes.remote()))
+print(ray.nodes())
+
 objectref = ray.put("hello world")
 
 # `ClientObjectRef(...)`
