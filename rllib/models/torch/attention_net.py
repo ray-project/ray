@@ -107,20 +107,6 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
 
-        ## Constant (non-trainable) sinusoid rel pos encoding matrices
-        ## (use different ones for inference and training due to the different
-        ## memory sizes used).
-        ## For inference, we prepend the memory to the current timestep's input.
-        #self.Phi_inf = nn.Parameter(relative_position_embedding(
-        #    self.memory_inference + 1, self.attn_dim))
-        #self.Phi_inf.requires_grad = False
-        #self.register_parameter("Phi_inf", self.Phi_inf)
-        ## For training, we prepend the memory to the input sequence.
-        #self.Phi_train = nn.Parameter(relative_position_embedding(
-        #    self.memory_training + self.max_seq_len, self.attn_dim))
-        #self.Phi_train.requires_grad = False
-        #self.register_parameter("Phi_train", self.Phi_train)
-
         self.linear_layer = SlimFC(
             in_size=self.obs_dim, out_size=self.attn_dim)
 
@@ -187,54 +173,6 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                     batch_repeat_value=self.max_seq_len,
                     space=Box(-1.0, 1.0, shape=(self.attn_dim,)))
 
-    #@override(RecurrentNetwork)
-    #def forward_rnn(self, inputs: TensorType, state: List[TensorType],
-    #                seq_lens: TensorType) -> (TensorType, List[TensorType]):
-    #    # To make Attention work with current RLlib's ModelV2 API:
-    #    # We assume `state` is the history of L recent observations (all
-    #    # concatenated into one tensor) and append the current inputs to the
-    #    # end and only keep the most recent (up to `max_seq_len`). This allows
-    #    # us to deal with timestep-wise inference and full sequence training
-    #    # within the same logic.
-    #    state = [torch.from_numpy(item) for item in state]
-    #    observations = state[0]
-    #    memory = state[1:]
-
-    #    inputs = torch.reshape(inputs, [1, -1, observations.shape[-1]])
-    #    observations = torch.cat(
-    #        (observations, inputs), dim=1)[:, -self.max_seq_len:]
-
-    #    all_out = observations
-    #    for i in range(len(self.layers)):
-    #        # MHA layers which need memory passed in.
-    #        if i % 2 == 1:
-    #            all_out = self.layers[i](all_out, memory=memory[i // 2])
-    #        # Either linear layers or MultiLayerPerceptrons.
-    #        else:
-    #            all_out = self.layers[i](all_out)
-
-    #    logits = self.logits(all_out)
-    #    self._value_out = self.values_out(all_out)
-
-    #    memory_outs = all_out[2:]
-    #    # If memory_tau > max_seq_len -> overlap w/ previous `memory` input.
-    #    if self.memory_tau > self.max_seq_len:
-    #        memory_outs = [
-    #            torch.cat(
-    #                [memory[i][:, -(self.memory_tau - self.max_seq_len):], m],
-    #                dim=1) for i, m in enumerate(memory_outs)
-    #        ]
-    #    else:
-    #        memory_outs = [m[:, -self.memory_tau:] for m in memory_outs]
-
-    #    T = list(inputs.size())[1]  # Length of input segment (time).
-
-    #    # Postprocessing final output.
-    #    logits = logits[:, -T:]
-    #    self._value_out = self._value_out[:, -T:]
-
-    #    return logits, [observations] + memory_outs
-
     @override(ModelV2)
     def forward(self, input_dict, state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
@@ -245,8 +183,8 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         # Add the time dim to observations.
         B = len(seq_lens)
         T = observations.shape[0] // B
-        observations = torch.reshape(
-            observations, [-1, T] + list(observations.shape[1:]))#torch.cat([[-1, T], observations.shape[1:]], dim=0))
+        observations = torch.reshape(observations,
+                                     [-1, T] + list(observations.shape[1:]))
 
         all_out = observations
         memory_outs = []

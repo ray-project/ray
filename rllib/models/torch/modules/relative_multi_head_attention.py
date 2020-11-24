@@ -3,7 +3,7 @@ from typing import Union
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.utils.torch_ops import sequence_mask
-from ray.rllib.utils.typing import TensorType, Any
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -22,6 +22,7 @@ class RelativePositionEmbedding(nn.Module):
     Returns:
         torch.Tensor: The encoding matrix Phi.
     """
+
     def __init__(self, out_dim, **kwargs):
         super().__init__()
         self.out_dim = out_dim
@@ -32,11 +33,12 @@ class RelativePositionEmbedding(nn.Module):
 
     def forward(self, seq_length):
         pos_input = torch.arange(
-            seq_length - 1, -1, -1.0, dtype=torch.float).to(
-            self.inverse_freq.device)
+            seq_length - 1, -1, -1.0,
+            dtype=torch.float).to(self.inverse_freq.device)
         sinusoid_input = torch.einsum("i,j->ij", pos_input, self.inverse_freq)
         pos_embeddings = torch.cat(
-            [torch.sin(sinusoid_input), torch.cos(sinusoid_input)], dim=-1)
+            [torch.sin(sinusoid_input),
+             torch.cos(sinusoid_input)], dim=-1)
         return pos_embeddings[:, None, :]
 
 
@@ -99,7 +101,6 @@ class RelativeMultiHeadAttention(nn.Module):
         self._rel_pos_embedding = RelativePositionEmbedding(out_dim)
 
         self._input_layernorm = None
-
         if input_layernorm:
             self._input_layernorm = torch.nn.LayerNorm(in_dim)
 
@@ -142,8 +143,8 @@ class RelativeMultiHeadAttention(nn.Module):
 
         # causal mask of the same length as the sequence
         mask = sequence_mask(
-            torch.arange(Tau + 1, Tau + T + 1), dtype=score.dtype).to(
-            score.device)
+            torch.arange(Tau + 1, Tau + T + 1),
+            dtype=score.dtype).to(score.device)
         mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask.float() - 1.)

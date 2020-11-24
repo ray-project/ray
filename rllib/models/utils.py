@@ -80,8 +80,7 @@ def preprocess_train_batch_attention_nets(train_batch, max_seq_len):
             state_keys.append(k)
         elif not k.startswith(
                 "state_out_"
-        ) and k != "infos" and k != "seq_lens" and isinstance(
-                v, np.ndarray):
+        ) and k != "infos" and k != "seq_lens" and isinstance(v, np.ndarray):
             feature_keys_.append(k)
 
     feature_sequences, initial_states, seq_lens = \

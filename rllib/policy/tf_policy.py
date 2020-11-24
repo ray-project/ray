@@ -796,7 +796,7 @@ class TFPolicy(Policy):
             feed dict of data
         """
 
-        # Get batch ready for RNNs/Attention Nets, etc.
+        # Allow Model to modify the train_batch (e.g. zero-pad for RNNs).
         train_batch = self.model.preprocess_train_batch(train_batch)
 
         # Mark the batch as "is_training" so the Model can use this

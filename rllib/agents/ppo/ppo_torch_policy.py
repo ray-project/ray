@@ -212,7 +212,8 @@ class ValueNetworkMixin:
         # observation.
         if config["use_gae"]:
             # Input dict is provided to us automatically via the policy-defined
-            # "view". It's a single-timestep (last one in trajectory) input_dict.
+            # "view". It's a single-timestep (last one in trajectory)
+            # input_dict.
             if config["_use_trajectory_view_api"]:
 
                 def value(**input_dict):
