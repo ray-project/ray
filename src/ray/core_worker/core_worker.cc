@@ -38,15 +38,15 @@ void BuildCommonTaskSpec(
     const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id,
+    std::vector<ObjectID> *return_ids, const ray::BundleID &bundle_id,
     bool placement_group_capture_child_tasks,
     const std::unordered_map<std::string, std::string> &override_environment_variables) {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources, placement_group_id,
-      placement_group_capture_child_tasks, override_environment_variables);
+      required_placement_resources, bundle_id, placement_group_capture_child_tasks,
+      override_environment_variables);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1305,7 +1305,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries,
-                            PlacementOptions placement_options,
+                            BundleID placement_options,
                             bool placement_group_capture_child_tasks) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
@@ -1331,7 +1331,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
-                      placement_options.first, placement_group_capture_child_tasks,
+                      placement_options, placement_group_capture_child_tasks,
                       override_environment_variables);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
@@ -1386,7 +1386,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, &return_ids,
-                      actor_creation_options.placement_options.first,
+                      actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
                       override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
@@ -1495,7 +1495,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, return_ids, PlacementGroupID::Nil(),
+                      required_resources, return_ids,
+                      std::make_pair(PlacementGroupID::Nil(), -1),
                       true, /* placement_group_capture_child_tasks */
                       override_environment_variables);
   // NOTE: placement_group_capture_child_tasks and override_environment_variables will be
@@ -1519,7 +1520,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   }
 }
 
-Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
+Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,
+                              bool recursive) {
   if (actor_manager_->CheckActorHandleExists(object_id.TaskId().ActorId())) {
     return Status::Invalid("Actor task cancellation is not supported.");
   }
@@ -1528,14 +1530,34 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
     return Status::Invalid("No owner found for object.");
   }
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
-    return direct_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill);
+    return direct_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill,
+                                                    recursive);
   }
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
   if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
-    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill);
+    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
   return Status::OK();
+}
+
+Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
+  bool recursive_success = true;
+  for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
+    auto child_spec = task_manager_->GetTaskSpec(child_id);
+    if (child_spec.has_value()) {
+      auto result =
+          direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
+      recursive_success = recursive_success && result.ok();
+    } else {
+      recursive_success = false;
+    }
+  }
+  if (recursive_success) {
+    return Status::OK();
+  } else {
+    return Status::UnknownError("Recursive task cancelation failed--check warning logs.");
+  }
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) {
@@ -2158,8 +2180,8 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
 void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
                                         rpc::RemoteCancelTaskReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  auto status =
-      CancelTask(ObjectID::FromBinary(request.remote_object_id()), request.force_kill());
+  auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
+                           request.force_kill(), request.recursive());
   send_reply_callback(status, nullptr, nullptr);
 }
 
@@ -2174,6 +2196,12 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   if (success && !request.force_kill()) {
     RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
     success = options_.kill_main();
+  }
+  if (request.recursive()) {
+    auto recursive_cancel = CancelChildren(task_id, request.force_kill());
+    if (recursive_cancel.ok()) {
+      RAY_LOG(INFO) << "Recursive cancel failed!";
+    }
   }
 
   reply->set_attempt_succeeded(success);

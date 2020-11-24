@@ -1,7 +1,7 @@
 import collections
 import logging
 import numpy as np
-from typing import List, Any, Dict, Tuple, TYPE_CHECKING, Union
+from typing import Any, List, Dict, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import _SampleCollector
@@ -251,6 +251,15 @@ class _PolicyCollector:
         return batch
 
 
+class _PolicyCollectorGroup:
+    def __init__(self, policy_map):
+        self.policy_collectors = {
+            pid: _PolicyCollector()
+            for pid in policy_map.keys()
+        }
+        self.count = 0
+
+
 class _SimpleListCollector(_SampleCollector):
     """Util to build SampleBatches for each policy in a multi-agent env.
 
@@ -285,38 +294,41 @@ class _SimpleListCollector(_SampleCollector):
             1000, rollout_fragment_length *
             10) if rollout_fragment_length != float("inf") else 5000
 
-        # Build each Policies' single collector.
-        self.policy_collectors = {
-            pid: _PolicyCollector()
-            for pid in policy_map.keys()
-        }
-        self.policy_collectors_env_steps = 0
         # Whenever we observe a new episode+agent, add a new
         # _SingleTrajectoryCollector.
         self.agent_collectors: Dict[Tuple[EpisodeID, AgentID],
                                     _AgentCollector] = {}
-        # Internal agent-key-to-policy map.
-        self.agent_key_to_policy = {}
+        # Internal agent-key-to-policy-id map.
+        self.agent_key_to_policy_id = {}
+        # Pool of used/unused PolicyCollectorGroups (attached to episodes for
+        # across-episode multi-agent sample collection).
+        self.policy_collector_groups = []
 
         # Agents to collect data from for the next forward pass (per policy).
         self.forward_pass_agent_keys = {pid: [] for pid in policy_map.keys()}
         self.forward_pass_size = {pid: 0 for pid in policy_map.keys()}
 
-        # Maps episode ID to _EpisodeRecord objects.
-        self.episode_steps: Dict[EpisodeID, int] = collections.defaultdict(int)
+        # Maps episode ID to the (non-built) env steps taken in this episode.
+        self.episode_steps: Dict[EpisodeID, int] = \
+            collections.defaultdict(int)
+        # Maps episode ID to MultiAgentEpisode.
         self.episodes: Dict[EpisodeID, MultiAgentEpisode] = {}
 
     @override(_SampleCollector)
     def episode_step(self, episode_id: EpisodeID) -> None:
+        episode = self.episodes[episode_id]
         self.episode_steps[episode_id] += 1
+        episode.length += 1
+        assert episode.batch_builder is not None
+        env_steps = episode.batch_builder.count
+        num_observations = sum(
+            c.count for c in episode.batch_builder.policy_collectors.values())
 
-        env_steps = \
-            self.policy_collectors_env_steps + self.episode_steps[episode_id]
-        if (env_steps > self.large_batch_threshold
-                and log_once("large_batch_warning")):
+        if num_observations > self.large_batch_threshold and \
+                log_once("large_batch_warning"):
             logger.warning(
-                "More than {} observations for {} env steps ".format(
-                    env_steps, env_steps) +
+                "More than {} observations in {} env steps for "
+                "episode {} ".format(num_observations, env_steps, episode_id) +
                 "are buffered in the sampler. If this is more than you "
                 "expected, check that that you set a horizon on your "
                 "environment correctly and that it terminates at some point. "
@@ -324,7 +336,7 @@ class _SimpleListCollector(_SampleCollector):
                 "sets the batch size based on (across-agents) environment "
                 "steps, not the steps of individual agents, which can result "
                 "in unexpectedly large batches." +
-                ("Also, you may be in evaluation waiting for your Env to "
+                ("Also, you may be waiting for your Env to "
                  "terminate (batch_mode=`complete_episodes`). Make sure it "
                  "does at some point."
                  if not self.multiple_episodes_in_batch else ""))
@@ -335,10 +347,10 @@ class _SimpleListCollector(_SampleCollector):
                      init_obs: TensorType) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
-        if agent_key not in self.agent_key_to_policy:
-            self.agent_key_to_policy[agent_key] = policy_id
+        if agent_key not in self.agent_key_to_policy_id:
+            self.agent_key_to_policy_id[agent_key] = policy_id
         else:
-            assert self.agent_key_to_policy[agent_key] == policy_id
+            assert self.agent_key_to_policy_id[agent_key] == policy_id
         policy = self.policy_map[policy_id]
         view_reqs = policy.model.inference_view_requirements if \
             getattr(policy, "model", None) else policy.view_requirements
@@ -355,8 +367,12 @@ class _SimpleListCollector(_SampleCollector):
             view_requirements=view_reqs)
 
         self.episodes[episode.episode_id] = episode
+        if episode.batch_builder is None:
+            episode.batch_builder = self.policy_collector_groups.pop() if \
+                self.policy_collector_groups else _PolicyCollectorGroup(
+                self.policy_map)
 
-        self._add_to_next_inference_call(agent_key, env_id)
+        self._add_to_next_inference_call(agent_key)
 
     @override(_SampleCollector)
     def add_action_reward_next_obs(self, episode_id: EpisodeID,
@@ -365,7 +381,7 @@ class _SimpleListCollector(_SampleCollector):
                                    values: Dict[str, TensorType]) -> None:
         # Make sure, episode/agent already has some (at least init) data.
         agent_key = (episode_id, agent_id)
-        assert self.agent_key_to_policy[agent_key] == policy_id
+        assert self.agent_key_to_policy_id[agent_key] == policy_id
         assert agent_key in self.agent_collectors
 
         # Include the current agent id for multi-agent algorithms.
@@ -376,7 +392,7 @@ class _SimpleListCollector(_SampleCollector):
         self.agent_collectors[agent_key].add_action_reward_next_obs(values)
 
         if not agent_done:
-            self._add_to_next_inference_call(agent_key, env_id)
+            self._add_to_next_inference_call(agent_key)
 
     @override(_SampleCollector)
     def total_env_steps(self) -> int:
@@ -417,8 +433,10 @@ class _SimpleListCollector(_SampleCollector):
     def postprocess_episode(self,
                             episode: MultiAgentEpisode,
                             is_done: bool = False,
-                            check_dones: bool = False) -> None:
+                            check_dones: bool = False,
+                            build: bool = False) -> None:
         episode_id = episode.episode_id
+        policy_collector_group = episode.batch_builder
 
         # TODO: (sven) Once we implement multi-agent communication channels,
         #  we have to resolve the restriction of only sending other agent
@@ -429,8 +447,8 @@ class _SimpleListCollector(_SampleCollector):
             # Build only if there is data and agent is part of given episode.
             if collector.count == 0 or eps_id != episode_id:
                 continue
-            policy = self.policy_map[self.agent_key_to_policy[(eps_id,
-                                                               agent_id)]]
+            pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
+            policy = self.policy_map[pid]
             pre_batch = collector.build(policy.view_requirements)
             pre_batches[agent_id] = (policy, pre_batch)
 
@@ -455,7 +473,7 @@ class _SimpleListCollector(_SampleCollector):
                     "Episode {} terminated for all agents, but we still don't "
                     "don't have a last observation for agent {} (policy "
                     "{}). ".format(
-                        episode_id, agent_id, self.agent_key_to_policy[(
+                        episode_id, agent_id, self.agent_key_to_policy_id[(
                             episode_id, agent_id)]) +
                     "Please ensure that you include the last observations "
                     "of all live agents when setting done[__all__] to "
@@ -467,8 +485,8 @@ class _SimpleListCollector(_SampleCollector):
 
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
-            policy = self.policy_map[self.agent_key_to_policy[(episode_id,
-                                                               agent_id)]]
+            pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
+            policy = self.policy_map[pid]
             if any(pre_batch["dones"][:-1]) or len(set(
                     pre_batch["eps_id"])) > 1:
                 raise ValueError(
@@ -491,7 +509,7 @@ class _SimpleListCollector(_SampleCollector):
         # Append into policy batches and reset.
         from ray.rllib.evaluation.rollout_worker import get_global_worker
         for agent_id, post_batch in sorted(post_batches.items()):
-            pid = self.agent_key_to_policy[(episode_id, agent_id)]
+            pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
             self.callbacks.on_postprocess_trajectory(
                 worker=get_global_worker(),
@@ -503,60 +521,65 @@ class _SimpleListCollector(_SampleCollector):
                 original_batches=pre_batches)
             # Add the postprocessed SampleBatch to the policy collectors for
             # training.
-            self.policy_collectors[pid].add_postprocessed_batch_for_training(
-                post_batch, policy.view_requirements)
+            policy_collector_group.policy_collectors[
+                pid].add_postprocessed_batch_for_training(
+                    post_batch, policy.view_requirements)
 
         env_steps = self.episode_steps[episode_id]
-        self.policy_collectors_env_steps += env_steps
+        policy_collector_group.count += env_steps
 
         if is_done:
             del self.episode_steps[episode_id]
             del self.episodes[episode_id]
+            # Make PolicyCollectorGroup available for more agent batches in
+            # other episodes. Do not reset count to 0.
+            self.policy_collector_groups.append(policy_collector_group)
         else:
             self.episode_steps[episode_id] = 0
 
-    @override(_SampleCollector)
-    def build_multi_agent_batch(self, env_steps: int) -> \
+        # Build a MultiAgentBatch from the episode and return.
+        if build:
+            return self._build_multi_agent_batch(episode)
+
+    def _build_multi_agent_batch(self, episode: MultiAgentEpisode) -> \
             Union[MultiAgentBatch, SampleBatch]:
+
+        ma_batch = {}
+        for pid, collector in episode.batch_builder.policy_collectors.items():
+            if collector.count > 0:
+                ma_batch[pid] = collector.build()
+        # Create the batch.
         ma_batch = MultiAgentBatch.wrap_as_needed(
-            {
-                pid: collector.build()
-                for pid, collector in self.policy_collectors.items()
-                if collector.count > 0
-            },
-            env_steps=env_steps)
-        self.policy_collectors_env_steps = 0
+            ma_batch, env_steps=episode.batch_builder.count)
+
+        # PolicyCollectorGroup is empty.
+        episode.batch_builder.count = 0
+
         return ma_batch
 
     @override(_SampleCollector)
     def try_build_truncated_episode_multi_agent_batch(self) -> \
-            Union[MultiAgentBatch, SampleBatch, None]:
-        # Have something to loop through, even if there are currently no
-        # ongoing episodes.
-        episode_steps = self.episode_steps or {"_fake_id": 0}
+            List[Union[MultiAgentBatch, SampleBatch]]:
+        batches = []
         # Loop through ongoing episodes and see whether their length plus
         # what's already in the policy collectors reaches the fragment-len.
-        for episode_id, count in episode_steps.items():
-            env_steps = self.policy_collectors_env_steps + count
+        for episode_id, episode in self.episodes.items():
+            env_steps = episode.batch_builder.count + \
+                        self.episode_steps[episode_id]
             # Reached the fragment-len -> We should build an MA-Batch.
             if env_steps >= self.rollout_fragment_length:
+                assert env_steps == self.rollout_fragment_length
                 # If we reached the fragment-len only because of `episode_id`
                 # (still ongoing) -> postprocess `episode_id` first.
-                if self.policy_collectors_env_steps < \
-                        self.rollout_fragment_length:
-                    self.postprocess_episode(
-                        self.episodes[episode_id], is_done=False)
-                # Otherwise, create MA-batch only from what's already in our
-                # policy buffers (do not include `episode_id`'s data).
-                else:
-                    env_steps = self.policy_collectors_env_steps
+                if episode.batch_builder.count < self.rollout_fragment_length:
+                    self.postprocess_episode(episode, is_done=False)
                 # Build the MA-batch and return.
-                ma_batch = self.build_multi_agent_batch(env_steps=env_steps)
-                return ma_batch
-        return None
+                batch = self._build_multi_agent_batch(episode=episode)
+                batches.append(batch)
+        return batches
 
-    def _add_to_next_inference_call(self, agent_key: Tuple[EpisodeID, AgentID],
-                                    env_id: EnvID) -> None:
+    def _add_to_next_inference_call(
+            self, agent_key: Tuple[EpisodeID, AgentID]) -> None:
         """Adds an Agent key (episode+agent IDs) to the next inference call.
 
         This makes sure that the agent's current data (in the trajectory) is
@@ -566,14 +589,13 @@ class _SimpleListCollector(_SampleCollector):
         Args:
             agent_key (Tuple[EpisodeID, AgentID]: A unique agent key (across
                 vectorized environments).
-            env_id (EnvID): The environment index (in a vectorized setup).
         """
-        policy_id = self.agent_key_to_policy[agent_key]
-        idx = self.forward_pass_size[policy_id]
+        pid = self.agent_key_to_policy_id[agent_key]
+        idx = self.forward_pass_size[pid]
         if idx == 0:
-            self.forward_pass_agent_keys[policy_id].clear()
-        self.forward_pass_agent_keys[policy_id].append(agent_key)
-        self.forward_pass_size[policy_id] += 1
+            self.forward_pass_agent_keys[pid].clear()
+        self.forward_pass_agent_keys[pid].append(agent_key)
+        self.forward_pass_size[pid] += 1
 
     def _reset_inference_calls(self, policy_id: PolicyID) -> None:
         """Resets internal inference input-dict registries.

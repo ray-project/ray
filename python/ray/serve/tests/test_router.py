@@ -137,8 +137,8 @@ async def test_changing_backend(ray_instance, mock_controller,
     await mock_controller.add_new_replica.remote("backend-alter",
                                                  task_runner_mock_actor)
 
-    await q.assign_request.remote(
-        RequestMetadata(get_random_letters(10), "svc", None), 1)
+    await (await q.assign_request.remote(
+        RequestMetadata(get_random_letters(10), "svc", None), 1))
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.args[0] == 1
 
@@ -148,8 +148,8 @@ async def test_changing_backend(ray_instance, mock_controller,
         }))
     await mock_controller.add_new_replica.remote("backend-alter-2",
                                                  task_runner_mock_actor)
-    await q.assign_request.remote(
-        RequestMetadata(get_random_letters(10), "svc", None), 2)
+    await (await q.assign_request.remote(
+        RequestMetadata(get_random_letters(10), "svc", None), 2))
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.args[0] == 2
 
@@ -170,9 +170,12 @@ async def test_split_traffic_random(ray_instance, mock_controller,
 
     # assume 50% split, the probability of all 20 requests goes to a
     # single queue is 0.5^20 ~ 1-6
+    object_refs = []
     for _ in range(20):
-        await q.assign_request.remote(
+        ref = await q.assign_request.remote(
             RequestMetadata(get_random_letters(10), "svc", None), 1)
+        object_refs.append(ref)
+    ray.get(object_refs)
 
     got_work = [
         await runner.get_recent_call.remote()
@@ -199,10 +202,10 @@ async def test_shard_key(ray_instance, mock_controller,
     # Generate random shard keys and send one request for each.
     shard_keys = [get_random_letters() for _ in range(100)]
     for shard_key in shard_keys:
-        await q.assign_request.remote(
+        await (await q.assign_request.remote(
             RequestMetadata(
                 get_random_letters(10), "svc", None, shard_key=shard_key),
-            shard_key)
+            shard_key))
 
     # Log the shard keys that were assigned to each backend.
     runner_shard_keys = defaultdict(set)
@@ -214,10 +217,10 @@ async def test_shard_key(ray_instance, mock_controller,
 
     # Send queries with the same shard keys a second time.
     for shard_key in shard_keys:
-        await q.assign_request.remote(
+        await (await q.assign_request.remote(
             RequestMetadata(
                 get_random_letters(10), "svc", None, shard_key=shard_key),
-            shard_key)
+            shard_key))
 
     # Check that the requests were all mapped to the same backends.
     for i, runner in enumerate(runners):

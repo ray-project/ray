@@ -786,7 +786,7 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
 }
 
 void ClusterResourceScheduler::AllocateRemoteTaskResources(
-    std::string &node_string,
+    const std::string &node_string,
     const std::unordered_map<std::string, double> &task_resources) {
   TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
   auto node_id = string_to_int_map_.Insert(node_string);
