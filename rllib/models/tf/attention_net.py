@@ -264,13 +264,13 @@ class GTrXLNet(RecurrentNetwork):
                     out_dim=self.attn_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
-                    rel_pos_encoder_inference=Phi_inf,
-                    rel_pos_encoder_training=Phi_train,
+                    #rel_pos_encoder_inference=Phi_inf,
+                    #rel_pos_encoder_training=Phi_train,
                     input_layernorm=True,
                     output_activation=tf.nn.relu),
                 fan_in_layer=GRUGate(init_gate_bias),
                 name="mha_{}".format(i + 1))(
-                    E_out, memory=memory_ins[i], is_training=is_training[0])
+                    E_out, memory=memory_ins[i])
             # Position-wise MLP part.
             E_out = SkipConnection(
                 tf.keras.Sequential(
@@ -297,7 +297,7 @@ class GTrXLNet(RecurrentNetwork):
             1, activation=None, name="values")(E_out)
 
         self.trxl_model = tf.keras.Model(
-            inputs=[input_layer] + memory_ins + [is_training],
+            inputs=[input_layer] + memory_ins,
             outputs=[logits, values_out] + memory_outs[:-1])
 
         self.register_variables(self.trxl_model.variables)
@@ -320,7 +320,7 @@ class GTrXLNet(RecurrentNetwork):
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         assert seq_lens is not None
         # Add the needed batch rank (tf Models' Input requires this).
-        is_training = tf.expand_dims(input_dict["is_training"], axis=0)
+        #is_training = tf.expand_dims(input_dict["is_training"], axis=0)
 
        
         # Add the time dim to observations.
@@ -336,7 +336,7 @@ class GTrXLNet(RecurrentNetwork):
         observations = tf.reshape(observations,
                                   tf.concat([[-1, T], shape[1:]], axis=0))
 
-        all_out = self.trxl_model([observations] + state + [is_training])
+        all_out = self.trxl_model([observations] + state)
 
         logits = all_out[0]
         self._value_out = all_out[1]
