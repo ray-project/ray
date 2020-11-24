@@ -8,6 +8,8 @@ import warnings
 try:
     import torch
 
+    _TORCH_WARNING_FILTER_ACTIVATE = True
+
 
     class _TorchTensorReducingHelper:
         def __init__(self, tensor):
@@ -15,9 +17,17 @@ try:
 
         @classmethod
         def rebuild_tensor(cls, _rebuild_func, ndarray, params):
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=UserWarning,
-                                        message="The given NumPy array is not writeable")
+            global _TORCH_WARNING_FILTER_ACTIVATE
+            # filtering warning messages would be the bottleneck for
+            # deserializing torch tensors. Since the warning only prompts once,
+            # we would only deal with it for the first time.
+            if _TORCH_WARNING_FILTER_ACTIVATE:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=UserWarning,
+                                            message="The given NumPy array is not writeable")
+                    storage = torch.from_numpy(ndarray).storage()
+                _TORCH_WARNING_FILTER_ACTIVATE = False
+            else:
                 storage = torch.from_numpy(ndarray).storage()
             tensor = _rebuild_func(storage, *params)
             return cls(tensor)
