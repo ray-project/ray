@@ -167,7 +167,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                 << queue->second.num_completed_tasks;
   queue->second.caller_starts_at = queue->second.num_completed_tasks;
 
-  SendPendingTasks(actor_id, /*send_out_of_order_task*/ true);
+  SendPendingTasks(actor_id);
+  ResendOutOfOrderTasks(actor_id);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
@@ -218,8 +219,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id,
-                                                          bool send_out_of_order_tasks) {
+void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {
@@ -252,24 +252,30 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
     PushActorTask(client_queue, task_spec, skip_queue);
     client_queue.next_send_position++;
   }
+}
 
-  // Send all out of order compeleted tasks to the actor.
-  if (send_out_of_order_tasks) {
-    for (const auto &completed_task : client_queue.out_of_order_completed_tasks) {
-      // Making an copy here because we are flipping a flag and the original value is
-      // const.
-      TaskSpecification task_spec = completed_task.second;
-      // Calling SubmitTask in event loop to avoid deadlock condition. SubmitTask holds
-      // the mu_ and calls this method, we can't call SubmitTask recursively.
-      io_service_.post([this, task_spec]() mutable {
-        task_spec.GetMutableMessage().set_skip_execution(true);
-        // Call SubmitTask instead of PushActorTask here because we need to re-add the
-        // task to the task queue.
-        RAY_CHECK_OK(SubmitTask(task_spec));
-      });
-    }
-    client_queue.out_of_order_completed_tasks.clear();
+void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &actor_id) {
+  auto it = client_queues_.find(actor_id);
+  RAY_CHECK(it != client_queues_.end());
+  if (!it->second.rpc_client) {
+    return;
   }
+  auto &client_queue = it->second;
+
+  for (const auto &completed_task : client_queue.out_of_order_completed_tasks) {
+    // Making an copy here because we are flipping a flag and the original value is
+    // const.
+    TaskSpecification task_spec = completed_task.second;
+    // Calling SubmitTask in event loop to avoid deadlock condition. SubmitTask holds
+    // the mu_ and calls this method, we can't call SubmitTask recursively.
+    io_service_.post([this, task_spec]() mutable {
+      task_spec.GetMutableMessage().set_skip_execution(true);
+      // Call SubmitTask instead of PushActorTask here because we need to re-add the
+      // task to the task queue.
+      RAY_CHECK_OK(SubmitTask(task_spec));
+    });
+  }
+  client_queue.out_of_order_completed_tasks.clear();
 }
 
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
@@ -300,13 +306,17 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           Status status, const rpc::PushTaskReply &reply) {
         bool increment_completed_tasks = true;
 
-        if (!status.ok()) {
+        if (task_skipped) {
+          // Increment the task counter regardless of the status this is the reply for
+          // a previously completed task.
+          increment_completed_tasks = true;
+        } else if (!status.ok()) {
           bool will_retry = task_finisher_->PendingTaskFailed(
               task_id, rpc::ErrorType::ACTOR_DIED, &status);
           if (will_retry) {
             increment_completed_tasks = false;
           }
-        } else if (!task_skipped) {
+        } else {
           task_finisher_->CompletePendingTask(task_id, reply, addr);
         }
 
@@ -316,8 +326,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           RAY_CHECK(queue_pair != client_queues_.end());
           auto &queue = queue_pair->second;
 
-          // Keep increment queue.num_completed_tasks for the contintoues block
-          // of completed task counters.
+          // Try to increment queue.num_completed_tasks consecutively until we cannot.
+          // In the case of tasks not received in order, the following block ensure
+          // queue.num_completed_tasks are incremented to the max possible value.
           queue.out_of_order_completed_tasks.insert({actor_counter, task_spec});
           auto min_completed_task = queue.out_of_order_completed_tasks.begin();
           while (min_completed_task != queue.out_of_order_completed_tasks.end()) {
@@ -388,6 +399,11 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   }
 
   auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
+    if (task_spec.GetMessage().skip_execution()) {
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+      return;
+    }
+
     auto num_returns = task_spec.NumReturns();
     if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
       // Decrease to account for the dummy object id.
@@ -452,9 +468,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   auto reject_callback = [send_reply_callback]() {
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
-  auto skip_callback = [send_reply_callback]() {
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  };
 
   auto dependencies = task_spec.GetDependencies();
 
@@ -472,8 +485,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     // TODO(swang): Remove this with legacy raylet code.
     dependencies.pop_back();
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                    accept_callback, reject_callback, dependencies,
-                    task_spec.GetMessage().skip_execution(), skip_callback);
+                    accept_callback, reject_callback, dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(request.sequence_number(),

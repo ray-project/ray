@@ -163,6 +163,12 @@ semantics. If the actor’s exact state at the time of failure is needed, the
 application is responsible for resubmitting all tasks since the last
 checkpoint.
 
+.. note::
+    For :ref:`async actor or threaded actors <async-actors>`, the tasks might
+    be completed out of order. Upon actor restarts, the system will only retry
+    incomplete tasks in their initial submission order. This prevent unnecessary
+    re-execution of previous completed tasks.
+
 .. _object-reconstruction:
 
 Objects

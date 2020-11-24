@@ -183,7 +183,8 @@ class CoreWorkerDirectActorTaskSubmitter
     /// that we will never send to the actor again. This is used to reset
     /// caller_starts_at if the actor dies and is restarted. We only include
     /// tasks that will not be sent again, to support automatic task retry on
-    /// actor failure.
+    /// actor failure. This value only tracks consecutive tasks that are completed.
+    /// Tasks completed out of order will be cached in out_of_completed_tasks first.
     uint64_t num_completed_tasks = 0;
 
     /// The temporary container for tasks completed out of order. It can happen in
@@ -191,7 +192,8 @@ class CoreWorkerDirectActorTaskSubmitter
     /// spec for (1) increment num_completed_tasks later when the in order tasks are
     /// returned (2) resend the tasks to restarted actor so retried tasks can maintain
     /// ordering.
-    // NOTE(simon): consider absl::btree_set, but it requires updating abseil.
+    // NOTE(simon): consider absl::btree_set for performance, but it requires updating
+    // abseil.
     std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
@@ -216,11 +218,17 @@ class CoreWorkerDirectActorTaskSubmitter
   /// `mutex_` before calling this function.
   ///
   /// \param[in] actor_id Actor ID.
-  /// \param[in] send_out_of_order_tasks Whether or not to send previous stored tasks that
-  /// were completed out of order.
   /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id, bool send_out_of_order_tasks = false)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Resend all previously-received, out-of-order, received tasks for an actor.
+  /// When sending these tasks, the tasks will have the flag skip_execution=true.
+  /// Note that this function doesn't take lock, the caller is expected to hold
+  /// `mutex_` before calling this function.
+  ///
+  /// \param[in] actor_id Actor ID.
+  /// \return Void.
+  void ResendOutOfOrderTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -256,22 +264,13 @@ class InboundRequest {
  public:
   InboundRequest(){};
   InboundRequest(std::function<void()> accept_callback,
-                 std::function<void()> reject_callback, bool has_dependencies,
-                 bool skip_execution = false,
-                 const std::function<void()> &skip_callback = {})
+                 std::function<void()> reject_callback, bool has_dependencies)
       : accept_callback_(accept_callback),
         reject_callback_(reject_callback),
-        has_pending_dependencies_(has_dependencies),
-        skip_execution_(skip_execution),
-        skip_callback_(skip_callback) {}
+        has_pending_dependencies_(has_dependencies) {}
 
   void Accept() { accept_callback_(); }
   void Cancel() { reject_callback_(); }
-  void SkipExecution() {
-    RAY_CHECK(skip_execution_);
-    skip_callback_();
-  }
-  bool CanSkipExecution() { return skip_execution_; }
   bool CanExecute() const { return !has_pending_dependencies_; }
   void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
@@ -279,8 +278,6 @@ class InboundRequest {
   std::function<void()> accept_callback_;
   std::function<void()> reject_callback_;
   bool has_pending_dependencies_;
-  bool skip_execution_;
-  std::function<void()> skip_callback_;
 };
 
 /// Waits for an object dependency to become available. Abstract for testing.
@@ -360,9 +357,7 @@ class SchedulingQueue {
   virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
                    std::function<void()> accept_request,
                    std::function<void()> reject_request,
-                   const std::vector<rpc::ObjectReference> &dependencies = {},
-                   bool skip_execution = false,
-                   const std::function<void()> &skip_request = {}) = 0;
+                   const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
   virtual ~SchedulingQueue(){};
@@ -386,8 +381,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
-           const std::vector<rpc::ObjectReference> &dependencies = {},
-           bool skip_execution = false, const std::function<void()> &skip_request = {}) {
+           const std::vector<rpc::ObjectReference> &dependencies = {}) {
     // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
     RAY_CHECK(seq_no != -1);
 
@@ -399,8 +393,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
     }
     RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
     pending_actor_tasks_[seq_no] =
-        InboundRequest(accept_request, reject_request, dependencies.size() > 0,
-                       skip_execution, skip_request);
+        InboundRequest(accept_request, reject_request, dependencies.size() > 0);
     if (dependencies.size() > 0) {
       waiter_.Wait(dependencies, [seq_no, this]() {
         RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
@@ -451,11 +444,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
       auto head = pending_actor_tasks_.begin();
       auto request = head->second;
 
-      if (request.CanSkipExecution()) {
-        // Directly skip the execution of the task, this can happen during async actor
-        // reconstruction and task retries.
-        request.SkipExecution();
-      } else if (is_asyncio_) {
+      if (is_asyncio_) {
         // Process async actor task.
         fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
       } else if (pool_) {
@@ -541,8 +530,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
-           const std::vector<rpc::ObjectReference> &dependencies = {},
-           bool skip_execution = false, const std::function<void()> &skip_request = {}) {
+           const std::vector<rpc::ObjectReference> &dependencies = {}) {
     absl::MutexLock lock(&mu_);
     // Normal tasks should not have ordering constraints.
     RAY_CHECK(seq_no == -1);
