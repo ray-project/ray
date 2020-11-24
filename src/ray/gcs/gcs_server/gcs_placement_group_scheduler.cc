@@ -46,7 +46,7 @@ GcsScheduleStrategy::GetClusterResources() {
 
 void GcsScheduleStrategy::ResetAcquiredResources() { acquired_resources_.clear(); }
 
-void GcsScheduleStrategy::RecordResourceAcquisition(
+void GcsScheduleStrategy::RecordResourceAcquirement(
     const NodeID &node_id, const ResourceSet &required_resources) {
   acquired_resources_[node_id].push_back(required_resources);
 }

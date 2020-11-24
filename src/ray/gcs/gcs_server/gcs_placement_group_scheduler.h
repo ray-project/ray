@@ -530,7 +530,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
   /// Reference of GcsNodeManager.
-  GcsNodeManager &gcs_node_manager_;
+  const GcsNodeManager &gcs_node_manager_;
 
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
