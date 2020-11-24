@@ -38,6 +38,8 @@ class PullManager {
 
   Status Pull(const ObjectID &object_id, const rpc::Address &owner_address);
 
+  void Tick();
+
  private:
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
