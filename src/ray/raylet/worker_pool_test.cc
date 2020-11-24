@@ -720,18 +720,18 @@ TEST_P(WorkerPoolTest, DeleteWorkerPushPop) {
   std::unordered_set<std::shared_ptr<WorkerInterface>> restore_workers;
   restore_workers.insert(CreateRestoreWorker(Process::CreateNewDummy()));
 
-  // PopDeleteWorker should pop a spill worker in this case.
-  worker_pool_->PopDeleteWorker([this](std::shared_ptr<WorkerInterface> worker) {
-    ASSERT_EQ(worker->GetWorkerType(), rpc::WorkerType::SPILL_WORKER);
-    worker_pool_->PushDeleteWorker(worker);
-  });
-
   for (const auto &worker : spill_workers) {
     worker_pool_->PushSpillWorker(worker);
   }
   for (const auto &worker : restore_workers) {
     worker_pool_->PushRestoreWorker(worker);
   }
+
+  // PopDeleteWorker should pop a spill worker in this case.
+  worker_pool_->PopDeleteWorker([this](std::shared_ptr<WorkerInterface> worker) {
+    ASSERT_EQ(worker->GetWorkerType(), rpc::WorkerType::SPILL_WORKER);
+    worker_pool_->PushDeleteWorker(worker);
+  });
 
   // Add 2 more restore workers. Now we have 2 spill workers and 3 restore workers.
   for (int i = 0; i < 2; i++) {

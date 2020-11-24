@@ -286,7 +286,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
 
 void LocalObjectManager::DeleteSpilledObjectIfNecessary(const ObjectID object_id) {
   RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
-  RAY_LOG(ERROR) << "Sang deleting object: " << object_id;
   absl::MutexLock lock(&mutex_);
   // We don't filter non-spilled objects here because that will be addressed when the
   // queue is processed.
@@ -299,7 +298,6 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
   std::vector<std::string> object_urls_to_delete;
   while (!spilled_object_pending_delete_.empty() &&
          object_urls_to_delete.size() < max_batch_size) {
-    RAY_LOG(ERROR) << "Sang process entires";
     auto &object_id = spilled_object_pending_delete_.front();
     // If the object is still spilling, do nothing. This will block other entries to be
     // processed, but it should be fine because the spilling will be eventually done, and
@@ -314,7 +312,6 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
     // reply to WaitForObjectEviction and the other for deleting objects), and grpc
     // doesn't guarantee the ordering here. This will eventually be resolved.
     if (pinned_objects_.count(object_id) != 0) {
-      RAY_LOG(ERROR) << "Weird";
       break;
     }
 
@@ -368,7 +365,6 @@ void LocalObjectManager::DoPeriodicOperations() {
     // unavailable when object pinning is disabled.
     return;
   }
-  RAY_LOG(ERROR) << "Sang periodic ops";
   execute_after(io_context_,
                 [this]() {
                   ProcessSpilledObjectsDeleteQueue(delete_batch_size_);

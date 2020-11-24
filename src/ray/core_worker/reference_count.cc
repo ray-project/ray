@@ -464,7 +464,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
     if (local_raylet_client_) {
       if (it->second.owned_by_us) {
-        RAY_LOG(ERROR) << "Sangsang deleting objects; " << id;
         local_raylet_client_->DeleteSpilledObject(
             id, [](const Status &status, const rpc::DeleteSpilledObjectReply &reply) {});
       }
