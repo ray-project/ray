@@ -70,6 +70,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   main_service_ = &main_service;
 
+  pull_manager_.reset(new PullManager(&local_objects_));
+
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
