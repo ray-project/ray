@@ -1286,9 +1286,9 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   }
   std::unordered_map<std::string, double> new_resources;
   if (placement_group_id != PlacementGroupID::Nil()) {
-    std::string implicity_source =
-        FormatPlacementGroupImplicityResource(placement_group_id, bundle_index);
-    new_resources[implicity_source] = placementGroupImplicityRequiredResource;
+    std::string implicit_source =
+        FormatPlacementGroupImplicitResource(placement_group_id, bundle_index);
+    new_resources[implicit_source] = placementGroupImplicitRequiredResource;
 
     for (auto iter = resources.begin(); iter != resources.end(); iter++) {
       auto new_name = FormatPlacementGroupResource(iter->first, placement_group_id, -1);

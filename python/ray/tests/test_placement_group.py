@@ -24,7 +24,7 @@ class Increase:
 
 
 def test_placement_group_implicit_resource(ray_start_cluster):
-    @ray.remote(num_cpus=0)  # No resource specified for this actor.
+    @ray.remote  # No resource specified for this actor.
     class Actor(object):
         def __init__(self):
             self.n = 0
@@ -66,7 +66,7 @@ def test_placement_group_implicit_resource(ray_start_cluster):
 
     # Get the node which this placement group is located.
     result = ray.util.placement_group_table(placement_group)
-    node_of_pg = result["bundles"][0][2]  # Must not None.
+    node_of_pg = result["bundles"][0].node_id  # Must not None.
 
     # Get the node which this actor is located.
     actor_infos = ray.actors()

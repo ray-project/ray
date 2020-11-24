@@ -80,10 +80,10 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
       original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
 }
 
-std::string FormatPlacementGroupImplicityResource(const PlacementGroupID &group_id,
+std::string FormatPlacementGroupImplicitResource(const PlacementGroupID &group_id,
                                                   int64_t bundle_index) {
   std::string str =
-      "PlacementGroup_implicity_" + group_id.Hex() + "_" + std::to_string(bundle_index);
+      "PlacementGroup_implicit_" + group_id.Hex() + "_" + std::to_string(bundle_index);
   return str;
 }
 

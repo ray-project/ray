@@ -231,13 +231,13 @@ void ResourceSet::AddResources(const ResourceSet &other) {
 void ResourceSet::CommitBundleResources(const PlacementGroupID &group_id,
                                         const int bundle_index,
                                         const ResourceSet &other) {
-  // Add a implicity label to avoid the default schedule issue.
+  // Add a implicit label to avoid the default schedule issue.
   // https://github.com/ray-project/ray/issues/11692.
-  const std::string &implicity_label =
-      FormatPlacementGroupImplicityResource(group_id, bundle_index);
+  const std::string &implicit_label =
+      FormatPlacementGroupImplicitResource(group_id, bundle_index);
   const FractionalResourceQuantity &resource_capacity =
-      FractionalResourceQuantity(placementGroupImplicityResourceValue);
-  resource_capacity_[implicity_label] += resource_capacity;
+      FractionalResourceQuantity(placementGroupImplicitResourceValue);
+  resource_capacity_[implicit_label] += resource_capacity;
 
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
     // With bundle index (e.g., CPU_group_i_zzz).
@@ -694,11 +694,11 @@ void ResourceIdSet::AddOrUpdateResource(const std::string &resource_name,
   }
 }
 
-void ResourceIdSet::CommitImplicityBundleResourceIds(const PlacementGroupID &group_id,
+void ResourceIdSet::CommitImplicitBundleResourceIds(const PlacementGroupID &group_id,
                                                      const int bundle_index) {
-  auto implicit_name = FormatPlacementGroupImplicityResource(group_id, bundle_index);
+  auto implicit_name = FormatPlacementGroupImplicitResource(group_id, bundle_index);
   available_resources_[implicit_name] = available_resources_[implicit_name].Plus(
-      ResourceIds(placementGroupImplicityResourceValue));
+      ResourceIds(placementGroupImplicitResourceValue));
 }
 
 void ResourceIdSet::CommitBundleResourceIds(const PlacementGroupID &group_id,

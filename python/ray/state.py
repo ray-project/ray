@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections import namedtuple
 import json
 import logging
 import sys
@@ -428,6 +429,7 @@ class GlobalState:
                     f"Invalid strategy returned: {PlacementStrategy}")
 
         assert placement_group_info is not None
+        bundles = namedtuple("bundles", ["bundle_index", "unit_resources", "node_id"])
         return {
             "placement_group_id": binary_to_hex(
                 placement_group_info.placement_group_id),
@@ -435,10 +437,10 @@ class GlobalState:
             "bundles": [
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
-                (bundle.bundle_id.bundle_index,
-                 MessageToDict(bundle)["unitResources"],
-                 binary_to_hex(bundle.node_id)
-                 if bundle.node_id is not None else None)
+                bundles(bundle.bundle_id.bundle_index,
+                        MessageToDict(bundle)["unitResources"],
+                        binary_to_hex(bundle.node_id)
+                        if bundle.node_id is not None else None)
                 for bundle in placement_group_info.bundles
             ],
             "strategy": get_strategy(placement_group_info.strategy),
