@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-ray_version="" 
+ray_version=""
 commit=""
 ray_branch=""
 
@@ -49,4 +49,7 @@ source activate tensorflow_p36 && pip install -U "$wheel"
 source activate tensorflow_p36 && pip install "ray[rllib]" "ray[debug]"
 source activate tensorflow_p36 && pip install torch==1.6 torchvision
 source activate tensorflow_p36 && pip install boto3==1.4.8 cython==0.29.0
-source activate tensorflow_p36 && rllib train -f compact-regression-test.yaml
+# Run tf learning tests.
+source activate tensorflow_p36 && rllib train -f compact-regression-tests-tf.yaml
+# Run torch learning tests.
+source activate tensorflow_p36 && rllib train -f compact-regression-tests-torch.yaml
