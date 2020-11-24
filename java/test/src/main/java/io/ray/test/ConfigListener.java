@@ -10,11 +10,11 @@ public class ConfigListener implements IClassListener, ITestListener {
 
   @Override
   public void onTestStart(ITestResult result) {
-    RayConfig.setMethodLevel((String[]) null);
+    RayConfig.setMethodLevel();
   }
 
   @Override
   public void onAfterClass(ITestClass testClass) {
-    RayConfig.setClassLevel((String[]) null);
+    RayConfig.setClassLevel();
   }
 }

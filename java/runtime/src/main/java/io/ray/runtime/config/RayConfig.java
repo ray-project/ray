@@ -12,11 +12,11 @@ import io.ray.api.id.JobId;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
-import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
@@ -33,11 +33,11 @@ public class RayConfig {
   /**
    * Used by unit tests only.
    */
-  private static String[] unitTestClassOverrides;
+  private static List<Config> unitTestClassOverrides;
   /**
    * Used by unit tests only.
    */
-  private static String[] unitTestMethodOverrides;
+  private static List<Config> unitTestMethodOverrides;
 
   private Config config;
 
@@ -172,6 +172,10 @@ public class RayConfig {
             value = booleanValue;
           } else if (NumberUtils.isParsable(valueString)) {
             value = NumberUtils.createNumber(valueString);
+            if (value instanceof Float) {
+              // Re-parse to double
+              value = Double.valueOf(valueString);
+            }
           }
         }
         rayletConfigParameters.put(entry.getKey(), value);
@@ -277,13 +281,13 @@ public class RayConfig {
     Config config = ConfigFactory.empty();
     // Unit test overrides have the highest priority.
     if (unitTestMethodOverrides != null) {
-      for (String unitTestOverride : unitTestMethodOverrides) {
-        config = config.withFallback(ConfigFactory.parseString(unitTestOverride));
+      for (Config unitTestOverride : unitTestMethodOverrides) {
+        config = config.withFallback(unitTestOverride);
       }
     }
     if (unitTestClassOverrides != null) {
-      for (String unitTestOverride : unitTestClassOverrides) {
-        config = config.withFallback(ConfigFactory.parseString(unitTestOverride));
+      for (Config unitTestOverride : unitTestClassOverrides) {
+        config = config.withFallback(unitTestOverride);
       }
     }
     config = config.withFallback(ConfigFactory.systemProperties());
@@ -301,24 +305,23 @@ public class RayConfig {
   /**
    * Used by unit tests only.
    */
-  public static void setClassLevel(String... configList) {
-    setUnitTestRayConfig("unitTestClassOverrides", configList);
+  public static void setClassLevel(String... configStringList) {
+    unitTestClassOverrides = toConfigList(configStringList);
   }
 
   /**
    * Used by unit tests only.
    */
-  public static void setMethodLevel(String... configList) {
-    setUnitTestRayConfig("unitTestMethodOverrides", configList);
+  public static void setMethodLevel(String... configStringList) {
+    unitTestMethodOverrides = toConfigList(configStringList);
   }
 
-  private static void setUnitTestRayConfig(String fieldName, String... configList) {
-    try {
-      Field field = RayConfig.class.getField(fieldName);
-      field.setAccessible(true);
-      field.set(null, configList);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
+  private static List<Config> toConfigList(String... configStringList) {
+    if (configStringList == null || configStringList.length == 0) {
+      return null;
     }
+    return Arrays.stream(configStringList)
+        .map(ConfigFactory::parseString)
+        .collect(Collectors.toList());
   }
 }

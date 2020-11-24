@@ -7,8 +7,8 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.WaitResult;
 import io.ray.api.options.CallOptions;
+import io.ray.runtime.config.RayConfig;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -20,14 +20,7 @@ public class ResourcesManagementTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.head-args.0", "--num-cpus=4");
-    System.setProperty("ray.head-args.1", "--resources={\"RES-A\":4}");
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.head-args.0");
-    System.clearProperty("ray.head-args.1");
+    RayConfig.setClassLevel("ray.head-args: [ \"--num-cpus=4\", \"--resources={\\\"RES-A\\\":4}\" ]");
   }
 
   public static Integer echo(Integer number) {

@@ -4,10 +4,10 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
+import io.ray.runtime.config.RayConfig;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -24,12 +24,7 @@ public class RuntimeContextTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.job.id", JOB_ID.toString());
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.job.id");
+    RayConfig.setClassLevel("ray.job.id: " + JOB_ID.toString());
   }
 
   @Test

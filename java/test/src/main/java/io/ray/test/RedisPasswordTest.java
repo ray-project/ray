@@ -2,8 +2,8 @@ package io.ray.test;
 
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.runtime.config.RayConfig;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -11,12 +11,7 @@ public class RedisPasswordTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.redis.password", "12345678");
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.redis.password");
+    RayConfig.setClassLevel("ray.redis.password: \"12345678\"");
   }
 
   public static String echo(String str) {

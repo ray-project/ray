@@ -10,16 +10,17 @@ import org.testng.annotations.Test;
 @Test(groups = {"cluster"})
 public class JobConfigTest extends BaseTest {
 
-  private String oldNumWorkersPerProcess;
-
   @BeforeClass
   public void setupJobConfig() {
     RayConfig.setClassLevel(
-        "ray.job.num-java-workers-per-process: 3",
-        "ray.job.jvm-options.0: -DX=999",
-        "ray.job.jvm-options.1: -DY=998",
-        "ray.job.worker-env.foo1: bar1",
-        "ray.job.worker-env.foo2: bar2");
+        String.join("\n",
+            "ray.job {",
+            "num-java-workers-per-process: 3",
+            "jvm-options.0: \"-DX=999\"",
+            "jvm-options.1: \"-DY=998\"",
+            "worker-env.foo1: bar1",
+            "worker-env.foo2: bar2",
+            "}"));
   }
 
   public static String getJvmOptions(String propertyName) {

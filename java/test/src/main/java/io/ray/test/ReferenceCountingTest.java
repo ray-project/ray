@@ -7,6 +7,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
+import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.object.ObjectRefImpl;
 import java.lang.ref.Reference;
@@ -19,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -27,12 +27,7 @@ import org.testng.annotations.Test;
 public class ReferenceCountingTest extends BaseTest {
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.head-args.0", "--object-store-memory=" + 100L * 1024 * 1024);
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.head-args.0");
+    RayConfig.setClassLevel("ray.head-args: [ \"--object-store-memory=" + 100L * 1024 * 1024 + "\" ]");
   }
 
   /**

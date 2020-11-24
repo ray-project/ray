@@ -5,6 +5,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.function.RayFunc0;
 import io.ray.api.id.ObjectId;
+import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
@@ -14,7 +15,6 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -23,20 +23,12 @@ public class FailureTest extends BaseTest {
 
   private static final String EXCEPTION_MESSAGE = "Oops";
 
-  private String oldNumWorkersPerProcess;
-
   @BeforeClass
   public void setUp() {
     // This is needed by `testGetThrowsQuicklyWhenFoundException`.
     // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
     // process, `sleep` will delay `System.exit`.
-    oldNumWorkersPerProcess = System.getProperty("ray.job.num-java-workers-per-process");
-    System.setProperty("ray.job.num-java-workers-per-process", "1");
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.setProperty("ray.job.num-java-workers-per-process", oldNumWorkersPerProcess);
+    RayConfig.setClassLevel("ray.job.num-java-workers-per-process: 1");
   }
 
   public static int badFunc() {

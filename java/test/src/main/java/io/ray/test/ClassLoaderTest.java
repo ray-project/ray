@@ -5,6 +5,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.runtime.AbstractRayRuntime;
+import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import java.io.File;
@@ -16,7 +17,6 @@ import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -29,12 +29,7 @@ public class ClassLoaderTest extends BaseTest {
   public void setUp() {
     // The potential issue of multiple `ClassLoader` instances for the same job on multi-threading
     // scenario only occurs if the classes are loaded from the job code search path.
-    System.setProperty("ray.job.code-search-path", codeSearchPath);
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.job.code-search-path");
+    RayConfig.setClassLevel("ray.job.code-search-path: \"" + codeSearchPath + "\"");
   }
 
   @Test(groups = {"cluster"})

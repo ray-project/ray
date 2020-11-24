@@ -3,12 +3,12 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.runtime.config.RayConfig;
 import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -17,12 +17,7 @@ public class GlobalGcTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.head-args.0", "--object-store-memory=" + 140L * 1024 * 1024);
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.head-args.0");
+    RayConfig.setClassLevel("ray.head-args: [ \"--object-store-memory=" + 140L * 1024 * 1024 + "\" ]");
   }
 
   public static class LargeObjectWithCyclicRef {
