@@ -260,7 +260,6 @@ def _bootstrap_config(config: Dict[str, Any],
                 "This is normal if cluster launcher was updated.\n"
                 "Config will be re-resolved.",
                 config_cache.get("_version", "none"), CONFIG_CACHE_VERSION)
-    validate_config(config)
 
     importer = _NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
@@ -271,6 +270,20 @@ def _bootstrap_config(config: Dict[str, Any],
 
     cli_logger.print("Checking {} environment settings",
                      _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"]))
+    try:
+        config = provider_cls.fillout_available_node_types_resources(config)
+    except Exception as exc:
+        if cli_logger.verbosity > 2:
+            logger.exception("Failed to autodetect node resources.")
+        else:
+            cli_logger.warning(
+                f"Failed to autodetect node resources: {str(exc)}. "
+                "You can see full stack trace with higher verbosity.")
+
+    # NOTE: if `resources` field is missing, validate_config for non-AWS will
+    # fail (the schema error will ask the user to manually fill the resources)
+    # as we currently support autofilling resources for AWS instances only.
+    validate_config(config)
     resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
@@ -291,8 +304,8 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = prepare_config(config)
-    validate_config(config)
+
+    config = _bootstrap_config(config)
 
     cli_logger.confirm(yes, "Destroying cluster.", _abort=True)
 
@@ -959,8 +972,9 @@ def rsync(config_file: str,
 
         if source and target:
             # print rsync progress for single file rsync
-            cmd_output_util.set_output_redirected(False)
-            set_rsync_silent(False)
+            if cli_logger.verbosity > 0:
+                cmd_output_util.set_output_redirected(False)
+                set_rsync_silent(False)
             rsync(source, target, is_file_mount)
         else:
             updater.sync_file_mounts(rsync)

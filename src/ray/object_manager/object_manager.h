@@ -481,6 +481,12 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;
+
+  /// Running total of received chunks.
+  int64_t num_chunks_received_total_ = 0;
+
+  /// Running total of received chunks that failed (duplicated).
+  int64_t num_chunks_received_failed_ = 0;
 };
 
 }  // namespace ray

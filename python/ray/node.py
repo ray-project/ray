@@ -299,8 +299,8 @@ class Node:
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
                 env_resources = json.loads(env_string)
-                logger.info(
-                    f"Autosaler overriding resources: {env_resources}.")
+                logger.debug(
+                    f"Autoscaler overriding resources: {env_resources}.")
             num_cpus, num_gpus, memory, object_store_memory, resources = \
                 merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(
@@ -754,41 +754,6 @@ class Node:
             code_search_path=self._ray_params.code_search_path)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
-
-    def get_job_redirected_log_file(self,
-                                    worker_id: bytes,
-                                    job_id: bytes = None):
-        """Determines (but does not create) logging files for workers to
-        redirect its output.
-
-        Args:
-            worker_id (bytes): A byte representation of the worker id.
-            job_id (bytes): A byte representation of the job id. If None,
-                provides a generic log file for the worker.
-
-        Returns:
-            (tuple) The stdout and stderr file names that the job should be
-        redirected to.
-        """
-        redirect_output = self._ray_params.redirect_output
-
-        if redirect_output is None:
-            # Make the default behavior match that of glog.
-            redirect_output = os.getenv("GLOG_logtostderr") != "1"
-
-        if not redirect_output:
-            return None, None
-
-        if job_id is not None:
-            name = "worker-{}-{}-{}".format(
-                ray.utils.binary_to_hex(worker_id),
-                ray.utils.binary_to_hex(job_id), os.getpid())
-        else:
-            name = f"worker-{ray.utils.binary_to_hex(worker_id)}-{os.getpid()}"
-
-        worker_stdout_file, worker_stderr_file = self._get_log_file_names(
-            name, unique=False)
-        return worker_stdout_file, worker_stderr_file
 
     def start_worker(self):
         """Start a worker process."""

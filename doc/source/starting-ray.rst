@@ -197,4 +197,4 @@ Note that there are some known issues with local mode. Please read :ref:`these t
 What's next?
 ------------
 
-Check out our `Deployment section <cluster-index.html>`_ for more information on deploying Ray in different settings, including Kubernetes, YARN, and SLURM.
+Check out our `Deployment section <cluster/index.html>`_ for more information on deploying Ray in different settings, including Kubernetes, YARN, and SLURM.

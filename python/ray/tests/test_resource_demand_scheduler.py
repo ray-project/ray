@@ -246,6 +246,13 @@ def test_add_min_workers_nodes():
             "min_workers": 99999,
             "max_workers": 99999,
         },
+        "gpubla": {
+            "resources": {
+                "GPU": 1
+            },
+            "min_workers": 10,
+            "max_workers": 0,
+        },
     }
     assert _add_min_workers_nodes([],
                                   {},
@@ -280,6 +287,18 @@ def test_add_min_workers_nodes():
         "m2.large": 50,
         "gpu": 99999
     }, {})
+
+    assert _add_min_workers_nodes([], {},
+                                  {"gpubla": types["gpubla"]}) == ([], {}, {})
+
+    types["gpubla"]["max_workers"] = 10
+    assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}) == ([{
+        "GPU": 1
+    }] * 10, {
+        "gpubla": 10
+    }, {
+        "gpubla": 10
+    })
 
 
 def test_get_nodes_to_launch_with_min_workers():
@@ -1033,6 +1052,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]"])
         get_or_create_head_node(
             config,
             printable_config_file=config_path,

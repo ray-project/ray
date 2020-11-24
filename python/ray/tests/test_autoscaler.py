@@ -616,8 +616,7 @@ class AutoscalingTest(unittest.TestCase):
     def testAggressiveAutoscaling(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
-        config["max_workers"] = 20
-        config["initial_workers"] = 10
+        config["max_workers"] = 10
         config["idle_timeout_minutes"] = 0
         config["upscaling_speed"] = config["max_workers"]
         config_path = self.write_config(config)
@@ -1216,9 +1215,6 @@ class AutoscalingTest(unittest.TestCase):
             "type": "external",
             "module": "does-not-exist",
         }
-        with pytest.raises(ValueError):
-            invalid_provider = self.write_config(
-                config, call_prepare_config=True)
         invalid_provider = self.write_config(config, call_prepare_config=False)
         with pytest.raises(ValueError):
             StandardAutoscaler(
@@ -1526,9 +1522,10 @@ MemTotal:       16396056 kB
 MemFree:        12869528 kB
 MemAvailable:   33000000 kB
         """
-        runner.respond_to_call("cat /proc/meminfo", [proc_meminfo])
-        runner.respond_to_call(".Runtimes", ["nvidia-container-runtime"])
-        runner.respond_to_call("nvidia-smi", ["works"])
+        runner.respond_to_call("cat /proc/meminfo", 2 * [proc_meminfo])
+        runner.respond_to_call(".Runtimes", 2 * ["nvidia-container-runtime"])
+        runner.respond_to_call("nvidia-smi", 2 * ["works"])
+        runner.respond_to_call("json .Config.Env", 2 * ["[]"])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,

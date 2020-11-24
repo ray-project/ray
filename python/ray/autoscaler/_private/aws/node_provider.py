@@ -52,7 +52,8 @@ def make_ec2_client(region, max_retries, aws_credentials=None):
         "ec2", region_name=region, config=config, **aws_credentials)
 
 
-def list_ec2_instances(region: str) -> List[Dict[str, Any]]:
+def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
+                       ) -> List[Dict[str, Any]]:
     """Get all instance-types/resources available in the user's AWS region.
     Args:
         region (str): the region of the AWS provider. e.g., "us-west-2".
@@ -68,13 +69,15 @@ def list_ec2_instances(region: str) -> List[Dict[str, Any]]:
 
     """
     final_instance_types = []
-    instance_types = boto3.client(
-        "ec2", region_name=region).describe_instance_types()
+    config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    aws_credentials = aws_credentials or {}
+    ec2 = boto3.client(
+        "ec2", region_name=region, config=config, **aws_credentials)
+    instance_types = ec2.describe_instance_types()
     final_instance_types.extend(copy.deepcopy(instance_types["InstanceTypes"]))
     while "NextToken" in instance_types:
-        instance_types = boto3.client(
-            "ec2", region_name=region).describe_instance_types(
-                NextToken=instance_types["NextToken"])
+        instance_types = ec2.describe_instance_types(
+            NextToken=instance_types["NextToken"])
         final_instance_types.extend(
             copy.deepcopy(instance_types["InstanceTypes"]))
 
@@ -480,7 +483,8 @@ class AWSNodeProvider(NodeProvider):
         cluster_config = copy.deepcopy(cluster_config)
 
         instances_list = list_ec2_instances(
-            cluster_config["provider"]["region"])
+            cluster_config["provider"]["region"],
+            cluster_config["provider"].get("aws_credentials"))
         instances_dict = {
             instance["InstanceType"]: instance
             for instance in instances_list

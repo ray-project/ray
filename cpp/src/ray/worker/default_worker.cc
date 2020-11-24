@@ -3,6 +3,8 @@
 #include <ray/api/ray_config.h>
 #include <ray/util/logging.h>
 
+using namespace ::ray;
+
 namespace ray {
 namespace api {
 
