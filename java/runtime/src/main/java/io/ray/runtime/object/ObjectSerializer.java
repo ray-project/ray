@@ -153,12 +153,12 @@ public class ObjectSerializer {
     } else {
       try {
         Pair<byte[], Boolean> serialized = Serializer.encode(object);
-        byte[] xlang_metadata = {OBJECT_METADATA_TYPE_CROSS_LANGUAGE};
-        byte[] java_metadata = {OBJECT_METADATA_TYPE_JAVA};
+        byte[] xlangMetadata = {OBJECT_METADATA_TYPE_CROSS_LANGUAGE};
+        byte[] javaMetadata = {OBJECT_METADATA_TYPE_JAVA};
         NativeRayObject nativeRayObject = new NativeRayObject(serialized.getLeft(),
             serialized.getRight()
-                ? xlang_metadata
-                : java_metadata);
+                ? xlangMetadata
+                : javaMetadata);
         nativeRayObject.setContainedObjectIds(getAndClearContainedObjectIds());
         return nativeRayObject;
       } catch (Exception e) {
