@@ -246,9 +246,6 @@ class GTrXLNet(RecurrentNetwork):
             for i in range(self.num_transformer_units)
         ]
 
-        is_training = tf.keras.layers.Input(
-            shape=(), dtype=tf.bool, batch_size=1, name="is_training")
-
         # Map observation dim to input/output transformer (attention) dim.
         #TODO: why is there no ReLU here? Shouldn't this match the transformer outputs?
         E_out = tf.keras.layers.Dense(self.attn_dim)(input_layer)
@@ -319,17 +316,10 @@ class GTrXLNet(RecurrentNetwork):
     def forward(self, input_dict, state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         assert seq_lens is not None
-        # Add the needed batch rank (tf Models' Input requires this).
-        #is_training = tf.expand_dims(input_dict["is_training"], axis=0)
-
        
         # Add the time dim to observations.
         B = tf.shape(seq_lens)[0]
-
-        #TEST
-        observations = input_dict[SampleBatch.OBS] # <- original line
-        #observations = tf.concat([state[0], input_dict[SampleBatch.OBS]], axis=1)
-        #END TEST
+        observations = input_dict[SampleBatch.OBS]
 
         shape = tf.shape(observations)
         T = shape[0] // B
@@ -349,9 +339,6 @@ class GTrXLNet(RecurrentNetwork):
     # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
     def get_initial_state(self) -> List[np.ndarray]:
-        # State is the tau last observations concat'd together into one Tensor.
-        # Plus all Transformer blocks' E(l) outputs concat'd together (up to
-        # tau timesteps). Tau=memory size in inference mode.
         return []
 
     @override(ModelV2)

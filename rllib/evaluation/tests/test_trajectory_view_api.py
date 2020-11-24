@@ -153,11 +153,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["num_sgd_iter"] = 5
         config["num_workers"] = 0
         config["callbacks"] = MyCallbacks
+        config["env_config"] = {"config": {"start_at_t": 1}}  # first obs is [1.0]
 
         for _ in framework_iterator(config, frameworks="tf2"):#TODO: all
             trainer = ppo.PPOTrainer(
                 config,
-                env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
+                env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
+            )
             rw = trainer.workers.local_worker()
             sample = rw.sample()
             assert sample.count == config["rollout_fragment_length"]
@@ -198,8 +200,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "policy_mapping_fn": policy_fn,
         }
         num_iterations = 2
-        # Only works in torch so far.
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(config, frameworks="torch"):#TODO: all
             print("w/ traj. view API")
             config["_use_trajectory_view_api"] = True
             trainer = ppo.PPOTrainer(config=config, env="ma_env")

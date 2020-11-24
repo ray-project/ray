@@ -159,7 +159,7 @@ class _AgentCollector:
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
 
-            obs_shift = (1 if data_col == SampleBatch.OBS else 0)
+            obs_shift = (-1 if data_col == SampleBatch.OBS else 0)
 
             # Range of indices on time-axis, make sure to create
             if view_req.data_rel_pos_from is not None:
@@ -269,21 +269,19 @@ class _AgentCollector:
             data_col = view_req.data_col or view_col
             # Range of shifts, e.g. "-100:0". Note: This includes index 0!
             if view_req.data_rel_pos_from is not None:
-                time_indices = (abs_pos + view_req.data_rel_pos_from,
-                                abs_pos + view_req.data_rel_pos_to)
+                time_indices = (abs_pos + view_req.data_rel_pos_from + 1,
+                                abs_pos + view_req.data_rel_pos_to + 1)
             # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
             else:
                 time_indices = abs_pos + view_req.data_rel_pos
-            data_list = []
+
             if isinstance(time_indices, tuple):
-                if time_indices[1] == -1:
-                    data_list.append(self.buffers[data_col][time_indices[0]:])
-                else:
-                    data_list.append(self.buffers[data_col][time_indices[
-                        0]:time_indices[1] + 1])
+                data = self.buffers[data_col][time_indices[
+                    0]:time_indices[1] + 1]
             else:
-                data_list.append(self.buffers[data_col][time_indices])
-            input_dict[view_col] = np.array(data_list)
+                data = self.buffers[data_col][time_indices]
+            # Create batches of 1 (single-agent input-dict).
+            input_dict[view_col] = np.array([data])
 
         # Add valid `seq_lens`, just in case RNNs need it.
         input_dict["seq_lens"] = np.array([1])
