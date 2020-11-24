@@ -64,6 +64,8 @@ class GcsPlacementGroupSchedulerInterface {
       const NodeID &node_id) = 0;
 
   /// Destroy bundle resources from all nodes in the placement group.
+  ///
+  /// \param placement_group_id The id of the placement group to be destroyed.
   virtual void DestroyPlacementGroupBundleResourcesIfExists(
       const PlacementGroupID &placement_group_id) = 0;
 
