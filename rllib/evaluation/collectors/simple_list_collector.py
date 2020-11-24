@@ -283,7 +283,7 @@ class _AgentCollector:
             input_dict[view_col] = np.array([data])
 
         # Add valid `seq_lens`, just in case RNNs need it.
-        input_dict["seq_lens"] = np.array([1])
+        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
 
         return input_dict
 

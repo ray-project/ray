@@ -119,7 +119,7 @@ class SampleBatch:
                 time_major=concat_samples[0].time_major)
         return SampleBatch(
             out,
-            _seq_lens=seq_lens,
+            _seq_lens=np.array(seq_lens, dtype=np.int32),
             _time_major=concat_samples[0].time_major,
             _dont_check_lens=True)
 
@@ -160,7 +160,7 @@ class SampleBatch:
         """
         return SampleBatch(
             {k: np.array(v, copy=True)
-             for (k, v) in self.data.items()})
+             for (k, v) in self.data.items()}, _seq_lens=self.seq_lens)
 
     @PublicAPI
     def rows(self) -> Dict[str, TensorType]:
@@ -251,17 +251,18 @@ class SampleBatch:
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        if self.seq_lens:
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
             data = {k: v[start:end] for k, v in self.data.items()}
             # Fix state_in_x data.
             count = 0
             state_start = None
+            seq_lens = None
             for i, seq_len in enumerate(self.seq_lens):
                 count += seq_len
                 if count >= end:
                     data["state_in_0"] = self.data["state_in_0"][state_start:
                                                                  i + 1]
-                    seq_lens = self.seq_lens[state_start:i] + [
+                    seq_lens = list(self.seq_lens[state_start:i]) + [
                         seq_len - (count - end)
                     ]
                     assert sum(seq_lens) == (end - start)
@@ -271,7 +272,7 @@ class SampleBatch:
 
             return SampleBatch(
                 data,
-                _seq_lens=seq_lens,
+                _seq_lens=np.array(seq_lens, dtype=np.int32),
                 _time_major=self.time_major,
                 _dont_check_lens=True)
         else:

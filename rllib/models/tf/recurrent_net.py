@@ -121,14 +121,13 @@ class RecurrentNetwork(TFModelV2):
 
         feature_sequences, initial_states, seq_lens = \
             chop_into_sequences(
-                episode_ids=train_batch[SampleBatch.EPS_ID],
-                unroll_ids=train_batch[SampleBatch.UNROLL_ID],
-                agent_indices=train_batch[SampleBatch.AGENT_INDEX],
                 feature_columns=[train_batch[k] for k in feature_keys_],
                 state_columns=[train_batch[k] for k in state_keys],
                 max_seq_len=self.model_config["max_seq_len"],
                 dynamic_max=True,
-                shuffle=False)
+                shuffle=False,
+                seq_lens=train_batch.seq_lens,
+            )
         for i, k in enumerate(feature_keys_):
             train_batch[k] = feature_sequences[i]
         for i, k in enumerate(state_keys):
@@ -231,8 +230,11 @@ class LSTMWrapper(RecurrentNetwork):
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs: TensorType, state: List[TensorType],
                     seq_lens: TensorType) -> (TensorType, List[TensorType]):
-        model_out, self._value_out, h, c = self._rnn_model([inputs, seq_lens] +
-                                                           state)
+        try:
+            model_out, self._value_out, h, c = self._rnn_model([inputs, seq_lens] +
+                                                               state)
+        except Exception as e:
+            raise e#TODO
         return model_out, [h, c]
 
     @override(ModelV2)

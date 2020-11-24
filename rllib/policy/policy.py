@@ -726,7 +726,7 @@ class Policy(metaclass=ABCMeta):
             if view_req.is_input_dict:
                 ret[view_col] = _input_dict
                 ret[view_col]["seq_lens"] = np.array(
-                    [1 for _ in range(batch_size)])
+                    [1 for _ in range(batch_size)], dtype=np.int32)
 
         return SampleBatch(ret, _dont_check_lens=True)
 
@@ -744,6 +744,7 @@ class Policy(metaclass=ABCMeta):
                 ViewRequirement(
                     "state_out_{}".format(i),
                     data_rel_pos=-1,
+                    batch_repeat_value=self.config["model"]["max_seq_len"],
                     space=Box(-1.0, 1.0, shape=state.shape))
             model.inference_view_requirements["state_out_{}".format(i)] = \
                 ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))

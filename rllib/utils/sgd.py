@@ -72,7 +72,7 @@ def minibatches(samples, sgd_minibatch_size):
 
     i = 0
     slices = []
-    if samples.seq_lens:
+    if samples.seq_lens is not None and len(samples.seq_lens) > 0:
         start_pos = 0
         minibatch_size = 0
         idx = 0

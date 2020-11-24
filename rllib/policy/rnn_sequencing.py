@@ -272,7 +272,10 @@ def chop_into_sequences(*,
             s_init = []
             i = 0
             for len_ in seq_lens:
-                s_init.append(s[i])
+                try:
+                    s_init.append(s[i])
+                except Exception as e:
+                    print(end="")
                 i += len_
             initial_states.append(np.array(s_init))
 
