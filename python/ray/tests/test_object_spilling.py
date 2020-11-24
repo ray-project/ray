@@ -4,6 +4,7 @@ import random
 import platform
 import sys
 import time
+import os
 
 import numpy as np
 import pytest
@@ -339,7 +340,22 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
     # Concurrent gets, which require restoring from external storage, while
     # objects are being created.
     for x in ids:
-        print(ray.get(x).shape)
+        try:
+            print(x)
+            ray.get(x, timeout=10)
+        except:
+            try:
+                for f in os.listdir('/tmp/ray/session_latest/logs'):
+                    filename = os.path.join('/tmp/ray/session_latest/logs', f)
+                    if not os.path.isfile(filename):
+                        print(filename)
+                        continue
+                    with open(filename, 'r') as file:
+                        print("FILE:", f)
+                        for line in file.readlines():
+                            print(line)
+            except:
+                pass
 
 
 @pytest.mark.skipif(

@@ -186,7 +186,21 @@ def test_actor_creation_task(ray_start_regular):
     assert not ready
 
     ray.experimental.set_resource("init", 1)
-    ray.get(ping)
+    try:
+        ray.get(ping, timeout=10)
+    except:
+        try:
+            for f in os.listdir('/tmp/ray/session_latest/logs'):
+                filename = os.path.join('/tmp/ray/session_latest/logs', f)
+                if not os.path.isfile(filename):
+                    print(filename)
+                    continue
+                with open(filename, 'r') as file:
+                    print("FILE:", f)
+                    for line in file.readlines():
+                        print(line)
+        except:
+            pass
 
 
 def test_basic_pinning(one_worker_100MiB):
