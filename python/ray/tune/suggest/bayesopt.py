@@ -5,6 +5,7 @@ import json
 from typing import Dict, Optional, Tuple
 
 from ray.tune import ExperimentAnalysis
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
@@ -53,7 +54,9 @@ class BayesOptSearch(Searcher):
     Args:
         space (dict): Continuous search space. Parameters will be sampled from
             this space which will be used to run trials.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         utility_kwargs (dict): Parameters to define the utility function.
@@ -205,9 +208,13 @@ class BayesOptSearch(Searcher):
 
         self.optimizer = None
         if space:
-            self.setup_optimizer()
+            self._setup_optimizer()
 
-    def setup_optimizer(self):
+    def _setup_optimizer(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         self.optimizer = byo.BayesianOptimization(
             f=None,
             pbounds=self._space,
@@ -230,7 +237,7 @@ class BayesOptSearch(Searcher):
         elif self._mode == "min":
             self._metric_op = -1.
 
-        self.setup_optimizer()
+        self._setup_optimizer()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

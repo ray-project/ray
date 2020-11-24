@@ -390,6 +390,7 @@ py_test(
     srcs = ["examples/tf_distributed_keras_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "tensorflow"],
+    args = ["--smoke-test"]
 )
 
 py_test(
