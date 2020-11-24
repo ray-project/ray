@@ -554,9 +554,9 @@ void NodeManager::HandleRequestObjectSpillage(
       });
 }
 
-void NodeManager::HandleDeleteSpilledObject(const SpilledObjectDeleteRequest &request,
-                                        SpilledObjectDeleteReply *reply,
-                                        SendReplyCallback send_reply_callback) {
+void NodeManager::HandleDeleteSpilledObject(
+    const rpc::DeleteSpilledObjectRequest &request, rpc::DeleteSpilledObjectReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   // SANG-TODO fix it.
   local_object_manager_.SpillObjects(
       {ObjectID::FromBinary(request.object_id())},

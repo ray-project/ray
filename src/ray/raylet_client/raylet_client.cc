@@ -336,10 +336,10 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
-void raylet::RayletClient::RequestDeleteSpilledObject(
+void raylet::RayletClient::DeleteSpilledObject(
     const ObjectID &object_id,
-    const rpc::ClientCallback<rpc::SpilledObjectDeleteReply> &callback) {
-  rpc::SpilledObjectDeleteRequest request;
+    const rpc::ClientCallback<rpc::DeleteSpilledObjectReply> &callback) {
+  rpc::DeleteSpilledObjectRequest request;
   request.set_object_id(object_id.Binary());
   grpc_client_->DeleteSpilledObject(request, callback);
 }

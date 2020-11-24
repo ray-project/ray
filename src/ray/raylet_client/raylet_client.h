@@ -351,9 +351,9 @@ class RayletClient : public PinObjectsInterface,
   /// \param object_id The ID of the object to be spilled.
   /// \param callback Callback that will be called after raylet completes the
   /// object deletion (or it fails).
-  void RequestDeleteSpilledObject(
+  void DeleteSpilledObject(
       const ObjectID &object_id,
-      const rpc::ClientCallback<rpc::SpilledObjectDeleteReply> &callback);
+      const rpc::ClientCallback<rpc::DeleteSpilledObjectReply> &callback);
 
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
