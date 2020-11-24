@@ -1,4 +1,5 @@
-# This workload tests running APEX
+# This workload tests running many instances of PPO (many actors)
+# This covers https://github.com/ray-project/ray/pull/12148
 
 import ray
 from ray.cluster_utils import Cluster
