@@ -584,11 +584,11 @@ void NodeManager::HandleReleaseUnusedBundles(
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
     if (0 == in_use_bundles.count(worker->GetBundleId())) {
-      workers_associated_with_unused_bundles.push_back(worker);
+      workers_associated_with_unused_bundles.emplace_back(worker);
     }
   }
 
-  for (const auto &worker_it : workers_associated_with_unused_bundles) {
+  for (const auto &worker : workers_associated_with_unused_bundles) {
     RAY_LOG(DEBUG)
         << "Destroying worker since its bundle was unused. Placement group id: "
         << worker->GetBundleId().first
@@ -1834,7 +1834,7 @@ void NodeManager::HandleCancelResourceReserve(
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
     if (worker->GetBundleId().first == bundle_spec.PlacementGroupId()) {
-      workers_associated_with_pg.push_back(worker);
+      workers_associated_with_pg.emplace_back(worker);
     }
   }
   for (const auto &worker : workers_associated_with_pg) {
