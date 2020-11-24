@@ -422,6 +422,9 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
 
   if (!lease_status_tracker->AllPrepareRequestsSuccessful()) {
     // Erase the status tracker from a in-memory map if exists.
+    // NOTE: A placement group may be scheduled several times to succeed.
+    // If a prepare failure occurs during scheduling, we just need to release the prepared
+    // bundle resources of this scheduling.
     DestroyPlacementGroupPreparedBundleResources(placement_group_id);
     auto it = placement_group_leasing_in_progress_.find(placement_group_id);
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
