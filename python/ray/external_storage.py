@@ -120,7 +120,6 @@ class FileSystemStorage(ExternalStorage):
                 self._put_object_to_store(metadata, buf_len, f, ref)
 
     def delete_spilled_objects(self, urls: List[str]):
-        print("delete hehe ", urls)
         for url in urls:
             filename = url.decode()
             os.remove(os.path.join(self.directory_path, filename))

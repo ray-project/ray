@@ -131,10 +131,15 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
         while ref is None:
             try:
                 ref = ray.put(arr)
+                print("ref put", ref.hex())
                 replay_buffer.append(ref)
                 pinned_objects.add(ref)
             except ray.exceptions.ObjectStoreFullError:
                 ref_to_spill = pinned_objects.pop()
+                print("ref to spill: ", ref_to_spill.hex())
+                for r in replay_buffer:
+                    print("replay buffer ref")
+                    print(r.hex())
                 ray.experimental.force_spill_objects([ref_to_spill])
 
     def is_worker(cmdline):
@@ -192,6 +197,7 @@ def test_spill_objects_manually_from_workers(object_spilling_config,
     # Create objects of more than 200 MiB.
     replay_buffer = [ray.get(_worker.remote()) for _ in range(25)]
     values = {ref: np.copy(ray.get(ref)) for ref in replay_buffer}
+    print("not yet unpinned")
     # Randomly sample objects.
     for _ in range(100):
         ref = random.choice(replay_buffer)

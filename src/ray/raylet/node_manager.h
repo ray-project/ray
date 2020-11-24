@@ -648,6 +648,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `DeleteSpilledObject` request.
+  void HandleDeleteSpilledObject(const SpilledObjectDeleteRequest &request,
+                                         SpilledObjectDeleteReply *reply,
+                                         SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReleaseUnusedBundles` request.
   void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
                                   rpc::ReleaseUnusedBundlesReply *reply,

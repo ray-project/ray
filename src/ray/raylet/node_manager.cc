@@ -554,6 +554,20 @@ void NodeManager::HandleRequestObjectSpillage(
       });
 }
 
+void NodeManager::HandleDeleteSpilledObject(const SpilledObjectDeleteRequest &request,
+                                        SpilledObjectDeleteReply *reply,
+                                        SendReplyCallback send_reply_callback) {
+  // SANG-TODO fix it.
+  local_object_manager_.SpillObjects(
+      {ObjectID::FromBinary(request.object_id())},
+      [reply, send_reply_callback](const ray::Status &status) {
+        if (status.ok()) {
+          reply->set_success(true);
+        }
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
+}
+
 void NodeManager::HandleReleaseUnusedBundles(
     const rpc::ReleaseUnusedBundlesRequest &request,
     rpc::ReleaseUnusedBundlesReply *reply, rpc::SendReplyCallback send_reply_callback) {
