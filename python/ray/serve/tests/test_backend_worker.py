@@ -87,8 +87,7 @@ async def test_servable_function(serve_instance, router,
     def echo(request):
         return request.args["i"]
 
-    _ = await add_servable_to_router(echo, router,
-                                     mock_controller_with_name[0])
+    await add_servable_to_router(echo, router, mock_controller_with_name[0])
 
     for query in [333, 444, 555]:
         query_param = make_request_param()
@@ -106,7 +105,7 @@ async def test_servable_class(serve_instance, router,
         def __call__(self, request):
             return request.args["i"] + self.increment
 
-    _ = await add_servable_to_router(
+    await add_servable_to_router(
         MyAdder, router, mock_controller_with_name[0], init_args=(3, ))
 
     for query in [333, 444, 555]:
@@ -125,8 +124,8 @@ async def test_task_runner_custom_method_single(serve_instance, router,
         def b(self, _):
             return "b"
 
-    _ = await add_servable_to_router(NonBatcher, router,
-                                     mock_controller_with_name[0])
+    await add_servable_to_router(NonBatcher, router,
+                                 mock_controller_with_name[0])
 
     query_param = make_request_param("a")
     a_result = await (await router.assign_request.remote(query_param))
@@ -155,7 +154,7 @@ async def test_task_runner_custom_method_batch(serve_instance, router,
         max_batch_size=4,
         batch_wait_timeout=10,
         internal_metadata=BackendMetadata(accepts_batches=True))
-    _ = await add_servable_to_router(
+    await add_servable_to_router(
         Batcher,
         router,
         mock_controller_with_name[0],
@@ -191,7 +190,7 @@ async def test_servable_batch_error(serve_instance, router,
     backend_config = BackendConfig(
         max_batch_size=4,
         internal_metadata=BackendMetadata(accepts_batches=True))
-    _ = await add_servable_to_router(
+    await add_servable_to_router(
         ErrorBatcher,
         router,
         mock_controller_with_name[0],
@@ -221,7 +220,7 @@ async def test_task_runner_perform_batch(serve_instance, router,
         batch_wait_timeout=10,
         internal_metadata=BackendMetadata(accepts_batches=True))
 
-    _ = await add_servable_to_router(
+    await add_servable_to_router(
         batcher, router, mock_controller_with_name[0], backend_config=config)
 
     query_param = make_request_param()
@@ -256,7 +255,7 @@ async def test_task_runner_perform_async(serve_instance, router,
         max_concurrent_queries=10,
         internal_metadata=BackendMetadata(is_blocking=False))
 
-    _ = await add_servable_to_router(
+    await add_servable_to_router(
         wait_and_go,
         router,
         mock_controller_with_name[0],
@@ -269,7 +268,48 @@ async def test_task_runner_perform_async(serve_instance, router,
         timeout=10)
     assert len(done) == 10
     for item in done:
-        await item == "done!"
+        assert await item == "done!"
+
+
+async def test_user_config_update(serve_instance, router,
+                                  mock_controller_with_name):
+    class Customizable:
+        def __init__(self):
+            self.reval = ""
+
+        def __call__(self, flask_request):
+            return self.retval
+
+        def reconfigure(self, config):
+            self.retval = config["return_val"]
+
+    config = BackendConfig(
+        num_replicas=2, user_config={
+            "return_val": "original",
+            "b": 2
+        })
+    await add_servable_to_router(
+        Customizable,
+        router,
+        mock_controller_with_name[0],
+        backend_config=config)
+
+    query_param = make_request_param()
+
+    done = [(await router.assign_request.remote(query_param))
+            for _ in range(10)]
+    for i in done:
+        assert await i == "original"
+
+    config = BackendConfig()
+    config.user_config = {"return_val": "new_val"}
+    await mock_controller_with_name[1].update_backend.remote("backend", config)
+
+    done = [(await router.assign_request.remote(query_param))
+            for _ in range(10)]
+
+    for i in done:
+        assert await i == "new_val"
 
 
 if __name__ == "__main__":

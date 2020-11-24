@@ -120,9 +120,6 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
 
-        def update_config(self, new_config: BackendConfig):
-            return self.backend.update_config(new_config)
-
         def ready(self):
             pass
 
@@ -146,7 +143,6 @@ def ensure_async(func: Callable) -> Callable:
     return sync_to_async(func)
 
 
-# Define Long-Poll Client
 class RayServeReplica:
     """Handles requests with the provided callable."""
 
@@ -381,11 +377,12 @@ class RayServeReplica:
             reconfigure_method(user_config)
 
     async def _update_backend_configs(self, backend_configs):
+        # TODO(ilr) remove this loop when we poll per key
         for backend_tag, config in backend_configs.items():
             if backend_tag == self.backend_tag:
-                self.update_config(config)
+                self._update_config(config)
 
-    def update_config(self, new_config: BackendConfig) -> None:
+    def _update_config(self, new_config: BackendConfig) -> None:
         self.config = new_config
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)

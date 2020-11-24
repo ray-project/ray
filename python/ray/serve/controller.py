@@ -144,10 +144,6 @@ class ActorStateReconciler:
                 for replica_dict in self.backend_replicas.values()
             ]))
 
-    def get_replica_handles_for_backend(
-            self, backend_tag: BackendTag) -> List[ActorHandle]:
-        return list(self.backend_replicas.get(backend_tag, {}).values())
-
     async def _start_pending_backend_replicas(
             self, config_store: ConfigurationStore) -> None:
         """Starts the pending backend replicas in self.backend_replicas_to_start.
@@ -910,19 +906,6 @@ class ServeController:
 
             self.notify_replica_handles_changed()
             self.notify_backend_configs_changed()
-
-    async def broadcast_backend_config(self, backend_tag: BackendTag) -> None:
-
-        # Replace with notify_backend_configs_changed()
-        # After adding this to the Backend Replica
-        backend_config = self.configuration_store.get_backend(
-            backend_tag).backend_config
-        broadcast_futures = [
-            replica.update_config.remote(backend_config).as_future()
-            for replica in
-            self.actor_reconciler.get_replica_handles_for_backend(backend_tag)
-        ]
-        await asyncio.gather(*broadcast_futures)
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""

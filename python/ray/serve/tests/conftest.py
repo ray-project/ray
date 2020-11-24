@@ -73,6 +73,11 @@ def mock_controller_with_name():
             )
             self.host.notify_changed("backend_configs", self.backend_configs)
 
+        def update_backend(self, backend_tag: str,
+                           backend_config: BackendConfig):
+            self.backend_configs[backend_tag] = backend_config
+            self.host.notify_changed("backend_configs", self.backend_configs)
+
     name = f"MockController{random.randint(0,10e4)}"
     yield name, MockControllerActor.options(name=name).remote()
 
