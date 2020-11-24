@@ -117,12 +117,12 @@ class GcsScheduleStrategy {
   /// \return Void.
   void ResetAcquiredResources();
 
-  /// Records the acquisition of resources from the specified node.
+  /// Records the acquirement of resources from the specified node.
   ///
   /// \param node_id Id of a node.
   /// \param required_resources Resources to apply for.
   /// \return Void.
-  void RecordResourceAcquisition(const NodeID &node_id,
+  void RecordResourceAcquirement(const NodeID &node_id,
                                  const ResourceSet &required_resources);
 
   /// Return acquired resources.
@@ -397,7 +397,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   GcsPlacementGroupScheduler(
       boost::asio::io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      GcsNodeManager &gcs_node_manager,
+      const GcsNodeManager &gcs_node_manager,
       ReserveResourceClientFactoryFn lease_client_factory = nullptr);
 
   virtual ~GcsPlacementGroupScheduler() = default;
@@ -540,7 +540,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
   /// Reference of GcsNodeManager.
-  GcsNodeManager &gcs_node_manager_;
+  const GcsNodeManager &gcs_node_manager_;
 
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<NodeID, std::shared_ptr<ResourceReserveInterface>>

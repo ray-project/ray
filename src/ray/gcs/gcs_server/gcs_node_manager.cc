@@ -534,8 +534,8 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
   }
 }
 
-std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>>
-GcsNodeManager::GetClusterRealtimeResources() {
+const std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>>
+GcsNodeManager::GetClusterRealtimeResources() const {
   return cluster_realtime_resources_;
 }
 

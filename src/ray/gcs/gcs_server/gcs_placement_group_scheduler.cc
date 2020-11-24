@@ -23,7 +23,7 @@ namespace gcs {
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     boost::asio::io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    gcs::GcsNodeManager &gcs_node_manager,
+    const gcs::GcsNodeManager &gcs_node_manager,
     ReserveResourceClientFactoryFn lease_client_factory)
     : return_timer_(io_context),
       gcs_table_storage_(std::move(gcs_table_storage)),
@@ -45,7 +45,7 @@ GcsScheduleStrategy::GetClusterResources() {
 
 void GcsScheduleStrategy::ResetAcquiredResources() { acquired_resources_.clear(); }
 
-void GcsScheduleStrategy::RecordResourceAcquisition(
+void GcsScheduleStrategy::RecordResourceAcquirement(
     const NodeID &node_id, const ResourceSet &required_resources) {
   acquired_resources_[node_id].push_back(required_resources);
 }
@@ -114,7 +114,7 @@ ScheduleMap GcsPackStrategy::Schedule(
     for (auto &node : *alive_nodes) {
       if (required_resources.IsSubset(node.second)) {
         node.second.SubtractResourcesStrict(required_resources);
-        RecordResourceAcquisition(node.first, required_resources);
+        RecordResourceAcquirement(node.first, required_resources);
         schedule_map[bundle->BundleId()] = node.first;
         break;
       }
@@ -151,7 +151,7 @@ ScheduleMap GcsSpreadStrategy::Schedule(
     for (; iter != candidate_nodes->end(); ++iter) {
       if (required_resources.IsSubset(iter->second)) {
         iter->second.SubtractResourcesStrict(required_resources);
-        RecordResourceAcquisition(iter->first, required_resources);
+        RecordResourceAcquirement(iter->first, required_resources);
         schedule_map[bundle->BundleId()] = iter->first;
         break;
       }
@@ -169,7 +169,7 @@ ScheduleMap GcsSpreadStrategy::Schedule(
         for (iter = candidate_nodes->begin(); iter != iter_begin; ++iter) {
           if (required_resources.IsSubset(iter->second)) {
             iter->second.SubtractResourcesStrict(required_resources);
-            RecordResourceAcquisition(iter->first, required_resources);
+            RecordResourceAcquirement(iter->first, required_resources);
             schedule_map[bundle->BundleId()] = iter->first;
             break;
           }
@@ -216,7 +216,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
       if (required_resources.IsSubset(iter->second)) {
         schedule_map[bundle->BundleId()] = iter->first;
         candidate_nodes->erase(iter);
-        RecordResourceAcquisition(iter->first, required_resources);
+        RecordResourceAcquirement(iter->first, required_resources);
         break;
       }
     }
