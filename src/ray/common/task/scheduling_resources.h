@@ -178,6 +178,14 @@ class ResourceSet {
   /// \return Void.
   void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index);
 
+  /// Remove the placement group implicit resource.
+  ///
+  /// \param group_id: The placement group id.
+  /// \param bundle_index: The bundle index to return resources for.
+  /// \return Void.
+  void RemoveBundleImplicitResourcesIfExists(const PlacementGroupID &group_id,
+                                             const int bundle_index);
+
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
   /// is a subset of the ResourceSet. Deletes any resource if the capacity after
@@ -455,7 +463,7 @@ class ResourceIdSet {
   /// \param group_id: The placement group id.
   /// \param bundle_index: The index of the bundle.
   void CommitImplicitBundleResourceIds(const PlacementGroupID &group_id,
-                                        const int bundle_index);
+                                       const int bundle_index);
 
   /// \brief remove a Bundle resource in the ResourceIdSet.
   ///

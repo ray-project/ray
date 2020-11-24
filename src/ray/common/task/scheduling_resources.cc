@@ -279,6 +279,15 @@ void ResourceSet::ReturnBundleResources(const PlacementGroupID &group_id,
       resource_capacity_.erase(wildcard_resource);
     }
   }
+  RemoveBundleImplicitResourcesIfExists(group_id, bundle_index);
+}
+
+void ResourceSet::RemoveBundleImplicitResourcesIfExists(const PlacementGroupID &group_id,
+                                                        const int bundle_index) {
+  auto implicity_label = FormatPlacementGroupImplicitResource(group_id, bundle_index);
+  if (resource_capacity_.count(implicity_label) == 1) {
+    resource_capacity_.erase(implicity_label);
+  }
 }
 
 FractionalResourceQuantity ResourceSet::GetResource(
@@ -695,7 +704,7 @@ void ResourceIdSet::AddOrUpdateResource(const std::string &resource_name,
 }
 
 void ResourceIdSet::CommitImplicitBundleResourceIds(const PlacementGroupID &group_id,
-                                                     const int bundle_index) {
+                                                    const int bundle_index) {
   auto implicit_name = FormatPlacementGroupImplicitResource(group_id, bundle_index);
   available_resources_[implicit_name] = available_resources_[implicit_name].Plus(
       ResourceIds(placementGroupImplicitResourceValue));
@@ -733,6 +742,12 @@ void ResourceIdSet::ReturnBundleResources(const PlacementGroupID &group_id,
   available_resources_[wildcard_name].Acquire(bundle_ids.TotalQuantity());
   if (available_resources_[wildcard_name].TotalQuantityIsZero()) {
     available_resources_.erase(wildcard_name);
+  }
+
+  // Remove the implicity resource directly.
+  auto implicity_label = FormatPlacementGroupImplicitResource(group_id, bundle_index);
+  if (available_resources_.count(implicity_label) == 1) {
+    available_resources_.erase(implicity_label);
   }
 }
 

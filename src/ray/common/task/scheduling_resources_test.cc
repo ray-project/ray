@@ -41,7 +41,9 @@ TEST_F(SchedulingResourcesTest, CommitBundleResources) {
   resource_labels.pop_back();
   resource_labels.push_back("CPU_group_1_" + group_id.Hex());
   resource_labels.push_back("CPU_group_" + group_id.Hex());
+  resource_labels.push_back("PlacementGroup_implicit_" + group_id.Hex() + "_1");
   resource_capacity.push_back(1.0);
+  resource_capacity.push_back(1000);
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));
 }
@@ -50,12 +52,16 @@ TEST_F(SchedulingResourcesTest, AddBundleResource) {
   PlacementGroupID group_id = PlacementGroupID::FromRandom();
   std::string wild_name = "CPU_group_" + group_id.Hex();
   std::string index_name = "CPU_group_1_" + group_id.Hex();
+  std::string implicit_name = "PlacementGroup_implicit_" + group_id.Hex() + "_1";
   std::vector<int64_t> whole_ids = {1, 2, 3};
   ResourceIds resource_ids(whole_ids);
+  resource_id_set->CommitImplicitBundleResourceIds(group_id, 1);
   resource_id_set->CommitBundleResourceIds(group_id, 1, "CPU", resource_ids);
-  ASSERT_EQ(2, resource_id_set->AvailableResources().size());
+  ASSERT_EQ(3, resource_id_set->AvailableResources().size());
   for (auto res : resource_id_set->AvailableResources()) {
-    ASSERT_TRUE(res.first == wild_name || res.first == index_name) << res.first;
+    ASSERT_TRUE(res.first == wild_name || res.first == index_name ||
+                res.first == implicit_name)
+        << res.first;
   }
 }
 
@@ -68,7 +74,9 @@ TEST_F(SchedulingResourcesTest, ReturnBundleResources) {
   resource_labels.pop_back();
   resource_labels.push_back("CPU_group_" + group_id.Hex());
   resource_labels.push_back("CPU_group_1_" + group_id.Hex());
+  resource_labels.push_back("PlacementGroup_implicit_" + group_id.Hex() + "_1");
   resource_capacity.push_back(1.0);
+  resource_capacity.push_back(1000);
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));
   resource_set->ReturnBundleResources(group_id, 1);
@@ -85,12 +93,11 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemove) {
   // Construct resource set containing two bundles.
   resource_set->CommitBundleResources(group_id, 1, resource);
   resource_set->CommitBundleResources(group_id, 2, resource);
-  resource_labels = {
-      "CPU_group_" + group_id.Hex(),
-      "CPU_group_1_" + group_id.Hex(),
-      "CPU_group_2_" + group_id.Hex(),
-  };
-  resource_capacity = {2.0, 1.0, 1.0};
+  resource_labels = {"CPU_group_" + group_id.Hex(), "CPU_group_1_" + group_id.Hex(),
+                     "CPU_group_2_" + group_id.Hex(),
+                     "PlacementGroup_implicit_" + group_id.Hex() + "_1",
+                     "PlacementGroup_implicit_" + group_id.Hex() + "_2"};
+  resource_capacity = {2.0, 1.0, 1.0, 1000, 1000};
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource))
       << resource_set->ToString() << " vs " << result_resource.ToString();
@@ -101,8 +108,9 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemove) {
       "CPU",
       "CPU_group_" + group_id.Hex(),
       "CPU_group_1_" + group_id.Hex(),
+      "PlacementGroup_implicit_" + group_id.Hex() + "_1",
   };
-  resource_capacity = {1.0, 1.0, 1.0};
+  resource_capacity = {1.0, 1.0, 1.0, 1000};
   ResourceSet result_resource2(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource2))
       << resource_set->ToString() << " vs " << result_resource2.ToString();
@@ -120,10 +128,13 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemoveIdSet) {
   // Construct resource set containing two bundles.
   auto rid1 = ResourceIds({1, 2});
   auto rid2 = ResourceIds({3, 4});
+  resource_ids.CommitImplicitBundleResourceIds(group_id, 1);
+  resource_ids.CommitImplicitBundleResourceIds(group_id, 2);
   resource_ids.CommitBundleResourceIds(group_id, 1, "CPU", rid1);
   resource_ids.CommitBundleResourceIds(group_id, 2, "CPU", rid2);
   resource_ids.CommitBundleResourceIds(group_id, 1, "GPU", rid1);
   resource_ids.CommitBundleResourceIds(group_id, 2, "GPU", rid2);
+
   auto result = ResourceSet(
       {
           "CPU_group_" + group_id.Hex(),
@@ -132,8 +143,10 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemoveIdSet) {
           "GPU_group_" + group_id.Hex(),
           "GPU_group_1_" + group_id.Hex(),
           "GPU_group_2_" + group_id.Hex(),
+          "PlacementGroup_implicit_" + group_id.Hex() + "_1",
+          "PlacementGroup_implicit_" + group_id.Hex() + "_2",
       },
-      {4.0, 2.0, 2.0, 4.0, 2.0, 2.0});
+      {4.0, 2.0, 2.0, 4.0, 2.0, 2.0, 1000.0, 1000.0});
   ASSERT_EQ(1, resource_ids.ToResourceSet().IsEqual(result))
       << resource_ids.ToString() << " vs " << result.ToString();
 
@@ -148,8 +161,9 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemoveIdSet) {
           "GPU_group_" + group_id.Hex(),
           "GPU",
           "GPU_group_2_" + group_id.Hex(),
+          "PlacementGroup_implicit_" + group_id.Hex() + "_2",
       },
-      {2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
+      {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 1000.0});
   ASSERT_EQ(1, resource_ids.ToResourceSet().IsEqual(result))
       << resource_ids.ToString() << " vs " << result.ToString();
 
