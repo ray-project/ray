@@ -16,8 +16,6 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
                  out_dim: int,
                  num_heads: int,
                  head_dim: int,
-                 rel_pos_encoder_inference: "tf.Operation",
-                 rel_pos_encoder_training: "tf.Operation",
                  input_layernorm: bool = False,
                  output_activation: Optional["tf.nn.activation"] = None,
                  **kwargs):
@@ -29,12 +27,6 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
                 Denoted `H` in [2].
             head_dim (int): The dimension of a single(!) attention head
                 Denoted `D` in [2].
-            rel_pos_encoder_inference (tf.Operation): TF op to be used as
-                relative positional encoders of the inference (action
-                computation) input sequence(s).
-            rel_pos_encoder_training (tf.Operation): TF op to be used as
-                relative positional encoders of the train batch input
-                sequence(s).
             input_layernorm (bool): Whether to prepend a LayerNorm before
                 everything else. Should be True for building a GTrXL.
             output_activation (Optional[tf.nn.activation]): Optional tf.nn
@@ -56,19 +48,21 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         self._uvar = self.add_weight(shape=(num_heads, head_dim))
         self._vvar = self.add_weight(shape=(num_heads, head_dim))
 
+        # Constant (non-trainable) sinusoid rel pos encoding matrix, which
+        # depends on this incoming time dimension.
+        # For inference, we prepend the memory to the current timestep's
+        # input: Tau + 1. For training, we prepend the memory to the input
+        # sequence: Tau + T.
+        self._pos_embedding = PositionalEmbedding(out_dim)
         self._pos_proj = tf.keras.layers.Dense(
             num_heads * head_dim, use_bias=False)
-        self._rel_pos_encoder_inference = rel_pos_encoder_inference
-        self._rel_pos_encoder_training = rel_pos_encoder_training
 
         self._input_layernorm = None
         if input_layernorm:
             self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
-    def call(self,
-             inputs: TensorType,
-             memory: Optional[TensorType] = None,
-             is_training: bool = False) -> TensorType:
+    def call(self, inputs: TensorType,
+             memory: Optional[TensorType] = None) -> TensorType:
         T = tf.shape(inputs)[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads
         d = self._head_dim  # attention head dimension
@@ -93,10 +87,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         keys = tf.reshape(keys, [-1, Tau + T, H, d])
         values = tf.reshape(values, [-1, Tau + T, H, d])
 
-        R = tf.cond(
-            is_training,
-            true_fn=lambda: self._rel_pos_encoder_training,
-            false_fn=lambda: self._rel_pos_encoder_inference)
+        R = self._pos_embedding(Tau + T)
         R = self._pos_proj(R)
         R = tf.reshape(R, [Tau + T, H, d])
 
@@ -135,3 +126,14 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         x = tf.reshape(x, x_size)
 
         return x
+
+
+class PositionalEmbedding(tf.keras.layers.Layer):
+    def __init__(self, out_dim, **kwargs):
+        super().__init__(**kwargs)
+        self.inverse_freq = 1 / (10000**(tf.range(0, out_dim, 2.0) / out_dim))
+
+    def call(self, seq_length):
+        pos_offsets = tf.cast(tf.range(seq_length - 1, -1, -1), tf.float32)
+        inputs = pos_offsets[:, None] * self.inverse_freq[None, :]
+        return tf.concat((tf.sin(inputs), tf.cos(inputs)), axis=-1)

@@ -18,6 +18,7 @@ from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.models.utils import preprocess_train_batch_attention_nets
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -92,8 +93,6 @@ class TrXLNet(RecurrentNetwork):
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
 
-        pos_embedding = relative_position_embedding(self.max_seq_len, attn_dim)
-
         inputs = tf.keras.layers.Input(
             shape=(self.max_seq_len, self.obs_dim), name="inputs")
         E_out = tf.keras.layers.Dense(attn_dim)(inputs)
@@ -104,7 +103,6 @@ class TrXLNet(RecurrentNetwork):
                     out_dim=attn_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
-                    rel_pos_encoder=pos_embedding,
                     input_layernorm=False,
                     output_activation=None),
                 fan_in_layer=None)(E_out)
@@ -225,16 +223,6 @@ class GTrXLNet(RecurrentNetwork):
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
 
-        # Constant (non-trainable) sinusoid rel pos encoding matrices
-        # (use different ones for inference and training due to the different
-        # memory sizes used).
-        # For inference, we prepend the memory to the current timestep's input.
-        Phi_inf = relative_position_embedding(self.memory_inference + 1,
-                                              self.attn_dim)
-        # For training, we prepend the memory to the input sequence.
-        Phi_train = relative_position_embedding(
-            self.memory_training + self.max_seq_len, self.attn_dim)
-
         # Raw observation input (plus (None) time axis).
         input_layer = tf.keras.layers.Input(
             shape=(None, self.obs_dim), name="inputs")
@@ -245,9 +233,6 @@ class GTrXLNet(RecurrentNetwork):
                 name="memory_in_{}".format(i))
             for i in range(self.num_transformer_units)
         ]
-
-        is_training = tf.keras.layers.Input(
-            shape=(), dtype=tf.bool, batch_size=1, name="is_training")
 
         # Map observation dim to input/output transformer (attention) dim.
         E_out = tf.keras.layers.Dense(self.attn_dim)(input_layer)
@@ -263,13 +248,11 @@ class GTrXLNet(RecurrentNetwork):
                     out_dim=self.attn_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
-                    rel_pos_encoder_inference=Phi_inf,
-                    rel_pos_encoder_training=Phi_train,
                     input_layernorm=True,
                     output_activation=tf.nn.relu),
                 fan_in_layer=GRUGate(init_gate_bias),
                 name="mha_{}".format(i + 1))(
-                    E_out, memory=memory_ins[i], is_training=is_training[0])
+                    E_out, memory=memory_ins[i])
             # Position-wise MLP part.
             E_out = SkipConnection(
                 tf.keras.Sequential(
@@ -296,7 +279,7 @@ class GTrXLNet(RecurrentNetwork):
             1, activation=None, name="values")(E_out)
 
         self.trxl_model = tf.keras.Model(
-            inputs=[input_layer] + memory_ins + [is_training],
+            inputs=[input_layer] + memory_ins,
             outputs=[logits, values_out] + memory_outs[:-1])
 
         self.register_variables(self.trxl_model.variables)
@@ -318,17 +301,17 @@ class GTrXLNet(RecurrentNetwork):
     def forward(self, input_dict, state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         assert seq_lens is not None
-        # Add the needed batch rank (tf Models' Input requires this).
-        is_training = tf.expand_dims(input_dict["is_training"], axis=0)
-        observations = input_dict[SampleBatch.OBS]
+
         # Add the time dim to observations.
-        B = len(seq_lens)
+        B = tf.shape(seq_lens)[0]
+        observations = input_dict[SampleBatch.OBS]
+
         shape = tf.shape(observations)
         T = shape[0] // B
         observations = tf.reshape(observations,
                                   tf.concat([[-1, T], shape[1:]], axis=0))
 
-        all_out = self.trxl_model([observations] + state + [is_training])
+        all_out = self.trxl_model([observations] + state)
 
         logits = all_out[0]
         self._value_out = all_out[1]
@@ -349,25 +332,36 @@ class GTrXLNet(RecurrentNetwork):
 
     @override(RecurrentNetwork)
     def preprocess_train_batch(self, train_batch):
-        return preprocess_train_batch_attention_nets(
-            train_batch, max_seq_len=self.model_config["max_seq_len"])
+        # Should be the same as for RecurrentNets, but with dynamic-max=False.
+        assert "state_in_0" in train_batch
+        state_keys = []
+        feature_keys_ = []
+        for k, v in train_batch.items():
+            if k.startswith("state_in_"):
+                state_keys.append(k)
+            elif not k.startswith(
+                    "state_out_"
+            ) and k != "infos" and k != "seq_lens" and isinstance(
+                    v, np.ndarray):
+                feature_keys_.append(k)
 
-
-def relative_position_embedding(seq_length: int, out_dim: int) -> TensorType:
-    """Creates a [seq_length x seq_length] matrix for rel. pos encoding.
-
-    Denoted as Phi in [2] and [3]. Phi is the standard sinusoid encoding
-    matrix.
-
-    Args:
-        seq_length (int): The max. sequence length (time axis).
-        out_dim (int): The number of nodes to go into the first Tranformer
-            layer with.
-
-    Returns:
-        tf.Tensor: The encoding matrix Phi.
-    """
-    inverse_freq = 1 / (10000**(tf.range(0, out_dim, 2.0) / out_dim))
-    pos_offsets = tf.range(seq_length - 1., -1., -1.)
-    inputs = pos_offsets[:, None] * inverse_freq[None, :]
-    return tf.concat((tf.sin(inputs), tf.cos(inputs)), axis=-1)
+        feature_sequences, initial_states, seq_lens = \
+            chop_into_sequences(
+                episode_ids=None,
+                unroll_ids=None,
+                agent_indices=None,
+                feature_columns=[train_batch[k] for k in feature_keys_],
+                state_columns=[train_batch[k] for k in state_keys],
+                max_seq_len=self.model_config["max_seq_len"],
+                dynamic_max=False,
+                seq_lens=train_batch.seq_lens,
+                shuffle=False)
+        for i, k in enumerate(feature_keys_):
+            train_batch[k] = feature_sequences[i]
+        for i, k in enumerate(state_keys):
+            train_batch[k] = initial_states[i]
+        train_batch["seq_lens"] = np.array(seq_lens)
+        return train_batch
+        #TODO: move above into vv
+        #return preprocess_train_batch_attention_nets(
+        #    train_batch, max_seq_len=self.model_config["max_seq_len"])

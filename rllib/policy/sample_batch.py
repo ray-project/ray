@@ -259,9 +259,11 @@ class SampleBatch:
             for i, seq_len in enumerate(self.seq_lens):
                 count += seq_len
                 if count >= end:
-                    data["state_in_0"] = self.data["state_in_0"][
-                                         state_start:i + 1]
-                    seq_lens = self.seq_lens[state_start:i] + [seq_len - (count - end)]
+                    data["state_in_0"] = self.data["state_in_0"][state_start:
+                                                                 i + 1]
+                    seq_lens = self.seq_lens[state_start:i] + [
+                        seq_len - (count - end)
+                    ]
                     assert sum(seq_lens) == (end - start)
                     break
                 elif state_start is None and count > start:

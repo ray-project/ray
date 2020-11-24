@@ -188,11 +188,11 @@ class DynamicTFPolicy(TFPolicy):
         else:
             if self.config["_use_trajectory_view_api"]:
                 self._state_inputs = [
-                    tf1.placeholder(
-                        shape=(None, ) + vr.space.shape, dtype=vr.space.dtype)
-                    for k, vr in
-                    self.model.inference_view_requirements.items()
-                    if k[:9] == "state_in_"
+                    get_placeholder(
+                        space=vr.space,
+                        time_axis=not isinstance(vr.data_rel_pos, int)) for k,
+                    vr in self.model.inference_view_requirements.items()
+                    if k.startswith("state_in_")
                 ]
             else:
                 self._state_inputs = [
@@ -423,29 +423,19 @@ class DynamicTFPolicy(TFPolicy):
                 input_dict/dummy_batch tuple.
         """
         input_dict = {}
-        dummy_batch = {}
         for view_col, view_req in view_requirements.items():
             # Point state_in to the already existing self._state_inputs.
             mo = re.match("state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
-                dummy_batch[view_col] = np.zeros_like(
-                    [view_req.space.sample()])
             # State-outs (no placeholders needed).
             elif view_col.startswith("state_out_"):
-                dummy_batch[view_col] = np.zeros_like(
-                    [view_req.space.sample()])
+                continue
             # Skip action dist inputs placeholder (do later).
             elif view_col == SampleBatch.ACTION_DIST_INPUTS:
                 continue
             elif view_col in existing_inputs:
                 input_dict[view_col] = existing_inputs[view_col]
-                dummy_batch[view_col] = np.zeros(
-                    shape=[
-                        1 if s is None else s
-                        for s in existing_inputs[view_col].shape.as_list()
-                    ],
-                    dtype=existing_inputs[view_col].dtype.as_numpy_dtype)
             # All others.
             else:
                 time_axis = not isinstance(view_req.data_rel_pos, int)
@@ -456,9 +446,8 @@ class DynamicTFPolicy(TFPolicy):
                         space=view_req.space,
                         name=view_col,
                         time_axis=time_axis)
-                sample = view_req.space.sample()
-                dummy_batch[view_col] = np.zeros_like([sample] if not time_axis
-                                                      else [[sample]])
+        dummy_batch = self._get_dummy_batch_from_view_requirements()
+
         return input_dict, dummy_batch
 
     def _initialize_loss_from_dummy_batch(
@@ -516,13 +505,13 @@ class DynamicTFPolicy(TFPolicy):
                 dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
             for k, v in self.extra_compute_action_fetches().items():
                 dummy_batch[k] = fake_array(v)
+            dummy_batch = SampleBatch(dummy_batch)
 
         # Postprocessing might depend on variable init, so run it first here.
         self._sess.run(tf1.global_variables_initializer())
 
-        sb = SampleBatch(dummy_batch)
-        batch_for_postproc = UsageTrackingDict(sb)
-        batch_for_postproc.count = sb.count
+        batch_for_postproc = UsageTrackingDict(dummy_batch)
+        batch_for_postproc.count = dummy_batch.count
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         # Add new columns automatically to (loss) input_dict.
@@ -679,7 +668,8 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.UNROLL_ID, SampleBatch.DONES] and \
                         key not in self.model.inference_view_requirements:
                     del self.view_requirements[key]
-                    del self._loss_input_dict[key]
+                    if key in self._loss_input_dict:
+                        del self._loss_input_dict[key]
 
         self._loss_input_dict_no_rnn = {
             k: v

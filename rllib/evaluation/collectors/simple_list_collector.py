@@ -61,7 +61,7 @@ class _AgentCollector:
         self.count = 0
 
     def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
-                     env_id: EnvID, init_obs: TensorType,
+                     env_id: EnvID, t: int, init_obs: TensorType,
                      view_requirements: Dict[str, ViewRequirement]) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
 
@@ -71,6 +71,8 @@ class _AgentCollector:
             agent_id (AgentID): Unique ID for the agent we are adding the
                 initial observation for.
             env_id (EnvID): The environment index (in a vectorized setup).
+            t (int): The time step (episode length - 1). The initial obs has
+                ts=-1(!), then an action/reward/next-obs at t=0, etc..
             init_obs (TensorType): The initial observation tensor (after
             `env.reset()`).
             view_requirements (Dict[str, ViewRequirements])
@@ -82,8 +84,13 @@ class _AgentCollector:
                     SampleBatch.EPS_ID: episode_id,
                     SampleBatch.AGENT_INDEX: agent_id,
                     "env_id": env_id,
+                    "t": t,
                 })
         self.buffers[SampleBatch.OBS].append(init_obs)
+        self.buffers[SampleBatch.EPS_ID].append(episode_id)
+        self.buffers[SampleBatch.AGENT_INDEX].append(agent_id)
+        self.buffers["env_id"].append(env_id)
+        self.buffers["t"].append(t)
 
     def add_action_reward_next_obs(self, values: Dict[str, TensorType]) -> \
             None:
@@ -152,7 +159,7 @@ class _AgentCollector:
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
 
-            obs_shift = (1 if data_col == SampleBatch.OBS else 0)
+            obs_shift = (-1 if data_col == SampleBatch.OBS else 0)
 
             # Range of indices on time-axis, make sure to create
             if view_req.data_rel_pos_from is not None:
@@ -219,7 +226,10 @@ class _AgentCollector:
         for col, data in single_row.items():
             if col in self.buffers:
                 continue
-            shift = self.shift_before - (1 if col == SampleBatch.OBS else 0)
+            shift = self.shift_before - (1 if col in [
+                SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                "env_id", "t"
+            ] else 0)
             # Python primitive or dict (e.g. INFOs).
             if isinstance(data, (int, float, bool, str, dict)):
                 self.buffers[col] = [0 for _ in range(shift)]
@@ -258,21 +268,19 @@ class _AgentCollector:
             data_col = view_req.data_col or view_col
             # Range of shifts, e.g. "-100:0". Note: This includes index 0!
             if view_req.data_rel_pos_from is not None:
-                time_indices = (abs_pos + view_req.data_rel_pos_from,
-                                abs_pos + view_req.data_rel_pos_to)
+                time_indices = (abs_pos + view_req.data_rel_pos_from + 1,
+                                abs_pos + view_req.data_rel_pos_to + 1)
             # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
             else:
                 time_indices = abs_pos + view_req.data_rel_pos
-            data_list = []
+
             if isinstance(time_indices, tuple):
-                if time_indices[1] == -1:
-                    data_list.append(self.buffers[data_col][time_indices[0]:])
-                else:
-                    data_list.append(self.buffers[data_col][time_indices[
-                        0]:time_indices[1] + 1])
+                data = self.buffers[data_col][time_indices[0]:time_indices[1] +
+                                              1]
             else:
-                data_list.append(self.buffers[data_col][time_indices])
-            input_dict[view_col] = np.array(data_list)
+                data = self.buffers[data_col][time_indices]
+            # Create batches of 1 (single-agent input-dict).
+            input_dict[view_col] = np.array([data])
 
         # Add valid `seq_lens`, just in case RNNs need it.
         input_dict["seq_lens"] = np.array([1])
@@ -320,7 +328,7 @@ class _PolicyCollector:
         """
         for view_col, data in batch.items():
             # Skip columns that are not used for training.
-            if view_col in view_requirements and \
+            if view_col not in view_requirements or \
                     not view_requirements[view_col].used_for_training:
                 continue
             assert view_requirements[view_col].is_input_dict is False
@@ -359,8 +367,8 @@ class _PolicyCollector:
 class _PolicyCollectorGroup:
     def __init__(self, policy_map):
         self.policy_collectors = {
-            pid: _PolicyCollector()
-            for pid in policy_map.keys()
+            pid: _PolicyCollector(policy)
+            for pid, policy in policy_map.items()
         }
         self.count = 0
 
@@ -448,7 +456,7 @@ class _SimpleListCollector(_SampleCollector):
 
     @override(_SampleCollector)
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
-                     env_id: EnvID, policy_id: PolicyID,
+                     env_id: EnvID, policy_id: PolicyID, t: int,
                      init_obs: TensorType) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
@@ -468,6 +476,7 @@ class _SimpleListCollector(_SampleCollector):
             episode_id=episode.episode_id,
             agent_id=agent_id,
             env_id=env_id,
+            t=t,
             init_obs=init_obs,
             view_requirements=view_reqs)
 

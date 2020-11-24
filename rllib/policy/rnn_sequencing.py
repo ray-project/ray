@@ -88,12 +88,13 @@ def pad_batch_to_sequences_of_same_size(
 
     feature_sequences, initial_states, seq_lens = \
         chop_into_sequences(
-            batch[SampleBatch.EPS_ID],
-            batch[SampleBatch.UNROLL_ID],
-            batch[SampleBatch.AGENT_INDEX],
-            [batch[k] for k in feature_keys_],
-            [batch[k] for k in state_keys],
-            max_seq_len,
+            feature_columns=[batch[k] for k in feature_keys_],
+            state_columns=[batch[k] for k in state_keys],
+            episode_ids=batch[SampleBatch.EPS_ID],
+            unroll_ids=batch[SampleBatch.UNROLL_ID],
+            agent_indices=batch[SampleBatch.AGENT_INDEX],
+            seq_lens=batch.seq_lens,
+            max_seq_len=max_seq_len,
             dynamic_max=dynamic_max,
             shuffle=shuffle)
     for i, k in enumerate(feature_keys_):
