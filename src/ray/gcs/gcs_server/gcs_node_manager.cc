@@ -490,15 +490,11 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 }
 
 void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
-  const auto &cluster_resources = gcs_init_data.ClusterResources();
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       // Call `AddNode` for this node to make sure it is tracked by the failure
       // detector.
       AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
-      auto iter = cluster_resources.find(item.first);
-      RAY_CHECK(iter != cluster_resources.end());
-      cluster_resources_[item.first] = iter->second;
     } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
       dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
       sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
@@ -507,6 +503,12 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   sorted_dead_node_list_.sort(
       [](const std::pair<NodeID, int64_t> &left,
          const std::pair<NodeID, int64_t> &right) { return left.second < right.second; });
+
+  for (auto &entry : gcs_init_data.ClusterResources()) {
+    if (alive_nodes_.count(entry.first)) {
+      cluster_resources_[entry.first] = entry.second;
+    }
+  }
 }
 
 void GcsNodeManager::StartNodeFailureDetector() {
