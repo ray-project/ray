@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/local_object_manager.h"
+#include "ray/util/asio_util.h"
 
 namespace ray {
 
@@ -60,7 +61,14 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   {
     absl::MutexLock lock(&mutex_);
     RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+    // The object should be in one of these stats; pinned, spilling, or spilled.
+    RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
+              (spilled_objects_url_.count(object_id) > 0) ||
+              (objects_pending_spill_.count(object_id) > 0));
     pinned_objects_.erase(object_id);
+    // We don't filter non-spilled objects here because that will be addressed when the
+    // queue is processed.
+    spilled_object_pending_delete_.push(object_id);
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -180,8 +188,8 @@ void LocalObjectManager::SpillObjectsInternal(
         io_worker->rpc_client()->SpillObjects(
             request, [this, objects_to_spill, callback, io_worker](
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
-              io_worker_pool_.PushSpillWorker(io_worker);
               absl::MutexLock lock(&mutex_);
+              io_worker_pool_.PushSpillWorker(io_worker);
               if (!status.ok()) {
                 for (const auto &object_id : objects_to_spill) {
                   auto it = objects_pending_spill_.find(object_id);
@@ -217,7 +225,8 @@ void LocalObjectManager::AddSpilledUrls(
     // be retrieved by other raylets.
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
         object_id, object_url,
-        [this, object_id, callback, num_remaining, num_bytes_spilled](Status status) {
+        [this, object_id, object_url, callback, num_remaining,
+         num_bytes_spilled](Status status) {
           RAY_CHECK_OK(status);
           absl::MutexLock lock(&mutex_);
           // Unpin the object.
@@ -226,6 +235,14 @@ void LocalObjectManager::AddSpilledUrls(
           num_bytes_pending_spill_ -= it->second->GetSize();
           *num_bytes_spilled += it->second->GetSize();
           objects_pending_spill_.erase(it);
+
+          // Update the object_id - url ref count to use it for deletion later.
+          spilled_objects_url_.emplace(object_id, object_url);
+          if (url_ref_count_.count(object_url) == 0) {
+            url_ref_count_.emplace(object_url, 1);
+          } else {
+            url_ref_count_[object_url] += 1;
+          }
 
           (*num_remaining)--;
           if (*num_remaining == 0 && callback) {
@@ -262,6 +279,76 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
           }
         });
   });
+}
+
+void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) {
+  absl::MutexLock lock(&mutex_);
+  std::vector<std::string> object_urls_to_delete;
+  while (!spilled_object_pending_delete_.empty() &&
+         object_urls_to_delete.size() < max_batch_size) {
+    auto &object_id = spilled_object_pending_delete_.front();
+    RAY_CHECK(pinned_objects_.count(object_id) == 0)
+        << "Pinned objects cannot be in the deletion_queue. It must be anomaly. Please "
+           "create a Github issue if you see this error.";
+    // If the object is still spilling, do nothing. This will block other entries to be
+    // processed, but it should be fine because the spilling will be eventually done, and
+    // deleting objects is the low priority tasks.
+    // This will instead enable simpler logic after this block.
+    if (objects_pending_spill_.count(object_id) != 0) {
+      break;
+    }
+
+    // Object id is either spilled or not spilled at this point.
+    const auto &spilled_objects_url_it = spilled_objects_url_.find(object_id);
+    if (spilled_objects_url_it != spilled_objects_url_.end()) {
+      std::string &object_url = spilled_objects_url_it->second;
+      const auto &url_ref_count_it = url_ref_count_.find(object_url);
+      RAY_CHECK(url_ref_count_it != url_ref_count_.end())
+          << "url_ref_count_ should exist when spilled_objects_url_ exists. Please "
+             "submit a Github issue if you see this error.";
+      url_ref_count_it->second -= 1;
+
+      // If there's no more refs, delete the object.
+      if (url_ref_count_it->second == 0) {
+        url_ref_count_.erase(url_ref_count_it);
+        object_urls_to_delete.emplace_back(object_url);
+      }
+      spilled_objects_url_.erase(spilled_objects_url_it);
+    }
+    spilled_object_pending_delete_.pop();
+  }
+  if (object_urls_to_delete.size() > 0) {
+    DeleteSpilledObjects(object_urls_to_delete);
+  }
+}
+
+void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_delete) {
+  io_worker_pool_.PopDeleteWorker(
+      [this, urls_to_delete](std::shared_ptr<WorkerInterface> io_worker) {
+        RAY_LOG(DEBUG) << "Sending delete spilled object request";
+        rpc::DeleteSpilledObjectsRequest request;
+        for (const auto &url : urls_to_delete) {
+          request.add_spilled_objects_url(std::move(url));
+        }
+        io_worker->rpc_client()->DeleteSpilledObjects(
+            request, [this, io_worker](const ray::Status &status,
+                                       const rpc::DeleteSpilledObjectsReply &reply) {
+              io_worker_pool_.PushDeleteWorker(io_worker);
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to send delete spilled object request: "
+                               << status.ToString();
+              }
+            });
+      });
+}
+
+void LocalObjectManager::DoPeriodicOperations() {
+  execute_after(io_context_,
+                [this]() {
+                  ProcessSpilledObjectsDeleteQueue(delete_batch_size_);
+                  DoPeriodicOperations();
+                },
+                delete_interval_ms_);
 }
 
 };  // namespace raylet

@@ -2359,6 +2359,24 @@ void CoreWorker::HandleRestoreSpilledObjects(
   }
 }
 
+void CoreWorker::HandleDeleteSpilledObjects(
+    const rpc::DeleteSpilledObjectsRequest &request,
+    rpc::DeleteSpilledObjectsReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  if (options_.delete_spilled_objects != nullptr) {
+    std::vector<std::string> spilled_objects_url;
+    spilled_objects_url.reserve(request.spilled_objects_url_size());
+    for (const auto &url : request.spilled_objects_url()) {
+      spilled_objects_url.push_back(url);
+    }
+    options_.delete_spilled_objects(spilled_objects_url, worker_context_.GetWorkerType());
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(
+        Status::NotImplemented("Delete spilled objects callback not defined"), nullptr,
+        nullptr);
+  }
+}
+
 void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
   send_reply_callback(Status::OK(), nullptr, nullptr);

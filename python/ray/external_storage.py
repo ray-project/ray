@@ -55,6 +55,14 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             keys: A list of bytes corresponding to the spilled objects.
         """
 
+    @abc.abstractmethod
+    def delete_spilled_objects(self, urls: List[str]):
+        """Delete objects that are spilled to the external storage.
+
+        Args:
+            urls: URLs that store spilled object files.
+        """
+
 
 class NullStorage(ExternalStorage):
     """The class that represents an uninitialized external storage."""
@@ -63,6 +71,9 @@ class NullStorage(ExternalStorage):
         raise NotImplementedError("External storage is not initialized")
 
     def restore_spilled_objects(self, keys):
+        raise NotImplementedError("External storage is not initialized")
+
+    def delete_spilled_objects(self, urls: List[str]):
         raise NotImplementedError("External storage is not initialized")
 
 
@@ -107,6 +118,12 @@ class FileSystemStorage(ExternalStorage):
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, ref)
+
+    def delete_spilled_objects(self, urls: List[str]):
+        print("delete hehe ", urls)
+        for url in urls:
+            filename = url.decode()
+            os.remove(os.path.join(self.directory_path, filename))
 
 
 class ExternalStorageSmartOpenImpl(ExternalStorage):
@@ -231,3 +248,12 @@ def restore_spilled_objects(keys: List[bytes]):
         keys: A list of bytes corresponding to the spilled objects.
     """
     _external_storage.restore_spilled_objects(keys)
+
+
+def delete_spilled_objects(urls: List[str]):
+    """Delete objects that are spilled to the external storage.
+
+    Args:
+        urls: URLs that store spilled object files.
+    """
+    _external_storage.delete_spilled_objects(urls)

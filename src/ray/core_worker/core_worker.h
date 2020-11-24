@@ -81,6 +81,7 @@ struct CoreWorkerOptions {
         gc_collect(nullptr),
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
+        delete_spilled_objects(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
         ref_counting_enabled(false),
@@ -139,6 +140,9 @@ struct CoreWorkerOptions {
   std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
   /// Application-language callback to restore objects from external storage.
   std::function<void(const std::vector<std::string> &)> restore_spilled_objects;
+  /// Application-language callback to delete objects from external storage.
+  std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
+      delete_spilled_objects;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -888,6 +892,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  // Delete objects from external storage.
+  void HandleDeleteSpilledObjects(const rpc::DeleteSpilledObjectsRequest &request,
+                                  rpc::DeleteSpilledObjectsReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   // Make the this worker exit.
   void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,

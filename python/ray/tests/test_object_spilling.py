@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 import psutil
 import ray
+from ray.test_utils import wait_for_condition
 
 bucket_name = "object-spilling-test"
 file_system_object_spilling_config = {
@@ -371,6 +372,96 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
                 ref = random.choice(replay_buffer)
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_delete_objects(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+    ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+        })
+    arr = np.random.rand(1024 * 1024)  # 8 MB data
+    replay_buffer = []
+
+    for _ in range(80):
+        ref = None
+        while ref is None:
+            ref = ray.put(arr)
+            replay_buffer.append(ref)
+
+    print("-----------------------------------")
+
+    def is_dir_empty():
+        num_files = 0
+        for path in temp_folder.iterdir():
+            num_files += 1
+        return num_files == 0
+
+    del replay_buffer
+    wait_for_condition(is_dir_empty)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+    ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+        })
+    arr = np.random.rand(1024 * 1024)  # 8 MB data
+    replay_buffer = []
+
+    for _ in range(80):
+        ref = None
+        while ref is None:
+            ref = ray.put(arr)
+            replay_buffer.append(ref)
+        # Remove the replay buffer with 60% probability.
+        if random.randint(0, 9) < 6:
+            replay_buffer.pop()
+
+    # Do random sampling.
+    for _ in range(200):
+        ref = random.choice(replay_buffer)
+        sample = ray.get(ref, timeout=0)
+        assert np.array_equal(sample, arr)
+
+    def is_dir_empty():
+        num_files = 0
+        for path in temp_folder.iterdir():
+            num_files += 1
+        return num_files == 0
+
+    # After all, make sure all objects are killed without race condition.
+    del replay_buffer
+    wait_for_condition(is_dir_empty)
 
 
 if __name__ == "__main__":
