@@ -1,5 +1,5 @@
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
-from ray.experimental.client import call_remote
+from ray.experimental.client import ray
 from typing import Any
 from ray import cloudpickle
 
@@ -10,6 +10,9 @@ class ClientObjectRef:
 
     def __repr__(self):
         return "ClientObjectRef(%s)" % self.id.hex()
+
+    def __eq__(self, other):
+        return self.id == other.id
 
 
 class ClientRemoteFunc:
@@ -26,7 +29,7 @@ class ClientRemoteFunc:
     def remote(self, *args, **kwargs):
         if self._raylet_remote_func is not None:
             return self._raylet_remote_func.remote(*args, **kwargs)
-        return call_remote(self, *args, **kwargs)
+        return ray.call_remote(self, *args, **kwargs)
 
     def __repr__(self):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self.id)

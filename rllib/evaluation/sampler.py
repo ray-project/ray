@@ -51,11 +51,11 @@ StateBatch = List[List[Any]]
 
 
 class NewEpisodeDefaultDict(defaultdict):
-    def __missing__(self, env_index):
+    def __missing__(self, env_id):
         if self.default_factory is None:
-            raise KeyError(env_index)
+            raise KeyError(env_id)
         else:
-            ret = self[env_index] = self.default_factory(env_index)
+            ret = self[env_id] = self.default_factory(env_id)
             return ret
 
 
@@ -517,9 +517,13 @@ def _env_runner(
             return MultiAgentSampleBatchBuilder(policies, clip_rewards,
                                                 callbacks)
 
-    def new_episode(env_index):
-        episode = MultiAgentEpisode(policies, policy_mapping_fn,
-                                    get_batch_builder, extra_batch_callback)
+    def new_episode(env_id):
+        episode = MultiAgentEpisode(
+            policies,
+            policy_mapping_fn,
+            get_batch_builder,
+            extra_batch_callback,
+            env_id=env_id)
         # Call each policy's Exploration.on_episode_start method.
         # type: Policy
         for p in policies.values():
@@ -534,7 +538,7 @@ def _env_runner(
             base_env=base_env,
             policies=policies,
             episode=episode,
-            env_index=env_index,
+            env_index=env_id,
         )
         return episode
 
@@ -972,7 +976,6 @@ def _process_observations_w_trajectory_view_api(
 
         if not is_new_episode:
             _sample_collector.episode_step(episode.episode_id)
-            episode.length += 1
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
@@ -1077,20 +1080,23 @@ def _process_observations_w_trajectory_view_api(
             episode=episode,
             env_index=env_id)
 
-        # Episode is done for all agents
-        # (dones[__all__] == True or hit horizon).
-        # Make sure postprocessor stays within one episode.
+        # Episode is done for all agents (dones[__all__] == True)
+        # or we hit the horizon.
         if all_agents_done:
             is_done = dones[env_id]["__all__"]
             check_dones = is_done and not no_done_at_end
-            _sample_collector.postprocess_episode(
-                episode, is_done=is_done, check_dones=check_dones)
-            # We are not allowed to pack the next episode into the same
+
+            # If, we are not allowed to pack the next episode into the same
             # SampleBatch (batch_mode=complete_episodes) -> Build the
             # MultiAgentBatch from a single episode and add it to "outputs".
-            if not multiple_episodes_in_batch:
-                ma_sample_batch = \
-                    _sample_collector.build_multi_agent_batch(episode.length)
+            # Otherwise, just postprocess and continue collecting across
+            # episodes.
+            ma_sample_batch = _sample_collector.postprocess_episode(
+                episode,
+                is_done=is_done or (hit_horizon and not soft_horizon),
+                check_dones=check_dones,
+                build=not multiple_episodes_in_batch)
+            if ma_sample_batch:
                 outputs.append(ma_sample_batch)
 
             # Call each policy's Exploration.on_episode_end method.
@@ -1155,10 +1161,10 @@ def _process_observations_w_trajectory_view_api(
 
     # Try to build something.
     if multiple_episodes_in_batch:
-        sample_batch = \
+        sample_batches = \
             _sample_collector.try_build_truncated_episode_multi_agent_batch()
-        if sample_batch is not None:
-            outputs.append(sample_batch)
+        if sample_batches:
+            outputs.extend(sample_batches)
 
     return active_envs, to_eval, outputs
 

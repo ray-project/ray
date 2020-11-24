@@ -466,21 +466,6 @@ _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
-def print_failed_task(task_status):
-    """Print information about failed tasks.
-
-    Args:
-        task_status (Dict): A dictionary containing the name, operationid, and
-            error message for a failed task.
-    """
-    logger.error(f"""
-      Error: Task failed
-        Function Name: {task_status["function_name"]}
-        Task ID: {task_status["operationid"]}
-        Error Message: \n{task_status["error_message"]}
-    """)
-
-
 def init(
         address=None,
         *,
@@ -679,8 +664,8 @@ def init(
 
     if global_worker.connected:
         if ignore_reinit_error:
-            logger.error("Calling ray.init() again after it has already been "
-                         "called.")
+            logger.info(
+                "Calling ray.init() again after it has already been called.")
             return
         else:
             raise RuntimeError("Maybe you called ray.init twice by accident? "
@@ -1169,11 +1154,6 @@ def connect(node,
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    # TODO (Alex): `current_logging_job` tracks the current job so that we know
-    # when to switch log files. If all logging functionaility was moved to c++,
-    # the functionaility in `_raylet.pyx::switch_worker_log_if_necessary` could
-    # be moved to `CoreWorker::SetCurrentTaskId()`.
-    worker.current_logging_job_id = None
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
@@ -1543,6 +1523,8 @@ def get_actor(name):
     Raises:
         ValueError if the named actor does not exist.
     """
+    if not name:
+        raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
     handle = worker.core_worker.get_named_actor_handle(name)
@@ -1575,7 +1557,7 @@ def kill(actor, *, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
-def cancel(object_ref, *, force=False):
+def cancel(object_ref, *, force=False, recursive=True):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -1595,6 +1577,8 @@ def cancel(object_ref, *, force=False):
             that should be canceled.
         force (boolean): Whether to force-kill a running task by killing
             the worker that is running the task.
+        recursive (boolean): Whether to try to cancel tasks submitted by the
+            task specified.
     Raises:
         TypeError: This is also raised for actor tasks.
     """
@@ -1605,7 +1589,7 @@ def cancel(object_ref, *, force=False):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
             f"Got: {type(object_ref)}.")
-    return worker.core_worker.cancel_task(object_ref, force)
+    return worker.core_worker.cancel_task(object_ref, force, recursive)
 
 
 def _mode(worker=global_worker):

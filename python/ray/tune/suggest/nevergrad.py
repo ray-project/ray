@@ -1,6 +1,6 @@
 import logging
 import pickle
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, List, Sequence
 
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized
@@ -48,6 +48,11 @@ class NevergradSearch(Searcher):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want hyperopt to run first to help the TPE algorithm
+            make better suggestions for future parameters. Needs to be
+            a list of dict of hyperopt-named variables.
         use_early_stopped_trials: Deprecated.
         max_concurrent: Deprecated.
 
@@ -63,10 +68,17 @@ class NevergradSearch(Searcher):
             "activation": tune.choice(["relu", "tanh"])
         }
 
+        current_best_params = [{
+            "width": 10,
+            "height": 0,
+            "activation": relu",
+        }]
+
         ng_search = NevergradSearch(
             optimizer=ng.optimizers.OnePlusOne,
             metric="mean_loss",
-            mode="min")
+            mode="min",
+            points_to_evaluate=current_best_params)
 
         run(my_trainable, config=config, search_alg=ng_search)
 
@@ -99,8 +111,11 @@ class NevergradSearch(Searcher):
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  max_concurrent: Optional[int] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  **kwargs):
-        assert ng is not None, "Nevergrad must be installed!"
+        assert ng is not None, """Nevergrad must be installed!
+            You can install Nevergrad with the command:
+            `pip install nevergrad`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
@@ -110,6 +125,16 @@ class NevergradSearch(Searcher):
         self._space = None
         self._opt_factory = None
         self._nevergrad_opt = None
+
+        if points_to_evaluate is None:
+            self._points_to_evaluate = None
+        elif not isinstance(points_to_evaluate, Sequence):
+            raise ValueError(
+                f"Invalid object type passed for `points_to_evaluate`: "
+                "{type(points_to_evaluate)}. "
+                f"Please pass a list of points (dictionaries) instead.")
+        else:
+            self._points_to_evaluate = list(points_to_evaluate)
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
@@ -202,7 +227,13 @@ class NevergradSearch(Searcher):
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
+
+        if self._points_to_evaluate is not None:
+            if len(self._points_to_evaluate) > 0:
+                point_to_evaluate = self._points_to_evaluate.pop(0)
+                self._nevergrad_opt.suggest(point_to_evaluate)
         suggested_config = self._nevergrad_opt.ask()
+
         self._live_trial_mapping[trial_id] = suggested_config
         # in v0.2.0+, output of ask() is a Candidate,
         # with fields args and kwargs
