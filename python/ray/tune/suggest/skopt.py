@@ -2,6 +2,7 @@ import logging
 import pickle
 from typing import Dict, List, Optional, Tuple, Union
 
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
@@ -75,7 +76,9 @@ class SkOptSearch(Searcher):
             parameters. If you passed an optimizer instance as the
             `optimizer` argument, this should be a list of parameter names
             instead.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list of lists): A list of points you'd like to run
@@ -184,11 +187,11 @@ class SkOptSearch(Searcher):
 
         self._skopt_opt = optimizer
         if self._skopt_opt or self._space:
-            self.setup_skopt()
+            self._setup_skopt()
 
         self._live_trial_mapping = {}
 
-    def setup_skopt(self):
+    def _setup_skopt(self):
         _validate_warmstart(self._parameter_names, self._points_to_evaluate,
                             self._evaluated_rewards)
 
@@ -213,6 +216,10 @@ class SkOptSearch(Searcher):
         elif self._mode == "min":
             self._metric_op = 1.
 
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         if self._skopt_opt:
@@ -228,7 +235,7 @@ class SkOptSearch(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_skopt()
+        self._setup_skopt()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
