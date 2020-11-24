@@ -569,47 +569,41 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
     const PlacementGroupID &placement_group_id) {
-  std::shared_ptr<BundleLocations> leasing_bundle_locations =
-      std::make_shared<BundleLocations>();
-
   // Get the locations of prepared bundles.
   auto it = placement_group_leasing_in_progress_.find(placement_group_id);
   if (it != placement_group_leasing_in_progress_.end()) {
     const auto &leasing_context = it->second;
-    leasing_bundle_locations = leasing_context->GetPreparedBundleLocations();
-  }
+    const auto &leasing_bundle_locations = leasing_context->GetPreparedBundleLocations();
 
-  // Cancel all resource reservation of prepared bundles.
-  RAY_LOG(INFO) << "Cancelling all prepared bundles of a placement group, id is "
-                << placement_group_id;
-  for (const auto &iter : *(leasing_bundle_locations)) {
-    auto &bundle_spec = iter.second.second;
-    auto &node_id = iter.second.first;
-    CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+    // Cancel all resource reservation of prepared bundles.
+    RAY_LOG(INFO) << "Cancelling all prepared bundles of a placement group, id is "
+                  << placement_group_id;
+    for (const auto &iter : *(leasing_bundle_locations)) {
+      auto &bundle_spec = iter.second.second;
+      auto &node_id = iter.second.first;
+      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+    }
   }
 }
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
     const PlacementGroupID &placement_group_id) {
-  std::shared_ptr<BundleLocations> committed_bundle_locations =
-      std::make_shared<BundleLocations>();
-
-  // Check if we can find committed bundle locations.
+  // Get the locations of committed bundles.
   const auto &maybe_bundle_locations =
       committed_bundle_location_index_.GetBundleLocations(placement_group_id);
   if (maybe_bundle_locations.has_value()) {
-    committed_bundle_locations = maybe_bundle_locations.value();
-  }
+    const auto &committed_bundle_locations = maybe_bundle_locations.value();
 
-  // Cancel all resource reservation of committed bundles.
-  RAY_LOG(INFO) << "Cancelling all committed bundles of a placement group, id is "
-                << placement_group_id;
-  for (const auto &iter : *(committed_bundle_locations)) {
-    auto &bundle_spec = iter.second.second;
-    auto &node_id = iter.second.first;
-    CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+    // Cancel all resource reservation of committed bundles.
+    RAY_LOG(INFO) << "Cancelling all committed bundles of a placement group, id is "
+                  << placement_group_id;
+    for (const auto &iter : *(committed_bundle_locations)) {
+      auto &bundle_spec = iter.second.second;
+      auto &node_id = iter.second.first;
+      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+    }
+    committed_bundle_location_index_.Erase(placement_group_id);
   }
-  committed_bundle_location_index_.Erase(placement_group_id);
 }
 
 void BundleLocationIndex::AddBundleLocations(
