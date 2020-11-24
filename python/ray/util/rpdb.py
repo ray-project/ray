@@ -71,7 +71,12 @@ class RemotePdb(Pdb):
     """
     active_instance = None
 
-    def __init__(self, breakpoint_uuid, host, port, patch_stdstreams=False, quiet=False):
+    def __init__(self,
+                 breakpoint_uuid,
+                 host,
+                 port,
+                 patch_stdstreams=False,
+                 quiet=False):
         self._breakpoint_uuid = breakpoint_uuid
         self._quiet = quiet
         self._patch_stdstreams = patch_stdstreams
@@ -147,7 +152,8 @@ class RemotePdb(Pdb):
         # Tell the next task to drop into the debugger.
         ray.worker.global_worker.debugger_breakpoint = self._breakpoint_uuid
         # Tell the debug loop to connect to the next task.
-        _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid), "")
+        _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid),
+                         "")
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
@@ -156,15 +162,18 @@ class RemotePdb(Pdb):
         """get
         Skip to where the current task returns to.
         """
-        ray.worker.global_worker.debugger_get_breakpoint = self._breakpoint_uuid
+        ray.worker.global_worker.debugger_get_breakpoint = (
+            self._breakpoint_uuid)
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
 
 
-def connect_ray_pdb(
-    host=None, port=None, patch_stdstreams=False, quiet=None,
-    breakpoint_uuid=None):
+def connect_ray_pdb(host=None,
+                    port=None,
+                    patch_stdstreams=False,
+                    quiet=None,
+                    breakpoint_uuid=None):
     """
     Opens a remote PDB on first available port.
     """
@@ -177,8 +186,11 @@ def connect_ray_pdb(
     if not breakpoint_uuid:
         breakpoint_uuid = uuid.uuid4().hex
     rdb = RemotePdb(
-        breakpoint_uuid=breakpoint_uuid, host=host, port=port,
-        patch_stdstreams=patch_stdstreams, quiet=quiet)
+        breakpoint_uuid=breakpoint_uuid,
+        host=host,
+        port=port,
+        patch_stdstreams=patch_stdstreams,
+        quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
     pdb_address = "{}:{}".format(sockname[0], sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]

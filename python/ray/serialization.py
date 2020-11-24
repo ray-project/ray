@@ -250,7 +250,8 @@ class SerializationContext:
                 if data is None:
                     return b""
                 return data.to_pybytes()
-            elif metadata[0:1] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
+            elif metadata[
+                    0:1] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
                 obj = self._deserialize_msgpack_data(data, metadata)
                 return actor_handle_deserializer(obj)
             # Otherwise, return an exception object based on

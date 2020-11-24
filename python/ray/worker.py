@@ -324,7 +324,8 @@ class Worker:
         for (data, metadata) in data_metadata_pairs:
             if metadata and len(metadata) >= 2 and metadata[1:2] == b"D":
                 debugger_breakpoint = metadata[2:]
-        return self.deserialize_objects(data_metadata_pairs, object_refs), debugger_breakpoint
+        return self.deserialize_objects(data_metadata_pairs,
+                                        object_refs), debugger_breakpoint
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -1399,7 +1400,8 @@ def get(object_refs, *, timeout=None):
 
         global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(
+            object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
@@ -1419,7 +1421,9 @@ def get(object_refs, *, timeout=None):
 
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
-            rdb = ray.util.pdb.connect_ray_pdb(None, None, False, None, debugger_breakpoint.decode() if debugger_breakpoint else None)
+            rdb = ray.util.pdb.connect_ray_pdb(
+                None, None, False, None,
+                debugger_breakpoint.decode() if debugger_breakpoint else None)
             rdb.set_trace(frame=frame)
 
         return values
