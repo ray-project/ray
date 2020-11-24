@@ -1,5 +1,4 @@
 import gym
-import numpy as np
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -244,7 +243,7 @@ def build_torch_policy(
 
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
-                self.view_requirements = view_requirements_fn(self)
+                self.view_requirements.update(view_requirements_fn(self))
             self.view_requirements.update(
                 self.model.inference_view_requirements)
 

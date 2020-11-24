@@ -1058,8 +1058,6 @@ def _process_observations_w_trajectory_view_api(
                               agent_done),
                     # Next observation.
                     "new_obs": filtered_obs,
-                    ## Env infos for this agent.
-                    #"infos": agent_infos,
                 }
                 # Add extra-action-fetches to collectors.
                 pol = policies[policy_id]

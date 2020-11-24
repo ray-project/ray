@@ -1,4 +1,3 @@
-from gym.spaces import Box
 import numpy as np
 import gym
 from typing import Dict, List
@@ -52,7 +51,7 @@ class RecurrentNetwork(TFModelV2):
             self.register_variables(self.rnn_model.variables)
             self.rnn_model.summary()
     """
-    
+
     @override(ModelV2)
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
@@ -116,10 +115,10 @@ class LSTMWrapper(RecurrentNetwork):
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str):
 
-        self.cell_size = model_config["lstm_cell_size"]
         super(LSTMWrapper, self).__init__(obs_space, action_space, None,
                                           model_config, name)
 
+        self.cell_size = model_config["lstm_cell_size"]
         self.use_prev_action_reward = model_config[
             "lstm_use_prev_action_reward"]
         if action_space.shape is not None:

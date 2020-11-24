@@ -8,7 +8,6 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
-from gym.spaces import Box
 import numpy as np
 import gym
 from typing import Optional, Any
@@ -17,7 +16,6 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
@@ -204,6 +202,9 @@ class GTrXLNet(RecurrentNetwork):
                 position-wise MLP).
         """
 
+        super().__init__(observation_space, action_space, num_outputs,
+                         model_config, name)
+
         self.num_transformer_units = num_transformer_units
         self.attn_dim = attn_dim
         self.num_heads = num_heads
@@ -211,9 +212,6 @@ class GTrXLNet(RecurrentNetwork):
         self.head_dim = head_dim
         self.max_seq_len = model_config["max_seq_len"]
         self.obs_dim = observation_space.shape[0]
-
-        super().__init__(observation_space, action_space, num_outputs,
-                         model_config, name)
 
         # Constant (non-trainable) sinusoid rel pos encoding matrix.
         Phi = relative_position_embedding(self.max_seq_len + self.memory_tau,
@@ -278,21 +276,6 @@ class GTrXLNet(RecurrentNetwork):
         self.trxl_model = tf.keras.Model(
             inputs=[input_layer] + memory_ins,
             outputs=[logits, values_out] + memory_outs[:-1])
-
-        # Setup additional view requirements for attention net inference calls.
-        # 0: The last `max_seq_len` observations.
-        self.inference_view_requirements["state_in_0"] = ViewRequirement(
-            "state_out_0",
-            shift=-1,
-            space=Box(-1.0, 1.0, shape=(self.max_seq_len, self.obs_dim)))
-        # 1 to `num_transformer_units`: Memory data (one per transformer unit).
-        for i in range(1, self.num_transformer_units + 1):
-            self.inference_view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=-1,
-                    space=Box(-1.0, 1.0,
-                              shape=(self.memory_tau, self.attn_dim)))
 
         self.register_variables(self.trxl_model.variables)
         self.trxl_model.summary()
