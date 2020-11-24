@@ -141,9 +141,7 @@ class GcsScheduleStrategy {
 /// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  GcsPackStrategy(
-      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
-      : GcsScheduleStrategy(cluster_resources) {}
+  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -151,9 +149,7 @@ class GcsPackStrategy : public GcsScheduleStrategy {
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
-  GcsSpreadStrategy(
-      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
-      : GcsScheduleStrategy(cluster_resources) {}
+  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -162,9 +158,7 @@ class GcsSpreadStrategy : public GcsScheduleStrategy {
 /// node does not have enough resources, it will fail to schedule.
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
-  GcsStrictPackStrategy(
-      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
-      : GcsScheduleStrategy(cluster_resources) {}
+  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -174,9 +168,7 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 /// If the node resource is insufficient, it will fail to schedule.
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
-  GcsStrictSpreadStrategy(
-      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
-      : GcsScheduleStrategy(cluster_resources) {}
+  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };

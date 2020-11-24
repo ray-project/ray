@@ -177,7 +177,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// Get cluster realtime resources.
   const std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>>
-  GetClusterRealtimeResources() const;
+      &GetClusterRealtimeResources() const;
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
