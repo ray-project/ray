@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -1343,7 +1342,7 @@ def test_async_actor_task_retries(ray_start_regular):
     ref_1 = dying.get.remote(1, wait=True)
     # seqno 2
     ref_2 = dying.set_should_exit.remote()
-    assert ray.get(ref_2) == None
+    assert ray.get(ref_2) is None
     # seqno 3, this will crash the actor because previous task set should exit
     # to true.
     ref_3 = dying.get.remote(3)
