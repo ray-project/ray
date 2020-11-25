@@ -243,7 +243,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
 
 
-def check_learning_achieved(tune_results, min_reward):
+def check_learning_achieved(tune_results, min_reward, evaluation=False):
     """Throws an error if `min_reward` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
@@ -256,7 +256,10 @@ def check_learning_achieved(tune_results, min_reward):
     Raises:
         ValueError: If `min_reward` not reached.
     """
-    if tune_results.trials[0].last_result["episode_reward_mean"] < min_reward:
+    last_result = tune_results.trials[0].last_result
+    avg_reward = last_result["episode_reward_mean"] if not evaluation else \
+        last_result["evaluation"]["episode_reward_mean"]
+    if avg_reward < min_reward:
         raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
     print("ok")
 

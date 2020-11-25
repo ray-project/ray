@@ -6,6 +6,7 @@ import math
 from typing import Dict, Optional, Union
 
 import ConfigSpace
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Normal, \
     Quantized, \
@@ -45,9 +46,14 @@ class TuneBOHB(Searcher):
         bohb_config (dict): configuration for HpBandSter BOHB algorithm
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        seed (int): Optional random seed to initialize the random number
+            generator. Setting this should lead to identical initial
+            configurations at each run.
 
     Tune automatically converts search spaces to TuneBOHB's format:
 
@@ -100,9 +106,12 @@ class TuneBOHB(Searcher):
                  bohb_config: Optional[Dict] = None,
                  max_concurrent: int = 10,
                  metric: Optional[str] = None,
-                 mode: Optional[str] = None):
+                 mode: Optional[str] = None,
+                 seed: Optional[int] = None):
         from hpbandster.optimizers.config_generators.bohb import BOHB
-        assert BOHB is not None, "HpBandSter must be installed!"
+        assert BOHB is not None, """HpBandSter must be installed!
+            You can install HpBandSter with the command:
+            `pip install hpbandster ConfigSpace`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self._max_concurrent = max_concurrent
@@ -122,19 +131,27 @@ class TuneBOHB(Searcher):
                 space = self.convert_search_space(space)
 
         self._space = space
+        self._seed = seed
 
         super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
 
         if self._space:
-            self.setup_bohb()
+            self._setup_bohb()
 
-    def setup_bohb(self):
+    def _setup_bohb(self):
         from hpbandster.optimizers.config_generators.bohb import BOHB
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
         if self._mode == "max":
             self._metric_op = -1.
         elif self._mode == "min":
             self._metric_op = 1.
+
+        if self._seed is not None:
+            self._space.seed(self._seed)
 
         bohb_config = self._bohb_config or {}
         self.bohber = BOHB(self._space, **bohb_config)
@@ -151,7 +168,7 @@ class TuneBOHB(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_bohb()
+        self._setup_bohb()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

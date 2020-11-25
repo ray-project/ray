@@ -63,8 +63,8 @@ class RAY_EXPORT PlasmaClient {
   /// \param release_delay Deprecated (not used).
   /// \param num_retries number of attempts to connect to IPC socket, default 50
   /// \return The return status.
-  Status Connect(const std::string& store_socket_name,
-                 const std::string& manager_socket_name = "", int release_delay = 0,
+  Status Connect(const std::string &store_socket_name,
+                 const std::string &manager_socket_name = "", int release_delay = 0,
                  int num_retries = -1);
 
   /// Set runtime options for this client.
@@ -72,7 +72,7 @@ class RAY_EXPORT PlasmaClient {
   /// \param client_name The name of the client, used in debug messages.
   /// \param output_memory_quota The memory quota in bytes for objects created by
   ///        this client.
-  Status SetClientOptions(const std::string& client_name, int64_t output_memory_quota);
+  Status SetClientOptions(const std::string &client_name, int64_t output_memory_quota);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
@@ -99,9 +99,9 @@ class RAY_EXPORT PlasmaClient {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  Status Create(const ObjectID& object_id, const ray::rpc::Address& owner_address,
-                int64_t data_size, const uint8_t* metadata, int64_t metadata_size,
-                std::shared_ptr<Buffer>* data, int device_num = 0,
+  Status Create(const ObjectID &object_id, const ray::rpc::Address &owner_address,
+                int64_t data_size, const uint8_t *metadata, int64_t metadata_size,
+                std::shared_ptr<Buffer> *data, int device_num = 0,
                 bool evict_if_full = true);
 
   /// Get some objects from the Plasma Store. This function will block until the
@@ -118,8 +118,8 @@ class RAY_EXPORT PlasmaClient {
   ///        request times out. If this value is -1, then no timeout is set.
   /// \param[out] object_buffers The object results.
   /// \return The return status.
-  Status Get(const std::vector<ObjectID>& object_ids, int64_t timeout_ms,
-             std::vector<ObjectBuffer>* object_buffers);
+  Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+             std::vector<ObjectBuffer> *object_buffers);
 
   /// Deprecated variant of Get() that doesn't automatically release buffers
   /// when they get out of scope.
@@ -133,8 +133,8 @@ class RAY_EXPORT PlasmaClient {
   ///
   /// The caller is responsible for releasing any retrieved objects, but it
   /// should not release objects that were not retrieved.
-  Status Get(const ObjectID* object_ids, int64_t num_objects, int64_t timeout_ms,
-             ObjectBuffer* object_buffers);
+  Status Get(const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
+             ObjectBuffer *object_buffers);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.
@@ -142,7 +142,7 @@ class RAY_EXPORT PlasmaClient {
   ///
   /// \param object_id The ID of the object that is no longer needed.
   /// \return The return status.
-  Status Release(const ObjectID& object_id);
+  Status Release(const ObjectID &object_id);
 
   /// Check if the object store contains a particular object and the object has
   /// been sealed. The result will be stored in has_object.
@@ -154,7 +154,7 @@ class RAY_EXPORT PlasmaClient {
   /// \param has_object The function will write true at this address if
   ///        the object is present and false if it is not present.
   /// \return The return status.
-  Status Contains(const ObjectID& object_id, bool* has_object);
+  Status Contains(const ObjectID &object_id, bool *has_object);
 
   /// Abort an unsealed object in the object store. If the abort succeeds, then
   /// it will be as if the object was never created at all. The unsealed object
@@ -163,7 +163,7 @@ class RAY_EXPORT PlasmaClient {
   ///
   /// \param object_id The ID of the object to abort.
   /// \return The return status.
-  Status Abort(const ObjectID& object_id);
+  Status Abort(const ObjectID &object_id);
 
   /// Seal an object in the object store. The object will be immutable after
   /// this
@@ -171,7 +171,7 @@ class RAY_EXPORT PlasmaClient {
   ///
   /// \param object_id The ID of the object to seal.
   /// \return The return status.
-  Status Seal(const ObjectID& object_id);
+  Status Seal(const ObjectID &object_id);
 
   /// Delete an object from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,
@@ -182,7 +182,7 @@ class RAY_EXPORT PlasmaClient {
   ///
   /// \param object_id The ID of the object to delete.
   /// \return The return status.
-  Status Delete(const ObjectID& object_id);
+  Status Delete(const ObjectID &object_id);
 
   /// Delete a list of objects from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,
@@ -190,7 +190,7 @@ class RAY_EXPORT PlasmaClient {
   ///
   /// \param object_ids The list of IDs of the objects to delete.
   /// \return The return status. If all the objects are non-existent, return OK.
-  Status Delete(const std::vector<ObjectID>& object_ids);
+  Status Delete(const std::vector<ObjectID> &object_ids);
 
   /// Delete objects until we have freed up num_bytes bytes or there are no more
   /// released objects that can be deleted.
@@ -199,14 +199,14 @@ class RAY_EXPORT PlasmaClient {
   /// \param num_bytes_evicted Out parameter for total number of bytes of space
   /// retrieved.
   /// \return The return status.
-  Status Evict(int64_t num_bytes, int64_t& num_bytes_evicted);
+  Status Evict(int64_t num_bytes, int64_t &num_bytes_evicted);
 
   /// Bump objects up in the LRU cache, i.e. treat them as recently accessed.
   /// Objects that do not exist in the store will be ignored.
   ///
   /// \param object_ids The IDs of the objects to bump.
   /// \return The return status.
-  Status Refresh(const std::vector<ObjectID>& object_ids);
+  Status Refresh(const std::vector<ObjectID> &object_ids);
 
   /// Disconnect from the local plasma instance, including the local store and
   /// manager.
@@ -231,7 +231,7 @@ class RAY_EXPORT PlasmaClient {
   FRIEND_TEST(TestPlasmaStore, LegacyGetTest);
   FRIEND_TEST(TestPlasmaStore, AbortTest);
 
-  bool IsInUse(const ObjectID& object_id);
+  bool IsInUse(const ObjectID &object_id);
 
   class RAY_NO_EXPORT Impl;
   std::shared_ptr<Impl> impl_;

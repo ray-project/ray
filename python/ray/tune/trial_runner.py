@@ -12,14 +12,13 @@ from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
+                             RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
-from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -79,6 +78,8 @@ class TrialRunner:
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution.
+        verbose (bool): Flag for verbosity. If False, trial results
+            will not be output.
         checkpoint_period (int): Trial runner checkpoint periodicity in
             seconds. Defaults to 10.
         trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
@@ -101,6 +102,7 @@ class TrialRunner:
                  resume=False,
                  server_port=None,
                  fail_fast=False,
+                 verbose=True,
                  checkpoint_period=None,
                  trial_executor=None,
                  callbacks=None,
@@ -133,6 +135,7 @@ class TrialRunner:
             else:
                 raise ValueError("fail_fast must be one of {bool, RAISE}. "
                                  f"Got {self._fail_fast}.")
+        self._verbose = verbose
 
         self._server = None
         self._server_port = server_port
@@ -162,7 +165,7 @@ class TrialRunner:
                 self.resume(run_errored_only=errored_only)
                 self._resumed = True
             except Exception as e:
-                if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
+                if self._verbose:
                     logger.error(str(e))
                 logger.exception("Runner restore failed.")
                 if self._fail_fast:
@@ -401,6 +404,7 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
+        trial.set_verbose(self._verbose)
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
@@ -558,8 +562,6 @@ class TrialRunner:
                 with warn_if_slow("scheduler.on_trial_result"):
                     decision = self._scheduler_alg.on_trial_result(
                         self, trial, flat_result)
-                if decision == TrialScheduler.STOP:
-                    result.update(done=True)
                 with warn_if_slow("search_alg.on_trial_result"):
                     self._search_alg.on_trial_result(trial.trial_id,
                                                      flat_result)
@@ -578,6 +580,7 @@ class TrialRunner:
                             iteration=self._iteration,
                             trials=self._trials,
                             trial=trial)
+                    result.update(done=True)
 
             if not is_duplicate:
                 trial.update_last_result(
@@ -611,13 +614,19 @@ class TrialRunner:
         in the last result. If the only item is `done=True`, this
         means that no result was ever received and the trial just
         returned. This is also okay and will not raise an error.
+
+        This will ignore checking for the DEFAULT_METRIC.
         """
         if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
                               0)) != 1 and (len(result) > 1
                                             or "done" not in result):
-            base_metric = self._metric
-            scheduler_metric = self._scheduler_alg.metric
-            search_metrics = self._search_alg.metric
+            base_metric = self._metric \
+                if self._metric != DEFAULT_METRIC else None
+            scheduler_metric = self._scheduler_alg.metric \
+                if self._scheduler_alg.metric != DEFAULT_METRIC else None
+            search_metrics = self._search_alg.metric \
+                if self._search_alg.metric != DEFAULT_METRIC else None
+
             if isinstance(search_metrics, str):
                 search_metrics = [search_metrics]
 
