@@ -18,6 +18,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
@@ -95,6 +96,18 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get all heartbeat rpc request. Only used when light heartbeat enabled.
+  void HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &request,
+                             rpc::GetAllHeartbeatReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Update heartbeat of given node.
+  ///
+  /// \param node_id Node id.
+  /// \param request Request containing heartbeat.
+  void UpdateNodeHeartbeat(const NodeID node_id,
+                           const rpc::ReportHeartbeatRequest &request);
+
   /// Add an alive node.
   ///
   /// \param node The info of the node to be added.
@@ -140,11 +153,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
-  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
-  /// \param done Callback that will be called when load is complete.
-  void LoadInitialData(const EmptyCallback &done);
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
 
   /// Start node failure detector.
   void StartNodeFailureDetector();
@@ -154,15 +167,16 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                                    const rpc::HeartbeatTableData &heartbeat);
 
   /// Get cluster realtime resources.
-  const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
-      &GetClusterRealtimeResources() const;
+  const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterRealtimeResources() const;
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
   ///
   /// \param placement_group_load placement group load protobuf.
   void UpdatePlacementGroupLoad(
-      std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) const;
+      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
+
+  std::string DebugString() const;
 
  protected:
   class NodeFailureDetector {
@@ -194,16 +208,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
     /// Handle a heartbeat from a Raylet.
     ///
-    /// \param node_id The client ID of the Raylet that sent the heartbeat.
-    /// \param heartbeat_data The heartbeat sent by the client.
-    void HandleHeartbeat(const NodeID &node_id,
-                         const rpc::HeartbeatTableData &heartbeat_data);
-
-    /// Public interface to update placement group load information.
-    ///
-    /// \param placement_group_load placement group load protobuf.
-    void UpdatePlacementGroupLoad(
-        std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
+    /// \param node_id The node ID of the Raylet that sent the heartbeat.
+    void HandleHeartbeat(const NodeID &node_id);
 
    protected:
     /// A periodic timer that fires on every heartbeat period. Raylets that have
@@ -214,9 +220,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// Check that if any raylet is inactive due to no heartbeat for a period of time.
     /// If found any, mark it as dead.
     void DetectDeadNodes();
-
-    /// Send any buffered heartbeats as a single publish.
-    void SendBatchedHeartbeat();
 
     /// Schedule another tick after a short time.
     void ScheduleTick();
@@ -235,14 +238,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// For each Raylet that we receive a heartbeat from, the number of ticks
     /// that may pass before the Raylet will be declared dead.
     absl::flat_hash_map<NodeID, int64_t> heartbeats_;
-    /// A buffer containing heartbeats received from node managers in the last tick.
-    absl::flat_hash_map<NodeID, rpc::HeartbeatTableData> heartbeat_buffer_;
     /// A publisher for publishing gcs messages.
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
     /// Is the detect started.
     bool is_started_ = false;
-    /// Placement group load information that is used for autoscaler.
-    absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   };
 
  private:
@@ -252,12 +251,17 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node The node which is dead.
   void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
 
+  /// Send any buffered heartbeats as a single publish.
+  void SendBatchedHeartbeat();
+
   /// The main event loop for node failure detector.
   boost::asio::io_service &main_io_service_;
   /// Detector to detect the failure of node.
   std::unique_ptr<NodeFailureDetector> node_failure_detector_;
   /// The event loop for node failure detector.
   boost::asio::io_service &node_failure_detector_service_;
+  /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
+  boost::asio::deadline_timer heartbeat_timer_;
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.
@@ -267,6 +271,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::list<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
   /// Cluster resources.
   absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
+  /// Newest heartbeat of all nodes.
+  absl::flat_hash_map<NodeID, rpc::HeartbeatTableData> node_heartbeats_;
+  /// A buffer containing heartbeats received from node managers in the last tick.
+  absl::flat_hash_map<NodeID, rpc::HeartbeatTableData> heartbeat_buffer_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;
@@ -278,7 +286,27 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Cluster realtime resources.
-  absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>> cluster_realtime_resources_;
+  absl::flat_hash_map<NodeID, ResourceSet> cluster_realtime_resources_;
+  /// Placement group load information that is used for autoscaler.
+  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
+
+  // Debug info.
+  enum CountType {
+    REGISTER_NODE_REQUEST = 0,
+    UNREGISTER_NODE_REQUEST = 1,
+    GET_ALL_NODE_INFO_REQUEST = 2,
+    REPORT_HEARTBEAT_REQUEST = 3,
+    GET_HEARTBEAT_REQUEST = 4,
+    GET_ALL_HEARTBEAT_REQUEST = 5,
+    GET_RESOURCES_REQUEST = 6,
+    UPDATE_RESOURCES_REQUEST = 7,
+    DELETE_RESOURCES_REQUEST = 8,
+    SET_INTERNAL_CONFIG_REQUEST = 9,
+    GET_INTERNAL_CONFIG_REQUEST = 10,
+    GET_ALL_AVAILABLE_RESOURCES_REQUEST = 11,
+    CountType_MAX = 12,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

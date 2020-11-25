@@ -9,10 +9,10 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.logger import NoopLogger
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.function_runner import with_parameters, wrap_function, \
     FuncCheckpointUtil
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 
 
 def creator_generator(logdir):
@@ -468,7 +468,7 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_2.last_result["metric"], 500_000)
         self.assertEquals(trial_2.last_result["cp"], "DIR")
 
-    def test_return_anonymous(self):
+    def testReturnAnonymous(self):
         def train(config):
             return config["a"]
 
@@ -477,10 +477,10 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result["_metric"], 4)
-        self.assertEquals(trial_2.last_result["_metric"], 8)
+        self.assertEquals(trial_1.last_result[DEFAULT_METRIC], 4)
+        self.assertEquals(trial_2.last_result[DEFAULT_METRIC], 8)
 
-    def test_return_specific(self):
+    def testReturnSpecific(self):
         def train(config):
             return {"m": config["a"]}
 
@@ -492,7 +492,7 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_1.last_result["m"], 4)
         self.assertEquals(trial_2.last_result["m"], 8)
 
-    def test_yield_anonymous(self):
+    def testYieldAnonymous(self):
         def train(config):
             for i in range(10):
                 yield config["a"] + i
@@ -502,10 +502,10 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result["_metric"], 4 + 9)
-        self.assertEquals(trial_2.last_result["_metric"], 8 + 9)
+        self.assertEquals(trial_1.last_result[DEFAULT_METRIC], 4 + 9)
+        self.assertEquals(trial_2.last_result[DEFAULT_METRIC], 8 + 9)
 
-    def test_yield_specific(self):
+    def testYieldSpecific(self):
         def train(config):
             for i in range(10):
                 yield {"m": config["a"] + i}

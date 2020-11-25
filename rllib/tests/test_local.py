@@ -15,6 +15,7 @@ class LocalModeTest(unittest.TestCase):
     def test_local(self):
         cf = DEFAULT_CONFIG.copy()
         cf["model"]["fcnet_hiddens"] = [10]
+        cf["num_workers"] = 2
 
         for _ in framework_iterator(cf):
             agent = PGTrainer(cf, "CartPole-v0")

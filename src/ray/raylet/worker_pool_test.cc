@@ -26,6 +26,7 @@ namespace raylet {
 
 int NUM_WORKERS_PER_PROCESS_JAVA = 3;
 int MAXIMUM_STARTUP_CONCURRENCY = 5;
+int MAX_IO_WORKER_SIZE = 2;
 JobID JOB_ID = JobID::FromInt(1);
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
@@ -83,6 +84,18 @@ class WorkerPoolMock : public WorkerPool {
     return total;
   }
 
+  int NumSpillWorkerStarting() const {
+    auto state = states_by_lang_.find(Language::PYTHON)->second;
+    return state.spill_io_worker_state.num_starting_io_workers;
+  }
+
+  int NumRestoreWorkerStarting() const {
+    auto state = states_by_lang_.find(Language::PYTHON)->second;
+    return state.restore_io_worker_state.num_starting_io_workers;
+  }
+
+  int GetProcessSize() const { return worker_commands_by_proc_.size(); }
+
  private:
   Process last_worker_process_;
   // The worker commands by process.
@@ -95,7 +108,9 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
     bool enable_multi_tenancy = GetParam();
     RayConfig::instance().initialize(
         {{"enable_multi_tenancy", std::to_string(enable_multi_tenancy)},
-         {"num_workers_per_process_java", std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)}});
+         {"num_workers_per_process_java", std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)},
+         {"object_spilling_config", "mock_config"},
+         {"max_io_workers", std::to_string(MAX_IO_WORKER_SIZE)}});
     SetWorkerCommands(
         {{Language::PYTHON, {"dummy_py_worker_command"}},
          {Language::JAVA,
@@ -104,7 +119,8 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
 
   std::shared_ptr<WorkerInterface> CreateWorker(
       Process proc, const Language &language = Language::PYTHON,
-      const JobID &job_id = JOB_ID) {
+      const JobID &job_id = JOB_ID,
+      const rpc::WorkerType worker_type = rpc::WorkerType::WORKER) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<ClientConnection>, int64_t,
@@ -118,16 +134,25 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
     auto client =
         ClientConnection::Create(client_handler, message_handler, std::move(socket),
                                  "worker", {}, error_message_type_);
-    std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
-        WorkerID::FromRandom(), language, rpc::WorkerType::WORKER, "127.0.0.1", client,
-        client_call_manager_);
+    std::shared_ptr<Worker> worker_ =
+        std::make_shared<Worker>(job_id, WorkerID::FromRandom(), language, worker_type,
+                                 "127.0.0.1", client, client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
-    worker->AssignJobId(job_id);
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
     }
     return worker;
+  }
+
+  std::shared_ptr<WorkerInterface> CreateSpillWorker(Process proc) {
+    return CreateWorker(proc, Language::PYTHON, JobID::Nil(),
+                        rpc::WorkerType::SPILL_WORKER);
+  }
+
+  std::shared_ptr<WorkerInterface> CreateRestoreWorker(Process proc) {
+    return CreateWorker(proc, Language::PYTHON, JobID::Nil(),
+                        rpc::WorkerType::RESTORE_WORKER);
   }
 
   std::shared_ptr<WorkerInterface> RegisterDriver(
@@ -135,8 +160,7 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
       const rpc::JobConfig &job_config = rpc::JobConfig()) {
     auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
     driver->AssignTaskId(TaskID::ForDriverTask(job_id));
-    RAY_CHECK_OK(
-        worker_pool_->RegisterDriver(driver, job_id, job_config, [](Status, int) {}));
+    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {}));
     return driver;
   }
 
@@ -501,6 +525,188 @@ TEST_P(WorkerPoolTest, MaximumStartupConcurrency) {
   }
 
   ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
+}
+
+TEST_P(WorkerPoolTest, HandleIOWorkersPushPop) {
+  std::unordered_set<std::shared_ptr<WorkerInterface>> spill_pushed_worker;
+  std::unordered_set<std::shared_ptr<WorkerInterface>> restore_pushed_worker;
+  auto spill_worker_callback =
+      [&spill_pushed_worker](std::shared_ptr<WorkerInterface> worker) {
+        spill_pushed_worker.emplace(worker);
+      };
+  auto restore_worker_callback =
+      [&restore_pushed_worker](std::shared_ptr<WorkerInterface> worker) {
+        restore_pushed_worker.emplace(worker);
+      };
+
+  // Popping spill worker shouldn't invoke callback because there's no workers pushed yet.
+  worker_pool_->PopSpillWorker(spill_worker_callback);
+  worker_pool_->PopSpillWorker(spill_worker_callback);
+  worker_pool_->PopRestoreWorker(restore_worker_callback);
+  ASSERT_EQ(spill_pushed_worker.size(), 0);
+  ASSERT_EQ(restore_pushed_worker.size(), 0);
+
+  // Create some workers.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> spill_workers;
+  spill_workers.insert(CreateSpillWorker(Process::CreateNewDummy()));
+  spill_workers.insert(CreateSpillWorker(Process::CreateNewDummy()));
+  // Add the workers to the pool.
+  // 2 pending tasks / 2 new idle workers.
+  for (const auto &worker : spill_workers) {
+    worker_pool_->PushSpillWorker(worker);
+  }
+  ASSERT_EQ(spill_pushed_worker.size(), 2);
+  // Restore workers haven't pushed yet.
+  ASSERT_EQ(restore_pushed_worker.size(), 0);
+
+  // Create a new idle worker.
+  spill_workers.insert(CreateSpillWorker(Process::CreateNewDummy()));
+  // Now push back to used workers
+  // 0 pending task, 3 idle workers.
+  for (const auto &worker : spill_workers) {
+    worker_pool_->PushSpillWorker(worker);
+  }
+  for (size_t i = 0; i < spill_workers.size(); i++) {
+    worker_pool_->PopSpillWorker(spill_worker_callback);
+  }
+  ASSERT_EQ(spill_pushed_worker.size(), 3);
+
+  // At the same time push an idle worker to the restore worker pool.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> restore_workers;
+  restore_workers.insert(CreateRestoreWorker(Process::CreateNewDummy()));
+  for (const auto &worker : restore_workers) {
+    worker_pool_->PushRestoreWorker(worker);
+  }
+  ASSERT_EQ(restore_pushed_worker.size(), 1);
+}
+
+TEST_P(WorkerPoolTest, MaxIOWorkerSimpleTest) {
+  // Make sure max number of spill workers are respected.
+  auto callback = [](std::shared_ptr<WorkerInterface> worker) {};
+  std::vector<Process> started_processes;
+  Process last_process;
+  for (int i = 0; i < 10; i++) {
+    worker_pool_->PopSpillWorker(callback);
+    if (last_process.GetId() != worker_pool_->LastStartedWorkerProcess().GetId()) {
+      last_process = worker_pool_->LastStartedWorkerProcess();
+      started_processes.push_back(last_process);
+    }
+  }
+  // Make sure process size is not exceeding max io worker size.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), MAX_IO_WORKER_SIZE);
+  ASSERT_EQ(started_processes.size(), MAX_IO_WORKER_SIZE);
+  ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), MAX_IO_WORKER_SIZE);
+  ASSERT_EQ(worker_pool_->NumRestoreWorkerStarting(), 0);
+
+  // Make sure process size doesn't exceed the max size when some of workers are
+  // registered.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> spill_workers;
+  for (auto &process : started_processes) {
+    auto worker = CreateSpillWorker(process);
+    spill_workers.insert(worker);
+    worker_pool_->OnWorkerStarted(worker);
+    worker_pool_->PushSpillWorker(worker);
+  }
+  ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
+}
+
+TEST_P(WorkerPoolTest, MaxIOWorkerComplicateTest) {
+  // Make sure max number of restore workers are respected.
+  // This test will test a little more complicated scneario.
+  // For example, it tests scenarios where there are
+  // mix of starting / registered workers.
+  auto callback = [](std::shared_ptr<WorkerInterface> worker) {};
+  std::vector<Process> started_processes;
+  Process last_process;
+  worker_pool_->PopSpillWorker(callback);
+  if (last_process.GetId() != worker_pool_->LastStartedWorkerProcess().GetId()) {
+    last_process = worker_pool_->LastStartedWorkerProcess();
+    started_processes.push_back(last_process);
+  }
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+  ASSERT_EQ(started_processes.size(), 1);
+  ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 1);
+
+  // Worker is started and registered.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> spill_workers;
+  for (auto &process : started_processes) {
+    auto worker = CreateSpillWorker(process);
+    spill_workers.insert(worker);
+    worker_pool_->OnWorkerStarted(worker);
+    worker_pool_->PushSpillWorker(worker);
+    started_processes.pop_back();
+  }
+
+  // Try pop multiple workers and make sure it doesn't exceed max_io_workers.
+  for (int i = 0; i < 10; i++) {
+    worker_pool_->PopSpillWorker(callback);
+    if (last_process.GetId() != worker_pool_->LastStartedWorkerProcess().GetId()) {
+      last_process = worker_pool_->LastStartedWorkerProcess();
+      started_processes.push_back(last_process);
+    }
+  }
+  ASSERT_EQ(worker_pool_->GetProcessSize(), MAX_IO_WORKER_SIZE);
+  ASSERT_EQ(started_processes.size(), 1);
+  ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 1);
+
+  // Register the worker.
+  for (auto &process : started_processes) {
+    auto worker = CreateSpillWorker(process);
+    spill_workers.insert(worker);
+    worker_pool_->OnWorkerStarted(worker);
+    worker_pool_->PushSpillWorker(worker);
+    started_processes.pop_back();
+  }
+  ASSERT_EQ(worker_pool_->GetProcessSize(), MAX_IO_WORKER_SIZE);
+  ASSERT_EQ(started_processes.size(), 0);
+  ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
+}
+
+TEST_P(WorkerPoolTest, MaxSpillRestoreWorkersIntegrationTest) {
+  auto callback = [](std::shared_ptr<WorkerInterface> worker) {};
+  // Run many pop spill/restore workers and make sure the max worker size doesn't exceed.
+  std::vector<Process> started_restore_processes;
+  Process last_restore_process;
+  std::vector<Process> started_spill_processes;
+  Process last_spill_process;
+  // NOTE: Should be a multiplication of MAX_IO_WORKER_SIZE.
+  int max_time = 30;
+  for (int i = 0; i <= max_time; i++) {
+    // Pop spill worker
+    worker_pool_->PopSpillWorker(callback);
+    if (last_spill_process.GetId() != worker_pool_->LastStartedWorkerProcess().GetId()) {
+      last_spill_process = worker_pool_->LastStartedWorkerProcess();
+      started_spill_processes.push_back(last_spill_process);
+    }
+    // Pop Restore Worker
+    worker_pool_->PopRestoreWorker(callback);
+    if (last_restore_process.GetId() !=
+        worker_pool_->LastStartedWorkerProcess().GetId()) {
+      last_restore_process = worker_pool_->LastStartedWorkerProcess();
+      started_restore_processes.push_back(last_restore_process);
+    }
+    // Register workers with 10% probability at each time.
+    if (rand() % 100 < 10) {
+      // Push spill worker if there's a process.
+      if (started_spill_processes.size() > 0) {
+        auto spill_worker = CreateSpillWorker(
+            started_spill_processes[started_spill_processes.size() - 1]);
+        worker_pool_->OnWorkerStarted(spill_worker);
+        worker_pool_->PushSpillWorker(spill_worker);
+        started_spill_processes.pop_back();
+      }
+      // Push restore worker if there's a process.
+      if (started_restore_processes.size() > 0) {
+        auto restore_worker = CreateRestoreWorker(
+            started_restore_processes[started_restore_processes.size() - 1]);
+        worker_pool_->OnWorkerStarted(restore_worker);
+        worker_pool_->PushRestoreWorker(restore_worker);
+        started_restore_processes.pop_back();
+      }
+    }
+  }
+
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 2 * MAX_IO_WORKER_SIZE);
 }
 
 INSTANTIATE_TEST_CASE_P(WorkerPoolMultiTenancyTest, WorkerPoolTest,

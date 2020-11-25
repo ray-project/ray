@@ -187,39 +187,35 @@ class TestRolloutWorker(unittest.TestCase):
     def test_global_vars_update(self):
         # Allow for Unittest run.
         ray.init(num_cpus=5, ignore_reinit_error=True)
-        for fw in framework_iterator(frameworks=()):
+        for fw in framework_iterator(frameworks=("tf2", "tf")):
             agent = A2CTrainer(
                 env="CartPole-v0",
                 config={
                     "num_workers": 1,
+                    # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
                     "lr_schedule": [[0, 0.1], [100000, 0.000001]],
                     "framework": fw,
                 })
-            result = agent.train()
-            for i in range(10):
+            policy = agent.get_policy()
+            for i in range(3):
                 result = agent.train()
-                print("num_steps_sampled={}".format(
-                    result["info"]["num_steps_sampled"]))
                 print("num_steps_trained={}".format(
                     result["info"]["num_steps_trained"]))
                 print("num_steps_sampled={}".format(
                     result["info"]["num_steps_sampled"]))
-                print("num_steps_trained={}".format(
-                    result["info"]["num_steps_trained"]))
-                if i == 0:
-                    self.assertGreater(
-                        result["info"]["learner"]["default_policy"]["cur_lr"],
-                        0.01)
-                if result["info"]["learner"]["default_policy"]["cur_lr"] < \
-                        0.07:
-                    break
-            self.assertLess(
-                result["info"]["learner"]["default_policy"]["cur_lr"], 0.07)
+                global_timesteps = policy.global_timestep
+                print("global_timesteps={}".format(global_timesteps))
+                expected_lr = \
+                    0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
+                lr = policy.cur_lr
+                if fw == "tf":
+                    lr = policy._sess.run(lr)
+                check(lr, expected_lr, rtol=0.05)
             agent.stop()
 
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
-        for fw in framework_iterator(frameworks=()):
+        for fw in framework_iterator():
             pg = PGTrainer(
                 env="fail", config={
                     "num_workers": 1,

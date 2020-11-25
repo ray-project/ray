@@ -144,10 +144,15 @@ class WorkerSet:
 
     def stop(self) -> None:
         """Stop all rollout workers."""
-        self.local_worker().stop()
-        for w in self.remote_workers():
-            w.stop.remote()
-            w.__ray_terminate__.remote()
+        try:
+            self.local_worker().stop()
+            tids = [w.stop.remote() for w in self.remote_workers()]
+            ray.get(tids)
+        except Exception:
+            logger.exception("Failed to stop workers")
+        finally:
+            for w in self.remote_workers():
+                w.__ray_terminate__.remote()
 
     @DeveloperAPI
     def foreach_worker(self, func: Callable[[RolloutWorker], T]) -> List[T]:

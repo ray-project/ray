@@ -7,6 +7,7 @@ build --enable_platform_specific_config
 build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
+#build --cxxopt="-std=c++11"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --force_pic
 build:macos --force_pic
@@ -21,6 +22,7 @@ test --action_env=VIRTUAL_ENV
 test --action_env=PYENV_VIRTUAL_ENV
 test --action_env=PYENV_VERSION
 test --action_env=PYENV_SHELL
+test --action_env=RAY_ENABLE_NEW_SCHEDULER
 # This is needed for some core tests to run correctly
 test:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
@@ -34,6 +36,7 @@ build:msvc     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
 build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
+#build --per_file_copt="external/.*@-Wno-unused-result"
 # Ignore minor warnings for host tools, which we generally can't control
 build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
 build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
@@ -58,6 +61,10 @@ build:windows --color=yes
 # For compiler colored output (seems necessary on Windows)
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-fansi-escape-codes"
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
+
+build:manylinux2010 --copt="-Wno-unused-result"
+build:manylinux2010 --linkopt="-lrt"
+
 
 # Debug build flags. Uncomment in '-c dbg' builds to enable checks in the C++ standard library:
 #build:linux --cxxopt="-D_GLIBCXX_DEBUG=1"

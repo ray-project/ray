@@ -23,6 +23,9 @@ NODE_IP = "node_ip"
 # (Auto-filled) The pid of the training process.
 PID = "pid"
 
+# (Optional) Default (anonymous) metric when using tune.report(x)
+DEFAULT_METRIC = "_metric"
+
 # (Optional) Mean reward for current training iteration
 EPISODE_REWARD_MEAN = "episode_reward_mean"
 

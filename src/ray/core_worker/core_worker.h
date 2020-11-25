@@ -647,7 +647,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries, PlacementOptions placement_options,
+                  int max_retries, BundleID placement_options,
                   bool placement_group_capture_child_tasks);
 
   /// Create an actor.
@@ -714,8 +714,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id of the task to kill (must be a Non-Actor task)
   /// \param[in] force_kill Whether to force kill a task by killing the worker.
+  /// \param[in] recursive Whether to cancel tasks submitted by the task to cancel.
   /// \param[out] Status
-  Status CancelTask(const ObjectID &object_id, bool force_kill);
+  Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
+
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///
@@ -903,7 +905,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   using SetResultCallback =
       std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
 
-  /// Perform async get from in-memory store.
+  /// Perform async get from the object store.
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
@@ -911,12 +913,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
-
-  /// Subscribe to receive notification of an object entering the plasma store.
-  ///
-  /// \param[in] object_id The object to wait for.
-  /// \return void
-  void SubscribeToPlasmaAdd(const ObjectID &object_id);
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);
@@ -951,6 +947,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void AddLocalReference(const ObjectID &object_id, std::string call_site) {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
+
+  /// Stops the children tasks from the given TaskID
+  ///
+  /// \param[in] task_id of the parent task
+  /// \param[in] force_kill Whether to force kill a task by killing the worker.
+  Status CancelChildren(const TaskID &task_id, bool force_kill);
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.

@@ -564,7 +564,8 @@ Status RedisNodeInfoAccessor::AsyncGetAll(
   return client_table.Lookup(on_done);
 }
 
-boost::optional<GcsNodeInfo> RedisNodeInfoAccessor::Get(const NodeID &node_id) const {
+boost::optional<GcsNodeInfo> RedisNodeInfoAccessor::Get(const NodeID &node_id,
+                                                        bool filter_dead_nodes) const {
   GcsNodeInfo node_info;
   ClientTable &client_table = client_impl_->client_table();
   bool found = client_table.GetClient(node_id, &node_info);

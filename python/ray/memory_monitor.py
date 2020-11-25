@@ -52,9 +52,7 @@ class RayOutOfMemoryError(Exception):
                 f"The top 10 memory consumers are:\n\n{proc_str}" +
                 "\n\nIn addition, up to {} GiB of shared memory is ".format(
                     round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
-                + "currently being used by the Ray object store. You can set "
-                "the object store size with the `object_store_memory` "
-                "parameter when starting Ray.\n---\n"
+                + "currently being used by the Ray object store.\n---\n"
                 "--- Tip: Use the `ray memory` command to list active "
                 "objects in the cluster.\n---\n")
 

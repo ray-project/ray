@@ -13,7 +13,7 @@ import { sum } from "../../../common/util";
 import ActorStateRepr from "./ActorStateRepr";
 
 const memoryDebuggingDocLink =
-  "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
+  "https://docs.ray.io/en/master/memory-management.html#debugging-using-ray-memory";
 
 type ActorDatum = {
   label: string;
@@ -126,7 +126,7 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({ actor }) => {
         <ActorStateRepr state={actor.state} />
       </div>
       {isFullActorInfo(actor) && (
-        <Grid container className={classes.detailsPane}>
+        <Grid container spacing={3} className={classes.detailsPane}>
           <Grid container item xs={6}>
             <Grid item xs={4}>
               <Typography>CPU Usage</Typography>
@@ -144,20 +144,33 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({ actor }) => {
               <Grid item xs={12}>
                 <Typography>GPU Usage</Typography>
               </Grid>
-              {actor.gpus.map((gpu) => (
-                <React.Fragment key={gpu.uuid}>
-                  <Grid item xs={4}>
-                    {`[${gpu.name}]`}
-                  </Grid>
-                  <Grid item xs={4}>
-                    <UsageBar
-                      percent={gpu.utilizationGpu * 100}
-                      text={`${gpu.utilizationGpu * 100}%`}
-                    />
-                  </Grid>
-                  <Grid item xs={4} />
-                </React.Fragment>
-              ))}
+              {actor.gpus.map((gpu) => {
+                const gpuUtilization = gpu.utilizationGpu ? (
+                  <UsageBar
+                    percent={gpu.utilizationGpu * 100}
+                    text={`${gpu.utilizationGpu * 100}%`}
+                  />
+                ) : (
+                  <Typography
+                    color="textSecondary"
+                    component="span"
+                    variant="inherit"
+                  >
+                    N/A
+                  </Typography>
+                );
+                return (
+                  <React.Fragment key={gpu.uuid}>
+                    <Grid item xs={4}>
+                      {`[${gpu.name}]`}
+                    </Grid>
+                    <Grid item xs={4}>
+                      {gpuUtilization}
+                    </Grid>
+                    <Grid item xs={4} />
+                  </React.Fragment>
+                );
+              })}
             </Grid>
           )}
         </Grid>

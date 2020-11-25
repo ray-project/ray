@@ -247,6 +247,7 @@ class ModelCatalog:
             action_space (Space): Action space of the target gym env.
             name (str): An optional string to name the placeholder by.
                 Default: "action".
+
         Returns:
             action_placeholder (Tensor): A placeholder for the actions
         """
@@ -531,7 +532,9 @@ class ModelCatalog:
         return wrapper
 
     @staticmethod
-    def _get_v2_model_class(input_space, model_config, framework="tf"):
+    def _get_v2_model_class(input_space: gym.Space,
+                            model_config: ModelConfigDict,
+                            framework: str = "tf") -> ModelV2:
         if framework == "torch":
             from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                       FCNet)

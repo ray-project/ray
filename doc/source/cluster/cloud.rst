@@ -37,18 +37,16 @@ AWS/GCP/Azure
 
             # Get a remote screen on the head node.
             $ ray attach ray/python/ray/autoscaler/aws/example-full.yaml
-            $ source activate tensorflow_p36
             $ # Try running a Ray program with 'ray.init(address="auto")'.
 
             # Tear down the cluster.
             $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
-        .. tip:: For the AWS node configuration, you can set ``"ImageId: latest_dlami"`` to automatically use the newest `Deep Learning AMI <https://aws.amazon.com/machine-learning/amis/>`_ for your region. For example, ``head_node: {InstanceType: c5.xlarge, ImageId: latest_dlami}``.
 
         See :ref:`aws-cluster` for recipes on customizing AWS clusters.
     .. group-tab:: Azure
 
-        First, install the Azure CLI (``pip install azure-cli azure-core``) then login using (``az login``).
+        First, install the Azure CLI (``pip install azure-cli``) then login using (``az login``).
 
         Set the subscription to use from the command line (``az account set -s <subscription_id>``) or by modifying the provider section of the config provided e.g: `ray/python/ray/autoscaler/azure/example-full.yaml`
 
@@ -65,10 +63,7 @@ AWS/GCP/Azure
             # Get a remote screen on the head node.
             $ ray attach ray/python/ray/autoscaler/azure/example-full.yaml
             # test ray setup
-            # enable conda environment
-            $ exec bash -l
-            $ conda activate py37_tensorflow
-            $ python -c 'import ray; ray.init()'
+            $ python -c 'import ray; ray.init(address="auto")'
             $ exit
             # Tear down the cluster.
             $ ray down ray/python/ray/autoscaler/azure/example-full.yaml
@@ -83,8 +78,8 @@ AWS/GCP/Azure
            :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fray-project%2Fray%2Fmaster%2Fdoc%2Fazure%2Fazure-ray-template.json
            :alt: Deploy to Azure
 
-        Once the template is successfully deployed the deployment output page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
-        Use the following code in a Jupyter notebook to connect to the Ray cluster.
+        Once the template is successfully deployed the deployment Outputs page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
+        Use the following code in a Jupyter notebook (using the conda environment specified in the template input, py37_tensorflow by default) to connect to the Ray cluster.
 
         .. code-block:: python
 
@@ -113,7 +108,6 @@ AWS/GCP/Azure
 
             # Get a remote screen on the head node.
             $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
-            $ source activate tensorflow_p36
             $ # Try running a Ray program with 'ray.init(address="auto")'.
 
             # Tear down the cluster.

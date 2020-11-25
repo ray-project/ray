@@ -81,7 +81,7 @@ class DashboardController(BaseDashboardController):
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
         workers_info_by_node = {
-            data["nodeId"]: data.get("workersStats")
+            data["nodeId"]: data.get("coreWorkersStats")
             for data in D.values()
         }
 
@@ -946,7 +946,7 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
     args = parser.parse_args()
-    ray.utils.setup_logger(args.logging_level, args.logging_format)
+    ray.ray_logging.setup_logger(args.logging_level, args.logging_format)
 
     # TODO(sang): Add a URL validation.
     metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")

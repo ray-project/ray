@@ -1,14 +1,8 @@
-"""This test checks that SigOpt is functional.
+""""Example using Sigopt's support for prior beliefs."""
 
-It also checks that it is usable with a separate scheduler.
-"""
-import time
-
-import ray
 import numpy as np
 from ray import tune
 
-from ray.tune.schedulers import FIFOScheduler
 from ray.tune.suggest.sigopt import SigOptSearch
 
 np.random.seed(0)
@@ -36,7 +30,6 @@ def easy_objective(config):
 
     average, std = evaluate(w1, w2, w3)
     tune.report(average=average, std=std)
-    time.sleep(0.1)
 
 
 if __name__ == "__main__":
@@ -51,8 +44,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
-
     samples = 10 if args.smoke_test else 1000
 
     conn = Connection(client_token=os.environ["SIGOPT_KEY"])
@@ -90,8 +81,6 @@ if __name__ == "__main__":
         observation_budget=samples,
         parallel_bandwidth=1)
 
-    config = {"num_samples": samples, "config": {}}
-
     algo = SigOptSearch(
         connection=conn,
         experiment_id=experiment.id,
@@ -100,11 +89,10 @@ if __name__ == "__main__":
         metric=["average", "std"],
         mode=["obs", "min"])
 
-    scheduler = FIFOScheduler()
-
-    tune.run(
+    analysis = tune.run(
         easy_objective,
         name="my_exp",
         search_alg=algo,
-        scheduler=scheduler,
-        **config)
+        num_samples=samples,
+        config={})
+    print("Best hyperparameters found were: ", analysis.best_config)

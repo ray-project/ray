@@ -71,6 +71,7 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "eager_model"
         },
+        # Alternatively, use "tf2" here for enforcing TF version 2.x.
         "framework": "tfe",
     }
     stop = {

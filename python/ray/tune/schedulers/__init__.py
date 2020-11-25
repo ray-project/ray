@@ -8,6 +8,13 @@ from ray.tune.schedulers.pbt import (PopulationBasedTraining,
                                      PopulationBasedTrainingReplay)
 
 
+def _pb2_importer(*args, **kwargs):
+    # PB2 introduces a GPy dependency which can be expensive, so we import
+    # lazily.
+    from ray.tune.schedulers.pb2 import PB2
+    return PB2(*args, **kwargs)
+
+
 def create_scheduler(
         scheduler,
         **kwargs,
@@ -37,6 +44,7 @@ def create_scheduler(
         "hb_bohb": HyperBandForBOHB,
         "pbt": PopulationBasedTraining,
         "pbt_replay": PopulationBasedTrainingReplay,
+        "pb2": _pb2_importer,
     }
     scheduler = scheduler.lower()
     if scheduler not in SCHEDULER_IMPORT:

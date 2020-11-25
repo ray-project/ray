@@ -5,10 +5,12 @@ import json
 from typing import Dict, Optional, Tuple
 
 from ray.tune import ExperimentAnalysis
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
     import bayes_opt as byo
@@ -37,6 +39,9 @@ class BayesOptSearch(Searcher):
     fmfn/BayesianOptimization is a library for Bayesian Optimization. More
     info can be found here: https://github.com/fmfn/BayesianOptimization.
 
+    This searcher will automatically filter out any NaN, inf or -inf
+    results.
+
     You will need to install fmfn/BayesianOptimization via the following:
 
     .. code-block:: bash
@@ -49,7 +54,9 @@ class BayesOptSearch(Searcher):
     Args:
         space (dict): Continuous search space. Parameters will be sampled from
             this space which will be used to run trials.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         utility_kwargs (dict): Parameters to define the utility function.
@@ -201,9 +208,13 @@ class BayesOptSearch(Searcher):
 
         self.optimizer = None
         if space:
-            self.setup_optimizer()
+            self._setup_optimizer()
 
-    def setup_optimizer(self):
+    def _setup_optimizer(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         self.optimizer = byo.BayesianOptimization(
             f=None,
             pbounds=self._space,
@@ -226,7 +237,7 @@ class BayesOptSearch(Searcher):
         elif self._mode == "min":
             self._metric_op = -1.
 
-        self.setup_optimizer()
+        self._setup_optimizer()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
@@ -242,10 +253,15 @@ class BayesOptSearch(Searcher):
         """
         if not self.optimizer:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         # If we have more active trials than the allowed maximum
         total_live_trials = len(self._live_trial_mapping)
@@ -346,6 +362,8 @@ class BayesOptSearch(Searcher):
 
     def _register_result(self, params: Tuple[str], result: Dict):
         """Register given tuple of params and results."""
+        if is_nan_or_inf(result[self.metric]):
+            return
         self.optimizer.register(params, self._metric_op * result[self.metric])
 
     def save(self, checkpoint_path: str):

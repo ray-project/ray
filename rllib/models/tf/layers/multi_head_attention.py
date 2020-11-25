@@ -4,6 +4,7 @@
       https://arxiv.org/pdf/1706.03762.pdf
 """
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -11,7 +12,7 @@ tf1, tf, tfv = try_import_tf()
 class MultiHeadAttention(tf.keras.layers.Layer if tf else object):
     """A multi-head attention layer described in [1]."""
 
-    def __init__(self, out_dim, num_heads, head_dim, **kwargs):
+    def __init__(self, out_dim: int, num_heads: int, head_dim: int, **kwargs):
         super().__init__(**kwargs)
 
         # No bias or non-linearity.
@@ -22,7 +23,7 @@ class MultiHeadAttention(tf.keras.layers.Layer if tf else object):
         self._linear_layer = tf.keras.layers.TimeDistributed(
             tf.keras.layers.Dense(out_dim, use_bias=False))
 
-    def call(self, inputs):
+    def call(self, inputs: TensorType) -> TensorType:
         L = tf.shape(inputs)[1]  # length of segment
         H = self._num_heads  # number of attention heads
         D = self._head_dim  # attention head dimension

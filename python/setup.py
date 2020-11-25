@@ -71,19 +71,23 @@ generated_python_directories = [
 optional_ray_files = ["ray/nightly-wheels.yaml"]
 
 ray_autoscaler_files = [
-    "ray/autoscaler/aws/defaults.yaml", "ray/autoscaler/azure/defaults.yaml",
-    "ray/autoscaler/azure/azure-vm-template.json",
-    "ray/autoscaler/azure/azure-config-template.json",
-    "ray/autoscaler/gcp/defaults.yaml", "ray/autoscaler/local/defaults.yaml",
+    "ray/autoscaler/aws/defaults.yaml",
+    "ray/autoscaler/azure/defaults.yaml",
+    "ray/autoscaler/_private/azure/azure-vm-template.json",
+    "ray/autoscaler/_private/azure/azure-config-template.json",
+    "ray/autoscaler/gcp/defaults.yaml",
+    "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
-    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/staroid/defaults.yaml", "ray/autoscaler/ray-schema.json"
+    "ray/autoscaler/_private/kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/staroid/defaults.yaml",
+    "ray/autoscaler/ray-schema.json",
 ]
 
 ray_project_files = [
-    "ray/projects/schema.json", "ray/projects/templates/cluster_template.yaml",
+    "ray/projects/schema.json",
+    "ray/projects/templates/cluster_template.yaml",
     "ray/projects/templates/project_template.yaml",
-    "ray/projects/templates/requirements.txt"
+    "ray/projects/templates/requirements.txt",
 ]
 
 ray_dashboard_files = [
@@ -101,13 +105,14 @@ optional_ray_files += ray_dashboard_files
 extras = {
     "debug": [],
     "serve": [
-        "uvicorn", "flask", "requests", "pydantic",
+        "uvicorn", "flask", "requests", "pydantic<1.7",
         "dataclasses; python_version < '3.7'"
     ],
     "tune": [
-        "tabulate", "tensorboardX", "pandas",
-        "dataclasses; python_version < '3.7'"
-    ]
+        "dataclasses; python_version < '3.7'", "pandas", "tabulate",
+        "tensorboardX"
+    ],
+    "k8s": ["kubernetes"]
 }
 
 extras["rllib"] = extras["tune"] + [
@@ -138,7 +143,6 @@ install_requires = [
     "colorama",
     "colorful",
     "filelock",
-    "google",
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
@@ -148,7 +152,7 @@ install_requires = [
     "py-spy >= 0.2.0",
     "pyyaml",
     "requests",
-    "redis >= 3.3.2, < 3.5.0",
+    "redis >= 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",
 ]
@@ -172,7 +176,8 @@ def is_invalid_windows_platform():
 # (~/.bazel/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
-    candidates = ["bazel"]
+    first_candidate = os.getenv("BAZEL_PATH", "bazel")
+    candidates = [first_candidate]
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:
@@ -461,7 +466,8 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli",
+            "ray-operator=ray.operator:main"
         ]
     },
     include_package_data=True,

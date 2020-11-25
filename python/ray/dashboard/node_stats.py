@@ -159,20 +159,18 @@ class NodeStats(threading.Thread):
                 actors[actor_id].update(self._addr_to_extra_info_dict[addr])
 
             for node_id, workers_info in workers_info_by_node.items():
-                for worker_info in workers_info:
-                    if "coreWorkerStats" in worker_info:
-                        core_worker_stats = worker_info["coreWorkerStats"]
-                        addr = (core_worker_stats["ipAddress"],
-                                str(core_worker_stats["port"]))
-                        if addr in self._addr_to_actor_id:
-                            actor_info = actors[self._addr_to_actor_id[addr]]
-                            format_reply_id(core_worker_stats)
-                            actor_info.update(core_worker_stats)
-                            actor_info["averageTaskExecutionSpeed"] = round(
-                                actor_info["numExecutedTasks"] /
-                                (now - actor_info["timestamp"] / 1000), 2)
-                            actor_info["nodeId"] = node_id
-                            actor_info["pid"] = worker_info["pid"]
+                for core_worker_stats in workers_info:
+                    addr = (core_worker_stats["ipAddress"],
+                            str(core_worker_stats["port"]))
+                    if addr in self._addr_to_actor_id:
+                        actor_info = actors[self._addr_to_actor_id[addr]]
+                        format_reply_id(core_worker_stats)
+                        actor_info.update(core_worker_stats)
+                        actor_info["averageTaskExecutionSpeed"] = round(
+                            actor_info["numExecutedTasks"] /
+                            (now - actor_info["timestamp"] / 1000), 2)
+                        actor_info["nodeId"] = node_id
+                        actor_info["pid"] = core_worker_stats["pid"]
 
             def _update_from_actor_tasks(task, task_spec_type,
                                          invalid_state_type):
@@ -183,8 +181,9 @@ class NodeStats(threading.Thread):
                 elif invalid_state_type == "infeasibleActor":
                     task["state"] = -2
                 else:
-                    raise ValueError(f"Invalid argument"
-                                     "invalid_state_type={invalid_state_type}")
+                    raise ValueError(
+                        "Invalid argument"
+                        f"invalid_state_type={invalid_state_type}")
                 task["actorTitle"] = task["functionDescriptor"][
                     "pythonFunctionDescriptor"]["className"]
                 format_reply_id(task)

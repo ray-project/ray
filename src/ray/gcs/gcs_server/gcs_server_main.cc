@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
   std::string config_value;
 
   while (std::getline(config_string, config_name, ',')) {
-    RAY_CHECK(std::getline(config_string, config_value, ','));
+    RAY_CHECK(std::getline(config_string, config_value, ';'));
     config_map[config_name] = config_value;
   }
 

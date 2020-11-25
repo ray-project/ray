@@ -194,11 +194,11 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1 = AxClient(random_seed=1234)
         client1.create_experiment(parameters=converted_config)
-        searcher1 = AxSearch(ax_client=client1)
+        searcher1 = AxSearch(ax_client=client1, metric="a", mode="max")
 
         client2 = AxClient(random_seed=1234)
         client2.create_experiment(parameters=ax_config)
-        searcher2 = AxSearch(ax_client=client2)
+        searcher2 = AxSearch(ax_client=client2, metric="a", mode="max")
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
@@ -240,8 +240,10 @@ class SearchSpaceTest(unittest.TestCase):
         bayesopt_config = {"b/z": (1e-4, 1e-2)}
         converted_config = BayesOptSearch.convert_search_space(config)
 
-        searcher1 = BayesOptSearch(space=converted_config, metric="none")
-        searcher2 = BayesOptSearch(space=bayesopt_config, metric="none")
+        searcher1 = BayesOptSearch(
+            space=converted_config, metric="none", mode="max")
+        searcher2 = BayesOptSearch(
+            space=bayesopt_config, metric="none", mode="max")
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
@@ -295,8 +297,8 @@ class SearchSpaceTest(unittest.TestCase):
         converted_config.seed(1234)
         bohb_config.seed(1234)
 
-        searcher1 = TuneBOHB(space=converted_config)
-        searcher2 = TuneBOHB(space=bohb_config)
+        searcher1 = TuneBOHB(space=converted_config, metric="a", mode="max")
+        searcher2 = TuneBOHB(space=bohb_config, metric="a", mode="max")
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
@@ -356,7 +358,8 @@ class SearchSpaceTest(unittest.TestCase):
             optimizer="bandit",
             domain="euclidean",
             space=converted_config,
-            metric="none")
+            metric="none",
+            mode="max")
 
         config1 = searcher1.suggest("0")
 
@@ -365,7 +368,8 @@ class SearchSpaceTest(unittest.TestCase):
             optimizer="bandit",
             domain="euclidean",
             space=dragonfly_config,
-            metric="none")
+            metric="none",
+            mode="max")
         config2 = searcher2.suggest("0")
 
         self.assertEqual(config1, config2)
@@ -408,7 +412,7 @@ class SearchSpaceTest(unittest.TestCase):
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": tune.sample.Integer(-15, -10).quantized(2),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
@@ -417,23 +421,29 @@ class SearchSpaceTest(unittest.TestCase):
         hyperopt_config = {
             "a": hp.choice("a", [2, 3, 4]),
             "b": {
-                "x": hp.randint("x", 5),
+                "x": hp.randint("x", -15, -10),
                 "y": 4,
                 "z": hp.loguniform("z", np.log(1e-4), np.log(1e-2))
             }
         }
 
         searcher1 = HyperOptSearch(
-            space=converted_config, random_state_seed=1234)
+            space=converted_config,
+            random_state_seed=1234,
+            metric="a",
+            mode="max")
         searcher2 = HyperOptSearch(
-            space=hyperopt_config, random_state_seed=1234)
+            space=hyperopt_config,
+            random_state_seed=1234,
+            metric="a",
+            mode="max")
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
 
         self.assertEqual(config1, config2)
         self.assertIn(config1["a"], [2, 3, 4])
-        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertIn(config1["b"]["x"], list(range(-15, -10)))
         self.assertEqual(config1["b"]["y"], 4)
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
@@ -516,9 +526,15 @@ class SearchSpaceTest(unittest.TestCase):
                 z=ng.p.Log(lower=1e-4, upper=1e-2)))
 
         searcher1 = NevergradSearch(
-            optimizer=ng.optimizers.OnePlusOne, space=converted_config)
+            optimizer=ng.optimizers.OnePlusOne,
+            space=converted_config,
+            metric="a",
+            mode="max")
         searcher2 = NevergradSearch(
-            optimizer=ng.optimizers.OnePlusOne, space=nevergrad_config)
+            optimizer=ng.optimizers.OnePlusOne,
+            space=nevergrad_config,
+            metric="a",
+            mode="max")
 
         np.random.seed(1234)
         config1 = searcher1.suggest("0")
@@ -551,6 +567,49 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    def testNevergradBestParams(self):
+        from ray.tune.suggest.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        best_params = [{
+            "metric": 1,
+            "a": "t1",
+            "b": 1,
+            "c": 1e-1
+        }, {
+            "metric": 2,
+            "a": "t2",
+            "b": 2,
+            "c": 1e-2
+        }]
+
+        searcher = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne, points_to_evaluate=best_params)
+        analysis = tune.run(
+            _mock_objective,
+            config=config,
+            metric="metric",
+            mode="max",
+            search_alg=searcher,
+            num_samples=5)
+
+        for i in range(len(best_params)):
+            trial_config = analysis.trials[i].config
+            trial_config_dict = {
+                "metric": trial_config["metric"],
+                "a": trial_config["a"],
+                "b": trial_config["b"],
+                "c": trial_config["c"]
+            }
+            self.assertDictEqual(trial_config_dict, best_params[i])
+
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
         from optuna.samplers import RandomSampler
@@ -571,10 +630,12 @@ class SearchSpaceTest(unittest.TestCase):
         ]
 
         sampler1 = RandomSampler(seed=1234)
-        searcher1 = OptunaSearch(space=converted_config, sampler=sampler1)
+        searcher1 = OptunaSearch(
+            space=converted_config, sampler=sampler1, metric="a", mode="max")
 
         sampler2 = RandomSampler(seed=1234)
-        searcher2 = OptunaSearch(space=optuna_config, sampler=sampler2)
+        searcher2 = OptunaSearch(
+            space=optuna_config, sampler=sampler2, metric="a", mode="max")
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
@@ -614,8 +675,8 @@ class SearchSpaceTest(unittest.TestCase):
         converted_config = SkOptSearch.convert_search_space(config)
         skopt_config = {"a": [2, 3, 4], "b/x": (0, 5), "b/z": (1e-4, 1e-2)}
 
-        searcher1 = SkOptSearch(space=converted_config)
-        searcher2 = SkOptSearch(space=skopt_config)
+        searcher1 = SkOptSearch(space=converted_config, metric="a", mode="max")
+        searcher2 = SkOptSearch(space=skopt_config, metric="a", mode="max")
 
         np.random.seed(1234)
         config1 = searcher1.suggest("0")
@@ -675,9 +736,17 @@ class SearchSpaceTest(unittest.TestCase):
         zoopt_search_config = {"parallel_num": 4}
 
         searcher1 = ZOOptSearch(
-            dim_dict=converted_config, budget=5, **zoopt_search_config)
+            dim_dict=converted_config,
+            budget=5,
+            metric="a",
+            mode="max",
+            **zoopt_search_config)
         searcher2 = ZOOptSearch(
-            dim_dict=zoopt_config, budget=5, **zoopt_search_config)
+            dim_dict=zoopt_config,
+            budget=5,
+            metric="a",
+            mode="max",
+            **zoopt_search_config)
 
         np.random.seed(1234)
         config1 = searcher1.suggest("0")

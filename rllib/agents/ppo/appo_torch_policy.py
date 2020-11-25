@@ -114,11 +114,11 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
             unpacked_old_policy_behaviour_logits = torch.chunk(
                 old_policy_behaviour_logits, output_hidden_shape, dim=1)
 
-        # Prepare actions for loss
+        # Prepare actions for loss.
         loss_actions = actions if is_multidiscrete else torch.unsqueeze(
             actions, dim=1)
 
-        # Prepare KL for Loss
+        # Prepare KL for loss.
         action_kl = _make_time_major(
             old_policy_action_dist.kl(action_dist), drop_last=True)
 
@@ -152,7 +152,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         logp_ratio = is_ratio * torch.exp(actions_logp - prev_actions_logp)
         policy._is_ratio = is_ratio
 
-        advantages = vtrace_returns.pg_advantages
+        advantages = vtrace_returns.pg_advantages.to(policy.device)
         surrogate_loss = torch.min(
             advantages * logp_ratio,
             advantages *
@@ -163,8 +163,8 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
-        delta = values_time_major[:-1] - vtrace_returns.vs
-        value_targets = vtrace_returns.vs
+        value_targets = vtrace_returns.vs.to(policy.device)
+        delta = values_time_major[:-1] - value_targets
         mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
         # The entropy loss.
@@ -315,6 +315,9 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    # Move target net to device (this is done automatically for the
+    # policy.model, but not for any other models the policy has).
+    policy.target_model = policy.target_model.to(policy.device)
 
 
 # Build a child class of `TorchPolicy`, given the custom functions defined

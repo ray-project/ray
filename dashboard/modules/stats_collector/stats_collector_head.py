@@ -10,6 +10,7 @@ import ray.gcs_utils
 import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
     as stats_collector_consts
 import ray.new_dashboard.utils as dashboard_utils
+from ray.new_dashboard.actor_utils import actor_classname_from_task_spec
 from ray.new_dashboard.utils import async_loop_forever
 from ray.new_dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
@@ -17,25 +18,36 @@ from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import DataSource, DataOrganizer
-from ray.utils import binary_to_hex
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
 def node_stats_to_dict(message):
-    return dashboard_utils.message_to_dict(
-        message, {
-            "actorId", "jobId", "taskId", "parentTaskId", "sourceActorId",
-            "callerId", "rayletId", "workerId"
-        })
+    decode_keys = {
+        "actorId", "jobId", "taskId", "parentTaskId", "sourceActorId",
+        "callerId", "rayletId", "workerId", "placementGroupId"
+    }
+    core_workers_stats = message.core_workers_stats
+    message.ClearField("core_workers_stats")
+    try:
+        result = dashboard_utils.message_to_dict(message, decode_keys)
+        result["coreWorkersStats"] = [
+            dashboard_utils.message_to_dict(
+                m, decode_keys, including_default_value_fields=True)
+            for m in core_workers_stats
+        ]
+        return result
+    finally:
+        message.core_workers_stats.extend(core_workers_stats)
 
 
 def actor_table_data_to_dict(message):
     return dashboard_utils.message_to_dict(
         message, {
             "actorId", "parentId", "jobId", "workerId", "rayletId",
-            "actorCreationDummyObjectId"
+            "actorCreationDummyObjectId", "callerId", "taskId", "parentTaskId",
+            "sourceActorId", "placementGroupId"
         },
         including_default_value_fields=True)
 
@@ -160,21 +172,40 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         await aioredis_client.psubscribe(pattern)
         logger.info("Subscribed to %s", key)
 
+        def _process_actor_table_data(data):
+            actor_class = actor_classname_from_task_spec(
+                data.get("taskSpec", {}))
+            data["actorClass"] = actor_class
+
         # Get all actor info.
         while True:
             try:
                 logger.info("Getting all actor info from GCS.")
                 request = gcs_service_pb2.GetAllActorInfoRequest()
                 reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-                    request, timeout=2)
+                    request, timeout=5)
                 if reply.status.code == 0:
-                    result = {}
-                    for actor_info in reply.actor_table_data:
-                        result[binary_to_hex(actor_info.actor_id)] = \
-                            actor_table_data_to_dict(actor_info)
-                    DataSource.actors.reset(result)
+                    actors = {}
+                    for message in reply.actor_table_data:
+                        actor_table_data = actor_table_data_to_dict(message)
+                        _process_actor_table_data(actor_table_data)
+                        actors[actor_table_data["actorId"]] = actor_table_data
+                    # Update actors.
+                    DataSource.actors.reset(actors)
+                    # Update node actors and job actors.
+                    job_actors = {}
+                    node_actors = {}
+                    for actor_id, actor_table_data in actors.items():
+                        job_id = actor_table_data["jobId"]
+                        node_id = actor_table_data["address"]["rayletId"]
+                        job_actors.setdefault(job_id,
+                                              {})[actor_id] = actor_table_data
+                        node_actors.setdefault(node_id,
+                                               {})[actor_id] = actor_table_data
+                    DataSource.job_actors.reset(job_actors)
+                    DataSource.node_actors.reset(node_actors)
                     logger.info("Received %d actor info from GCS.",
-                                len(result))
+                                len(actors))
                     break
                 else:
                     raise Exception(
@@ -187,12 +218,26 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         # Receive actors from channel.
         async for sender, msg in receiver.iter():
             try:
-                _, data = msg
-                pubsub_message = ray.gcs_utils.PubSubMessage.FromString(data)
-                actor_info = ray.gcs_utils.ActorTableData.FromString(
+                _, actor_table_data = msg
+                pubsub_message = ray.gcs_utils.PubSubMessage.FromString(
+                    actor_table_data)
+                message = ray.gcs_utils.ActorTableData.FromString(
                     pubsub_message.data)
-                DataSource.actors[binary_to_hex(actor_info.actor_id)] = \
-                    actor_table_data_to_dict(actor_info)
+                actor_table_data = actor_table_data_to_dict(message)
+                _process_actor_table_data(actor_table_data)
+                actor_id = actor_table_data["actorId"]
+                job_id = actor_table_data["jobId"]
+                node_id = actor_table_data["address"]["rayletId"]
+                # Update actors.
+                DataSource.actors[actor_id] = actor_table_data
+                # Update node actors.
+                node_actors = dict(DataSource.node_actors.get(node_id, {}))
+                node_actors[actor_id] = actor_table_data
+                DataSource.node_actors[node_id] = node_actors
+                # Update job actors.
+                job_actors = dict(DataSource.job_actors.get(job_id, {}))
+                job_actors[actor_id] = actor_table_data
+                DataSource.job_actors[job_id] = job_actors
             except Exception:
                 logger.exception("Error receiving actor info.")
 
@@ -224,11 +269,10 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         async for sender, msg in receiver.iter():
             try:
                 data = json.loads(ray.utils.decode(msg))
-                logger.error(f"data={data}")
                 ip = data["ip"]
                 pid = str(data["pid"])
-                logs_for_ip = DataSource.ip_and_pid_to_logs.get(ip, {})
-                logs_for_pid = logs_for_ip.get(pid, [])
+                logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
+                logs_for_pid = list(logs_for_ip.get(pid, []))
                 logs_for_pid.extend(data["lines"])
                 logs_for_ip[pid] = logs_for_pid
                 DataSource.ip_and_pid_to_logs[ip] = logs_for_ip

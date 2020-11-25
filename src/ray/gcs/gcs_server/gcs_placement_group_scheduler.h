@@ -30,7 +30,6 @@ namespace gcs {
 using ReserveResourceClientFactoryFn =
     std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
 
-typedef std::pair<PlacementGroupID, int64_t> BundleID;
 struct pair_hash {
   template <class T1, class T2>
   std::size_t operator()(const std::pair<T1, T2> &pair) const {
@@ -73,6 +72,12 @@ class GcsPlacementGroupSchedulerInterface {
   ///
   /// \param placement_group_id The placement group id scheduling is in progress.
   virtual void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) = 0;
+
+  /// Notify raylets to release unused bundles.
+  ///
+  /// \param node_to_bundles Bundles used by each node.
+  virtual void ReleaseUnusedBundles(
+      const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
@@ -385,6 +390,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
       const NodeID &node_id) override;
 
+  /// Notify raylets to release unused bundles.
+  ///
+  /// \param node_to_bundles Bundles used by each node.
+  void ReleaseUnusedBundles(const std::unordered_map<NodeID, std::vector<rpc::Bundle>>
+                                &node_to_bundles) override;
+
  protected:
   /// Send a bundle PREPARE request to a node. The PREPARE request will lock resources
   /// on a node until COMMIT or CANCEL requests are sent to a node.
@@ -477,6 +488,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Set of placement group that have lease requests in flight to nodes.
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeaseStatusTracker>>
       placement_group_leasing_in_progress_;
+
+  /// The nodes which are releasing unused bundles.
+  absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
 };
 
 }  // namespace gcs
