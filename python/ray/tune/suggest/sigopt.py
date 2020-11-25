@@ -144,7 +144,9 @@ class SigOptSearch(Searcher):
         if connection is not None:
             self.conn = connection
         else:
-            assert sgo is not None, "SigOpt must be installed!"
+            assert sgo is not None, """SigOpt must be installed!
+                You can install SigOpt with the command:
+                `pip install -U sigopt`."""
             assert "SIGOPT_KEY" in os.environ, \
                 "SigOpt API key must be stored as " \
                 "environ variable at SIGOPT_KEY"

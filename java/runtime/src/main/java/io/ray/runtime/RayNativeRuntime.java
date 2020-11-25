@@ -183,6 +183,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   @SuppressWarnings("unchecked")
   @Override
   public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
+    if (name.isEmpty()) {
+      return Optional.empty();
+    }
     byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name, global);
     ActorId actorId = ActorId.fromBytes(actorIdBytes);
     if (actorId.isNil()) {

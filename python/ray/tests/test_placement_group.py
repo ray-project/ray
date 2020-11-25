@@ -1168,7 +1168,7 @@ ray.shutdown()
             num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
-def test_create_placement_group_after_gcs_server_restarts(
+def test_create_placement_group_after_gcs_server_restart(
         ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2)
@@ -1177,7 +1177,7 @@ def test_create_placement_group_after_gcs_server_restarts(
 
     # Create placement group 1 successfully.
     placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    ray.get(placement_group1.ready(), timeout=2)
+    ray.get(placement_group1.ready(), timeout=10)
     table = ray.util.placement_group_table(placement_group1)
     assert table["state"] == "CREATED"
 
@@ -1187,7 +1187,7 @@ def test_create_placement_group_after_gcs_server_restarts(
 
     # Create placement group 2 successfully.
     placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    ray.get(placement_group2.ready(), timeout=2)
+    ray.get(placement_group2.ready(), timeout=10)
     table = ray.util.placement_group_table(placement_group2)
     assert table["state"] == "CREATED"
 
@@ -1250,7 +1250,7 @@ def test_create_placement_group_during_gcs_server_restart(
     cluster.head_node.start_gcs_server()
 
     for i in range(0, 10):
-        ray.get(placement_groups[i].ready(), timeout=2)
+        ray.get(placement_groups[i].ready())
 
 
 if __name__ == "__main__":

@@ -4,11 +4,12 @@ import argparse
 import time
 
 from ray import tune
+from ray.tune.logger import LoggerCallback
 
 
-class TestLogger(tune.logger.Logger):
-    def on_result(self, result):
-        print("TestLogger", result)
+class TestLoggerCallback(LoggerCallback):
+    def on_trial_result(self, iteration, trials, trial, result, **info):
+        print(f"TestLogger for trial {trial}: {result}")
 
 
 def trial_str_creator(trial):
@@ -44,8 +45,8 @@ if __name__ == "__main__":
         mode="min",
         num_samples=5,
         trial_name_creator=trial_str_creator,
-        loggers=[TestLogger],
-        stop={"training_iteration": 1 if args.smoke_test else 99999},
+        callbacks=[TestLoggerCallback()],
+        stop={"training_iteration": 1 if args.smoke_test else 100},
         config={
             "steps": 100,
             "width": tune.randint(10, 100),

@@ -38,6 +38,7 @@ aiogrpc.init_grpc_aio()
 
 class DashboardAgent(object):
     def __init__(self,
+                 node_ip_address,
                  redis_address,
                  dashboard_agent_port,
                  redis_password=None,
@@ -49,6 +50,7 @@ class DashboardAgent(object):
                  raylet_name=None):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
+        self.ip = node_ip_address
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.temp_dir = temp_dir
@@ -60,15 +62,14 @@ class DashboardAgent(object):
         self.raylet_name = raylet_name
         self.node_id = os.environ["RAY_NODE_ID"]
         assert self.node_id, "Empty node id (RAY_NODE_ID)."
-        self.ip = ray._private.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port(
             f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
-        self.aiogrpc_raylet_channel = aiogrpc.insecure_channel("{}:{}".format(
-            self.ip, self.node_manager_port))
+        self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
+            f"{self.ip}:{self.node_manager_port}")
         self.http_session = None
 
     def _load_modules(self):
@@ -181,6 +182,11 @@ class DashboardAgent(object):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dashboard agent.")
     parser.add_argument(
+        "--node-ip-address",
+        required=True,
+        type=str,
+        help="the IP address of this node.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -284,6 +290,7 @@ if __name__ == "__main__":
             handlers=logging_handlers)
 
         agent = DashboardAgent(
+            args.node_ip_address,
             args.redis_address,
             args.dashboard_agent_port,
             redis_password=args.redis_password,

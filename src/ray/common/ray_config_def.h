@@ -39,7 +39,7 @@ RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
 /// Whether to send heartbeat lightly. When it is enalbed, only changed part,
 /// like should_global_gc or changed resources, will be included in the heartbeat,
 /// and gcs only broadcast the changed heartbeat.
-RAY_CONFIG(bool, light_heartbeat_enabled, false)
+RAY_CONFIG(bool, light_heartbeat_enabled, true)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -221,6 +221,8 @@ RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
+/// Number of threads used by rpc server in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
