@@ -356,6 +356,7 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
                             print(line)
             except:
                 pass
+            assert False
 
 
 @pytest.mark.skipif(

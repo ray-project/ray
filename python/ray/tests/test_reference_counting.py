@@ -201,6 +201,7 @@ def test_actor_creation_task(ray_start_regular):
                         print(line)
         except:
             pass
+        assert False
 
 
 def test_basic_pinning(one_worker_100MiB):
