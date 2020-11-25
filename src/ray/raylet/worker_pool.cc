@@ -892,12 +892,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
 void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t backlog_size) {
-  // Prestart optimization is only needed when multi-tenancy is on.
-  if (!RayConfig::instance().enable_multi_tenancy() ||
-      !RayConfig::instance().enable_worker_prestart()) {
-    return;
-  }
-
   // Code path of task that needs a dedicated worker: an actor creation task with
   // dynamic worker options, or any task with environment variable overrides.
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
