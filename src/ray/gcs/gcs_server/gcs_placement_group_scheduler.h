@@ -30,7 +30,6 @@ namespace gcs {
 using ReserveResourceClientFactoryFn =
     std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
 
-typedef std::pair<PlacementGroupID, int64_t> BundleID;
 struct pair_hash {
   template <class T1, class T2>
   std::size_t operator()(const std::pair<T1, T2> &pair) const {
@@ -459,6 +458,24 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                             &schedule_failure_handler,
                         const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
                             &schedule_success_handler);
+
+  /// Destroy the prepared bundle resources with this placement group.
+  /// The method is idempotent, meaning if all bundles are already cancelled,
+  /// this method won't do anything.
+  ///
+  /// \param placement_group_id The id of a placement group to destroy all prepared
+  /// bundles.
+  void DestroyPlacementGroupPreparedBundleResources(
+      const PlacementGroupID &placement_group_id);
+
+  /// Destroy the committed bundle resources with this placement group.
+  /// The method is idempotent, meaning if all bundles are already cancelled,
+  /// this method won't do anything.
+  ///
+  /// \param placement_group_id The id of a placement group to destroy all committed
+  /// bundles.
+  void DestroyPlacementGroupCommittedBundleResources(
+      const PlacementGroupID &placement_group_id);
 
   /// Generate schedule context.
   std::unique_ptr<ScheduleContext> GetScheduleContext(

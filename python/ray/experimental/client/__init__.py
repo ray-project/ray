@@ -14,6 +14,18 @@ logger = logging.getLogger(__name__)
 _client_api: Optional[APIImpl] = None
 
 
+def stash_api() -> Optional[APIImpl]:
+    global _client_api
+    a = _client_api
+    _client_api = None
+    return a
+
+
+def restore_api(api: Optional[APIImpl]):
+    global _client_api
+    _client_api = api
+
+
 class RayAPIStub:
     def connect(self, conn_str):
         global _client_api
