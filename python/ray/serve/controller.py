@@ -307,7 +307,7 @@ class ActorStateReconciler:
     def _start_routers_if_needed(self, http_host: str, http_port: str,
                                  http_middlewares: List[Any]) -> None:
         """Start a router on every node if it doesn't already exist."""
-        if self.http_host is None:
+        if http_host is None:
             return
 
         for node_id, node_resource in get_all_node_ids():
