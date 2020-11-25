@@ -106,13 +106,14 @@ class DirectActorSubmitterTest : public ::testing::Test {
               num_clients_connected_++;
               return worker_client_;
             }),
-            store_, task_finisher_) {}
+            store_, task_finisher_, io_service_) {}
 
   int num_clients_connected_ = 0;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskFinisher> task_finisher_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
+  boost::asio::io_service io_service_;
 };
 
 TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
