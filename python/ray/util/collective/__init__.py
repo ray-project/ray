@@ -1,0 +1,1 @@
+from collective.collective_group.base_collective_group import *
