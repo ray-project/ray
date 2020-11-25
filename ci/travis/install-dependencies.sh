@@ -332,7 +332,7 @@ install_dependencies() {
   fi
 
   if [ "${OSTYPE}" = msys ]; then
-      "${python}" -m pip install --upgrade pip setuptools wheel
+      CC=gcc pip install --upgrade pip setuptools wheel
   fi
   CC=gcc pip install psutil setproctitle --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
