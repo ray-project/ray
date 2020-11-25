@@ -6,8 +6,8 @@ FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ARG AUTOSCALER="autoscaler"
 ENV TZ=America/Los_Angeles
-# TODO(ilr) $HOME seems to point to result in "" instead of "/root"
-ENV PATH "/root/anaconda3/bin:$PATH"
+# TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
+ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.7.7
 
