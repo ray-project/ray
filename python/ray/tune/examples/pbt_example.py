@@ -85,15 +85,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
-    parser.add_argument(
-        "--cluster",
-        action="store_true",
-        help="Distribute tuning on a cluster")
     args, _ = parser.parse_known_args()
-
-    if args.cluster:
-        ray.init(address="auto")
-    elif args.smoke_test:
+    if args.smoke_test:
         ray.init(num_cpus=2)  # force pausing to happen for test
     else:
         ray.init()

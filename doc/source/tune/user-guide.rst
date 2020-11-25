@@ -686,7 +686,6 @@ These are the environment variables Ray Tune currently considers:
   with the parameter values in them)
 * **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
-* **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
 
 
 There are some environment variables that are mostly relevant for integrated libraries:

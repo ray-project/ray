@@ -972,9 +972,8 @@ def rsync(config_file: str,
 
         if source and target:
             # print rsync progress for single file rsync
-            if cli_logger.verbosity > 0:
-                cmd_output_util.set_output_redirected(False)
-                set_rsync_silent(False)
+            cmd_output_util.set_output_redirected(False)
+            set_rsync_silent(False)
             rsync(source, target, is_file_mount)
         else:
             updater.sync_file_mounts(rsync)

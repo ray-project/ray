@@ -10,7 +10,6 @@ from ray.autoscaler._private import commands
 from ray.autoscaler._private.event_system import (  # noqa: F401
     CreateClusterEvent,  # noqa: F401
     global_event_system)
-from ray.autoscaler._private.cli_logger import cli_logger
 
 
 def create_or_update_cluster(cluster_config: Union[dict, str],
@@ -205,32 +204,6 @@ def request_resources(num_cpus: Optional[int] = None,
         >>> request_resources(bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
     return commands.request_resources(num_cpus, bundles)
-
-
-def configure_logging(log_style: Optional[str] = None,
-                      color_mode: Optional[str] = None,
-                      verbosity: Optional[int] = None):
-    """Configures logging for cluster command calls.
-
-    Args:
-        log_style (str): If 'pretty', outputs with formatting and color.
-            If 'record', outputs record-style without formatting.
-            'auto' defaults to 'pretty', and disables pretty logging
-            if stdin is *not* a TTY. Defaults to "auto".
-        color_mode (str):
-            Can be "true", "false", or "auto".
-
-            Enables or disables `colorful`.
-
-            If `color_mode` is "auto", is set to `not stdout.isatty()`
-        vebosity (int):
-            Output verbosity (0, 1, 2, 3).
-
-            Low verbosity will disable `verbose` and `very_verbose` messages.
-
-    """
-    cli_logger.configure(
-        log_style=log_style, color_mode=color_mode, verbosity=verbosity)
 
 
 @contextmanager
