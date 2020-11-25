@@ -216,6 +216,21 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   ++counts_[CountType::REPORT_HEARTBEAT_REQUEST];
 }
 
+// TODO(WangTao): Implenent this to handle resource usage report. Basically move resources
+// related operations in `HandleReportHeartbeat`.
+void GcsNodeManager::HandleReportResourceUsage(
+    const rpc::ReportResourceUsageRequest &request, rpc::ReportResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+// TODO(WangTao): Implement this. Basically copy from `HandleGetAllHeartbeat`.
+void GcsNodeManager::HandleGetAllResourceUsage(
+    const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                         rpc::GetResourcesReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
