@@ -426,18 +426,19 @@ void NodeManager::Heartbeat() {
     // TODO(atumanov): implement a ResourceSet const_iterator.
     // If light heartbeat enabled, we only set filed that represent resources changed.
     if (light_heartbeat_enabled_) {
-      if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
+      auto last_heartbeat_resources = gcs_client_->Nodes().GetLastHeartbeatResources();
+      if (!last_heartbeat_resources->GetTotalResources().IsEqual(
               local_resources.GetTotalResources())) {
         for (const auto &resource_pair :
              local_resources.GetTotalResources().GetResourceMap()) {
           (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
               resource_pair.second;
         }
-        last_heartbeat_resources_.SetTotalResources(
+        last_heartbeat_resources->SetTotalResources(
             ResourceSet(local_resources.GetTotalResources()));
       }
 
-      if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
+      if (!last_heartbeat_resources->GetAvailableResources().IsEqual(
               local_resources.GetAvailableResources())) {
         heartbeat_data->set_resources_available_changed(true);
         for (const auto &resource_pair :
@@ -445,12 +446,12 @@ void NodeManager::Heartbeat() {
           (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
               resource_pair.second;
         }
-        last_heartbeat_resources_.SetAvailableResources(
+        last_heartbeat_resources->SetAvailableResources(
             ResourceSet(local_resources.GetAvailableResources()));
       }
 
       local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-      if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
+      if (!last_heartbeat_resources->GetLoadResources().IsEqual(
               local_resources.GetLoadResources())) {
         heartbeat_data->set_resource_load_changed(true);
         for (const auto &resource_pair :
@@ -458,7 +459,7 @@ void NodeManager::Heartbeat() {
           (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
               resource_pair.second;
         }
-        last_heartbeat_resources_.SetLoadResources(
+        last_heartbeat_resources->SetLoadResources(
             ResourceSet(local_resources.GetLoadResources()));
       }
     } else {

@@ -703,9 +703,42 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
   absl::MutexLock lock(&mutex_);
   if (cached_heartbeat_.has_heartbeat()) {
     RAY_LOG(INFO) << "Rereport heartbeat.";
+    FillHeartbeatRequest(cached_heartbeat_);
     client_impl_->GetGcsRpcClient().ReportHeartbeat(
         cached_heartbeat_,
         [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
+  }
+}
+
+void ServiceBasedNodeInfoAccessor::FillHeartbeatRequest(
+    rpc::ReportHeartbeatRequest &heartbeat) {
+  if (RayConfig::instance().light_heartbeat_enabled()) {
+    SchedulingResources cached_resources =
+        SchedulingResources(*GetLastHeartbeatResources());
+
+    auto heartbeat_data = heartbeat.mutable_heartbeat();
+    heartbeat_data->clear_resources_total();
+    for (const auto &resource_pair :
+         cached_resources.GetTotalResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    heartbeat_data->clear_resources_available();
+    heartbeat_data->set_resources_available_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetAvailableResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    heartbeat_data->clear_resource_load();
+    heartbeat_data->set_resource_load_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetLoadResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+          resource_pair.second;
+    }
   }
 }
 
