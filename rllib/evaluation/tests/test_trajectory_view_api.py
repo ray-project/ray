@@ -75,7 +75,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"] = config["model"].copy()
         # Activate LSTM + prev-action + rewards.
         config["model"]["use_lstm"] = True
-        config["model"]["lstm_use_prev_action_reward"] = True
+        config["model"]["lstm_use_prev_action"] = True
+        config["model"]["lstm_use_prev_reward"] = True
 
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")

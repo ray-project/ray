@@ -24,6 +24,7 @@ from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
@@ -594,12 +595,8 @@ class Trainer(Trainable):
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
         Trainer._validate_config(self.config)
-        if not callable(self.config["callbacks"]):
-            raise ValueError(
-                "`callbacks` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got {}".format(
-                    self.config["callbacks"]))
         self.callbacks = self.config["callbacks"]()
+
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -1054,8 +1051,25 @@ class Trainer(Trainable):
 
         if type(config["input_evaluation"]) != list:
             raise ValueError(
-                "`input_evaluation` must be a list of strings, got {}".format(
+                "`input_evaluation` must be a list of strings, got {}!".format(
                     config["input_evaluation"]))
+
+        if not callable(config["callbacks"]):
+            raise ValueError(
+                "`callbacks` must be a callable method that "
+                "returns a subclass of DefaultCallbacks, got {}!".format(
+                    config["callbacks"]))
+
+        # Check model config.
+        prev_a_r = config.get("model", {}).get("lstm_use_prev_action_reward",
+                                               DEPRECATED_VALUE)
+        if prev_a_r != DEPRECATED_VALUE:
+            deprecation_warning(
+                "model.lstm_use_prev_action_reward",
+                "model.lstm_use_prev_action and model.lstm_use_prev_reward",
+                error=False)
+            config["model"]["lstm_use_prev_action"] = prev_a_r
+            config["model"]["lstm_use_prev_reward"] = prev_a_r
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
