@@ -14,7 +14,7 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/common/task/scheduling_resources.h"
 
 namespace ray {
 namespace gcs {
@@ -31,38 +31,51 @@ class GcsResourceManagerInterface {
   /// \return The resources of all nodes in the cluster.
   virtual const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterResources() const = 0;
 
+  /// Update the resources of the specified node.
+  ///
+  /// \param node_id Id of a node.
+  /// \param resources Resources of a node.
+  virtual void UpdateResources(const NodeID &node_id, const ResourceSet &resources) = 0;
+
+  /// Remove the resources of the specified node.
+  ///
+  /// \param node_id Id of a node.
+  virtual void RemoveResources(const NodeID &node_id) = 0;
+
   /// Acquire resources from the specified node. It will deduct directly from the node
-  /// resource.
+  /// resources.
   ///
   /// \param node_id Id of a node.
   /// \param required_resources Resources to apply for.
   /// \return True if acquire resources successfully. False otherwise.
-  virtual bool AcquireResource(const NodeID &node_id,
-                               const ResourceSet &required_resources) = 0;
+  virtual bool AcquireResources(const NodeID &node_id,
+                                const ResourceSet &required_resources) = 0;
 
-  /// Release the resource of the specified node. It will be added directly to the node
-  /// resource.
+  /// Release the resources of the specified node. It will be added directly to the node
+  /// resources.
   ///
   /// \param node_id Id of a node.
   /// \param acquired_resources Resources to release.
   /// \return True if release resources successfully. False otherwise.
-  virtual bool ReleaseResource(const NodeID &node_id,
-                               const ResourceSet &acquired_resources) = 0;
+  virtual bool ReleaseResources(const NodeID &node_id,
+                                const ResourceSet &acquired_resources) = 0;
 };
 
 /// Gcs resource manager implementation. It obtains the available resources of nodes
 /// through heartbeat reporting. Non-thread safe.
 class GcsResourceManager : public GcsResourceManagerInterface {
  public:
-  GcsResourceManager(GcsNodeManager &gcs_node_manager);
-
   virtual ~GcsResourceManager() = default;
 
   const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterResources() const;
 
-  bool AcquireResource(const NodeID &node_id, const ResourceSet &required_resources);
+  void UpdateResources(const NodeID &node_id, const ResourceSet &resources);
 
-  bool ReleaseResource(const NodeID &node_id, const ResourceSet &acquired_resources);
+  void RemoveResources(const NodeID &node_id);
+
+  bool AcquireResources(const NodeID &node_id, const ResourceSet &required_resources);
+
+  bool ReleaseResources(const NodeID &node_id, const ResourceSet &acquired_resources);
 
  private:
   /// Map from node id to the resources of the node.

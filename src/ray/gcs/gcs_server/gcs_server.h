@@ -131,10 +131,10 @@ class GcsServer {
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
-  /// The gcs node manager.
-  std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The gcs resource manager.
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  /// The gcs node manager.
+  std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The gcs redis failure detector.
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager

@@ -65,11 +65,11 @@ void GcsServer::Start() {
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
-  // Init gcs node manager.
-  InitGcsNodeManager(gcs_init_data);
-
   // Init gcs resource manager.
   InitGcsResourceManager();
+
+  // Init gcs node manager.
+  InitGcsNodeManager(gcs_init_data);
 
   // Init gcs job manager.
   InitGcsJobManager();
@@ -137,7 +137,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
     node_manager_io_service_.run();
   }));
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      main_service_, node_manager_io_service_, gcs_pub_sub_, gcs_table_storage_);
+      main_service_, node_manager_io_service_, gcs_pub_sub_, gcs_table_storage_,
+      gcs_resource_manager_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -147,7 +148,7 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager() {
-  gcs_resource_manager_ = std::make_shared<GcsResourceManager>(*gcs_node_manager_);
+  gcs_resource_manager_ = std::make_shared<GcsResourceManager>();
 }
 
 void GcsServer::InitGcsJobManager() {
@@ -292,6 +293,7 @@ void GcsServer::InstallEventListeners() {
         // node is removed from the GCS.
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id);
+        gcs_resource_manager_->RemoveResources(node_id);
       });
 
   // Install worker event listener.

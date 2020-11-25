@@ -29,12 +29,13 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
   boost::asio::io_service io_service;
   gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
-                                   gcs_table_storage_);
+                                   gcs_table_storage_, gcs_resource_manager_);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -49,7 +50,7 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 TEST_F(GcsNodeManagerTest, TestListener) {
   boost::asio::io_service io_service;
   gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
-                                   gcs_table_storage_);
+                                   gcs_table_storage_, gcs_resource_manager_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;

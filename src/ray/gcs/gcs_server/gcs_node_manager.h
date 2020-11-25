@@ -19,6 +19,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
@@ -39,11 +40,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_failure_detector_io_service The event loop of node failure detector.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  /// when detecting the death of nodes.
+  /// \param gcs_resource_manager GCS resource manager.
   explicit GcsNodeManager(boost::asio::io_service &main_io_service,
                           boost::asio::io_service &node_failure_detector_io_service,
                           std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                          std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -151,15 +153,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
       std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
     RAY_CHECK(listener);
     node_added_listeners_.emplace_back(std::move(listener));
-  }
-
-  /// Add listener to monitor the resource change of nodes.
-  ///
-  /// \param listener The handler which process the resource change of nodes.
-  void AddNodeResourceChangeListener(
-      std::function<void(const rpc::HeartbeatTableData &)> listener) {
-    RAY_CHECK(listener);
-    node_resource_change_listeners_.emplace_back(std::move(listener));
   }
 
   /// Initialize with the gcs tables data synchronously.
@@ -287,15 +280,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Listeners which monitors the removal of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
-  /// Listeners which monitors the resource change of nodes.
-  std::vector<std::function<void(const rpc::HeartbeatTableData &)>>
-      node_resource_change_listeners_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Cluster realtime resources.
-  absl::flat_hash_map<NodeID, ResourceSet> cluster_realtime_resources_;
+  /// Gcs resource manager.
+  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
