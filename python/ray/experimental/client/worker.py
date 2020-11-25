@@ -122,8 +122,7 @@ class Worker:
     def remote(self, function_or_class, *args, **kwargs):
         # TODO(barakmich): Arguments to ray.remote
         # get captured here.
-        if (inspect.isfunction(function_or_class)
-                or is_cython(function_or_class)):
+        if (inspect.isfunction(function_or_class) or is_cython(function_or_class)):
             return ClientRemoteFunc(function_or_class)
         elif inspect.isclass(function_or_class):
             return ClientActorClass(function_or_class)
@@ -132,22 +131,27 @@ class Worker:
                             "either a function or to a class.")
 
     def call_remote(self, instance, kind, *args, **kwargs):
-        if kind == ray_client_pb2.FUNCTION:
+        ticket = None
+        if kind == ray_client_pb2.ClientTask.FUNCTION:
             ticket = self._put_and_schedule(instance, kind, *args, **kwargs)
-            return ClientObjectRef(ticket.return_id)
-        elif kind == ray_client_pb2.ACTOR:
+        elif kind == ray_client_pb2.ClientTask.ACTOR:
             ticket = self._put_and_schedule(instance, kind, *args, **kwargs)
             return ClientActorRef(ticket.return_id)
-        elif kind == ray_client_pb2.METHOD:
-            self._call_method(instance, *args, **kwargs)
+        elif kind == ray_client_pb2.ClientTask.METHOD:
+            ticket = self._call_method(instance, *args, **kwargs)
+
+        if ticket is None:
+            raise Exception(
+                "Couldn't call_remote on %s for type %s" % (instance, kind))
+        return ClientObjectRef(ticket.return_id)
 
     def _call_method(self, instance: ClientRemoteMethod, *args, **kwargs):
         if not isinstance(instance, ClientRemoteMethod):
             raise TypeError("Client not passing a ClientRemoteMethod stub")
         task = ray_client_pb2.ClientTask()
-        task.type = ray_client_pb2.METHOD
+        task.type = ray_client_pb2.ClientTask.METHOD
         task.name = instance.method_name
-        task.payload_id = instance.actor_handle.actor_id
+        task.payload_id = instance.actor_handle.actor_id.id
         for arg in args:
             pb_arg = convert_to_arg(arg)
             task.args.append(pb_arg)
@@ -155,10 +159,12 @@ class Worker:
         return ticket
 
     def _put_and_schedule(self, item, task_type, *args, **kwargs):
-        if not (isinstance(item, ClientRemoteFunc)
-                or isinstance(item, ClientActorClass)):
+        if isinstance(item, ClientRemoteFunc):
+            ref = self._put(item)
+        elif isinstance(item, ClientActorClass):
+            ref = self._put(item.actor_cls)
+        else:
             raise TypeError("Client not passing a ClientRemoteFunc stub")
-        ref = self._put(item)
         task = ray_client_pb2.ClientTask()
         task.type = task_type
         task.name = item._name

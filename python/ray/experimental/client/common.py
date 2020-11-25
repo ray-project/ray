@@ -39,7 +39,7 @@ class ClientRemoteFunc:
 
     def remote(self, *args, **kwargs):
         return ray.call_remote(
-            self, ray_client_pb2.FUNCTION, *args, **kwargs)
+            self, ray_client_pb2.ClientTask.FUNCTION, *args, **kwargs)
 
     def __repr__(self):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self.id)
@@ -57,14 +57,14 @@ class ClientActorClass:
     def remote(self, *args, **kwargs):
         # Actually instantiate the actor
         ref = ray.call_remote(
-            self, ray_client_pb2.ACTOR, *args, **kwargs)
+            self, ray_client_pb2.ClientTask.ACTOR, *args, **kwargs)
         return ClientActorHandle(ref, self)
 
     def __repr__(self):
         return "ClientRemoteActor(%s, %s)" % (self._name, self.id)
 
     def __getattr__(self, key):
-        raise TypeError("Unimplemented: static methods")
+        raise NotImplementedError("static methods")
 
 
 class ClientActorHandle:
@@ -89,7 +89,8 @@ class ClientRemoteMethod:
                         "Use {self._name}.remote() instead")
 
     def remote(self, *args, **kwargs):
-        return ray.call_remote(self, ray_client_pb2.METHOD, *args, **kwargs)
+        return ray.call_remote(
+            self, ray_client_pb2.ClientTask.METHOD, *args, **kwargs)
 
     def __repr__(self):
         return "ClientRemoteMethod(%s, %s)" % (self._name, self.actor_id)

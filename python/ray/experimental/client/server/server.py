@@ -6,8 +6,10 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
+import inspect
 from ray.experimental.client import stash_api_for_tests
 from ray.experimental.client.common import convert_from_arg
+from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
 
@@ -18,6 +20,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def __init__(self, test_mode=False):
         self.object_refs = {}
         self.function_refs = {}
+        self.actor_refs = {}
+        self.registered_actor_classes = {}
         self._test_mode = test_mode
 
     def GetObject(self, request, context=None):
@@ -68,12 +72,54 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             remaining_object_ids=remaining_object_ids)
 
     def Schedule(self, task, context=None):
-        logger.info("schedule: %s" % task)
+        logger.info("schedule: %s %s" % (
+            task.name,
+            ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
+        if task.type == ray_client_pb2.ClientTask.FUNCTION:
+            return self._schedule_function(task, context)
+        elif task.type == ray_client_pb2.ClientTask.ACTOR:
+            return self._schedule_actor(task, context)
+        elif task.type == ray_client_pb2.ClientTask.METHOD:
+            return self._schedule_method(task, context)
+        else:
+            raise NotImplementedError(
+                "Unimplemented Schedule task type: %s"
+                % ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
+
+    def _schedule_method(self, task, context=None):
+        actor_handle = self.actor_refs.get(task.payload_id)
+        if actor_handle is None:
+            raise Exception(
+                "Can't run an actor the server doesn't have a handle for")
+        arglist = _convert_args(task.args)
+        with stash_api_for_tests(self._test_mode):
+            output = getattr(actor_handle, task.name).remote(*arglist)
+            self.object_refs[output.binary()] = output
+        return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
+
+    def _schedule_actor(self, task, context=None):
+        with stash_api_for_tests(self._test_mode):
+            if task.payload_id not in self.registered_actor_classes:
+                actor_class_ref = self.object_refs[task.payload_id]
+                actor_class = ray.get(actor_class_ref)
+                if not inspect.isclass(actor_class):
+                    raise Exception("Attempting to schedule actor that "
+                                    "isn't a ClientActorClass")
+                registered_class = ray.remote(actor_class)
+                self.registered_actor_classes[task.payload_id] = registered_class
+            remote_class = self.registered_actor_classes[task.payload_id]
+            arglist = _convert_args(task.args)
+            actor = remote_class.remote(*arglist)
+            actor_ref = actor._actor_id
+            self.actor_refs[actor_ref.binary()] = actor
+        return ray_client_pb2.ClientTaskTicket(return_id=actor_ref.binary())
+
+    def _schedule_function(self, task, context=None):
         if task.payload_id not in self.function_refs:
             funcref = self.object_refs[task.payload_id]
             func = ray.get(funcref)
             if not isinstance(func, ClientRemoteFunc):
-                raise Exception("Attempting to schedule something that "
+                raise Exception("Attempting to schedule function that "
                                 "isn't a ClientRemoteFunc")
             self.function_refs[task.payload_id] = func
         remote_func = self.function_refs[task.payload_id]
@@ -81,7 +127,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # Prepare call if we're in a test
         with stash_api_for_tests(self._test_mode):
             output = remote_func.remote(*arglist)
-        self.object_refs[output.binary()] = output
+            self.object_refs[output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
 

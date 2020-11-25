@@ -156,10 +156,10 @@ def test_basic_actor(ray_start_regular_shared):
 
         actor = HelloActor.remote()
         s, count = ray.get(actor.say_hello.remote("you"))
-        assert s == "hello you"
+        assert s == "Hello you"
         assert count == 1
         s, count = ray.get(actor.say_hello.remote("world"))
-        assert s == "hello world"
+        assert s == "Hello world"
         assert count == 2
 
 
