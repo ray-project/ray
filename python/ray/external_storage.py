@@ -8,9 +8,11 @@ import ray
 from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
 
+ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
+
 
 def create_url_with_offset(*, url: str, offset: int, size: int) -> str:
-    """Methods to create an url with offset.
+    """Methods to create a URL with offset.
 
     When ray spills objects, it fuses multiple objects
     into one file to optimize the performance. That says, each object
@@ -52,7 +54,6 @@ def parse_url_with_offset(url_with_offset: str) -> Tuple[str, int, int]:
     """
     parsed_result = urllib.parse.urlparse(url_with_offset)
     query_dict = urllib.parse.parse_qs(parsed_result.query)
-    ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
     # Split by ? to remove the query from the url.
     base_url = parsed_result.geturl().split("?")[0]
     offset = int(query_dict["offset"][0])
@@ -258,6 +259,9 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         self.uri = uri.strip("/")
         self.prefix = prefix
         self.override_transport_params = override_transport_params or {}
+        # smart_open always seek to 0 if we don't set this argument.
+        # This will lead us to call a Object.get when it is not necessary,
+        # so defer seek and call seek before reading objects instead.
         self.transport_params = {"defer_seek": True}
         self.transport_params.update(self.override_transport_params)
 

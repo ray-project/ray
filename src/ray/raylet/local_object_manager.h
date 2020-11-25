@@ -74,8 +74,10 @@ class LocalObjectManager {
   /// don't need any more additional space).
   ///
   /// \param num_bytes_to_spill The total number of bytes to spill. The method tries to
-  /// spill bytes as much as this value. \param min_bytes_to_spill The minimum bytes that
-  /// need to be spilled. \return The number of bytes of space still required after the
+  /// spill bytes as much as this value.
+  /// \param min_bytes_to_spill The minimum bytes that
+  /// need to be spilled.
+  /// \return The number of bytes of space still required after the
   /// spill is complete. This return the value is less than 0 if it satifies the
   /// min_bytes_to_spill.
   int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill, int64_t min_bytes_to_spill);
