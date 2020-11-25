@@ -340,12 +340,11 @@ def sac_actor_critic_loss(
         td_error = base_td_error
 
     # Calculate one or two critic losses (2 in the twin_q case).
-    critic_loss = [
-        tf.reduce_mean(train_batch[PRIO_WEIGHTS] * huber_loss(base_td_error))
-    ]
+    prio_weights = tf.cast(train_batch[PRIO_WEIGHTS], tf.float32)
+    critic_loss = [tf.reduce_mean(prio_weights * huber_loss(base_td_error))]
     if policy.config["twin_q"]:
-        critic_loss.append(tf.reduce_mean(
-            train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error)))
+        critic_loss.append(
+            tf.reduce_mean(prio_weights * huber_loss(twin_td_error)))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
