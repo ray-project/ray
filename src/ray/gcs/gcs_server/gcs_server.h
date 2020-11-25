@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -72,34 +71,36 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
  protected:
-  void DoStart(const GcsInitData &gcs_init_data);
+  /// Initialize the backend storage client.
+  /// The gcs server is just the proxy between the gcs client and reliable storage
+  /// for the time being, so we need a backend client to connect to the storage.
+  virtual void InitBackendClient();
 
-  /// Initialize gcs node manager.
-  void InitGcsNodeManager(const GcsInitData &gcs_init_data);
+  /// Initialize the gcs node manager.
+  /// The gcs node manager is responsible for managing and monitoring all nodes in the
+  /// cluster.
+  virtual void InitGcsNodeManager();
 
-  /// Initialize gcs job manager.
-  void InitGcsJobManager();
+  /// Initialize the gcs actor manager.
+  virtual void InitGcsActorManager();
 
-  /// Initialize gcs actor manager.
-  void InitGcsActorManager(const GcsInitData &gcs_init_data);
+  /// Initialize the gcs job manager.
+  virtual void InitGcsJobManager();
 
-  /// Initialize gcs placement group manager.
-  void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
+  /// Initialize the gcs placement group manager.
+  virtual void InitGcsPlacementGroupManager();
 
-  /// Initialize gcs object manager.
-  void InitObjectManager(const GcsInitData &gcs_init_data);
+  /// The object manager
+  virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
 
-  /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  /// The task info handler
+  virtual std::unique_ptr<rpc::TaskInfoHandler> InitTaskInfoHandler();
 
-  /// Initialize task info handler.
-  void InitTaskInfoHandler();
+  /// The stats handler
+  virtual std::unique_ptr<rpc::StatsHandler> InitStatsHandler();
 
-  /// Initialize stats handler.
-  void InitStatsHandler();
-
-  /// Install event listeners.
-  void InstallEventListeners();
+  /// The worker manager
+  virtual std::unique_ptr<GcsWorkerManager> InitGcsWorkerManager();
 
  private:
   /// Store the address of GCS server in Redis.

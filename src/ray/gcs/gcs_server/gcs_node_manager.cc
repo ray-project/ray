@@ -504,26 +504,40 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   return removed_node;
 }
 
-void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
-  for (const auto &item : gcs_init_data.Nodes()) {
-    if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      // Call `AddNode` for this node to make sure it is tracked by the failure
-      // detector.
-      AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
-    } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
-      dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
-      sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
-    }
-  }
-  sorted_dead_node_list_.sort(
-      [](const std::pair<NodeID, int64_t> &left,
-         const std::pair<NodeID, int64_t> &right) { return left.second < right.second; });
+void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
+  RAY_LOG(INFO) << "Loading initial data.";
 
-  for (auto &entry : gcs_init_data.ClusterResources()) {
-    if (alive_nodes_.count(entry.first)) {
-      cluster_resources_[entry.first] = entry.second;
+  auto get_node_callback = [this,
+                            done](const std::unordered_map<NodeID, GcsNodeInfo> &result) {
+    for (auto &item : result) {
+      if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
+        // Call `AddNode` for this node to make sure it is tracked by the failure
+        // detector.
+        AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
+      } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
+        dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+        sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
+      }
     }
-  }
+    sorted_dead_node_list_.sort([](const std::pair<NodeID, int64_t> &left,
+                                   const std::pair<NodeID, int64_t> &right) {
+      return left.second < right.second;
+    });
+
+    auto get_node_resource_callback =
+        [this, done](const std::unordered_map<NodeID, ResourceMap> &result) {
+          for (auto &item : result) {
+            if (alive_nodes_.count(item.first)) {
+              cluster_resources_[item.first] = item.second;
+            }
+          }
+          RAY_LOG(INFO) << "Finished loading initial data.";
+          done();
+        };
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeResourceTable().GetAll(get_node_resource_callback));
+  };
+  RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(get_node_callback));
 }
 
 void GcsNodeManager::StartNodeFailureDetector() {

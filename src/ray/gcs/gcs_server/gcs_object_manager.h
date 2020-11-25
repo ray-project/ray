@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -54,11 +53,11 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                   rpc::RemoveObjectLocationReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Initialize with the gcs tables data synchronously.
+  /// Load initial data from gcs storage to memory cache asynchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
-  /// \param gcs_init_data.
-  void Initialize(const GcsInitData &gcs_init_data);
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const EmptyCallback &done);
 
   std::string DebugString() const;
 
