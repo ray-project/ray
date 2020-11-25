@@ -31,17 +31,14 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       gcs_resource_manager_(gcs_resource_manager),
       lease_client_factory_(std::move(lease_client_factory)) {
   auto cluster_resources = gcs_node_manager.GetClusterRealtimeResources();
-  scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>(cluster_resources));
-  scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>(cluster_resources));
   scheduler_strategies_.push_back(
-      std::make_shared<GcsStrictPackStrategy>(cluster_resources));
+      std::make_shared<GcsPackStrategy>(gcs_resource_manager));
   scheduler_strategies_.push_back(
-      std::make_shared<GcsStrictSpreadStrategy>(cluster_resources));
-}
-
-std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>>
-GcsScheduleStrategy::GetClusterResources() {
-  return cluster_resources_;
+      std::make_shared<GcsSpreadStrategy>(gcs_resource_manager));
+  scheduler_strategies_.push_back(
+      std::make_shared<GcsStrictPackStrategy>(gcs_resource_manager));
+  scheduler_strategies_.push_back(
+      std::make_shared<GcsStrictSpreadStrategy>(gcs_resource_manager));
 }
 
 void GcsScheduleStrategy::ResetAcquiredResources() { acquired_resources_.clear(); }
@@ -54,7 +51,7 @@ void GcsScheduleStrategy::RecordResourceAcquirement(
 void GcsScheduleStrategy::ReturnAcquiredResources() {
   for (auto &resources_list : acquired_resources_) {
     for (auto &resources : resources_list.second) {
-      (*cluster_resources_)[resources_list.first].AddResources(resources);
+      gcs_resource_manager_.ReleaseResource(resources_list.first, resources);
     }
   }
   ResetAcquiredResources();
@@ -111,8 +108,8 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
   }
 
   // Update cluster resource.
-  (*cluster_resources_)[candidate_nodes.front().second].SubtractResourcesStrict(
-      required_resources);
+  gcs_resource_manager_.AcquireResource(candidate_nodes.front().second,
+                                        required_resources);
 
   return schedule_map;
 }
@@ -175,11 +172,11 @@ ScheduleMap GcsSpreadStrategy::Schedule(
       }
     }
 
-    // We've traversed all the nodes from `iter_begin` to `candidate_nodes->end()`, but we
+    // We've traversed all the nodes from `iter_begin` to `candidate_nodes.end()`, but we
     // haven't found one that meets the requirements.
-    // If `iter_begin` is `candidate_nodes->begin()`, it means that all nodes are not
+    // If `iter_begin` is `candidate_nodes.begin()`, it means that all nodes are not
     // satisfied, we will return directly. Otherwise, we will traverse the nodes from
-    // `candidate_nodes->begin()` to `iter_begin` to find the nodes that meet the
+    // `candidate_nodes.begin()` to `iter_begin` to find the nodes that meet the
     // requirements.
     if (iter == candidate_nodes.end()) {
       if (iter_begin != candidate_nodes.begin()) {
@@ -201,7 +198,7 @@ ScheduleMap GcsSpreadStrategy::Schedule(
         break;
       }
     }
-    // NOTE: If `iter == candidate_nodes->end()`, ++iter causes crash.
+    // NOTE: If `iter == candidate_nodes.end()`, ++iter causes crash.
     iter_begin = ++iter;
   }
 
@@ -222,7 +219,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
   const auto &candidate_nodes = context->cluster_resources_;
 
   // The number of bundles is more than the number of nodes, scheduling fails.
-  if (bundles.size() > candidate_nodes->size()) {
+  if (bundles.size() > candidate_nodes.size()) {
     return schedule_map;
   }
 
@@ -241,7 +238,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     }
 
     // Node resource is not satisfied, scheduling failed.
-    if (iter == candidate_nodes->end()) {
+    if (iter == candidate_nodes.end()) {
       break;
     }
   }

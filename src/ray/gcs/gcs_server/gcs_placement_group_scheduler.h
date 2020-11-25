@@ -103,9 +103,8 @@ class ScheduleContext {
 
 class GcsScheduleStrategy {
  public:
-  GcsScheduleStrategy(
-      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
-      : cluster_resources_(cluster_resources) {}
+  GcsScheduleStrategy(GcsResourceManager &gcs_resource_manager)
+      : gcs_resource_manager_(gcs_resource_manager) {}
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
