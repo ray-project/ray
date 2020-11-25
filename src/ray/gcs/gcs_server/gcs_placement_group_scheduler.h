@@ -87,48 +87,36 @@ class GcsPlacementGroupSchedulerInterface {
 class ScheduleContext {
  public:
   ScheduleContext(std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
-                  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations)
+                  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations,
+                  const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources)
       : node_to_bundles_(std::move(node_to_bundles)),
-        bundle_locations_(bundle_locations) {}
+        bundle_locations_(bundle_locations),
+        cluster_resources_(cluster_resources) {}
 
   // Key is node id, value is the number of bundles on the node.
   const std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles_;
   // The locations of existing bundles for this placement group.
   const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
+  // The available resources of all nodes.
+  const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources_;
 };
 
 class GcsScheduleStrategy {
  public:
-  GcsScheduleStrategy(GcsResourceManager &gcs_resource_manager)
-      : gcs_resource_manager_(gcs_resource_manager) {}
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context) = 0;
-
- protected:
-  /// Reset acquired resources.
+  /// Judge whether the remaining resources are sufficient for allocate.
   ///
-  /// \return Void.
-  void ResetAcquiredResources();
-
-  /// Records the acquirement of resources from the specified node.
-  ///
-  /// \param node_id Id of a node.
-  /// \param required_resources Resources to apply for.
-  /// \return Void.
-  void RecordResourceAcquirement(const NodeID &node_id,
-                                 const ResourceSet &required_resources);
-
-  /// Return acquired resources.
-  ///
-  /// \return Void.
-  void ReturnAcquiredResources();
-
-  GcsResourceManager &gcs_resource_manager_;
-
- private:
-  absl::flat_hash_map<NodeID, std::list<ResourceSet>> acquired_resources_;
+  /// \param available_resources Total available resources.
+  /// \param allocated_resources Allocated resources.
+  /// \param to_allocate_resources Resources to be allocated.
+  /// \return True if allocated_resources + to_allocate_resources > available_resources.
+  /// False otherwise.
+  bool IsAvailableResourceSufficient(const ResourceSet &available_resources,
+                                     const ResourceSet &allocated_resources,
+                                     const ResourceSet &to_allocate_resources) const;
 };
 
 /// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
@@ -136,7 +124,6 @@ class GcsScheduleStrategy {
 /// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -144,7 +131,6 @@ class GcsPackStrategy : public GcsScheduleStrategy {
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
-  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -153,7 +139,6 @@ class GcsSpreadStrategy : public GcsScheduleStrategy {
 /// node does not have enough resources, it will fail to schedule.
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
-  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -163,7 +148,6 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 /// If the node resource is insufficient, it will fail to schedule.
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
-  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -183,8 +167,7 @@ enum class LeasingState {
 class LeaseStatusTracker {
  public:
   LeaseStatusTracker(std::shared_ptr<GcsPlacementGroup> placement_group,
-                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
-                     ScheduleMap &schedule_map);
+                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles);
   ~LeaseStatusTracker() = default;
 
   /// Indicate the tracker that prepare requests are sent to a specific node.
@@ -254,11 +237,6 @@ class LeaseStatusTracker {
   /// \return Location of bundles that failed to commit resources on a node.
   const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
 
-  /// This method returns bundle locations.
-  ///
-  /// \return Location of bundles.
-  const std::shared_ptr<BundleLocations> &GetBundleLocations() const;
-
   /// Return the leasing state.
   ///
   /// \return Leasing state.
@@ -308,9 +286,6 @@ class LeaseStatusTracker {
 
   /// Bundles to schedule.
   std::vector<std::shared_ptr<BundleSpecification>> bundles_to_schedule_;
-
-  /// Location of bundles.
-  std::shared_ptr<BundleLocations> bundle_locations_;
 };
 
 /// A data structure that helps fast bundle location lookup.
@@ -514,9 +489,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// bundles.
   void DestroyPlacementGroupCommittedBundleResources(
       const PlacementGroupID &placement_group_id);
-
-  /// Return the bundle resources to the cluster resources.
-  void ReturnBundleResources(const std::shared_ptr<BundleLocations> bundle_locations);
 
   /// Generate schedule context.
   std::unique_ptr<ScheduleContext> GetScheduleContext(
