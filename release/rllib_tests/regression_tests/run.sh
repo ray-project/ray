@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-ray_version="" 
+ray_version=""
 commit=""
 ray_branch=""
 
@@ -50,4 +50,8 @@ pip install "ray[rllib]" "ray[debug]"
 pip install terminado
 pip install torch==1.6 torchvision
 pip install boto3==1.4.8 cython==0.29.0
-rllib train -f compact-regression-test.yaml
+# Run tf learning tests.
+rllib train -f compact-regression-tests-tf.yaml
+
+# Run torch learning tests.
+rllib train -f compact-regression-tests-torch.yaml

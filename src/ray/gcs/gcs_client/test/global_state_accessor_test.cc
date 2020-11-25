@@ -77,11 +77,6 @@ class GlobalStateAccessorTest : public ::testing::Test {
     TestSetupUtil::FlushAllRedisServers();
   }
 
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
-    auto status = future.wait_for(timeout_ms);
-    return status == std::future_status::ready && future.get();
-  }
-
   // GCS server.
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;

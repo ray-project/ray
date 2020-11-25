@@ -726,9 +726,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t last_heartbeat_at_ms_;
   /// Only the changed part will be included in heartbeat if this is true.
   const bool light_heartbeat_enabled_;
-  /// Cache which stores resources in last heartbeat used to check if they are changed.
-  /// Used by light heartbeat.
-  SchedulingResources last_heartbeat_resources_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
