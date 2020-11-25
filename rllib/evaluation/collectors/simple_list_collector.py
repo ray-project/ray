@@ -143,13 +143,13 @@ class _AgentCollector:
             # Shift is positive: We still need to 0-pad at the end here.
             elif shift > 0:
                 data = to_float_np_array(
-                    self.buffers[data_col][self.shift_before + shift:] +
-                    [np.zeros(shape=view_req.space.shape,
-                              dtype=view_req.space.dtype) for _ in
-                     range(shift)]
-                )
+                    self.buffers[data_col][self.shift_before + shift:] + [
+                        np.zeros(
+                            shape=view_req.space.shape,
+                            dtype=view_req.space.dtype) for _ in range(shift)
+                    ])
             # Shift is negative: Shift into the already existing and 0-padded
-            # "before" area of our buffers. 
+            # "before" area of our buffers.
             else:
                 data = np_data[data_col][self.shift_before + shift:shift]
             if len(data) > 0:

@@ -79,7 +79,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action_reward"] = True
 
-        for _ in framework_iterator(config, frameworks="torch"):#TODO
+        for _ in framework_iterator(config):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
             view_req_model = policy.model.inference_view_requirements
@@ -226,8 +226,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         # Add the next action to the view reqs of the policy.
         # This should be visible then in postprocessing and train batches.
         rollout_worker_w_api.policy_map["default_policy"].view_requirements[
-            "next_actions"] = ViewRequirement(SampleBatch.ACTIONS, shift=1,
-                                              space=action_space)
+            "next_actions"] = ViewRequirement(
+                SampleBatch.ACTIONS, shift=1, space=action_space)
         # Make sure, we have DONEs as well.
         rollout_worker_w_api.policy_map["default_policy"].view_requirements[
             "dones"] = ViewRequirement()
@@ -238,8 +238,12 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             a, d, a_ = batch["actions"][i], batch["dones"][i], \
                        batch["next_actions"][i]
             if not d and expected_a_ is not None:
-                check(a_, expected_a_)
-                expected_a_ = a_
+                check(a, expected_a_)
+            elif d:
+                check(a_, 0)
+                expected_a_ = None
+                continue
+            expected_a_ = a_
 
     def test_traj_view_lstm_functionality(self):
         action_space = Box(-float("inf"), float("inf"), shape=(3, ))
