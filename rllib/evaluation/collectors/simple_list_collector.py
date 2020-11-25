@@ -50,7 +50,7 @@ class _AgentCollector:
         self.buffers: Dict[str, List] = {}
         # The simple timestep count for this agent. Gets increased by one
         # each time a (non-initial!) observation is added.
-        self.count = 0
+        self.agent_steps = 0
 
     def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
                      env_id: EnvID, init_obs: TensorType,
@@ -95,7 +95,7 @@ class _AgentCollector:
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
             self.buffers[k].append(v)
-        self.count += 1
+        self.agent_steps += 1
 
     def build(self, view_requirements: Dict[str, ViewRequirement]) -> \
             SampleBatch:
@@ -156,7 +156,7 @@ class _AgentCollector:
             if self.shift_before > 0:
                 for k, data in self.buffers.items():
                     self.buffers[k] = data[-self.shift_before:]
-            self.count = 0
+            self.agent_steps = 0
 
         return batch
 
@@ -208,7 +208,8 @@ class _PolicyCollector:
         # NOTE: This is not an env-step count (across n agents). AgentA and
         # agentB, both using this policy, acting in the same episode and both
         # doing n steps would increase the count by 2*n.
-        self.count = 0
+        #self.env_steps = 0
+        self.agent_steps = 0
 
     def add_postprocessed_batch_for_training(
             self, batch: SampleBatch,
@@ -216,8 +217,8 @@ class _PolicyCollector:
         """Adds a postprocessed SampleBatch (single agent) to our buffers.
 
         Args:
-            batch (SampleBatch): A single agent (one trajectory) SampleBatch
-                to be added to the Policy's buffers.
+            batch (SampleBatch): An individual agent's (one trajectory)
+                SampleBatch to be added to the Policy's buffers.
             view_requirements (Dict[str, ViewRequirement]: The view
                 requirements for the policy. This is so we know, whether a
                 view-column needs to be copied at all (not needed for
@@ -230,7 +231,7 @@ class _PolicyCollector:
                 continue
             self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
-        self.count += batch.count
+        self.agent_steps += batch.count
 
     def build(self):
         """Builds a SampleBatch for this policy from the collected data.
@@ -246,8 +247,8 @@ class _PolicyCollector:
         assert SampleBatch.UNROLL_ID in batch.data
         # Clear buffers for future samples.
         self.buffers.clear()
-        # Reset count to 0.
-        self.count = 0
+        # Reset agent steps to 0.
+        self.agent_steps = 0
         return batch
 
 
@@ -257,7 +258,11 @@ class _PolicyCollectorGroup:
             pid: _PolicyCollector()
             for pid in policy_map.keys()
         }
-        self.count = 0
+        # Total env-steps (1 env-step=up to N agents stepped).
+        self.env_steps = 0
+        # Total agent steps (1 agent-step=1 individual agent (out of N)
+        # stepped).
+        self.agent_steps = 0
 
 
 class _SimpleListCollector(_SampleCollector):
@@ -274,7 +279,8 @@ class _SimpleListCollector(_SampleCollector):
                  clip_rewards: Union[bool, float],
                  callbacks: "DefaultCallbacks",
                  multiple_episodes_in_batch: bool = True,
-                 rollout_fragment_length: int = 200):
+                 rollout_fragment_length: int = 200,
+                 rollout_fragment_unit: str = "env_steps"):
         """Initializes a _SimpleListCollector instance.
 
         Args:
@@ -283,6 +289,10 @@ class _SimpleListCollector(_SampleCollector):
             clip_rewards (Union[bool, float]): Whether to clip rewards before
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
+            multiple_episodes_in_batch (bool): Whether it's allowed to pack
+                multiple episodes into the same built batch.
+            rollout_fragment_length (int): The
+
         """
 
         self.policy_map = policy_map
@@ -290,6 +300,7 @@ class _SimpleListCollector(_SampleCollector):
         self.callbacks = callbacks
         self.multiple_episodes_in_batch = multiple_episodes_in_batch
         self.rollout_fragment_length = rollout_fragment_length
+        self.rollout_fragment_unit = rollout_fragment_unit
         self.large_batch_threshold: int = max(
             1000, rollout_fragment_length *
             10) if rollout_fragment_length != float("inf") else 5000
@@ -309,8 +320,10 @@ class _SimpleListCollector(_SampleCollector):
         self.forward_pass_size = {pid: 0 for pid in policy_map.keys()}
 
         # Maps episode ID to the (non-built) env steps taken in this episode.
-        self.episode_steps: Dict[EpisodeID, int] = \
-            collections.defaultdict(int)
+        self.episode_steps: Dict[EpisodeID, int] = collections.defaultdict(int)
+        # Maps episode ID to the (non-built) individual agent steps in this
+        # episode.
+        self.agent_steps: Dict[EpisodeID, int] = collections.defaultdict(int)
         # Maps episode ID to MultiAgentEpisode.
         self.episodes: Dict[EpisodeID, MultiAgentEpisode] = {}
 
@@ -320,15 +333,15 @@ class _SimpleListCollector(_SampleCollector):
         self.episode_steps[episode_id] += 1
         episode.length += 1
         assert episode.batch_builder is not None
-        env_steps = episode.batch_builder.count
-        num_observations = sum(
-            c.count for c in episode.batch_builder.policy_collectors.values())
+        env_steps = episode.batch_builder.env_steps
+        num_individual_observations = sum(
+            c.agent_steps for c in episode.batch_builder.policy_collectors.values())
 
-        if num_observations > self.large_batch_threshold and \
+        if num_individual_observations > self.large_batch_threshold and \
                 log_once("large_batch_warning"):
             logger.warning(
                 "More than {} observations in {} env steps for "
-                "episode {} ".format(num_observations, env_steps, episode_id) +
+                "episode {} ".format(num_individual_observations, env_steps, episode_id) +
                 "are buffered in the sampler. If this is more than you "
                 "expected, check that that you set a horizon on your "
                 "environment correctly and that it terminates at some point. "
@@ -384,6 +397,8 @@ class _SimpleListCollector(_SampleCollector):
         assert self.agent_key_to_policy_id[agent_key] == policy_id
         assert agent_key in self.agent_collectors
 
+        self.agent_steps[episode_id] += 1
+
         # Include the current agent id for multi-agent algorithms.
         if agent_id != _DUMMY_AGENT_ID:
             values["agent_id"] = agent_id
@@ -395,8 +410,9 @@ class _SimpleListCollector(_SampleCollector):
             self._add_to_next_inference_call(agent_key)
 
     @override(_SampleCollector)
+    #TODO: rename this into total_agent_steps?
     def total_env_steps(self) -> int:
-        return sum(a.count for a in self.agent_collectors.values())
+        return sum(a.agent_steps for a in self.agent_collectors.values())
 
     @override(_SampleCollector)
     def get_inference_input_dict(self, policy_id: PolicyID) -> \
@@ -434,7 +450,8 @@ class _SimpleListCollector(_SampleCollector):
                             episode: MultiAgentEpisode,
                             is_done: bool = False,
                             check_dones: bool = False,
-                            build: bool = False) -> None:
+                            build: bool = False
+                            ) -> Union[None, SampleBatch, MultiAgentBatch]:
         episode_id = episode.episode_id
         policy_collector_group = episode.batch_builder
 
@@ -445,7 +462,7 @@ class _SimpleListCollector(_SampleCollector):
         pre_batches = {}
         for (eps_id, agent_id), collector in self.agent_collectors.items():
             # Build only if there is data and agent is part of given episode.
-            if collector.count == 0 or eps_id != episode_id:
+            if collector.agent_steps == 0 or eps_id != episode_id:
                 continue
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
             policy = self.policy_map[pid]
@@ -526,16 +543,19 @@ class _SimpleListCollector(_SampleCollector):
                     post_batch, policy.view_requirements)
 
         env_steps = self.episode_steps[episode_id]
-        policy_collector_group.count += env_steps
+        policy_collector_group.env_steps += env_steps
+        agent_steps = self.agent_steps[episode_id]
+        policy_collector_group.agent_steps += agent_steps
 
         if is_done:
             del self.episode_steps[episode_id]
+            del self.agent_steps[episode_id]
             del self.episodes[episode_id]
             # Make PolicyCollectorGroup available for more agent batches in
             # other episodes. Do not reset count to 0.
             self.policy_collector_groups.append(policy_collector_group)
         else:
-            self.episode_steps[episode_id] = 0
+            self.episode_steps[episode_id] = self.agent_steps[episode_id] = 0
 
         # Build a MultiAgentBatch from the episode and return.
         if build:
@@ -546,14 +566,16 @@ class _SimpleListCollector(_SampleCollector):
 
         ma_batch = {}
         for pid, collector in episode.batch_builder.policy_collectors.items():
-            if collector.count > 0:
+            if collector.agent_steps > 0:
                 ma_batch[pid] = collector.build()
         # Create the batch.
         ma_batch = MultiAgentBatch.wrap_as_needed(
-            ma_batch, env_steps=episode.batch_builder.count)
+            ma_batch,
+            env_steps=episode.batch_builder.env_steps)
 
         # PolicyCollectorGroup is empty.
-        episode.batch_builder.count = 0
+        episode.batch_builder.env_steps = 0
+        episode.batch_builder.agent_steps = 0
 
         return ma_batch
 
@@ -562,16 +584,25 @@ class _SimpleListCollector(_SampleCollector):
             List[Union[MultiAgentBatch, SampleBatch]]:
         batches = []
         # Loop through ongoing episodes and see whether their length plus
-        # what's already in the policy collectors reaches the fragment-len.
+        # what's already in the policy collectors reaches the fragment-len
+        # (abiding to the unit used: env-steps or agent-steps).
         for episode_id, episode in self.episodes.items():
-            env_steps = episode.batch_builder.count + \
-                        self.episode_steps[episode_id]
+            # Measure batch size in env-steps.
+            if self.rollout_fragment_unit == "env_steps":
+                built_steps = episode.batch_builder.env_steps
+                ongoing_steps = self.episode_steps[episode_id]
+            # Measure batch-size in agent-steps.
+            else:
+                built_steps = episode.batch_builder.agent_steps
+                ongoing_steps = self.agent_steps[episode_id]
+
             # Reached the fragment-len -> We should build an MA-Batch.
-            if env_steps >= self.rollout_fragment_length:
-                assert env_steps == self.rollout_fragment_length
+            if built_steps + ongoing_steps >= self.rollout_fragment_length:
+                assert built_steps + ongoing_steps == \
+                       self.rollout_fragment_length
                 # If we reached the fragment-len only because of `episode_id`
                 # (still ongoing) -> postprocess `episode_id` first.
-                if episode.batch_builder.count < self.rollout_fragment_length:
+                if ongoing_steps > 0:
                     self.postprocess_episode(episode, is_done=False)
                 # Build the MA-batch and return.
                 batch = self._build_multi_agent_batch(episode=episode)

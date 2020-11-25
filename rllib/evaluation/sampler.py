@@ -129,6 +129,7 @@ class SyncSampler(SamplerInput):
                  obs_filters: Dict[PolicyID, Filter],
                  clip_rewards: bool,
                  rollout_fragment_length: int,
+                 rollout_fragment_unit: str = "env_steps",
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
                  multiple_episodes_in_batch: bool = False,
@@ -191,7 +192,8 @@ class SyncSampler(SamplerInput):
         if _use_trajectory_view_api:
             self.sample_collector = _SimpleListCollector(
                 policies, clip_rewards, callbacks, multiple_episodes_in_batch,
-                rollout_fragment_length)
+                rollout_fragment_length,
+                rollout_fragment_unit=rollout_fragment_unit)
         else:
             self.sample_collector = None
 
@@ -254,6 +256,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  obs_filters: Dict[PolicyID, Filter],
                  clip_rewards: bool,
                  rollout_fragment_length: int,
+                 rollout_fragment_unit: str = "env_steps",
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
                  multiple_episodes_in_batch: bool = False,
@@ -282,6 +285,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
+            rollout_fragment_unit (str): Either "env_steps" or "agent_steps".
+                Refers to the unit of `rollout_fragment_length`.
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
             horizon (Optional[int]): Hard-reset the Env
@@ -337,7 +342,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
         if _use_trajectory_view_api:
             self.sample_collector = _SimpleListCollector(
                 policies, clip_rewards, callbacks, multiple_episodes_in_batch,
-                rollout_fragment_length)
+                rollout_fragment_length,
+                rollout_fragment_unit=rollout_fragment_unit)
         else:
             self.sample_collector = None
 

@@ -74,11 +74,26 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The dataflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
     "rollout_fragment_length": 200,
-    # Whether to rollout "complete_episodes" or "truncate_episodes" to
-    # `rollout_fragment_length` length unrolls. Episode truncation guarantees
-    # evenly sized batches, but increases variance as the reward-to-go will
-    # need to be estimated at truncation boundaries.
+    # How to build per-Sampler (RolloutWorker) batches, which are then
+    # usually concat'd to form the train batch. Note that "steps" below can
+    # mean different things (either env- or agent-steps) and depends on the
+    # `rollout_fragment_unit` setting below.
+    # truncate_episodes: Each produced batch (when calling
+    #   RolloutWorker.sample()) will contain exactly `rollout_fragment_length`
+    #   steps. This mode guarantees evenly sized batches, but increases
+    #   variance as the future return must now be estimated at truncation
+    #   boundaries.
+    # complete_episodes: Each unroll happens exactly over one episode, from
+    #   beginning to end. Data collection will not stop unless the episode
+    #   terminates or a configured horizon (hard or soft) is hit.
     "batch_mode": "truncate_episodes",
+    # Which metric to use as the "batch size" when building SampleBatch or
+    # MultiAgentBatch.
+    # env_steps: Count each time the env is "stepped" (no matter how many
+    #   multi-agent actions are passed/how many mult-agent observations have
+    #   been returned in the previous step).
+    # agent_steps: Count each individual agent step as one step.
+    "rollout_fragment_unit": "env_steps",
 
     # === Settings for the Trainer process ===
     # Number of GPUs to allocate to the trainer process. Note that not all
@@ -1056,6 +1071,17 @@ class Trainer(Trainable):
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(
                     config["input_evaluation"]))
+
+        if config["batch_mode"] not in ["truncate_episodes",
+                                        "complete_episodes"]:
+            raise ValueError(
+                "`batch_mode` must be one of [truncate_episodes|"
+                "complete_episodes]! Got {}".format(config["batch_mode"]))
+
+        if config["rollout_fragment_unit"] not in ["env_steps", "agent_steps"]:
+            raise ValueError(
+                "`rollout_fragment_unit` must be one of [env_steps|agent_steps]! "
+                "Got {}".format(config["rollout_fragment_unit"]))
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.

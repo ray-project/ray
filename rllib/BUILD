@@ -1089,6 +1089,13 @@ py_test(
 #    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 #)
 
+py_test(
+    name = "evaluation/tests/test_rollout_worker",
+    tags = ["evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_rollout_worker.py"]
+)
+
 
 # --------------------------------------------------------------------
 # Optimizers and Memories
@@ -1390,13 +1397,6 @@ py_test(
     data = ["train.py", "rollout.py"],
     srcs = ["tests/test_rollout.py"],
     args = ["TestRolloutLearntPolicy"]
-)
-
-py_test(
-    name = "tests/test_rollout_worker",
-    tags = ["tests_dir", "tests_dir_R"],
-    size = "medium",
-    srcs = ["tests/test_rollout_worker.py"]
 )
 
 py_test(
