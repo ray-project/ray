@@ -24,6 +24,10 @@ GcsResourceManager::GcsResourceManager(GcsNodeManager &gcs_node_manager) {
         cluster_resources_[node_id] =
             ResourceSet(MapFromProtobuf(heartbeat.resources_available()));
       });
+  gcs_node_manager.AddNodeRemovedListener(
+      [this](std::shared_ptr<rpc::GcsNodeInfo> node_info) {
+        cluster_resources_.erase(NodeID::FromBinary(node_info->node_id()));
+      });
 }
 
 const absl::flat_hash_map<NodeID, ResourceSet> &GcsResourceManager::GetClusterResources()

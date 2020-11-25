@@ -86,30 +86,6 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   }
 }
 
-TEST_F(GcsNodeManagerTest, TestGetClusterRealtimeResources) {
-  boost::asio::io_service io_service;
-  gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
-                                   gcs_table_storage_);
-
-  auto node_id = NodeID::FromRandom();
-  rpc::HeartbeatTableData heartbeat;
-  const std::string cpu_resource = "CPU";
-  (*heartbeat.mutable_resources_available())[cpu_resource] = 10;
-  node_manager.UpdateNodeRealtimeResources(node_id, heartbeat);
-  auto node_resources = node_manager.GetClusterRealtimeResources();
-
-  ResourceSet required_resources;
-  required_resources.AddOrUpdateResource(cpu_resource, 9);
-  ASSERT_TRUE(required_resources.IsSubset((*node_resources)[node_id]));
-  required_resources.AddOrUpdateResource(cpu_resource, 10);
-  ASSERT_TRUE(required_resources.IsSubset((*node_resources)[node_id]));
-  required_resources.AddOrUpdateResource(cpu_resource, 10.1);
-  ASSERT_FALSE(required_resources.IsSubset((*node_resources)[node_id]));
-  required_resources.DeleteResource(cpu_resource);
-  required_resources.AddOrUpdateResource("GPU", 9);
-  ASSERT_FALSE(required_resources.IsSubset((*node_resources)[node_id]));
-}
-
 }  // namespace ray
 
 int main(int argc, char **argv) {

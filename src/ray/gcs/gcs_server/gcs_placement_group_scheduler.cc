@@ -30,7 +30,6 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
       lease_client_factory_(std::move(lease_client_factory)) {
-  auto cluster_resources = gcs_node_manager.GetClusterRealtimeResources();
   scheduler_strategies_.push_back(
       std::make_shared<GcsPackStrategy>(gcs_resource_manager));
   scheduler_strategies_.push_back(
@@ -644,12 +643,10 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
 
 void GcsPlacementGroupScheduler::ReturnBundleResources(
     const std::shared_ptr<BundleLocations> bundle_locations) {
-  auto cluster_resources = gcs_node_manager_.GetClusterRealtimeResources();
   for (auto &bundle_location : *bundle_locations) {
-    auto iter = cluster_resources->find(bundle_location.second.first);
-    if (iter != cluster_resources->end()) {
-      iter->second.AddResources(bundle_location.second.second->GetRequiredResources());
-    }
+    gcs_resource_manager_.ReleaseResource(
+        bundle_location.second.first,
+        bundle_location.second.second->GetRequiredResources());
   }
 }
 
