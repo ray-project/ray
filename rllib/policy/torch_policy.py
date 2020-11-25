@@ -612,15 +612,11 @@ class LearningRateSchedule:
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
-        super(LearningRateSchedule, self).on_global_var_update(global_vars)
+        super().on_global_var_update(global_vars)
         self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
-
-    @override(TorchPolicy)
-    def optimizer(self):
         for opt in self._optimizers:
             for p in opt.param_groups:
                 p["lr"] = self.cur_lr
-        return self._optimizers
 
 
 @DeveloperAPI
