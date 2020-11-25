@@ -119,7 +119,8 @@ def test_placement_group_implicit_resource_return(ray_start_cluster):
     # Get all actors.
     actor_infos = ray.actors()
     actor_infos = actor_infos.get(actor._actor_id.hex())
-    assert actor_infos["State"] == ray.gcs_utils.ActorTableData.PENDING_CREATION
+    assert actor_infos[
+        "State"] == ray.gcs_utils.ActorTableData.PENDING_CREATION
 
 
 def test_placement_group_pack(ray_start_cluster):

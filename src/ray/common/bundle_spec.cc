@@ -81,7 +81,7 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 }
 
 std::string FormatPlacementGroupImplicitResource(const PlacementGroupID &group_id,
-                                                  int64_t bundle_index) {
+                                                 int64_t bundle_index) {
   std::string str =
       "PlacementGroup_implicit_" + group_id.Hex() + "_" + std::to_string(bundle_index);
   return str;
