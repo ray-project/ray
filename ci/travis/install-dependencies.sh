@@ -203,6 +203,7 @@ install_pip() {
 
     if [ "${OSTYPE}" = msys ]; then
       "${python}" -m pip install --upgrade --quiet pip setuptools wheel
+    fi
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
