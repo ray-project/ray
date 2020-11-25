@@ -2,7 +2,6 @@ import click
 import logging
 import os
 import subprocess
-import tempfile
 import time
 from typing import List
 
@@ -108,19 +107,12 @@ class NodeUpdater:
         self.docker_config = docker_config
         self.separate_commands = separate_commands
 
-    def _combine_commands(self, command_list,
-                          command_file_prefix="") -> List[str]:
+    def _combine_commands(self, command_list) -> List[str]:
         if self.separate_commands:
             return command_list
-        script = "set -x\n"
+        script = "set -exo pipefail \ \n"
         script += ";\n".join(command_list)
-        assert len(command_file_prefix) > 0
-        remote_file_name = f"/tmp/_{command_file_prefix}.sh"
-        with tempfile.NamedTemporaryFile(mode="w") as fl:
-            fl.write(script)
-            fl.flush()
-            self.rsync_up(fl.name, remote_file_name)
-        return [f"chmod +x {remote_file_name}; bash {remote_file_name}"]
+        return [script]
 
     def run(self):
         if cmd_output_util.does_allow_interactive(
@@ -374,7 +366,7 @@ class NodeUpdater:
                                 self.log_prefix + "Setup commands",
                                 show_status=True):
                             internal_setup_commands = self._combine_commands(
-                                self.setup_commands, "setup_commands_file")
+                                self.setup_commands)
                             total = len(internal_setup_commands)
                             for i, cmd in enumerate(internal_setup_commands):
                                 if cli_logger.verbosity == 0 and len(cmd) > 30:

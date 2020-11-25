@@ -824,9 +824,8 @@ def stop(force, verbose, log_style, log_color):
     "--separate-commands",
     is_flag=True,
     default=False,
-    help=
-    ("If False, this call creates a script that runs all setup/initialization commands, reducing"
-     "the roundtrips to complete cluster stand up."))
+    help=("If False, this all setup commands are coalesced into a single "
+          "command, reducing the roundtrips to complete cluster stand up."))
 @add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
        yes, cluster_name, no_config_cache, redirect_command_output,
