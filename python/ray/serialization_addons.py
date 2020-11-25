@@ -15,7 +15,7 @@ try:
             self.tensor = tensor
 
         @classmethod
-        def rebuild_tensor(cls, rebuild_func, ndarray, params):
+        def rebuild_tensor(cls, rebuild_func, device, ndarray, params):
             global _TORCH_WARNING_FILTER_ACTIVATE
             # filtering warning messages would be the bottleneck for
             # deserializing torch tensors. Since the warning only prompts once,
@@ -26,11 +26,13 @@ try:
                         "ignore",
                         category=UserWarning,
                         message="The given NumPy array is not writeable")
-                    storage = torch.from_numpy(ndarray).storage()
+                    _tensor = torch.from_numpy(ndarray)
                 _TORCH_WARNING_FILTER_ACTIVATE = False
             else:
-                storage = torch.from_numpy(ndarray).storage()
-            tensor = rebuild_func(storage, *params)
+                _tensor = torch.from_numpy(ndarray)
+            if device != torch.device('cpu'):
+                _tensor = _tensor.to(device)
+            tensor = rebuild_func(_tensor.storage(), *params)
             return cls(tensor)
 
         @classmethod
@@ -47,7 +49,8 @@ try:
             # By only replacing the storage with a numpy array, we can reuse
             # zero-copy serialization while keeping all other params of the
             # torch tensor.
-            return self.rebuild_tensor, (_rebuild_func, self.tensor.numpy(),
+            return self.rebuild_tensor, (_rebuild_func, self.tensor.device,
+                                         self.tensor.detach().cpu().numpy(),
                                          content[1:])
 
     def _unwrap_tensor(s):
