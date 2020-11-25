@@ -1,6 +1,12 @@
 from ray.experimental.client import ray
+auth_token = "e6e6fb73-aaa6-4ab3-bca2-160edc70f768"
+metadata = (("cookie", "anyscale-token=" + auth_token), ("port", str(10000)))
 
-ray.connect("localhost:50051")
+ray.connect(
+    "session-5m13x9u6gorznyzqnf9syn.anyscaleuserdata.com",
+    secure=True,
+    metadata=metadata)
+#ray.connect("")
 
 
 @ray.remote
@@ -25,10 +31,10 @@ def get_nodes():
 
 
 print("Cluster nodes", ray.get(get_nodes.remote()))
-print(ray.nodes())
+#print(ray.nodes())
 
 objectref = ray.put("hello world")
-
+#
 # `ClientObjectRef(...)`
 print(objectref)
 
