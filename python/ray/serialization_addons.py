@@ -30,7 +30,7 @@ try:
                 _TORCH_WARNING_FILTER_ACTIVATE = False
             else:
                 _tensor = torch.from_numpy(ndarray)
-            if device != torch.device('cpu'):
+            if device != torch.device("cpu"):
                 _tensor = _tensor.to(device)
             tensor = rebuild_func(_tensor.storage(), *params)
             return cls(tensor)
