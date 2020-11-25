@@ -18,6 +18,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -98,20 +99,14 @@ class ScheduleContext {
 
 class GcsScheduleStrategy {
  public:
-  GcsScheduleStrategy(
-      std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources)
-      : cluster_resources_(cluster_resources) {}
+  GcsScheduleStrategy(GcsResourceManager &gcs_resource_manager)
+      : gcs_resource_manager_(gcs_resource_manager) {}
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context) = 0;
 
  protected:
-  /// Get cluster resources.
-  ///
-  /// \return The cluster resources.
-  std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> GetClusterResources();
-
   /// Reset acquired resources.
   ///
   /// \return Void.
@@ -130,7 +125,7 @@ class GcsScheduleStrategy {
   /// \return Void.
   void ReturnAcquiredResources();
 
-  std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>> cluster_resources_;
+  GcsResourceManager &gcs_resource_manager_;
 
  private:
   absl::flat_hash_map<NodeID, std::list<ResourceSet>> acquired_resources_;
@@ -386,10 +381,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param io_context The main event loop.
   /// \param placement_group_info_accessor Used to flush placement_group info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
+  /// \param gcs_resource_manager The resource manager which is used when scheduling.
+  /// \param lease_client_factory Factory to create remote lease client.
   GcsPlacementGroupScheduler(
       boost::asio::io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      const GcsNodeManager &gcs_node_manager,
+      const GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
       ReserveResourceClientFactoryFn lease_client_factory = nullptr);
 
   virtual ~GcsPlacementGroupScheduler() = default;
@@ -533,6 +530,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
+
+  /// Reference of GcsResourceManager.
+  GcsResourceManager &gcs_resource_manager_;
 
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<NodeID, std::shared_ptr<ResourceReserveInterface>>

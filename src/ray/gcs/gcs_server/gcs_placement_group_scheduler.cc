@@ -23,24 +23,22 @@ namespace gcs {
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     boost::asio::io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    const gcs::GcsNodeManager &gcs_node_manager,
+    const gcs::GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
     ReserveResourceClientFactoryFn lease_client_factory)
     : return_timer_(io_context),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),
+      gcs_resource_manager_(gcs_resource_manager),
       lease_client_factory_(std::move(lease_client_factory)) {
   auto cluster_resources = gcs_node_manager.GetClusterRealtimeResources();
-  scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>(cluster_resources));
-  scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>(cluster_resources));
   scheduler_strategies_.push_back(
-      std::make_shared<GcsStrictPackStrategy>(cluster_resources));
+      std::make_shared<GcsPackStrategy>(gcs_resource_manager));
   scheduler_strategies_.push_back(
-      std::make_shared<GcsStrictSpreadStrategy>(cluster_resources));
-}
-
-std::shared_ptr<absl::flat_hash_map<NodeID, ResourceSet>>
-GcsScheduleStrategy::GetClusterResources() {
-  return cluster_resources_;
+      std::make_shared<GcsSpreadStrategy>(gcs_resource_manager));
+  scheduler_strategies_.push_back(
+      std::make_shared<GcsStrictPackStrategy>(gcs_resource_manager));
+  scheduler_strategies_.push_back(
+      std::make_shared<GcsStrictSpreadStrategy>(gcs_resource_manager));
 }
 
 void GcsScheduleStrategy::ResetAcquiredResources() { acquired_resources_.clear(); }
@@ -53,7 +51,7 @@ void GcsScheduleStrategy::RecordResourceAcquirement(
 void GcsScheduleStrategy::ReturnAcquiredResources() {
   for (auto &resources_list : acquired_resources_) {
     for (auto &resources : resources_list.second) {
-      (*cluster_resources_)[resources_list.first].AddResources(resources);
+      gcs_resource_manager_.ReleaseResource(resources_list.first, resources);
     }
   }
   ResetAcquiredResources();
@@ -69,9 +67,9 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
   }
 
   // Filter candidate nodes.
-  const auto &alive_nodes = GetClusterResources();
+  const auto &alive_nodes = gcs_resource_manager_.GetClusterResources();
   std::vector<std::pair<int64_t, NodeID>> candidate_nodes;
-  for (auto &node : *alive_nodes) {
+  for (auto &node : alive_nodes) {
     if (required_resources.IsSubset(node.second)) {
       candidate_nodes.emplace_back((*context->node_to_bundles_)[node.first], node.first);
     }
@@ -93,8 +91,8 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
   }
 
   // Update cluster resource.
-  (*cluster_resources_)[candidate_nodes.front().second].SubtractResourcesStrict(
-      required_resources);
+  gcs_resource_manager_.AcquireResource(candidate_nodes.front().second,
+                                        required_resources);
 
   return schedule_map;
 }
@@ -108,12 +106,12 @@ ScheduleMap GcsPackStrategy::Schedule(
   // First fill up a node. If the node resource is insufficient, select a new node.
   // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
   ScheduleMap schedule_map;
-  auto alive_nodes = GetClusterResources();
+  const auto &alive_nodes = gcs_resource_manager_.GetClusterResources();
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
-    for (auto &node : *alive_nodes) {
+    for (const auto &node : alive_nodes) {
       if (required_resources.IsSubset(node.second)) {
-        node.second.SubtractResourcesStrict(required_resources);
+        gcs_resource_manager_.AcquireResource(node.first, required_resources);
         RecordResourceAcquirement(node.first, required_resources);
         schedule_map[bundle->BundleId()] = node.first;
         break;
@@ -135,40 +133,40 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   // bundles will be deployed to the previous nodes. So we start with the next node of the
   // last selected node.
   ScheduleMap schedule_map;
-  auto candidate_nodes = GetClusterResources();
-  if (candidate_nodes->empty()) {
+  const auto &candidate_nodes = gcs_resource_manager_.GetClusterResources();
+  if (candidate_nodes.empty()) {
     return schedule_map;
   }
 
   ResetAcquiredResources();
-  auto iter = candidate_nodes->begin();
+  auto iter = candidate_nodes.begin();
   auto iter_begin = iter;
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
-    // Traverse all nodes from `iter_begin` to `candidate_nodes->end()` to find a node
+    // Traverse all nodes from `iter_begin` to `candidate_nodes.end()` to find a node
     // that meets the resource requirements. `iter_begin` is the next node of the last
     // selected node.
-    for (; iter != candidate_nodes->end(); ++iter) {
+    for (; iter != candidate_nodes.end(); ++iter) {
       if (required_resources.IsSubset(iter->second)) {
-        iter->second.SubtractResourcesStrict(required_resources);
+        gcs_resource_manager_.AcquireResource(iter->first, required_resources);
         RecordResourceAcquirement(iter->first, required_resources);
         schedule_map[bundle->BundleId()] = iter->first;
         break;
       }
     }
 
-    // We've traversed all the nodes from `iter_begin` to `candidate_nodes->end()`, but we
+    // We've traversed all the nodes from `iter_begin` to `candidate_nodes.end()`, but we
     // haven't found one that meets the requirements.
-    // If `iter_begin` is `candidate_nodes->begin()`, it means that all nodes are not
+    // If `iter_begin` is `candidate_nodes.begin()`, it means that all nodes are not
     // satisfied, we will return directly. Otherwise, we will traverse the nodes from
-    // `candidate_nodes->begin()` to `iter_begin` to find the nodes that meet the
+    // `candidate_nodes.begin()` to `iter_begin` to find the nodes that meet the
     // requirements.
-    if (iter == candidate_nodes->end()) {
-      if (iter_begin != candidate_nodes->begin()) {
-        // Traverse all the nodes from `candidate_nodes->begin()` to `iter_begin`.
-        for (iter = candidate_nodes->begin(); iter != iter_begin; ++iter) {
+    if (iter == candidate_nodes.end()) {
+      if (iter_begin != candidate_nodes.begin()) {
+        // Traverse all the nodes from `candidate_nodes.begin()` to `iter_begin`.
+        for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
           if (required_resources.IsSubset(iter->second)) {
-            iter->second.SubtractResourcesStrict(required_resources);
+            gcs_resource_manager_.AcquireResource(iter->first, required_resources);
             RecordResourceAcquirement(iter->first, required_resources);
             schedule_map[bundle->BundleId()] = iter->first;
             break;
@@ -183,7 +181,7 @@ ScheduleMap GcsSpreadStrategy::Schedule(
         break;
       }
     }
-    // NOTE: If `iter == candidate_nodes->end()`, ++iter causes crash.
+    // NOTE: If `iter == candidate_nodes.end()`, ++iter causes crash.
     iter_begin = ++iter;
   }
 
@@ -201,28 +199,29 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
   // schedule bundles with special resource requirements first, which will be implemented
   // in the next pr.
   ScheduleMap schedule_map;
-  auto candidate_nodes = GetClusterResources();
+  auto candidate_nodes = gcs_resource_manager_.GetClusterResources();
 
   // The number of bundles is more than the number of nodes, scheduling fails.
-  if (bundles.size() > candidate_nodes->size()) {
+  if (bundles.size() > candidate_nodes.size()) {
     return schedule_map;
   }
 
   ResetAcquiredResources();
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
-    auto iter = candidate_nodes->begin();
-    for (; iter != candidate_nodes->end(); ++iter) {
+    auto iter = candidate_nodes.begin();
+    for (; iter != candidate_nodes.end(); ++iter) {
       if (required_resources.IsSubset(iter->second)) {
         schedule_map[bundle->BundleId()] = iter->first;
-        candidate_nodes->erase(iter);
+        candidate_nodes.erase(iter);
+        gcs_resource_manager_.AcquireResource(iter->first, required_resources);
         RecordResourceAcquirement(iter->first, required_resources);
         break;
       }
     }
 
     // Node resource is not satisfied, scheduling failed.
-    if (iter == candidate_nodes->end()) {
+    if (iter == candidate_nodes.end()) {
       break;
     }
   }

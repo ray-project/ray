@@ -65,8 +65,11 @@ void GcsServer::Start() {
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
-  // Init gcs node_manager.
+  // Init gcs node manager.
   InitGcsNodeManager(gcs_init_data);
+
+  // Init gcs resource manager.
+  InitGcsResourceManager();
 
   // Init gcs job manager.
   InitGcsJobManager();
@@ -143,6 +146,10 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   rpc_server_.RegisterService(*node_info_service_);
 }
 
+void GcsServer::InitGcsResourceManager() {
+  gcs_resource_manager_ = std::make_shared<GcsResourceManager>(*gcs_node_manager_);
+}
+
 void GcsServer::InitGcsJobManager() {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
   gcs_job_manager_.reset(new GcsJobManager(gcs_table_storage_, gcs_pub_sub_));
@@ -197,7 +204,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
   auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
-      main_service_, gcs_table_storage_, *gcs_node_manager_,
+      main_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
       /*lease_client_factory=*/
       [this](const rpc::Address &address) {
         auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
