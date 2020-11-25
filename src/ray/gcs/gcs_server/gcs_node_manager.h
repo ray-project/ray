@@ -18,7 +18,6 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
-#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
@@ -153,11 +152,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
-  /// Initialize with the gcs tables data synchronously.
+  /// Load initial data from gcs storage to memory cache asynchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
-  /// \param gcs_init_data.
-  void Initialize(const GcsInitData &gcs_init_data);
+  /// \param done Callback that will be called when load is complete.
+  void LoadInitialData(const EmptyCallback &done);
 
   /// Start node failure detector.
   void StartNodeFailureDetector();
