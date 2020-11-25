@@ -23,9 +23,11 @@ class MockParam(object):
         self._index += 1
         return val
 
+
 def get_virt_mem():
     import psutil
     return psutil.virtual_memory().used
+
 
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
@@ -124,6 +126,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
             iter_ = 0
             import psutil
             process = psutil.Process()
+
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
                 # assert len(ray.objects()) <= 10
@@ -135,7 +138,8 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                 all_files = self.process.open_files()
                 print("File Descriptors:", len(all_files))
                 if len(all_files) > 50:
-                    import ipdb; ipdb.set_trace()
+                    import ipdb
+                    ipdb.set_trace()
                 print()
                 return checkpoint
 
