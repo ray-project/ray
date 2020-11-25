@@ -147,7 +147,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   virtual ~ServiceBasedNodeInfoAccessor() = default;
 
-  Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
+  Status RegisterSelf(const GcsNodeInfo &local_node_info,
+                      const StatusCallback &callback) override;
 
   Status UnregisterSelf() override;
 
