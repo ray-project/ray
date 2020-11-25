@@ -141,12 +141,14 @@ def inspect_serializability(base_obj, name=None, depth=3, _failure_set=None):
         print("Result:\n")
         if not _failure_set:
             print("  Nothing failed the diagnostic test, though "
-                  "serialization did not succeed. Feel free to raise an "
-                  "issue on github.")
+                  "serialization did not succeed.")
         else:
             print(
                 f"  Variable(s) {_failure_set} found to be non-serializable. "
                 "\n\nConsider either removing the instantiation/imports "
                 "of these objects or moving the "
                 "instantiation into the scope of the function/class. ")
+        print("If you have any suggestions on how to improve "
+              "this error message, please reach out to the "
+              "Ray developers on github.com/ray-project/ray/issues/")
     return not found, _failure_set
