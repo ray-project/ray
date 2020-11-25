@@ -544,14 +544,14 @@ class FunctionActorManager:
                 worker's internal state to record the executed method.
         """
 
-        def actor_method_executor(_actor, *args, **kwargs):
+        def actor_method_executor(__ray_actor, *args, **kwargs):
             # Execute the assigned method.
             is_bound = (is_class_method(method)
-                        or is_static_method(type(_actor), method_name))
+                        or is_static_method(type(__ray_actor), method_name))
             if is_bound:
                 return method(*args, **kwargs)
             else:
-                return method(_actor, *args, **kwargs)
+                return method(__ray_actor, *args, **kwargs)
 
         # Set method_name and method as attributes to the executor closure
         # so we can make decision based on these attributes in task executor.
