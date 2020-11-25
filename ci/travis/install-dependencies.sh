@@ -201,6 +201,9 @@ install_pip() {
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
     "${python}" -m pip install --upgrade --quiet pip
 
+    if [ "${OSTYPE}" = msys ]; then
+      "${python}" -m pip install --upgrade --quiet pip setuptools wheel
+
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
