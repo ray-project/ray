@@ -17,6 +17,7 @@ def ray_start_client_server():
 
 def test_real_ray_fallback(ray_start_regular_shared):
     with ray_start_client_server() as ray:
+
         @ray.remote
         def get_nodes_real():
             import ray as real_ray
@@ -27,7 +28,8 @@ def test_real_ray_fallback(ray_start_regular_shared):
 
         @ray.remote
         def get_nodes():
-            return ray.nodes()  # Can access the full Ray API in remote methods.
+            # Can access the full Ray API in remote methods.
+            return ray.nodes()
 
         nodes = ray.get(get_nodes.remote())
         assert len(nodes) == 1, nodes
@@ -38,6 +40,7 @@ def test_real_ray_fallback(ray_start_regular_shared):
 
 def test_nested_function(ray_start_regular_shared):
     with ray_start_client_server() as ray:
+
         @ray.remote
         def g():
             @ray.remote
@@ -88,6 +91,7 @@ def test_wait(ray_start_regular_shared):
 
 def test_remote_functions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
+
         @ray.remote
         def plus2(x):
             return x + 2
@@ -125,11 +129,13 @@ def test_remote_functions(ray_start_regular_shared):
         res = ray.wait([ref2, ref3, ref4, ref5], num_returns=4)
         assert [ref2, ref3, ref4, ref5] == res[0]
         assert [] == res[1]
-        assert ray.get(res[0]) == [236, 2_432_902_008_176_640_000, 120, 3628800]
+        all_vals = ray.get(res[0])
+        assert all_vals == [236, 2_432_902_008_176_640_000, 120, 3628800]
 
 
 def test_function_calling_function(ray_start_regular_shared):
     with ray_start_client_server() as ray:
+
         @ray.remote
         def g():
             return "OK"
@@ -145,6 +151,7 @@ def test_function_calling_function(ray_start_regular_shared):
 
 def test_basic_actor(ray_start_regular_shared):
     with ray_start_client_server() as ray:
+
         @ray.remote
         class HelloActor:
             def __init__(self):

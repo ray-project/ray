@@ -25,7 +25,7 @@ from ray.utils import (
     format_error_message,
     push_error_to_driver,
 )
-from ray.util.inspect import(
+from ray.util.inspect import (
     is_function_or_method,
     is_class_method,
     is_static_method,

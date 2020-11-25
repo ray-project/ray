@@ -9,7 +9,6 @@ import time
 import inspect
 from ray.experimental.client import stash_api_for_tests
 from ray.experimental.client.common import convert_from_arg
-from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
 
@@ -72,9 +71,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             remaining_object_ids=remaining_object_ids)
 
     def Schedule(self, task, context=None):
-        logger.info("schedule: %s %s" % (
-            task.name,
-            ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
+        logger.info("schedule: %s %s" %
+                    (task.name,
+                     ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
         if task.type == ray_client_pb2.ClientTask.FUNCTION:
             return self._schedule_function(task, context)
         elif task.type == ray_client_pb2.ClientTask.ACTOR:
@@ -83,8 +82,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return self._schedule_method(task, context)
         else:
             raise NotImplementedError(
-                "Unimplemented Schedule task type: %s"
-                % ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
+                "Unimplemented Schedule task type: %s" %
+                ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
 
     def _schedule_method(self, task, context=None):
         actor_handle = self.actor_refs.get(task.payload_id)
@@ -105,8 +104,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 if not inspect.isclass(actor_class):
                     raise Exception("Attempting to schedule actor that "
                                     "isn't a ClientActorClass")
-                registered_class = ray.remote(actor_class)
-                self.registered_actor_classes[task.payload_id] = registered_class
+                reg_class = ray.remote(actor_class)
+                self.registered_actor_classes[task.payload_id] = reg_class
             remote_class = self.registered_actor_classes[task.payload_id]
             arglist = _convert_args(task.args)
             actor = remote_class.remote(*arglist)

@@ -16,7 +16,6 @@ from ray.experimental.client.common import convert_to_arg
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorRef
 from ray.experimental.client.common import ClientActorClass
-from ray.experimental.client.common import ClientActorHandle
 from ray.experimental.client.common import ClientRemoteMethod
 from ray.experimental.client.common import ClientRemoteFunc
 
@@ -122,7 +121,8 @@ class Worker:
     def remote(self, function_or_class, *args, **kwargs):
         # TODO(barakmich): Arguments to ray.remote
         # get captured here.
-        if (inspect.isfunction(function_or_class) or is_cython(function_or_class)):
+        if (inspect.isfunction(function_or_class)
+                or is_cython(function_or_class)):
             return ClientRemoteFunc(function_or_class)
         elif inspect.isclass(function_or_class):
             return ClientActorClass(function_or_class)

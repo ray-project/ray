@@ -1,7 +1,6 @@
 import binascii
 import errno
 import hashlib
-import inspect
 import logging
 import multiprocessing
 import numpy as np

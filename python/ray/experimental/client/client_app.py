@@ -12,6 +12,7 @@ class HelloActor:
         self.count += 1
         return ("Hello " + whom, self.count)
 
+
 actor = HelloActor.remote()
 s, count = ray.get(actor.say_hello.remote("you"))
 print(s, count)
@@ -86,4 +87,3 @@ res = ray.wait([ref2, ref3, ref4, ref5], num_returns=4)
 print(res)
 assert [ref2, ref3, ref4, ref5] == res[0]
 assert [] == res[1]
-
