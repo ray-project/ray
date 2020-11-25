@@ -28,8 +28,6 @@ from ray.autoscaler._private.subprocess_output_util import (
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.util.debug import log_once
 
-from ray.autoscaler._private.constants import RAY_HOME
-
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
@@ -195,7 +193,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 logger.warning("'rsync_filter' detected but is currently "
                                "unsupported for k8s.")
         if target.startswith("~"):
-            target = RAY_HOME + target[1:]
+            target = self._home() + target[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -211,7 +209,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = RAY_HOME + target[1:]
+                target = self._home() + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
@@ -219,8 +217,8 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             ])
 
     def run_rsync_down(self, source, target, options=None):
-        if target.startswith("~"):
-            target = RAY_HOME + target[1:]
+        if source.startswith("~"):
+            source = self._home() + source[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -236,7 +234,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = RAY_HOME + target[1:]
+                target = self._home() + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
@@ -244,8 +242,17 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             ])
 
     def remote_shell_command_str(self):
-        return "{} exec -it {} bash".format(" ".join(self.kubectl),
-                                            self.node_id)
+        return "{} exec -it {} -- bash".format(" ".join(self.kubectl),
+                                               self.node_id)
+
+    def _home(self):
+        cmd = self.kubectl + [
+            "exec", "-it", self.node_id, "--", "printenv", "HOME"
+        ]
+        joined_cmd = " ".join(cmd)
+        raw_out = self.process_runner.check_output(joined_cmd, shell=True)
+        home = raw_out.decode().strip("\n\r")
+        return home
 
 
 class SSHOptions:
