@@ -5,7 +5,7 @@ from ray.experimental.client.common import ClientObjectRef
 
 
 def test_real_ray_fallback(ray_start_regular_shared):
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost:50051", test_mode=True)
     ray.connect("localhost:50051")
 
     @ray.remote
@@ -26,11 +26,12 @@ def test_real_ray_fallback(ray_start_regular_shared):
     with pytest.raises(NotImplementedError):
         print(ray.nodes())
 
+    ray.disconnect()
     server.stop(0)
 
 
 def test_nested_function(ray_start_regular_shared):
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost:50051", test_mode=True)
     ray.connect("localhost:50051")
 
     @ray.remote
@@ -42,6 +43,7 @@ def test_nested_function(ray_start_regular_shared):
         return ray.get(f.remote())
 
     assert ray.get(g.remote()) == "OK"
+    ray.disconnect()
     server.stop(0)
 
 
