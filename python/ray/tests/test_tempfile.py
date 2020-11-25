@@ -80,9 +80,14 @@ def test_raylet_tempfiles(shutdown_only):
         "gcs_server.err", "dashboard.log", "dashboard_agent.log"
     }
 
-    for expected in log_files_expected:
-        log_files = set(os.listdir(node.get_logs_dir_path()))
-        wait_for_condition(lambda: expected in log_files)
+    def check_all_log_file_exists():
+        for expected in log_files_expected:
+            log_files = set(os.listdir(node.get_logs_dir_path()))
+            if expected not in log_files:
+                return False
+        return True
+
+    wait_for_condition(check_all_log_file_exists)
     assert log_files_expected.issubset(log_files)
     assert log_files.issuperset(log_files_expected)
 

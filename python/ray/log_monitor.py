@@ -315,8 +315,8 @@ if __name__ == "__main__":
         type=str,
         default=ray_constants.LOG_MONITOR_LOG_FILE_NAME,
         help="Specify the name of log file, "
-        "log to stdout if set empty, default is \"{}\"".format(
-            ray_constants.LOG_MONITOR_LOG_FILE_NAME))
+        "log to stdout if set empty, default is "
+        f"\"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}\"")
     parser.add_argument(
         "--logs-dir",
         required=True,
@@ -329,15 +329,15 @@ if __name__ == "__main__":
         type=int,
         default=ray_constants.LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
-        "log file, default is {} bytes.".format(
-            ray_constants.LOGGING_ROTATE_BYTES))
+        "log file, default is "
+        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
         default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        help="Specify the backup count of rotated log file, default is {}.".
-        format(ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
+        help="Specify the backup count of rotated log file, default is "
+        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
     args = parser.parse_args()
     setup_component_logger(
         logging_level=args.logging_level,
