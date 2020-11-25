@@ -70,9 +70,9 @@ def one_hot(x, space):
     if isinstance(space, Discrete):
         return tf.one_hot(x, space.n)
     elif isinstance(space, MultiDiscrete):
-        return tf.concat([
-            tf.one_hot(x[:, i], n) for i, n in enumerate(space.nvec)
-        ], axis=-1)
+        return tf.concat(
+            [tf.one_hot(x[:, i], n) for i, n in enumerate(space.nvec)],
+            axis=-1)
     else:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 

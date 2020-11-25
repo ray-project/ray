@@ -197,11 +197,13 @@ class LSTMWrapper(RecurrentNetwork):
             prev_a = input_dict[SampleBatch.PREV_ACTIONS]
             if isinstance(self.action_space, (Discrete, MultiDiscrete)):
                 prev_a = one_hot(prev_a, self.action_space)
-            prev_a_r.append(tf.reshape(tf.cast(prev_a, tf.float32),
-                                       [-1, self.action_dim]))
+            prev_a_r.append(
+                tf.reshape(tf.cast(prev_a, tf.float32), [-1, self.action_dim]))
         if self.model_config["lstm_use_prev_reward"]:
-            prev_a_r.append(tf.reshape(tf.cast(
-                input_dict[SampleBatch.PREV_REWARDS], tf.float32), [-1, 1]))
+            prev_a_r.append(
+                tf.reshape(
+                    tf.cast(input_dict[SampleBatch.PREV_REWARDS], tf.float32),
+                    [-1, 1]))
 
         if prev_a_r:
             wrapped_out = tf.concat([wrapped_out] + prev_a_r, axis=1)

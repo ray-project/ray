@@ -595,8 +595,12 @@ class Trainer(Trainable):
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
         Trainer._validate_config(self.config)
+        if not callable(self.config["callbacks"]):
+            raise ValueError(
+                "`callbacks` must be a callable method that "
+                "returns a subclass of DefaultCallbacks, got {}".format(
+                    self.config["callbacks"]))
         self.callbacks = self.config["callbacks"]()
-
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -1053,12 +1057,6 @@ class Trainer(Trainable):
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}!".format(
                     config["input_evaluation"]))
-
-        if not callable(config["callbacks"]):
-            raise ValueError(
-                "`callbacks` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got {}!".format(
-                    config["callbacks"]))
 
         # Check model config.
         prev_a_r = config.get("model", {}).get("lstm_use_prev_action_reward",

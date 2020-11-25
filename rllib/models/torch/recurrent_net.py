@@ -182,8 +182,9 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                 prev_a = input_dict[SampleBatch.PREV_ACTIONS].float()
             prev_a_r.append(torch.reshape(prev_a, [-1, self.action_dim]))
         if self.model_config["lstm_use_prev_reward"]:
-            prev_a_r.append(torch.reshape(
-                input_dict[SampleBatch.PREV_REWARDS].float(), [-1, 1]))
+            prev_a_r.append(
+                torch.reshape(input_dict[SampleBatch.PREV_REWARDS].float(),
+                              [-1, 1]))
 
         if prev_a_r:
             wrapped_out = torch.cat([wrapped_out] + prev_a_r, dim=1)

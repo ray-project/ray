@@ -89,7 +89,9 @@ def relu(x, alpha=0.0):
     return np.maximum(x, x * alpha, x)
 
 
-def one_hot(x: Union[TensorType, int], depth: int = 0, on_value: int = 1.0,
+def one_hot(x: Union[TensorType, int],
+            depth: int = 0,
+            on_value: int = 1.0,
             off_value: float = 0.0):
     """
     One-hot utility function for numpy.
