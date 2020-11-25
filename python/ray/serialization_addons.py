@@ -15,7 +15,7 @@ try:
             self.tensor = tensor
 
         @classmethod
-        def rebuild_tensor(cls, _rebuild_func, ndarray, params):
+        def rebuild_tensor(cls, rebuild_func, ndarray, params):
             global _TORCH_WARNING_FILTER_ACTIVATE
             # filtering warning messages would be the bottleneck for
             # deserializing torch tensors. Since the warning only prompts once,
@@ -30,18 +30,23 @@ try:
                 _TORCH_WARNING_FILTER_ACTIVATE = False
             else:
                 storage = torch.from_numpy(ndarray).storage()
-            tensor = _rebuild_func(storage, *params)
+            tensor = rebuild_func(storage, *params)
+            return cls(tensor)
+
+        @classmethod
+        def rebuild_sparse_tensor(cls, rebuild_func, content):
+            tensor = rebuild_func(*content)
             return cls(tensor)
 
         def __reduce_ex__(self, protocol):
+            _rebuild_func, content = self.tensor.__reduce_ex__(protocol)
             if self.tensor.is_sparse:
                 # Torch will help us reduce the sparse tensor into
                 # several continuous tensors.
-                return _TorchTensorReducingHelper, (self.tensor, )
+                return self.rebuild_sparse_tensor, (_rebuild_func, content)
             # By only replacing the storage with a numpy array, we can reuse
             # zero-copy serialization while keeping all other params of the
             # torch tensor.
-            _rebuild_func, content = self.tensor.__reduce_ex__(protocol)
             return self.rebuild_tensor, (_rebuild_func, self.tensor.numpy(),
                                          content[1:])
 
