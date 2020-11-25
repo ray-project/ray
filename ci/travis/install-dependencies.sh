@@ -201,10 +201,6 @@ install_pip() {
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
     "${python}" -m pip install --upgrade --quiet pip
 
-    if [ "${OSTYPE}" = msys ]; then
-      "${python}" -m pip install --upgrade --quiet pip setuptools wheel
-    fi
-
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
@@ -335,6 +331,9 @@ install_dependencies() {
     install_node
   fi
 
+  if [ "${OSTYPE}" = msys ]; then
+      "${python}" -m pip install --upgrade pip setuptools wheel
+  fi
   CC=gcc pip install psutil setproctitle --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
