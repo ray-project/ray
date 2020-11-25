@@ -1717,6 +1717,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
+  if (true) {
+    auto task_spec = task.GetTaskSpecification();
+    worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
+  }
+
   if (new_scheduler_enabled_) {
     auto task_spec = task.GetTaskSpecification();
     cluster_task_manager_->QueueTask(task, reply, [send_reply_callback]() {

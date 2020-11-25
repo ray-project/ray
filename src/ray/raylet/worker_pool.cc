@@ -890,6 +890,45 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   return worker;
 }
 
+void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
+                                 int64_t backlog_size) {
+  // Prestart optimization is only needed when multi-tenancy is on.
+  if (!RayConfig::instance().enable_multi_tenancy() ||
+      !RayConfig::instance().enable_worker_prestart()) {
+    return;
+  }
+
+  // Code path of task that needs a dedicated worker: an actor creation task with
+  // dynamic worker options, or any task with environment variable overrides.
+  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
+      task_spec.OverrideEnvironmentVariables().size() > 0) {
+    return;  // Not handled.
+  }
+
+  auto &state = GetStateForLanguage(task_spec.GetLanguage());
+  int num_idle_or_starting = state.idle.size();
+  for (auto &entry : state.starting_worker_processes) {
+    num_idle_or_starting += entry.second;
+  }
+  int running_size = 0;
+  for (const auto &worker : GetAllRegisteredWorkers()) {
+    if (!worker->IsDead()) {
+      running_size++;
+    }
+  }
+  auto num_to_add =
+      std::min<int64_t>(num_workers_soft_limit_ - running_size, backlog_size);
+  if (num_idle_or_starting < num_to_add) {
+    int64_t num_needed = num_to_add - num_idle_or_starting;
+    RAY_LOG(DEBUG) << "Prestarting " << num_to_add << " workers given task backlog size "
+                   << backlog_size << " and soft limit " << num_workers_soft_limit_;
+    for (int i = 0; i < num_needed; i++) {
+      StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                         task_spec.JobId());
+    }
+  }
+}
+
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
