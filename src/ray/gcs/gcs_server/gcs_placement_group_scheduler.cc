@@ -274,7 +274,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
   }
 
   // Now let's see if there are leasing bundles. There could be leasing bundles and
-  // committed bundles at the same time if plaement groups are reshceduling.
+  // committed bundles at the same time if placement groups are rescheduling.
   auto it = placement_group_leasing_in_progress_.find(placement_group_id);
   if (it != placement_group_leasing_in_progress_.end()) {
     const auto &leasing_context = it->second;
@@ -598,7 +598,17 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
 void BundleLocationIndex::AddBundleLocations(
     const PlacementGroupID &placement_group_id,
     std::shared_ptr<BundleLocations> bundle_locations) {
-  placement_group_to_bundle_locations_.emplace(placement_group_id, bundle_locations);
+  // Update `placement_group_to_bundle_locations_`.
+  // The placement group may be scheduled several times to succeed, so we need to merge
+  // `bundle_locations` instead of covering it directly.
+  auto iter = placement_group_to_bundle_locations_.find(placement_group_id);
+  if (iter == placement_group_to_bundle_locations_.end()) {
+    placement_group_to_bundle_locations_.emplace(placement_group_id, bundle_locations);
+  } else {
+    iter->second->insert(bundle_locations->begin(), bundle_locations->end());
+  }
+
+  // Update `node_to_leased_bundles_`.
   for (auto iter : *bundle_locations) {
     const auto &node_id = iter.second.first;
     if (!node_to_leased_bundles_.contains(node_id)) {
