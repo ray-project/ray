@@ -76,6 +76,52 @@ def test_placement_group_implicit_resource(ray_start_cluster):
         assert node_of_actor == node_of_pg
 
 
+def test_placement_group_implicit_resource_return(ray_start_cluster):
+    @ray.remote  # No resource specified for this actor.
+    class Actor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+
+    cluster = ray_start_cluster
+    ray.init(address=cluster.address)  # One node in the cluster.
+
+    placement_group = ray.util.placement_group(
+        name="name", strategy="PACK", bundles=[{
+            "CPU": 1
+        }])
+    ray.get(
+        placement_group.ready())  # Make sure this placement group has created.
+
+    # Now, Let's remove the placement group.
+    ray.util.remove_placement_group(placement_group)
+
+    def is_placement_group_removed():
+        table = ray.util.placement_group_table(placement_group)
+        if "state" not in table:
+            return False
+        return table["state"] == "REMOVED"
+
+    wait_for_condition(is_placement_group_removed)
+
+    # We have guaranteed that the actor will be scheduled to
+    # the node with implicit label in above ut.
+    # So, we only need to check this actor create task failed.
+    actor = Actor.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=0).remote()
+
+    with pytest.raises(ray.exceptions.GetTimeoutError, match="Get timed out"):
+        ray.get(ray.get(actor.value.remote(), timeout=10))
+
+    # Get all actors.
+    actor_infos = ray.actors()
+    actor_infos = actor_infos.get(actor._actor_id.hex())
+    assert actor_infos["State"] == ray.gcs_utils.ActorTableData.PENDING_CREATION
+
+
 def test_placement_group_pack(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
