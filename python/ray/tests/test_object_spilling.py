@@ -323,7 +323,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     print("-----------------------------------")
     # randomly sample objects
     for _ in range(1000):
-        index = random.choice([i for i in range(buffer_length)])
+        index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
@@ -433,7 +433,7 @@ def test_fusion_objects(tmp_path, shutdown_only):
     print("-----------------------------------")
     # randomly sample objects
     for _ in range(1000):
-        index = random.choice([i for i in range(buffer_length)])
+        index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
