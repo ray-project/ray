@@ -10,7 +10,6 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
-
 TF2_GLOBAL_SHARED_LAYER = None
 if tf:
     # The global, shared layer to be used by both models.

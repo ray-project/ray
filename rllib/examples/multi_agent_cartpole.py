@@ -42,7 +42,7 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
+    ray.init(num_cpus=args.num_cpus or None)
 
     # Register the models to use.
     if args.framework == "torch":
@@ -98,9 +98,6 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    from ray.rllib.agents.ppo import PPOTrainer
-    trainer = PPOTrainer(config)
-    trainer.train()#TODO
     results = tune.run("PPO", stop=stop, config=config, verbose=1)
 
     if args.as_test:
