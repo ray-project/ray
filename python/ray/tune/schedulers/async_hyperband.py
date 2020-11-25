@@ -4,6 +4,7 @@ from typing import Dict, Optional, Union
 import numpy as np
 
 from ray.tune import trial_runner
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 
@@ -26,7 +27,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
         metric (str): The training result objective value attribute. Stopping
-            procedures will use this attribute.
+            procedures will use this attribute. If None but a mode was passed,
+            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         max_t (float): max time units per trial. Trials will be stopped after
@@ -102,6 +104,10 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             self._metric_op = 1.
         elif self._mode == "min":
             self._metric_op = -1.
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
         return True
 

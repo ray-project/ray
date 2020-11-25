@@ -147,7 +147,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   virtual ~ServiceBasedNodeInfoAccessor() = default;
 
-  Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
+  Status RegisterSelf(const GcsNodeInfo &local_node_info,
+                      const StatusCallback &callback) override;
 
   Status UnregisterSelf() override;
 
@@ -193,6 +194,9 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
                               const StatusCallback &callback) override;
 
   void AsyncReReportHeartbeat() override;
+
+  /// Fill resource fields with cached resources. Used by light heartbeat.
+  void FillHeartbeatRequest(rpc::ReportHeartbeatRequest &heartbeat);
 
   Status AsyncGetAllHeartbeat(
       const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override;
