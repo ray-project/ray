@@ -29,3 +29,5 @@
 *Java*
 *JNI_*
 *ray*streaming*
+*aligned_free*
+*aligned_malloc*

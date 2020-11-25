@@ -30,7 +30,7 @@ install_clang() {
   if ! command -v "${cc}"; then
     case "${osversion}" in
       linux-gnu-ubuntu*)
-        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 install clang clang-format clang-tidy
+        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 clang clang-format clang-tidy
         ;;
       *)  # Fallback for all platforms is to download from LLVM's site, but avoided until necessary
         local target="./${url##*/}"

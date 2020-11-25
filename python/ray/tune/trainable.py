@@ -391,7 +391,12 @@ class Trainable:
         self._result_logger.flush()
         self._result_logger.close()
 
-        self._create_logger(new_config.copy(), logger_creator)
+        if logger_creator:
+            logger.debug("Logger reset.")
+            self._create_logger(new_config.copy(), logger_creator)
+        else:
+            logger.debug("Did not reset logger. Got: "
+                         f"trainable.reset(logger_creator={logger_creator}).")
 
         stdout_file = new_config.pop(STDOUT_FILE, None)
         stderr_file = new_config.pop(STDERR_FILE, None)
