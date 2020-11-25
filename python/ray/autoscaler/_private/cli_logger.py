@@ -345,7 +345,7 @@ class _CliLogger():
             return self._verbosity
         elif not self.pretty:
             return 999
-        return self._verbosity
+        return 0
 
     def _set_verbosity(self, x):
         self._verbosity = x
