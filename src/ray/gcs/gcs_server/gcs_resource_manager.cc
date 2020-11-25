@@ -38,14 +38,9 @@ const absl::flat_hash_map<NodeID, ResourceSet> &GcsResourceManager::GetClusterRe
 bool GcsResourceManager::AcquireResource(const NodeID &node_id,
                                          const ResourceSet &required_resources) {
   auto iter = cluster_resources_.find(node_id);
-  if (iter == cluster_resources_.end()) {
-    RAY_LOG(INFO) << "Node " << node_id << " not exist.";
-    return false;
-  }
+  //
+  RAY_CHECK(iter != cluster_resources_.end()) << "Node " << node_id << " not exist.";
   if (!required_resources.IsSubset(iter->second)) {
-    RAY_LOG(INFO) << "Attempt to acquire unknown resource: "
-                  << required_resources.ToString()
-                  << ", node resource is: " << iter->second.ToString();
     return false;
   }
   iter->second.SubtractResourcesStrict(required_resources);
@@ -55,11 +50,11 @@ bool GcsResourceManager::AcquireResource(const NodeID &node_id,
 bool GcsResourceManager::ReleaseResource(const NodeID &node_id,
                                          const ResourceSet &acquired_resources) {
   auto iter = cluster_resources_.find(node_id);
-  if (iter == cluster_resources_.end()) {
-    RAY_LOG(INFO) << "Node " << node_id << " not exist.";
-    return false;
+  if (iter != cluster_resources_.end()) {
+    iter->second.AddResources(acquired_resources);
   }
-  iter->second.AddResources(acquired_resources);
+  // If node dead, we will not find the node. This is a normal scenario, so it returns
+  // true.
   return true;
 }
 

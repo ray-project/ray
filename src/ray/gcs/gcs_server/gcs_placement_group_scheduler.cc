@@ -41,14 +41,13 @@ bool GcsScheduleStrategy::IsAvailableResourceSufficient(
     const ResourceSet &to_allocate_resources) const {
   const auto &to_allocate_resource_capacity =
       to_allocate_resources.GetResourceAmountMap();
-  // Check to make sure all keys of this are in other.
   for (const auto &resource_pair : to_allocate_resource_capacity) {
     const auto &resource_name = resource_pair.first;
     const auto &lhs_quantity = resource_pair.second;
     const auto &rhs_quantity = available_resources.GetResource(resource_name) -
                                allocated_resources.GetResource(resource_name);
     if (lhs_quantity > rhs_quantity) {
-      // Resource found in rhs, but lhs capacity exceeds rhs capacity.
+      // lhs capacity exceeds rhs capacity.
       return false;
     }
   }
@@ -86,7 +85,6 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
   for (auto &bundle : bundles) {
     schedule_map[bundle->BundleId()] = candidate_nodes.front().second;
   }
-
   return schedule_map;
 }
 

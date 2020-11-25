@@ -80,14 +80,11 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   std::unordered_map<std::string, double> resource_map;
   resource_map[cpu_resource] = 10;
   ResourceSet resource_set(resource_map);
-  ASSERT_FALSE(
-      gcs_resource_manager_->AcquireResource(NodeID::FromRandom(), resource_set));
   ASSERT_TRUE(gcs_resource_manager_->AcquireResource(node_id, resource_set));
   ASSERT_FALSE(gcs_resource_manager_->AcquireResource(node_id, resource_set));
 
   // Test `ReleaseResource`.
-  ASSERT_FALSE(
-      gcs_resource_manager_->ReleaseResource(NodeID::FromRandom(), resource_set));
+  ASSERT_TRUE(gcs_resource_manager_->ReleaseResource(NodeID::FromRandom(), resource_set));
   ASSERT_TRUE(gcs_resource_manager_->ReleaseResource(node_id, resource_set));
   ASSERT_TRUE(gcs_resource_manager_->AcquireResource(node_id, resource_set));
 }
