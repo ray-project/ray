@@ -1,5 +1,7 @@
 from ray.experimental.client import ray
+
 ray.connect("localhost:50051")
+
 
 @ray.remote
 def plus2(x):
