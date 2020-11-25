@@ -138,8 +138,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                 all_files = self.process.open_files()
                 print("File Descriptors:", len(all_files))
                 if len(all_files) > 50:
-                    import ipdb
-                    ipdb.set_trace()
+                    raise
                 print()
                 return checkpoint
 
