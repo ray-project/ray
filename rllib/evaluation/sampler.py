@@ -191,7 +191,10 @@ class SyncSampler(SamplerInput):
         self.perf_stats = _PerfStats()
         if _use_trajectory_view_api:
             self.sample_collector = _SimpleListCollector(
-                policies, clip_rewards, callbacks, multiple_episodes_in_batch,
+                policies,
+                clip_rewards,
+                callbacks,
+                multiple_episodes_in_batch,
                 rollout_fragment_length,
                 rollout_fragment_unit=rollout_fragment_unit)
         else:
@@ -341,7 +344,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self._use_trajectory_view_api = _use_trajectory_view_api
         if _use_trajectory_view_api:
             self.sample_collector = _SimpleListCollector(
-                policies, clip_rewards, callbacks, multiple_episodes_in_batch,
+                policies,
+                clip_rewards,
+                callbacks,
+                multiple_episodes_in_batch,
                 rollout_fragment_length,
                 rollout_fragment_unit=rollout_fragment_unit)
         else:

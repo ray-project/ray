@@ -539,7 +539,11 @@ class TestRolloutWorker(unittest.TestCase):
         batch = ev_agent_steps.sample()
         self.assertTrue(isinstance(batch, MultiAgentBatch))
         self.assertLess(batch.env_steps(), 301)
-        self.assertEqual(batch.agent_steps(), 301)
+        # When counting agent steps, the count may be slightly larger than
+        # rollout_fragment_length, b/c we have up to N agents stepping in each
+        # env step and we only check, whether we should build after each env
+        # step.
+        self.assertGreaterEqual(batch.agent_steps(), 301)
         ev_agent_steps.stop()
 
     def test_complete_episodes(self):

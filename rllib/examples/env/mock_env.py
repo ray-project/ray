@@ -7,6 +7,7 @@ class MockEnv(gym.Env):
     Observation=0, reward=1.0, episode-len is configurable.
     Actions are ignored.
     """
+
     def __init__(self, episode_length, config=None):
         self.episode_length = episode_length
         self.config = config
@@ -29,6 +30,7 @@ class MockEnv2(gym.Env):
     Observation=ts (discrete space!), reward=100.0, episode-len is
     configurable. Actions are ignored.
     """
+
     def __init__(self, episode_length):
         self.episode_length = episode_length
         self.i = 0
@@ -42,4 +44,3 @@ class MockEnv2(gym.Env):
     def step(self, action):
         self.i += 1
         return self.i, 100.0, self.i >= self.episode_length, {}
-

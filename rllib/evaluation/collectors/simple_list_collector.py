@@ -208,7 +208,6 @@ class _PolicyCollector:
         # NOTE: This is not an env-step count (across n agents). AgentA and
         # agentB, both using this policy, acting in the same episode and both
         # doing n steps would increase the count by 2*n.
-        #self.env_steps = 0
         self.agent_steps = 0
 
     def add_postprocessed_batch_for_training(
@@ -335,13 +334,15 @@ class _SimpleListCollector(_SampleCollector):
         assert episode.batch_builder is not None
         env_steps = episode.batch_builder.env_steps
         num_individual_observations = sum(
-            c.agent_steps for c in episode.batch_builder.policy_collectors.values())
+            c.agent_steps
+            for c in episode.batch_builder.policy_collectors.values())
 
         if num_individual_observations > self.large_batch_threshold and \
                 log_once("large_batch_warning"):
             logger.warning(
                 "More than {} observations in {} env steps for "
-                "episode {} ".format(num_individual_observations, env_steps, episode_id) +
+                "episode {} ".format(num_individual_observations, env_steps,
+                                     episode_id) +
                 "are buffered in the sampler. If this is more than you "
                 "expected, check that that you set a horizon on your "
                 "environment correctly and that it terminates at some point. "
@@ -410,9 +411,19 @@ class _SimpleListCollector(_SampleCollector):
             self._add_to_next_inference_call(agent_key)
 
     @override(_SampleCollector)
-    #TODO: rename this into total_agent_steps?
     def total_env_steps(self) -> int:
-        return sum(a.agent_steps for a in self.agent_collectors.values())
+        # Add the non-built ongoing-episode env steps + the already built
+        # env-steps.
+        return sum(self.episode_steps.values()) + sum(
+            pg.env_steps for pg in self.policy_collector_groups.values())
+
+    @override(_SampleCollector)
+    def total_agent_steps(self) -> int:
+        # Add the non-built ongoing-episode agent steps (still in the agent
+        # collectors) + the already built agent steps.
+        return sum(a.agent_steps for a in self.agent_collectors.values()) + \
+               sum(pg.agent_steps for pg in
+                   self.policy_collector_groups.values())
 
     @override(_SampleCollector)
     def get_inference_input_dict(self, policy_id: PolicyID) -> \
@@ -446,12 +457,12 @@ class _SimpleListCollector(_SampleCollector):
         return input_dict
 
     @override(_SampleCollector)
-    def postprocess_episode(self,
-                            episode: MultiAgentEpisode,
-                            is_done: bool = False,
-                            check_dones: bool = False,
-                            build: bool = False
-                            ) -> Union[None, SampleBatch, MultiAgentBatch]:
+    def postprocess_episode(
+            self,
+            episode: MultiAgentEpisode,
+            is_done: bool = False,
+            check_dones: bool = False,
+            build: bool = False) -> Union[None, SampleBatch, MultiAgentBatch]:
         episode_id = episode.episode_id
         policy_collector_group = episode.batch_builder
 
@@ -570,8 +581,7 @@ class _SimpleListCollector(_SampleCollector):
                 ma_batch[pid] = collector.build()
         # Create the batch.
         ma_batch = MultiAgentBatch.wrap_as_needed(
-            ma_batch,
-            env_steps=episode.batch_builder.env_steps)
+            ma_batch, env_steps=episode.batch_builder.env_steps)
 
         # PolicyCollectorGroup is empty.
         episode.batch_builder.env_steps = 0

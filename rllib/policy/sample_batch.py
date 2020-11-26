@@ -508,9 +508,9 @@ class MultiAgentBatch:
 
     @staticmethod
     @PublicAPI
-    def wrap_as_needed(policy_batches: Dict[PolicyID, SampleBatch],
-                       env_steps: int) -> \
-        Union[SampleBatch, "MultiAgentBatch"]:
+    def wrap_as_needed(
+            policy_batches: Dict[PolicyID, SampleBatch],
+            env_steps: int) -> Union[SampleBatch, "MultiAgentBatch"]:
         """Returns SampleBatch or MultiAgentBatch, depending on given policies.
 
         Args:

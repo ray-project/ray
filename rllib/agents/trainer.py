@@ -1072,16 +1072,17 @@ class Trainer(Trainable):
                 "`input_evaluation` must be a list of strings, got {}".format(
                     config["input_evaluation"]))
 
-        if config["batch_mode"] not in ["truncate_episodes",
-                                        "complete_episodes"]:
-            raise ValueError(
-                "`batch_mode` must be one of [truncate_episodes|"
-                "complete_episodes]! Got {}".format(config["batch_mode"]))
+        if config["batch_mode"] not in [
+                "truncate_episodes", "complete_episodes"
+        ]:
+            raise ValueError("`batch_mode` must be one of [truncate_episodes|"
+                             "complete_episodes]! Got {}".format(
+                                 config["batch_mode"]))
 
         if config["rollout_fragment_unit"] not in ["env_steps", "agent_steps"]:
             raise ValueError(
-                "`rollout_fragment_unit` must be one of [env_steps|agent_steps]! "
-                "Got {}".format(config["rollout_fragment_unit"]))
+                "`rollout_fragment_unit` must be one of [env_steps|"
+                "agent_steps]! Got {}".format(config["rollout_fragment_unit"]))
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
