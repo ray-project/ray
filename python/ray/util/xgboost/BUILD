@@ -3,7 +3,7 @@
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
-    name = "example",
+    name = "simple_example",
     size = "small",
     srcs = ["simple_example.py"],
     deps = [":xgb_lib"],
