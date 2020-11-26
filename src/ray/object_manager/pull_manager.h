@@ -45,6 +45,12 @@ class PullManager {
   int NumRequests() const;
 
  private:
+  struct PullRequest {
+    PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
+    std::unique_ptr<boost::asio::deadline_timer> retry_timer;
+    bool timer_set;
+    std::vector<NodeID> client_locations;
+  };
   NodeID self_node_id_;
 
   const std::function<bool(const ObjectID &)> object_is_local_;
