@@ -564,13 +564,14 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
-                shift=1,
+                data_rel_pos=1,
                 space=self.observation_space),
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
             SampleBatch.REWARDS: ViewRequirement(),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
+            SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
             "t": ViewRequirement(),
         }
@@ -616,7 +617,7 @@ class Policy(metaclass=ABCMeta):
         batch_for_postproc.count = self._dummy_batch.count
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
-            B = 4  # For RNNs, have B=2, T=[depends on sample_batch_size]
+            B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
             # TODO: (sven) This hack will not work for attention net traj.
             #  view setup.
             i = 0
@@ -656,7 +657,8 @@ class Policy(metaclass=ABCMeta):
                 # Tag those only needed for post-processing.
                 for key in batch_for_postproc.accessed_keys:
                     if key not in train_batch.accessed_keys and \
-                            key in self.view_requirements:
+                            key in self.view_requirements and \
+                            key not in self.model.inference_view_requirements:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
@@ -679,18 +681,6 @@ class Policy(metaclass=ABCMeta):
                                 "postprocessing function.".format(key))
                         else:
                             del self.view_requirements[key]
-            # Add those data_cols (again) that are missing and have
-            # dependencies by view_cols.
-            for key in list(self.view_requirements.keys()):
-                vr = self.view_requirements[key]
-                if vr.data_col is not None and \
-                        vr.data_col not in self.view_requirements:
-                    used_for_training = \
-                        vr.data_col in train_batch.accessed_keys
-                    self.view_requirements[vr.data_col] = \
-                        ViewRequirement(
-                            space=vr.space,
-                            used_for_training=used_for_training)
 
     def _get_dummy_batch_from_view_requirements(
             self, batch_size: int = 1) -> SampleBatch:
@@ -726,7 +716,7 @@ class Policy(metaclass=ABCMeta):
             model.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
-                    shift=-1,
+                    data_rel_pos=-1,
                     space=Box(-1.0, 1.0, shape=state.shape))
             model.inference_view_requirements["state_out_{}".format(i)] = \
                 ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))
