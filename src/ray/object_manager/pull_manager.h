@@ -36,7 +36,11 @@ class PullManager {
       const std::function<int(int)> &get_rand_int,
       const RestoreSpilledObjectCallback &restore_spilled_object);
 
-  Status Pull(const ObjectID &object_id, const rpc::Address &owner_address);
+  bool Pull(const ObjectID &object_id, const rpc::Address &owner_address);
+
+  void OnLocationChange(const ObjectID &object_id,
+                        const std::unordered_set<NodeID> &client_ids,
+                        const std::string &spilled_url);
 
   void Tick();
 

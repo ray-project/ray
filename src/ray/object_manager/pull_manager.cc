@@ -22,66 +22,59 @@ PullManager::PullManager(
       get_rand_int_(get_rand_int),
       restore_spilled_object_(restore_spilled_object) {}
 
-Status PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
+bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Pull "
                  << " of object " << object_id;
   // Check if object is already local.
   if (local_objects_->count(object_id) != 0) {
     RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
-    return ray::Status::OK();
+    return false;
   }
   if (pull_requests_->find(object_id) != pull_requests_->end()) {
     RAY_LOG(DEBUG) << object_id << " has inflight pull_requests, skipping.";
-    return ray::Status::OK();
+    return false;
   }
 
   pull_requests_->emplace(object_id, PullRequest());
+  return true;
+}
 
-  const auto &callback = [this](const ObjectID &object_id,
-                                const std::unordered_set<NodeID> &client_ids,
-                                const std::string &spilled_url) {
-    // Exit if the Pull request has already been fulfilled or canceled.
-    auto it = pull_requests_->find(object_id);
-    if (it == pull_requests_->end()) {
-      return;
+void PullManager::OnLocationChange(const ObjectID &object_id,
+                                   const std::unordered_set<NodeID> &client_ids,
+                                   const std::string &spilled_url) {
+  // Exit if the Pull request has already been fulfilled or canceled.
+  auto it = pull_requests_->find(object_id);
+  if (it == pull_requests_->end()) {
+    return;
+  }
+  // Reset the list of clients that are now expected to have the object.
+  // NOTE(swang): Since we are overwriting the previous list of clients,
+  // we may end up sending a duplicate request to the same client as
+  // before.
+  it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
+  if (!spilled_url.empty()) {
+    // Try to restore the spilled object.
+    restore_spilled_object_(object_id, spilled_url,
+                            [this, object_id](const ray::Status &status) {
+                              // Fall back to fetching from another object manager.
+                              if (!status.ok()) {
+                                TryPull(object_id);
+                              }
+                            });
+  } else if (it->second.client_locations.empty()) {
+    // The object locations are now empty, so we should wait for the next
+    // notification about a new object location.  Cancel the timer until
+    // the next Pull attempt since there are no more clients to try.
+    if (it->second.retry_timer != nullptr) {
+      it->second.retry_timer->cancel();
+      it->second.timer_set = false;
     }
-    // Reset the list of clients that are now expected to have the object.
-    // NOTE(swang): Since we are overwriting the previous list of clients,
-    // we may end up sending a duplicate request to the same client as
-    // before.
-    it->second.client_locations =
-        std::vector<NodeID>(client_ids.begin(), client_ids.end());
-    if (!spilled_url.empty()) {
-      // Try to restore the spilled object.
-      restore_spilled_object_(object_id, spilled_url,
-                              [this, object_id](const ray::Status &status) {
-                                // Fall back to fetching from another object manager.
-                                if (!status.ok()) {
-                                  TryPull(object_id);
-                                }
-                              });
-    } else if (it->second.client_locations.empty()) {
-      // The object locations are now empty, so we should wait for the next
-      // notification about a new object location.  Cancel the timer until
-      // the next Pull attempt since there are no more clients to try.
-      if (it->second.retry_timer != nullptr) {
-        it->second.retry_timer->cancel();
-        it->second.timer_set = false;
-      }
-    } else {
-      // New object locations were found, so begin trying to pull from a
-      // client. This will be called every time a new client location
-      // appears.
-      TryPull(object_id);
-    }
-  };
-
-  // Subscribe to object notifications. A notification will be received every
-  // time the set of client IDs for the object changes. Notifications will also
-  // be received if the list of locations is empty. The set of client IDs has
-  // no ordering guarantee between notifications.
-  return object_directory_->SubscribeObjectLocations(object_directory_pull_callback_id_,
-                                                     object_id, owner_address, callback);
+  } else {
+    // New object locations were found, so begin trying to pull from a
+    // client. This will be called every time a new client location
+    // appears.
+    TryPull(object_id);
+  }
 }
 
 void PullManager::TryPull(const ObjectID &object_id) {
