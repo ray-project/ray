@@ -14,7 +14,8 @@ import warnings
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.constants import \
                                      DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,\
-                                     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+                                     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION, \
+                                     NODE_START_WAIT_S
 from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
@@ -33,7 +34,6 @@ from ray.autoscaler._private.constants import RAY_HOME
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
-NODE_START_WAIT_S = 300
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
