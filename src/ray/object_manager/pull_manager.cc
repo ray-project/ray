@@ -126,4 +126,14 @@ void PullManager::TryPull(const ObjectID &object_id) {
                  << " of object " << object_id;
 }
 
+bool PullManager::CancelPull(const ObjectID &object_id) {
+  auto it = pull_requests_->find(object_id);
+  if (it == pull_requests_->end()) {
+    return false;
+  }
+
+  pull_requests_->erase(it);
+  return true;
+}
+
 }  // namespace ray

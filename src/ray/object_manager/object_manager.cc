@@ -424,14 +424,13 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
 }
 
 void ObjectManager::CancelPull(const ObjectID &object_id) {
-  auto it = pull_requests_.find(object_id);
-  if (it == pull_requests_.end()) {
+  if (!pull_manager_->CancelPull(object_id)) {
+    // We weren't tracking a pull request for this object, so there is nothing to cancel.
     return;
   }
 
   RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id));
-  pull_requests_.erase(it);
 }
 
 ray::Status ObjectManager::Wait(

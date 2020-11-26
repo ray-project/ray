@@ -42,6 +42,8 @@ class PullManager {
                         const std::unordered_set<NodeID> &client_ids,
                         const std::string &spilled_url);
 
+  bool CancelPull(const ObjectID &object_id);
+
   void Tick();
 
  private:
