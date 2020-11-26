@@ -10,7 +10,7 @@ Easily take your existing ``LightningModule``, and use it with Ray SGD's ``Torch
 
 .. tip:: This LightningModule integration is currently under active development. If you encounter any bugs, please raise an issue on `Github <https://github.com/ray-project/ray/issues>`_!
 
-.. note:: Not all Pytorch Lightning features are supported. A full list of unsupported model hooks is listed down :ref:`below <_ptl-unsupported-features>`. Please post any feature requests on `Github <https://github.com/ray-project/ray/issues>`_ and we will get to it shortly!
+.. note:: Not all Pytorch Lightning features are supported. A full list of unsupported model hooks is listed down :ref:`below <ptl-unsupported-features>`. Please post any feature requests on `Github <https://github.com/ray-project/ray/issues>`_ and we will get to it shortly!
 
 .. contents::
     :local:
@@ -45,7 +45,7 @@ Step 3: Use the Operator with Ray SGD's ``TorchTrainer``, just like how you woul
     trainer = TorchTrainer(training_operator_cls=MyLightningOperator, num_workers=4, use_gpu=True)
     train_stats = trainer.train()
 
-And that's it! For a more comprehensive guide, see the MNIST tutorial below :ref:`below <_ptl-mnist>`.
+And that's it! For a more comprehensive guide, see the MNIST tutorial :ref:`below <ptl-mnist>`.
 
 .. _ptl-mnist:
 
