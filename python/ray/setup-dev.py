@@ -16,7 +16,7 @@ def do_link(package, force=False, local_path=""):
         os.path.join(__file__, local_path + f"../{package}"))
     if not os.path.isdir(package_home):
         print(f"{package_home} does not exist. Continuing to link.")
-    assert os.path.isdir(local_home), local_home
+    assert os.path.exists(local_home), local_home
     if not force and not click.confirm(
             f"This will replace:\n  {package_home}\nwith "
             f"a symlink to:\n  {local_home}",
