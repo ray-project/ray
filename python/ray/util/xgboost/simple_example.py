@@ -3,6 +3,7 @@ from sklearn.model_selection import train_test_split
 
 from ray.util.xgboost import RayDMatrix, train
 
+
 # __xgboost_begin__
 def main():
     # Load dataset
@@ -37,8 +38,9 @@ def main():
     bst.save_model("simple.xgb")
     print("Final validation error: {:.4f}".format(
         evals_result["eval"]["error"][-1]))
-# __xgboost_end__
 
+
+# __xgboost_end__
 
 if __name__ == "__main__":
     main()
