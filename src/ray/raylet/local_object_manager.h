@@ -65,13 +65,22 @@ class LocalObjectManager {
   void WaitForObjectFree(const rpc::Address &owner_address,
                          const std::vector<ObjectID> &object_ids);
 
-  /// Asynchronously spill objects whose total size adds up to at least the
-  /// specified number of bytes.
+  /// Asynchronously spill objects when space is needed.
+  /// The callback tries to spill objects as much as num_bytes_to_spill and returns
+  /// the amount of space needed after the spilling is complete.
+  /// The returned value is calculated based off of min_bytes_to_spill. That says,
+  /// although it fails to spill num_bytes_to_spill, as long as it spills more than
+  /// min_bytes_to_spill, it will return the value that is less than 0 (meaning we
+  /// don't need any more additional space).
   ///
-  /// \param num_bytes_to_spill The total number of bytes to spill.
-  /// \return The number of bytes of space still required after the spill is
-  /// complete.
-  int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill);
+  /// \param num_bytes_to_spill The total number of bytes to spill. The method tries to
+  /// spill bytes as much as this value.
+  /// \param min_bytes_to_spill The minimum bytes that
+  /// need to be spilled.
+  /// \return The number of bytes of space still required after the
+  /// spill is complete. This return the value is less than 0 if it satifies the
+  /// min_bytes_to_spill.
+  int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill, int64_t min_bytes_to_spill);
 
   /// Spill objects to external storage.
   ///
