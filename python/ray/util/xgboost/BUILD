@@ -5,7 +5,7 @@
 py_test(
     name = "example",
     size = "small",
-    srcs = ["simple.py"],
+    srcs = ["simple_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
