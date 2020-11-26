@@ -143,6 +143,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             rollout_fragment_length: int = 100,
+            rollout_fragment_unit: str = "env_steps",
             batch_mode: str = "truncate_episodes",
             episode_horizon: int = None,
             preprocessor_pref: str = "deepmind",
@@ -207,8 +208,11 @@ class RolloutWorker(ParallelIteratorWorker):
             tf_session_creator (Optional[Callable[[], tf1.Session]]): A
                 function that returns a TF session. This is optional and only
                 useful with TFPolicy.
-            rollout_fragment_length (int): The target number of env transitions
-                to include in each sample batch returned from this worker.
+            rollout_fragment_length (int): The target number of steps
+                (maesured in `rollout_fragment_unit`) to include in each sample
+                batch returned from this worker.
+            rollout_fragment_unit (str): The unit in which to count fragment
+                lengths. One of env_steps or agent_steps.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
                     of at most `rollout_fragment_length * num_envs` in size.
@@ -350,6 +354,7 @@ class RolloutWorker(ParallelIteratorWorker):
             raise ValueError("Policy mapping function not callable?")
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
+        self.rollout_fragment_unit: str = rollout_fragment_unit
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = True
@@ -556,6 +561,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
+                rollout_fragment_unit=rollout_fragment_unit,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
@@ -579,6 +585,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
+                rollout_fragment_unit=rollout_fragment_unit,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
