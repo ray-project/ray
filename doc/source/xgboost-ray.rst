@@ -84,6 +84,38 @@ Example loading multiple parquet files:
         filetype=RayFileType.PARQUET)
 
 
+Hyperparameter Tuning
+---------------------
+``xgboost_ray`` integrates with Ray Tune (:ref:`tune-main`) to provide distributed hyperparameter tuning for your
+distributed XGBoost models. You can run multiple ``xgboost_ray`` training runs in parallel, each with a different
+hyperparameter configuration, with each individual training run parallelized.
+
+First, move your training code into a function. This function should take in a ``config`` argument which specifies the
+hyperparameters for the xgboost model.
+
+.. literalinclude:: /../../python/ray/util/xgboost/simple_tune.py
+   :language: python
+   :start-after:  __train_begin__
+   :end-before:  __train_end__
+
+Then, you import tune and use tune's search primitives to define a hyperparameter search space.
+
+.. literalinclude:: /../../python/ray/util/xgboost/simple_tune.py
+   :language: python
+   :start-after:  __tune_begin__
+   :end-before:  __tune_end__
+
+Finally, you call ``tune.run`` passing in the training function and the ``config``. Internally, tune will resolve the
+hyperparameter search space and invoke the training function multiple times, each with different hyperparameters.
+
+.. literalinclude:: /../../python/ray/util/xgboost/simple_tune.py
+   :language: python
+   :start-after:  __tune_run_begin__
+   :end-before:  __tune_run_end__
+
+Make sure you set the ``extra_cpu`` field appropriately so tune is aware of the total number of resources each trial
+requires.
+
 
 Resources
 ---------
@@ -106,6 +138,7 @@ Fore complete end to end examples, please have a look at
 the `examples folder <https://github.com/ray-project/xgboost_ray/tree/master/examples/>`__:
 
 * `Simple sklearn breastcancer dataset example <https://github.com/ray-project/xgboost_ray/tree/master/examples/simple.py>`__ (requires `sklearn`)
+* `Simple sklearn breastcancer dataset example with Ray Tune <ttps://github.com/ray-project/xgboost_ray/tree/master/examples/simple_tune.py>`__ (requires `sklearn`)
 * `HIGGS classification example <https://github.com/ray-project/xgboost_ray/tree/master/examples/higgs.py>`__
   * `[download dataset (2.6 GB)] <https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz>`__
 * `HIGGS classification example with Parquet <https://github.com/ray-project/xgboost_ray/tree/master/examples/higgs_parquet.py>`__ (uses the same dataset)

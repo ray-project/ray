@@ -10,6 +10,14 @@ py_test(
     tags = ["exclusive"],
 )
 
+py_test(
+    name = "simple_tune",
+    size="small",
+    srcs = ["simple_tune.py"],
+    deps = [":xgb_lib"],
+    tags = ["exlcusive"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
