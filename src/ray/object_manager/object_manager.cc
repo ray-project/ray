@@ -81,9 +81,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
     std::uniform_int_distribution<int> distribution(0, upper_bound - 1);
     return distribution(gen_);
   };
-  pull_manager_.reset(new PullManager(self_node_id_,
-                                      object_is_local, send_pull_request, get_rand_int,
-                                      restore_spilled_object_));
+  pull_manager_.reset(new PullManager(self_node_id_, object_is_local, send_pull_request,
+                                      get_rand_int, restore_spilled_object_));
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),

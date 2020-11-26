@@ -3,17 +3,17 @@
 namespace ray {
 
 PullManager::PullManager(
-    NodeID &self_node_id,
-    const std::function<bool(const ObjectID &)> &object_is_local,
-    const std::function<void(const ObjectID &, const NodeID &)> &send_pull_request,
-    const std::function<int(int)> &get_rand_int,
-    const RestoreSpilledObjectCallback &restore_spilled_object)
-
+    NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
+    const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+    const std::function<int(int)> get_rand_int,
+    const RestoreSpilledObjectCallback restore_spilled_object)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       get_rand_int_(get_rand_int),
-      restore_spilled_object_(restore_spilled_object) {}
+      restore_spilled_object_(restore_spilled_object) {
+  object_is_local(ObjectID::FromRandom());
+}
 
 bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Pull "
@@ -117,6 +117,7 @@ void PullManager::TryPull(const ObjectID &object_id) {
 
   RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
                  << " of object " << object_id;
+  send_pull_request_(object_id, node_id);
 }
 
 bool PullManager::CancelPull(const ObjectID &object_id) {

@@ -27,11 +27,10 @@ namespace ray {
 class PullManager {
  public:
   PullManager(
-              NodeID &self_node_id,
-      const std::function<bool(const ObjectID &)> &object_is_local,
-      const std::function<void(const ObjectID &, const NodeID &)> &send_pull_request,
-      const std::function<int(int)> &get_rand_int,
-      const RestoreSpilledObjectCallback &restore_spilled_object);
+      NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
+      const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+      const std::function<int(int)> get_rand_int,
+      const RestoreSpilledObjectCallback restore_spilled_object);
 
   bool Pull(const ObjectID &object_id, const rpc::Address &owner_address);
 
@@ -47,11 +46,9 @@ class PullManager {
 
  private:
   NodeID self_node_id_;
-  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
 
-  UniqueID object_directory_pull_callback_id_;
+  const std::function<bool(const ObjectID &)> object_is_local_;
 
-  const std::function<bool(const ObjectID &)> &object_is_local_;
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
@@ -59,7 +56,6 @@ class PullManager {
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
 
   const std::function<int(int)> get_rand_int_;
-
 
   const RestoreSpilledObjectCallback restore_spilled_object_;
 
