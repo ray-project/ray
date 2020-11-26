@@ -302,8 +302,8 @@ message PlacementGroupLoad {
 }
 
 message HeartbeatTableData {
-  // Node manager client id
-  bytes client_id = 1;
+  // Node id.
+  bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
   // Indicates whether avaialbe resources is changed. Only used when
@@ -323,8 +323,8 @@ message HeartbeatTableData {
 }
 
 message ResourcesData {
-  // Node manager client id
-  bytes client_id = 1;
+  // Node id.
+  bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
   // Indicates whether avaialbe resources is changed. Only used when

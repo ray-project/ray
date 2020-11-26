@@ -329,18 +329,18 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
-void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,
+void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id_string,
                                                       const std::string &resource_name,
                                                       double resource_total) {
-  int64_t client_id = string_to_int_map_.Get(client_id_string);
+  int64_t node_id = string_to_int_map_.Get(node_id_string);
 
-  auto it = nodes_.find(client_id);
+  auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
     node_resources.predefined_resources.resize(PredefinedResources_MAX);
-    client_id = string_to_int_map_.Insert(client_id_string);
-    RAY_CHECK(nodes_.emplace(client_id, node_resources).second);
-    it = nodes_.find(client_id);
+    node_id = string_to_int_map_.Insert(node_id_string);
+    RAY_CHECK(nodes_.emplace(node_id, node_resources).second);
+    it = nodes_.find(node_id);
     RAY_CHECK(it != nodes_.end());
   }
 
@@ -387,10 +387,10 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
   }
 }
 
-void ClusterResourceScheduler::DeleteResource(const std::string &client_id_string,
+void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
                                               const std::string &resource_name) {
-  int64_t client_id = string_to_int_map_.Get(client_id_string);
-  auto it = nodes_.find(client_id);
+  int64_t node_id = string_to_int_map_.Get(node_id_string);
+  auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return;
   }

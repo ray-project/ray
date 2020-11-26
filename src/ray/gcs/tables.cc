@@ -137,7 +137,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
+Status Log<ID, Data>::Subscribe(const JobID &job_id, const NodeID &node_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribe_wrapper = [subscribe](RedisGcsClient *client, const ID &id,
@@ -146,11 +146,11 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
     RAY_CHECK(change_mode != GcsChangeMode::REMOVE);
     subscribe(client, id, data);
   };
-  return Subscribe(job_id, client_id, subscribe_wrapper, done);
+  return Subscribe(job_id, node_id, subscribe_wrapper, done);
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
+Status Log<ID, Data>::Subscribe(const JobID &job_id, const NodeID &node_id,
                                 const NotificationCallback &subscribe,
                                 const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
@@ -184,7 +184,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
 
   subscribe_callback_index_ = 1;
   for (auto &context : shard_contexts_) {
-    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback,
+    RAY_RETURN_NOT_OK(context->SubscribeAsync(node_id, pubsub_channel_, callback,
                                               &subscribe_callback_index_));
   }
   return Status::OK();
@@ -192,7 +192,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
-                                           const NodeID &client_id,
+                                           const NodeID &node_id,
                                            const StatusCallback &done) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
@@ -208,13 +208,13 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
   }
 
   return GetRedisContext(id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id,
-                                       client_id.Data(), client_id.Size(), prefix_,
+                                       node_id.Data(), node_id.Size(), prefix_,
                                        pubsub_channel_, callback);
 }
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
-                                          const NodeID &client_id,
+                                          const NodeID &node_id,
                                           const StatusCallback &done) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
@@ -228,7 +228,7 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
   }
 
   return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id,
-                                       client_id.Data(), client_id.Size(), prefix_,
+                                       node_id.Data(), node_id.Size(), prefix_,
                                        pubsub_channel_, callback);
 }
 
@@ -315,12 +315,12 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
+Status Table<ID, Data>::Subscribe(const JobID &job_id, const NodeID &node_id,
                                   const Callback &subscribe,
                                   const FailureCallback &failure,
                                   const SubscriptionCallback &done) {
   return Log<ID, Data>::Subscribe(
-      job_id, client_id,
+      job_id, node_id,
       [subscribe, failure](RedisGcsClient *client, const ID &id,
                            const std::vector<Data> &data) {
         RAY_CHECK(data.empty() || data.size() == 1);
@@ -336,10 +336,10 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
+Status Table<ID, Data>::Subscribe(const JobID &job_id, const NodeID &node_id,
                                   const Callback &subscribe,
                                   const SubscriptionCallback &done) {
-  return Subscribe(job_id, client_id, subscribe, /*failure*/ nullptr, done);
+  return Subscribe(job_id, node_id, subscribe, /*failure*/ nullptr, done);
 }
 
 template <typename ID, typename Data>
@@ -379,7 +379,7 @@ Status Set<ID, Data>::Remove(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Set<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
+Status Set<ID, Data>::Subscribe(const JobID &job_id, const NodeID &node_id,
                                 const NotificationCallback &subscribe,
                                 const SubscriptionCallback &done) {
   auto on_subscribe = [subscribe](RedisGcsClient *client, const ID &id,
@@ -390,7 +390,7 @@ Status Set<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
     notification_vec.emplace_back(std::move(change_notification));
     subscribe(client, id, notification_vec);
   };
-  return Log<ID, Data>::Subscribe(job_id, client_id, on_subscribe, done);
+  return Log<ID, Data>::Subscribe(job_id, node_id, on_subscribe, done);
 }
 
 template <typename ID, typename Data>
@@ -481,7 +481,7 @@ Status Hash<ID, Data>::Lookup(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Hash<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
+Status Hash<ID, Data>::Subscribe(const JobID &job_id, const NodeID &node_id,
                                  const HashNotificationCallback &subscribe,
                                  const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
@@ -526,7 +526,7 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
 
   subscribe_callback_index_ = 1;
   for (auto &context : shard_contexts_) {
-    RAY_RETURN_NOT_OK(context->SubscribeAsync(client_id, pubsub_channel_, callback,
+    RAY_RETURN_NOT_OK(context->SubscribeAsync(node_id, pubsub_channel_, callback,
                                               &subscribe_callback_index_));
   }
   return Status::OK();
@@ -725,7 +725,7 @@ std::string ClientTable::DebugString() const {
   return result.str();
 }
 
-Status TaskLeaseTable::Subscribe(const JobID &job_id, const NodeID &client_id,
+Status TaskLeaseTable::Subscribe(const JobID &job_id, const NodeID &node_id,
                                  const Callback &subscribe,
                                  const SubscriptionCallback &done) {
   auto on_subscribe = [subscribe](RedisGcsClient *client, const TaskID &task_id,
@@ -741,7 +741,7 @@ Status TaskLeaseTable::Subscribe(const JobID &job_id, const NodeID &client_id,
     }
     subscribe(client, task_id, result);
   };
-  return Table<TaskID, TaskLeaseData>::Subscribe(job_id, client_id, on_subscribe, done);
+  return Table<TaskID, TaskLeaseData>::Subscribe(job_id, node_id, on_subscribe, done);
 }
 
 std::vector<ActorID> SyncGetAllActorID(redisContext *redis_context,

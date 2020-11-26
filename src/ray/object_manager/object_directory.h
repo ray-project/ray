@@ -29,13 +29,13 @@ namespace ray {
 
 /// Connection information for remote object managers.
 struct RemoteConnectionInfo {
-  RemoteConnectionInfo(const NodeID &id) : client_id(id) {}
+  RemoteConnectionInfo(const NodeID &id) : node_id(id) {}
 
   // Returns whether there is enough information to connect to the remote
   // object manager.
   bool Connected() const { return !ip.empty(); }
 
-  NodeID client_id;
+  NodeID node_id;
   std::string ip;
   uint16_t port;
 };
@@ -76,8 +76,8 @@ class ObjectDirectoryInterface {
   /// locations of all subscribed objects that have the removed client as a
   /// location, and fires the subscribed callbacks for those objects.
   ///
-  /// \param client_id The object manager client that was removed.
-  virtual void HandleClientRemoved(const NodeID &client_id) = 0;
+  /// \param node_id The object manager client that was removed.
+  virtual void HandleClientRemoved(const NodeID &node_id) = 0;
 
   /// Subscribe to be notified of locations (NodeID) of the given object.
   /// The callback will be invoked with the complete list of known locations
@@ -110,21 +110,21 @@ class ObjectDirectoryInterface {
   /// Report objects added to this node's store to the object directory.
   ///
   /// \param object_id The object id that was put into the store.
-  /// \param client_id The client id corresponding to this node.
+  /// \param node_id The client id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const NodeID &client_id,
+      const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) = 0;
 
   /// Report objects removed from this client's store to the object directory.
   ///
   /// \param object_id The object id that was removed from the store.
-  /// \param client_id The client id corresponding to this node.
+  /// \param node_id The client id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const NodeID &client_id,
+      const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) = 0;
 
   /// Returns debug string for class.
@@ -155,7 +155,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                               const rpc::Address &owner_address,
                               const OnLocationsFound &callback) override;
 
-  void HandleClientRemoved(const NodeID &client_id) override;
+  void HandleClientRemoved(const NodeID &node_id) override;
 
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
@@ -165,10 +165,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                                          const ObjectID &object_id) override;
 
   ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const NodeID &client_id,
+      const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const NodeID &client_id,
+      const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
 
   std::string DebugString() const override;

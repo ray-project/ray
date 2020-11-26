@@ -69,9 +69,9 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
     locations_[object_id] = locations;
   }
 
-  void HandleClientRemoved(const NodeID &client_id) override {
+  void HandleClientRemoved(const NodeID &node_id) override {
     for (auto &locations : locations_) {
-      locations.second.erase(client_id);
+      locations.second.erase(node_id);
     }
   }
 
@@ -321,8 +321,8 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
   TaskID task_id = ForNormalTask();
   ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
-  NodeID client_id = NodeID::FromRandom();
-  mock_object_directory_->SetObjectLocations(object_id, {client_id});
+  NodeID node_id = NodeID::FromRandom();
+  mock_object_directory_->SetObjectLocations(object_id, {node_id});
 
   // Listen for both objects.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
@@ -333,7 +333,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
   ASSERT_EQ(reconstructed_tasks_[task_id], 0);
 
   // Simulate evicting one of the objects.
-  mock_object_directory_->HandleClientRemoved(client_id);
+  mock_object_directory_->HandleClientRemoved(node_id);
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered, since one of the objects was

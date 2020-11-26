@@ -141,28 +141,28 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
   /// \param owner_address The address of the object's owner
-  /// \param client_id The id of the receiver.
+  /// \param node_id The id of the receiver.
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
   /// \param rpc_client Rpc client used to send message to remote object manager
   /// \param on_complete Callback to run on completion.
   void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
-                       const rpc::Address &owner_address, const NodeID &client_id,
+                       const rpc::Address &owner_address, const NodeID &node_id,
                        uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
                        std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
                        std::function<void(const Status &)> on_complete);
 
   /// Receive object chunk from remote object manager, small object may contain one chunk
   ///
-  /// \param client_id Client id of remote object manager which sends this chunk
+  /// \param node_id Node id of remote object manager which sends this chunk
   /// \param object_id Object id
   /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
   /// \param data Chunk data
-  ray::Status ReceiveObjectChunk(const NodeID &client_id, const ObjectID &object_id,
+  ray::Status ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
                                  const rpc::Address &owner_address, uint64_t data_size,
                                  uint64_t metadata_size, uint64_t chunk_index,
                                  const std::string &data);
@@ -170,14 +170,14 @@ class ObjectManager : public ObjectManagerInterface,
   /// Send pull request
   ///
   /// \param object_id Object id
-  /// \param client_id Remote server client id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id,
+  /// \param node_id Remote server node id
+  void SendPullRequest(const ObjectID &object_id, const NodeID &node_id,
                        std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
 
-  /// Get the rpc client according to the client ID
+  /// Get the rpc client according to the node ID
   ///
-  /// \param client_id Remote client id, will send rpc request to it
-  std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const NodeID &client_id);
+  /// \param node_id Remote node id, will send rpc request to it
+  std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const NodeID &node_id);
 
   /// Get the port of the object manager rpc server.
   int GetServerPort() const { return object_manager_server_.GetPort(); }
@@ -223,9 +223,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// on the same object, the second one might be ignored).
   ///
   /// \param object_id The object's object id.
-  /// \param client_id The remote node's client id.
+  /// \param node_id The remote node's id.
   /// \return Void.
-  void Push(const ObjectID &object_id, const NodeID &client_id);
+  void Push(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pull an object from NodeID.
   ///
@@ -373,7 +373,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// completed.
   ///
   /// \param object_id The ID of the object that was sent.
-  /// \param client_id The ID of the client that the chunk was sent to.
+  /// \param node_id The ID of the node that the chunk was sent to.
   /// \param chunk_index The index of the chunk.
   /// \param start_time_us The time when the object manager began sending the
   /// chunk.
@@ -381,7 +381,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// chunk.
   /// \param status The status of the send (e.g., did it succeed or fail).
   /// \return Void.
-  void HandleSendFinished(const ObjectID &object_id, const NodeID &client_id,
+  void HandleSendFinished(const ObjectID &object_id, const NodeID &node_id,
                           uint64_t chunk_index, double start_time_us, double end_time_us,
                           ray::Status status);
 
@@ -389,7 +389,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// completed.
   ///
   /// \param object_id The ID of the object that was received.
-  /// \param client_id The ID of the client that the chunk was received from.
+  /// \param node_id The ID of the node that the chunk was received from.
   /// \param chunk_index The index of the chunk.
   /// \param start_time_us The time when the object manager began receiving the
   /// chunk.
@@ -397,12 +397,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// chunk.
   /// \param status The status of the receive (e.g., did it succeed or fail).
   /// \return Void.
-  void HandleReceiveFinished(const ObjectID &object_id, const NodeID &client_id,
+  void HandleReceiveFinished(const ObjectID &object_id, const NodeID &node_id,
                              uint64_t chunk_index, double start_time_us,
                              double end_time_us, ray::Status status);
 
   /// Handle Push task timeout.
-  void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &client_id);
+  void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;

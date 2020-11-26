@@ -598,7 +598,7 @@ Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
                          const HeartbeatTableData &data) { callback(Status::OK()); };
   }
 
-  NodeID node_id = NodeID::FromBinary(data_ptr->client_id());
+  NodeID node_id = NodeID::FromBinary(data_ptr->node_id());
   HeartbeatTable &heartbeat_table = client_impl_->heartbeat_table();
   return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
 }

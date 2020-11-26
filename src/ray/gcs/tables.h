@@ -71,10 +71,10 @@ template <typename ID>
 class PubsubInterface {
  public:
   virtual Status RequestNotifications(const JobID &job_id, const ID &id,
-                                      const NodeID &client_id,
+                                      const NodeID &node_id,
                                       const StatusCallback &done) = 0;
   virtual Status CancelNotifications(const JobID &job_id, const ID &id,
-                                     const NodeID &client_id,
+                                     const NodeID &node_id,
                                      const StatusCallback &done) = 0;
   virtual ~PubsubInterface(){};
 };
@@ -185,18 +185,18 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// requests notifications for. This may only be called once per Log
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message. If the
   /// callback is called with an empty vector, then there was no data at the key.
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const NodeID &client_id,
-                   const Callback &subscribe, const SubscriptionCallback &done);
+  Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
+                   const SubscriptionCallback &done);
 
   /// Request notifications about a key in this table.
   ///
@@ -205,26 +205,26 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// the current values at the key, if any, and a subsequent notification will
   /// be published for every following `Append` to the key. Before
   /// notifications can be requested, the caller must first call `Subscribe`,
-  /// with the same `client_id`.
+  /// with the same `node_id`.
   ///
   /// \param job_id The ID of the job.
   /// \param id The ID of the key to request notifications for.
-  /// \param client_id The client who is requesting notifications. Before
+  /// \param node_id The node who is requesting notifications.
   /// \param done Callback that is called when request notifications is complete.
   /// notifications can be requested, a call to `Subscribe` to this
-  /// table with the same `client_id` must complete successfully.
+  /// table with the same `node_id` must complete successfully.
   /// \return Status
-  Status RequestNotifications(const JobID &job_id, const ID &id, const NodeID &client_id,
+  Status RequestNotifications(const JobID &job_id, const ID &id, const NodeID &node_id,
                               const StatusCallback &done);
 
   /// Cancel notifications about a key in this table.
   ///
   /// \param job_id The ID of the job.
   /// \param id The ID of the key to request notifications for.
-  /// \param client_id The client who originally requested notifications.
+  /// \param node_id The node who originally requested notifications.
   /// \param done Callback that is called when cancel notifications is complete.
   /// \return Status
-  Status CancelNotifications(const JobID &job_id, const ID &id, const NodeID &client_id,
+  Status CancelNotifications(const JobID &job_id, const ID &id, const NodeID &node_id,
                              const StatusCallback &done);
 
   /// Subscribe to any modifications to the key. The caller may choose
@@ -235,17 +235,17 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// function supports notifications of remove operations.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message. If the
   /// callback is called with an empty vector, then there was no data at the key.
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const NodeID &client_id,
+  Status Subscribe(const JobID &job_id, const NodeID &node_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done);
 
@@ -368,10 +368,10 @@ class Table : private Log<ID, Data>,
   /// notifications for. This may only be called once per Table instance.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message. If the
   /// callback is called with an empty vector, then there was no data at the key.
@@ -380,27 +380,26 @@ class Table : private Log<ID, Data>,
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const NodeID &client_id,
-                   const Callback &subscribe, const FailureCallback &failure,
-                   const SubscriptionCallback &done);
+  Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
+                   const FailureCallback &failure, const SubscriptionCallback &done);
 
   /// Subscribe to any Add operations to this table. The caller may choose to
   /// subscribe to all Adds, or to subscribe only to keys that it requests
   /// notifications for. This may only be called once per Table instance.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message. If the
   /// callback is called with an empty vector, then there was no data at the key.
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const NodeID &client_id,
-                   const Callback &subscribe, const SubscriptionCallback &done);
+  Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
+                   const SubscriptionCallback &done);
 
   void Delete(const JobID &job_id, const ID &id) { Log<ID, Data>::Delete(job_id, id); }
 
@@ -490,16 +489,16 @@ class Set : private Log<ID, Data>,
   /// Subscribe to any add or remove operations to this table.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each add or remove to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message.
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const NodeID &client_id,
+  Status Subscribe(const JobID &job_id, const NodeID &node_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done);
 
@@ -591,16 +590,16 @@ class HashInterface {
   /// Subscribe to any Update or Remove operations to this hash table.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Update to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe HashNotificationCallback that is called on each received message.
   /// \param done SubscriptionCallback that is called when subscription is complete and
   /// we are ready to receive messages.
   /// \return Status
-  virtual Status Subscribe(const JobID &job_id, const NodeID &client_id,
+  virtual Status Subscribe(const JobID &job_id, const NodeID &node_id,
                            const HashNotificationCallback &subscribe,
                            const SubscriptionCallback &done) = 0;
 
@@ -628,7 +627,7 @@ class Hash : private Log<ID, Data>,
   Status Update(const JobID &job_id, const ID &id, const DataMap &pairs,
                 const HashCallback &done) override;
 
-  Status Subscribe(const JobID &job_id, const NodeID &client_id,
+  Status Subscribe(const JobID &job_id, const NodeID &node_id,
                    const HashNotificationCallback &subscribe,
                    const SubscriptionCallback &done) override;
 
@@ -807,8 +806,8 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
 
   /// Implement this method for the subscription tools class SubscriptionExecutor.
   /// In this way TaskLeaseTable() can also reuse class SubscriptionExecutor.
-  Status Subscribe(const JobID &job_id, const NodeID &client_id,
-                   const Callback &subscribe, const SubscriptionCallback &done);
+  Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
+                   const SubscriptionCallback &done);
 };
 
 class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData> {
@@ -949,7 +948,7 @@ class ClientTable : public Log<NodeID, GcsNodeInfo> {
   /// Check whether the given client is removed.
   ///
   /// \param node_id The ID of the client to check.
-  /// \return Whether the client with ID client_id is removed.
+  /// \return Whether the node with specified ID is removed.
   bool IsRemoved(const NodeID &node_id) const;
 
   /// Get the information of all clients.

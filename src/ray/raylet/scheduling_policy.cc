@@ -30,16 +30,16 @@ SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
 
 std::unordered_map<TaskID, NodeID> SchedulingPolicy::Schedule(
     std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
-    const NodeID &local_client_id) {
+    const NodeID &local_node_id) {
   // The policy decision to be returned.
   std::unordered_map<TaskID, NodeID> decision;
 #ifndef NDEBUG
   RAY_LOG(DEBUG) << "Cluster resource map: ";
   for (const auto &client_resource_pair : cluster_resources) {
     // pair = NodeID, SchedulingResources
-    const NodeID &client_id = client_resource_pair.first;
+    const NodeID &node_id = client_resource_pair.first;
     const SchedulingResources &resources = client_resource_pair.second;
-    RAY_LOG(DEBUG) << "client_id: " << client_id << " "
+    RAY_LOG(DEBUG) << "node_id: " << node_id << " "
                    << resources.GetAvailableResources().ToString();
   }
 #endif
@@ -54,7 +54,7 @@ std::unordered_map<TaskID, NodeID> SchedulingPolicy::Schedule(
     const TaskID &task_id = spec.TaskId();
 
     // Try to place tasks locally first.
-    const auto &local_resources = cluster_resources[local_client_id];
+    const auto &local_resources = cluster_resources[local_node_id];
     ResourceSet available_local_resources =
         ResourceSet(local_resources.GetAvailableResources());
     // We have to subtract the current "load" because we set the current "load"
@@ -64,11 +64,11 @@ std::unordered_map<TaskID, NodeID> SchedulingPolicy::Schedule(
     available_local_resources.SubtractResources(local_resources.GetLoadResources());
     if (resource_demand.IsSubset(available_local_resources)) {
       // This node is a feasible candidate.
-      decision[task_id] = local_client_id;
+      decision[task_id] = local_node_id;
 
-      ResourceSet new_load(cluster_resources[local_client_id].GetLoadResources());
+      ResourceSet new_load(cluster_resources[local_node_id].GetLoadResources());
       new_load.AddResources(resource_demand);
-      cluster_resources[local_client_id].SetLoadResources(std::move(new_load));
+      cluster_resources[local_node_id].SetLoadResources(std::move(new_load));
       continue;
     }
 
@@ -77,7 +77,7 @@ std::unordered_map<TaskID, NodeID> SchedulingPolicy::Schedule(
     std::vector<NodeID> client_keys;
     for (const auto &client_resource_pair : cluster_resources) {
       // pair = NodeID, SchedulingResources
-      NodeID node_client_id = client_resource_pair.first;
+      NodeID node_node_id = client_resource_pair.first;
       const auto &node_resources = client_resource_pair.second;
       ResourceSet available_node_resources =
           ResourceSet(node_resources.GetAvailableResources());
@@ -86,13 +86,13 @@ std::unordered_map<TaskID, NodeID> SchedulingPolicy::Schedule(
       // `SchedulingQueue::ready_queue_` in NodeManager::HandleWorkerAvailable's
       // call to SchedulingQueue::GetResourceLoad.
       available_node_resources.SubtractResources(node_resources.GetLoadResources());
-      RAY_LOG(DEBUG) << "client_id " << node_client_id
+      RAY_LOG(DEBUG) << "node_id " << node_node_id
                      << " avail: " << node_resources.GetAvailableResources().ToString()
                      << " load: " << node_resources.GetLoadResources().ToString();
 
       if (resource_demand.IsSubset(available_node_resources)) {
         // This node is a feasible candidate.
-        client_keys.push_back(node_client_id);
+        client_keys.push_back(node_node_id);
       }
     }
 
@@ -102,22 +102,22 @@ std::unordered_map<TaskID, NodeID> SchedulingPolicy::Schedule(
       // TODO(atumanov): change uniform random to discrete, weighted by resource capacity.
       std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
       int client_key_index = distribution(gen_);
-      const NodeID &dst_client_id = client_keys[client_key_index];
-      decision[task_id] = dst_client_id;
-      // Update dst_client_id's load to keep track of remote task load until
+      const NodeID &dst_node_id = client_keys[client_key_index];
+      decision[task_id] = dst_node_id;
+      // Update dst_node_id's load to keep track of remote task load until
       // the next heartbeat.
-      ResourceSet new_load(cluster_resources[dst_client_id].GetLoadResources());
+      ResourceSet new_load(cluster_resources[dst_node_id].GetLoadResources());
       new_load.AddResources(resource_demand);
-      cluster_resources[dst_client_id].SetLoadResources(std::move(new_load));
+      cluster_resources[dst_node_id].SetLoadResources(std::move(new_load));
     } else {
       // If the task doesn't fit, place randomly subject to hard constraints.
       for (const auto &client_resource_pair2 : cluster_resources) {
         // pair = NodeID, SchedulingResources
-        NodeID node_client_id = client_resource_pair2.first;
+        NodeID node_node_id = client_resource_pair2.first;
         const auto &node_resources = client_resource_pair2.second;
         if (resource_demand.IsSubset(node_resources.GetTotalResources())) {
           // This node is a feasible candidate.
-          client_keys.push_back(node_client_id);
+          client_keys.push_back(node_node_id);
         }
       }
       // client candidate list constructed, pick randomly.
@@ -128,13 +128,13 @@ std::unordered_map<TaskID, NodeID> SchedulingPolicy::Schedule(
         // capacity.
         std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
         int client_key_index = distribution(gen_);
-        const NodeID &dst_client_id = client_keys[client_key_index];
-        decision[task_id] = dst_client_id;
-        // Update dst_client_id's load to keep track of remote task load until
+        const NodeID &dst_node_id = client_keys[client_key_index];
+        decision[task_id] = dst_node_id;
+        // Update dst_node_id's load to keep track of remote task load until
         // the next heartbeat.
-        ResourceSet new_load(cluster_resources[dst_client_id].GetLoadResources());
+        ResourceSet new_load(cluster_resources[dst_node_id].GetLoadResources());
         new_load.AddResources(resource_demand);
-        cluster_resources[dst_client_id].SetLoadResources(std::move(new_load));
+        cluster_resources[dst_node_id].SetLoadResources(std::move(new_load));
       } else {
         // There are no nodes that can feasibly execute this task. The task remains
         // placeable until cluster capacity becomes available.
@@ -153,27 +153,27 @@ std::unordered_map<TaskID, NodeID> SchedulingPolicy::Schedule(
 
 bool SchedulingPolicy::ScheduleBundle(
     std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
-    const NodeID &local_client_id, const ray::BundleSpecification &bundle_spec) {
+    const NodeID &local_node_id, const ray::BundleSpecification &bundle_spec) {
 #ifndef NDEBUG
   RAY_LOG(DEBUG) << "Cluster resource map: ";
   for (const auto &client_resource_pair : cluster_resources) {
-    const NodeID &client_id = client_resource_pair.first;
+    const NodeID &node_id = client_resource_pair.first;
     const SchedulingResources &resources = client_resource_pair.second;
-    RAY_LOG(DEBUG) << "client_id: " << client_id << " "
+    RAY_LOG(DEBUG) << "node_id: " << node_id << " "
                    << resources.GetAvailableResources().ToString();
   }
 #endif
-  const auto &client_resource_pair = cluster_resources.find(local_client_id);
+  const auto &client_resource_pair = cluster_resources.find(local_node_id);
   if (client_resource_pair == cluster_resources.end()) {
     return false;
   }
   const auto &resource_demand = bundle_spec.GetRequiredResources();
-  NodeID node_client_id = client_resource_pair->first;
+  NodeID node_id = client_resource_pair->first;
   const auto &node_resources = client_resource_pair->second;
   ResourceSet available_node_resources =
       ResourceSet(node_resources.GetAvailableResources());
   available_node_resources.SubtractResources(node_resources.GetLoadResources());
-  RAY_LOG(DEBUG) << "Scheduling bundle, client id = " << node_client_id
+  RAY_LOG(DEBUG) << "Scheduling bundle, node id = " << node_id
                  << ", available resources = "
                  << node_resources.GetAvailableResources().ToString()
                  << ", resources load = " << node_resources.GetLoadResources().ToString()
