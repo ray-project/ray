@@ -28,12 +28,12 @@ bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_addr
     RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
     return false;
   }
-  if (pull_requests_->find(object_id) != pull_requests_->end()) {
+  if (pull_requests_.find(object_id) != pull_requests_.end()) {
     RAY_LOG(DEBUG) << object_id << " has inflight pull_requests, skipping.";
     return false;
   }
 
-  pull_requests_->emplace(object_id, PullRequest());
+  pull_requests_.emplace(object_id, PullRequest());
   return true;
 }
 
@@ -41,8 +41,8 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
                                    const std::string &spilled_url) {
   // Exit if the Pull request has already been fulfilled or canceled.
-  auto it = pull_requests_->find(object_id);
-  if (it == pull_requests_->end()) {
+  auto it = pull_requests_.find(object_id);
+  if (it == pull_requests_.end()) {
     return;
   }
   // Reset the list of clients that are now expected to have the object.
@@ -76,8 +76,8 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
 }
 
 void PullManager::TryPull(const ObjectID &object_id) {
-  auto it = pull_requests_->find(object_id);
-  if (it == pull_requests_->end()) {
+  auto it = pull_requests_.find(object_id);
+  if (it == pull_requests_.end()) {
     return;
   }
 
@@ -125,13 +125,17 @@ void PullManager::TryPull(const ObjectID &object_id) {
 }
 
 bool PullManager::CancelPull(const ObjectID &object_id) {
-  auto it = pull_requests_->find(object_id);
-  if (it == pull_requests_->end()) {
+  auto it = pull_requests_.find(object_id);
+  if (it == pull_requests_.end()) {
     return false;
   }
 
-  pull_requests_->erase(it);
+  pull_requests_.erase(it);
   return true;
+}
+
+int PullManager::NumRequests() const {
+  return pull_requests_.size();
 }
 
 }  // namespace ray

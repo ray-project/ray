@@ -45,6 +45,8 @@ class PullManager {
 
   void Tick();
 
+  int NumRequests() const;
+
  private:
   NodeID self_node_id_;
   const ObjectManagerConfig config_;

@@ -795,7 +795,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num local objects: " << local_objects_.size();
   result << "\n- num active wait requests: " << active_wait_requests_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
-  result << "\n- num pull requests: " << pull_requests_.size();
+  result << "\n- num pull requests: " << pull_manager_->NumRequests();
   result << "\n- num buffered profile events: " << profile_events_.size();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
   result << "\n- num chunks received failed: " << num_chunks_received_failed_;
@@ -810,7 +810,7 @@ void ObjectManager::RecordMetrics() const {
   stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
   stats::ObjectStoreUsedMemory().Record(used_memory_);
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
-  stats::ObjectManagerPullRequests().Record(pull_requests_.size());
+  stats::ObjectManagerPullRequests().Record(pull_manager_->NumRequests());
 }
 
 }  // namespace ray
