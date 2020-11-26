@@ -1033,7 +1033,9 @@ def _process_observations_w_trajectory_view_api(
                 agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
             episode._set_last_raw_obs(agent_id, raw_obs)
-            episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
+            # Infos from the environment.
+            agent_infos = infos[env_id].get(agent_id, {})
+            episode._set_last_info(agent_id, agent_infos)
 
             # Record transition info if applicable.
             if last_observation is None:
