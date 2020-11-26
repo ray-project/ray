@@ -6,12 +6,12 @@ _MPI_AVAILABLE = True
 _NCCL_AVAILABLE = True
 
 try:
-    from collective.collectivegoup.mpi_collective_group import MPICollectiveGroup
+    from collective.collectivegoup.mpi_collective_group import MPIGroup
 except ImportError:
     _MPI_AVAILABLE = False
 
 try:
-    from collective.collectivegoup.nccl_collective_group import NCCLCollectiveGroup
+    from collective.collectivegoup.nccl_collective_group import NCCLGroup
 except ImportError:
     _NCCL_AVAILABLE = False
 
@@ -22,6 +22,14 @@ def nccl_available():
 def mpi_available():
     return _MPI_AVAILABLE
 
+def backend_check(backend):
+    if backend == 'mpi':
+        if not mpi_available():
+            raise RuntimeError()
+        raise NotImplementedError()
+    elif backend == 'nccl':
+        if not nccl_available():
+            raise RuntimeError()
 
 @ray.remote
 class NCCLUniqueIDStore(object):
@@ -79,13 +87,7 @@ def init_collective_group(backend,
                           rank=-1):
     # do some check on the validaty of the arguments.
     # see: https://github.com/pytorch/pytorch/blob/master/torch/distributed/distributed_c10d.py
-    if backend == 'mpi':
-        if not mpi_available():
-            raise RuntimeError()
-        raise NotImplementedError()
-    elif backend == 'nccl':
-        if not nccl_available():
-            raise RuntimeError()
+    backend_check(backend)
 
     global _group_mgr
     _group_mgr.create_collective_group(group_name, world_size, rank)
@@ -95,6 +97,9 @@ def init_collective_group(backend,
 # This API is supported to work in the driver program - the users declare a list of actors as a collective group
 # @Dacheng: This API is not in the right shape, need to work with ray.remote(), please figure out.
 def declare_collective_group(actors, group_options):
+    backend = group_options["backend"]
+    backend_check(backend)
+    uid = None
     pass
 
 

@@ -419,7 +419,8 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_environment_variables=None):
+                override_environment_variables=None,
+                collective=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -461,7 +462,8 @@ class ActorClass:
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
                     override_environment_variables=(
-                        override_environment_variables))
+                        override_environment_variables),
+                    collective=collective)
 
         return ActorOptionWrapper()
 
@@ -482,7 +484,8 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_environment_variables=None):
+                override_environment_variables=None,
+                collective=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -522,6 +525,7 @@ class ActorClass:
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
+            collective: what colletive configuration to use
 
         Returns:
             A handle to the newly created actor.
@@ -681,7 +685,8 @@ class ActorClass:
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
-            original_handle=True)
+            original_handle=True,
+            collective=collective)
 
         return actor_handle
 
@@ -725,7 +730,8 @@ class ActorHandle:
                  actor_method_cpus,
                  actor_creation_function_descriptor,
                  session_and_job,
-                 original_handle=False):
+                 original_handle=False,
+                 collective=None):
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
         self._ray_original_handle = original_handle
@@ -738,7 +744,7 @@ class ActorHandle:
         self._ray_actor_creation_function_descriptor = \
             actor_creation_function_descriptor
         self._ray_function_descriptor = {}
-
+        self._collective = collective
         if not self._ray_is_cross_language:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
