@@ -108,7 +108,7 @@ Unsupported Features
 --------------------
 This integration is currently under active development, so not all Pytorch Lightning features are supported.
 Please post any feature requests on `Github
-<<https://github.com/ray-project/ray/issues>`_ and we will get to it shortly!
+<https://github.com/ray-project/ray/issues>`_ and we will get to it shortly!
 
 A list of unsupported model hooks is as follows:
 ``test_dataloader``, ``on_test_batch_start``, ``on_test_epoch_start``, ``on_test_batch_end``, ``on_test_epoch_start``,
