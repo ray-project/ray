@@ -157,9 +157,12 @@ class _AgentCollector:
         batch = SampleBatch(batch_data)
 
         if SampleBatch.UNROLL_ID not in batch.data:
-            if SampleBatch.UNROLL_ID in view_requirements:
-                batch.data[SampleBatch.UNROLL_ID] = np.repeat(
-                    _AgentCollector._next_unroll_id, batch.count)
+            # TODO: (sven) Once we have the additional
+            #  model.preprocess_train_batch in place (attention net PR), we
+            #  should not even need UNROLL_ID anymore:
+            #  Add "if SampleBatch.UNROLL_ID in view_requirements:" here.
+            batch.data[SampleBatch.UNROLL_ID] = np.repeat(
+                _AgentCollector._next_unroll_id, batch.count)
             _AgentCollector._next_unroll_id += 1
 
         # This trajectory is continuing -> Copy data at the end (in the size of
@@ -257,6 +260,7 @@ class _PolicyCollector:
         """
         # Create batch from our buffers.
         batch = SampleBatch(self.buffers)
+        assert SampleBatch.UNROLL_ID in batch.data
         # Clear buffers for future samples.
         self.buffers.clear()
         # Reset count to 0.
