@@ -38,7 +38,6 @@ FAKE_BATCH = {
 
 
 class MyCallbacks(DefaultCallbacks):
-
     @staticmethod
     def _check_lr_torch(policy, policy_id):
         for j, opt in enumerate(policy._optimizers):
@@ -58,9 +57,8 @@ class MyCallbacks(DefaultCallbacks):
         assert lr == optim_lr, "LR scheduling error!"
 
     def on_train_result(self, *, trainer, result: dict, **kwargs):
-        trainer.workers.foreach_policy(
-            self._check_lr_torch if trainer.config["framework"] == "torch"
-            else self._check_lr_tf)
+        trainer.workers.foreach_policy(self._check_lr_torch if trainer.config[
+            "framework"] == "torch" else self._check_lr_tf)
 
 
 class TestPPO(unittest.TestCase):
@@ -86,7 +84,7 @@ class TestPPO(unittest.TestCase):
         config["train_batch_size"] = 128
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks="tf"):#TODO
+        for _ in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
