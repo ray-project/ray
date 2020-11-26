@@ -55,7 +55,7 @@ public class ExitActorTest extends BaseTest {
     Runtime.getRuntime().exec("kill -9 " + pid);
     TimeUnit.SECONDS.sleep(1);
     // Make sure this actor can be reconstructed.
-    Assert.assertEquals(2, (int) actor.task(ExitingActor::incr).remote().get());
+    Assert.assertEquals(1, (int) actor.task(ExitingActor::incr).remote().get());
 
     // `exitActor` will exit the actor without reconstructing.
     ObjectRef<Boolean> obj = actor.task(ExitingActor::exit).remote();
