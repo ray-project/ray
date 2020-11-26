@@ -1,11 +1,16 @@
 Pytorch Lightning with RaySGD
 ==============================
+.. image:: /images/sgd_ptl.png
+  :align: center
+  :scale: 50 %
+
+
 RaySGD includes an integration with Pytorch Lightning's `LightningModule <https://pytorch-lightning.readthedocs.io/en/latest/lightning_module.html>`_.
 Easily take your existing ``LightningModule``, and use it with Ray SGD's ``TorchTrainer`` to take advantage of all of Ray SGD's distributed training features with minimal code changes.
 
 .. tip:: This LightningModule integration is currently under active development. If you encounter any bugs, please raise an issue on `Github <https://github.com/ray-project/ray/issues>`_!
 
-.. note:: Not all Pytorch Lightning features are supported. A full list of unsupported features is listed down :ref:`below <_ptl-unsupported-features>`. Please post any feature requests on `Github Discussions <https://github.com/ray-project/ray/discussions>`_ and we will get to it shortly!
+.. note:: Not all Pytorch Lightning features are supported. A full list of unsupported model hooks is listed down :ref:`below <_ptl-unsupported-features>`. Please post any feature requests on `Github <https://github.com/ray-project/ray/issues>`_ and we will get to it shortly!
 
 .. contents::
     :local:
@@ -29,7 +34,7 @@ Step 2: Use the ``TrainingOperator.from_ptl`` method to convert the ``LightningM
 
     MyLightningOperator = TrainingOperator.from_ptl(MyLightningModule)
 
-Step 3: Use the Operator with Ray SGD's ``TorchTrainer``, just like how you would normally. See :ref:`_torch-guide` for a more full guide on ``TorchTrainer``.
+Step 3: Use the Operator with Ray SGD's ``TorchTrainer``, just like how you would normally. See :ref:`torch-guide` for a more full guide on ``TorchTrainer``.
 
 .. code-block:: python
 
@@ -73,7 +78,7 @@ We now define our Pytorch Lightning ``LightningModule``:
 This is the same code that would normally be used in Pytorch Lightning, and is taken directly from `this PTL guide <https://pytorch-lightning.readthedocs.io/en/latest/introduction_guide.html>`_.
 The only difference here is that the ``__init__`` method can optionally take in a ``config`` argument,
 as a way to pass in hyperparameters to your model, optimizer, or schedulers. The ``config`` will be passed in directly from
-the TorchTrainer. Or if using Ray SGD in conjunction with Tune (:ref:`_raysgd-tune`), it will come directly from the config in your
+the TorchTrainer. Or if using Ray SGD in conjunction with Tune (:ref:`raysgd-tune`), it will come directly from the config in your
 ``tune.run`` call.
 
 Training with Ray SGD
@@ -102,11 +107,9 @@ The last thing to do is initialize Ray, and run our training function!
 Unsupported Features
 --------------------
 This integration is currently under active development, so not all Pytorch Lightning features are supported.
-Please post any feature requests on `Github Discussions
-<https://github.com/ray-project/ray/discussions>`_ and we will get to it shortly!
+Please post any feature requests on `Github
+<<https://github.com/ray-project/ray/issues>`_ and we will get to it shortly!
 
-A list of unsupported features is as follows
-
-* The following model hooks in LightningModule are not supported
-    * Anything related to testing (``test_dataloader``, ``on_test_batch_start``, ``on_test_epoch_start``, ``on_test_batch_end``, ``on_test_epoch_end``). Ray SGD does not have
-    * ``init_ddp_connection``.
+A list of unsupported model hooks is as follows:
+``test_dataloader``, ``on_test_batch_start``, ``on_test_epoch_start``, ``on_test_batch_end``, ``on_test_epoch_start``,
+``get_progress_bar_dict``, ``on_fit_end``, ``on_pretrain_routine_end``, ``configure_sync_batchnorm``, ``tbtt_split_batch``.

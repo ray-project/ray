@@ -28,6 +28,19 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                         TrainerOptimizersMixin):
     """A subclass of TrainingOperator that defines training state via a
     Pytorch Lightning ``LightningModule``.
+
+    This class is returned by `TrainingOperator.from_ptl`. Training and
+    validation functionality have already been implemented according to
+    Pytorch Lightning's Trainer. But if you need to modify training,
+    you should subclass this class and override the appropriate methods
+    before passing in the subclass to `TorchTrainer`.
+
+    .. code-block:: python
+
+            MyLightningOperator = TrainingOperator.from_ptl(
+                MyLightningModule)
+            trainer = TorchTrainer(training_operator_cls=MyLightningOperator,
+                ...)
     """
     def _configure_amp(self, amp, models, optimizers):
         assert len(models) == 1

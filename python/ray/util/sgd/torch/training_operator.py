@@ -907,6 +907,18 @@ class CreatorOperator(TrainingOperator):
     """A subclass of TrainingOperator specifically for defining training
     state using creator functions. This allows for backwards compatibility
     with pre Ray 1.0 versions.
+
+    This class is returned by `TrainingOperator.from_creators(...)`. If you
+    need to add custom functionality, you should subclass this class,
+    implement the appropriate methods and pass the subclass into
+    `TorchTrainer`.
+
+    .. code-block:: python
+
+        MyCreatorOperator = TrainingOperator.from_creators(
+            model_creator, optimizer_creator)
+        trainer = TorchTrainer(training_operator_cls=MyCreatorOperator,
+            ...)
     """
 
     def _validate_loaders(self, loaders):
