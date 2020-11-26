@@ -16,6 +16,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
@@ -193,13 +194,20 @@ def postprocess_ppo_gae(
         last_r = 0.0
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
-        next_state = []
-        for i in range(policy.num_state_tensors()):
-            next_state.append(sample_batch["state_out_{}".format(i)][-1])
-        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                               sample_batch[SampleBatch.ACTIONS][-1],
-                               sample_batch[SampleBatch.REWARDS][-1],
-                               *next_state)
+        # Input dict is provided to us automatically via the policy-defined
+        # "view". It's a single-timestep input_dict (at very end of
+        # trajectory).
+        if policy.config["_use_trajectory_view_api"]:
+            last_r = policy._value(**sample_batch["_value_input_dict"])
+        # TODO: (sven) Remove once trajectory view API is all-algo default.
+        else:
+            next_state = []
+            for i in range(policy.num_state_tensors()):
+                next_state.append(sample_batch["state_out_{}".format(i)][-1])
+            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                   sample_batch[SampleBatch.ACTIONS][-1],
+                                   sample_batch[SampleBatch.REWARDS][-1],
+                                   *next_state)
 
     # Adds the policy logits, VF preds, and advantages to the batch,
     # using GAE ("generalized advantage estimation") or not.
@@ -292,19 +300,34 @@ class ValueNetworkMixin:
         # observation.
         if config["use_gae"]:
 
-            @make_tf_callable(self.get_session())
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        [prev_action]),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        [prev_reward]),
-                    "is_training": tf.convert_to_tensor([False]),
-                }, [tf.convert_to_tensor([s]) for s in state],
-                                          tf.convert_to_tensor([1]))
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+            # Input dict is provided to us automatically via the policy-defined
+            # "view". It's a single-timestep (last one in trajectory)
+            # input_dict.
+            if config["_use_trajectory_view_api"]:
+
+                @make_tf_callable(self.get_session())
+                def value(**input_dict):
+                    model_out, _ = self.model.from_batch(
+                        input_dict, is_training=False)
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
+
+            # TODO: (sven) Remove once trajectory view API is all-algo default.
+            else:
+
+                @make_tf_callable(self.get_session())
+                def value(ob, prev_action, prev_reward, *state):
+                    model_out, _ = self.model({
+                        SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
+                        SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                            [prev_action]),
+                        SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                            [prev_reward]),
+                        "is_training": tf.convert_to_tensor([False]),
+                    }, [tf.convert_to_tensor([s]) for s in state],
+                                              tf.convert_to_tensor([1]))
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:
@@ -349,6 +372,16 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
+def view_requirements_fn(policy):
+    # Adds the input-dict used in postprocessing to the dict of view-reqs.
+    # This is for value calculation at the very end of a trajectory
+    # (abs_pos=-1). It's only used if the trajectory is not finished yet and we
+    # have to rely on the last value function output as a reward estimation.
+    return {
+        "_value_input_dict": ViewRequirement(is_input_dict=True, abs_pos=-1)
+    }
+
+
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
 # above.
 PPOTFPolicy = build_tf_policy(
@@ -364,4 +397,6 @@ PPOTFPolicy = build_tf_policy(
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
-    ])
+    ],
+    view_requirements_fn=view_requirements_fn,
+)

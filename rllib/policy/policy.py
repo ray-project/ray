@@ -694,6 +694,9 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
+            # Skip input_dicts for now.
+            if view_req.is_input_dict:
+                continue
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 _, shape = ModelCatalog.get_action_shape(view_req.space)
                 ret[view_col] = \
