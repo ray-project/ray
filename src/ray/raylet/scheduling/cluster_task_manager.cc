@@ -351,6 +351,17 @@ bool ClusterTaskManager::PreparePGBundle(BundleSpecification &bundle_spec) {
   return true;
 }
 
+  void ClusterTaskManager::CommitPGBundle(BundleSpecification &bundle_spec) {
+  auto it = pg_bundles_.find(bundle_spec.BundleId());
+  if (it == pg_bundles_.end()) {
+    // We should only ever receive a commit for a non-existent placement group when a placement group is created and removed in quick succession.
+    RAY_LOG(DEBUG) << "Received a commit message for an unknown bundle. The bundle info is " << bundle_spec.DebugString();
+    return;
+  }
+
+
+}
+
 std::string ClusterTaskManager::DebugString() const {
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";

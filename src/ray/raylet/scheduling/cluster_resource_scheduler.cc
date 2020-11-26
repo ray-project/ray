@@ -122,6 +122,11 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
 
   // Now check custom resources.
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
+    // auto it = resources.custom_resources.begin();
+    // RAY_LOG(ERROR) << "Node has " << resources.custom_resources.size() << " custom resources";
+    // for (it = resources.custom_resources.begin(); it != resources.custom_resources.end(); it++) {
+    //   RAY_LOG(ERROR) << "Looking for: " << task_req_custom_resource.id << ", found " << it->first;
+    // }
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
 
     if (it == resources.custom_resources.end()) {
@@ -191,6 +196,12 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // the local node only if there are zero violations.
   auto it = nodes_.find(local_node_id_);
   if (it != nodes_.end()) {
+
+    RAY_LOG(ERROR) << "===============";
+    RAY_LOG(ERROR) << it->second.DebugString(string_to_int_map_);
+    RAY_LOG(ERROR) << task_req.DebugString();
+    RAY_LOG(ERROR) << "===============";
+
     if (IsSchedulable(task_req, it->first, it->second) == 0) {
       return local_node_id_;
     }
@@ -329,6 +340,25 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
+void ClusterResourceScheduler::AddLocalResource(
+                                                      const std::string &resource_name,
+                                                      double resource_total) {
+  string_to_int_map_.Insert(resource_name);
+  int64_t resource_id = string_to_int_map_.Get(resource_name);
+
+  RAY_LOG(ERROR) << "Resource id for " << resource_name << "is " << resource_id;
+  ResourceInstanceCapacities capacity;
+  capacity.total.resize(1);
+  capacity.total[0] = resource_total;
+  capacity.available.resize(1);
+  capacity.available[0] = resource_total;
+  local_resources_.custom_resources[resource_id] = capacity;
+  std::string client_id_string = string_to_int_map_.Get(local_node_id_);
+  RAY_CHECK(string_to_int_map_.Get(client_id_string) == local_node_id_);
+  UpdateResourceCapacity(string_to_int_map_.Get(local_node_id_), resource_name, resource_total);
+  UpdateLocalAvailableResourcesFromResourceInstances();
+}
+
 void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,
                                                       const std::string &resource_name,
                                                       double resource_total) {
@@ -367,7 +397,8 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
       it->second.predefined_resources[idx].total = 0;
     }
   } else {
-    int64_t resource_id = string_to_int_map_.Insert(resource_name);
+    string_to_int_map_.Insert(resource_name);
+    int64_t resource_id = string_to_int_map_.Get(resource_name);
     auto itr = it->second.custom_resources.find(resource_id);
     if (itr != it->second.custom_resources.end()) {
       auto diff_capacity = resource_total_fp - itr->second.total;
@@ -385,6 +416,11 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
       it->second.custom_resources.emplace(resource_id, resource_capacity);
     }
   }
+}
+
+void ClusterResourceScheduler::DeleteLocalResource(
+                                              const std::string &resource_name) {
+  DeleteResource(string_to_int_map_.Get(local_node_id_), resource_name);
 }
 
 void ClusterResourceScheduler::DeleteResource(const std::string &client_id_string,
@@ -407,12 +443,22 @@ void ClusterResourceScheduler::DeleteResource(const std::string &client_id_strin
   };
   if (idx != -1) {
     it->second.predefined_resources[idx].total = 0;
+
+    if (client_id == local_node_id_) {
+      local_resources_.predefined_resources[idx].total.clear();
+      local_resources_.predefined_resources[idx].available.clear();
+    }
   } else {
     int64_t resource_id = string_to_int_map_.Get(resource_name);
     auto itr = it->second.custom_resources.find(resource_id);
     if (itr != it->second.custom_resources.end()) {
       string_to_int_map_.Remove(resource_id);
       it->second.custom_resources.erase(itr);
+    }
+
+    if (client_id == local_node_id_) {
+      local_resources_.custom_resources[resource_id].total.clear();
+      local_resources_.custom_resources[resource_id].available.clear();
     }
   }
 }

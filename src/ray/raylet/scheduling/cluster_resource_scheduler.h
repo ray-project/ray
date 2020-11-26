@@ -201,6 +201,13 @@ class ClusterResourceScheduler {
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
 
+  /// Add an (unused) local resource.
+  ///
+  /// \param resource_name: Resource which we want to update.
+  /// \param resource_total: New capacity of the resource.
+  void AddLocalResource(
+                              const std::string &resource_name, double resource_total);
+
   /// Update total capacity of a given resource of a given node.
   ///
   /// \param node_name: Node whose resource we want to update.
@@ -208,6 +215,11 @@ class ClusterResourceScheduler {
   /// \param resource_total: New capacity of the resource.
   void UpdateResourceCapacity(const std::string &node_name,
                               const std::string &resource_name, double resource_total);
+
+  /// Delete a given resource from the local node.
+  ///
+  /// \param resource_name: Resource we want to delete
+  void DeleteLocalResource(const std::string &resource_name);
 
   /// Delete a given resource from a given node.
   ///

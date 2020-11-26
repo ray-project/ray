@@ -1057,6 +1057,26 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
   }
 }
 
+TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
+  ClusterResourceScheduler cluster_resources("local", {{"CPU", 2}});
+
+  std::unordered_map<std::string, double> task_request = {{"CPU", 1}, {"custom123"
+, 2}};
+  int64_t t;
+
+  std::string result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_TRUE(result.empty());
+
+  cluster_resources.AddLocalResource("custom123", 5);
+
+  result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_FALSE(result.empty());
+
+  cluster_resources.DeleteLocalResource("custom123");
+  result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_TRUE(result.empty());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
