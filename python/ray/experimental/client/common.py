@@ -27,10 +27,15 @@ class ClientRemoteFunc:
                         "Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
+        if self._raylet_remote_func is not None:
+            return self._raylet_remote_func.remote(*args, **kwargs)
         return ray.call_remote(self, *args, **kwargs)
 
     def __repr__(self):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self.id)
+
+    def set_remote_func(self, func):
+        self._raylet_remote_func = func
 
 
 def convert_from_arg(pb) -> Any:
