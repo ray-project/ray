@@ -70,6 +70,9 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   main_service_ = &main_service;
 
+  const auto &object_is_local = [this](const ObjectID &object_id) {
+    return local_objects_.count(object_id) != 0;
+  };
   const auto &send_pull_request = [this](const ObjectID &object_id,
                                          const NodeID &client_id) {
     SendPullRequest(object_id, client_id);
@@ -78,9 +81,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
     std::uniform_int_distribution<int> distribution(0, upper_bound - 1);
     return distribution(gen_);
   };
-  pull_manager_.reset(new PullManager(self_node_id_, config_, object_directory,
-                                      object_directory_pull_callback_id_, &local_objects_,
-                                      send_pull_request, get_rand_int,
+  pull_manager_.reset(new PullManager(self_node_id_,
+                                      object_is_local, send_pull_request, get_rand_int,
                                       restore_spilled_object_));
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
@@ -208,13 +210,6 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id,
   return object_directory_->SubscribeObjectLocations(object_directory_pull_callback_id_,
                                                      object_id, owner_address, callback);
 }
-
-void ObjectManager::TryPull(const ObjectID &object_id) {
-  auto it = pull_requests_.find(object_id);
-  if (it == pull_requests_.end()) {
-    return;
-  }
-};
 
 void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
   auto rpc_client = GetRpcClient(client_id);

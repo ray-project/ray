@@ -3,19 +3,14 @@
 namespace ray {
 
 PullManager::PullManager(
-    NodeID &self_node_id, const ObjectManagerConfig &config,
-    std::shared_ptr<ObjectDirectoryInterface> &object_directory,
-    UniqueID &object_directory_pull_callback_id,
-    std::unordered_map<ObjectID, LocalObjectInfo> *local_objects,
+    NodeID &self_node_id,
+    const std::function<bool(const ObjectID &)> &object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> &send_pull_request,
     const std::function<int(int)> &get_rand_int,
     const RestoreSpilledObjectCallback &restore_spilled_object)
 
     : self_node_id_(self_node_id),
-      config_(config),
-      object_directory_(object_directory),
-      object_directory_pull_callback_id_(object_directory_pull_callback_id),
-      local_objects_(local_objects),
+      object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       get_rand_int_(get_rand_int),
       restore_spilled_object_(restore_spilled_object) {}
@@ -24,7 +19,7 @@ bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_addr
   RAY_LOG(DEBUG) << "Pull "
                  << " of object " << object_id;
   // Check if object is already local.
-  if (local_objects_->count(object_id) != 0) {
+  if (object_is_local_(object_id)) {
     RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
     return false;
   }
@@ -88,7 +83,7 @@ void PullManager::TryPull(const ObjectID &object_id) {
     return;
   }
 
-  RAY_CHECK(local_objects_->count(object_id) == 0);
+  RAY_CHECK(!object_is_local_(object_id));
   // Make sure that there is at least one client which is not the local client.
   // TODO(rkn): It may actually be possible for this check to fail.
   if (node_vector.size() == 1 && node_vector[0] == self_node_id_) {
@@ -134,8 +129,6 @@ bool PullManager::CancelPull(const ObjectID &object_id) {
   return true;
 }
 
-int PullManager::NumRequests() const {
-  return pull_requests_.size();
-}
+int PullManager::NumRequests() const { return pull_requests_.size(); }
 
 }  // namespace ray

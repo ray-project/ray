@@ -199,17 +199,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Status of whether the pull request successfully initiated.
   ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
 
-  /// Try to Pull an object from one of its expected client locations. If there
-  /// are more client locations to try after this attempt, then this method
-  /// will try each of the other clients in succession, with a timeout between
-  /// each attempt. If the object is received or if the Pull is Canceled before
-  /// the timeout, then no more Pull requests for this object will be sent
-  /// to other node managers until TryPull is called again.
-  ///
-  /// \param object_id The object's object id.
-  /// \return Void.
-  void TryPull(const ObjectID &object_id);
-
   /// Cancels all requests (Push/Pull) associated with the given ObjectID. This
   /// method is idempotent.
   ///
@@ -404,10 +393,6 @@ class ObjectManager : public ObjectManagerInterface,
   std::unordered_map<
       ObjectID, std::unordered_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
-
-  /// The objects that this object manager is currently trying to fetch from
-  /// remote object managers.
-  std::unordered_map<ObjectID, PullRequest> pull_requests_;
 
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.

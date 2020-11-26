@@ -27,10 +27,8 @@ namespace ray {
 class PullManager {
  public:
   PullManager(
-      NodeID &self_node_id, const ObjectManagerConfig &config,
-      std::shared_ptr<ObjectDirectoryInterface> &object_directory,
-      UniqueID &object_directory_pull_callback_id,
-      std::unordered_map<ObjectID, LocalObjectInfo> *local_objects,
+              NodeID &self_node_id,
+      const std::function<bool(const ObjectID &)> &object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> &send_pull_request,
       const std::function<int(int)> &get_rand_int,
       const RestoreSpilledObjectCallback &restore_spilled_object);
@@ -49,21 +47,19 @@ class PullManager {
 
  private:
   NodeID self_node_id_;
-  const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
 
   UniqueID object_directory_pull_callback_id_;
 
-  /* Note: Both of these weak references are fate-shared to the object manager, as is the
-   * pull manager. Therefore we aren't worried about corruption issue. */
-  /// A weak reference to the object manager's mapping of locally available objects.
-  std::unordered_map<ObjectID, LocalObjectInfo> *local_objects_;
-  /// A weak reference to the object manager's tracking of in progress object pulls.
+  const std::function<bool(const ObjectID &)> &object_is_local_;
+  /// The objects that this object manager is currently trying to fetch from
+  /// remote object managers.
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
 
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
 
   const std::function<int(int)> get_rand_int_;
+
 
   const RestoreSpilledObjectCallback restore_spilled_object_;
 
