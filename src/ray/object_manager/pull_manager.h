@@ -31,7 +31,6 @@ class PullManager {
       std::shared_ptr<ObjectDirectoryInterface> &object_directory,
       UniqueID &object_directory_pull_callback_id,
       std::unordered_map<ObjectID, LocalObjectInfo> *local_objects,
-      std::unordered_map<ObjectID, PullRequest> *pull_requests,
       const std::function<void(const ObjectID &, const NodeID &)> &send_pull_request,
       const std::function<int(int)> &get_rand_int,
       const RestoreSpilledObjectCallback &restore_spilled_object);
@@ -58,7 +57,7 @@ class PullManager {
   /// A weak reference to the object manager's mapping of locally available objects.
   std::unordered_map<ObjectID, LocalObjectInfo> *local_objects_;
   /// A weak reference to the object manager's tracking of in progress object pulls.
-  std::unordered_map<ObjectID, PullRequest> *pull_requests_;
+  std::unordered_map<ObjectID, PullRequest> pull_requests_;
 
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
 

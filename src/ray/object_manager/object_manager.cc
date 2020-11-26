@@ -80,7 +80,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   };
   pull_manager_.reset(new PullManager(self_node_id_, config_, object_directory,
                                       object_directory_pull_callback_id_, &local_objects_,
-                                      &pull_requests_, send_pull_request, get_rand_int,
+                                      send_pull_request, get_rand_int,
                                       restore_spilled_object_));
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(

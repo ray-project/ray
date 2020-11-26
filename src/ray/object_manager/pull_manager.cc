@@ -7,7 +7,6 @@ PullManager::PullManager(
     std::shared_ptr<ObjectDirectoryInterface> &object_directory,
     UniqueID &object_directory_pull_callback_id,
     std::unordered_map<ObjectID, LocalObjectInfo> *local_objects,
-    std::unordered_map<ObjectID, PullRequest> *pull_requests,
     const std::function<void(const ObjectID &, const NodeID &)> &send_pull_request,
     const std::function<int(int)> &get_rand_int,
     const RestoreSpilledObjectCallback &restore_spilled_object)
@@ -17,7 +16,6 @@ PullManager::PullManager(
       object_directory_(object_directory),
       object_directory_pull_callback_id_(object_directory_pull_callback_id),
       local_objects_(local_objects),
-      pull_requests_(pull_requests),
       send_pull_request_(send_pull_request),
       get_rand_int_(get_rand_int),
       restore_spilled_object_(restore_spilled_object) {}
