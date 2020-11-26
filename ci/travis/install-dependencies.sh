@@ -331,10 +331,6 @@ install_dependencies() {
     install_node
   fi
 
-#  if [ "${OSTYPE}" = msys ]; then
-#      CC=gcc pip install --upgrade pip setuptools wheel
-#  fi
-  #CC=gcc pip install --no-use-pep517 psutil setproctitle --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
   CC=gcc pip install psutil setproctitle==1.1.10 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
