@@ -10,8 +10,8 @@ from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
-from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
