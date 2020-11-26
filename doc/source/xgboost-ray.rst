@@ -11,7 +11,7 @@ the behavior can change without prior notice.
 Installation
 ------------
 
-You can install ``xgboost_ray`` like this:
+You can install XGBoost on Ray (``xgboost_ray``) like this:
 
 .. code-block:: bash
 
@@ -23,35 +23,27 @@ You can install ``xgboost_ray`` like this:
 Usage
 -----
 
+After installation, you can import XGBoost on Ray via two ways:
+
+.. code-block:: bash
+
+    import xgboost_ray
+    # or
+    import ray.util.xgboost
+
+
 ``xgboost_ray`` provides a drop-in replacement for XGBoost's ``train``
 function. To pass data, instead of using ``xgb.DMatrix`` you will
-have to use ``xgboost_ray.RayDMatrix``.
+have to use ``ray.util.xgboost.RayDMatrix``.
 
 Here is a simplified example:
 
-.. code-block:: python
 
-    from xgboost_ray import RayDMatrix, train
+.. literalinclude:: /../../python/ray/util/xgboost/simple_example.py
+   :language: python
+   :start-after:  __xgboost_begin__
+   :end-before:  __xgboost_end__
 
-    train_x, train_y = None, None  # Load data here
-    train_set = RayDMatrix(train_x, train_y)
-
-    evals_result = {}
-    bst = train(
-        {
-            "objective": "binary:logistic",
-            "eval_metric": ["logloss", "error"],
-        },
-        train_set,
-        evals_result=evals_result,
-        evals=[(train_set, "train")],
-        verbose_eval=False,
-        num_actors=2,
-        cpus_per_actor=1)
-
-    bst.save_model("model.xgb")
-    print("Final training error: {:.4f}".format(
-        evals_result["train"]["error"][-1]))
 
 
 Data loading
@@ -71,7 +63,7 @@ Example loading multiple parquet files:
 .. code-block:: python
 
     import glob
-    from xgboost_ray import RayDMatrix, RayFileType
+    from ray.util.xgboost import RayDMatrix, RayFileType
 
     # We can also pass a list of files
     path = list(sorted(glob.glob("/data/nyc-taxi/*/*/*.parquet")))
@@ -122,14 +114,15 @@ the `examples folder <https://github.com/ray-project/xgboost_ray/tree/master/exa
 Package Reference
 -----------------
 
+
 Training/Validation
 ~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: xgboost_ray.train
+.. autofunction:: ray.util.xgboost.train
 
-.. autofunction:: xgboost_ray.predict
+.. autofunction:: ray.util.xgboost.predict
 
 RayDMatrix
 ~~~~~~~~~~
 
-.. autoclass:: xgboost_ray.RayDMatrix
+.. autoclass:: ray.util.xgboost.RayDMatrix
