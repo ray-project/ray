@@ -17,6 +17,7 @@ using SpillObjectsCallback = std::function<int64_t(int64_t num_bytes_required)>;
 /// A callback to call when space has been released.
 using SpaceReleasedCallback = std::function<void()>;
 
+/// A callback to call when a spilled object needs to be returned to the object store.
 using RestoreSpilledObjectCallback = std::function<void(
     const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
 

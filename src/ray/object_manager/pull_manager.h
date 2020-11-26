@@ -26,44 +26,76 @@ namespace ray {
 
 class PullManager {
  public:
+  /// PullManager is responsible for managing the policy around when to send pull requests
+  /// and to whom. Notably, it is _not_ responsible for controlling the object directory
+  /// or any pubsub communications.
+  ///
+  /// \param self_node_id the current node
+  /// \param object_is_local A callback which should return true if a given object is
+  /// already on the local node. \param send_pull_request A callback which should send a
+  /// pull request to the specified node. \param get_rand_int A callback which returns a
+  /// random integer between [0, N). \param restore_spilled_object A callback which should
+  /// retrieve an spilled object from the external store.
   PullManager(
       NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const std::function<int(int)> get_rand_int,
       const RestoreSpilledObjectCallback restore_spilled_object);
 
+  /// Begin a new pull request if necessary.
+  ///
+  /// \param object_id The object id to pull.
+  /// \param owner_address The owner of the object.
+  ///
+  /// \return True if a new pull request was necessary. If true, the caller should
+  /// subscribe to new locations of the object, and call OnLocationChange when necessary.
   bool Pull(const ObjectID &object_id, const rpc::Address &owner_address);
 
+  /// Called when the available locations for a given object change.
+  ///
+  /// \param object_id The ID of the object which is now available in a new location.
+  /// \param client_ids The new set of nodes that the object is available on. Not
+  /// necessarily a super or subset of the previously available nodes. \param spilled_url
+  /// The location of the object if it was spilled. If non-empty, the object may no longer
+  /// be on any node.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
                         const std::string &spilled_url);
 
+  /// Cancel an existing pull request if necessary.
+  ///
+  /// \param object_id The object id that no longer needs to be pulled.
+  ///
+  /// \return True if a pull was cancelled. If there was no pending pull request for the
+  /// object this method may return false.
   bool CancelPull(const ObjectID &object_id);
 
+  /// Called when the retry timer fires. If this fires, the pull manager may try to pull
+  /// existing objects from other nodes if necessary.
   void Tick();
 
+  /// The number of ongoing object pulls.
   int NumRequests() const;
 
  private:
+  /// A helper structure for tracking information about each ongoing object pull.
   struct PullRequest {
     PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
     std::unique_ptr<boost::asio::deadline_timer> retry_timer;
     bool timer_set;
     std::vector<NodeID> client_locations;
-  };
-  NodeID self_node_id_;
+  }
 
+  /// See the constructor's arguments.
+  NodeID self_node_id_;
   const std::function<bool(const ObjectID &)> object_is_local_;
+  const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
+  const std::function<int(int)> get_rand_int_;
+  const RestoreSpilledObjectCallback restore_spilled_object_;
 
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
-
-  const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
-
-  const std::function<int(int)> get_rand_int_;
-
-  const RestoreSpilledObjectCallback restore_spilled_object_;
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
