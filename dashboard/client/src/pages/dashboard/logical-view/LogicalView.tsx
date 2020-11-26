@@ -31,25 +31,32 @@ const actorClassMatchesSearch = (
   return actorClass.toLowerCase().search(loweredNameFilter) !== -1;
 };
 
-const rayletInfoSelector = (state: StoreState) => state.dashboard.rayletInfo;
+const actorGroupsSelector = (state: StoreState) => state.dashboard.actorGroups;
 
 const LogicalView: React.FC = () => {
   const [nameFilter, setNameFilter] = useState("");
   const [debouncedNameFilter] = useDebounce(nameFilter, 500);
   const classes = useLogicalViewStyles();
-  const rayletInfo = useSelector(rayletInfoSelector);
-  if (rayletInfo === null || !rayletInfo.actorGroups) {
+  const actorGroups = useSelector(actorGroupsSelector);
+  if (!actorGroups) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
-  const actorGroups =
+  if (Object.keys(actorGroups).length === 0) {
+    return (
+      <Typography color="textSecondary">
+        Finished loading, but have found no actors yet.
+      </Typography>
+    );
+  }
+  const filteredGroups =
     debouncedNameFilter === ""
-      ? Object.entries(rayletInfo.actorGroups)
-      : Object.entries(rayletInfo.actorGroups).filter(([key, _]) =>
+      ? Object.entries(actorGroups)
+      : Object.entries(actorGroups).filter(([key, _]) =>
           actorClassMatchesSearch(key, debouncedNameFilter),
         );
   return (
     <Box className={classes.container}>
-      {actorGroups.length === 0 ? (
+      {filteredGroups.length === 0 ? (
         <Typography color="textSecondary">No actors found.</Typography>
       ) : (
         <React.Fragment>
@@ -65,7 +72,7 @@ const LogicalView: React.FC = () => {
               Search for an actor by name
             </FormHelperText>
           </FormControl>
-          <ActorClassGroups actorGroups={Object.fromEntries(actorGroups)} />
+          <ActorClassGroups actorGroups={Object.fromEntries(filteredGroups)} />
         </React.Fragment>
       )}
     </Box>

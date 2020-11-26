@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -53,14 +54,19 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                   rpc::RemoveObjectLocationReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
-  /// \param done Callback that will be called when load is complete.
-  void LoadInitialData(const EmptyCallback &done);
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
+
+  std::string DebugString() const;
 
  protected:
-  typedef absl::flat_hash_set<NodeID> LocationSet;
+  struct LocationSet {
+    absl::flat_hash_set<NodeID> locations;
+    std::string spilled_url = "";
+  };
 
   /// Add a location of objects.
   /// If the GCS server restarts, this function is used to reload data from storage.
@@ -82,7 +88,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   ///
   /// \param object_id The id of object to lookup.
   /// \return Object locations.
-  LocationSet GetObjectLocations(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  absl::flat_hash_set<NodeID> GetObjectLocations(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Handler if a node is removed.
   ///
@@ -99,8 +106,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
  private:
   typedef absl::flat_hash_set<ObjectID> ObjectSet;
 
-  std::shared_ptr<ObjectTableDataList> GenObjectTableDataList(
-      const GcsObjectManager::LocationSet &location_set) const;
+  const ObjectLocationInfo GenObjectLocationInfo(const ObjectID &object_id) const
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Get object locations by object id from map.
   /// Will create it if not exist and the flag create_if_not_exist is set to true.
@@ -134,6 +141,16 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
 
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+
+  // Debug info.
+  enum CountType {
+    GET_OBJECT_LOCATIONS_REQUEST = 0,
+    GET_ALL_OBJECT_LOCATIONS_REQUEST = 1,
+    ADD_OBJECT_LOCATION_REQUEST = 2,
+    REMOVE_OBJECT_LOCATION_REQUEST = 3,
+    CountType_MAX = 4,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

@@ -414,11 +414,18 @@ RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), object_sub_executor_(client_impl->object_table()) {}
 
 Status RedisObjectInfoAccessor::AsyncGetLocations(
-    const ObjectID &object_id, const MultiItemCallback<ObjectTableData> &callback) {
+    const ObjectID &object_id,
+    const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
                             const std::vector<ObjectTableData> &data) {
-    callback(Status::OK(), data);
+    rpc::ObjectLocationInfo info;
+    info.set_object_id(object_id.Binary());
+    for (const auto &item : data) {
+      auto item_ptr = info.add_locations();
+      item_ptr->CopyFrom(item);
+    }
+    callback(Status::OK(), info);
   };
 
   ObjectTable &object_table = client_impl_->object_table();
@@ -463,10 +470,22 @@ Status RedisObjectInfoAccessor::AsyncRemoveLocation(const ObjectID &object_id,
 
 Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
     const ObjectID &object_id,
-    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+    const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+  return object_sub_executor_.AsyncSubscribe(
+      subscribe_id_, object_id,
+      [subscribe](const ObjectID &id, const ObjectChangeNotification &notification_data) {
+        std::vector<rpc::ObjectLocationChange> updates;
+        for (const auto &item : notification_data.GetData()) {
+          rpc::ObjectLocationChange update;
+          update.set_is_add(notification_data.IsAdded());
+          update.set_node_id(item.manager());
+          updates.push_back(update);
+        }
+        subscribe(id, updates);
+      },
+      done);
 }
 
 Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id) {
@@ -476,12 +495,16 @@ Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &obje
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl),
       resource_sub_executor_(client_impl_->resource_table()),
-      heartbeat_sub_executor_(client_impl->heartbeat_table()),
       heartbeat_batch_sub_executor_(client_impl->heartbeat_batch_table()) {}
 
-Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
+Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
+                                           const StatusCallback &callback) {
   ClientTable &client_table = client_impl_->client_table();
-  return client_table.Connect(local_node_info);
+  Status status = client_table.Connect(local_node_info);
+  if (callback != nullptr) {
+    callback(Status::OK());
+  }
+  return status;
 }
 
 Status RedisNodeInfoAccessor::UnregisterSelf() {
@@ -546,7 +569,8 @@ Status RedisNodeInfoAccessor::AsyncGetAll(
   return client_table.Lookup(on_done);
 }
 
-boost::optional<GcsNodeInfo> RedisNodeInfoAccessor::Get(const NodeID &node_id) const {
+boost::optional<GcsNodeInfo> RedisNodeInfoAccessor::Get(const NodeID &node_id,
+                                                        bool filter_dead_nodes) const {
   GcsNodeInfo node_info;
   ClientTable &client_table = client_impl_->client_table();
   bool found = client_table.GetClient(node_id, &node_info);
@@ -580,30 +604,6 @@ Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
 }
 
 void RedisNodeInfoAccessor::AsyncReReportHeartbeat() {}
-
-Status RedisNodeInfoAccessor::AsyncSubscribeHeartbeat(
-    const SubscribeCallback<NodeID, HeartbeatTableData> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const NodeID &node_id, const HeartbeatTableData &data) {
-    subscribe(node_id, data);
-  };
-
-  return heartbeat_sub_executor_.AsyncSubscribeAll(NodeID::Nil(), on_subscribe, done);
-}
-
-Status RedisNodeInfoAccessor::AsyncReportBatchHeartbeat(
-    const std::shared_ptr<HeartbeatBatchTableData> &data_ptr,
-    const StatusCallback &callback) {
-  HeartbeatBatchTable::WriteCallback on_done = nullptr;
-  if (callback != nullptr) {
-    on_done = [callback](RedisGcsClient *client, const NodeID &node_id,
-                         const HeartbeatBatchTableData &data) { callback(Status::OK()); };
-  }
-
-  HeartbeatBatchTable &hb_batch_table = client_impl_->heartbeat_batch_table();
-  return hb_batch_table.Add(JobID::Nil(), NodeID::Nil(), data_ptr, on_done);
-}
 
 Status RedisNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
     const ItemCallback<HeartbeatBatchTableData> &subscribe, const StatusCallback &done) {
@@ -759,6 +759,11 @@ Status RedisPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
 Status RedisPlacementGroupInfoAccessor::AsyncGet(
     const PlacementGroupID &placement_group_id,
     const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  return Status::Invalid("Not implemented");
+}
+
+Status RedisPlacementGroupInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
   return Status::Invalid("Not implemented");
 }
 

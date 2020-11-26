@@ -1,21 +1,16 @@
 import React from "react";
-import {
-  NodeInfoResponse,
-  PlasmaStats,
-  RayletWorkerStats,
-} from "../../../../api";
+import { NodeInfoResponse } from "../../../../api";
 import { Accessor } from "../../../../common/tableUtils";
 
 type ArrayType<T> = T extends Array<infer U> ? U : never;
 export type Node = ArrayType<NodeInfoResponse["clients"]>;
 export type Worker = ArrayType<Node["workers"]>;
 
-type ClusterFeatureData = { nodes: Node[]; plasmaStats: PlasmaStats[] };
-export type NodeFeatureData = { node: Node; plasmaStats?: PlasmaStats };
+type ClusterFeatureData = { nodes: Node[] };
+export type NodeFeatureData = { node: Node };
 export type WorkerFeatureData = {
   node: Node;
   worker: Worker;
-  rayletWorker: RayletWorkerStats | null;
 };
 
 export type ClusterFeatureRenderFn = (

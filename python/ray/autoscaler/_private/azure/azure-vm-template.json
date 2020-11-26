@@ -85,20 +85,21 @@
         }
     },
     "variables": {
-        "publicIpAddressName": "[concat(parameters('vmName'), '-ip' )]",
+        "location": "[resourceGroup().location]",
         "networkInterfaceNamePrivate": "[concat(parameters('vmName'),'-nic')]",
         "networkInterfaceNamePublic": "[concat(parameters('vmName'),'-nic-public')]",
         "networkInterfaceName": "[if(parameters('provisionPublicIp'), variables('networkInterfaceNamePublic'), variables('networkInterfaceNamePrivate'))]",
         "networkIpConfig": "[guid(resourceGroup().id, parameters('vmName'))]",
-        "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'ray-vnet', 'ray-subnet')]",
-        "osDiskType": "Standard_LRS"
+        "osDiskType": "Standard_LRS",
+        "publicIpAddressName": "[concat(parameters('vmName'), '-ip' )]",
+        "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'ray-vnet', 'ray-subnet')]"
     },
     "resources": [
         {
             "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "2018-10-01",
+            "apiVersion": "2020-06-01",
             "name": "[concat(variables('networkInterfaceNamePublic'), copyIndex())]",
-            "location": "[resourceGroup().location]",
+            "location": "[variables('location')]",
             "dependsOn": [
                 "[resourceId('Microsoft.Network/publicIpAddresses/', concat(variables('publicIpAddressName'), copyIndex()))]"
             ],
@@ -129,9 +130,9 @@
         },
         {
             "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "2018-10-01",
+            "apiVersion": "2020-06-01",
             "name": "[concat(variables('networkInterfaceNamePrivate'), copyIndex())]",
-            "location": "[resourceGroup().location]",
+            "location": "[variables('location')]",
             "copy": {
                 "name": "NICPrivateCopy",
                 "count": "[parameters('vmCount')]"
@@ -158,7 +159,7 @@
             "type": "Microsoft.Network/publicIpAddresses",
             "apiVersion": "2019-02-01",
             "name": "[concat(variables('publicIpAddressName'), copyIndex())]",
-            "location": "[resourceGroup().location]",
+            "location": "[variables('location')]",
             "properties": {
                 "publicIpAllocationMethod": "Static",
                 "publicIPAddressVersion": "IPv4"
@@ -177,7 +178,7 @@
             "type": "Microsoft.Compute/virtualMachines",
             "apiVersion": "2019-03-01",
             "name": "[concat(parameters('vmName'), copyIndex())]",
-            "location": "[resourceGroup().location]",
+            "location": "[variables('location')]",
             "dependsOn": [
                 "[resourceId('Microsoft.Network/networkInterfaces/', concat(variables('networkInterfaceName'), copyIndex()))]"
             ],

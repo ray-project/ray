@@ -1,6 +1,7 @@
 import {
   Box,
   Button,
+  CircularProgress,
   createStyles,
   FormControl,
   InputLabel,
@@ -18,8 +19,9 @@ import { useDispatch, useSelector } from "react-redux";
 import {
   getMemoryTable,
   MemoryGroupByKey,
+  MemoryTable,
   MemoryTableResponse,
-  stopMemoryTableCollection,
+  setMemoryTableCollection,
 } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
@@ -68,11 +70,15 @@ const useMemoryInfoStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-const memoryInfoSelector = (state: StoreState) => ({
-  tab: state.dashboard.tab,
-  memoryTable: state.dashboard.memoryTable,
-  shouldObtainMemoryTable: state.dashboard.shouldObtainMemoryTable,
-});
+const memoryTableSelector = (state: StoreState) => state.dashboard.memoryTable;
+const isEmpty = (memoryTable: MemoryTable) =>
+  Object.keys(memoryTable.group).length === 0;
+const loadTimerComplete = (mountedAt: Date) => {
+  const secondsBetween = Math.abs(
+    (new Date().getTime() - mountedAt.getTime()) / 1000,
+  );
+  return secondsBetween > 10;
+};
 
 const fetchMemoryTable = (
   groupByKey: MemoryGroupByKey,
@@ -85,14 +91,22 @@ const fetchMemoryTable = (
 };
 
 const MemoryInfo: React.FC<{}> = () => {
-  const { memoryTable } = useSelector(memoryInfoSelector);
+  const memoryTable = useSelector(memoryTableSelector);
   const dispatch = useDispatch();
-
+  const mountedAt = new Date();
   const [paused, setPaused] = useState(false);
   const pauseButtonIcon = paused ? <PlayArrowIcon /> : <PauseIcon />;
 
   const classes = useMemoryInfoStyles();
   const [groupBy, setGroupBy] = useState<MemoryGroupByKey>("node");
+
+  // Turn memory collection on render
+  useEffect(() => {
+    setMemoryTableCollection(true);
+    return () => {
+      setMemoryTableCollection(false);
+    };
+  }, []);
 
   // Set up polling memory data
   const fetchData = useCallback(
@@ -114,12 +128,19 @@ const MemoryInfo: React.FC<{}> = () => {
       }
     };
     return cleanup;
-  }, [paused, fetchData]);
+  }, [paused, fetchData, dispatch]);
 
-  if (!memoryTable) {
+  if (!memoryTable || (isEmpty(memoryTable) && !loadTimerComplete(mountedAt))) {
     return (
-      <Typography variant="h5" align="center">
-        Loading memory information
+      <Typography align="center" color="textSecondary" variant="h3">
+        <CircularProgress /> Loading
+      </Typography>
+    );
+  }
+  if (isEmpty(memoryTable) && loadTimerComplete(mountedAt)) {
+    return (
+      <Typography align="center" color="textSecondary" variant="h3">
+        Finished loading, but nothing found.
       </Typography>
     );
   }
@@ -162,9 +183,11 @@ const MemoryInfo: React.FC<{}> = () => {
         color="primary"
         className={classes.pauseButton}
         onClick={() => {
-          if (!paused) {
-            stopMemoryTableCollection();
+          if (intervalId.current) {
+            clearInterval(intervalId.current);
+            intervalId.current = null;
           }
+          setMemoryTableCollection(!paused);
           setPaused(!paused);
         }}
       >

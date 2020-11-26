@@ -20,20 +20,20 @@ export const ClusterUptime: ClusterFeatureRenderFn = ({ nodes }) => (
 );
 
 export const NodeUptime: NodeFeatureRenderFn = ({ node }) => (
-  <React.Fragment>{formatDuration(getUptime(node.boot_time))}</React.Fragment>
+  <React.Fragment>{formatDuration(getUptime(node.bootTime))}</React.Fragment>
 );
 
 export const nodeUptimeAccessor: Accessor<NodeFeatureData> = ({ node }) =>
-  getUptime(node.boot_time);
+  getUptime(node.bootTime);
 
 export const WorkerUptime: WorkerFeatureRenderFn = ({ worker }) => (
   <React.Fragment>
-    {formatDuration(getUptime(worker.create_time))}
+    {formatDuration(getUptime(worker.createTime))}
   </React.Fragment>
 );
 
 const workerUptimeAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
-  getUptime(worker.create_time);
+  getUptime(worker.createTime);
 
 const uptimeFeature: NodeInfoFeature = {
   id: "uptime",

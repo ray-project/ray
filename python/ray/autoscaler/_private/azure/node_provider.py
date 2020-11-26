@@ -1,6 +1,6 @@
 import json
 import logging
-import os
+from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
@@ -178,8 +178,8 @@ class AzureNodeProvider(NodeProvider):
         resource_group = self.provider_config["resource_group"]
 
         # load the template file
-        current_path = os.path.dirname(os.path.abspath(__file__))
-        template_path = os.path.join(current_path, "azure-vm-template.json")
+        current_path = Path(__file__).parent
+        template_path = current_path.joinpath("azure-vm-template.json")
         with open(template_path, "r") as template_fp:
             template = json.load(template_fp)
 

@@ -91,6 +91,10 @@ DEFAULT_CONFIG = with_common_config({
     # Callback for APPO to use to update KL, target network periodically.
     # The input to the callback is the learner fetches dict.
     "after_train_step": None,
+
+    # Use the new "trajectory view API" to collect samples and produce
+    # model- and policy inputs.
+    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable

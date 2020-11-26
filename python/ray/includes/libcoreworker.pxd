@@ -19,6 +19,7 @@ from ray.includes.unique_ids cimport (
     CTaskID,
     CObjectID,
     CPlacementGroupID,
+    CWorkerID,
 )
 from ray.includes.common cimport (
     CAddress,
@@ -109,7 +110,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
-        CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill)
+        CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill,
+                              c_bool recursive)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -200,8 +202,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CNodeID &client_Id)
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
-        CRayStatus ForceRestoreSpilledObjects(
-                const c_vector[CObjectID] &object_ids)
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
@@ -229,10 +229,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &return_ids,
             c_vector[shared_ptr[CRayObject]] *returns) nogil
          ) task_execution_callback
+        (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
-        (c_vector[c_string](const c_vector[CObjectID]&) nogil) spill_objects
-        (void(const c_vector[c_string]&) nogil) restore_spilled_objects
+        (c_vector[c_string](const c_vector[CObjectID] &) nogil) spill_objects
+        (void(
+            const c_vector[CObjectID] &,
+            const c_vector[c_string] &) nogil) restore_spilled_objects
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
         c_bool is_local_mode

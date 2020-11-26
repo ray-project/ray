@@ -14,13 +14,16 @@ from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.models.torch.torch_action_dist import \
+    TorchDistributionWrapper, TorchDirichlet
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.spaces.simplex import Simplex
+from ray.rllib.utils.torch_ops import huber_loss
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
 
@@ -67,6 +70,8 @@ def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
     """
     if isinstance(action_space, Discrete):
         return TorchCategorical
+    elif isinstance(action_space, Simplex):
+        return TorchDirichlet
     else:
         if config["normalize_actions"]:
             return TorchSquashedGaussian if \
@@ -192,7 +197,8 @@ def actor_critic_loss(
 
         # Actually selected Q-values (from the actions batch).
         one_hot = F.one_hot(
-            train_batch[SampleBatch.ACTIONS], num_classes=q_t.size()[-1])
+            train_batch[SampleBatch.ACTIONS].long(),
+            num_classes=q_t.size()[-1])
         q_t_selected = torch.sum(q_t * one_hot, dim=-1)
         if policy.config["twin_q"]:
             twin_q_t_selected = torch.sum(twin_q_t * one_hot, dim=-1)
@@ -262,11 +268,11 @@ def actor_critic_loss(
         td_error = base_td_error
 
     critic_loss = [
-        0.5 * torch.mean(torch.pow(q_t_selected_target - q_t_selected, 2.0))
+        torch.mean(train_batch[PRIO_WEIGHTS] * huber_loss(base_td_error))
     ]
     if policy.config["twin_q"]:
-        critic_loss.append(0.5 * torch.mean(
-            torch.pow(q_t_selected_target - twin_q_t_selected, 2.0)))
+        critic_loss.append(
+            torch.mean(train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error)))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -472,7 +478,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy)
 
 
-# Build a child class of `DynamicTFPolicy`, given the custom functions defined
+# Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
 SACTorchPolicy = build_torch_policy(
     name="SACTorchPolicy",

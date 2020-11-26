@@ -249,8 +249,6 @@ In the above example, the memory quota is specified statically by the decorator,
   # override the memory quota to 1GiB when creating the actor
   SomeActor.options(memory=1000 * 1024 * 1024).remote(a=1, b=2)
 
-**Enforcement**: If an actor exceeds its memory quota, calls to it will throw ``RayOutOfMemoryError`` and it may be killed. Memory quota is currently enforced on a best-effort basis for actors only (but quota is taken into account during scheduling in all cases).
-
 Questions or Issues?
 --------------------
 

@@ -50,38 +50,35 @@ def _import_staroid(provider_config):
     return StaroidNodeProvider
 
 
-def _load_local_example_config():
+def _load_local_defaults_config():
     import ray.autoscaler.local as ray_local
-    return os.path.join(
-        os.path.dirname(ray_local.__file__), "example-full.yaml")
+    return os.path.join(os.path.dirname(ray_local.__file__), "defaults.yaml")
 
 
-def _load_kubernetes_example_config():
+def _load_kubernetes_defaults_config():
     import ray.autoscaler.kubernetes as ray_kubernetes
     return os.path.join(
-        os.path.dirname(ray_kubernetes.__file__), "example-full.yaml")
+        os.path.dirname(ray_kubernetes.__file__), "defaults.yaml")
 
 
-def _load_aws_example_config():
+def _load_aws_defaults_config():
     import ray.autoscaler.aws as ray_aws
-    return os.path.join(os.path.dirname(ray_aws.__file__), "example-full.yaml")
+    return os.path.join(os.path.dirname(ray_aws.__file__), "defaults.yaml")
 
 
-def _load_gcp_example_config():
+def _load_gcp_defaults_config():
     import ray.autoscaler.gcp as ray_gcp
-    return os.path.join(os.path.dirname(ray_gcp.__file__), "example-full.yaml")
+    return os.path.join(os.path.dirname(ray_gcp.__file__), "defaults.yaml")
 
 
-def _load_azure_example_config():
+def _load_azure_defaults_config():
     import ray.autoscaler.azure as ray_azure
-    return os.path.join(
-        os.path.dirname(ray_azure.__file__), "example-full.yaml")
+    return os.path.join(os.path.dirname(ray_azure.__file__), "defaults.yaml")
 
 
-def _load_staroid_example_config():
+def _load_staroid_defaults_config():
     import ray.autoscaler.staroid as ray_staroid
-    return os.path.join(
-        os.path.dirname(ray_staroid.__file__), "example-full.yaml")
+    return os.path.join(os.path.dirname(ray_staroid.__file__), "defaults.yaml")
 
 
 def _import_external(provider_config):
@@ -110,12 +107,12 @@ _PROVIDER_PRETTY_NAMES = {
 }
 
 _DEFAULT_CONFIGS = {
-    "local": _load_local_example_config,
-    "aws": _load_aws_example_config,
-    "gcp": _load_gcp_example_config,
-    "azure": _load_azure_example_config,
-    "staroid": _load_staroid_example_config,
-    "kubernetes": _load_kubernetes_example_config,
+    "local": _load_local_defaults_config,
+    "aws": _load_aws_defaults_config,
+    "gcp": _load_gcp_defaults_config,
+    "azure": _load_azure_defaults_config,
+    "staroid": _load_staroid_defaults_config,
+    "kubernetes": _load_kubernetes_defaults_config,
 }
 
 
@@ -134,18 +131,47 @@ def _load_class(path):
     return getattr(module, class_str)
 
 
-def _get_node_provider(provider_config: Dict[str, Any],
-                       cluster_name: str,
-                       use_cache: bool = True) -> Any:
+def _get_node_provider_cls(provider_config: Dict[str, Any]):
+    """Get the node provider class for a given provider config.
+
+    Note that this may be used by private node providers that proxy methods to
+    built-in node providers, so we should maintain backwards compatibility.
+
+    Args:
+        provider_config: provider section of the autoscaler config.
+
+    Returns:
+        NodeProvider class
+    """
     importer = _NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))
-    provider_cls = importer(provider_config)
+    return importer(provider_config)
+
+
+def _get_node_provider(provider_config: Dict[str, Any],
+                       cluster_name: str,
+                       use_cache: bool = True) -> Any:
+    """Get the instantiated node provider for a given provider config.
+
+    Note that this may be used by private node providers that proxy methods to
+    built-in node providers, so we should maintain backwards compatibility.
+
+    Args:
+        provider_config: provider section of the autoscaler config.
+        cluster_name: cluster name from the autoscaler config.
+        use_cache: whether or not to use a cached definition if available. If
+            False, the returned object will also not be stored in the cache.
+
+    Returns:
+        NodeProvider
+    """
     provider_key = (json.dumps(provider_config, sort_keys=True), cluster_name)
     if use_cache and provider_key in _provider_instances:
         return _provider_instances[provider_key]
 
+    provider_cls = _get_node_provider_cls(provider_config)
     new_provider = provider_cls(provider_config, cluster_name)
 
     if use_cache:

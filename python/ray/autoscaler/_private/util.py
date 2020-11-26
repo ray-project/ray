@@ -1,4 +1,5 @@
 import collections
+import logging
 import hashlib
 import json
 import jsonschema
@@ -10,6 +11,7 @@ import ray
 import ray._private.services as services
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
@@ -18,6 +20,8 @@ RAY_SCHEMA_PATH = os.path.join(
 # Internal kv keys for storing debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+
+logger = logging.getLogger(__name__)
 
 
 class ConcurrentCounter:
@@ -94,10 +98,38 @@ def prepare_config(config):
     return with_defaults
 
 
+def rewrite_legacy_yaml_to_available_node_types(
+        config: Dict[str, Any]) -> Dict[str, Any]:
+
+    if "available_node_types" not in config:
+        # TODO(ameer/ekl/alex): we can also rewrite here many other fields
+        # that include initialization/setup/start commands and ImageId.
+        logger.debug("Converting legacy cluster config to multi node types.")
+        config["available_node_types"] = {
+            NODE_TYPE_LEGACY_HEAD: {
+                "node_config": config["head_node"],
+                "resources": config["head_node"].get("resources") or {},
+                "min_workers": 0,
+                "max_workers": 0,
+            },
+            NODE_TYPE_LEGACY_WORKER: {
+                "node_config": config["worker_nodes"],
+                "resources": config["worker_nodes"].get("resources") or {},
+                "min_workers": config.get("min_workers", 0),
+                "max_workers": config.get("max_workers", 0),
+            },
+        }
+        config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
+        config["worker_default_node_type"] = NODE_TYPE_LEGACY_WORKER
+
+    return config
+
+
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
+    defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
     return defaults
 
 
@@ -109,8 +141,9 @@ def merge_setup_commands(config):
     return config
 
 
-def with_head_node_ip(cmds):
-    head_ip = services.get_node_ip_address()
+def with_head_node_ip(cmds, head_ip=None):
+    if head_ip is None:
+        head_ip = services.get_node_ip_address()
     out = []
     for cmd in cmds:
         out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))

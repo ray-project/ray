@@ -38,13 +38,13 @@ export const nodeRAMAccessor: Accessor<NodeFeatureData> = ({ node }) =>
 
 export const WorkerRAM: WorkerFeatureRenderFn = ({ node, worker }) => (
   <UsageBar
-    percent={(100 * worker.memory_info.rss) / node.mem[0]}
-    text={formatByteAmount(worker.memory_info.rss, "mebibyte")}
+    percent={(100 * worker.memoryInfo.rss) / node.mem[0]}
+    text={formatByteAmount(worker.memoryInfo.rss, "mebibyte")}
   />
 );
 
 export const workerRAMAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
-  worker.memory_info.rss;
+  worker.memoryInfo.rss;
 
 const ramFeature: NodeInfoFeature = {
   id: "ram",

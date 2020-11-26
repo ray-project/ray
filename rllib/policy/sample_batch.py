@@ -88,7 +88,7 @@ class SampleBatch:
 
     @staticmethod
     @PublicAPI
-    def concat_samples(samples: List[Dict[str, TensorType]]) -> \
+    def concat_samples(samples: List["SampleBatch"]) -> \
             Union["SampleBatch", "MultiAgentBatch"]:
         """Concatenates n data dicts or MultiAgentBatches.
 

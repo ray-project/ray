@@ -20,6 +20,8 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         routes.static("/logs", self._dashboard_head.log_dir, show_index=True)
         GlobalSignals.node_info_fetched.append(
             self.insert_log_url_to_node_info)
+        GlobalSignals.node_summary_fetched.append(
+            self.insert_log_url_to_node_info)
 
     async def insert_log_url_to_node_info(self, node_info):
         node_id = node_info.get("raylet", {}).get("nodeId")

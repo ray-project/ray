@@ -131,8 +131,8 @@ class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
 
     def _a1_distribution(self):
         BATCH = self.inputs.shape[0]
-        a1_logits, _ = self.model.action_module(self.inputs,
-                                                torch.zeros((BATCH, 1)))
+        zeros = torch.zeros((BATCH, 1)).to(self.inputs.device)
+        a1_logits, _ = self.model.action_module(self.inputs, zeros)
         a1_dist = TorchCategorical(a1_logits)
         return a1_dist
 

@@ -262,7 +262,7 @@ Deep Deterministic Policy Gradients (DDPG, TD3)
 -----------------------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ddpg/ddpg.py>`__
-DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
+DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/master/algorithms/td3.html>`__ are available as ``TD3``.
 
 .. figure:: dqn-arch.svg
 
@@ -471,7 +471,12 @@ RLlib's MBMPO implementation is a Dyna-styled model-based RL method that learns 
 
 Additional statistics are logged in MBMPO. Each MBMPO iteration corresponds to multiple MAML iterations, and ``MAMLIter$i$_DynaTrajInner_$j$_episode_reward_mean`` measures the agent's returns across the dynamics models at iteration ``i`` of MAML and step ``j`` of inner adaptation. Examples can be seen `here <https://github.com/ray-project/rl-experiments/tree/master/mbmpo>`__.
 
-Tuned examples: `HalfCheetah <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/halfcheetah-mbmpo.yaml>`__, `Hopper <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/hopper-mbmpo.yaml>`__
+Tuned examples (continuous actions):
+`Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/pendulum-mbmpo.yaml>`__,
+`HalfCheetah <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/halfcheetah-mbmpo.yaml>`__,
+`Hopper <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/hopper-mbmpo.yaml>`__,
+Tuned examples (discrete actions):
+`CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/cartpole-mbmpo.yaml>`__
 
 **MuJoCo results @100K steps:** `more details <https://github.com/ray-project/rl-experiments>`__
 
@@ -494,7 +499,7 @@ Hopper         620           ~650
 Dreamer
 -------
 |pytorch|
-`[paper] <https://arxiv.org/abs/1912.016030>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dreamer/dreamer.py>`__
+`[paper] <https://arxiv.org/abs/1912.01603>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dreamer/dreamer.py>`__
 
 Dreamer is an image-only model-based RL method that learns by imagining trajectories in the future and is evaluated on the DeepMind Control Suite `environments <https://github.com/ray-project/ray/blob/master/rllib/examples/env/dm_control_suite.py>`__. RLlib's Dreamer is adapted from the `official Google research repo <https://github.com/google-research/dreamer>`__.
 
@@ -700,7 +705,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 
 Multi-Agent Methods
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 .. _qmix:
 

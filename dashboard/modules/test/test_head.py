@@ -1,3 +1,4 @@
+import time
 import logging
 
 import aiohttp.web
@@ -53,20 +54,20 @@ class TestHead(dashboard_utils.DashboardHeadModule):
                 for k, v in DataSource.__dict__.items()
                 if not k.startswith("_")
             }
-            return await dashboard_utils.rest_response(
+            return dashboard_utils.rest_response(
                 success=True,
                 message="Fetch all data from datacenter success.",
                 **all_data)
         else:
             data = dict(DataSource.__dict__.get(key))
-            return await dashboard_utils.rest_response(
+            return dashboard_utils.rest_response(
                 success=True,
                 message=f"Fetch {key} from datacenter success.",
                 **{key: data})
 
     @routes.get("/test/notified_agents")
     async def get_notified_agents(self, req) -> aiohttp.web.Response:
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Fetch notified agents success.",
             **self._notified_agents)
@@ -77,6 +78,20 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         result = await test_utils.http_get(self._dashboard_head.http_session,
                                            url)
         return aiohttp.web.json_response(result)
+
+    @routes.get("/test/aiohttp_cache/{sub_path}")
+    @dashboard_utils.aiohttp_cache(ttl_seconds=1)
+    async def test_aiohttp_cache(self, req) -> aiohttp.web.Response:
+        value = req.query["value"]
+        return dashboard_utils.rest_response(
+            success=True, message="OK", value=value, timestamp=time.time())
+
+    @routes.get("/test/aiohttp_cache_lru/{sub_path}")
+    @dashboard_utils.aiohttp_cache(ttl_seconds=60, maxsize=5)
+    async def test_aiohttp_cache_lru(self, req) -> aiohttp.web.Response:
+        value = req.query.get("value")
+        return dashboard_utils.rest_response(
+            success=True, message="OK", value=value, timestamp=time.time())
 
     async def run(self, server):
         pass

@@ -126,7 +126,7 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_complete_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             rollout_fragment_length=40,
             batch_mode="complete_episodes")
         for _ in range(3):
@@ -136,7 +136,7 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_truncate_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             rollout_fragment_length=40,
             batch_mode="truncate_episodes")
         for _ in range(3):
@@ -146,7 +146,7 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_off_policy(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             rollout_fragment_length=40,
             batch_mode="complete_episodes")
         for _ in range(3):
@@ -158,7 +158,7 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_bad_actions(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy=BadPolicy,
+            policy_spec=BadPolicy,
             sample_async=True,
             rollout_fragment_length=40,
             batch_mode="truncate_episodes")
@@ -226,7 +226,7 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_horizon_not_supported(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             episode_horizon=20,
             rollout_fragment_length=10,
             batch_mode="complete_episodes")

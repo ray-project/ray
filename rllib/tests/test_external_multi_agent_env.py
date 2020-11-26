@@ -25,7 +25,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         agents = 4
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             rollout_fragment_length=40,
             batch_mode="complete_episodes")
         for _ in range(3):
@@ -37,7 +37,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         agents = 4
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             rollout_fragment_length=40,
             batch_mode="truncate_episodes")
         for _ in range(3):
@@ -51,7 +51,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },

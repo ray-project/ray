@@ -2,12 +2,12 @@
 import os
 import subprocess
 import tempfile
-import time
 
 import ray
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.env_with_subprocess import EnvWithSubprocess
+from ray.test_utils import wait_for_condition
 
 
 def leaked_processes():
@@ -56,13 +56,10 @@ if __name__ == "__main__":
             },
         },
     })
-    time.sleep(10.0)
-    # Check whether processes are still running or Env has not cleaned up
-    # the given tmp files.
-    leaked = leaked_processes()
-    assert not leaked, "LEAKED PROCESSES: {}".format(leaked)
-    assert not os.path.exists(tmp1), "atexit handler not called"
-    assert not os.path.exists(tmp2), "atexit handler not called"
-    assert not os.path.exists(tmp3), "close not called"
-    assert not os.path.exists(tmp4), "close not called"
+
+    ray.shutdown()
+
+    # Check whether processes are still running.
+    wait_for_condition(lambda: not leaked_processes(), timeout=30)
+
     print("OK")

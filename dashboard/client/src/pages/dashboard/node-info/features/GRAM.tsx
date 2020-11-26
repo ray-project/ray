@@ -19,8 +19,14 @@ import {
 const GRAM_COL_WIDTH = 120;
 
 const nodeGRAMUtilization = (node: Node) => {
-  const utilization = (gpu: GPUStats) => gpu.memory_used / gpu.memory_total;
-  if (node.gpus.length === 0) {
+  const utilization = (gpu: GPUStats) => {
+    if (!gpu.memoryUsed || !gpu.memoryTotal) {
+      return NaN;
+    }
+    return gpu.memoryUsed / gpu.memoryTotal;
+  };
+  const gramUtils = node.gpus.map(utilization).filter((util) => !!util);
+  if (gramUtils.length === 0) {
     return NaN;
   }
   const utilizationSum = sum(node.gpus.map((gpu) => utilization(gpu)));
@@ -69,8 +75,8 @@ export const NodeGRAM: NodeFeatureRenderFn = ({ node }) => {
   const nodeGRAMEntries = node.gpus.map((gpu, i) => {
     const props = {
       gpuName: gpu.name,
-      utilization: gpu.memory_used,
-      total: gpu.memory_total,
+      utilization: gpu.memoryUsed,
+      total: gpu.memoryTotal,
       slot: i,
     };
     return <GRAMEntry {...props} />;
@@ -124,8 +130,8 @@ export const WorkerGRAM: WorkerFeatureRenderFn = ({ worker, node }) => {
       }
       const props = {
         gpuName: gpu.name,
-        total: gpu.memory_total,
-        utilization: process.gpu_memory_usage,
+        total: gpu.memoryTotal,
+        utilization: process.gpuMemoryUsage,
         slot: i,
       };
       return <GRAMEntry {...props} />;
@@ -148,7 +154,7 @@ const workerGRAMUtilization = (worker: any, node: Node) => {
       processes.find((process) => process.pid === worker.pid),
     );
   const workerUtilPerGPU = workerProcessPerGPU.map(
-    (proc) => proc?.gpu_memory_usage || 0,
+    (proc) => proc?.gpuMemoryUsage || 0,
   );
   return sum(workerUtilPerGPU);
 };

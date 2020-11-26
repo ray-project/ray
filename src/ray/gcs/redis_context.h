@@ -170,6 +170,13 @@ class RedisContext {
 
   ~RedisContext();
 
+  /// Test whether the address and port has a reachable Redis service.
+  ///
+  /// \param address IP address to test.
+  /// \param port port number to test.
+  /// \return The Status that we would get if we Connected.
+  Status PingPort(const std::string &address, int port);
+
   Status Connect(const std::string &address, int port, bool sharding,
                  const std::string &password);
 
@@ -238,6 +245,23 @@ class RedisContext {
   /// \return Status.
   Status SubscribeAsync(const NodeID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
+
+  /// Subscribes the client to the given channel.
+  ///
+  /// \param channel The subscription channel.
+  /// \param redisCallback The callback function that the notification calls.
+  /// \param callback_index The index at which to add the callback. This index
+  /// must already be allocated in the callback manager via
+  /// RedisCallbackManager::AllocateCallbackIndex.
+  /// \return Status.
+  Status SubscribeAsync(const std::string &channel, const RedisCallback &redisCallback,
+                        int64_t callback_index);
+
+  /// Unsubscribes the client from the given channel.
+  ///
+  /// \param channel The unsubscription channel.
+  /// \return Status.
+  Status UnsubscribeAsync(const std::string &channel);
 
   /// Subscribes the client to the given pattern.
   ///

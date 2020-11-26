@@ -295,8 +295,8 @@ class GcsServerTest : public ::testing::Test {
         request, [&object_locations, &promise](
                      const Status &status, const rpc::GetObjectLocationsReply &reply) {
           RAY_CHECK_OK(status);
-          for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
-            object_locations.push_back(reply.object_table_data_list(index));
+          for (const auto &loc : reply.location_info().locations()) {
+            object_locations.push_back(loc);
           }
           promise.set_value(true);
         });
@@ -433,11 +433,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
-    auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
-    return status == std::future_status::ready;
-  }
-
  protected:
   // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -449,7 +444,7 @@ class GcsServerTest : public ::testing::Test {
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   // Timeout waiting for gcs server reply, default is 5s
-  const uint64_t timeout_ms_ = 5000;
+  const std::chrono::milliseconds timeout_ms_{5000};
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {
@@ -708,7 +703,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   report_worker_failure_request.mutable_worker_failure()->CopyFrom(*worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
   std::vector<rpc::WorkerTableData> worker_table_data = GetAllWorkerInfo();
-  ASSERT_TRUE(worker_table_data.size() == 0);
+  ASSERT_TRUE(worker_table_data.size() == 1);
 
   // Add worker info
   auto worker_data = Mocker::GenWorkerTableData();
@@ -716,7 +711,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   rpc::AddWorkerInfoRequest add_worker_request;
   add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
   ASSERT_TRUE(AddWorkerInfo(add_worker_request));
-  ASSERT_TRUE(GetAllWorkerInfo().size() == 1);
+  ASSERT_TRUE(GetAllWorkerInfo().size() == 2);
 
   // Get worker info
   boost::optional<rpc::WorkerTableData> result =

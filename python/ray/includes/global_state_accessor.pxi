@@ -78,6 +78,15 @@ cdef class GlobalStateAccessor:
             return c_string(object_info.get().data(), object_info.get().size())
         return None
 
+    def get_all_heartbeat(self):
+        """Get newest heartbeat of all nodes from GCS service."""
+        cdef unique_ptr[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllHeartbeat()
+        if result:
+            return c_string(result.get().data(), result.get().size())
+        return None
+
     def get_actor_table(self):
         cdef c_vector[c_string] result
         with nogil:
@@ -103,7 +112,7 @@ cdef class GlobalStateAccessor:
     def get_worker_table(self):
         cdef c_vector[c_string] result
         with nogil:
-            self.inner.get().GetAllWorkerInfo()
+            result = self.inner.get().GetAllWorkerInfo()
         return result
 
     def get_worker_info(self, worker_id):
@@ -120,6 +129,12 @@ cdef class GlobalStateAccessor:
         cdef c_string cserialized_string = serialized_string
         with nogil:
             result = self.inner.get().AddWorkerInfo(cserialized_string)
+        return result
+
+    def get_placement_group_table(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllPlacementGroupInfo()
         return result
 
     def get_placement_group_info(self, placement_group_id):

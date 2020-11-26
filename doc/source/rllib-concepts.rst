@@ -564,7 +564,7 @@ Here is an example of creating a set of rollout workers and using them gather ex
     env = gym.make("CartPole-v0")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = WorkerSet(
-        policy=CustomPolicy,
+        policy_class=CustomPolicy,
         env_creator=lambda c: gym.make("CartPole-v0"),
         num_workers=10)
 

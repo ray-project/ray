@@ -48,7 +48,8 @@ class QLoss:
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
-            z = torch.range(0.0, num_atoms - 1, dtype=torch.float32)
+            z = torch.range(
+                0.0, num_atoms - 1, dtype=torch.float32).to(rewards.device)
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
@@ -252,7 +253,7 @@ def build_q_losses(policy: Policy, model, _,
         is_training=True)
 
     # Q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
+    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
                                   policy.action_space.n)
     q_t_selected = torch.sum(
         torch.where(q_t > FLOAT_MIN, q_t,
@@ -321,7 +322,7 @@ def after_init(policy: Policy, obs_space: gym.spaces.Space,
                config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
-    # Move target net to device (this is done autoatically for the
+    # Move target net to device (this is done automatically for the
     # policy.model, but not for any other models the policy has).
     policy.target_q_model = policy.target_q_model.to(policy.device)
 

@@ -19,11 +19,14 @@ class TestSimpleQ(unittest.TestCase):
         """Test whether a SimpleQTrainer can be built on all frameworks."""
         config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        num_iterations = 2
 
         for _ in framework_iterator(config):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
-            num_iterations = 2
+            rw = trainer.workers.local_worker()
             for i in range(num_iterations):
+                sb = rw.sample()
+                assert sb.count == config["rollout_fragment_length"]
                 results = trainer.train()
                 print(results)
 
@@ -48,7 +51,14 @@ class TestSimpleQ(unittest.TestCase):
                 SampleBatch.ACTIONS: np.array([0, 1]),
                 SampleBatch.REWARDS: np.array([0.4, -1.23]),
                 SampleBatch.DONES: np.array([False, False]),
-                SampleBatch.NEXT_OBS: np.random.random(size=(2, 4))
+                SampleBatch.NEXT_OBS: np.random.random(size=(2, 4)),
+                SampleBatch.EPS_ID: np.array([1234, 1234]),
+                SampleBatch.AGENT_INDEX: np.array([0, 0]),
+                SampleBatch.ACTION_LOGP: np.array([-0.1, -0.1]),
+                SampleBatch.ACTION_DIST_INPUTS: np.array([[0.1, 0.2],
+                                                          [-0.1, -0.2]]),
+                SampleBatch.ACTION_PROB: np.array([0.1, 0.2]),
+                "q_values": np.array([[0.1, 0.2], [0.2, 0.1]]),
             }
             # Get model vars for computing expected model outs (q-vals).
             # 0=layer-kernel; 1=layer-bias; 2=q-val-kernel; 3=q-val-bias

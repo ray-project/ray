@@ -346,9 +346,11 @@ def ray_get_unpack(object_refs):
         The input Python object with all contained Ray object references
         resolved with their concrete values.
     """
-    if isinstance(object_refs,
-                  (tuple, list)) and any(not isinstance(x, ray.ObjectRef)
-                                         for x in object_refs):
+    if isinstance(object_refs, tuple):
+        object_refs = list(object_refs)
+
+    if isinstance(object_refs, list) and any(not isinstance(x, ray.ObjectRef)
+                                             for x in object_refs):
         # We flatten the object references before calling ray.get(), since Dask
         # loves to nest collections in nested tuples and Ray expects a flat
         # list of object references. We repack the results after ray.get()

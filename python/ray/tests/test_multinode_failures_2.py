@@ -22,7 +22,6 @@ import ray.ray_constants as ray_constants
             "num_heartbeats_timeout": 10,
             "object_manager_pull_timeout_ms": 1000,
             "object_manager_push_timeout_ms": 1000,
-            "object_manager_repeated_push_delay_ms": 1000,
         },
     }],
     indirect=True)

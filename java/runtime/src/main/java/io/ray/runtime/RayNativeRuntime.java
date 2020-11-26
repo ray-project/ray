@@ -174,7 +174,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    Lock writeLock = shutdownLock.readLock();
+    // `shutdown` won't be called concurrently, but the lock is also used in `NativeObjectStore`.
+    // When an object is garbage collected, the object will be unregistered from core worker.
+    // Since GC runs in a separate thread, we need to make sure that core worker is available
+    // when `NativeObjectStore` is accessing core worker in the GC thread.
+    Lock writeLock = shutdownLock.writeLock();
     writeLock.lock();
     try {
       if (rayConfig.workerMode == WorkerType.DRIVER) {
@@ -212,6 +216,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   @SuppressWarnings("unchecked")
   @Override
   public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
+    if (name.isEmpty()) {
+      return Optional.empty();
+    }
     byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name, global);
     ActorId actorId = ActorId.fromBytes(actorIdBytes);
     if (actorId.isNil()) {

@@ -84,7 +84,7 @@ class BaseEnv:
                     make_env: Callable[[int], EnvType] = None,
                     num_envs: int = 1,
                     remote_envs: bool = False,
-                    remote_env_batch_wait_ms: bool = 0) -> "BaseEnv":
+                    remote_env_batch_wait_ms: int = 0) -> "BaseEnv":
         """Wraps any env type as needed to expose the async interface."""
 
         from ray.rllib.env.remote_vector_env import RemoteVectorEnv

@@ -6,10 +6,13 @@ import logging
 from functools import partial
 import pickle
 
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Normal, \
     Quantized, \
     Uniform
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
 
 try:
@@ -48,7 +51,9 @@ class HyperOptSearch(Searcher):
         space (dict): HyperOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
@@ -168,15 +173,29 @@ class HyperOptSearch(Searcher):
             self.rstate = np.random.RandomState(random_state_seed)
 
         self.domain = None
-        if space:
-            self.domain = hpo.Domain(lambda spc: spc, space)
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
+            self._space = space
+            self._setup_hyperopt()
+
+    def _setup_hyperopt(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
+        self.domain = hpo.Domain(lambda spc: spc, self._space)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         if self.domain:
             return False
         space = self.convert_search_space(config)
-        self.domain = hpo.Domain(lambda spc: spc, space)
+        self._space = space
 
         if metric:
             self._metric = metric
@@ -188,15 +207,21 @@ class HyperOptSearch(Searcher):
         elif self._mode == "min":
             self.metric_op = 1.
 
+        self._setup_hyperopt()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self.domain:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
+
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
@@ -304,7 +329,7 @@ class HyperOptSearch(Searcher):
             self.set_state(trials_object)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict:
+    def convert_search_space(spec: Dict, prefix: str = "") -> Dict:
         spec = copy.deepcopy(spec)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -348,20 +373,20 @@ class HyperOptSearch(Searcher):
                         logger.warning(
                             "HyperOpt does not support quantization for "
                             "integer values. Reverting back to 'randint'.")
-                    if domain.lower != 0:
-                        raise ValueError(
-                            "HyperOpt only allows integer sampling with "
-                            f"lower bound 0. Got: {domain.lower}.")
-                    if domain.upper < 1:
-                        raise ValueError(
-                            "HyperOpt does not support integer sampling "
-                            "of values lower than 0. Set your maximum range "
-                            "to something above 0 (currently {})".format(
-                                domain.upper))
-                    return hpo.hp.randint(par, domain.upper)
+                    return hpo.hp.randint(par, domain.lower, high=domain.upper)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
-                    return hpo.hp.choice(par, domain.categories)
+                    return hpo.hp.choice(par, [
+                        HyperOptSearch.convert_search_space(
+                            category, prefix=par)
+                        if isinstance(category, dict) else
+                        HyperOptSearch.convert_search_space(
+                            dict(enumerate(category)), prefix=f"{par}/{i}")
+                        if isinstance(category, list) else resolve_value(
+                            f"{par}/{i}", category)
+                        if isinstance(category, Domain) else category
+                        for i, category in enumerate(domain.categories)
+                    ])
 
             raise ValueError("HyperOpt does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(
@@ -369,7 +394,8 @@ class HyperOptSearch(Searcher):
                                  type(domain.sampler).__name__))
 
         for path, domain in domain_vars:
-            par = "/".join(path)
+            par = "/".join(
+                [str(p) for p in ((prefix, ) + path if prefix else path)])
             value = resolve_value(par, domain)
             assign_value(spec, path, value)
 

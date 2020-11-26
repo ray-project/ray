@@ -191,16 +191,6 @@ class DashboardHead:
                 except Exception:
                     logger.exception(f"Error notifying coroutine {co}")
 
-        async def _purge_data():
-            """Purge data in datacenter."""
-            while True:
-                await asyncio.sleep(
-                    dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
-                try:
-                    await DataOrganizer.purge()
-                except Exception:
-                    logger.exception("Error purging data.")
-
         modules = self._load_modules()
 
         # Http server should be initialized after all modules loaded.
@@ -219,7 +209,13 @@ class DashboardHead:
 
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
-        await asyncio.gather(self._update_nodes(), _async_notify(),
-                             _purge_data(), web_server,
+        concurrent_tasks = [
+            self._update_nodes(),
+            _async_notify(),
+            DataOrganizer.purge(),
+            DataOrganizer.organize(),
+            web_server,
+        ]
+        await asyncio.gather(*concurrent_tasks,
                              *(m.run(self.server) for m in modules))
         await self.server.wait_for_termination()

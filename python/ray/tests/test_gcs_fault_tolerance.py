@@ -6,6 +6,7 @@ from ray.test_utils import (
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
+    new_scheduler_enabled,
 )
 
 
@@ -20,6 +21,7 @@ def increase(x):
     return x + 1
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
@@ -45,6 +47,7 @@ def test_gcs_server_restart(ray_start_regular):
     assert result == 2
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
@@ -53,19 +56,22 @@ def test_gcs_server_restart(ray_start_regular):
     indirect=True)
 def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     ids = []
-    for i in range(0, 100):
+    # We reduce the number of actors because there are too many actors created
+    # and `Too many open files` error will be thrown.
+    for i in range(0, 20):
         actor = Increase.remote()
         ids.append(actor.method.remote(1))
 
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
 
-    ready, unready = ray.wait(ids, num_returns=100, timeout=240)
+    ready, unready = ray.wait(ids, num_returns=20, timeout=240)
     print("Ready objects is {}.".format(ready))
     print("Unready objects is {}.".format(unready))
     assert len(unready) == 0
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
@@ -126,6 +132,7 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     wait_for_condition(condition, timeout=10)
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(

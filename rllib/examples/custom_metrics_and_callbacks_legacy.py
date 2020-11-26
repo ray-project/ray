@@ -2,6 +2,7 @@
 
 import argparse
 import numpy as np
+import os
 
 import ray
 from ray import tune
@@ -73,6 +74,8 @@ if __name__ == "__main__":
                 "on_postprocess_traj": on_postprocess_traj,
             },
             "framework": "tf",
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }).trials
 
     # verify custom metrics for integration tests

@@ -54,7 +54,8 @@ class MockServer {
         config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, node_id_, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_),
+                        nullptr) {
     RAY_CHECK_OK(RegisterGcs(main_service));
   }
 
@@ -69,7 +70,7 @@ class MockServer {
     node_info.set_node_manager_port(object_manager_port);
     node_info.set_object_manager_port(object_manager_port);
 
-    ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info);
+    ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info, nullptr);
     return status;
   }
 

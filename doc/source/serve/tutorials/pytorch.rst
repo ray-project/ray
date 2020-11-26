@@ -12,7 +12,7 @@ In particular, we show:
 Please see the :doc:`../key-concepts` to learn more general information about Ray Serve.
 
 This tutorial requires Pytorch and Torchvision installed in your system. Ray Serve
-is framework agnostic and work with any version of PyTorch.
+is framework agnostic and works with any version of PyTorch.
 
 .. code-block:: bash
 

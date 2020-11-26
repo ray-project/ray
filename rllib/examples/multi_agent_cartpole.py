@@ -11,13 +11,15 @@ execution, set the TF_TIMELINE_DIR environment variable.
 
 import argparse
 import gym
+import os
 import random
 
 import ray
 from ray import tune
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.models.shared_weights_model import \
-    SharedWeightsModel1, SharedWeightsModel2, TorchSharedWeightsModel
+    SharedWeightsModel1, SharedWeightsModel2, TF2SharedWeightsModel, \
+    TorchSharedWeightsModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -34,7 +36,8 @@ parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--simple", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--torch", action="store_true")
+parser.add_argument(
+    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -42,8 +45,13 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     # Register the models to use.
-    mod1 = TorchSharedWeightsModel if args.torch else SharedWeightsModel1
-    mod2 = TorchSharedWeightsModel if args.torch else SharedWeightsModel2
+    if args.framework == "torch":
+        mod1 = mod2 = TorchSharedWeightsModel
+    elif args.framework in ["tfe", "tf2"]:
+        mod1 = mod2 = TF2SharedWeightsModel
+    else:
+        mod1 = SharedWeightsModel1
+        mod2 = SharedWeightsModel2
     ModelCatalog.register_custom_model("model1", mod1)
     ModelCatalog.register_custom_model("model2", mod2)
 
@@ -75,12 +83,14 @@ if __name__ == "__main__":
             "num_agents": args.num_agents,
         },
         "simple_optimizer": args.simple,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_sgd_iter": 10,
         "multiagent": {
             "policies": policies,
             "policy_mapping_fn": (lambda agent_id: random.choice(policy_ids)),
         },
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
     stop = {
         "episode_reward_mean": args.stop_reward,

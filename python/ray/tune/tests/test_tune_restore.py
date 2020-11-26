@@ -116,7 +116,7 @@ class TuneExampleTest(unittest.TestCase):
         validate_save_restore(MyTrainableClass, use_object_store=True)
 
     def testAsyncHyperbandExample(self):
-        from ray.tune.examples.async_hyperband_example import MyTrainableClass
+        from ray.tune.utils.mock import MyTrainableClass
         validate_save_restore(MyTrainableClass)
         validate_save_restore(MyTrainableClass, use_object_store=True)
 
@@ -124,11 +124,7 @@ class TuneExampleTest(unittest.TestCase):
 class AutoInitTest(unittest.TestCase):
     def testTuneRestore(self):
         self.assertFalse(ray.is_initialized())
-        tune.run(
-            "__fake",
-            name="TestAutoInit",
-            stop={"training_iteration": 1},
-            ray_auto_init=True)
+        tune.run("__fake", name="TestAutoInit", stop={"training_iteration": 1})
         self.assertTrue(ray.is_initialized())
 
     def tearDown(self):

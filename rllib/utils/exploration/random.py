@@ -1,14 +1,16 @@
-from gym.spaces import Discrete, Box, MultiDiscrete
+from gym.spaces import Discrete, Box, MultiDiscrete, Space
 import numpy as np
 import tree
-from typing import Union
+from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
+from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 tf1, tf, tfv = try_import_tf()
@@ -23,7 +25,8 @@ class Random(Exploration):
     If explore=False, returns the greedy/max-likelihood action.
     """
 
-    def __init__(self, action_space, *, model, framework, **kwargs):
+    def __init__(self, action_space: Space, *, model: ModelV2,
+                 framework: Optional[str], **kwargs):
         """Initialize a Random Exploration object.
 
         Args:
@@ -46,14 +49,16 @@ class Random(Exploration):
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         # Instantiate the distribution object.
-        if self.framework in ["tf", "tfe"]:
+        if self.framework in ["tf2", "tf", "tfe"]:
             return self.get_tf_exploration_action_op(action_distribution,
                                                      explore)
         else:
             return self.get_torch_exploration_action(action_distribution,
                                                      explore)
 
-    def get_tf_exploration_action_op(self, action_dist, explore):
+    def get_tf_exploration_action_op(
+            self, action_dist: ActionDistribution,
+            explore: Optional[Union[bool, TensorType]]):
         def true_fn():
             batch_size = 1
             req = force_tuple(
@@ -72,10 +77,14 @@ class Random(Exploration):
                         maxval=component.n,
                         dtype=component.dtype)
                 elif isinstance(component, MultiDiscrete):
-                    return tf.random.uniform(
-                        shape=(batch_size, ) + component.shape,
-                        maxval=component.nvec,
-                        dtype=component.dtype)
+                    return tf.concat(
+                        [
+                            tf.random.uniform(
+                                shape=(batch_size, 1),
+                                maxval=n,
+                                dtype=component.dtype) for n in component.nvec
+                        ],
+                        axis=1)
                 elif isinstance(component, Box):
                     if component.bounded_above.all() and \
                             component.bounded_below.all():
@@ -88,6 +97,16 @@ class Random(Exploration):
                         return tf.random.normal(
                             shape=(batch_size, ) + component.shape,
                             dtype=component.dtype)
+                else:
+                    assert isinstance(component, Simplex), \
+                        "Unsupported distribution component '{}' for random " \
+                        "sampling!".format(component)
+                    return tf.nn.softmax(
+                        tf.random.uniform(
+                            shape=(batch_size, ) + component.shape,
+                            minval=0.0,
+                            maxval=1.0,
+                            dtype=component.dtype))
 
             actions = tree.map_structure(random_component,
                                          self.action_space_struct)
@@ -107,7 +126,8 @@ class Random(Exploration):
         logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
         return action, logp
 
-    def get_torch_exploration_action(self, action_dist, explore):
+    def get_torch_exploration_action(self, action_dist: ActionDistribution,
+                                     explore: bool):
         if explore:
             req = force_tuple(
                 action_dist.required_model_output_shape(

@@ -147,7 +147,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   virtual ~ServiceBasedNodeInfoAccessor() = default;
 
-  Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
+  Status RegisterSelf(const GcsNodeInfo &local_node_info,
+                      const StatusCallback &callback) override;
 
   Status UnregisterSelf() override;
 
@@ -166,7 +167,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  boost::optional<GcsNodeInfo> Get(const NodeID &node_id) const override;
+  boost::optional<GcsNodeInfo> Get(const NodeID &node_id,
+                                   bool filter_dead_nodes = false) const override;
 
   const std::unordered_map<NodeID, GcsNodeInfo> &GetAll() const override;
 
@@ -193,13 +195,11 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncReReportHeartbeat() override;
 
-  Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-      const StatusCallback &done) override;
+  /// Fill resource fields with cached resources. Used by light heartbeat.
+  void FillHeartbeatRequest(rpc::ReportHeartbeatRequest &heartbeat);
 
-  Status AsyncReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-      const StatusCallback &callback) override;
+  Status AsyncGetAllHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override;
 
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
@@ -326,19 +326,23 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncGetLocations(
       const ObjectID &object_id,
-      const MultiItemCallback<rpc::ObjectTableData> &callback) override;
+      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                           const StatusCallback &callback) override;
 
+  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const StatusCallback &callback) override;
+
   Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
                              const StatusCallback &callback) override;
 
   Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
@@ -455,6 +459,9 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
   Status AsyncGet(
       const PlacementGroupID &placement_group_id,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncGetAll(
+      const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

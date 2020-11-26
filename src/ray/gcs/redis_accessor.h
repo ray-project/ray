@@ -264,8 +264,9 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 
   virtual ~RedisObjectInfoAccessor() {}
 
-  Status AsyncGetLocations(const ObjectID &object_id,
-                           const MultiItemCallback<ObjectTableData> &callback) override;
+  Status AsyncGetLocations(
+      const ObjectID &object_id,
+      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncGetAll(
       const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override {
@@ -275,12 +276,18 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                           const StatusCallback &callback) override;
 
+  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const StatusCallback &callback) override {
+    return Status::NotImplemented("AsyncAddSpilledUrl not implemented");
+  }
+
   Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
                              const StatusCallback &callback) override;
 
   Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
@@ -314,7 +321,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   virtual ~RedisNodeInfoAccessor() {}
 
-  Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
+  Status RegisterSelf(const GcsNodeInfo &local_node_info,
+                      const StatusCallback &callback) override;
 
   Status UnregisterSelf() override;
 
@@ -333,7 +341,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
       const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  boost::optional<GcsNodeInfo> Get(const NodeID &node_id) const override;
+  boost::optional<GcsNodeInfo> Get(const NodeID &node_id,
+                                   bool filter_dead_nodes = true) const override;
 
   const std::unordered_map<NodeID, GcsNodeInfo> &GetAll() const override;
 
@@ -362,13 +371,10 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncReReportHeartbeat() override;
 
-  Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<NodeID, HeartbeatTableData> &subscribe,
-      const StatusCallback &done) override;
-
-  Status AsyncReportBatchHeartbeat(
-      const std::shared_ptr<HeartbeatBatchTableData> &data_ptr,
-      const StatusCallback &callback) override;
+  Status AsyncGetAllHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override {
+    return Status::NotImplemented("AsyncGetAllHeartbeat not implemented");
+  }
 
   Status AsyncSubscribeBatchHeartbeat(
       const ItemCallback<HeartbeatBatchTableData> &subscribe,
@@ -393,10 +399,6 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   typedef SubscriptionExecutor<NodeID, ResourceChangeNotification, DynamicResourceTable>
       DynamicResourceSubscriptionExecutor;
   DynamicResourceSubscriptionExecutor resource_sub_executor_;
-
-  typedef SubscriptionExecutor<NodeID, HeartbeatTableData, HeartbeatTable>
-      HeartbeatSubscriptionExecutor;
-  HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
 
   typedef SubscriptionExecutor<NodeID, HeartbeatBatchTableData, HeartbeatBatchTable>
       HeartbeatBatchSubscriptionExecutor;
@@ -483,6 +485,9 @@ class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
   Status AsyncGet(
       const PlacementGroupID &placement_group_id,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncGetAll(
+      const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
 };
 
 }  // namespace gcs

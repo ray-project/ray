@@ -108,17 +108,12 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
     const ObjectID &object_id) {
   std::unique_ptr<std::string> object_info;
   std::promise<bool> promise;
-  auto on_done = [object_id, &object_info, &promise](
+  auto on_done = [&object_info, &promise](
                      const Status &status,
-                     const std::vector<rpc::ObjectTableData> &result) {
+                     const boost::optional<rpc::ObjectLocationInfo> &result) {
     RAY_CHECK_OK(status);
-    if (!result.empty()) {
-      rpc::ObjectLocationInfo object_location_info;
-      object_location_info.set_object_id(object_id.Binary());
-      for (auto &data : result) {
-        object_location_info.add_locations()->CopyFrom(data);
-      }
-      object_info.reset(new std::string(object_location_info.SerializeAsString()));
+    if (result) {
+      object_info.reset(new std::string(result->SerializeAsString()));
     }
     promise.set_value(true);
   };
@@ -177,6 +172,16 @@ std::string GlobalStateAccessor::GetInternalConfig() {
   promise.get_future().get();
 
   return config_proto.SerializeAsString();
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetAllHeartbeat() {
+  std::unique_ptr<std::string> heartbeat_batch_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllHeartbeat(
+      TransformForItemCallback<rpc::HeartbeatBatchTableData>(heartbeat_batch_data,
+                                                             promise)));
+  promise.get_future().get();
+  return heartbeat_batch_data;
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
@@ -240,6 +245,16 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
       }));
   promise.get_future().get();
   return true;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {
+  std::vector<std::string> placement_group_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGetAll(
+      TransformForMultiItemCallback<rpc::PlacementGroupTableData>(
+          placement_group_table_data, promise)));
+  promise.get_future().get();
+  return placement_group_table_data;
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(

@@ -254,11 +254,11 @@ genrule(
         cp -f $(location //java:ray_dist_deploy.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
         chmod +w "$$WORK_DIR/python/ray/jars/ray_dist.jar"
         zip -d "$$WORK_DIR/python/ray/jars/ray_dist.jar" \
-            native/*/gcs_server \
-            native/*/libray_redis_module.so \
-            native/*/plasma_store_server \
-            native/*/raylet \
-            native/*/redis-server
+            "native/*/gcs_server" \
+            "native/*/libray_redis_module.so" \
+            "native/*/plasma_store_server" \
+            "native/*/raylet" \
+            "native/*/redis-server"
         date > $@
     """,
     local = 1,

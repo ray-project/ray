@@ -90,6 +90,10 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+
+    # Use the new "trajectory view API" to collect samples and produce
+    # model- and policy inputs.
+    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable

@@ -45,6 +45,11 @@ public class NativeTaskExecutor extends TaskExecutor<NativeTaskExecutor.NativeAc
     return new NativeActorContext();
   }
 
+  public void onWorkerShutdown(byte[] workerIdBytes) {
+    // This is to make sure no memory leak when `Ray.exitActor()` is called.
+    removeActorContext(new UniqueId(workerIdBytes));
+  }
+
   @Override
   protected void maybeSaveCheckpoint(Object actor, ActorId actorId) {
     if (!(actor instanceof Checkpointable)) {

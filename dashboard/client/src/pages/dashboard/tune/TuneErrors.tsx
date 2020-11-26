@@ -90,10 +90,10 @@ class TuneErrors extends React.Component<
               Object.keys(tuneInfo.errors).map((key, index) => (
                 <TableRow key={index}>
                   <TableCell className={classes.cell}>
-                    {tuneInfo.errors[key].job_id}
+                    {tuneInfo.errors[key].jobId}
                   </TableCell>
                   <TableCell className={classes.cell}>
-                    {tuneInfo.errors[key].trial_id}
+                    {tuneInfo.errors[key].trialId}
                   </TableCell>
                   <TableCell className={classes.cell}>{key}</TableCell>
                   <TableCell className={classes.cell}>

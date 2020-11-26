@@ -10,6 +10,7 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ActorId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
@@ -169,6 +170,9 @@ public interface RayRuntime {
   PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
                             ActorCreationOptions options);
 
+  PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
+      PlacementStrategy strategy);
+
   PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy);
 
@@ -198,4 +202,23 @@ public interface RayRuntime {
    * Intentionally exit the current actor.
    */
   void exitActor();
+
+  /**
+   * Get a placement group by id.
+   * @param id placement group id.
+   * @return The placement group.
+   */
+  PlacementGroup getPlacementGroup(PlacementGroupId id);
+
+  /**
+   * Get all placement groups in this cluster.
+   * @return All placement groups.
+   */
+  List<PlacementGroup> getAllPlacementGroups();
+
+  /**
+   * Remove a placement group by id.
+   * @param id Id of the placement group.
+   */
+  void removePlacementGroup(PlacementGroupId id);
 }

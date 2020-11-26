@@ -251,7 +251,10 @@ class KLCoeffMixin:
         self.kl_coeff_val = config["kl_coeff"]
         # The current KL value (as tf Variable for in-graph operations).
         self.kl_coeff = get_variable(
-            float(self.kl_coeff_val), tf_name="kl_coeff", trainable=False)
+            float(self.kl_coeff_val),
+            tf_name="kl_coeff",
+            trainable=False,
+            framework=config["framework"])
         # Constant target value.
         self.kl_target = config["kl_target"]
 
