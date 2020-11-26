@@ -122,11 +122,6 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
 
   // Now check custom resources.
   for (const auto &task_req_custom_resource : task_req.custom_resources) {
-    // auto it = resources.custom_resources.begin();
-    // RAY_LOG(ERROR) << "Node has " << resources.custom_resources.size() << " custom resources";
-    // for (it = resources.custom_resources.begin(); it != resources.custom_resources.end(); it++) {
-    //   RAY_LOG(ERROR) << "Looking for: " << task_req_custom_resource.id << ", found " << it->first;
-    // }
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
 
     if (it == resources.custom_resources.end()) {
