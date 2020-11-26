@@ -99,8 +99,10 @@ sys.modules["pytorch_lightning"] = ChildClassMock()
 class SimpleClass(object):
     pass
 
+
 class SimpleClass2(object):
     pass
+
 
 # ray.util.sgd.torch.lightning_operator.LightningOperator extends
 # TrainingOperator, pytorch_lightning.TrainerOptimizersMixin,
@@ -116,8 +118,6 @@ setattr(sys.modules["pytorch_lightning.trainer.optimizers"],
         "TrainerOptimizersMixin", SimpleClass)
 setattr(sys.modules["pytorch_lightning.trainer.model_hooks"],
         "TrainerModelHooksMixin", SimpleClass2)
-
-
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the

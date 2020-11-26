@@ -87,7 +87,9 @@ class LitMNIST(LightningModule):
         num_samples = y.size(0)
         return {"val_loss": loss.item(), "val_acc": num_correct / num_samples}
 
+
 # __ptl_end__
+
 
 # __train_begin__
 def train_mnist(num_workers=1, use_gpu=False, num_epochs=5):
@@ -113,8 +115,8 @@ def train_mnist(num_workers=1, use_gpu=False, num_epochs=5):
     trainer.shutdown()
     print("success!")
 
-# __train_end__
 
+# __train_end__
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

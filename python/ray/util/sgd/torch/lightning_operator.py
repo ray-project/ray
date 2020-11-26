@@ -43,6 +43,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
             trainer = TorchTrainer(training_operator_cls=MyLightningOperator,
                 ...)
     """
+
     def _configure_amp(self, amp, models, optimizers, apex_args=None):
         assert len(models) == 1
         model = models[0]
@@ -372,11 +373,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
             model.on_after_backward()
 
         with self.timers.record("apply"):
-            model.optimizer_step(
-                epoch=epoch_idx,
-                batch_idx=batch_idx,
-                optimizer=optimizer,
-                optimizer_idx=0)
+            optimizer.step()
 
         model.on_before_zero_grad(optimizer)
 

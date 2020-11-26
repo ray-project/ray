@@ -399,6 +399,7 @@ class TrainingOperator:
         self._validation_loader = validation_loader
 
         if self._is_distributed:
+
             def with_sampler(loader):
                 # Automatically set the DistributedSampler
                 data_loader_args = {
@@ -800,7 +801,7 @@ class TrainingOperator:
             A TrainingOperator class properly configured given the
             LightningModule.
         """
-        from ray.util.sgd.torch.ptl_operator import LightningOperator
+        from ray.util.sgd.torch.lightning_operator import LightningOperator
 
         class CustomLightningOperator(LightningOperator):
             _lightning_module_cls = lightning_module_cls
