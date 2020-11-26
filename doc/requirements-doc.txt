@@ -13,7 +13,6 @@ pickle5
 pillow
 pydantic<1.7
 pygments
-pytorch-lightning
 pyyaml
 recommonmark
 redis

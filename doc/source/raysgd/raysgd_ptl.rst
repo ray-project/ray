@@ -45,7 +45,9 @@ Step 3: Use the Operator with Ray SGD's ``TorchTrainer``, just like how you woul
     trainer = TorchTrainer(training_operator_cls=MyLightningOperator, num_workers=4, use_gpu=True)
     train_stats = trainer.train()
 
-And that's it! For a more comprehensive guide, see the MNIST tutorial below.
+And that's it! For a more comprehensive guide, see the MNIST tutorial below :ref:`below <_ptl-mnist>`.
+
+.. _ptl-mnist:
 
 MNIST Tutorial
 --------------
@@ -110,6 +112,6 @@ This integration is currently under active development, so not all Pytorch Light
 Please post any feature requests on `Github
 <<https://github.com/ray-project/ray/issues>`_ and we will get to it shortly!
 
-A list of unsupported model hooks is as follows:
+A list of unsupported model hooks (as of v1.0.0) is as follows:
 ``test_dataloader``, ``on_test_batch_start``, ``on_test_epoch_start``, ``on_test_batch_end``, ``on_test_epoch_start``,
-``get_progress_bar_dict``, ``on_fit_end``, ``on_pretrain_routine_end``, ``configure_sync_batchnorm``, ``tbtt_split_batch``.
+``get_progress_bar_dict``, ``on_fit_end``, ``on_pretrain_routine_end``, ``manual_backward``, ``tbtt_split_batch``.

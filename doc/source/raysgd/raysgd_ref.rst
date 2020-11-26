@@ -31,8 +31,8 @@ CreatorOperator
 
 .. _ref-lightning-operator:
 
-Pytorch LightningOperator
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Pytorch Lightning LightningOperator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.util.sgd.torch.lightning_operator.LightningOperator
     :members:
@@ -58,7 +58,7 @@ TFTrainer
 
     .. automethod:: __init__
 
-Ray SGD Dataset
+RaySGD Dataset
 ---------------
 
 Dataset
@@ -69,7 +69,7 @@ Dataset
 
     .. automethod:: __init__
 
-Ray SGD Utils
+RaySGD Utils
 -------------
 .. _ref-utils:
 

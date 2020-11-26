@@ -27,11 +27,12 @@ logger = logging.getLogger(__name__)
 
 class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                         TrainerOptimizersMixin):
-    """A subclass of TrainingOperator that defines training state via a
-    Pytorch Lightning ``LightningModule``.
+    """A subclass of TrainingOperator created from a PTL ``LightningModule``.
 
-    This class is returned by `TrainingOperator.from_ptl`. Training and
-    validation functionality have already been implemented according to
+    This class is returned by `TrainingOperator.from_ptl` and it's training
+    state is defined by the Pytorch Lightning ``LightningModule`` that is
+    passed into `from_ptl`. Training and validation functionality have
+    already been implemented according to
     Pytorch Lightning's Trainer. But if you need to modify training,
     you should subclass this class and override the appropriate methods
     before passing in the subclass to `TorchTrainer`.

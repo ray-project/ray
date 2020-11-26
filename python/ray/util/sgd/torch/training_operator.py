@@ -777,8 +777,7 @@ class TrainingOperator:
                  lightning_module_cls,
                  train_dataloader=None,
                  val_dataloader=None):
-        """A utility method to create a custom TrainingOperator class from a
-        Pytorch Lightning Module.
+        """Create a custom TrainingOperator class from a LightningModule.
 
         .. code-block:: python
 
@@ -818,8 +817,9 @@ class TrainingOperator:
                       loss_creator=None,
                       scheduler_creator=None,
                       serialize_data_creation=True):
-        """A utility method to create a custom TrainingOperator class from
-        creator functions. This is useful for backwards compatibility with
+        """Create a custom TrainingOperator class from creator functions.
+
+        This method is useful for backwards compatibility with
         previous versions of Ray. To provide custom training and validation,
         you should subclass the class that is returned by this method instead
         of ``TrainingOperator``.
@@ -944,9 +944,9 @@ class TrainingOperator:
 
 
 class CreatorOperator(TrainingOperator):
-    """A subclass of TrainingOperator specifically for defining training
-    state using creator functions. This allows for backwards compatibility
-    with pre Ray 1.0 versions.
+    """A subclass of TrainingOperator with training defined by creator funcs.
+
+    This class allows for backwards compatibility with pre Ray 1.0 versions.
 
     This class is returned by `TrainingOperator.from_creators(...)`. If you
     need to add custom functionality, you should subclass this class,

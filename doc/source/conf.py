@@ -46,6 +46,7 @@ MOCK_MODULES = [
     "psutil",
     "pytorch_lightning.core.step_result",
     "pytorch_lightning.overrides.data_parallel",
+    "pytorch_lightning.utilities.model_utils",
     "pytorch_lightning.trainer.model_hooks",
     "pytorch_lightning.trainer.optimizers",
     "pytorch_lightning.utilities.exceptions",
