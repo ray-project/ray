@@ -157,8 +157,9 @@ class _AgentCollector:
         batch = SampleBatch(batch_data)
 
         if SampleBatch.UNROLL_ID not in batch.data:
-            batch.data[SampleBatch.UNROLL_ID] = np.repeat(
-                _AgentCollector._next_unroll_id, batch.count)
+            if SampleBatch.UNROLL_ID in view_requirements:
+                batch.data[SampleBatch.UNROLL_ID] = np.repeat(
+                    _AgentCollector._next_unroll_id, batch.count)
             _AgentCollector._next_unroll_id += 1
 
         # This trajectory is continuing -> Copy data at the end (in the size of
@@ -256,7 +257,6 @@ class _PolicyCollector:
         """
         # Create batch from our buffers.
         batch = SampleBatch(self.buffers)
-        assert SampleBatch.UNROLL_ID in batch.data
         # Clear buffers for future samples.
         self.buffers.clear()
         # Reset count to 0.
