@@ -7,6 +7,7 @@ from ray.util.xgboost import RayDMatrix, train
 num_cpus_per_actor = 1
 num_actors = 1
 
+
 def train_model(config):
     # Load dataset
     data, labels = datasets.load_breast_cancer(return_X_y=True)
@@ -27,7 +28,10 @@ def train_model(config):
         num_actors=num_actors,
         cpus_per_actor=num_cpus_per_actor)
     bst.save_model("model.xgb")
+
+
 # __train_end__
+
 
 def main():
     # __tune_begin__
@@ -51,7 +55,10 @@ def main():
         metric="eval-error",
         mode="min",
         num_samples=4,
-        resources_per_trial={"cpu": 1, "extra_cpu": num_actors * num_cpus_per_actor})
+        resources_per_trial={
+            "cpu": 1,
+            "extra_cpu": num_actors * num_cpus_per_actor
+        })
 
     # Load the best model checkpoint
     import xgboost as xgb
@@ -59,12 +66,13 @@ def main():
 
     # Load in the best performing model.
     best_bst = xgb.Booster()
-    best_bst.load_model(os.path.join(analysis.best_logdir, "simple.xgb"))
+    best_bst.load_model(os.path.join(analysis.best_logdir, "model.xgb"))
 
     accuracy = 1. - analysis.best_result["eval-error"]
     print(f"Best model parameters: {analysis.best_config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
     # __tune_run_end__
+
 
 if __name__ == "__main__":
     main()
