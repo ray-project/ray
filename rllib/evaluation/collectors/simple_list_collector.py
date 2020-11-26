@@ -164,6 +164,10 @@ class _AgentCollector:
         batch = SampleBatch(batch_data)
 
         if SampleBatch.UNROLL_ID not in batch.data:
+            # TODO: (sven) Once we have the additional
+            #  model.preprocess_train_batch in place (attention net PR), we
+            #  should not even need UNROLL_ID anymore:
+            #  Add "if SampleBatch.UNROLL_ID in view_requirements:" here.
             batch.data[SampleBatch.UNROLL_ID] = np.repeat(
                 _AgentCollector._next_unroll_id, batch.count)
             _AgentCollector._next_unroll_id += 1
