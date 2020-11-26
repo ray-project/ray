@@ -1604,7 +1604,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action-reward", "--num-cpus=4"]
+    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action",  "--use-prev-reward", "--num-cpus=4"]
 )
 
 py_test(
@@ -1899,7 +1899,7 @@ py_test(
     tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
-    args = ["--as-test", "--torch", "--stop-reward=70.0", "--num-cpus=4"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
 
 py_test(
