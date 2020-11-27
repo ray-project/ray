@@ -41,11 +41,6 @@ export JAVA_HOME="$java_home"
 #echo "build --config=manylinux2010" >> /root/.bazelrc
 echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
-if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
-  bazel build //java:ray_java_pkg
-  #unset RAY_INSTALL_JAVA
-fi
-
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
