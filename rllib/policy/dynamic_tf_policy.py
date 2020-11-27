@@ -422,36 +422,26 @@ class DynamicTFPolicy(TFPolicy):
                 input_dict/dummy_batch tuple.
         """
         input_dict = {}
-        dummy_batch = {}
         for view_col, view_req in view_requirements.items():
             # Point state_in to the already existing self._state_inputs.
             mo = re.match("state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
-                dummy_batch[view_col] = np.zeros_like(
-                    [view_req.space.sample()])
             # State-outs (no placeholders needed).
             elif view_col.startswith("state_out_"):
-                dummy_batch[view_col] = np.zeros_like(
-                    [view_req.space.sample()])
+                continue
             # Skip action dist inputs placeholder (do later).
             elif view_col == SampleBatch.ACTION_DIST_INPUTS:
                 continue
             elif view_col in existing_inputs:
                 input_dict[view_col] = existing_inputs[view_col]
-                dummy_batch[view_col] = np.zeros(
-                    shape=[
-                        1 if s is None else s
-                        for s in existing_inputs[view_col].shape.as_list()
-                    ],
-                    dtype=existing_inputs[view_col].dtype.as_numpy_dtype)
             # All others.
             else:
                 if view_req.used_for_training:
                     input_dict[view_col] = get_placeholder(
                         space=view_req.space, name=view_col)
-                dummy_batch[view_col] = np.zeros_like(
-                    [view_req.space.sample()])
+        dummy_batch = self._get_dummy_batch_from_view_requirements()
+
         return input_dict, dummy_batch
 
     def _initialize_loss_from_dummy_batch(
@@ -510,7 +500,7 @@ class DynamicTFPolicy(TFPolicy):
             for k, v in self.extra_compute_action_fetches().items():
                 dummy_batch[k] = fake_array(v)
 
-        sb = SampleBatch(dummy_batch)
+        sb = SampleBatch(dummy_batch, _dont_check_lens=True)
         batch_for_postproc = UsageTrackingDict(sb)
         batch_for_postproc.count = sb.count
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")

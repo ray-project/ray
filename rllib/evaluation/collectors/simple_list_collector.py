@@ -242,13 +242,7 @@ class _AgentCollector:
 
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
-            # Range of shifts, e.g. "-100:0". Note: This includes index 0!
-            if view_req.data_rel_pos_from is not None:
-                time_indices = (abs_pos + view_req.data_rel_pos_from + 1,
-                                abs_pos + view_req.data_rel_pos_to + 1)
-            # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
-            else:
-                time_indices = abs_pos + view_req.data_rel_pos
+            time_indices = abs_pos + view_req.data_rel_pos
 
             if isinstance(time_indices, tuple):
                 data = self.buffers[data_col][time_indices[0]:time_indices[1] +
