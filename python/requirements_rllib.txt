@@ -7,3 +7,5 @@ torchvision>=0.6.0
 smart_open
 # For testing in MuJoCo-like envs (in PyBullet).
 pybullet
+# For tests on PettingZoo's multi-agent envs.
+pettingzoo>=1.4.0

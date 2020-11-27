@@ -66,7 +66,7 @@ class MockServer {
     node_info.set_node_manager_port(object_manager_port);
     node_info.set_object_manager_port(object_manager_port);
 
-    ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info);
+    ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info, nullptr);
     return status;
   }
 

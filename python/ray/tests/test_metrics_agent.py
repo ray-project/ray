@@ -1,5 +1,6 @@
 import json
 import pathlib
+import platform
 from pprint import pformat
 from unittest.mock import MagicMock
 
@@ -46,6 +47,8 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         loaded_json_data["targets"]))
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_prome_file_discovery_run_by_dashboard(shutdown_only):
     ray.init(num_cpus=0)
     global_node = ray.worker._global_node

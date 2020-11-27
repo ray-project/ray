@@ -4,8 +4,51 @@ from ray.experimental.client import ray
 from ray.experimental.client.common import ClientObjectRef
 
 
+def test_real_ray_fallback(ray_start_regular_shared):
+    server = ray_client_server.serve("localhost:50051", test_mode=True)
+    ray.connect("localhost:50051")
+
+    @ray.remote
+    def get_nodes_real():
+        import ray as real_ray
+        return real_ray.nodes()
+
+    nodes = ray.get(get_nodes_real.remote())
+    assert len(nodes) == 1, nodes
+
+    @ray.remote
+    def get_nodes():
+        return ray.nodes()  # Can access the full Ray API in remote methods.
+
+    nodes = ray.get(get_nodes.remote())
+    assert len(nodes) == 1, nodes
+
+    with pytest.raises(NotImplementedError):
+        print(ray.nodes())
+
+    ray.disconnect()
+    server.stop(0)
+
+
+def test_nested_function(ray_start_regular_shared):
+    server = ray_client_server.serve("localhost:50051", test_mode=True)
+    ray.connect("localhost:50051")
+
+    @ray.remote
+    def g():
+        @ray.remote
+        def f():
+            return "OK"
+
+        return ray.get(f.remote())
+
+    assert ray.get(g.remote()) == "OK"
+    ray.disconnect()
+    server.stop(0)
+
+
 def test_put_get(ray_start_regular_shared):
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost:50051", test_mode=True)
     ray.connect("localhost:50051")
 
     objectref = ray.put("hello world")
@@ -18,7 +61,7 @@ def test_put_get(ray_start_regular_shared):
 
 
 def test_wait(ray_start_regular_shared):
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost:50051", test_mode=True)
     ray.connect("localhost:50051")
 
     objectref = ray.put("hello world")
@@ -51,7 +94,8 @@ def test_wait(ray_start_regular_shared):
 
 
 def test_remote_functions(ray_start_regular_shared):
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost:50051", test_mode=True)
+    ray.connect("localhost:50051")
 
     @ray.remote
     def plus2(x):
@@ -92,6 +136,25 @@ def test_remote_functions(ray_start_regular_shared):
     assert [] == res[1]
     assert ray.get(res[0]) == [236, 2_432_902_008_176_640_000, 120, 3628800]
 
+    ray.disconnect()
+    server.stop(0)
+
+
+def test_function_calling_function(ray_start_regular_shared):
+    server = ray_client_server.serve("localhost:50051", test_mode=True)
+    ray.connect("localhost:50051")
+
+    @ray.remote
+    def g():
+        return "OK"
+
+    @ray.remote
+    def f():
+        print(f, f._name, g._name, g)
+        return ray.get(g.remote())
+
+    print(f, type(f))
+    assert ray.get(f.remote()) == "OK"
     ray.disconnect()
     server.stop(0)
 

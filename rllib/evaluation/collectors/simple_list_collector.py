@@ -131,12 +131,25 @@ class _AgentCollector:
             # -> skip.
             if data_col not in self.buffers:
                 continue
+            # OBS are already shifted by -1 (the initial obs starts one ts
+            # before all other data columns).
             shift = view_req.shift - \
                 (1 if data_col == SampleBatch.OBS else 0)
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
+            # Shift is exactly 0: Send trajectory as is.
             if shift == 0:
                 data = np_data[data_col][self.shift_before:]
+            # Shift is positive: We still need to 0-pad at the end here.
+            elif shift > 0:
+                data = to_float_np_array(
+                    self.buffers[data_col][self.shift_before + shift:] + [
+                        np.zeros(
+                            shape=view_req.space.shape,
+                            dtype=view_req.space.dtype) for _ in range(shift)
+                    ])
+            # Shift is negative: Shift into the already existing and 0-padded
+            # "before" area of our buffers.
             else:
                 data = np_data[data_col][self.shift_before + shift:shift]
             if len(data) > 0:
