@@ -309,6 +309,9 @@ message SpillObjectsReply {
 message RestoreSpilledObjectsRequest {
   // The URLs of spilled objects.
   repeated string spilled_objects_url = 1;
+  // Object ids to restore. The order of object ids
+  // must be the same as spilled_objects_url.
+  repeated bytes object_ids_to_restore = 2;
 }
 
 message RestoreSpilledObjectsReply {
