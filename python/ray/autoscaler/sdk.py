@@ -191,8 +191,8 @@ def request_resources(num_cpus: Optional[int] = None,
     calculated regardless of existing utilization).
 
     This call is only a hint to the autoscaler. The actual result cluster size
-    may be larger or smaller than expected depending on bin packing and max
-    cluster size restrictions.
+    may be slightly larger or smaller than expected depending on bin packing
+    and max worker count restrictions.
 
     Args:
         num_cpus (int): Scale the cluster to ensure this number of CPUs are
