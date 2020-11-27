@@ -1053,9 +1053,9 @@ class Trainer(Trainable):
             raise ValueError("`model._time_major` only supported "
                              "iff `_use_trajectory_view_api` is True!")
 
-        if type(config["input_evaluation"]) == tuple:
+        if isinstance(config["input_evaluation"], tuple):
             config["input_evaluation"] = list(config["input_evaluation"])
-        elif type(config["input_evaluation"]) != list:
+        elif not isinstance(config["input_evaluation"], list):
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}!".format(
                     config["input_evaluation"]))
