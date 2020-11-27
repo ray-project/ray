@@ -41,7 +41,7 @@ void GcsNodeManager::NodeFailureDetector::Start() {
   }
 }
 
-void GcsNodeManager::NodeFailureDetector::AddNode(const ray::NodeID &node_id) {
+void GcsNodeManager::NodeFailureDetector::AddNode(const NodeID &node_id) {
   heartbeats_.emplace(node_id, num_heartbeats_timeout_);
 }
 
