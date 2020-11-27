@@ -888,7 +888,7 @@ class NodeTable : public Log<NodeID, GcsNodeInfo> {
             RedisGcsClient *client)
       : Log(contexts, client) {
     pubsub_channel_ = TablePubsub::NODE_PUBSUB;
-    prefix_ = TablePrefix::NODES;
+    prefix_ = TablePrefix::NODE;
   };
 
   /// Connect as a NODE to the GCS. This registers us in the NODE table

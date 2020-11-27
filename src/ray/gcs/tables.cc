@@ -614,7 +614,7 @@ Status NodeTable::Connect(const GcsNodeInfo &local_node_info) {
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
 
   auto node_info_ptr = std::make_shared<GcsNodeInfo>(local_node_info);
-  Status status = SyncAppend(JobID::Nil(), node_log_key, node_info_ptr);
+  Status status = SyncAppend(JobID::Nil(), node_log_key_, node_info_ptr);
   if (status.ok()) {
     local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
     local_node_info_ = local_node_info;
@@ -625,7 +625,7 @@ Status NodeTable::Connect(const GcsNodeInfo &local_node_info) {
 Status NodeTable::Disconnect() {
   local_node_info_.set_state(GcsNodeInfo::DEAD);
   auto node_info_ptr = std::make_shared<GcsNodeInfo>(local_node_info_);
-  Status status = SyncAppend(JobID::Nil(), node_log_key, node_info_ptr);
+  Status status = SyncAppend(JobID::Nil(), node_log_key_, node_info_ptr);
 
   if (status.ok()) {
     // We successfully added the deletion entry. Mark ourselves as disconnected.
@@ -638,7 +638,7 @@ ray::Status NodeTable::MarkConnected(const GcsNodeInfo &node_info,
                                      const WriteCallback &done) {
   RAY_CHECK(node_info.state() == GcsNodeInfo::ALIVE);
   auto node_info_ptr = std::make_shared<GcsNodeInfo>(node_info);
-  return Append(JobID::Nil(), node_log_key, node_info_ptr, done);
+  return Append(JobID::Nil(), node_log_key_, node_info_ptr, done);
 }
 
 ray::Status NodeTable::MarkDisconnected(const NodeID &dead_node_id,
@@ -646,7 +646,7 @@ ray::Status NodeTable::MarkDisconnected(const NodeID &dead_node_id,
   auto node_info = std::make_shared<GcsNodeInfo>();
   node_info->set_node_id(dead_node_id.Binary());
   node_info->set_state(GcsNodeInfo::DEAD);
-  return Append(JobID::Nil(), node, node_info, done);
+  return Append(JobID::Nil(), node_log_key_, node_info, done);
 }
 
 ray::Status NodeTable::SubscribeToNodeChange(
@@ -654,7 +654,7 @@ ray::Status NodeTable::SubscribeToNodeChange(
   // Callback for a notification from the client table.
   auto on_subscribe = [this](RedisGcsClient *client, const UniqueID &log_key,
                              const std::vector<GcsNodeInfo> &notifications) {
-    RAY_CHECK(log_key == node_log_key);
+    RAY_CHECK(log_key == node_log_key_);
     std::unordered_map<std::string, GcsNodeInfo> connected_nodes;
     std::unordered_map<std::string, GcsNodeInfo> disconnected_nodes;
     for (auto &notification : notifications) {
@@ -689,7 +689,7 @@ ray::Status NodeTable::SubscribeToNodeChange(
       // Register node change callbacks after RequestNotification finishes.
       RegisterNodeChangeCallback(subscribe);
     };
-    RAY_CHECK_OK(RequestNotifications(JobID::Nil(), node_log_key, subscribe_id_,
+    RAY_CHECK_OK(RequestNotifications(JobID::Nil(), node_log_key_, subscribe_id_,
                                       on_request_notification_done));
   };
 
@@ -713,7 +713,7 @@ const std::unordered_map<NodeID, GcsNodeInfo> &NodeTable::GetAllNodes() const {
 
 Status NodeTable::Lookup(const Callback &lookup) {
   RAY_CHECK(lookup != nullptr);
-  return Log::Lookup(JobID::Nil(), node_log_key, lookup);
+  return Log::Lookup(JobID::Nil(), node_log_key_, lookup);
 }
 
 std::string NodeTable::DebugString() const {
