@@ -711,7 +711,7 @@ void NodeManager::GetObjectManagerProfileInfo() {
 void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
 
-  RAY_LOG(DEBUG) << "[NodeAdded] Received callback from client id " << node_id;
+  RAY_LOG(DEBUG) << "[NodeAdded] Received callback from node id " << node_id;
   if (1 == cluster_resource_map_.count(node_id)) {
     RAY_LOG(DEBUG) << "Received notification of a new node that already exists: "
                    << node_id;
@@ -729,7 +729,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
 
-  // Fetch resource info for the remote client and update cluster resource map.
+  // Fetch resource info for the remote node and update cluster resource map.
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(
       node_id,
       [this, node_id](Status status,
@@ -749,7 +749,7 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
-  RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from client id " << node_id;
+  RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from node id " << node_id;
 
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
@@ -762,14 +762,14 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // check that it is actually removed, or log a warning otherwise, but that may
   // not be necessary.
 
-  // Remove the client from the resource map.
+  // Remove the node from the resource map.
   if (0 == cluster_resource_map_.erase(node_id)) {
     RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
                    << ".";
     return;
   }
 
-  // Remove the client from the resource map.
+  // Remove the node from the resource map.
   if (new_scheduler_enabled_) {
     if (!new_resource_scheduler_->RemoveNode(node_id.Binary())) {
       RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
@@ -779,14 +779,14 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   }
 
   // Remove the node manager address.
-  const auto client_entry = remote_node_manager_addresses_.find(node_id);
-  if (client_entry != remote_node_manager_addresses_.end()) {
-    remote_node_manager_addresses_.erase(client_entry);
+  const auto node_entry = remote_node_manager_addresses_.find(node_id);
+  if (node_entry != remote_node_manager_addresses_.end()) {
+    remote_node_manager_addresses_.erase(node_entry);
   }
 
-  // Notify the object directory that the client has been removed so that it
+  // Notify the object directory that the node has been removed so that it
   // can remove it from any cached locations.
-  object_directory_->HandleClientRemoved(node_id);
+  object_directory_->HandleNodeRemoved(node_id);
 
   // Clean up workers that were owned by processes that were on the failed
   // node.
@@ -841,7 +841,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
 
 void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceSet &createUpdatedResources) {
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from client id " << node_id
+  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
                  << createUpdatedResources.ToString() << ". Updating resource map.";
 
@@ -878,7 +878,7 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
     for (auto &resource_name : resource_names) {
       oss << resource_name << ", ";
     }
-    RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from client id " << node_id
+    RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from node id " << node_id
                    << " with deleted resources: " << oss.str()
                    << ". Updating resource map.";
   }
@@ -920,12 +920,12 @@ void NodeManager::TryLocalInfeasibleTaskScheduling() {
 
 void NodeManager::HeartbeatAdded(const NodeID &node_id,
                                  const HeartbeatTableData &heartbeat_data) {
-  // Locate the client id in remote client table and update available resources based on
+  // Locate the node id in remote node table and update available resources based on
   // the received heartbeat information.
   auto it = cluster_resource_map_.find(node_id);
   if (it == cluster_resource_map_.end()) {
-    // Haven't received the client registration for this client yet, skip this heartbeat.
-    RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
+    // Haven't received the node registration for this node yet, skip this heartbeat.
+    RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown node id "
                   << node_id;
     return;
   }

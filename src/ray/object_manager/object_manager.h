@@ -50,7 +50,7 @@ struct ObjectManagerConfig {
   /// its own port.
   int object_manager_port;
   /// The time in milliseconds to wait before retrying a pull
-  /// that fails due to client id lookup.
+  /// that fails due to node id lookup.
   unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
@@ -233,9 +233,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Status of whether the pull request successfully initiated.
   ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
 
-  /// Try to Pull an object from one of its expected client locations. If there
-  /// are more client locations to try after this attempt, then this method
-  /// will try each of the other clients in succession, with a timeout between
+  /// Try to Pull an object from one of its expected node locations. If there
+  /// are more node locations to try after this attempt, then this method
+  /// will try each of the other nodes in succession, with a timeout between
   /// each attempt. If the object is received or if the Pull is Canceled before
   /// the timeout, then no more Pull requests for this object will be sent
   /// to other node managers until TryPull is called again.
@@ -295,10 +295,10 @@ class ObjectManager : public ObjectManagerInterface,
   friend class TestObjectManager;
 
   struct PullRequest {
-    PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
+    PullRequest() : retry_timer(nullptr), timer_set(false), node_locations() {}
     std::unique_ptr<boost::asio::deadline_timer> retry_timer;
     bool timer_set;
-    std::vector<NodeID> client_locations;
+    std::vector<NodeID> node_locations;
   };
 
   struct WaitState {

@@ -8,7 +8,7 @@ def set_resource(resource_name, capacity, node_id=None):
     If the resource already exists, it's capacity is updated to the new value.
     If the capacity is set to 0, the resource is deleted.
     If NodeID is not specified or set to None,
-    the resource is created on the local client where the actor is running.
+    the resource is created on the local node where the actor is running.
 
     Args:
         resource_name (str): Name of the resource to be created

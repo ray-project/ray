@@ -37,7 +37,7 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   ///
   /// \param io_service The event loop to dispatch callbacks to. This should
   /// usually be the same event loop that the given gcs_client runs on.
-  /// \param gcs_client A Ray GCS client to request object and client
+  /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
   OwnershipBasedObjectDirectory(boost::asio::io_service &io_service,
                                 std::shared_ptr<gcs::GcsClient> &gcs_client);

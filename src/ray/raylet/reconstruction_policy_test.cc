@@ -69,7 +69,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
     locations_[object_id] = locations;
   }
 
-  void HandleClientRemoved(const NodeID &node_id) override {
+  void HandleNodeRemoved(const NodeID &node_id) override {
     for (auto &locations : locations_) {
       locations.second.erase(node_id);
     }
@@ -77,7 +77,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
 
   std::string DebugString() const override { return ""; }
 
-  MOCK_METHOD0(GetLocalClientID, ray::NodeID());
+  MOCK_METHOD0(GetLocalNodeID, ray::NodeID());
   MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
   MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());
   MOCK_METHOD4(SubscribeObjectLocations,
@@ -333,7 +333,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
   ASSERT_EQ(reconstructed_tasks_[task_id], 0);
 
   // Simulate evicting one of the objects.
-  mock_object_directory_->HandleClientRemoved(node_id);
+  mock_object_directory_->HandleNodeRemoved(node_id);
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered, since one of the objects was

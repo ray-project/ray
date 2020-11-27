@@ -178,10 +178,9 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
     RAY_CHECK_OK(object_directory_->LookupLocations(
         created_object_id, it->second.owner_addresses[created_object_id],
         [this, task_id, reconstruction_attempt](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::NodeID> &clients,
+            const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &nodes,
             const std::string &spilled_url) {
-          if (clients.empty() && spilled_url.empty()) {
+          if (nodes.empty() && spilled_url.empty()) {
             // The required object no longer exists on any live nodes. Attempt
             // reconstruction.
             AttemptReconstruction(task_id, object_id, reconstruction_attempt);

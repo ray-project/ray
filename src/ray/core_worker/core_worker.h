@@ -618,7 +618,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
                                           const ActorCheckpointID &checkpoint_id);
 
-  /// Sets a resource with the specified capacity and client id
+  /// Sets a resource with the specified capacity and node id
   /// \param[in] resource_name Name of the resource to be set.
   /// \param[in] capacity Capacity of the resource.
   /// \param[in] node_id NodeID where the resource is to be set.

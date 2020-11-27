@@ -40,7 +40,7 @@ class SchedulingPolicy {
   /// producing a mapping of tasks to raylets.
   ///
   /// \param cluster_resources: a set of cluster resources containing resource and load
-  /// information for some subset of the cluster. For all client IDs in the returned
+  /// information for some subset of the cluster. For all node IDs in the returned
   /// placement map, the corresponding SchedulingResources::resources_load_ is
   /// incremented by the aggregate resource demand of the tasks assigned to it.
   /// \param local_node_id The ID of the node manager that owns this

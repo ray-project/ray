@@ -22,9 +22,9 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
 
 namespace {
 
-/// Filter out the removed clients from the object locations.
-void FilterRemovedClients(std::shared_ptr<gcs::GcsClient> gcs_client,
-                          std::unordered_set<NodeID> *node_ids) {
+/// Filter out the removed nodes from the object locations.
+void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
+                        std::unordered_set<NodeID> *node_ids) {
   for (auto it = node_ids->begin(); it != node_ids->end();) {
     if (gcs_client->Nodes().IsRemoved(*it)) {
       it = node_ids->erase(it);
@@ -130,7 +130,7 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
   for (auto const &node_id : reply.node_ids()) {
     node_ids.emplace(NodeID::FromBinary(node_id));
   }
-  FilterRemovedClients(gcs_client_, &node_ids);
+  FilterRemovedNodes(gcs_client_, &node_ids);
   if (node_ids != it->second.current_object_locations) {
     it->second.current_object_locations = std::move(node_ids);
     auto callbacks = it->second.callbacks;
@@ -228,7 +228,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
         for (auto const &node_id : reply.node_ids()) {
           node_ids.emplace(NodeID::FromBinary(node_id));
         }
-        FilterRemovedClients(gcs_client_, &node_ids);
+        FilterRemovedNodes(gcs_client_, &node_ids);
         callback(object_id, node_ids, "");
       });
   return Status::OK();

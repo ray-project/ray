@@ -26,7 +26,7 @@ enum TablePrefix {
   UNUSED = 1;
   TASK = 2;
   RAYLET_TASK = 3;
-  CLIENT = 4;
+  NODE = 4;
   OBJECT = 5;
   ACTOR = 6;
   FUNCTION = 7;
@@ -54,7 +54,7 @@ enum TablePubsub {
   NO_PUBLISH = 1;
   TASK_PUBSUB = 2;
   RAYLET_TASK_PUBSUB = 3;
-  CLIENT_PUBSUB = 4;
+  NODE_PUBSUB = 4;
   OBJECT_PUBSUB = 5;
   ACTOR_PUBSUB = 6;
   HEARTBEAT_PUBSUB = 7;
@@ -231,7 +231,7 @@ message ResourceTableData {
 }
 
 message AvailableResources {
-  // Node manager client id.
+  // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
@@ -356,7 +356,7 @@ message HeartbeatBatchTableData {
 message TaskLeaseData {
   // The task ID.
   bytes task_id = 1;
-  // Node manager client ID.
+  // Node manager ID.
   bytes node_manager_id = 2;
   // The time that the lease was last acquired at. NOTE(swang): This is the
   // system clock time according to the node that added the entry and is not

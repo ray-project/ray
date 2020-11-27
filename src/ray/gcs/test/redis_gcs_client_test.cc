@@ -1183,119 +1183,119 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeCancel) {
   SetTestHelper::TestSetSubscribeCancel(job_id_, client_);
 }
 
-/// A helper class for ClientTable testing.
-class ClientTableTestHelper {
+/// A helper class for NodeTable testing.
+class NodeTableTestHelper {
  public:
-  static void ClientTableNotification(std::shared_ptr<gcs::RedisGcsClient> client,
-                                      const NodeID &node_id, const GcsNodeInfo &data,
-                                      bool is_alive) {
+  static void NodeTableNotification(std::shared_ptr<gcs::RedisGcsClient> client,
+                                    const NodeID &node_id, const GcsNodeInfo &data,
+                                    bool is_alive) {
     NodeID added_id = local_node_id;
     ASSERT_EQ(node_id, added_id);
     ASSERT_EQ(NodeID::FromBinary(data.node_id()), added_id);
     ASSERT_EQ(data.state() == GcsNodeInfo::ALIVE, is_alive);
 
-    GcsNodeInfo cached_client;
-    ASSERT_TRUE(client->client_table().GetClient(added_id, &cached_client));
-    ASSERT_EQ(NodeID::FromBinary(cached_client.node_id()), added_id);
-    ASSERT_EQ(cached_client.state() == GcsNodeInfo::ALIVE, is_alive);
+    GcsNodeInfo cached_node;
+    ASSERT_TRUE(client->node_table().GetNode(added_id, &cached_node));
+    ASSERT_EQ(NodeID::FromBinary(cached_node.node_id()), added_id);
+    ASSERT_EQ(cached_node.state() == GcsNodeInfo::ALIVE, is_alive);
   }
 
-  static void TestClientTableConnect(const JobID &job_id,
-                                     std::shared_ptr<gcs::RedisGcsClient> client) {
+  static void TestNodeTableConnect(const JobID &job_id,
+                                   std::shared_ptr<gcs::RedisGcsClient> client) {
     // Subscribe to a node gets added and removed. The latter
     // event will stop the event loop.
-    RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
+    RAY_CHECK_OK(client->node_table().SubscribeToNodeChange(
         [client](const NodeID &id, const GcsNodeInfo &data) {
           // TODO(micafan)
           RAY_LOG(INFO) << "Test alive=" << data.state() << " id=" << id;
           if (data.state() == GcsNodeInfo::ALIVE) {
-            ClientTableNotification(client, id, data, true);
+            NodeTableNotification(client, id, data, true);
             test->Stop();
           }
         },
         nullptr));
 
-    // Connect and disconnect to client table. We should receive notifications
+    // Connect and disconnect to node table. We should receive notifications
     // for the addition and removal of our own entry.
     GcsNodeInfo local_node_info;
     local_node_info.set_node_id(local_node_id.Binary());
     local_node_info.set_node_manager_address("127.0.0.1");
     local_node_info.set_node_manager_port(0);
     local_node_info.set_object_manager_port(0);
-    RAY_CHECK_OK(client->client_table().Connect(local_node_info));
+    RAY_CHECK_OK(client->node_table().Connect(local_node_info));
     test->Start();
   }
 
-  static void TestClientTableDisconnect(const JobID &job_id,
-                                        std::shared_ptr<gcs::RedisGcsClient> client) {
-    // Register callbacks for when a client gets added and removed. The latter
+  static void TestNodeTableDisconnect(const JobID &job_id,
+                                      std::shared_ptr<gcs::RedisGcsClient> client) {
+    // Register callbacks for when a node gets added and removed. The latter
     // event will stop the event loop.
-    RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
+    RAY_CHECK_OK(client->node_table().SubscribeToNodeChange(
         [client](const NodeID &id, const GcsNodeInfo &data) {
           if (data.state() == GcsNodeInfo::ALIVE) {
-            ClientTableNotification(client, id, data, /*is_insertion=*/true);
-            // Disconnect from the client table. We should receive a notification
+            NodeTableNotification(client, id, data, /*is_insertion=*/true);
+            // Disconnect from the node table. We should receive a notification
             // for the removal of our own entry.
-            RAY_CHECK_OK(client->client_table().Disconnect());
+            RAY_CHECK_OK(client->node_table().Disconnect());
           } else {
-            ClientTableNotification(client, id, data, /*is_insertion=*/false);
+            NodeTableNotification(client, id, data, /*is_insertion=*/false);
             test->Stop();
           }
         },
         nullptr));
 
-    // Connect to the client table. We should receive notification for the
+    // Connect to the node table. We should receive notification for the
     // addition of our own entry.
     GcsNodeInfo local_node_info;
     local_node_info.set_node_id(local_node_id.Binary());
     local_node_info.set_node_manager_address("127.0.0.1");
     local_node_info.set_node_manager_port(0);
     local_node_info.set_object_manager_port(0);
-    RAY_CHECK_OK(client->client_table().Connect(local_node_info));
+    RAY_CHECK_OK(client->node_table().Connect(local_node_info));
     test->Start();
   }
 
-  static void TestClientTableImmediateDisconnect(
+  static void TestNodeTableImmediateDisconnect(
       const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-    // Register callbacks for when a client gets added and removed. The latter
+    // Register callbacks for when a node gets added and removed. The latter
     // event will stop the event loop.
-    RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
+    RAY_CHECK_OK(client->node_table().SubscribeToNodeChange(
         [client](const NodeID &id, const GcsNodeInfo &data) {
           if (data.state() == GcsNodeInfo::ALIVE) {
-            ClientTableNotification(client, id, data, true);
+            NodeTableNotification(client, id, data, true);
           } else {
-            ClientTableNotification(client, id, data, false);
+            NodeTableNotification(client, id, data, false);
             test->Stop();
           }
         },
         nullptr));
-    // Connect to then immediately disconnect from the client table. We should
+    // Connect to then immediately disconnect from the node table. We should
     // receive notifications for the addition and removal of our own entry.
     GcsNodeInfo local_node_info;
     local_node_info.set_node_id(local_node_id.Binary());
     local_node_info.set_node_manager_address("127.0.0.1");
     local_node_info.set_node_manager_port(0);
     local_node_info.set_object_manager_port(0);
-    RAY_CHECK_OK(client->client_table().Connect(local_node_info));
-    RAY_CHECK_OK(client->client_table().Disconnect());
+    RAY_CHECK_OK(client->node_table().Connect(local_node_info));
+    RAY_CHECK_OK(client->node_table().Disconnect());
     test->Start();
   }
 
-  static void TestClientTableMarkDisconnected(
-      const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
+  static void TestNodeTableMarkDisconnected(const JobID &job_id,
+                                            std::shared_ptr<gcs::RedisGcsClient> client) {
     GcsNodeInfo local_node_info;
     local_node_info.set_node_id(local_node_id.Binary());
     local_node_info.set_node_manager_address("127.0.0.1");
     local_node_info.set_node_manager_port(0);
     local_node_info.set_object_manager_port(0);
-    // Connect to the client table to start receiving notifications.
-    RAY_CHECK_OK(client->client_table().Connect(local_node_info));
-    // Mark a different client as dead.
+    // Connect to the node table to start receiving notifications.
+    RAY_CHECK_OK(client->node_table().Connect(local_node_info));
+    // Mark a different node as dead.
     NodeID dead_node_id = NodeID::FromRandom();
-    RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_node_id, nullptr));
-    // Make sure we only get a notification for the removal of the client we
+    RAY_CHECK_OK(client->node_table().MarkDisconnected(dead_node_id, nullptr));
+    // Make sure we only get a notification for the removal of the node we
     // marked as dead.
-    RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
+    RAY_CHECK_OK(client->node_table().SubscribeToNodeChange(
         [dead_node_id](const UniqueID &id, const GcsNodeInfo &data) {
           if (data.state() == GcsNodeInfo::DEAD) {
             ASSERT_EQ(NodeID::FromBinary(data.node_id()), dead_node_id);
@@ -1307,24 +1307,24 @@ class ClientTableTestHelper {
   }
 };
 
-TEST_F(TestGcsWithAsio, TestClientTableConnect) {
+TEST_F(TestGcsWithAsio, TestNodeTableConnect) {
   test = this;
-  ClientTableTestHelper::TestClientTableConnect(job_id_, client_);
+  NodeTableTestHelper::TestNodeTableConnect(job_id_, client_);
 }
 
-TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
+TEST_F(TestGcsWithAsio, TestNodeTableDisconnect) {
   test = this;
-  ClientTableTestHelper::TestClientTableDisconnect(job_id_, client_);
+  NodeTableTestHelper::TestNodeTableDisconnect(job_id_, client_);
 }
 
-TEST_F(TestGcsWithAsio, TestClientTableImmediateDisconnect) {
+TEST_F(TestGcsWithAsio, TestNodeTableImmediateDisconnect) {
   test = this;
-  ClientTableTestHelper::TestClientTableImmediateDisconnect(job_id_, client_);
+  NodeTableTestHelper::TestNodeTableImmediateDisconnect(job_id_, client_);
 }
 
-TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
+TEST_F(TestGcsWithAsio, TestNodeTableMarkDisconnected) {
   test = this;
-  ClientTableTestHelper::TestClientTableMarkDisconnected(job_id_, client_);
+  NodeTableTestHelper::TestNodeTableMarkDisconnected(job_id_, client_);
 }
 
 class HashTableTestHelper {

@@ -83,17 +83,17 @@ TEST(TestPushManager, TestMultipleTransfers) {
   results1.reserve(10);
   std::vector<int> results2;
   results2.reserve(10);
-  auto client1 = NodeID::FromRandom();
-  auto client2 = NodeID::FromRandom();
+  auto node1 = NodeID::FromRandom();
+  auto node2 = NodeID::FromRandom();
   auto obj_id = ObjectID::FromRandom();
   int num_active1 = 0;
   int num_active2 = 0;
   PushManager pm(5);
-  pm.StartPush(client1, obj_id, 10, [&](int64_t chunk_id) {
+  pm.StartPush(node1, obj_id, 10, [&](int64_t chunk_id) {
     results1[chunk_id] = 1;
     num_active1++;
   });
-  pm.StartPush(client2, obj_id, 10, [&](int64_t chunk_id) {
+  pm.StartPush(node2, obj_id, 10, [&](int64_t chunk_id) {
     results2[chunk_id] = 2;
     num_active2++;
   });
@@ -102,10 +102,10 @@ TEST(TestPushManager, TestMultipleTransfers) {
   ASSERT_EQ(pm.NumPushesInFlight(), 2);
   for (int i = 0; i < 20; i++) {
     if (num_active1 > 0) {
-      pm.OnChunkComplete(client1, obj_id);
+      pm.OnChunkComplete(node1, obj_id);
       num_active1--;
     } else if (num_active2 > 0) {
-      pm.OnChunkComplete(client2, obj_id);
+      pm.OnChunkComplete(node2, obj_id);
       num_active2--;
     }
   }

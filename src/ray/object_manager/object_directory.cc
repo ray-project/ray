@@ -56,7 +56,7 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
       }
     }
   }
-  // Filter out the removed clients from the object locations.
+  // Filter out the removed nodes from the object locations.
   for (auto it = node_ids->begin(); it != node_ids->end();) {
     if (gcs_client->Nodes().IsRemoved(*it)) {
       it = node_ids->erase(it);
@@ -112,11 +112,11 @@ std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() 
   return remote_connections;
 }
 
-void ObjectDirectory::HandleClientRemoved(const NodeID &node_id) {
+void ObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
   for (auto &listener : listeners_) {
     const ObjectID &object_id = listener.first;
     if (listener.second.current_object_locations.count(node_id) > 0) {
-      // If the subscribed object has the removed client as a location, update
+      // If the subscribed object has the removed node as a location, update
       // its locations with an empty update so that the location will be removed.
       UpdateObjectLocations({}, gcs_client_, &listener.second.current_object_locations,
                             &listener.second.spilled_url);
