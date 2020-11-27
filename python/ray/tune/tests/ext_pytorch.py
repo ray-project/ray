@@ -17,7 +17,7 @@ accurate one. Often simple things like choosing a different learning rate or cha
 a network layer size can have a dramatic impact on your model performance.
 
 Fortunately, there are tools that help with finding the best combination of parameters.
-`Ray Tune <https://docs.ray.io/en/latest/tune.html>`_ is an industry standard tool for
+`Ray Tune <https://docs.ray.io/en/master/tune.html>`_ is an industry standard tool for
 distributed hyperparameter tuning. Ray Tune includes the latest hyperparameter search
 algorithms, integrates with TensorBoard and other analysis libraries, and natively
 supports distributed training through `Ray's distributed machine learning engine
@@ -58,6 +58,7 @@ import torch.optim as optim
 from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
+import ray
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
@@ -434,6 +435,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 
 if __name__ == "__main__":
     # You can change the number of GPUs per trial here:
+    ray.init(num_cpus=2)  # for testing purposes only
     main(num_samples=2, max_num_epochs=2, gpus_per_trial=0)
 
 

@@ -20,6 +20,8 @@ This may easily result in tests exhibiting unexpected, flaky, or faulty behavior
 To overcome this, you should override the detected resources by setting them in ``ray.init`` like: ``ray.init(num_cpus=2)``
 
 
+.. _local-mode-tips:
+
 Tip 2: Use ``ray.init(local_mode=True)`` if possible
 ----------------------------------------------------
 
@@ -32,6 +34,10 @@ However, there are some caveats with using this. You should not do this if:
 1. If your application depends on setting environment variables per process
 2. If your application has recursive actor calls
 3. If your remote actor/task sets any sort of process-level global variables
+4. If you use are using async actors
+
+Also note, if you are using GPUs, you must set the ``CUDA_VISIBLE_DEVICES`` environment
+variable to a comma separated list of your GPU Device IDs.
 
 
 Tip 3: Sharing the ray cluster across tests if possible

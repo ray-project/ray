@@ -14,14 +14,17 @@ import org.testng.annotations.Test;
 @Test(groups = {"cluster"})
 public class KillActorTest extends BaseTest {
 
+  private String oldNumWorkersPerProcess;
+
   @BeforeClass
   public void setUp() {
+    oldNumWorkersPerProcess = System.getProperty("ray.raylet.config.num_workers_per_process_java");
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
   }
 
   @AfterClass
   public void tearDown() {
-    System.clearProperty("ray.raylet.config.num_workers_per_process_java");
+    System.setProperty("ray.raylet.config.num_workers_per_process_java", oldNumWorkersPerProcess);
   }
 
   public static class HangActor {

@@ -1,8 +1,11 @@
-from typing import Dict
+from typing import Dict, List, Optional, Union
 
 from ax.service.ax_client import AxClient
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
@@ -40,10 +43,11 @@ class AxSearch(Searcher):
             (list of two values, lower bound first), "values" for choice
             parameters (list of values), and "value" for fixed parameters
             (single value).
-        objective_name (str): Name of the metric used as objective in this
+        metric (str): Name of the metric used as objective in this
             experiment. This metric must be present in `raw_data` argument
             to `log_data`. This metric must also be present in the dict
-            reported/returned by the Trainable.
+            reported/returned by the Trainable. If None but a mode was passed,
+            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute. Defaults to "max".
         parameter_constraints (list[str]): Parameter constraints, such as
@@ -51,7 +55,7 @@ class AxSearch(Searcher):
         outcome_constraints (list[str]): Outcome constraints of form
             "metric_name >= bound", like "m1 <= 3."
         ax_client (AxClient): Optional AxClient instance. If this is set, do
-            not pass any values to these parameters: `space`, `objective_name`,
+            not pass any values to these parameters: `space`, `metric`,
             `parameter_constraints`, `outcome_constraints`.
         use_early_stopped_trials: Deprecated.
         max_concurrent (int): Deprecated.
@@ -73,7 +77,7 @@ class AxSearch(Searcher):
                 intermediate_result = config["x1"] + config["x2"] * i
                 tune.report(score=intermediate_result)
 
-        ax_search = AxSearch(objective_name="score")
+        ax_search = AxSearch(metric="score")
         tune.run(
             config=config,
             easy_objective,
@@ -97,22 +101,25 @@ class AxSearch(Searcher):
                 intermediate_result = config["x1"] + config["x2"] * i
                 tune.report(score=intermediate_result)
 
-        ax_search = AxSearch(space=parameters, objective_name="score")
+        ax_search = AxSearch(space=parameters, metric="score")
         tune.run(easy_objective, search_alg=ax_search)
 
     """
 
     def __init__(self,
-                 space=None,
-                 metric="episode_reward_mean",
-                 mode="max",
-                 parameter_constraints=None,
-                 outcome_constraints=None,
-                 ax_client=None,
-                 use_early_stopped_trials=None,
-                 max_concurrent=None):
-        assert ax is not None, "Ax must be installed!"
-        assert mode in ["min", "max"], "`mode` must be one of ['min', 'max']"
+                 space: Optional[Union[Dict, List[Dict]]] = None,
+                 metric: Optional[str] = None,
+                 mode: Optional[str] = None,
+                 parameter_constraints: Optional[List] = None,
+                 outcome_constraints: Optional[List] = None,
+                 ax_client: Optional[AxClient] = None,
+                 use_early_stopped_trials: Optional[bool] = None,
+                 max_concurrent: Optional[int] = None):
+        assert ax is not None, """Ax must be installed!
+            You can install AxSearch with the command:
+            `pip install ax-platform sqlalchemy`."""
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
         super(AxSearch, self).__init__(
             metric=metric,
@@ -121,6 +128,15 @@ class AxSearch(Searcher):
             use_early_stopped_trials=use_early_stopped_trials)
 
         self._ax = ax_client
+
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
+
         self._space = space
         self._parameter_constraints = parameter_constraints
         self._outcome_constraints = outcome_constraints
@@ -132,9 +148,13 @@ class AxSearch(Searcher):
         self._live_trial_mapping = {}
 
         if self._ax or self._space:
-            self.setup_experiment()
+            self._setup_experiment()
 
-    def setup_experiment(self):
+    def _setup_experiment(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         if not self._ax:
             self._ax = AxClient()
 
@@ -176,7 +196,8 @@ class AxSearch(Searcher):
             logger.warning("Detected sequential enforcement. Be sure to use "
                            "a ConcurrencyLimiter.")
 
-    def set_search_properties(self, metric, mode, config):
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict):
         if self._ax:
             return False
         space = self.convert_search_space(config)
@@ -185,16 +206,22 @@ class AxSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
-        self.setup_experiment()
+
+        self._setup_experiment()
         return True
 
-    def suggest(self, trial_id):
+    def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._ax:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:

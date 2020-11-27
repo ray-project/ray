@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray.exceptions import GetTimeoutError
-from ray.experimental.queue import Queue, Empty, Full
+from ray.util.queue import Queue, Empty, Full
 
 
 @ray.remote
@@ -15,7 +15,7 @@ def async_put(queue, item):
     return queue.put(item, block=True)
 
 
-def test_simple_usage(ray_start_regular):
+def test_simple_usage(ray_start_regular_shared):
 
     q = Queue()
 
@@ -28,7 +28,7 @@ def test_simple_usage(ray_start_regular):
         assert item == q.get()
 
 
-def test_get(ray_start_regular):
+def test_get(ray_start_regular_shared):
 
     q = Queue()
 
@@ -50,7 +50,7 @@ def test_get(ray_start_regular):
         q.get(timeout=0.2)
 
 
-def test_put(ray_start_regular):
+def test_put(ray_start_regular_shared):
 
     q = Queue(1)
 
@@ -73,7 +73,7 @@ def test_put(ray_start_regular):
         q.put(1, timeout=0.2)
 
 
-def test_async_get(ray_start_regular):
+def test_async_get(ray_start_regular_shared):
     q = Queue()
     future = async_get.remote(q)
 
@@ -87,7 +87,7 @@ def test_async_get(ray_start_regular):
     assert ray.get(future) == 1
 
 
-def test_async_put(ray_start_regular):
+def test_async_put(ray_start_regular_shared):
     q = Queue(1)
     q.put(1)
     future = async_put.remote(q, 2)
@@ -102,7 +102,7 @@ def test_async_put(ray_start_regular):
     assert q.get() == 2
 
 
-def test_qsize(ray_start_regular):
+def test_qsize(ray_start_regular_shared):
 
     q = Queue()
 

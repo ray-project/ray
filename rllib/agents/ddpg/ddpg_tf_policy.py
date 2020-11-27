@@ -1,4 +1,5 @@
 from gym.spaces import Box
+from functools import partial
 import logging
 import numpy as np
 
@@ -174,7 +175,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if twin_q:
         td_error = q_t_selected - q_t_selected_target
         twin_td_error = twin_q_t_selected - q_t_selected_target
-        td_error = td_error + twin_td_error
         if use_huber:
             errors = huber_loss(td_error, huber_threshold) + \
                 huber_loss(twin_td_error, huber_threshold)
@@ -290,7 +290,8 @@ def gradients_fn(policy, optimizer, loss):
 
     # Clip if necessary.
     if policy.config["grad_clip"]:
-        clip_func = tf.clip_by_norm
+        clip_func = partial(
+            tf.clip_by_norm, clip_norm=policy.config["grad_clip"])
     else:
         clip_func = tf.identity
 

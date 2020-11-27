@@ -8,6 +8,7 @@ For PyTorch / TF eager mode, use the --torch and --eager flags.
 """
 
 import argparse
+import os
 
 import ray
 from ray import tune
@@ -18,30 +19,31 @@ from ray.rllib.examples.models.simple_rpg_model import CustomTorchRPGModel, \
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--framework", choices=["tf", "tfe", "torch"], default="tf")
-parser.add_argument("--eager", action="store_true")
+    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf2")
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
+    ray.init()
     args = parser.parse_args()
     if args.framework == "torch":
         ModelCatalog.register_custom_model("my_model", CustomTorchRPGModel)
     else:
         ModelCatalog.register_custom_model("my_model", CustomTFRPGModel)
-    tune.run(
-        "PG",
-        stop={
-            "timesteps_total": 1,
+
+    config = {
+        "framework": args.framework,
+        "env": SimpleRPG,
+        "rollout_fragment_length": 1,
+        "train_batch_size": 2,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        "num_workers": 0,
+        "model": {
+            "custom_model": "my_model",
         },
-        config={
-            "framework": args.framework,
-            "eager": args.eager,
-            "env": SimpleRPG,
-            "rollout_fragment_length": 1,
-            "train_batch_size": 2,
-            "num_workers": 0,
-            "model": {
-                "custom_model": "my_model",
-            },
-        },
-    )
+    }
+
+    stop = {
+        "timesteps_total": 1,
+    }
+
+    tune.run("PG", config=config, stop=stop, verbose=1)

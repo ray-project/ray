@@ -9,6 +9,7 @@ This demonstrates running the following policies in competition:
 
 import argparse
 from gym.spaces import Discrete
+import os
 import random
 
 from ray import tune
@@ -38,7 +39,7 @@ def run_same_policy(args, stop):
         "framework": "torch" if args.torch else "tf",
     }
 
-    results = tune.run("PG", config=config, stop=stop)
+    results = tune.run("PG", config=config, stop=stop, verbose=1)
 
     if args.as_test:
         # Check vs 0.0 as we are playing a zero-sum game.
@@ -63,6 +64,8 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     config = {
         "env": RockPaperScissors,
         "gamma": 0.9,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "num_envs_per_worker": 4,
         "rollout_fragment_length": 10,

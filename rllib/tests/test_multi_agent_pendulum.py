@@ -19,6 +19,11 @@ class TestMultiAgentPendulum(unittest.TestCase):
         register_env("multi_agent_pendulum",
                      lambda _: MultiAgentPendulum({"num_agents": 1}))
 
+        stop = {
+            "timesteps_total": 500000,
+            "episode_reward_mean": -400.0,
+        }
+
         # Test for both torch and tf.
         for fw in framework_iterator(frameworks=["torch", "tf"]):
             trials = run_experiments(
@@ -26,10 +31,7 @@ class TestMultiAgentPendulum(unittest.TestCase):
                     "test": {
                         "run": "PPO",
                         "env": "multi_agent_pendulum",
-                        "stop": {
-                            "timesteps_total": 500000,
-                            "episode_reward_mean": -300.0,
-                        },
+                        "stop": stop,
                         "config": {
                             "train_batch_size": 2048,
                             "vf_clip_param": 10.0,
@@ -49,9 +51,11 @@ class TestMultiAgentPendulum(unittest.TestCase):
                     }
                 },
                 verbose=1)
-            if trials[0].last_result["episode_reward_mean"] < -300.0:
-                raise ValueError("Did not get to -200 reward",
-                                 trials[0].last_result)
+            if trials[0].last_result["episode_reward_mean"] <= \
+                    stop["episode_reward_mean"]:
+                raise ValueError(
+                    "Did not get to {} reward".format(
+                        stop["episode_reward_mean"]), trials[0].last_result)
 
 
 if __name__ == "__main__":

@@ -228,8 +228,9 @@ void ResourceSet::AddResources(const ResourceSet &other) {
   }
 }
 
-void ResourceSet::AddBundleResources(const PlacementGroupID &group_id,
-                                     const int bundle_index, const ResourceSet &other) {
+void ResourceSet::CommitBundleResources(const PlacementGroupID &group_id,
+                                        const int bundle_index,
+                                        const ResourceSet &other) {
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
     // With bundle index (e.g., CPU_group_i_zzz).
     const std::string &resource_label =
@@ -685,10 +686,10 @@ void ResourceIdSet::AddOrUpdateResource(const std::string &resource_name,
   }
 }
 
-void ResourceIdSet::AddBundleResourceIds(const PlacementGroupID &group_id,
-                                         const int bundle_index,
-                                         const std::string &resource_name,
-                                         ResourceIds &resource_ids) {
+void ResourceIdSet::CommitBundleResourceIds(const PlacementGroupID &group_id,
+                                            const int bundle_index,
+                                            const std::string &resource_name,
+                                            ResourceIds &resource_ids) {
   auto index_name = FormatPlacementGroupResource(resource_name, group_id, bundle_index);
   auto wildcard_name = FormatPlacementGroupResource(resource_name, group_id, -1);
   available_resources_[index_name] = available_resources_[index_name].Plus(resource_ids);
@@ -872,13 +873,18 @@ void SchedulingResources::UpdateResourceCapacity(const std::string &resource_nam
   }
 }
 
-void SchedulingResources::TransferToBundleResources(const PlacementGroupID &group,
-                                                    const int bundle_index,
-                                                    const ResourceSet &resource_set) {
+void SchedulingResources::PrepareBundleResources(const PlacementGroupID &group,
+                                                 const int bundle_index,
+                                                 const ResourceSet &resource_set) {
   resources_available_.SubtractResourcesStrict(resource_set);
-  resources_available_.AddBundleResources(group, bundle_index, resource_set);
   resources_total_.SubtractResourcesStrict(resource_set);
-  resources_total_.AddBundleResources(group, bundle_index, resource_set);
+}
+
+void SchedulingResources::CommitBundleResources(const PlacementGroupID &group,
+                                                const int bundle_index,
+                                                const ResourceSet &resource_set) {
+  resources_available_.CommitBundleResources(group, bundle_index, resource_set);
+  resources_total_.CommitBundleResources(group, bundle_index, resource_set);
 }
 
 void SchedulingResources::ReturnBundleResources(const PlacementGroupID &group_id,

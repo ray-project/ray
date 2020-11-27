@@ -159,6 +159,9 @@ StreamingStatus DataReader::GetMessageFromChannel(ConsumerChannelInfo &channel_i
     channel_map_[channel_info.channel_id]->ConsumeItemFromChannel(
         message->data, message->data_size, wait_time_ms);
 
+    STREAMING_LOG(DEBUG) << "ConsumeItemFromChannel done, bytes="
+                         << Util::Byte2hex(message->data, message->data_size);
+
     channel_info.get_queue_item_times++;
     if (!message->data) {
       RETURN_IF_NOT_OK(reliability_helper_->HandleNoValidItem(channel_info));
@@ -265,8 +268,9 @@ StreamingStatus DataReader::StashNextMessageAndPop(std::shared_ptr<DataBundle> &
 
   // Get the first message.
   message = reader_merger_->top();
-  STREAMING_LOG(DEBUG) << "Messages to be poped=" << *message
-                       << ", merger size=" << reader_merger_->size();
+  STREAMING_LOG(DEBUG) << "Messages to be popped=" << *message
+                       << ", merger size=" << reader_merger_->size()
+                       << ", bytes=" << Util::Byte2hex(message->data, message->data_size);
 
   // Then stash next message from its from queue.
   std::shared_ptr<DataBundle> new_msg = std::make_shared<DataBundle>();
@@ -275,11 +279,23 @@ StreamingStatus DataReader::StashNextMessageAndPop(std::shared_ptr<DataBundle> &
   new_msg->last_barrier_id = channel_info.barrier_id;
   reader_merger_->push(new_msg);
   STREAMING_LOG(DEBUG) << "New message pushed=" << *new_msg
-                       << ", merger size=" << reader_merger_->size();
+                       << ", merger size=" << reader_merger_->size()
+                       << ", bytes=" << Util::Byte2hex(new_msg->data, new_msg->data_size);
+  // Barrier's message ID is equal to last message's ID.
+  // We will mark last message's ID as consumed in GetBundle.
+  // So barrier might be erased by streaming queue. We make a hack way here to
+  // copy barrier's data from streaming queue. TODO: There should be a more elegant way to
+  // do this.
+  if (new_msg->meta->IsBarrier()) {
+    uint8_t *origin_data = new_msg->data;
+    new_msg->Realloc(new_msg->data_size);
+    memcpy(new_msg->data, origin_data, new_msg->data_size);
+  }
 
   // Pop message.
   reader_merger_->pop();
-  STREAMING_LOG(DEBUG) << "Message poped, msg=" << *message;
+  STREAMING_LOG(DEBUG) << "Message popped, msg=" << *message
+                       << ", bytes=" << Util::Byte2hex(message->data, message->data_size);
 
   // Record some metrics.
   channel_info.last_queue_item_delay =
@@ -397,6 +413,7 @@ StreamingStatus DataReader::GetBundle(const uint32_t timeout_ms,
         STREAMING_LOG(INFO) << "merger vector item=" << bundle->from;
       }
     }
+
     RETURN_IF_NOT_OK(GetMergedMessageBundle(message, is_valid_break, timeout_ms));
     if (!is_valid_break) {
       empty_bundle_cnt++;
@@ -420,6 +437,8 @@ void DataReader::GetOffsetInfo(
 }
 
 void DataReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset) {
+  STREAMING_LOG(DEBUG) << "NotifyConsumedItem, offset=" << offset
+                       << ", channel_id=" << channel_info.channel_id;
   channel_map_[channel_info.channel_id]->NotifyChannelConsumed(offset);
 }
 

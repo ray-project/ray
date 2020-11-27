@@ -1,3 +1,5 @@
+.. _core-walkthrough:
+
 Ray Core Walkthrough
 ====================
 
@@ -22,7 +24,7 @@ Installation
 
   .. group-tab:: Java
 
-    To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. We don't publish snapshot versions right now.
+    To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. Snapshot versions can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`_.
 
 Starting Ray
 ------------
@@ -48,7 +50,7 @@ You can start Ray on a single machine by adding this to your code.
 
       public static void main(String[] args) {
         // Start Ray runtime. If you're connecting to an existing cluster, you can set
-        // the `-Dray.redis.address=<cluster-address>` java system property.
+        // the `-Dray.address=<cluster-address>` java system property.
         Ray.init();
         ...
       }
@@ -179,6 +181,7 @@ Note the following behaviors:
      first task (the value corresponding to ``obj_ref1/objRef1``) will be sent over the
      network to the machine where the second task is scheduled.
 
+.. _resource-requirements:
 
 Specifying required resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

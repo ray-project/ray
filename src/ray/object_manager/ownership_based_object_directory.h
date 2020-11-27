@@ -56,10 +56,10 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
                                          const ObjectID &object_id) override;
 
   ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const ClientID &client_id,
+      const ObjectID &object_id, const NodeID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const ClientID &client_id,
+      const ObjectID &object_id, const NodeID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
 
   std::string DebugString() const override;

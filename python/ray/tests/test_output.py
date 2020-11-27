@@ -1,4 +1,3 @@
-import re
 import subprocess
 import sys
 import pytest
@@ -40,16 +39,7 @@ def test_output():
     lines = outputs.split("\n")
     for line in lines:
         print(line)
-    assert len(lines) == 3, lines
-    logging_header = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\sINFO\s"
-    assert re.match(
-        logging_header + r"resource_spec.py:\d+ -- Starting Ray with [0-9\.]+ "
-        r"GiB memory available for workers and up to [0-9\.]+ GiB "
-        r"for objects. You can adjust these settings with .*?.", lines[0])
-    assert re.match(
-        logging_header +
-        r"services.py:\d+ -- View the Ray dashboard at .*?127.0.0.1:\d+?.*",
-        lines[1])
+    assert len(lines) == 2, lines
 
 
 if __name__ == "__main__":

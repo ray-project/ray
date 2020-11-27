@@ -1,4 +1,4 @@
-from ray.autoscaler.aws.config import key_pair
+from ray.autoscaler._private.aws.config import key_pair
 from ray.tests.aws.utils.constants import DEFAULT_KEY_PAIR
 
 

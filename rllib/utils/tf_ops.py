@@ -1,6 +1,34 @@
+import gym
+from gym.spaces import Discrete, MultiDiscrete
+import numpy as np
+import tree
+
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
+
+
+def convert_to_non_tf_type(stats):
+    """Converts values in `stats` to non-Tensor numpy or python types.
+
+    Args:
+        stats (any): Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all tf (eager) tensors
+            being converted to numpy types.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to non-tf Tensor types.
+    """
+
+    # The mapping function used to numpyize torch Tensors.
+    def mapping(item):
+        if isinstance(item, (tf.Tensor, tf.Variable)):
+            return item.numpy()
+        else:
+            return item
+
+    return tree.map_structure(mapping, stats)
 
 
 def explained_variance(y, pred):
@@ -9,11 +37,44 @@ def explained_variance(y, pred):
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
+def get_placeholder(*, space=None, value=None, name=None):
+    from ray.rllib.models.catalog import ModelCatalog
+
+    if space is not None:
+        if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+            return ModelCatalog.get_action_placeholder(space, None)
+        return tf1.placeholder(
+            shape=(None, ) + space.shape,
+            dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
+            name=name,
+        )
+    else:
+        assert value is not None
+        shape = value.shape[1:]
+        return tf1.placeholder(
+            shape=(None, ) + (shape if isinstance(shape, tuple) else tuple(
+                shape.as_list())),
+            dtype=tf.float32 if value.dtype == np.float64 else value.dtype,
+            name=name,
+        )
+
+
 def huber_loss(x, delta=1.0):
     """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
     return tf.where(
         tf.abs(x) < delta,
         tf.math.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
+
+
+def one_hot(x, space):
+    if isinstance(space, Discrete):
+        return tf.one_hot(x, space.n)
+    elif isinstance(space, MultiDiscrete):
+        return tf.concat(
+            [tf.one_hot(x[:, i], n) for i, n in enumerate(space.nvec)],
+            axis=-1)
+    else:
+        raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
 def reduce_mean_ignore_inf(x, axis):
@@ -55,7 +116,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
     will build a function that executes a session run with placeholders
     internally.
 
-    Arguments:
+    Args:
         session_or_none (tf.Session): tf.Session if in graph mode, else None.
         dynamic_shape (bool): True if the placeholders should have a dynamic
             batch dimension. Otherwise they will be fixed shape.

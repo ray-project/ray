@@ -5,6 +5,16 @@ from ray.tune import register_trainable
 from ray.tune.automl import SearchSpace, DiscreteSpace, GridSearch
 
 
+def next_trials(searcher):
+    trials = []
+    while not searcher.is_finished():
+        trial = searcher.next_trial()
+        if not trial:
+            break
+        trials.append(trial)
+    return trials
+
+
 class AutoMLSearcherTest(unittest.TestCase):
     def setUp(self):
         def dummy_train(config, reporter):
@@ -20,7 +30,7 @@ class AutoMLSearcherTest(unittest.TestCase):
         ])
         searcher = GridSearch(space, "reward")
         searcher.add_configurations(exp)
-        trials = searcher.next_trials()
+        trials = next_trials(searcher)
 
         self.assertEqual(len(trials), 4)
         self.assertTrue(trials[0].config["a"]["b"]["c"] in [1, 2])
@@ -34,9 +44,9 @@ class AutoMLSearcherTest(unittest.TestCase):
         ])
         searcher = GridSearch(space, "reward")
         searcher.add_configurations(exp)
-        trials = searcher.next_trials()
+        trials = next_trials(searcher)
 
-        self.assertEqual(len(searcher.next_trials()), 0)
+        self.assertEqual(searcher.next_trial(), None)
         for trial in trials[1:]:
             searcher.on_trial_complete(trial.trial_id)
         searcher.on_trial_complete(trials[0].trial_id, error=True)
@@ -51,10 +61,11 @@ class AutoMLSearcherTest(unittest.TestCase):
         ])
         searcher = GridSearch(space, "reward")
         searcher.add_configurations(exp)
-        trials = searcher.next_trials()
+        trials = next_trials(searcher)
 
-        self.assertEqual(len(searcher.next_trials()), 0)
+        self.assertEqual(searcher.next_trial(), None)
         for i, trial in enumerate(trials):
+            print("TRIAL {}".format(trial))
             rewards = list(range(i, i + 10))
             random.shuffle(rewards)
             for reward in rewards:

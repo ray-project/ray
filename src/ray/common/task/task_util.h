@@ -41,7 +41,7 @@ class TaskArgByValue : public TaskArg {
   ///
   /// \param[in] value Value of the argument.
   /// \return The task argument.
-  TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
+  explicit TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
     RAY_CHECK(value) << "Value can't be null.";
   }
 
@@ -86,7 +86,9 @@ class TaskSpecBuilder {
       const rpc::Address &caller_address, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const PlacementGroupID &placement_group_id) {
+      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
+      const std::unordered_map<std::string, std::string> &override_environment_variables =
+          {}) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -102,7 +104,13 @@ class TaskSpecBuilder {
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(
         required_placement_resources.begin(), required_placement_resources.end());
-    message_->set_placement_group_id(placement_group_id.Binary());
+    message_->set_placement_group_id(bundle_id.first.Binary());
+    message_->set_placement_group_bundle_index(bundle_id.second);
+    message_->set_placement_group_capture_child_tasks(
+        placement_group_capture_child_tasks);
+    for (const auto &env : override_environment_variables) {
+      (*message_->mutable_override_environment_variables())[env.first] = env.second;
+    }
     return *this;
   }
 

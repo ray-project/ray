@@ -154,17 +154,21 @@ class ResourceSet {
   /// This adds both the the indexed and wildcard resources (e.g., both
   /// CPU_group_i_zzz and CPU_group_zzz).
   ///
+  /// NOTE: This method should be used AFTER resources are COMMITTED.
+  /// It can have unexpected behavior if you call this method on PREPARED resources.
+  ///
   /// \param group_id: The placement group id.
   /// \param bundle_index: The index of the bundle.
   /// \param other: The other resource set to add.
   /// \return Void.
-  void AddBundleResources(const PlacementGroupID &group_id, const int bundle_index,
-                          const ResourceSet &other);
+  void CommitBundleResources(const PlacementGroupID &group_id, const int bundle_index,
+                             const ResourceSet &other);
 
   /// \brief Return back all the bundle resource. Changing the resource name and adding
   /// any missing resource labels to this set.
   ///
-  /// This is the inverse of AddBundleResources().
+  /// Note that this method assumes bundle resources are COMMITTED.
+  /// Please make sure to commit bundle resources before calling this method.
   ///
   /// \param group_id: The placement group id.
   /// \param bundle_index: The bundle index to return resources for.
@@ -427,7 +431,7 @@ class ResourceIdSet {
   /// \param capacity capacity of the resource being added
   void AddOrUpdateResource(const std::string &resource_name, int64_t capacity);
 
-  /// \brief Add a Bundle resource in the ResourceIdSet.
+  /// \brief Commit a Bundle resource in the ResourceIdSet.
   ///
   /// This adds both the the indexed and wildcard resources (e.g., both
   /// CPU_group_i_zzz and CPU_group_zzz).
@@ -436,12 +440,15 @@ class ResourceIdSet {
   /// \param bundle_index: The index of the bundle.
   /// \param resource_name the name of the resource to create/update (e.g., "CPU").
   /// \param resource_ids resource_ids of the resource being added
-  void AddBundleResourceIds(const PlacementGroupID &group_id, const int bundle_index,
-                            const std::string &resource_name, ResourceIds &resource_ids);
+  void CommitBundleResourceIds(const PlacementGroupID &group_id, const int bundle_index,
+                               const std::string &resource_name,
+                               ResourceIds &resource_ids);
 
   /// \brief remove a Bundle resource in the ResourceIdSet.
   ///
   /// The bundle resources will be returned to their original resource names.
+  /// Note that the bundle resources should've been COMMITTED before this method is
+  /// called.
   ///
   /// \param group_id: The placement group id.
   /// \param bundle_index: The index of the bundle.
@@ -571,7 +578,22 @@ class SchedulingResources {
   void UpdateResourceCapacity(const std::string &resource_name, int64_t capacity);
 
   /// \brief Update total, available and load resources with the ResourceIds.
-  /// Create if not exists.
+  /// Create if not exists. This will only update resources, but it won't
+  /// create placement group resources. That'll be done when resources are
+  /// COMMITTED. Commit should be done by CommitBundleResources.
+  ///
+  /// We need this step for running 2PC protocol for atomic placement group creation.
+  ///
+  /// \param resource_name: Name of the resource to be modified.
+  /// \param resource_set: New resource_set of the resource.
+  void PrepareBundleResources(const PlacementGroupID &group, const int bundle_index,
+                              const ResourceSet &resource_set);
+
+  /// \brief Commit placement group resources. It means this method'll create
+  /// placement group resources. The original resources should've been updated
+  /// by PrepareBundleResources.
+  ///
+  /// We need this step for running 2PC protocol for atomic placement group creation.
   ///
   /// The resources will be transfered from their original resource names.
   /// This includes both the the indexed and wildcard resources (e.g., both
@@ -579,8 +601,8 @@ class SchedulingResources {
   ///
   /// \param resource_name: Name of the resource to be modified
   /// \param resource_set: New resource_set of the resource.
-  void TransferToBundleResources(const PlacementGroupID &group, const int bundle_index,
-                                 const ResourceSet &resource_set);
+  void CommitBundleResources(const PlacementGroupID &group, const int bundle_index,
+                             const ResourceSet &resource_set);
 
   /// \brief delete total, available and load resources with the ResourceIds.
   ///

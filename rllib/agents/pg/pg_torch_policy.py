@@ -77,4 +77,5 @@ PGTorchPolicy = build_torch_policy(
     get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
     loss_fn=pg_torch_loss,
     stats_fn=pg_loss_stats,
-    postprocess_fn=post_process_advantages)
+    postprocess_fn=post_process_advantages,
+)

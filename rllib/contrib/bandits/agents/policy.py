@@ -8,7 +8,7 @@ from ray.rllib.contrib.bandits.models.linear_regression import \
     DiscreteLinearModelUCB, DiscreteLinearModel, \
     ParametricLinearModelThompsonSampling, ParametricLinearModelUCB
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.model import restore_original_dimensions
+from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy

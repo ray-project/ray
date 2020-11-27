@@ -28,8 +28,8 @@ def batch_adder_v0(flask_requests: List):
 
 # __doc_define_servable_v0_end__
 
+ray.init(num_cpus=8)
 # __doc_deploy_begin__
-ray.init(num_cpus=10)
 client = serve.start()
 client.create_backend("adder:v0", batch_adder_v0, config={"max_batch_size": 4})
 client.create_endpoint(

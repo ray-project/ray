@@ -9,7 +9,7 @@ import java.util.Arrays;
  */
 public class TaskId extends BaseId implements Serializable {
 
-  private static final int UNIQUE_BYTES_LENGTH = 8;
+  public static final int UNIQUE_BYTES_LENGTH = 8;
 
   public static final int LENGTH = ActorId.LENGTH + UNIQUE_BYTES_LENGTH;
 

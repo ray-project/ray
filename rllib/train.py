@@ -10,7 +10,8 @@ from ray.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
-from ray.tune.tune import _make_scheduler, run_experiments
+from ray.tune.tune import run_experiments
+from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 # Try to import both backends for flag checking/warnings.
@@ -207,9 +208,9 @@ def run(args, parser):
 
     run_experiments(
         experiments,
-        scheduler=_make_scheduler(args),
-        queue_trials=args.queue_trials,
+        scheduler=create_scheduler(args.scheduler, **args.scheduler_config),
         resume=args.resume,
+        queue_trials=args.queue_trials,
         verbose=verbose,
         concurrent=True)
 

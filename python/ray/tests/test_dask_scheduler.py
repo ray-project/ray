@@ -1,4 +1,6 @@
 import dask
+import numpy as np
+import dask.array as da
 import pytest
 
 import ray
@@ -30,6 +32,13 @@ def test_ray_dask_basic(ray_start_regular_shared):
     assert ans == "The answer is 6", ans
 
 
+def test_ray_dask_persist(ray_start_regular_shared):
+    arr = da.ones(5) + 2
+    result = arr.persist(scheduler=ray_dask_get)
+    np.testing.assert_array_equal(result.dask.values()[0], np.ones(5) + 2)
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -117,7 +117,9 @@ RLlib provides ways to customize almost all aspects of training, including the `
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
 
 .. |tensorflow| image:: tensorflow.png
+    :class: inline-figure
     :width: 24
 
 .. |pytorch| image:: pytorch.png
+    :class: inline-figure
     :width: 24

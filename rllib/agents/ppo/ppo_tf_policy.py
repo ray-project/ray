@@ -251,7 +251,10 @@ class KLCoeffMixin:
         self.kl_coeff_val = config["kl_coeff"]
         # The current KL value (as tf Variable for in-graph operations).
         self.kl_coeff = get_variable(
-            float(self.kl_coeff_val), tf_name="kl_coeff", trainable=False)
+            float(self.kl_coeff_val),
+            tf_name="kl_coeff",
+            trainable=False,
+            framework=config["framework"])
         # Constant target value.
         self.kl_target = config["kl_target"]
 
@@ -326,7 +329,7 @@ def setup_config(policy: Policy, obs_space: gym.spaces.Space,
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict) -> None:
-    """Call all mixin classes' constructors before PPOPolicy initialization.
+    """Call mixin classes' constructors before Policy's loss initialization.
 
     Args:
         policy (Policy): The Policy object.

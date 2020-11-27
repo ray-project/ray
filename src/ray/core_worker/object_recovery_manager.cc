@@ -20,8 +20,10 @@ namespace ray {
 
 Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
-  ClientID pinned_at;
-  bool owned_by_us = reference_counter_->IsPlasmaObjectPinned(object_id, &pinned_at);
+  NodeID pinned_at;
+  bool spilled;
+  bool owned_by_us =
+      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled);
   if (!owned_by_us) {
     return Status::Invalid(
         "Object reference no longer exists or is not owned by us. Either lineage pinning "
@@ -29,7 +31,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   bool already_pending_recovery = true;
-  if (pinned_at.IsNil()) {
+  if (pinned_at.IsNil() && !spilled) {
     {
       absl::MutexLock lock(&mu_);
       // Mark that we are attempting recovery for this object to prevent
@@ -80,12 +82,12 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
     const std::vector<rpc::Address> &other_locations) {
   // If a copy still exists, pin the object by sending a
   // PinObjectIDs RPC.
-  const auto node_id = ClientID::FromBinary(raylet_address.raylet_id());
+  const auto node_id = NodeID::FromBinary(raylet_address.raylet_id());
   RAY_LOG(DEBUG) << "Trying to pin copy of lost object " << object_id << " at node "
                  << node_id;
 
   std::shared_ptr<PinObjectsInterface> client;
-  if (node_id == ClientID::FromBinary(rpc_address_.raylet_id())) {
+  if (node_id == NodeID::FromBinary(rpc_address_.raylet_id())) {
     client = local_object_pinning_client_;
   } else {
     absl::MutexLock lock(&mu_);

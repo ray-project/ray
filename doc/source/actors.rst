@@ -279,7 +279,7 @@ This will kill the actor process and release resources associated/assigned to th
 Note that this method of termination will wait until any previously submitted
 tasks finish executing and then exit the process gracefully with sys.exit.
 
-Manual termination via an actor handle 
+Manual termination via an actor handle
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 You can terminate an actor forcefully.
@@ -376,6 +376,9 @@ This allows you to retrieve the actor from any job in the Ray cluster.
 This can be useful if you cannot directly
 pass the actor handle to the task that needs it, or if you are trying to
 access an actor launched by another driver.
+Note that the actor will still be garbage-collected if no handles to it
+exist. See :ref:`actor-lifetimes` for more details.
+
 
 .. tabs::
 
@@ -415,6 +418,7 @@ access an actor launched by another driver.
       Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name_in_job");
       Assert.assertTrue(counter.isPresent());
 
+.. _actor-lifetimes:
 
 Actor Lifetimes
 ---------------
@@ -469,3 +473,44 @@ Actor Pool
   .. group-tab:: Java
 
     Actor pool hasn't been implemented in Java yet.
+
+
+FAQ: Actors, Workers and Resources
+----------------------------------
+
+What's the difference between a worker and an actor?
+
+Each "Ray worker" is a python process.
+
+Workers are treated differently for tasks and actors. Any "Ray worker" is either 1. used to execute multiple Ray tasks or 2. is started as a dedicated Ray actor.
+
+* **Tasks**: When Ray starts on a machine, a number of Ray workers will be started automatically (1 per CPU by default). They will be used to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you will end up with 8 of your 16 workers idling.
+
+* **Actor**: A Ray Actor is also a "Ray worker" but is instantiated at runtime (upon `actor_cls.remote()`). All of its methods will run on the same process, using the same resources (designated when defining the Actor). Note that unlike tasks, the python processes that runs Ray Actors are not reused and will be terminated when the Actor is deleted.
+
+To maximally utilize your resources, you want to maximize the time that
+your workers are working. You also want to allocate enough cluster resources
+so that both all of your needed actors can run and any other tasks you
+define can run. This also implies that tasks are scheduled more flexibly,
+and that if you don't need the stateful part of an actor, you're mostly
+better off using tasks.
+
+
+Concurrency within an actor
+---------------------------
+
+.. tabs::
+  .. group-tab:: Python
+
+    Within a single actor process, it is possible to execute concurrent threads.
+
+    Ray offers two types of concurrency within an actor:
+
+    * :ref:`async execution <async-actors>`
+    * :ref:`threading <threaded-actors>`
+
+    See the above links for more details.
+
+  .. group-tab:: Java
+
+    Actor-level concurrency hasn't been implemented in Java yet.

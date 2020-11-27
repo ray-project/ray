@@ -1,14 +1,31 @@
-import logging
+"""
+Simple Q-Learning
+=================
 
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
+This module provides a basic implementation of the DQN algorithm without any
+optimizations.
+
+This file defines the distributed Trainer class for the Simple Q algorithm.
+See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
+"""
+
+import logging
+from typing import Optional, Type
+
 from ray.rllib.agents.dqn.dqn import DQNTrainer
+from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
+from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
-from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -73,21 +90,41 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+
+    # Use the new "trajectory view API" to collect samples and produce
+    # model- and policy inputs.
+    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with SimpleQTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
-        from ray.rllib.agents.dqn.simple_q_torch_policy import \
-            SimpleQTorchPolicy
         return SimpleQTorchPolicy
-    else:
-        return SimpleQTFPolicy
 
 
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the Simple Q algorithm. Defines the distributed dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: A local iterator over training metrics.
+    """
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=config["learning_starts"],

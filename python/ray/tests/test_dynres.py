@@ -647,7 +647,9 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
         return False
 
     def assert_available_resources():
-        return 1 == ray.available_resources()["CPU"]
+        available_resources = ray.available_resources()
+        return "CPU" in available_resources and 1 == ray.available_resources(
+        )["CPU"]
 
     result = wait_until(assert_available_resources, 1000)
     assert result is True

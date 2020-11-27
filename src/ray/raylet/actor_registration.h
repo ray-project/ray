@@ -77,7 +77,7 @@ class ActorRegistration {
   ///
   /// \return The actor's node manager location. All tasks for the actor should
   /// be forwarded to this node.
-  const ClientID GetNodeManagerId() const;
+  const NodeID GetNodeManagerId() const;
 
   /// Get the object that represents the actor's initial state. This is the
   /// execution dependency returned by this actor's creation task. If

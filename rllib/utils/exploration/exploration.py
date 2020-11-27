@@ -1,6 +1,7 @@
 from gym.spaces import Space
 from typing import List, Optional, Union, TYPE_CHECKING
 
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -69,6 +70,9 @@ class Exploration:
         """
         pass
 
+    # yapf: disable
+    # __sphinx_doc_begin_get_exploration_action__
+
     @DeveloperAPI
     def get_exploration_action(self,
                                *,
@@ -98,13 +102,16 @@ class Exploration:
         """
         pass
 
+    # __sphinx_doc_end_get_exploration_action__
+    # yapf: enable
+
     @DeveloperAPI
     def on_episode_start(self,
-                         policy,
+                         policy: "Policy",
                          *,
-                         environment=None,
-                         episode=None,
-                         tf_sess=None):
+                         environment: BaseEnv = None,
+                         episode: int = None,
+                         tf_sess: Optional["tf.Session"] = None):
         """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
@@ -117,11 +124,11 @@ class Exploration:
 
     @DeveloperAPI
     def on_episode_end(self,
-                       policy,
+                       policy: "Policy",
                        *,
-                       environment=None,
-                       episode=None,
-                       tf_sess=None):
+                       environment: BaseEnv = None,
+                       episode: int = None,
+                       tf_sess: Optional["tf.Session"] = None):
         """Handles necessary exploration logic at the end of an episode.
 
         Args:
@@ -135,8 +142,8 @@ class Exploration:
     @DeveloperAPI
     def postprocess_trajectory(self,
                                policy: "Policy",
-                               sample_batch,
-                               tf_sess=None):
+                               sample_batch: SampleBatch,
+                               tf_sess: Optional["tf.Session"] = None):
         """Handles post-processing of done episode trajectories.
 
         Changes the given batch in place. This callback is invoked by the
@@ -187,7 +194,7 @@ class Exploration:
         return policy_loss
 
     @DeveloperAPI
-    def get_info(self, sess=None):
+    def get_info(self, sess: Optional["tf.Session"] = None):
         """Returns a description of the current exploration state.
 
         This is not necessarily the state itself (and cannot be used in

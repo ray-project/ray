@@ -104,7 +104,7 @@ class MockObjectDirectory {
 class ObjectRecoveryManagerTest : public ::testing::Test {
  public:
   ObjectRecoveryManagerTest()
-      : local_raylet_id_(ClientID::FromRandom()),
+      : local_raylet_id_(NodeID::FromRandom()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
         raylet_client_(std::make_shared<MockRayletClient>()),
@@ -137,7 +137,7 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
                  },
                  /*lineage_reconstruction_enabled=*/true) {}
 
-  ClientID local_raylet_id_;
+  NodeID local_raylet_id_;
   std::unordered_map<ObjectID, bool> failed_reconstructions_;
 
   std::shared_ptr<MockObjectDirectory> object_directory_;

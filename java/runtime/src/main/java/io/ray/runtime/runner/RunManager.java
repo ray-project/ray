@@ -188,19 +188,19 @@ public class RunManager {
    * @param isHead Whether this node is the head node. If true, redis server will be started.
    */
   public void startRayProcesses(boolean isHead) {
-    LOGGER.debug("Starting ray processes @ {}.", rayConfig.nodeIp);
+    LOGGER.debug("Starting ray runtime @ {}.", rayConfig.nodeIp);
     try {
       if (isHead) {
         startGcs();
       }
       startObjectStore();
       startRaylet(isHead);
-      LOGGER.info("All processes started @ {}.", rayConfig.nodeIp);
+      LOGGER.info("Ray runtime started @ {}.", rayConfig.nodeIp);
     } catch (Exception e) {
       // Clean up started processes.
       cleanup();
-      LOGGER.error("Failed to start ray processes.", e);
-      throw new RuntimeException("Failed to start ray processes.", e);
+      LOGGER.error("Failed to start ray runtime.", e);
+      throw new RuntimeException("Failed to start ray runtime.", e);
     }
   }
 
@@ -257,6 +257,10 @@ public class RunManager {
     final File redisServerFile = BinaryFileUtil.getNativeFile(
         rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
     Preconditions.checkState(redisServerFile.setExecutable(true));
+    // The redis module file.
+    File redisModule = BinaryFileUtil.getNativeFile(
+        rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME);
+    Preconditions.checkState(redisModule.setExecutable(true));
     List<String> command = Lists.newArrayList(
         // The redis-server executable file.
         redisServerFile.getAbsolutePath(),
@@ -268,8 +272,7 @@ public class RunManager {
         "warning",
         "--loadmodule",
         // The redis module file.
-        BinaryFileUtil.getNativeFile(
-            rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME).getAbsolutePath()
+        redisModule.getAbsolutePath()
     );
 
     if (!Strings.isNullOrEmpty(password)) {
@@ -357,7 +360,10 @@ public class RunManager {
     File workerConfigFile = new File(rayConfig.sessionDir + "/java_worker.conf");
     FileUtils.write(workerConfigFile, rayConfig.render(), Charset.defaultCharset());
     cmd.add("-Dray.config-file=" + workerConfigFile.getAbsolutePath());
-
+    if (!rayConfig.codeSearchPath.isEmpty()) {
+      cmd.add("-Dray.job.code-search-path=" +
+          String.join(":", rayConfig.codeSearchPath));
+    }
     cmd.add("RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER");
 
     cmd.addAll(rayConfig.jvmParameters);
@@ -399,7 +405,7 @@ public class RunManager {
     cmd.add("--node-ip-address=" + rayConfig.nodeIp);
     cmd.add("--object-store-name=" + rayConfig.objectStoreSocketName);
     cmd.add("--raylet-name=" + rayConfig.rayletSocketName);
-    cmd.add("--redis-address=" + rayConfig.getRedisAddress());
+    cmd.add("--address=" + rayConfig.getRedisAddress());
 
     String command = cmd.stream().collect(Collectors.joining(" "));
     LOGGER.debug("python worker command: {}", command);

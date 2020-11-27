@@ -20,25 +20,31 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         routes.static("/logs", self._dashboard_head.log_dir, show_index=True)
         GlobalSignals.node_info_fetched.append(
             self.insert_log_url_to_node_info)
+        GlobalSignals.node_summary_fetched.append(
+            self.insert_log_url_to_node_info)
 
     async def insert_log_url_to_node_info(self, node_info):
-        ip = node_info.get("ip")
-        if ip is None:
+        node_id = node_info.get("raylet", {}).get("nodeId")
+        if node_id is None:
             return
-        agent_port = DataSource.agents.get(ip)
+        agent_port = DataSource.agents.get(node_id)
         if agent_port is None:
             return
         agent_http_port, _ = agent_port
-        log_url = self.LOG_URL_TEMPLATE.format(ip=ip, port=agent_http_port)
+        log_url = self.LOG_URL_TEMPLATE.format(
+            ip=node_info.get("ip"), port=agent_http_port)
         node_info["logUrl"] = log_url
 
     @routes.get("/log_index")
     async def get_log_index(self, req) -> aiohttp.web.Response:
         url_list = []
-        for ip, ports in DataSource.agents.items():
+        agent_ips = []
+        for node_id, ports in DataSource.agents.items():
+            ip = DataSource.node_id_to_ip[node_id]
+            agent_ips.append(ip)
             url_list.append(
                 self.LOG_URL_TEMPLATE.format(ip=ip, port=str(ports[0])))
-        if self._dashboard_head.ip not in DataSource.agents:
+        if self._dashboard_head.ip not in agent_ips:
             url_list.append(
                 self.LOG_URL_TEMPLATE.format(
                     ip=self._dashboard_head.ip,

@@ -50,6 +50,8 @@ if __name__ == "__main__":
 
     config = {
         "env": "CartPole-v0",
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "model": {
             "custom_model": "custom_loss",
@@ -64,4 +66,4 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    tune.run("PG", config=config, stop=stop)
+    tune.run("PG", config=config, stop=stop, verbose=1)

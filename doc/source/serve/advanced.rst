@@ -1,5 +1,5 @@
 ======================================
-Advanced Topics, Configurations, & FAQ
+Advanced Topics and Configurations
 ======================================
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload.
@@ -16,7 +16,7 @@ the properties of a particular backend.
 Scaling Out
 ===========
 
-To scale out a backend to multiple workers, simplify configure the number of replicas.
+To scale out a backend to many instances, simply configure the number of replicas.
 
 .. code-block:: python
 
@@ -27,14 +27,15 @@ To scale out a backend to multiple workers, simplify configure the number of rep
   config = {"num_replicas": 2}
   client.update_backend_config("my_scaled_endpoint_backend", config)
 
-This will scale up or down the number of workers that can accept requests.
+This will scale up or down the number of replicas that can accept requests.
 
 Using Resources (CPUs, GPUs)
 ============================
 
-To assign hardware resource per worker, you can pass resource requirements to
-``ray_actor_options``. To learn about options to pass in, take a look at
-:ref:`Resources with Actor<actor-resource-guide>` guide.
+To assign hardware resources per replica, you can pass resource requirements to
+``ray_actor_options``.
+By default, each replica requires one CPU.
+To learn about options to pass in, take a look at :ref:`Resources with Actor<actor-resource-guide>` guide.
 
 For example, to create a backend where each replica uses a single GPU, you can do the
 following:
@@ -43,6 +44,20 @@ following:
 
   config = {"num_gpus": 1}
   client.create_backend("my_gpu_backend", handle_request, ray_actor_options=config)
+
+Fractional Resources
+--------------------
+
+The resources specified in ``ray_actor_options`` can also be *fractional*.
+This allows you to flexibly share resources between replicas.
+For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
+The same could be done to multiplex over CPUs.
+
+.. code-block:: python
+
+  half_gpu_config = {"num_gpus": 0.5}
+  client.create_backend("my_gpu_backend_1", handle_request, ray_actor_options=half_gpu_config)
+  client.create_backend("my_gpu_backend_2", handle_request, ray_actor_options=half_gpu_config)
 
 Configuring Parallelism with OMP_NUM_THREADS
 --------------------------------------------
@@ -173,7 +188,7 @@ Session Affinity
 ----------------
 
 Splitting traffic randomly among backends for each request is is general and simple, but it can be an issue when you want to ensure that a given user or client is served by the same backend repeatedly.
-To address this, Serve offers a "shard key" can be specified for each request that will deterministically map to a backend.
+To address this, a "shard key" can be specified for each request that will deterministically map to a backend.
 In practice, this should be something that uniquely identifies the entity that you want to consistently map, like a client ID or session ID.
 The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or :mod:`handle.options(shard_key="key") <ray.serve.handle.RayServeHandle.options>`.
 
@@ -254,160 +269,49 @@ errored requests through the Ray metrics monitoring infrastructure. By default,
 the metrics are exposed in Prometheus format on each node. See the
 `Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
 
-.. _serve-faq:
 
-Ray Serve FAQ
-=============
+Reconfiguring Backends (Experimental)
+=====================================
 
-How do I deploy serve?
-----------------------
+Suppose you want to update a parameter in your model without creating a whole
+new backend.  You can do this by writing a `reconfigure` method for the class
+underlying your backend.  At runtime, you can then pass in your new parameters
+by setting the `user_config` field of :mod:`BackendConfig <ray.serve.BackendConfig>`.
 
-See :doc:`deployment` for information about how to deploy serve.
+The following simple example will make the usage clear:
 
-How do I delete backends and endpoints?
----------------------------------------
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_reconfigure.py
 
-To delete a backend, you can use :mod:`client.delete_backend <ray.serve.api.Client.delete_backend>`.
-Note that the backend must not be use by any endpoints in order to be delete.
-Once a backend is deleted, its tag can be reused.
+The `reconfigure` method is called when the class is created if `user_config`
+is set.  In particular, it's also called when new replicas are created in the
+future, in case you decide to scale up your backend later.  The
+`reconfigure` method is also called each time `user_config` is updated via 
+:mod:`client.update_backend_config <ray.serve.api.Client.update_backend_config>`.
 
-.. code-block:: python
+Dependency Management
+=====================
 
-  client.delete_backend("simple_backend")
+Ray Serve supports serving backends with different (possibly conflicting)
+python dependencies.  For example, you can simultaneously serve one backend
+that uses legacy Tensorflow 1 and another backend that uses Tensorflow 2.
 
+Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_.
+You must have a conda environment set up for each set of
+dependencies you want to isolate.  If using a multi-node cluster, the
+conda configuration must be identical across all nodes.
 
-To delete a endpoint, you can use :mod:`client.delete_endpoint <ray.serve.api.Client.delete_endpoint>`.
-Note that the endpoint will no longer work and return a 404 when queried.
-Once a endpoint is deleted, its tag can be reused.
+Here's an example script.  For it to work, first create a conda
+environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
+and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
+python versions must be the same in both environments.  To specify
+an environment for a backend to use, simply pass the environment name in to
+:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
+as shown below.  Be sure to run the script in an activated conda environment
+(not required to be ``ray-tf1`` or ``ray-tf2``).
 
-.. code-block:: python
+.. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
-  client.delete_endpoint("simple_endpoint")
+Alternatively, you may omit the argument ``env`` and call
+:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
+from a script running in the conda environment you want the backend to run in.
 
-How do I call an endpoint from Python code?
--------------------------------------------
-
-Use :mod:`client.get_handle <ray.serve.api.Client.get_handle>` to get a handle to the endpoint,
-then use :mod:`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to that
-endpoint. This returns a Ray ObjectRef whose result can be waited for or retrieved using
-``ray.wait`` or ``ray.get``, respectively.
-
-.. code-block:: python
-
-    handle = client.get_handle("api_endpoint")
-    ray.get(handle.remote(request))
-
-
-How do I call a method on my backend class besides __call__?
--------------------------------------------------------------
-
-To call a method via HTTP use the header field ``X-SERVE-CALL-METHOD``.
-
-To call a method via Python, use :mod:`handle.options <ray.serve.handle.RayServeHandle.options>`:
-
-.. code-block:: python
-
-    class StatefulProcessor:
-        def __init__(self):
-            self.count = 1
-
-        def __call__(self, request):
-            return {"current": self.count}
-
-        def other_method(self, inc):
-            self.count += inc
-            return True
-
-    handle = client.get_handle("backend_name")
-    handle.options(method_name="other_method").remote(5)
-
-How do I enable CORS and other HTTP features?
----------------------------------------------
-
-Serve supports arbitrary `Starlette middlewares <https://www.starlette.io/middleware/>`_
-and custom middlewares in Starlette format. The example below shows how to enable
-`Cross-Origin Resource Sharing (CORS) <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`_.
-You can follow the same pattern for other Starlette middlewares.
-
-.. note::
-
-  Serve does not list ``Starlette`` as one of its dependencies. To utilize this feature,
-  you will need to:
-
-  .. code-block:: bash
-
-    pip install starlette
-
-.. code-block:: python
-
-    from starlette.middleware import Middleware
-    from starlette.middleware.cors import CORSMiddleware
-
-    serve.init(
-        http_middlewares=[
-            Middleware(
-                CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
-        ])
-
-
-.. _serve-handle-explainer:
-
-How do ``ServeHandle`` and ``ServeRequest`` work?
----------------------------------------------------
-
-Ray Serve enables you to query models both from HTTP and Python. This feature
-enables seamless :ref:`model composition<serve-model-composition>`. You can
-get a ``ServeHandle`` corresponding to an ``endpoint``, similar how you can
-reach an endpoint through HTTP via a specific route. When you issue a request
-to an endpoint through ``ServeHandle``, the request goes through the same code
-path as an HTTP request would: choosing backends through :ref:`traffic
-policies <serve-split-traffic>`, finding the next available replica, and
-batching requests together.
-
-When the request arrives in the model, you can access the data similarly to how
-you would with HTTP request. Here are some examples how ServeRequest mirrors Flask.Request:
-
-.. list-table::
-   :header-rows: 1
-
-   * - HTTP
-     - ServeHandle
-     - | Request
-       | (Flask.Request and ServeRequest)
-   * - ``requests.get(..., headers={...})``
-     - ``handle.options(http_headers={...})``
-     - ``request.headers``
-   * - ``requests.post(...)``
-     - ``handle.options(http_method="POST")``
-     - ``requests.method``
-   * - ``request.get(..., json={...})``
-     - ``handle.remote({...})``
-     - ``request.json``
-   * - ``request.get(..., form={...})``
-     - ``handle.remote({...})``
-     - ``request.form``
-   * - ``request.get(..., params={"a":"b"})``
-     - ``handle.remote(a="b")``
-     - ``request.args``
-   * - ``request.get(..., data="long string")``
-     - ``request.remote("long string")``
-     - ``request.data``
-   * - ``N/A``
-     - ``request.remote(python_object)``
-     - ``request.data``
-
-.. note::
-
-    You might have noticed that the last row of the table shows that ServeRequest supports
-    Python object pass through the handle. This is not possible in HTTP. If you
-    need to distinguish if the origin of the request is from Python or HTTP, you can do an ``isinstance``
-    check:
-
-    .. code-block:: python
-
-        import flask
-
-        if isinstance(request, flask.Request):
-            print("Request coming from web!")
-        elif isinstance(request, ServeRequest):
-            print("Request coming from Python!")

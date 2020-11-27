@@ -127,10 +127,10 @@ Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
 }
 
 template class GcsTable<JobID, JobTableData>;
-template class GcsTable<ClientID, GcsNodeInfo>;
-template class GcsTable<ClientID, ResourceMap>;
-template class GcsTable<ClientID, HeartbeatTableData>;
-template class GcsTable<ClientID, HeartbeatBatchTableData>;
+template class GcsTable<NodeID, GcsNodeInfo>;
+template class GcsTable<NodeID, ResourceMap>;
+template class GcsTable<NodeID, HeartbeatTableData>;
+template class GcsTable<NodeID, HeartbeatBatchTableData>;
 template class GcsTable<JobID, ErrorTableData>;
 template class GcsTable<UniqueID, ProfileTableData>;
 template class GcsTable<WorkerID, WorkerTableData>;
@@ -140,14 +140,14 @@ template class GcsTable<ActorID, ActorCheckpointIdData>;
 template class GcsTable<TaskID, TaskTableData>;
 template class GcsTable<TaskID, TaskLeaseData>;
 template class GcsTable<TaskID, TaskReconstructionData>;
-template class GcsTable<ObjectID, ObjectTableDataList>;
+template class GcsTable<ObjectID, ObjectLocationInfo>;
 template class GcsTable<UniqueID, StoredConfig>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
 template class GcsTableWithJobId<ActorID, ActorCheckpointIdData>;
 template class GcsTableWithJobId<TaskID, TaskTableData>;
 template class GcsTableWithJobId<TaskID, TaskLeaseData>;
 template class GcsTableWithJobId<TaskID, TaskReconstructionData>;
-template class GcsTableWithJobId<ObjectID, ObjectTableDataList>;
+template class GcsTableWithJobId<ObjectID, ObjectLocationInfo>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
 template class GcsTable<PlacementGroupID, ScheduleData>;
 

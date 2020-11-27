@@ -1,8 +1,8 @@
 def override(cls):
     """Annotation for documenting method overrides.
 
-    Arguments:
-        cls (type): The superclass that provides the overriden method. If this
+    Args:
+        cls (type): The superclass that provides the overridden method. If this
             cls does not actually have the method, an error is raised.
     """
 

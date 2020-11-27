@@ -137,7 +137,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status Log<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
   auto subscribe_wrapper = [subscribe](RedisGcsClient *client, const ID &id,
@@ -150,7 +150,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status Log<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
                                 const NotificationCallback &subscribe,
                                 const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
@@ -192,7 +192,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
-                                           const ClientID &client_id,
+                                           const NodeID &client_id,
                                            const StatusCallback &done) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
@@ -214,7 +214,7 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
-                                          const ClientID &client_id,
+                                          const NodeID &client_id,
                                           const StatusCallback &done) {
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
@@ -315,7 +315,7 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status Table<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
                                   const Callback &subscribe,
                                   const FailureCallback &failure,
                                   const SubscriptionCallback &done) {
@@ -336,7 +336,7 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
 }
 
 template <typename ID, typename Data>
-Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status Table<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
                                   const Callback &subscribe,
                                   const SubscriptionCallback &done) {
   return Subscribe(job_id, client_id, subscribe, /*failure*/ nullptr, done);
@@ -379,7 +379,7 @@ Status Set<ID, Data>::Remove(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Set<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status Set<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
                                 const NotificationCallback &subscribe,
                                 const SubscriptionCallback &done) {
   auto on_subscribe = [subscribe](RedisGcsClient *client, const ID &id,
@@ -481,7 +481,7 @@ Status Hash<ID, Data>::Lookup(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status Hash<ID, Data>::Subscribe(const JobID &job_id, const NodeID &client_id,
                                  const HashNotificationCallback &subscribe,
                                  const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
@@ -551,7 +551,7 @@ void ClientTable::RegisterNodeChangeCallback(const NodeChangeCallback &callback)
 
 void ClientTable::HandleNotification(RedisGcsClient *client,
                                      const GcsNodeInfo &node_info) {
-  ClientID node_id = ClientID::FromBinary(node_info.node_id());
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
   // It's possible to get duplicate notifications from the client table, so
   // check whether this notification is new.
@@ -598,14 +598,14 @@ void ClientTable::HandleNotification(RedisGcsClient *client,
   }
 }
 
-const ClientID &ClientTable::GetLocalClientId() const {
+const NodeID &ClientTable::GetLocalClientId() const {
   RAY_CHECK(!local_node_id_.IsNil());
   return local_node_id_;
 }
 
 const GcsNodeInfo &ClientTable::GetLocalClient() const { return local_node_info_; }
 
-bool ClientTable::IsRemoved(const ClientID &node_id) const {
+bool ClientTable::IsRemoved(const NodeID &node_id) const {
   return removed_nodes_.count(node_id) == 1;
 }
 
@@ -617,7 +617,7 @@ Status ClientTable::Connect(const GcsNodeInfo &local_node_info) {
   auto node_info_ptr = std::make_shared<GcsNodeInfo>(local_node_info);
   Status status = SyncAppend(JobID::Nil(), client_log_key_, node_info_ptr);
   if (status.ok()) {
-    local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
+    local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
     local_node_info_ = local_node_info;
   }
   return status;
@@ -642,7 +642,7 @@ ray::Status ClientTable::MarkConnected(const GcsNodeInfo &node_info,
   return Append(JobID::Nil(), client_log_key_, node_info_ptr, done);
 }
 
-ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id,
+ray::Status ClientTable::MarkDisconnected(const NodeID &dead_node_id,
                                           const WriteCallback &done) {
   auto node_info = std::make_shared<GcsNodeInfo>();
   node_info->set_node_id(dead_node_id.Binary());
@@ -651,8 +651,7 @@ ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id,
 }
 
 ray::Status ClientTable::SubscribeToNodeChange(
-    const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
-    const StatusCallback &done) {
+    const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe, const StatusCallback &done) {
   // Callback for a notification from the client table.
   auto on_subscribe = [this](RedisGcsClient *client, const UniqueID &log_key,
                              const std::vector<GcsNodeInfo> &notifications) {
@@ -699,7 +698,7 @@ ray::Status ClientTable::SubscribeToNodeChange(
   return Subscribe(JobID::Nil(), subscribe_id_, on_subscribe, on_done);
 }
 
-bool ClientTable::GetClient(const ClientID &node_id, GcsNodeInfo *node_info) const {
+bool ClientTable::GetClient(const NodeID &node_id, GcsNodeInfo *node_info) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   auto found = (entry != node_cache_.end());
@@ -709,7 +708,7 @@ bool ClientTable::GetClient(const ClientID &node_id, GcsNodeInfo *node_info) con
   return found;
 }
 
-const std::unordered_map<ClientID, GcsNodeInfo> &ClientTable::GetAllClients() const {
+const std::unordered_map<NodeID, GcsNodeInfo> &ClientTable::GetAllClients() const {
   return node_cache_;
 }
 
@@ -720,13 +719,13 @@ Status ClientTable::Lookup(const Callback &lookup) {
 
 std::string ClientTable::DebugString() const {
   std::stringstream result;
-  result << Log<ClientID, GcsNodeInfo>::DebugString();
+  result << Log<NodeID, GcsNodeInfo>::DebugString();
   result << ", cache size: " << node_cache_.size()
          << ", num removed: " << removed_nodes_.size();
   return result.str();
 }
 
-Status TaskLeaseTable::Subscribe(const JobID &job_id, const ClientID &client_id,
+Status TaskLeaseTable::Subscribe(const JobID &job_id, const NodeID &client_id,
                                  const Callback &subscribe,
                                  const SubscriptionCallback &done) {
   auto on_subscribe = [subscribe](RedisGcsClient *client, const TaskID &task_id,
@@ -865,21 +864,21 @@ template class Table<TaskID, TaskTableData>;
 template class Log<ActorID, ActorTableData>;
 template class Log<TaskID, TaskReconstructionData>;
 template class Table<TaskID, TaskLeaseData>;
-template class Table<ClientID, HeartbeatTableData>;
-template class Table<ClientID, HeartbeatBatchTableData>;
-template class Log<ClientID, GcsNodeInfo>;
+template class Table<NodeID, HeartbeatTableData>;
+template class Table<NodeID, HeartbeatBatchTableData>;
+template class Log<NodeID, GcsNodeInfo>;
 template class Log<JobID, JobTableData>;
 template class Log<UniqueID, ProfileTableData>;
-template class Log<ClientID, HeartbeatTableData>;
-template class Log<ClientID, HeartbeatBatchTableData>;
+template class Log<NodeID, HeartbeatTableData>;
+template class Log<NodeID, HeartbeatBatchTableData>;
 template class Log<WorkerID, WorkerTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
 template class Table<WorkerID, WorkerTableData>;
 template class Table<ActorID, ActorTableData>;
 
-template class Log<ClientID, ResourceTableData>;
-template class Hash<ClientID, ResourceTableData>;
+template class Log<NodeID, ResourceTableData>;
+template class Hash<NodeID, ResourceTableData>;
 
 }  // namespace gcs
 

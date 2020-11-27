@@ -20,7 +20,7 @@ namespace gcs {
 
 template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
-    const ClientID &client_id, const SubscribeCallback<ID, Data> &subscribe,
+    const NodeID &client_id, const SubscribeCallback<ID, Data> &subscribe,
     const StatusCallback &done) {
   // TODO(micafan) Optimize the lock when necessary.
   // Consider avoiding locking in single-threaded processes.
@@ -110,9 +110,9 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
 
 template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
-    const ClientID &client_id, const ID &id, const SubscribeCallback<ID, Data> &subscribe,
+    const NodeID &client_id, const ID &id, const SubscribeCallback<ID, Data> &subscribe,
     const StatusCallback &done) {
-  RAY_CHECK(client_id != ClientID::Nil());
+  RAY_CHECK(client_id != NodeID::Nil());
 
   // NOTE(zhijunfu): `Subscribe` and other operations use different redis contexts,
   // thus we need to call `RequestNotifications` in the Subscribe callback to ensure
@@ -160,7 +160,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
 
 template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
-    const ClientID &client_id, const ID &id, const StatusCallback &done) {
+    const NodeID &client_id, const ID &id, const StatusCallback &done) {
   SubscribeCallback<ID, Data> subscribe = nullptr;
   {
     std::unique_lock<std::mutex> lock(mutex_);
@@ -205,11 +205,9 @@ template class SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>;
 template class SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>;
 template class SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>,
                                     TaskLeaseTable>;
-template class SubscriptionExecutor<ClientID, ResourceChangeNotification,
+template class SubscriptionExecutor<NodeID, ResourceChangeNotification,
                                     DynamicResourceTable>;
-template class SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>;
-template class SubscriptionExecutor<ClientID, HeartbeatBatchTableData,
-                                    HeartbeatBatchTable>;
+template class SubscriptionExecutor<NodeID, HeartbeatBatchTableData, HeartbeatBatchTable>;
 template class SubscriptionExecutor<WorkerID, WorkerTableData, WorkerTable>;
 
 }  // namespace gcs

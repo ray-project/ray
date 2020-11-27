@@ -10,8 +10,6 @@ try:
 except ImportError:
     uvloop = None
 
-import ray
-
 
 def get_new_event_loop():
     """Construct a new event loop. Ray will use uvloop if it exists"""
@@ -31,15 +29,3 @@ def sync_to_async(func):
         return func(*args, **kwargs)
 
     return wrapper
-
-
-def get_async(object_ref):
-    """C++ Asyncio version of ray.get"""
-    loop = asyncio.get_event_loop()
-    core_worker = ray.worker.global_worker.core_worker
-
-    future = loop.create_future()
-    core_worker.get_async(object_ref, future)
-    # A hack to keep a reference to the object ref for ref counting.
-    future.object_ref = object_ref
-    return future

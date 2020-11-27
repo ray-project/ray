@@ -5,6 +5,7 @@ for running perf microbenchmarks.
 """
 
 import argparse
+import os
 
 import ray
 import ray.tune as tune
@@ -32,7 +33,8 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "fast_model"
         },
-        "num_gpus": 0,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 2,
         "num_envs_per_worker": 10,
         "num_data_loader_buffers": 1,
@@ -40,7 +42,7 @@ if __name__ == "__main__":
         "broadcast_interval": 50,
         "rollout_fragment_length": 100,
         "train_batch_size": sample_from(
-            lambda spec: 1000 * max(1, spec.config.num_gpus)),
+            lambda spec: 1000 * max(1, spec.config.num_gpus or 1)),
         "fake_sampler": True,
         "framework": "torch" if args.torch else "tf",
     }
@@ -50,6 +52,6 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    tune.run("IMPALA", config=config, stop=stop)
+    tune.run("IMPALA", config=config, stop=stop, verbose=1)
 
     ray.shutdown()

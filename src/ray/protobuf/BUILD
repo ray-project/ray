@@ -155,3 +155,15 @@ cc_proto_library(
     deps = [":agent_manager_proto"],
 )
 
+# Ray Client gRPC lib
+proto_library(
+    name = "ray_client_proto",
+    srcs = ["ray_client.proto"],
+    deps = [],
+)
+
+python_grpc_compile(
+    name = "ray_client_py_proto",
+    deps = [":ray_client_proto"]
+)
+

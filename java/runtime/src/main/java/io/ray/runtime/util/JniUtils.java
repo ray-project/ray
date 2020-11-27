@@ -1,11 +1,9 @@
 package io.ray.runtime.util;
 
-import com.google.common.base.Strings;
 import com.google.common.collect.Sets;
 import com.sun.jna.NativeLibrary;
 import io.ray.runtime.config.RayConfig;
 import java.io.File;
-import java.lang.reflect.Field;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,38 +46,8 @@ public class JniUtils {
       }
       System.load(file.getAbsolutePath());
       LOGGER.debug("Native library loaded.");
-      resetLibraryPath(file.getAbsolutePath());
       loadedLibs.add(libraryName);
     }
   }
 
-  /**
-   * This is a hack to reset library path at runtime. Please don't use it outside of ray
-   */
-  public static synchronized void resetLibraryPath(String libPath) {
-    if (Strings.isNullOrEmpty(libPath)) {
-      return;
-    }
-    String path = System.getProperty("java.library.path");
-    String separator = System.getProperty("path.separator");
-    if (Strings.isNullOrEmpty(path)) {
-      path = "";
-    } else {
-      path += separator;
-    }
-    path += String.join(separator, libPath);
-
-    // This is a hack to reset library path at runtime,
-    // see https://stackoverflow.com/questions/15409223/.
-    System.setProperty("java.library.path", path);
-    // Set sys_paths to null so that java.library.path will be re-evaluated next time it is needed.
-    final Field sysPathsField;
-    try {
-      sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
-      sysPathsField.setAccessible(true);
-      sysPathsField.set(null, null);
-    } catch (NoSuchFieldException | IllegalAccessException e) {
-      LOGGER.error("Failed to set library path.", e);
-    }
-  }
 }

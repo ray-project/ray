@@ -101,9 +101,9 @@ public class ChannelId {
       | 8 bytes    |  4bytes   | 4bytes| 2bytes| 2bytes |
     */
     Preconditions.checkArgument(fromTaskId < Short.MAX_VALUE,
-        "fromTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
+        "fromTaskId %s is larger than %s", fromTaskId, Short.MAX_VALUE);
     Preconditions.checkArgument(toTaskId < Short.MAX_VALUE,
-        "toTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
+        "toTaskId %s is larger than %s", fromTaskId, Short.MAX_VALUE);
     byte[] channelName = new byte[20];
 
     for (int i = 11; i >= 8; i--) {

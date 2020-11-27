@@ -139,8 +139,9 @@ class FunctionActorManager:
                                "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
-        self._worker.redis_client.hmset(
-            key, {
+        self._worker.redis_client.hset(
+            key,
+            mapping={
                 "job_id": self._worker.current_job_id.binary(),
                 "function_id": remote_function._function_descriptor.
                 function_id.binary(),
@@ -333,7 +334,7 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        self._worker.redis_client.hmset(key, actor_class_info)
+        self._worker.redis_client.hset(key, mapping=actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
@@ -552,7 +553,7 @@ class FunctionActorManager:
             else:
                 return method(actor, *args, **kwargs)
 
-        # Set method_name and method as attributes to the executor clusore
+        # Set method_name and method as attributes to the executor closure
         # so we can make decision based on these attributes in task executor.
         # Precisely, asyncio support requires to know whether:
         # - the method is a ray internal method: starts with __ray

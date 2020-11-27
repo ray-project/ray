@@ -1,0 +1,92 @@
+.+\.py.*Cluster: test-cli
+.+\.py.*Checking AWS environment settings
+.+\.py.*Creating new IAM instance profile ray-autoscaler-v1 for use as the default\.
+.+\.py.*Creating new IAM role ray-autoscaler-v1 for use as the default instance role\.
+.+\.py.*Creating new key pair __test-cli_key-1 for use as the default\.
+.+\.py.*Created new security group ray-autoscaler-test-cli \[id=sg-.+\]
+.+\.py.*AWS config
+.+\.py.*IAM Profile: ray-autoscaler-v1 \[default\]
+.+\.py.*EC2 Key pair \(head & workers\): __test-cli_key-1 \[default\]
+.+\.py.*VPC Subnets \(head & workers\): subnet-.+ \[default\]
+.+\.py.*EC2 Security groups \(head & workers\): sg-.+ \[default\]
+.+\.py.*EC2 AMI \(head & workers\): ami-dca37ea5 \[dlami\]
+.+\.py.*No head node found\. Launching a new cluster\. Confirm \[y/N\]: y \[automatic, due to --yes\]
+.+\.py.*Acquiring an up-to-date head node
+.+\.py.*Launched 1 nodes \[subnet_id=subnet-.+\]
+.+\.py.*Launched instance i-.+ \[state=pending, info=pending\]
+.+\.py.*Launched a new head node
+.+\.py.*Fetching the new head node
+.+\.py.*<1/1> Setting up head node
+.+\.py.*Prepared bootstrap config
+.+\.py.*AWSNodeProvider: Set tag ray-node-status=waiting-for-ssh on \['.+'\]  \[LogTimer=.+\]
+.+\.py.*New status: waiting-for-ssh
+.+\.py.*\[1/7\] Waiting for SSH to become available
+.+\.py.*Running `uptime` as a test\.
+.+\.py.*Fetched IP: .+
+.+\.py.*NodeUpdater: .+: Got IP  \[LogTimer=.+\]
+.+\.py.*Running `uptime`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*Success\.
+.+\.py.*NodeUpdater: .+: Got remote shell  \[LogTimer=.+\]
+.+\.py.*Updating cluster configuration\. \[hash=.+\]
+.+\.py.*AWSNodeProvider: Set tag ray-node-status=syncing-files on \['.+'\]  \[LogTimer=.+\]
+.+\.py.*New status: syncing-files
+.+\.py.*\[2/7\] Processing file mounts
+.+\.py.*Running `mkdir -p ~/tests`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*Running `rsync.+`
+.+\.py.*`rsync`ed \./ \(local\) to ~/tests/ \(remote\)
+.+\.py.*~/tests/ from \./
+.+\.py.+NodeUpdater: i-.+: Synced \./ to ~/tests/  \[LogTimer=.+\]
+.+\.py.*Running `mkdir -p ~`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*Running `rsync.+`
+.+\.py.*`rsync`ed .+/ray-bootstrap-.+ \(local\) to ~/ray_bootstrap_config\.yaml \(remote\)
+.+\.py.*~/ray_bootstrap_config\.yaml from .+ray-bootstrap-.+
+.+\.py.*NodeUpdater: i-.+: Synced .+ray-bootstrap-.+ to ~/ray_bootstrap_config\.yaml  \[LogTimer=.+\]
+.+\.py.*Running `mkdir -p ~`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*Running `rsync.+`
+.+\.py.*`rsync`ed .+__test-cli_key-1\.pem \(local\) to ~/ray_bootstrap_key\.pem \(remote\)
+.+\.py.*~/ray_bootstrap_key\.pem from .+__test-cli_key-1\.pem
+.+\.py.*NodeUpdater: i-.+: Synced .+.pem to ~/ray_bootstrap_key\.pem  \[LogTimer=.+\]
+.+\.py.*\[3/7\] No worker file mounts to sync
+.+\.py.*AWSNodeProvider: Set tag ray-node-status=setting-up on \['.+'\]  \[LogTimer=.+\]
+.+\.py.*New status: setting-up
+.+\.py.*\[4/7\] Running initialization commands
+.+\.py.*Running `echo init`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*NodeUpdater: i-.+: Initialization commands succeeded \[LogTimer=.+\]
+.+\.py.*\[5/7\] Initalizing command runner
+.+\.py.*\[6/7\] Running setup commands
+.+\.py.*\(0/4\) echo a
+.+\.py.*Running `echo a`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*\(1/4\) echo b
+.+\.py.*Running `echo b`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*\(2/4\) echo \${echo hi}
+.+\.py.*Running `echo \${echo hi}`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*\(3/4\) echo head
+.+\.py.*Running `echo head`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*NodeUpdater: i-.+: Setup commands succeeded \[LogTimer=.+\]
+.+\.py.*\[7/7\] Starting the Ray runtime
+.+\.py.*Running `export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray stop`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*Running `export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
+.+\.py.*Full command is `ssh.+`
+.+\.py.*NodeUpdater: i-.+: Ray start commands succeeded \[LogTimer=.+\]
+.+\.py.*NodeUpdater: i-.+: Applied config .+  \[LogTimer=.+\]
+.+\.py.*AWSNodeProvider: Set tag ray-node-status=up-to-date on \['.+'\]  \[LogTimer=.+\]
+.+\.py.*AWSNodeProvider: Set tag ray-runtime-config=.+ on \['.+'\]  \[LogTimer=.+\]
+.+\.py.*AWSNodeProvider: Set tag ray-file-mounts-contents=.+ on \['.+'\]  \[LogTimer=.+\]
+.+\.py.*New status: up-to-date
+.+\.py.*Useful commands
+.+\.py.*Monitor autoscaling with
+.+\.py.*  ray exec .+ 'tail -n 100 -f .+
+.+\.py.*Connect to a terminal on the cluster head:
+.+\.py.*  ray attach .+
+.+\.py.*Get a remote shell to the cluster manually:
+.+\.py.*  ssh.+\.pem.+

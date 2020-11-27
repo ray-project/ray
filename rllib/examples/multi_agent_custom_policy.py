@@ -15,6 +15,7 @@ Result for PG_multi_cartpole_0:
 
 import argparse
 import gym
+import os
 
 import ray
 from ray import tune
@@ -47,24 +48,24 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    results = tune.run(
-        "PG",
-        stop=stop,
-        config={
-            "env": "multi_agent_cartpole",
-            "multiagent": {
-                "policies": {
-                    "pg_policy": (None, obs_space, act_space, {
-                        "framework": "torch" if args.torch else "tf",
-                    }),
-                    "random": (RandomPolicy, obs_space, act_space, {}),
-                },
-                "policy_mapping_fn": (
-                    lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
+    config = {
+        "env": "multi_agent_cartpole",
+        "multiagent": {
+            "policies": {
+                "pg_policy": (None, obs_space, act_space, {
+                    "framework": "torch" if args.torch else "tf",
+                }),
+                "random": (RandomPolicy, obs_space, act_space, {}),
             },
-            "framework": "torch" if args.torch else "tf",
+            "policy_mapping_fn": (
+                lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
         },
-    )
+        "framework": "torch" if args.torch else "tf",
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+    }
+
+    results = tune.run("PG", config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

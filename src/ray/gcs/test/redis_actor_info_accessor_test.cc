@@ -65,45 +65,6 @@ class ActorInfoAccessorTest : public AccessorTestBase<ActorID, ActorTableData> {
   size_t checkpoint_number_{2};
 };
 
-TEST_F(ActorInfoAccessorTest, RegisterAndGet) {
-  ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
-  // register
-  for (const auto &elem : id_to_data_) {
-    const auto &actor = elem.second;
-    ++pending_count_;
-    RAY_CHECK_OK(actor_accessor.AsyncRegister(actor, [this](Status status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
-    }));
-  }
-
-  WaitPendingDone(wait_pending_timeout_);
-
-  // async get
-  for (const auto &elem : id_to_data_) {
-    ++pending_count_;
-    RAY_CHECK_OK(actor_accessor.AsyncGet(
-        elem.first, [this](Status status, const boost::optional<ActorTableData> &data) {
-          ASSERT_TRUE(data);
-          ActorID actor_id = ActorID::FromBinary(data->actor_id());
-          auto it = id_to_data_.find(actor_id);
-          ASSERT_TRUE(it != id_to_data_.end());
-          --pending_count_;
-        }));
-  }
-
-  WaitPendingDone(wait_pending_timeout_);
-
-  // sync get
-  std::vector<ActorTableData> actor_table_data_list;
-  RAY_CHECK_OK(actor_accessor.GetAll(&actor_table_data_list));
-  ASSERT_EQ(id_to_data_.size(), actor_table_data_list.size());
-  for (auto &data : actor_table_data_list) {
-    ActorID actor_id = ActorID::FromBinary(data.actor_id());
-    ASSERT_TRUE(id_to_data_.count(actor_id) != 0);
-  }
-}
-
 TEST_F(ActorInfoAccessorTest, Subscribe) {
   ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
   // subscribe
@@ -124,24 +85,6 @@ TEST_F(ActorInfoAccessorTest, Subscribe) {
   RAY_CHECK_OK(actor_accessor.AsyncSubscribeAll(subscribe, done));
   // Wait until subscribe finishes.
   WaitPendingDone(do_sub_pending_count, wait_pending_timeout_);
-
-  // register
-  std::atomic<int> register_pending_count(0);
-  for (const auto &elem : id_to_data_) {
-    const auto &actor = elem.second;
-    ++sub_pending_count;
-    ++register_pending_count;
-    RAY_CHECK_OK(
-        actor_accessor.AsyncRegister(actor, [&register_pending_count](Status status) {
-          RAY_CHECK_OK(status);
-          --register_pending_count;
-        }));
-  }
-  // Wait until register finishes.
-  WaitPendingDone(register_pending_count, wait_pending_timeout_);
-
-  // Wait for all subscribe notifications.
-  WaitPendingDone(sub_pending_count, wait_pending_timeout_);
 }
 
 TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {

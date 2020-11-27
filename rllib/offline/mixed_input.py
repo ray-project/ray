@@ -24,7 +24,7 @@ class MixedInput(InputReader):
     def __init__(self, dist: Dict[JsonReader, float], ioctx: IOContext):
         """Initialize a MixedInput.
 
-        Arguments:
+        Args:
             dist (dict): dict mapping JSONReader paths or "sampler" to
                 probabilities. The probabilities must sum to 1.0.
             ioctx (IOContext): current IO context object.
@@ -37,7 +37,7 @@ class MixedInput(InputReader):
             if k == "sampler":
                 self.choices.append(ioctx.default_sampler_input())
             else:
-                self.choices.append(JsonReader(k))
+                self.choices.append(JsonReader(k, ioctx))
             self.p.append(v)
 
     @override(InputReader)

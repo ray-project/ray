@@ -1,0 +1,81 @@
+# Configuration for probot-stale - https://github.com/probot/stale
+
+# Number of days of inactivity before an Issue or Pull Request becomes stale
+daysUntilStale: 120
+
+# Number of days of inactivity before an Issue or Pull Request with the stale label is closed.
+# Set to false to disable. If disabled, issues still need to be closed manually, but will remain marked as stale.
+daysUntilClose: 14
+
+# Only issues or pull requests with all of these labels are check if stale. Defaults to `[]` (disabled)
+onlyLabels: []
+
+# Issues or Pull Requests with these labels will never be considered stale. Set to `[]` to disable
+exemptLabels:
+  - P0
+  - P1
+  - P2
+  - P3
+  - good first issue
+  - release-blocker
+  - fix-docs
+  - regression
+  - fix-error-msg
+
+# Set to true to ignore issues in a project (defaults to false)
+exemptProjects: false
+
+# Set to true to ignore issues in a milestone (defaults to false)
+exemptMilestones: true
+
+# Set to true to ignore issues with an assignee (defaults to false)
+exemptAssignees: false
+
+# Label to use when marking as stale
+staleLabel: stale
+
+# Comment to post when marking as stale. Set to `false` to disable
+markComment: |
+  Hi, I'm a bot from the Ray team :)
+  
+  To help human contributors to focus on more relevant issues, I will automatically add the stale label to issues that have had no activity for more than 4 months.
+
+  If there is no further activity in the 14 days, the issue will be closed!
+  
+  - If you'd like to keep the issue open, just leave any comment, and the stale label will be removed!
+  - If you'd like to get more attention to the issue, please tag one of Ray's contributors.
+
+  You can always ask for help on our [discussion forum](https://discuss.ray.io/) or [Ray's public slack channel](https://github.com/ray-project/ray#getting-involved). 
+  
+# Comment to post when removing the stale label.
+# unmarkComment: >
+#   Your comment here.
+
+# Comment to post when closing a stale Issue or Pull Request.
+closeComment: |
+  Hi again! The issue will be closed because there has been no more activity in the 14 days since the last message.
+  
+  Please feel free to reopen or open a new issue if you'd still like it to be addressed.
+
+  Again, you can always ask for help on our [discussion forum](https://discuss.ray.io) or [Ray's public slack channel](https://github.com/ray-project/ray#getting-involved). 
+
+  Thanks again for opening the issue! 
+
+# Limit the number of actions per hour, from 1-30. Default is 30
+# It will check 120 issues per day.
+limitPerRun: 5
+
+# Limit to only `issues` or `pulls`
+only: issues
+
+# Optionally, specify configuration settings that are specific to just 'issues' or 'pulls':
+# pulls:
+#   daysUntilStale: 30
+#   markComment: >
+#     This pull request has been automatically marked as stale because it has not had
+#     recent activity. It will be closed if no further activity occurs. Thank you
+#     for your contributions.
+
+# issues:
+#   exemptLabels:
+#     - confirmed

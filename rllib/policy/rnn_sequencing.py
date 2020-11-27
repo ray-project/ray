@@ -35,7 +35,6 @@ def pad_batch_to_sequences_of_same_size(
         shuffle: bool = False,
         batch_divisibility_req: int = 1,
         feature_keys: Optional[List[str]] = None,
-        _use_trajectory_view_api: bool = False,
 ):
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
@@ -56,26 +55,7 @@ def pad_batch_to_sequences_of_same_size(
         feature_keys (Optional[List[str]]): An optional list of keys to apply
             sequence-chopping to. If None, use all keys in batch that are not
             "state_in/out_"-type keys.
-        _use_trajectory_view_api (bool): Whether we are using the Trajectory
-            View API to collect and process samples.
     """
-    if _use_trajectory_view_api:
-        if batch.time_major is not None:
-            batch["seq_lens"] = torch.tensor(batch.seq_lens)
-            t = 0 if batch.time_major else 1
-            for col in batch.data.keys():
-                # Cut time-dim from states.
-                if "state_" in col[:6]:
-                    batch[col] = batch[col][t]
-                # Flatten all other data.
-                else:
-                    # Cut time-dim at `max_seq_len`.
-                    if batch.time_major:
-                        batch[col] = batch[col][:batch.max_seq_len]
-                    batch[col] = batch[col].reshape((-1, ) +
-                                                    batch[col].shape[2:])
-        return
-
     if batch_divisibility_req > 1:
         meets_divisibility_reqs = (
             len(batch[SampleBatch.CUR_OBS]) % batch_divisibility_req == 0
@@ -248,7 +228,7 @@ def chop_into_sequences(episode_ids,
     if seq_len:
         seq_lens.append(seq_len)
     assert sum(seq_lens) == len(unique_ids)
-    seq_lens = np.array(seq_lens)
+    seq_lens = np.array(seq_lens, dtype=np.int32)
 
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
@@ -256,12 +236,15 @@ def chop_into_sequences(episode_ids,
 
     feature_sequences = []
     for f in feature_columns:
-        f = np.array(f)
+        # Save unnecessary copy.
+        if not isinstance(f, np.ndarray):
+            f = np.array(f)
         length = len(seq_lens) * max_seq_len
         if f.dtype == np.object or f.dtype.type is np.str_:
             f_pad = [None] * length
         else:
-            f_pad = np.zeros((length, ) + np.shape(f)[1:])
+            # Make sure type doesn't change.
+            f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
         seq_base = 0
         i = 0
         for len_ in seq_lens:

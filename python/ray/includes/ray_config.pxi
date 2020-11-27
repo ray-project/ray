@@ -14,6 +14,10 @@ cdef class Config:
         return RayConfig.instance().raylet_heartbeat_timeout_milliseconds()
 
     @staticmethod
+    def light_heartbeat_enabled():
+        return RayConfig.instance().light_heartbeat_enabled()
+
+    @staticmethod
     def debug_dump_period_milliseconds():
         return RayConfig.instance().debug_dump_period_milliseconds()
 
@@ -79,10 +83,6 @@ cdef class Config:
     @staticmethod
     def object_manager_push_timeout_ms():
         return RayConfig.instance().object_manager_push_timeout_ms()
-
-    @staticmethod
-    def object_manager_repeated_push_delay_ms():
-        return RayConfig.instance().object_manager_repeated_push_delay_ms()
 
     @staticmethod
     def object_manager_default_chunk_size():

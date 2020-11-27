@@ -1,5 +1,5 @@
+import queue
 import threading
-from six.moves import queue
 
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.policy.policy import LEARNER_STATS_KEY

@@ -4,13 +4,13 @@
 namespace ray {
 namespace api {
 
-uintptr_t dynamic_library_base_addr;
-
-extern "C" void GenerateBaseAddressOfCurrentLibrary() {
+uintptr_t GetBaseAddressOfLibraryFromAddr(void *addr) {
   Dl_info info;
-  dladdr((void *)GenerateBaseAddressOfCurrentLibrary, &info);
-  dynamic_library_base_addr = (uintptr_t)info.dli_fbase;
-  return;
+  dladdr(addr, &info);
+  return (uintptr_t)info.dli_fbase;
 }
+
+uintptr_t dynamic_library_base_addr =
+    GetBaseAddressOfLibraryFromAddr((void *)GetBaseAddressOfLibraryFromAddr);
 }  // namespace api
 }  // namespace ray

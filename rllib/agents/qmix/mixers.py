@@ -36,7 +36,7 @@ class QMixer(nn.Module):
     def forward(self, agent_qs, states):
         """Forward pass for the mixer.
 
-        Arguments:
+        Args:
             agent_qs: Tensor of shape [B, T, n_agents, n_actions]
             states: Tensor of shape [B, T, state_dim]
         """

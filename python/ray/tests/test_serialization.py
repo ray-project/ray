@@ -5,6 +5,7 @@ import logging
 import re
 import string
 import sys
+import weakref
 
 import numpy as np
 import pytest
@@ -495,6 +496,100 @@ def test_register_class(ray_start_2_cpus):
         assert not hasattr(c1, "method2")
         assert not hasattr(c2, "method0")
         assert not hasattr(c2, "method1")
+
+
+def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
+    x = np.full((2, 2), 1.)
+    o = ray.put(x)
+    y = ray.get(o)
+    with pytest.raises(
+            ValueError, match="assignment destination is read-only"):
+        y[0, 0] = 9.
+
+
+def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
+    # bpo-39492: reducer_override used to induce a spurious reference cycle
+    # inside the Pickler object, that could prevent all serialized objects
+    # from being garbage-collected without explicity invoking gc.collect.
+
+    # test a dynamic function
+    def f():
+        return 4669201609102990671853203821578
+
+    wr = weakref.ref(f)
+
+    bio = io.BytesIO()
+    from ray.cloudpickle import CloudPickler, loads, dumps
+    p = CloudPickler(bio, protocol=5)
+    p.dump(f)
+    new_f = loads(bio.getvalue())
+    assert new_f() == 4669201609102990671853203821578
+
+    del p
+    del f
+
+    assert wr() is None
+
+    # test a dynamic class
+    class ShortlivedObject:
+        def __del__(self):
+            print("Went out of scope!")
+
+    obj = ShortlivedObject()
+    new_obj = weakref.ref(obj)
+
+    dumps(obj)
+    del obj
+    assert new_obj() is None
+
+
+def test_buffer_alignment(ray_start_shared_local_modes):
+    # Deserialized large numpy arrays should be 64-byte aligned.
+    x = np.random.normal(size=(10, 20, 30))
+    y = ray.get(ray.put(x))
+    assert y.ctypes.data % 64 == 0
+
+    # Unlike PyArrow, Ray aligns small numpy arrays to 8
+    # bytes to be memory efficient.
+    xs = [np.random.normal(size=i) for i in range(100)]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+    xs = [np.random.normal(size=i * (1, )) for i in range(20)]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+    xs = [np.random.normal(size=i * (5, )) for i in range(1, 8)]
+    xs = [xs[i][(i + 1) * (slice(1, 3), )] for i in range(len(xs))]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+
+def test_pytorch_tensor_zerocopy_serialization(ray_start_shared_local_modes):
+    import torch
+    # test dense tensor
+    tensor = torch.rand(32, 3, 64, 64)
+    ref = ray.put(tensor)
+    tensor_1, tensor_2 = ray.get([ref] * 2)
+    assert tensor_1.data_ptr() == tensor_2.data_ptr()
+
+    # test sparse tensor
+    i = torch.arange(0, 1024 * 1024, 4).view(1, -1)
+    v = torch.rand(1024 * 1024 // 4)
+    k = torch.sparse_coo_tensor(i, v, size=(1024 * 1024, ))
+    ref = ray.put(k)
+    tensor_1, tensor_2 = ray.get([ref] * 2)
+    assert tensor_1._indices().data_ptr() == tensor_2._indices().data_ptr()
+    assert tensor_1._values().data_ptr() == tensor_2._values().data_ptr()
+
+    # test attributes
+    tensor = torch.rand(4).requires_grad_(True)
+    ref = ray.put(tensor)
+    tensor = ray.get(ref)
+    assert tensor.requires_grad
 
 
 if __name__ == "__main__":

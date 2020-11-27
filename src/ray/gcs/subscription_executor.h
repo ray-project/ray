@@ -46,7 +46,7 @@ class SubscriptionExecutor {
   /// is registered or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribeAll(const ClientID &client_id,
+  Status AsyncSubscribeAll(const NodeID &client_id,
                            const SubscribeCallback<ID, Data> &subscribe,
                            const StatusCallback &done);
 
@@ -61,7 +61,7 @@ class SubscriptionExecutor {
   /// is registered or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(const ClientID &client_id, const ID &id,
+  Status AsyncSubscribe(const NodeID &client_id, const ID &id,
                         const SubscribeCallback<ID, Data> &subscribe,
                         const StatusCallback &done);
 
@@ -74,7 +74,7 @@ class SubscriptionExecutor {
   /// \param id The id of the element to be unsubscribed to.
   /// \param done Callback that will be called when cancel subscription is complete.
   /// \return Status
-  Status AsyncUnsubscribe(const ClientID &client_id, const ID &id,
+  Status AsyncUnsubscribe(const NodeID &client_id, const ID &id,
                           const StatusCallback &done);
 
  private:

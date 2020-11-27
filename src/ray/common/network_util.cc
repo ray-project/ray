@@ -97,7 +97,7 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
 
   struct ifaddrs *if_info = nullptr;
   for (if_info = ifs_info; if_info != nullptr; if_info = if_info->ifa_next) {
-    if (if_info->ifa_addr->sa_family == AF_INET) {
+    if (if_info->ifa_addr && if_info->ifa_addr->sa_family == AF_INET) {
       void *addr = &((struct sockaddr_in *)if_info->ifa_addr)->sin_addr;
 
       char ip[INET_ADDRSTRLEN];
@@ -115,7 +115,8 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
 
   // Filter out interfaces with small possibility of being desired to be used to serve
   std::sort(ifnames_and_ips.begin(), ifnames_and_ips.end(), CompNamesAndIps);
-  while (GetPriority(ifnames_and_ips.back().first) == Priority::kExclude) {
+  while (!ifnames_and_ips.empty() &&
+         GetPriority(ifnames_and_ips.back().first) == Priority::kExclude) {
     ifnames_and_ips.pop_back();
   }
 

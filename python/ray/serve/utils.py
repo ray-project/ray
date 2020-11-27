@@ -6,15 +6,16 @@ import logging
 import random
 import string
 import time
-from typing import List
+from typing import List, Dict
 import io
 import os
 from ray.serve.exceptions import RayServeException
+from collections import UserDict
 
 import requests
 import numpy as np
 import pydantic
-from werkzeug.datastructures import ImmutableMultiDict
+import flask
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
@@ -22,6 +23,14 @@ from ray.serve.context import TaskContext
 from ray.serve.http_util import build_flask_request
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
+
+
+class ServeMultiDict(UserDict):
+    """Compatible data structure to simulate Flask.Request.args API."""
+
+    def getlist(self, key):
+        """Return the list of items for a given key."""
+        return self.data.get(key, [])
 
 
 class ServeRequest:
@@ -34,7 +43,7 @@ class ServeRequest:
 
     def __init__(self, data, kwargs, headers, method):
         self._data = data
-        self._kwargs = kwargs
+        self._kwargs = ServeMultiDict(kwargs)
         self._headers = headers
         self._method = method
 
@@ -51,7 +60,7 @@ class ServeRequest:
     @property
     def args(self):
         """The keyword arguments from ``handle.remote(**kwargs)``."""
-        return ImmutableMultiDict(self._kwargs)
+        return self._kwargs
 
     @property
     def json(self):
@@ -80,8 +89,15 @@ def parse_request_item(request_item):
         asgi_scope, body_bytes = request_item.args
         return build_flask_request(asgi_scope, io.BytesIO(body_bytes))
     else:
+        arg = request_item.args[0] if len(request_item.args) == 1 else None
+
+        # If the input data from handle is web request, we don't need to wrap
+        # it in ServeRequest.
+        if isinstance(arg, flask.Request):
+            return arg
+
         return ServeRequest(
-            request_item.args[0] if len(request_item.args) == 1 else None,
+            arg,
             request_item.kwargs,
             headers=request_item.metadata.http_headers,
             method=request_item.metadata.http_method,
@@ -163,6 +179,39 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
+def get_conda_env_dir(env_name):
+    """Given a environment name like `tf1`, find and validate the
+    corresponding conda directory.
+    """
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix is None:
+        raise ValueError(
+            "Serve cannot find environment variables installed by conda. " +
+            "Are you sure you are in a conda env?")
+
+    # There are two cases:
+    # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and
+    #    CONDA_PREFIX=$HOME/anaconda3
+    # 2. We are in user created conda env: CONDA_DEFAULT_ENV=$env_name and
+    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
+    if os.environ.get("CONDA_DEFAULT_ENV") == "base":
+        # Caller is running in base conda env.
+        # Not recommended by conda, but we can still try to support it.
+        env_dir = os.path.join(conda_prefix, "envs", env_name)
+    else:
+        # Now `conda_prefix` should be something like
+        # $HOME/anaconda3/envs/$env_name
+        # We want to strip the $env_name component.
+        conda_envs_dir = os.path.split(conda_prefix)[0]
+        env_dir = os.path.join(conda_envs_dir, env_name)
+    if not os.path.isdir(env_dir):
+        raise ValueError(
+            "conda env " + env_name +
+            " not found in conda envs directory. Run `conda env list` to " +
+            "verify the name is correct.")
+    return env_dir
+
+
 @singledispatch
 def chain_future(src, dst):
     """Base method for chaining futures together.
@@ -221,27 +270,23 @@ def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
 
 def try_schedule_resources_on_nodes(
         requirements: List[dict],
-        ray_nodes: List = None,
+        ray_resource: Dict[str, Dict] = None,
 ) -> List[bool]:
     """Test given resource requirements can be scheduled on ray nodes.
 
     Args:
         requirements(List[dict]): The list of resource requirements.
-        ray_nodes(Optional[List]): The list of nodes. By default it reads from
-            ``ray.nodes()``.
+        ray_nodes(Optional[Dict[str, Dict]]): The resource dictionary keyed by
+            node id. By default it reads from
+            ``ray.state.state._available_resources_per_node()``.
     Returns:
         successfully_scheduled(List[bool]): A list with the same length as
             requirements. Each element indicates whether or not the requirement
             can be satisied.
     """
 
-    if ray_nodes is None:
-        ray_nodes = ray.nodes()
-
-    node_to_resources = {
-        node["NodeID"]: node["Resources"]
-        for node in ray_nodes if node["Alive"]
-    }
+    if ray_resource is None:
+        ray_resource = ray.state.state._available_resources_per_node()
 
     successfully_scheduled = []
 
@@ -249,7 +294,7 @@ def try_schedule_resources_on_nodes(
         # Filter out zero value
         resource_dict = {k: v for k, v in resource_dict.items() if v > 0}
 
-        for node_id, node_resource in node_to_resources.items():
+        for node_id, node_resource in ray_resource.items():
             # Check if we can schedule on this node
             feasible = True
             for key, count in resource_dict.items():
@@ -258,7 +303,6 @@ def try_schedule_resources_on_nodes(
 
             # If we can, schedule it on this node
             if feasible:
-                node_resource = node_to_resources[node_id]
                 for key, count in resource_dict.items():
                     node_resource[key] -= count
 
@@ -288,3 +332,9 @@ def get_all_node_ids():
             node_ids.append(("{}-{}".format(node_id, index), node_id))
 
     return node_ids
+
+
+def get_node_id_for_actor(actor_handle):
+    """Given an actor handle, return the node id it's placed on."""
+
+    return ray.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]

@@ -32,3 +32,12 @@ def _internal_kv_put(key, value, overwrite=False):
 
 def _internal_kv_del(key):
     return ray.worker.global_worker.redis_client.delete(key)
+
+
+def _internal_kv_list(prefix):
+    """List all keys in the internal KV store that start with the prefix."""
+    if isinstance(prefix, bytes):
+        pattern = prefix + b"*"
+    else:
+        pattern = prefix + "*"
+    return ray.worker.global_worker.redis_client.keys(pattern=pattern)

@@ -48,16 +48,6 @@ class Transport {
       std::shared_ptr<LocalMemoryBuffer> buffer, int retry_cnt, int64_t timeout_ms);
 
  private:
-  /// Send buffer internal
-  /// \param[in] buffer buffer to be sent.
-  /// \param[in] function the function descriptor of peer's function.
-  /// \param[in] return_num return value number of the call.
-  /// \param[out] return_ids return ids from SubmitActorTask.
-  virtual void SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
-                            RayFunction &function, int return_num,
-                            std::vector<ObjectID> &return_ids);
-
- private:
   WorkerID worker_id_;
   ActorID peer_actor_id_;
   RayFunction async_func_;

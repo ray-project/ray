@@ -15,6 +15,8 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t raylet_heartbeat_timeout_milliseconds() const
 
+        c_bool light_heartbeat_enabled() const
+
         int64_t debug_dump_period_milliseconds() const
 
         int64_t num_heartbeats_timeout() const
@@ -46,8 +48,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int object_manager_pull_timeout_ms() const
 
         int object_manager_push_timeout_ms() const
-
-        int object_manager_repeated_push_delay_ms() const
 
         uint64_t object_manager_default_chunk_size() const
 

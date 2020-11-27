@@ -59,10 +59,13 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
+        # Basic view requirement for all models: Use the observation as input.
         self.inference_view_requirements = {
-            SampleBatch.OBS: ViewRequirement(shift=0),
+            SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
+    # TODO: (sven): Get rid of `get_initial_state` once Trajectory
+    #  View API is supported across all of RLlib.
     @PublicAPI
     def get_initial_state(self) -> List[np.ndarray]:
         """Get the initial recurrent state values for the model.
@@ -142,7 +145,7 @@ class ModelV2:
 
         You can find an runnable example in examples/custom_loss.py.
 
-        Arguments:
+        Args:
             policy_loss (Union[List[Tensor],Tensor]): List of or single policy
                 loss(es) from the policy.
             loss_inputs (dict): map of input placeholders for rollout data.
@@ -181,7 +184,7 @@ class ModelV2:
 
         Custom models should override forward() instead of __call__.
 
-        Arguments:
+        Args:
             input_dict (dict): dictionary of input tensors, including "obs",
                 "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those
@@ -235,20 +238,15 @@ class ModelV2:
         right input dict, state, and seq len arguments.
         """
 
-        input_dict = {
-            "obs": train_batch[SampleBatch.CUR_OBS],
-            "is_training": is_training,
-        }
-        if SampleBatch.PREV_ACTIONS in train_batch:
-            input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
-        if SampleBatch.PREV_REWARDS in train_batch:
-            input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
+        train_batch["is_training"] = is_training
         states = []
         i = 0
         while "state_in_{}".format(i) in train_batch:
             states.append(train_batch["state_in_{}".format(i)])
             i += 1
-        return self.__call__(input_dict, states, train_batch.get("seq_lens"))
+        ret = self.__call__(train_batch, states, train_batch.get("seq_lens"))
+        del train_batch["is_training"]
+        return ret
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
@@ -408,7 +406,9 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                     prep.shape[0], obs.shape))
         offset = 0
         if tensorlib == tf:
-            batch_dims = [v.value for v in obs.shape[:-1]]
+            batch_dims = [
+                v if isinstance(v, int) else v.value for v in obs.shape[:-1]
+            ]
             batch_dims = [-1 if v is None else v for v in batch_dims]
         else:
             batch_dims = list(obs.shape[:-1])

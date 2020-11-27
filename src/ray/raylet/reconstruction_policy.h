@@ -54,7 +54,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   ReconstructionPolicy(
       boost::asio::io_service &io_service,
       std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
-      int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
+      int64_t initial_reconstruction_timeout_ms, const NodeID &client_id,
       std::shared_ptr<gcs::GcsClient> gcs_client,
       std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
@@ -152,7 +152,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// received. Otherwise, reconstruction will be triggered.
   const int64_t initial_reconstruction_timeout_ms_;
   /// The client ID to use when requesting notifications from the GCS.
-  const ClientID client_id_;
+  const NodeID client_id_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The object directory used to lookup object locations.

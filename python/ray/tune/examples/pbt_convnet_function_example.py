@@ -10,7 +10,6 @@ from torchvision import datasets
 from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
     get_data_loaders
 
-import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.trial import ExportFormat
@@ -66,14 +65,11 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    ray.init()
     datasets.MNIST("~/data", train=True, download=True)
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=5,
         hyperparam_mutations={
             # distribution for resampling
@@ -104,6 +100,8 @@ if __name__ == "__main__":
         train_convnet,
         name="pbt_test",
         scheduler=scheduler,
+        metric="mean_accuracy",
+        mode="max",
         verbose=1,
         stop=stopper,
         export_formats=[ExportFormat.MODEL],
@@ -116,9 +114,8 @@ if __name__ == "__main__":
         })
     # __tune_end__
 
-    best_trial = analysis.get_best_trial("mean_accuracy", mode="max")
-    best_checkpoint_path = analysis.get_best_checkpoint(
-        best_trial, metric="mean_accuracy", mode="max")
+    best_trial = analysis.best_trial
+    best_checkpoint_path = analysis.best_checkpoint
     best_model = ConvNet()
     best_checkpoint = torch.load(
         os.path.join(best_checkpoint_path, "checkpoint"))

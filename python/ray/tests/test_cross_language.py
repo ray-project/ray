@@ -6,7 +6,7 @@ import ray.test_utils
 
 
 def test_cross_language_raise_kwargs(shutdown_only):
-    ray.init(_load_code_from_local=True, _include_java=True)
+    ray.init(_load_code_from_local=True)
 
     with pytest.raises(Exception, match="kwargs"):
         ray.java_function("a", "b").remote(x="arg1")
@@ -16,7 +16,7 @@ def test_cross_language_raise_kwargs(shutdown_only):
 
 
 def test_cross_language_raise_exception(shutdown_only):
-    ray.init(_load_code_from_local=True, _include_java=True)
+    ray.init(_load_code_from_local=True)
 
     class PythonObject(object):
         pass

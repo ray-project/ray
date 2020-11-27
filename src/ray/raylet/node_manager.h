@@ -20,6 +20,7 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/client_connection.h"
@@ -28,6 +29,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/agent_manager.h"
+#include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -36,6 +38,7 @@
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
 #include "ray/common/bundle_spec.h"
 // clang-format on
@@ -65,6 +68,9 @@ struct NodeManagerConfig {
   /// The highest port number that workers started will bind on.
   /// If this is not set to 0, min_worker_port must also not be set to 0.
   int max_worker_port;
+  /// An explicit list of open ports that workers started will bind
+  /// on. This takes precedence over min_worker_port and max_worker_port.
+  std::vector<int> worker_ports;
   /// The initial number of workers to create.
   int num_initial_workers;
   /// The soft limit of the number of workers.
@@ -82,9 +88,6 @@ struct NodeManagerConfig {
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
   uint64_t debug_dump_period_ms;
-  /// The time between attempts to eagerly evict objects from plasma in
-  /// milliseconds, or -1 to disable.
-  int64_t free_objects_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled;
   /// Whether to enable pinning for plasma objects.
@@ -97,6 +100,29 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The raylet config list of this node.
   std::unordered_map<std::string, std::string> raylet_config;
+  // The time between record metrics in milliseconds, or -1 to disable.
+  uint64_t record_metrics_period_ms;
+};
+
+struct pair_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<T1, T2> &pair) const {
+    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+  }
+};
+
+enum CommitState {
+  /// Resources are prepared.
+  PREPARED,
+  /// Resources are COMMITTED.
+  COMMITTED
+};
+
+struct BundleState {
+  /// Leasing state for 2PC protocol.
+  CommitState state;
+  /// Resources that are acquired at preparation stage.
+  ResourceIdSet acquired_resources;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -105,10 +131,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(boost::asio::io_service &io_service, const ClientID &self_node_id,
+  NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              SpaceReleasedCallback on_objects_spilled);
 
   /// Process a new client connection.
   ///
@@ -146,6 +173,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
+  LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
+
  private:
   /// Methods for handling clients.
 
@@ -169,14 +198,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client_id ID of the node that created or updated resources.
   /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
-  void ResourceCreateUpdated(const ClientID &client_id,
+  void ResourceCreateUpdated(const NodeID &client_id,
                              const ResourceSet &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
   /// \param client_id ID of the node that deleted resources.
   /// \param resource_names Names of deleted resources.
   /// \return Void.
-  void ResourceDeleted(const ClientID &client_id,
+  void ResourceDeleted(const NodeID &client_id,
                        const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
@@ -204,7 +233,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param id The ID of the node manager that sent the heartbeat.
   /// \param data The heartbeat data including load information.
   /// \return Void.
-  void HeartbeatAdded(const ClientID &id, const HeartbeatTableData &data);
+  void HeartbeatAdded(const NodeID &id, const HeartbeatTableData &data);
   /// Handler for a heartbeat batch notification from the GCS
   ///
   /// \param heartbeat_batch The batch of heartbeat data.
@@ -238,14 +267,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void MarkObjectsAsFailed(const ErrorType &error_type,
                            const std::vector<rpc::ObjectReference> object_ids,
                            const JobID &job_id);
-  /// This is similar to TreatTaskAsFailed, but it will only mark the task as
-  /// failed if at least one of the task's return values is lost. A return
-  /// value is lost if it has been created before, but no longer exists on any
-  /// nodes, due to either node failure or eviction.
-  ///
-  /// \param task The task to potentially fail.
-  /// \return Void.
-  void TreatTaskAsFailedIfLost(const Task &task);
   /// Handle specified task's submission to the local node manager.
   ///
   /// \param task The task being submitted.
@@ -265,7 +286,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for direct actor creation calls, which should never be
   /// returned to idle.
-  bool FinishAssignedTask(WorkerInterface &worker);
+  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
+
   /// Helper function to produce actor table data for a newly created actor.
   ///
   /// \param task_spec Task specification of the actor creation task that created the
@@ -286,7 +308,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// consider the local node manager and the node managers in the keys of the
   /// resource_map argument.
   /// \return Void.
-  void ScheduleTasks(std::unordered_map<ClientID, SchedulingResources> &resource_map);
+  void ScheduleTasks(std::unordered_map<NodeID, SchedulingResources> &resource_map);
+
+  /// Make a placement decision for the resource_map and subtract original resources so
+  /// that the node is ready to commit (create) placement group resources.
+  ///
+  /// \param resource_map A mapping from node manager ID to an estimate of the
+  /// resources available to that node manager. Scheduling decisions will only
+  /// consider the local node manager and the node managers in the keys of the
+  /// resource_map argument.
+  /// \param bundle_spec Specification of bundle that will be prepared.
+  /// \return True is resources were successfully prepared. False otherwise.
+  bool PrepareBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
+                     const BundleSpecification &bundle_spec);
 
   /// Make a placement decision for the resource_map.
   ///
@@ -294,10 +328,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resources available to that node manager. Scheduling decisions will only
   /// consider the local node manager and the node managers in the keys of the
   /// resource_map argument.
-  /// \return ResourceIdSet.
-  ResourceIdSet ScheduleBundle(
-      std::unordered_map<ClientID, SchedulingResources> &resource_map,
-      const BundleSpecification &bundle_spec);
+  /// \param bundle_spec Specification of bundle that will be prepared.
+  void CommitBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
+                    const BundleSpecification &bundle_spec);
 
   /// Handle a task whose return value(s) must be reconstructed.
   ///
@@ -313,7 +346,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task The task in question.
   /// \param node_manager_id The ID of the remote node manager.
   /// \return Void.
-  void ForwardTaskOrResubmit(const Task &task, const ClientID &node_manager_id);
+  void ForwardTaskOrResubmit(const Task &task, const NodeID &node_manager_id);
   /// Forward a task to another node to execute. The task is assumed to not be
   /// queued in local_queues_.
   ///
@@ -321,7 +354,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param node_id The ID of the node to forward the task to.
   /// \param on_error Callback on run on non-ok status.
   void ForwardTask(
-      const Task &task, const ClientID &node_id,
+      const Task &task, const NodeID &node_id,
       const std::function<void(const ray::Status &, const Task &)> &on_error);
 
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
@@ -391,6 +424,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker to kill.
   /// \return Void.
   void KillWorker(std::shared_ptr<WorkerInterface> worker);
+
+  /// Destroy a worker.
+  /// We will disconnect the worker connection first and then kill the worker.
+  ///
+  /// \param worker The worker to destroy.
+  /// \return Void.
+  void DestroyWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// The callback for handling an actor state transition (e.g., from ALIVE to
   /// DEAD), whether as a notification from the actor table or as a handler for
@@ -541,7 +581,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignTask(const std::shared_ptr<WorkerInterface> &worker,
                         const TaskID &task_id, bool success);
 
-  /// Process worker subscribing to plasma.
+  /// Process worker subscribing to a given plasma object become available. This handler
+  /// makes sure that the plasma object is local and calls core worker's PlasmaObjectReady
+  /// gRPC endpoint.
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
@@ -613,22 +655,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReleaseUnusedBundles` request.
+  void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
+                                  rpc::ReleaseUnusedBundlesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
   void TriggerGlobalGC();
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
-
-  /// Spill objects to external storage.
-  /// \param objects_ids_to_spill The objects to be spilled.
-  void SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
-                    std::function<void(const ray::Status &)> callback = nullptr);
-
-  /// Restore spilled objects from external storage.
-  /// \param object_ids Objects to be restored.
-  void RestoreSpilledObjects(const std::vector<ObjectID> &object_ids,
-                             std::function<void(const ray::Status &)> callback = nullptr);
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
@@ -647,8 +684,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
 
+  /// Return back all the bundle resource.
+  ///
+  /// \param bundle_spec: Specification of bundle whose resources will be returned.
+  /// \return Whether the resource is returned successfully.
+  bool ReturnBundleResources(const BundleSpecification &bundle_spec);
+
   /// ID of this node.
-  ClientID self_node_id_;
+  NodeID self_node_id_;
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
@@ -665,8 +708,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::chrono::milliseconds heartbeat_period_;
   /// The period between debug state dumps.
   int64_t debug_dump_period_;
-  /// The period between attempts to eagerly evict objects from plasma.
-  int64_t free_objects_period_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
@@ -685,14 +726,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t last_heartbeat_at_ms_;
   /// Only the changed part will be included in heartbeat if this is true.
   const bool light_heartbeat_enabled_;
-  /// Cache which stores resources in last heartbeat used to check if they are changed.
-  /// Used by light heartbeat.
-  SchedulingResources last_heartbeat_resources_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
-  /// The time that we last sent a FreeObjects request to other nodes for
-  /// objects that have gone out of scope in the application.
-  uint64_t last_free_objects_at_ms_;
   /// The number of heartbeats that we should wait before sending the
   /// next load report.
   uint8_t num_heartbeats_before_load_report_;
@@ -700,7 +735,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
   ResourceIdSet local_available_resources_;
-  std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
+  std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
 
   /// A pool of workers.
   WorkerPool worker_pool_;
@@ -715,9 +750,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
-  /// A mapping from ObjectIDs to external object URLs for spilled objects.
-  /// TODO(suquark): Move it into object directory.
-  absl::flat_hash_map<ObjectID, std::string> spilled_objects_;
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
@@ -738,9 +770,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// as well as all `CoreWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
 
-  /// Map from node ids to clients of the remote node managers.
-  std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
-      remote_node_manager_clients_;
+  /// Pool of RPC client connections to core workers.
+  rpc::CoreWorkerClientPool worker_rpc_pool_;
+
+  /// Manages all local objects that are pinned (primary
+  /// copies), freed, and/or spilled.
+  LocalObjectManager local_object_manager_;
+
+  /// Map from node ids to addresses of the remote node managers.
+  absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
+      remote_node_manager_addresses_;
 
   /// Map of workers leased out to direct call clients.
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
@@ -751,6 +790,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
+
+  /// Whether to report the worker's backlog size in the GCS heartbeat.
+  const bool report_worker_backlog_;
 
   /// Whether to trigger global GC in the next heartbeat. This will broadcast
   /// a global GC message to all raylets except for this one.
@@ -767,20 +809,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 
-  /// Cache of gRPC clients to workers (not necessarily running on this node).
-  /// Also includes the number of inflight requests to each worker - when this
-  /// reaches zero, the client will be deleted and a new one will need to be created
-  /// for any subsequent requests.
-  absl::flat_hash_map<WorkerID, std::pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>>
-      worker_rpc_clients_;
-
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
   // TODO(swang): Evict entries from these caches.
   /// Cache for the WorkerTable in the GCS.
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
-  absl::flat_hash_set<ClientID> failed_nodes_cache_;
+  absl::flat_hash_set<NodeID> failed_nodes_cache_;
 
   /// Concurrency for the following map
   mutable absl::Mutex plasma_object_notification_lock_;
@@ -789,11 +824,30 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
       async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
 
-  /// Objects that are out of scope in the application and that should be freed
-  /// from plasma. The cache is flushed when it reaches the config's
-  /// free_objects_batch_size, or if objects have been in the cache for longer
-  /// than the config's free_objects_period, whichever occurs first.
-  std::vector<ObjectID> objects_to_free_;
+  /// This map represents the commit state of 2PC protocol for atomic placement group
+  /// creation.
+  absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
+      bundle_state_map_;
+
+  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
+  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
+      bundle_spec_map_;
+
+  /// Fields that are used to report metrics.
+  /// The period between debug state dumps.
+  int64_t record_metrics_period_;
+
+  /// Last time metrics are recorded.
+  uint64_t metrics_last_recorded_time_ms_;
+
+  /// Number of tasks that are received and scheduled.
+  uint64_t metrics_num_task_scheduled_;
+
+  /// Number of tasks that are executed at this node.
+  uint64_t metrics_num_task_executed_;
+
+  /// Number of tasks that are spilled back to other nodes.
+  uint64_t metrics_num_task_spilled_back_;
 };
 
 }  // namespace raylet

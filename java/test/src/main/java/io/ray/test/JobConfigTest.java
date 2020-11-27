@@ -1,7 +1,6 @@
 package io.ray.test;
 
 import io.ray.api.ActorHandle;
-import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -11,9 +10,12 @@ import org.testng.annotations.Test;
 @Test(groups = {"cluster"})
 public class JobConfigTest extends BaseTest {
 
+  private String oldNumWorkersPerProcess;
+
   @BeforeClass
   public void setupJobConfig() {
     System.setProperty("ray.raylet.config.enable_multi_tenancy", "true");
+    oldNumWorkersPerProcess = System.getProperty("ray.job.num-java-workers-per-process");
     System.setProperty("ray.job.num-java-workers-per-process", "3");
     System.setProperty("ray.job.jvm-options.0", "-DX=999");
     System.setProperty("ray.job.jvm-options.1", "-DY=998");
@@ -24,7 +26,7 @@ public class JobConfigTest extends BaseTest {
   @AfterClass
   public void tearDownJobConfig() {
     System.clearProperty("ray.raylet.config.enable_multi_tenancy");
-    System.clearProperty("ray.job.num-java-workers-per-process");
+    System.setProperty("ray.job.num-java-workers-per-process", oldNumWorkersPerProcess);
     System.clearProperty("ray.job.jvm-options.0");
     System.clearProperty("ray.job.jvm-options.1");
     System.clearProperty("ray.job.worker-env.foo1");
@@ -39,15 +41,7 @@ public class JobConfigTest extends BaseTest {
     return System.getenv(key);
   }
 
-  public static Integer getWorkersNum() {
-    return TestUtils.getRuntime().getRayConfig().numWorkersPerProcess;
-  }
-
   public static class MyActor {
-
-    public Integer getWorkersNum() {
-      return TestUtils.getRuntime().getRayConfig().numWorkersPerProcess;
-    }
 
     public String getJvmOptions(String propertyName) {
       return System.getProperty(propertyName);
@@ -68,9 +62,8 @@ public class JobConfigTest extends BaseTest {
     Assert.assertEquals("bar2", Ray.task(JobConfigTest::getEnvVariable, "foo2").remote().get());
   }
 
-  public void testNumJavaWorkerPerProcess() {
-    ObjectRef<Integer> obj = Ray.task(JobConfigTest::getWorkersNum).remote();
-    Assert.assertEquals(3, (int) obj.get());
+  public void testNumJavaWorkersPerProcess() {
+    Assert.assertEquals(TestUtils.getNumWorkersPerProcess(), 3);
   }
 
 
@@ -84,9 +77,5 @@ public class JobConfigTest extends BaseTest {
     // test worker env variables
     Assert.assertEquals("bar1", Ray.task(MyActor::getEnvVariable, "foo1").remote().get());
     Assert.assertEquals("bar2", Ray.task(MyActor::getEnvVariable, "foo2").remote().get());
-
-    //  test workers number.
-    ObjectRef<Integer> obj2 = actor.task(MyActor::getWorkersNum).remote();
-    Assert.assertEquals(3, (int) obj2.get());
   }
 }

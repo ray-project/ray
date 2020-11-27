@@ -140,36 +140,22 @@ class CoreWorkerTest : public ::testing::Test {
 
   void SetUp() {
     if (num_nodes_ > 0) {
-      CoreWorkerOptions options = {
-          WorkerType::DRIVER,             // worker_type
-          Language::PYTHON,               // langauge
-          raylet_store_socket_names_[0],  // store_socket
-          raylet_socket_names_[0],        // raylet_socket
-          NextJobId(),                    // job_id
-          gcs_options_,                   // gcs_options
-          true,                           // enable_logging
-          "",                             // log_dir
-          true,                           // install_failure_signal_handler
-          "127.0.0.1",                    // node_ip_address
-          node_manager_port,              // node_manager_port
-          "127.0.0.1",                    // raylet_ip_address
-          "core_worker_test",             // driver_name
-          "",                             // stdout_file
-          "",                             // stderr_file
-          nullptr,                        // task_execution_callback
-          nullptr,                        // check_signals
-          nullptr,                        // gc_collect
-          nullptr,                        // spill_objects
-          nullptr,                        // restore_spilled_objects
-          nullptr,                        // get_lang_stack
-          nullptr,                        // kill_main
-          true,                           // ref_counting_enabled
-          false,                          // is_local_mode
-          1,                              // num_workers
-          nullptr,                        // terminate_asyncio_thread
-          "",                             // serialized_job_config
-          -1,                             // metrics_agent_port
-      };
+      CoreWorkerOptions options;
+      options.worker_type = WorkerType::DRIVER;
+      options.language = Language::PYTHON;
+      options.store_socket = raylet_store_socket_names_[0];
+      options.raylet_socket = raylet_socket_names_[0];
+      options.job_id = NextJobId();
+      options.gcs_options = gcs_options_;
+      options.enable_logging = true;
+      options.install_failure_signal_handler = true;
+      options.node_ip_address = "127.0.0.1";
+      options.node_manager_port = node_manager_port;
+      options.raylet_ip_address = "127.0.0.1";
+      options.driver_name = "core_worker_test";
+      options.ref_counting_enabled = true;
+      options.num_workers = 1;
+      options.metrics_agent_port = -1;
       CoreWorkerProcess::Initialize(options);
     }
   }
@@ -271,7 +257,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       TaskOptions options;
       std::vector<ObjectID> return_ids;
       driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0,
-                        std::make_pair(PlacementGroupID::Nil(), -1));
+                        std::make_pair(PlacementGroupID::Nil(), -1), true);
 
       ASSERT_EQ(return_ids.size(), 1);
 
@@ -547,7 +533,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     builder.SetCommonTaskSpec(RandomTaskId(), options.name, function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               RandomTaskId(), address, num_returns, resources, resources,
-                              PlacementGroupID::Nil());
+                              std::make_pair(PlacementGroupID::Nil(), -1), true);
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);
