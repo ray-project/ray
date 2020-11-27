@@ -511,13 +511,12 @@ py_test(
 )
 
 # MBMPOTrainer
-# Removed due to Higher API conflicts with Pytorch-Import tests
-#py_test(
-#    name = "test_mbmpo",
-#    tags = ["agents_dir"],
-#    size = "medium",
-#    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
-#)
+py_test(
+    name = "test_mbmpo",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+)
 
 # PGTrainer
 py_test(

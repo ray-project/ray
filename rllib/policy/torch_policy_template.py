@@ -245,6 +245,7 @@ def build_torch_policy(
             # Update this Policy's ViewRequirements (if function given).
             if callable(view_requirements_fn):
                 self.view_requirements.update(view_requirements_fn(self))
+            # Merge Model's view requirements into Policy's.
             self.view_requirements.update(
                 self.model.inference_view_requirements)
 
@@ -253,6 +254,7 @@ def build_torch_policy(
                 _before_loss_init(self, self.observation_space,
                                   self.action_space, config)
 
+            # Perform test runs through postprocessing- and loss functions.
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True,
                 stats_fn=stats_fn,
