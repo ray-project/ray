@@ -254,7 +254,6 @@ def build_tf_policy(
             if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
-                #self._sess.run(tf1.initialize_all_variables())
             # TODO: (sven) Allow tf-eager policy to have more than 1 optimizer.
             #  Just like torch Policy does.
             assert len(optimizers) == 1

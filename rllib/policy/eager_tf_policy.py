@@ -585,7 +585,8 @@ def build_eager_tf_policy(name,
             if apply_gradients_fn:
                 apply_gradients_fn(self, self._optimizer, grads_and_vars)
             else:
-                self._optimizer.apply_gradients([(g, v) for g, v in grads_and_vars if g is not None])
+                self._optimizer.apply_gradients(
+                    [(g, v) for g, v in grads_and_vars if g is not None])
 
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""

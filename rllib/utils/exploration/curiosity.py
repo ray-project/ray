@@ -15,7 +15,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import get_activation_fn, try_import_tf, \
     try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.tf_ops import get_placeholder, one_hot as tf_one_hot
 from ray.rllib.utils.torch_ops import one_hot
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
 
@@ -141,12 +141,15 @@ class Curiosity(Exploration):
 
         self._curiosity_inverse_fcnet = self._create_fc_net(
             [2 * self.feature_dim] + list(self.inverse_net_hiddens) +
-            [self.action_dim], self.inverse_net_activation, name="inverse_net")
+            [self.action_dim],
+            self.inverse_net_activation,
+            name="inverse_net")
 
         self._curiosity_forward_fcnet = self._create_fc_net(
             [self.feature_dim + self.action_dim] + list(
                 self.forward_net_hiddens) + [self.feature_dim],
-            self.forward_net_activation, name="forward_net")
+            self.forward_net_activation,
+            name="forward_net")
 
         # This is only used to select the correct action
         self.exploration_submodule = from_config(
@@ -182,7 +185,7 @@ class Curiosity(Exploration):
             feature_params = list(self._curiosity_feature_net.parameters())
             inverse_params = list(self._curiosity_inverse_fcnet.parameters())
             forward_params = list(self._curiosity_forward_fcnet.parameters())
-    
+
             # Now that the Policy's own optimizer(s) have been created (from
             # the Model parameters (IMPORTANT: w/o(!) the curiosity params),
             # we can add our curiosity sub-modules to the Policy's Model.
@@ -205,6 +208,17 @@ class Curiosity(Exploration):
                 self._curiosity_forward_fcnet.variables
             self.model.register_variables(self._optimizer_var_list)
             self._optimizer = tf1.train.AdamOptimizer(learning_rate=self.lr)
+            # Create placeholders and initialize the loss.
+            if self.framework == "tf":
+                self._obs_ph = get_placeholder(
+                    space=self.model.obs_space, name="_curiosity_obs")
+                self._next_obs_ph = get_placeholder(
+                    space=self.model.obs_space, name="_curiosity_next_obs")
+                self._action_ph = get_placeholder(
+                    space=self.model.action_space, name="_curiosity_action")
+                self._forward_l2_norm_sqared, self._update_op = \
+                    self._postprocess_helper_tf(
+                        self._obs_ph, self._next_obs_ph, self._action_ph)
 
         return optimizers
 
@@ -221,65 +235,79 @@ class Curiosity(Exploration):
             self._postprocess_torch(policy, sample_batch)
 
     def _postprocess_tf(self, policy, sample_batch, tf_sess):
-
-        @make_tf_callable(tf_sess)
-        def _postprocess_helper_tf(obs, next_obs, actions):
-            with (tf.GradientTape() if self.framework != "tf" else NullContextManager()) as tape:
-                # Push both observations through feature net to get both phis.
-                phis, _ = self.model._curiosity_feature_net(
-                    {SampleBatch.OBS: tf.concat([obs, next_obs], axis=0)})
-                phi, next_phi = tf.split(phis, 2)
-    
-                # Predict next phi with forward model.
-                predicted_next_phi = self.model._curiosity_forward_fcnet(
-                    tf.concat(
-                        [phi, tf.one_hot(actions, self.action_dim)], axis=-1))
-        
-                # Forward loss term (predicted phi', given phi and action vs actually
-                # observed phi').
-                forward_l2_norm_sqared = 0.5 * tf.reduce_sum(
-                    tf.square(predicted_next_phi - next_phi), axis=-1)
-                forward_loss = tf.reduce_mean(forward_l2_norm_sqared)
-        
-                # Inverse loss term (prediced action that led from phi to phi' vs
-                # actual action taken).
-                phi_cat_next_phi = tf.concat([phi, next_phi], axis=-1)
-                dist_inputs = self.model._curiosity_inverse_fcnet(phi_cat_next_phi)
-                action_dist = Categorical(dist_inputs, self.model) if \
-                    isinstance(self.action_space, Discrete) else \
-                    MultiCategorical(
-                        dist_inputs, self.model, self.action_space.nvec)
-                # Neg log(p); p=probability of observed action given the inverse-NN
-                # predicted action distribution.
-                inverse_loss = -action_dist.logp(actions)
-                inverse_loss = tf.reduce_mean(inverse_loss)
-        
-                # Calculate the ICM loss.
-                loss = (1.0 - self.beta) * inverse_loss + self.beta * forward_loss
-
-            # Step the optimizer.
-            if self.framework != "tf":
-                grads = tape.gradient(loss, self._optimizer_var_list)
-                grads_and_vars = [(g, v) for g, v in zip(grads, self._optimizer_var_list) if g is not None]
-                update_op = self._optimizer.apply_gradients(grads_and_vars)
-            else:
-                update_op = self._optimizer.minimize(loss, var_list=self._optimizer_var_list)
-
-            # Return the squared l2 norm and the optimizer update op.
-            return forward_l2_norm_sqared, update_op
-
-        # Perform model calls, loss calculations, and optimizer stepping.
-        forward_l2_norm_sqared, _ = _postprocess_helper_tf(
-            sample_batch[SampleBatch.OBS],
-            sample_batch[SampleBatch.NEXT_OBS],
-            sample_batch[SampleBatch.ACTIONS],
-        )
+        # tf1 static-graph: Perform session call on our loss and update ops.
+        if self.framework == "tf":
+            forward_l2_norm_sqared, _ = tf_sess.run(
+                [self._forward_l2_norm_sqared, self._update_op],
+                feed_dict={
+                    self._obs_ph: sample_batch[SampleBatch.OBS],
+                    self._next_obs_ph: sample_batch[SampleBatch.NEXT_OBS],
+                    self._action_ph: sample_batch[SampleBatch.ACTIONS],
+                })
+        # tf-eager: Perform model calls, loss calculations, and optimizer
+        # stepping on the fly.
+        else:
+            forward_l2_norm_sqared, _ = self._postprocess_helper_tf(
+                sample_batch[SampleBatch.OBS],
+                sample_batch[SampleBatch.NEXT_OBS],
+                sample_batch[SampleBatch.ACTIONS],
+            )
         # Scale intrinsic reward by eta hyper-parameter.
         sample_batch[SampleBatch.REWARDS] = \
             sample_batch[SampleBatch.REWARDS] + \
             self.eta * forward_l2_norm_sqared
 
         return sample_batch
+
+    def _postprocess_helper_tf(self, obs, next_obs, actions):
+        with (tf.GradientTape()
+              if self.framework != "tf" else NullContextManager()) as tape:
+            # Push both observations through feature net to get both phis.
+            phis, _ = self.model._curiosity_feature_net({
+                SampleBatch.OBS: tf.concat([obs, next_obs], axis=0)
+            })
+            phi, next_phi = tf.split(phis, 2)
+
+            # Predict next phi with forward model.
+            predicted_next_phi = self.model._curiosity_forward_fcnet(
+                tf.concat(
+                    [phi, tf_one_hot(actions, self.action_space)], axis=-1))
+
+            # Forward loss term (predicted phi', given phi and action vs
+            # actually observed phi').
+            forward_l2_norm_sqared = 0.5 * tf.reduce_sum(
+                tf.square(predicted_next_phi - next_phi), axis=-1)
+            forward_loss = tf.reduce_mean(forward_l2_norm_sqared)
+
+            # Inverse loss term (prediced action that led from phi to phi' vs
+            # actual action taken).
+            phi_cat_next_phi = tf.concat([phi, next_phi], axis=-1)
+            dist_inputs = self.model._curiosity_inverse_fcnet(phi_cat_next_phi)
+            action_dist = Categorical(dist_inputs, self.model) if \
+                isinstance(self.action_space, Discrete) else \
+                MultiCategorical(
+                    dist_inputs, self.model, self.action_space.nvec)
+            # Neg log(p); p=probability of observed action given the inverse-NN
+            # predicted action distribution.
+            inverse_loss = -action_dist.logp(actions)
+            inverse_loss = tf.reduce_mean(inverse_loss)
+
+            # Calculate the ICM loss.
+            loss = (1.0 - self.beta) * inverse_loss + self.beta * forward_loss
+
+        # Step the optimizer.
+        if self.framework != "tf":
+            grads = tape.gradient(loss, self._optimizer_var_list)
+            grads_and_vars = [(g, v)
+                              for g, v in zip(grads, self._optimizer_var_list)
+                              if g is not None]
+            update_op = self._optimizer.apply_gradients(grads_and_vars)
+        else:
+            update_op = self._optimizer.minimize(
+                loss, var_list=self._optimizer_var_list)
+
+        # Return the squared l2 norm and the optimizer update op.
+        return forward_l2_norm_sqared, update_op
 
     def _postprocess_torch(self, policy, sample_batch):
         # Push both observations through feature net to get both phis.
@@ -346,9 +374,10 @@ class Curiosity(Exploration):
             and 8->6 (6 nodes), where the second layer (6 nodes) does not have
             an activation anymore. 4 is the input dimension.
         """
-        layers = [tf.keras.layers.Input(
-            shape=(layer_dims[0],),
-            name="{}_in".format(name))] if self.framework != "torch" else []
+        layers = [
+            tf.keras.layers.Input(
+                shape=(layer_dims[0], ), name="{}_in".format(name))
+        ] if self.framework != "torch" else []
 
         for i in range(len(layer_dims) - 1):
             act = activation if i < len(layer_dims) - 2 else None
