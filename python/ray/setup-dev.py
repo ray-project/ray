@@ -66,7 +66,7 @@ if __name__ == "__main__":
     do_link("tests", force=args.yes)
     do_link("experimental", force=args.yes)
     do_link("util", force=args.yes)
-    do_link("dashboard", force=args.yes)
+    do_link("dashboard", force=args.yes, local_path="../../../dashboard")
     # Link package's `new_dashboard` directly to local (repo's) dashboard.
     # The repo's `new_dashboard` is a file, soft-linking to which will not work
     # on Mac.
