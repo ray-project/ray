@@ -43,7 +43,7 @@ echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
 if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
   bazel build //java:ray_java_pkg
-  unset RAY_INSTALL_JAVA
+  #unset RAY_INSTALL_JAVA
 fi
 
 # Install and use the latest version of Node.js in order to build the dashboard.
