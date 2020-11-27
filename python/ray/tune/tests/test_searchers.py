@@ -21,6 +21,12 @@ def _invalid_objective(config):
 
 
 class InvalidValuesTest(unittest.TestCase):
+    """
+    Test searcher handling of invalid values (NaN, -inf, inf).
+    Implicitly tests automatic config conversion and default (anonymous)
+    mode handling.
+    """
+
     def setUp(self):
         self.config = {"report": tune.uniform(0.0, 5.0)}
 
@@ -65,7 +71,6 @@ class InvalidValuesTest(unittest.TestCase):
             # At least one nan, inf, -inf and float
             search_alg=BayesOptSearch(random_state=1234),
             config=self.config,
-            metric="_metric",
             mode="max",
             num_samples=8,
             reuse_actors=False)
@@ -80,7 +85,6 @@ class InvalidValuesTest(unittest.TestCase):
             _invalid_objective,
             search_alg=TuneBOHB(seed=1000),
             config=self.config,
-            metric="_metric",
             mode="max",
             num_samples=8,
             reuse_actors=False)
@@ -97,7 +101,6 @@ class InvalidValuesTest(unittest.TestCase):
             _invalid_objective,
             search_alg=DragonflySearch(domain="euclidean", optimizer="random"),
             config=self.config,
-            metric="_metric",
             mode="max",
             num_samples=8,
             reuse_actors=False)
@@ -113,7 +116,6 @@ class InvalidValuesTest(unittest.TestCase):
             # At least one nan, inf, -inf and float
             search_alg=HyperOptSearch(random_state_seed=1234),
             config=self.config,
-            metric="_metric",
             mode="max",
             num_samples=8,
             reuse_actors=False)
@@ -131,7 +133,6 @@ class InvalidValuesTest(unittest.TestCase):
             _invalid_objective,
             search_alg=NevergradSearch(optimizer=ng.optimizers.RandomSearch),
             config=self.config,
-            metric="_metric",
             mode="max",
             num_samples=16,
             reuse_actors=False)
@@ -149,7 +150,6 @@ class InvalidValuesTest(unittest.TestCase):
             _invalid_objective,
             search_alg=OptunaSearch(sampler=RandomSampler(seed=1234)),
             config=self.config,
-            metric="_metric",
             mode="max",
             num_samples=8,
             reuse_actors=False)
@@ -166,7 +166,6 @@ class InvalidValuesTest(unittest.TestCase):
             _invalid_objective,
             search_alg=SkOptSearch(),
             config=self.config,
-            metric="_metric",
             mode="max",
             num_samples=8,
             reuse_actors=False)
@@ -183,7 +182,6 @@ class InvalidValuesTest(unittest.TestCase):
             _invalid_objective,
             search_alg=ZOOptSearch(budget=100, parallel_num=4),
             config=self.config,
-            metric="_metric",
             mode="max",
             num_samples=8,
             reuse_actors=False)
