@@ -52,7 +52,7 @@ class _AgentCollector:
         # each time a (non-initial!) observation is added.
         self.count = 0
 
-    def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
+    def add_init_obs(self, episode_id: EpisodeID, agent_index: int,
                      env_id: EnvID, t: int, init_obs: TensorType,
                      view_requirements: Dict[str, ViewRequirement]) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
@@ -60,8 +60,8 @@ class _AgentCollector:
         Args:
             episode_id (EpisodeID): Unique ID for the episode we are adding the
                 initial observation for.
-            agent_id (AgentID): Unique ID for the agent we are adding the
-                initial observation for.
+            agent_index (int): Unique int index (starting from 0) for the agent
+                within its episode.
             env_id (EnvID): The environment index (in a vectorized setup).
             t (int): The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
@@ -74,13 +74,13 @@ class _AgentCollector:
                 single_row={
                     SampleBatch.OBS: init_obs,
                     SampleBatch.EPS_ID: episode_id,
-                    SampleBatch.AGENT_INDEX: agent_id,
+                    SampleBatch.AGENT_INDEX: agent_index,
                     "env_id": env_id,
                     "t": t,
                 })
         self.buffers[SampleBatch.OBS].append(init_obs)
         self.buffers[SampleBatch.EPS_ID].append(episode_id)
-        self.buffers[SampleBatch.AGENT_INDEX].append(agent_id)
+        self.buffers[SampleBatch.AGENT_INDEX].append(agent_index)
         self.buffers["env_id"].append(env_id)
         self.buffers["t"].append(t)
 
@@ -172,6 +172,10 @@ class _AgentCollector:
         batch = SampleBatch(batch_data, _dont_check_lens=True)
 
         if SampleBatch.UNROLL_ID not in batch.data:
+            # TODO: (sven) Once we have the additional
+            #  model.preprocess_train_batch in place (attention net PR), we
+            #  should not even need UNROLL_ID anymore:
+            #  Add "if SampleBatch.UNROLL_ID in view_requirements:" here.
             batch.data[SampleBatch.UNROLL_ID] = np.repeat(
                 _AgentCollector._next_unroll_id, batch.count)
             _AgentCollector._next_unroll_id += 1
@@ -430,7 +434,7 @@ class _SimpleListCollector(_SampleCollector):
         self.agent_collectors[agent_key] = _AgentCollector()
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
-            agent_id=agent_id,
+            agent_index=episode._agent_index(agent_id),
             env_id=env_id,
             t=t,
             init_obs=init_obs,
