@@ -183,18 +183,24 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
 
 def request_resources(num_cpus: Optional[int] = None,
                       bundles: Optional[List[dict]] = None) -> None:
-    """Remotely request some CPU or GPU resources from the autoscaler.
+    """Command the autoscaler to scale to accomodate the specified requests.
 
-    This function is to be called e.g. on a node before submitting a bunch of
-    ray.remote calls to ensure that resources rapidly become available.
+    The cluster will immediately attempt to scale to accomodate the requested
+    resources, bypassing normal upscaling speed constraints. This does not
+    take into account existing resource usage (i.e., the target cluster size is
+    calculated regardless of existing utilization).
+
+    This call is only a hint to the autoscaler. The actual result cluster size
+    may be larger or smaller than expected depending on bin packing and max
+    cluster size restrictions.
 
     Args:
         num_cpus (int): Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
-            request_resources() is made.
+            request_resources() is made to override.
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
             resource shapes can fit. This request is persistent until another
-            call to request_resources() is made.
+            call to request_resources() is made to override.
 
     Examples:
         >>> # Request 1000 CPUs.
