@@ -287,8 +287,7 @@ def build_eager_tf_policy(name,
                     optimizers)
             # TODO: (sven) Allow tf policy to have more than 1 optimizer.
             #  Just like torch Policy does.
-            assert len(optimizers) == 1
-            self._optimizer = optimizers[0]
+            self._optimizer = optimizers[0] if optimizers else None
 
             if after_init:
                 after_init(self, observation_space, action_space, config)

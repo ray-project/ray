@@ -256,8 +256,7 @@ def build_tf_policy(
                     optimizers)
             # TODO: (sven) Allow tf-eager policy to have more than 1 optimizer.
             #  Just like torch Policy does.
-            assert len(optimizers) == 1
-            return optimizers[0]
+            return optimizers[0] if optimizers else None
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):
