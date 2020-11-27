@@ -14,9 +14,10 @@ namespace plasma {
 void SetMallocGranularity(int value);
 
 PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
-                     bool hugepages_enabled, std::string plasma_directory,
-                     const std::string external_store_endpoint):
-    hugepages_enabled_(hugepages_enabled), external_store_endpoint_(external_store_endpoint) {
+                                     bool hugepages_enabled, std::string plasma_directory,
+                                     const std::string external_store_endpoint)
+    : hugepages_enabled_(hugepages_enabled),
+      external_store_endpoint_(external_store_endpoint) {
   // Sanity check.
   if (socket_name.empty()) {
     RAY_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
@@ -28,11 +29,10 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
   // Set system memory capacity
   PlasmaAllocator::SetFootprintLimit(static_cast<size_t>(system_memory));
   RAY_LOG(INFO) << "Allowing the Plasma store to use up to "
-                  << static_cast<double>(system_memory) / 1000000000
-                  << "GB of memory.";
+                << static_cast<double>(system_memory) / 1000000000 << "GB of memory.";
   if (hugepages_enabled && plasma_directory.empty()) {
     RAY_LOG(FATAL) << "if you want to use hugepages, please specify path to huge pages "
-                        "filesystem with -d";
+                      "filesystem with -d";
   }
   if (plasma_directory.empty()) {
 #ifdef __linux__
@@ -42,8 +42,8 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
 #endif
   }
   RAY_LOG(INFO) << "Starting object store with directory " << plasma_directory
-                  << " and huge page support "
-                  << (hugepages_enabled ? "enabled" : "disabled");
+                << " and huge page support "
+                << (hugepages_enabled ? "enabled" : "disabled");
 #ifdef __linux__
   if (!hugepages_enabled) {
     // On Linux, check that the amount of memory available in /dev/shm is large
@@ -76,7 +76,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
 }
 
 void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback) {
-   // Get external store
+  // Get external store
   std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
   if (!external_store_endpoint_.empty()) {
     std::string name;
@@ -94,21 +94,20 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback) 
   {
     absl::MutexLock lock(&store_runner_mutex_);
     store_.reset(new PlasmaStore(main_service_, plasma_directory_, hugepages_enabled_,
-                                socket_name_, external_store,
-                                spill_objects_callback));
+                                 socket_name_, external_store, spill_objects_callback));
     plasma_config = store_->GetPlasmaStoreInfo();
 
     // We are using a single memory-mapped file by mallocing and freeing a single
     // large amount of space up front. According to the documentation,
     // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
     // bookkeeping.
-    void* pointer = PlasmaAllocator::Memalign(
+    void *pointer = PlasmaAllocator::Memalign(
         kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
     RAY_CHECK(pointer != nullptr);
     // This will unmap the file, but the next one created will be as large
     // as this one (this is an implementation detail of dlmalloc).
-    PlasmaAllocator::Free(
-        pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
+    PlasmaAllocator::Free(pointer,
+                          PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
 
     store_->Start();
   }

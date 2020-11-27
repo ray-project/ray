@@ -288,7 +288,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
-    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info);
+    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info, nullptr);
     return status.ok();
   }
 
@@ -576,11 +576,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(
         worker_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
-    auto status = future.wait_for(timeout_ms);
-    return status == std::future_status::ready && future.get();
   }
 
   void CheckActorData(const gcs::ActorTableData &actor,

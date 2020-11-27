@@ -1032,6 +1032,12 @@ def test_kill(ray_start_regular_shared):
         ray.kill("not_an_actor_handle")
 
 
+def test_get_actor_no_input(ray_start_regular_shared):
+    for bad_name in [None, "", "    "]:
+        with pytest.raises(ValueError):
+            ray.get_actor(bad_name)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

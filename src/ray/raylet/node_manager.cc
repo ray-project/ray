@@ -40,25 +40,6 @@ struct ActorStats {
   int restarting_actors = 0;
 };
 
-/// A helper function to return the statistical data of actors in this node manager.
-ActorStats GetActorStatisticalData(
-    std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> actor_registry) {
-  ActorStats item;
-  /*  TODO(ekl) this gets slower and slower over time since we never clean up dead actors.
-   *  https://github.com/ray-project/ray/issues/11239
-  for (auto &pair : actor_registry) {
-    if (pair.second.GetState() == ray::rpc::ActorTableData::ALIVE) {
-      item.live_actors += 1;
-    } else if (pair.second.GetState() == ray::rpc::ActorTableData::RESTARTING) {
-      item.restarting_actors += 1;
-    } else {
-      item.dead_actors += 1;
-    }
-  }
-  */
-  return item;
-}
-
 inline ray::rpc::ObjectReference FlatbufferToSingleObjectReference(
     const flatbuffers::String &object_id, const ray::protocol::Address &address) {
   ray::rpc::ObjectReference ref;
@@ -360,6 +341,15 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
   });
 }
 
+void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker) {
+  // We should disconnect the client first. Otherwise, we'll remove bundle resources
+  // before actual resources are returned. Subsequent disconnect request that comes
+  // due to worker dead will be ignored.
+  ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+  worker->MarkDead();
+  KillWorker(worker);
+}
+
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
   RAY_CHECK(!job_data.is_dead());
@@ -436,18 +426,19 @@ void NodeManager::Heartbeat() {
     // TODO(atumanov): implement a ResourceSet const_iterator.
     // If light heartbeat enabled, we only set filed that represent resources changed.
     if (light_heartbeat_enabled_) {
-      if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
+      auto last_heartbeat_resources = gcs_client_->Nodes().GetLastHeartbeatResources();
+      if (!last_heartbeat_resources->GetTotalResources().IsEqual(
               local_resources.GetTotalResources())) {
         for (const auto &resource_pair :
              local_resources.GetTotalResources().GetResourceMap()) {
           (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
               resource_pair.second;
         }
-        last_heartbeat_resources_.SetTotalResources(
+        last_heartbeat_resources->SetTotalResources(
             ResourceSet(local_resources.GetTotalResources()));
       }
 
-      if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
+      if (!last_heartbeat_resources->GetAvailableResources().IsEqual(
               local_resources.GetAvailableResources())) {
         heartbeat_data->set_resources_available_changed(true);
         for (const auto &resource_pair :
@@ -455,12 +446,12 @@ void NodeManager::Heartbeat() {
           (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
               resource_pair.second;
         }
-        last_heartbeat_resources_.SetAvailableResources(
+        last_heartbeat_resources->SetAvailableResources(
             ResourceSet(local_resources.GetAvailableResources()));
       }
 
       local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-      if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
+      if (!last_heartbeat_resources->GetLoadResources().IsEqual(
               local_resources.GetLoadResources())) {
         heartbeat_data->set_resource_load_changed(true);
         for (const auto &resource_pair :
@@ -468,7 +459,7 @@ void NodeManager::Heartbeat() {
           (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
               resource_pair.second;
         }
-        last_heartbeat_resources_.SetLoadResources(
+        last_heartbeat_resources->SetLoadResources(
             ResourceSet(local_resources.GetLoadResources()));
       }
     } else {
@@ -586,9 +577,28 @@ void NodeManager::HandleReleaseUnusedBundles(
                        bundle_id.bundle_index()));
   }
 
-  // TODO(ffbin): Kill all workers that are currently associated with the unused bundles.
-  // At present, the worker does not have a bundle ID, so we cannot filter out the workers
-  // used by unused bundles. We will solve it in next pr.
+  // Kill all workers that are currently associated with the unused bundles.
+  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
+  // delete the element of `leased_workers_`. So we need to filter out
+  // `workers_associated_with_unused_bundles` separately.
+  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_unused_bundles;
+  for (const auto &worker_it : leased_workers_) {
+    auto &worker = worker_it.second;
+    if (0 == in_use_bundles.count(worker->GetBundleId())) {
+      workers_associated_with_unused_bundles.emplace_back(worker);
+    }
+  }
+
+  for (const auto &worker : workers_associated_with_unused_bundles) {
+    RAY_LOG(DEBUG)
+        << "Destroying worker since its bundle was unused. Placement group id: "
+        << worker->GetBundleId().first
+        << ", bundle index: " << worker->GetBundleId().second
+        << ", task id: " << worker->GetAssignedTaskId()
+        << ", actor id: " << worker->GetActorId()
+        << ", worker id: " << worker->WorkerId();
+    DestroyWorker(worker);
+  }
 
   // Return unused bundle resources.
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
@@ -1818,27 +1828,25 @@ void NodeManager::HandleCancelResourceReserve(
                 << bundle_spec.DebugString();
 
   // Kill all workers that are currently associated with the placement group.
+  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
+  // delete the element of `leased_workers_`. So we need to filter out
+  // `workers_associated_with_pg` separately.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
-    if (worker->GetPlacementGroupId() == bundle_spec.PlacementGroupId()) {
-      workers_associated_with_pg.push_back(worker);
+    if (worker->GetBundleId().first == bundle_spec.PlacementGroupId()) {
+      workers_associated_with_pg.emplace_back(worker);
     }
   }
   for (const auto &worker : workers_associated_with_pg) {
     RAY_LOG(DEBUG)
         << "Destroying worker since its placement group was removed. Placement group id: "
-        << worker->GetPlacementGroupId()
+        << worker->GetBundleId().first
         << ", bundle index: " << bundle_spec.BundleId().second
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    // We should disconnect the client first. Otherwise, we'll remove bundle resources
-    // before actual resources are returned. Subsequent disconnect request that comes
-    // due to worker dead will be ignored.
-    ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
-    worker->MarkDead();
-    KillWorker(worker);
+    DestroyWorker(worker);
   }
 
   // Return bundle resources.
@@ -2530,7 +2538,7 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   if (task.GetTaskSpecification().IsDetachedActor()) {
     worker->MarkDetachedActor();
   }
-  worker->SetPlacementGroupId(spec.PlacementGroupId());
+  worker->SetBundleId(spec.PlacementGroupBundleId());
 
   const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
   const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
@@ -3058,12 +3066,14 @@ std::string NodeManager::DebugString() const {
     result << "\nnum async plasma notifications: "
            << async_plasma_objects_notification_.size();
   }
+  /* Disabled for now #11239.
   result << "\nActorRegistry:";
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   result << "\n- num live actors: " << statistical_data.live_actors;
   result << "\n- num restarting actors: " << statistical_data.restarting_actors;
   result << "\n- num dead actors: " << statistical_data.dead_actors;
+  */
 
   result << "\nRemote node managers: ";
   for (const auto &entry : remote_node_manager_addresses_) {
@@ -3398,9 +3408,11 @@ void NodeManager::RecordMetrics() {
   object_manager_.RecordMetrics();
   local_queues_.RecordMetrics();
 
+  /* Disabled for now #11239.
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   stats::LiveActors().Record(statistical_data.live_actors);
   stats::RestartingActors().Record(statistical_data.restarting_actors);
+  */
 }
 
 bool NodeManager::ReturnBundleResources(const BundleSpecification &bundle_spec) {

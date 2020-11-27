@@ -176,6 +176,14 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllHeartbeat,
                              node_info_grpc_client_, )
 
+  /// Report resource usage of a node to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportResourceUsage,
+                             node_info_grpc_client_, )
+
+  /// Get resource usage of all nodes from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResourceUsage,
+                             node_info_grpc_client_, )
+
   /// Get node's resources from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetResources, node_info_grpc_client_, )
 

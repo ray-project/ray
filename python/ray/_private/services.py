@@ -253,12 +253,21 @@ def get_address_info_from_redis_helper(redis_address,
         client_node_ip_address = client_info["NodeManagerAddress"]
         if (client_node_ip_address == node_ip_address
                 or (client_node_ip_address == "127.0.0.1"
-                    and redis_ip_address == get_node_ip_address())):
+                    and redis_ip_address == get_node_ip_address())
+                or client_node_ip_address == redis_ip_address):
             relevant_client = client_info
             break
     if relevant_client is None:
         raise RuntimeError(
-            "Redis has started but no raylets have registered yet.")
+            f"This node has an IP address of {node_ip_address}, and Ray "
+            "expects this IP address to be either the Redis address or one of"
+            f" the Raylet addresses. Connected to Redis at {redis_address} and"
+            " found raylets at "
+            f"{', '.join(c['NodeManagerAddress'] for c in client_table)} but "
+            f"none of these match this node's IP {node_ip_address}. Are any of"
+            " these actually a different IP address for the same node?"
+            "You might need to provide --node-ip-address to specify the IP "
+            "address that the head should use when sending to this node.")
 
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
@@ -1061,46 +1070,6 @@ def start_log_monitor(redis_address,
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
-    return process_info
-
-
-def start_reporter(redis_address,
-                   port,
-                   metrics_export_port,
-                   stdout_file=None,
-                   stderr_file=None,
-                   redis_password=None,
-                   fate_share=None):
-    """Start a reporter process.
-
-    Args:
-        redis_address (str): The address of the Redis instance.
-        port(int): The port to bind the reporter process.
-        metrics_export_port(int): The port at which metrics are exposed to.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-        redis_password (str): The password of the redis server.
-
-    Returns:
-        ProcessInfo for the process that was started.
-    """
-    reporter_filepath = os.path.join(RAY_PATH, "reporter.py")
-    command = [
-        sys.executable, "-u", reporter_filepath,
-        f"--redis-address={redis_address}", f"--port={port}",
-        f"--metrics-export-port={metrics_export_port}"
-    ]
-    if redis_password:
-        command += ["--redis-password", redis_password]
-
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_REPORTER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share)

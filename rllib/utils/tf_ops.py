@@ -1,4 +1,5 @@
 import gym
+from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree
 
@@ -63,6 +64,17 @@ def huber_loss(x, delta=1.0):
     return tf.where(
         tf.abs(x) < delta,
         tf.math.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
+
+
+def one_hot(x, space):
+    if isinstance(space, Discrete):
+        return tf.one_hot(x, space.n)
+    elif isinstance(space, MultiDiscrete):
+        return tf.concat(
+            [tf.one_hot(x[:, i], n) for i, n in enumerate(space.nvec)],
+            axis=-1)
+    else:
+        raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
 def reduce_mean_ignore_inf(x, axis):

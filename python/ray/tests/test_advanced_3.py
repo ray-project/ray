@@ -21,7 +21,8 @@ import setproctitle
 import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors)
+                            wait_for_condition, wait_for_num_actors,
+                            new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="flakes more often")
 def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
@@ -472,16 +474,6 @@ def test_decorated_function(ray_start_regular):
     result_id, kwargs = f.remote(1, 2, 3, d=4)
     assert kwargs == {"d": 4}
     assert ray.get(result_id) == (3, 2, 1, 5)
-
-
-def test_get_postprocess(ray_start_regular):
-    def get_postprocessor(object_refs, values):
-        return [value for value in values if value > 0]
-
-    ray.worker.global_worker._post_get_hooks.append(get_postprocessor)
-
-    assert ray.get(
-        [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
 
 
 def test_export_after_shutdown(ray_start_regular):

@@ -60,3 +60,11 @@ class ClientAPI(APIImpl):
 
     def close(self, *args, **kwargs):
         return self.worker.close()
+
+    def __getattr__(self, key: str):
+        if not key.startswith("_"):
+            raise NotImplementedError(
+                "Not available in Ray client: `ray.{}`. This method is only "
+                "available within Ray remote functions and is not yet "
+                "implemented in the client API.".format(key))
+        return self.__getattribute__(key)

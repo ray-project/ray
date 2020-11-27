@@ -49,7 +49,7 @@ class ExternalStore {
   ///        external store.
   ///
   /// \return The return status.
-  virtual Status Connect(const std::string& endpoint) = 0;
+  virtual Status Connect(const std::string &endpoint) = 0;
 
   /// This method will be called whenever an object in the Plasma store needs
   /// to be evicted to the external store.
@@ -59,8 +59,8 @@ class ExternalStore {
   /// \param ids The IDs of the objects to put.
   /// \param data The object data to put.
   /// \return The return status.
-  virtual Status Put(const std::vector<ObjectID>& ids,
-                     const std::vector<std::shared_ptr<Buffer>>& data) = 0;
+  virtual Status Put(const std::vector<ObjectID> &ids,
+                     const std::vector<std::shared_ptr<Buffer>> &data) = 0;
 
   /// This method will be called whenever an evicted object in the external
   /// store store needs to be accessed.
@@ -70,7 +70,7 @@ class ExternalStore {
   /// \param ids The IDs of the objects to get.
   /// \param buffers List of buffers the data should be written to.
   /// \return The return status.
-  virtual Status Get(const std::vector<ObjectID>& ids,
+  virtual Status Get(const std::vector<ObjectID> &ids,
                      std::vector<std::shared_ptr<Buffer>> buffers) = 0;
 };
 
@@ -82,31 +82,31 @@ class ExternalStores {
   /// \param endpoint The endpoint for the external store.
   /// \param[out] store_name The name of the external store.
   /// \return The return status.
-  static Status ExtractStoreName(const std::string& endpoint, std::string* store_name);
+  static Status ExtractStoreName(const std::string &endpoint, std::string *store_name);
 
   /// Register a new external store.
   ///
   /// \param store_name Name of the new external store.
   /// \param store The new external store object.
-  static void RegisterStore(const std::string& store_name,
+  static void RegisterStore(const std::string &store_name,
                             std::shared_ptr<ExternalStore> store);
 
   /// Remove an external store from the registry.
   ///
   /// \param store_name Name of the external store to remove.
-  static void DeregisterStore(const std::string& store_name);
+  static void DeregisterStore(const std::string &store_name);
 
   /// Obtain the external store given its name.
   ///
   /// \param store_name Name of the external store.
   /// \return The external store object.
-  static std::shared_ptr<ExternalStore> GetStore(const std::string& store_name);
+  static std::shared_ptr<ExternalStore> GetStore(const std::string &store_name);
 
  private:
   /// Obtain mapping between external store names and store instances.
   ///
   /// \return Mapping between external store names and store instances.
-  static StoreMap& Stores();
+  static StoreMap &Stores();
 };
 
 #define REGISTER_EXTERNAL_STORE(name, store)                                           \

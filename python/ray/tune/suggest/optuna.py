@@ -2,7 +2,7 @@ import logging
 import pickle
 from typing import Dict, List, Optional, Tuple, Union
 
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Quantized, Uniform
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
@@ -57,8 +57,9 @@ class OptunaSearch(Searcher):
         space (list): Hyperparameter search space definition for Optuna's
             sampler. This is a list, and samples for the parameters will
             be obtained in order.
-        metric (str): Metric that is reported back to Optuna on trial
-            completion.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
@@ -139,9 +140,13 @@ class OptunaSearch(Searcher):
         self._ot_trials = {}
         self._ot_study = None
         if self._space:
-            self.setup_study(mode)
+            self._setup_study(mode)
 
-    def setup_study(self, mode: str):
+    def _setup_study(self, mode: str):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         self._ot_study = ot.study.create_study(
             storage=self._storage,
             sampler=self._sampler,
@@ -160,7 +165,8 @@ class OptunaSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
-        self.setup_study(mode)
+
+        self._setup_study(mode)
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:

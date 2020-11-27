@@ -1604,7 +1604,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action-reward", "--num-cpus=4"]
+    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action",  "--use-prev-reward", "--num-cpus=4"]
 )
 
 py_test(
@@ -1641,6 +1641,30 @@ py_test(
     size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--as-test", "--torch", "--stop-reward=6.0"]
+)
+
+py_test(
+    name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/complex_struct_space.py"],
+    args = ["--framework=tf"],
+)
+
+py_test(
+    name = "examples/complex_struct_space_tf_eager", main = "examples/complex_struct_space.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/complex_struct_space.py"],
+    args = ["--framework=tfe"],
+)
+
+py_test(
+    name = "examples/complex_struct_space_torch", main = "examples/complex_struct_space.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/complex_struct_space.py"],
+    args = ["--framework=torch"],
 )
 
 py_test(
@@ -1695,30 +1719,6 @@ py_test(
     size = "small",
     srcs = ["examples/custom_fast_model.py"],
     args = ["--torch", "--stop-iters=1", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
-    tags = ["examples", "examples_C"],
-    size = "medium",
-    srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tf"],
-)
-
-py_test(
-    name = "examples/complex_struct_space_tf_eager", main = "examples/complex_struct_space.py",
-    tags = ["examples", "examples_C"],
-    size = "medium",
-    srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=tfe"],
-)
-
-py_test(
-    name = "examples/complex_struct_space_torch", main = "examples/complex_struct_space.py",
-    tags = ["examples", "examples_C"],
-    size = "medium",
-    srcs = ["examples/complex_struct_space.py"],
-    args = ["--framework=torch"],
 )
 
 py_test(
@@ -1785,6 +1785,15 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
+    args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/custom_observation_filters",
+    main = "examples/custom_observation_filters.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_observation_filters.py"],
     args = ["--stop-iters=2"]
 )
 
@@ -1890,7 +1899,7 @@ py_test(
     tags = ["examples", "examples_M"],
     size = "medium",
     srcs = ["examples/multi_agent_cartpole.py"],
-    args = ["--as-test", "--torch", "--stop-reward=70.0", "--num-cpus=4"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
 
 py_test(

@@ -40,6 +40,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   worker_failure_data->CopyFrom(request.worker_failure());
   worker_failure_data->set_is_alive(false);
 
+  for (auto &listener : worker_dead_listeners_) {
+    listener(worker_failure_data);
+  }
+
   auto on_done = [this, worker_address, worker_id, node_id, worker_failure_data, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
@@ -128,6 +132,12 @@ void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &requ
   if (!status.ok()) {
     on_done(status);
   }
+}
+
+void GcsWorkerManager::AddWorkerDeadListener(
+    std::function<void(std::shared_ptr<WorkerTableData>)> listener) {
+  RAY_CHECK(listener != nullptr);
+  worker_dead_listeners_.emplace_back(std::move(listener));
 }
 
 }  // namespace gcs

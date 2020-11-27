@@ -469,40 +469,34 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
   gcs_node_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
 }
 
-void GcsPlacementGroupManager::LoadInitialData(const EmptyCallback &done) {
-  RAY_LOG(INFO) << "GcsPlacementGroupManager loading initial data.";
-  auto callback = [this,
-                   done](const std::unordered_map<PlacementGroupID,
-                                                  rpc::PlacementGroupTableData> &result) {
-    std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
-    for (auto &item : result) {
-      auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
-      if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
-        registered_placement_groups_.emplace(item.first, placement_group);
+void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
+  std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
+  for (auto &item : gcs_init_data.PlacementGroups()) {
+    auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
+    if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
+      registered_placement_groups_.emplace(item.first, placement_group);
 
-        if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
-            item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
-          pending_placement_groups_.emplace_back(std::move(placement_group));
-        }
+      if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
+          item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
+        pending_placement_groups_.emplace_back(std::move(placement_group));
+      }
 
-        if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
-            item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
-          const auto &bundles = item.second.bundles();
-          for (auto &bundle : bundles) {
+      if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
+          item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
+        const auto &bundles = item.second.bundles();
+        for (auto &bundle : bundles) {
+          if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
             node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
           }
         }
       }
     }
+  }
 
-    // Notify raylets to release unused bundles.
-    gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
+  // Notify raylets to release unused bundles.
+  gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
 
-    SchedulePendingPlacementGroups();
-    RAY_LOG(INFO) << "Finished loading initial data.";
-    done();
-  };
-  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().GetAll(callback));
+  SchedulePendingPlacementGroups();
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {

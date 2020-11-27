@@ -31,5 +31,7 @@ VERSION_1.0 {
         *Java*;
         *JNI_*;
         *ray*streaming*;
+        *aligned_free*;
+        *aligned_malloc*;
     local: *;
 };
