@@ -106,9 +106,6 @@ class GcsActor {
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
 
-  /// Clear the task specification of this actor.
-  void ClearCreationTaskSpecification();
-
   /// Get the immutable ActorTableData of this actor.
   const rpc::ActorTableData &GetActorTableData() const;
   /// Get the mutable ActorTableData of this actor.

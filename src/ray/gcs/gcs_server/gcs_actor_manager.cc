@@ -73,12 +73,9 @@ bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
-  RAY_CHECK(task_spec_) << "This method shouldn't be called after the "
-                           "ClearCreationTaskSpecification method is invoked.";
+  RAY_CHECK(task_spec_);
   return TaskSpecification(*task_spec_);
 }
-
-void GcsActor::ClearCreationTaskSpecification() { task_spec_.reset(); }
 
 const rpc::ActorTableData &GcsActor::GetActorTableData() const {
   return actor_table_data_;
@@ -290,47 +287,40 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   }
 
   // The backend storage is supposed to be reliable, so the status must be ok.
-  RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Put(
-      actor->GetActorID(), actor->GetCreationTaskSpecification().GetMessage(),
+  // NOTE: The storage put operation is ordered. It's impossible to have `ActorTable` put
+  // success but `ActorTaskSpecTable` put failure.
+  RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Put(actor_id, request.task_spec(),
+                                                            [](const Status &status) {}));
+  RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
+      actor->GetActorID(), *actor->GetMutableActorTableData(),
       [this, actor](const Status &status) {
-        // If a creator dies before this callback is called, the actor could have
-        // been already destroyed. It is okay not to write gcs storage.
+        // The backend storage is supposed to be reliable, so the status must be ok.
+        RAY_CHECK_OK(status);
+        // If a creator dies before this callback is called, the actor could have been
+        // already destroyed. It is okay not to invoke a callback because we don't need
+        // to reply to the creator as it is already dead.
         auto registered_actor_it = registered_actors_.find(actor->GetActorID());
         if (registered_actor_it == registered_actors_.end()) {
+          // NOTE(sang): This logic assumes that the ordering of backend call is
+          // guaranteed. It is currently true because we use a single TCP socket to call
+          // the default Redis backend. If ordering is not guaranteed, we should overwrite
+          // the actor state to DEAD to avoid race condition.
           return;
         }
-        RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
-            actor->GetActorID(), *actor->GetMutableActorTableData(),
-            [this, actor](const Status &status) {
-              // The backend storage is supposed to be reliable, so the status must be ok.
-              RAY_CHECK_OK(status);
-              // If a creator dies before this callback is called, the actor could have
-              // been already destroyed. It is okay not to invoke a callback because we
-              // don't need to reply to the creator as it is already dead.
-              auto registered_actor_it = registered_actors_.find(actor->GetActorID());
-              if (registered_actor_it == registered_actors_.end()) {
-                // NOTE(sang): This logic assumes that the ordering of backend call is
-                // guaranteed. It is currently true because we use a single TCP socket to
-                // call the default Redis backend. If ordering is not guaranteed, we
-                // should overwrite the actor state to DEAD to avoid race condition.
-                return;
-              }
-              RAY_CHECK_OK(gcs_pub_sub_->Publish(
-                  ACTOR_CHANNEL, actor->GetActorID().Hex(),
-                  actor->GetActorTableData().SerializeAsString(), nullptr));
-              // Invoke all callbacks for all registration requests of this actor
-              // (duplicated requests are included) and remove all of them from
-              // actor_to_register_callbacks_.
-              // Reply to the owner to indicate that the actor has been registered.
-              auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
-              RAY_CHECK(iter != actor_to_register_callbacks_.end() &&
-                        !iter->second.empty());
-              auto callbacks = std::move(iter->second);
-              actor_to_register_callbacks_.erase(iter);
-              for (auto &callback : callbacks) {
-                callback(actor);
-              }
-            }));
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            ACTOR_CHANNEL, actor->GetActorID().Hex(),
+            actor->GetActorTableData().SerializeAsString(), nullptr));
+        // Invoke all callbacks for all registration requests of this actor (duplicated
+        // requests are included) and remove all of them from
+        // actor_to_register_callbacks_.
+        // Reply to the owner to indicate that the actor has been registered.
+        auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
+        RAY_CHECK(iter != actor_to_register_callbacks_.end() && !iter->second.empty());
+        auto callbacks = std::move(iter->second);
+        actor_to_register_callbacks_.erase(iter);
+        for (auto &callback : callbacks) {
+          callback(actor);
+        }
       }));
   return Status::OK();
 }
@@ -508,7 +498,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
-  actor->ClearCreationTaskSpecification();
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
   // The backend storage is reliable in the future, so the status must be ok.
