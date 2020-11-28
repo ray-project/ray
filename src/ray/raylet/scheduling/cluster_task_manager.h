@@ -14,29 +14,6 @@
 namespace ray {
 namespace raylet {
 
-// Note this enum is also used by the old scheduler!
-enum CommitState {
-  /// Resources are prepared.
-  PREPARED,
-  /// Resources are COMMITTED.
-  COMMITTED
-};
-
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
-    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-  }
-};
-
-struct BundleTransactionState {
-  BundleTransactionState(CommitState state,
-                         std::shared_ptr<TaskResourceInstances> &resources)
-      : state_(state), resources_(resources) {}
-  CommitState state_;
-  std::shared_ptr<TaskResourceInstances> resources_;
-};
-
 /// Work represents all the information needed to make a scheduling decision.
 /// This includes the task, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
@@ -136,31 +113,6 @@ class ClusterTaskManager {
   void Heartbeat(bool light_heartbeat_enabled,
                  std::shared_ptr<HeartbeatTableData> data) const;
 
-  /*
-   An overview of placement group creation (from the raylet's perspective).
-    - Prepare
-      * Raylet allocates resources for the bundle.
-      * Raylet tracks the bundle as pending.
-    - Commit
-      * Raylet creates custom placement group resources for each corresponding resource in
-      the original bundle.
-      * Raylet tracks the bundle as committed.
-    - Cancel (Abort)
-      * Cancel can be sent at any time (to a pending, or committed placement group).
-        - Can be used for removing placement groups.
-      * Destroy any workers currently part of the placement group.
-        - Destroying workers is asynchronous, so we are guaranteed to remove the custom
-          resources before any future leases can be granted for them.
-      * Remove the custom placmenrt group resources.
-      * Free the original resources.
-   */
-  /// \return True if the bundle is now in the PREPARE state.
-  bool PreparePGBundle(BundleSpecification &bundle_spec);
-
-  void CommitPGBundle(BundleSpecification &bundle_spec);
-
-  void CancelBundle(BundleSpecification &bundle_spec);
-
   std::string DebugString() const;
 
  private:
@@ -183,11 +135,6 @@ class ClusterTaskManager {
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
   /// Tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
-
-  /// Tracking placement group bundles and their states. This mapping is the source of
-  /// truth for the new scheduler.
-  std::unordered_map<BundleID, std::shared_ptr<BundleTransactionState>, pair_hash>
-      pg_bundles_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.

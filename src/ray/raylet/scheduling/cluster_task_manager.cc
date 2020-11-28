@@ -329,28 +329,6 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
   }
 }
 
-bool ClusterTaskManager::PreparePGBundle(BundleSpecification &bundle_spec) {
-  if (pg_bundles_.count(bundle_spec.BundleId()) > 0) {
-    // Duplicate prepare request.
-    return true;
-  }
-
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  bool allocated = cluster_resource_scheduler_->AllocateLocalTaskResources(
-      bundle_spec.GetRequiredResources().GetResourceMap(), resource_instances);
-
-  if (!allocated) {
-    return false;
-  }
-
-  auto bundle_state = std::make_shared<BundleTransactionState>(CommitState::COMMITTED,
-                                                               resource_instances);
-  pg_bundles_[bundle_spec.BundleId()] = bundle_state;
-
-  return true;
-}
-
 std::string ClusterTaskManager::DebugString() const {
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
