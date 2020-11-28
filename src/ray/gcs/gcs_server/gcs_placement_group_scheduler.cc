@@ -336,10 +336,10 @@ void GcsPlacementGroupScheduler::CommitResources(
       *bundle, [bundle, node_id, callback](const Status &status,
                                            const rpc::CommitBundleResourcesReply &reply) {
         if (status.ok()) {
-          RAY_LOG(DEBUG) << "Finished committing resource to " << node_id
+          RAY_LOG(ERROR) << "Finished committing resource to " << node_id
                          << " for bundle: " << bundle->DebugString();
         } else {
-          RAY_LOG(DEBUG) << "Failed to commit resource to " << node_id
+          RAY_LOG(ERROR) << "Failed to commit resource to " << node_id
                          << " for bundle: " << bundle->DebugString();
         }
         RAY_CHECK(callback);
@@ -482,6 +482,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
         &schedule_failure_handler,
     const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
         &schedule_success_handler) {
+  RAY_LOG(ERROR) << "All bundles committed.";
   const auto &placement_group = lease_status_tracker->GetPlacementGroup();
   const auto &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
@@ -498,12 +499,14 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
 
   // If the placement group scheduling has been cancelled, destroy them.
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
+    RAY_LOG(ERROR) << "Lease was cancelled";
     DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
     schedule_failure_handler(placement_group);
     return;
   }
 
   if (!lease_status_tracker->AllCommitRequestsSuccessful()) {
+    RAY_LOG(ERROR) << "Some bundles need to be scheduled.";
     // Update the state to be reschedule so that the failure handle will reschedule the
     // failed bundles.
     const auto &uncommitted_bundle_locations =
@@ -516,6 +519,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
     return;
   }
 
+  RAY_LOG(ERROR) << "Gucci";
   schedule_success_handler(placement_group);
 }
 

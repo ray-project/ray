@@ -51,6 +51,7 @@ def test_placement_group_pack(ray_start_cluster):
             }
         ])
     ray.get(placement_group.ready())
+    print("PG ready")
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()

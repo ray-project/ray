@@ -334,8 +334,6 @@ void ClusterResourceScheduler::AddLocalResource(
                                                       double resource_total) {
   string_to_int_map_.Insert(resource_name);
   int64_t resource_id = string_to_int_map_.Get(resource_name);
-
-  RAY_LOG(ERROR) << "Resource id for " << resource_name << "is " << resource_id;
   ResourceInstanceCapacities capacity;
   capacity.total.resize(1);
   capacity.total[0] = resource_total;

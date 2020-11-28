@@ -1797,7 +1797,9 @@ void NodeManager::HandlePrepareBundleResources(
                  << bundle_spec.DebugString();
 
   if (new_scheduler_enabled_) {
-    cluster_task_manager_->PreparePGBundle(bundle_spec);
+    auto prepared = cluster_task_manager_->PreparePGBundle(bundle_spec);
+    reply->set_success(prepared);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
     // We don't need to schedule and dispatch because all we've done so far is allocate resources.
   } else {
     auto prepared = PrepareBundle(cluster_resource_map_, bundle_spec);
@@ -1812,7 +1814,7 @@ void NodeManager::HandlePrepareBundleResources(
 void NodeManager::HandleCommitBundleResources(
     const rpc::CommitBundleResourcesRequest &request,
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
+  // RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
 
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
@@ -1820,6 +1822,8 @@ void NodeManager::HandleCommitBundleResources(
 
   if (new_scheduler_enabled_) {
     cluster_task_manager_->CommitPGBundle(bundle_spec);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    RAY_LOG(ERROR) << "Committed " << bundle_spec.DebugString();
     // Schedule in case a lease request for this placement group arrived before the commit message.
     ScheduleAndDispatch();
   } else {
