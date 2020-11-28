@@ -354,6 +354,8 @@ class TorchPolicy(Policy):
         )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+
+        # Calculate the actual policy loss.
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
 
@@ -369,6 +371,7 @@ class TorchPolicy(Policy):
 
         assert len(loss_out) == len(self._optimizers)
 
+        # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
 
         # Loop through all optimizers.
@@ -376,6 +379,7 @@ class TorchPolicy(Policy):
 
         all_grads = []
         for i, opt in enumerate(self._optimizers):
+            # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
             # Recompute gradients of loss over all variables.
             loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
