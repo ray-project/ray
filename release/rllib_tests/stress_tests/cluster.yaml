@@ -64,8 +64,8 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: m4.16xlarge
-    ImageId: ami-07728e9e2742b0662 # Deep Learning AMI (Ubuntu 16.04)
+    InstanceType: m5.16xlarge
+    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
 
     # Set primary volume to 25 GiB
@@ -94,9 +94,6 @@ file_mounts: {
 setup_commands:
     - apt-get install -y libglib2.0-0
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-
-# Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

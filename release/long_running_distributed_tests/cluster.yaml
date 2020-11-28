@@ -20,6 +20,11 @@ target_utilization_fraction: 0.8
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
 
+docker:
+    image: anyscale/ray-ml:latest-gpu
+    container_name: ray_container
+    pull_before_run: False
+
 # Cloud-provider specific configuration.
 provider:
     type: aws
@@ -42,7 +47,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: g3.8xlarge
-    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
+    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
@@ -50,7 +55,7 @@ head_node:
 
 worker_nodes:
   InstanceType: g3.8xlarge
-  ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
+  ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
   BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
@@ -58,7 +63,9 @@ worker_nodes:
   InstanceMarketOptions:
     MarketType: spot
 
-setup_commands: []
+setup_commands:
+  - apt-get install -y libglib2.0-0
+  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:

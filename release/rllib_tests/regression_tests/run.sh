@@ -50,6 +50,7 @@ pip install "ray[rllib]" "ray[debug]"
 pip install terminado
 pip install torch==1.6 torchvision
 pip install boto3==1.4.8 cython==0.29.0
+pip install -U pybullet
 # Run tf learning tests.
 rllib train -f compact-regression-tests-tf.yaml
 

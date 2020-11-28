@@ -15,7 +15,7 @@ from ray.tune import CLIReporter
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils.util import merge_dicts
-from ray.util.sgd.torch import TorchTrainer
+from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
 
@@ -39,7 +39,7 @@ class FailureInjectorExecutor(RayTrialExecutor):
             # With 10% probability fully terminate the node.
             should_terminate = random.random() < 0.1
             kill_node(
-                "/home/ubuntu/ray_bootstrap_config.yaml",
+                "/root/ray_bootstrap_config.yaml",
                 yes=True,
                 hard=should_terminate,
                 override_cluster_name=None)
@@ -93,16 +93,17 @@ def optimizer_creator(model, config):
         momentum=config.get("momentum", 0.9))
 
 
-ray.init(address="auto" if not args.smoke_test else None, _log_to_driver=True)
+ray.init(address="auto" if not args.smoke_test else None, log_to_driver=True)
 num_training_workers = 1 if args.smoke_test else 3
 
 executor = FailureInjectorExecutor(queue_trials=True)
 
+CustomTrainingOperator = TrainingOperator.from_creators(
+    model_creator=ResNet18, optimizer_creator=optimizer_creator,
+    data_creator=cifar_creator, loss_creator=nn.CrossEntropyLoss)
+
 TorchTrainable = TorchTrainer.as_trainable(
-    model_creator=ResNet18,
-    data_creator=cifar_creator,
-    optimizer_creator=optimizer_creator,
-    loss_creator=nn.CrossEntropyLoss,
+    training_operator_cls=CustomTrainingOperator,
     initialization_hook=initialization_hook,
     num_workers=num_training_workers,
     config={
