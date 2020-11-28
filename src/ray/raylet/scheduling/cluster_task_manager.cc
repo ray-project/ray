@@ -351,7 +351,7 @@ bool ClusterTaskManager::PreparePGBundle(BundleSpecification &bundle_spec) {
   return true;
 }
 
-  void ClusterTaskManager::CommitPGBundle(BundleSpecification &bundle_spec) {
+void ClusterTaskManager::CommitPGBundle(BundleSpecification &bundle_spec) {
   auto it = pg_bundles_.find(bundle_spec.BundleId());
   if (it == pg_bundles_.end()) {
     // We should only ever receive a commit for a non-existent placement group when a placement group is created and removed in quick succession.
@@ -359,8 +359,17 @@ bool ClusterTaskManager::PreparePGBundle(BundleSpecification &bundle_spec) {
     return;
   }
 
+  const auto &bundle_state = it->second;
+  bundle_state->state_ = CommitState::COMMITTED;
 
+  for (const auto &resource : bundle_spec.GetRequiredResources().GetResourceMap()) {
+    const auto &orig_name = resource.first;
+    const auto &formatted_name = FormatPlacementGroupResource(orig_name, bundle_spec);
+    double quantity = resource.second;
+    cluster_resource_scheduler_->AddLocalResource(formatted_name, quantity);
+  }
 }
+
 
 std::string ClusterTaskManager::DebugString() const {
   std::stringstream buffer;
