@@ -9,6 +9,7 @@ from importlib.machinery import FileFinder
 import sys
 import warnings
 
+_hook_installed = False
 _post_import_hooks = {}
 
 
@@ -39,6 +40,10 @@ def lazy_register_serializer(module_name, func):
 
 
 def install():
+    global _hook_installed
+    if _hook_installed:
+        return
+    _hook_installed = True
     loader_details = (SerializerLoader, [".py"])
     # insert the path hook ahead of other path hooks
     sys.path_hooks.insert(0, FileFinder.path_hook(loader_details))
@@ -108,6 +113,8 @@ def torch_tensor_reducer(tensor):
 
 
 def apply(serialization_context):
+    install()
+
     def init_pytorch_serializer():
         import torch
         serialization_context._register_cloudpickle_reducer(
