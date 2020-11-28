@@ -183,9 +183,9 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
 
 def request_resources(num_cpus: Optional[int] = None,
                       bundles: Optional[List[dict]] = None) -> None:
-    """Command the autoscaler to scale to accomodate the specified requests.
+    """Command the autoscaler to scale to accommodate the specified requests.
 
-    The cluster will immediately attempt to scale to accomodate the requested
+    The cluster will immediately attempt to scale to accommodate the requested
     resources, bypassing normal upscaling speed constraints. This does not
     take into account existing resource usage (i.e., the target cluster size is
     calculated regardless of existing utilization).
