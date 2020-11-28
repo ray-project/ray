@@ -174,6 +174,7 @@ bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
       dispatched = true;
     }
   } else {
+    worker->SetBundleId(spec.PlacementGroupBundleId());
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
       // The actor belongs to this worker now.

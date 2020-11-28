@@ -191,12 +191,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // the local node only if there are zero violations.
   auto it = nodes_.find(local_node_id_);
   if (it != nodes_.end()) {
-
-    RAY_LOG(ERROR) << "===============";
-    RAY_LOG(ERROR) << it->second.DebugString(string_to_int_map_);
-    RAY_LOG(ERROR) << task_req.DebugString();
-    RAY_LOG(ERROR) << "===============";
-
     if (IsSchedulable(task_req, it->first, it->second) == 0) {
       return local_node_id_;
     }
