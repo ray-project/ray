@@ -1040,7 +1040,7 @@ def test_get_actor_no_input(ray_start_regular_shared):
 
 
 def test_actor_resource_demand(shutdown_only):
-    cluster = ray.init(num_cpus=3)
+    cluster = ray.init(num_cpus=3, ignore_reinit_error=True)
     global_state_accessor = GlobalStateAccessor(
         cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()
@@ -1052,7 +1052,7 @@ def test_actor_resource_demand(shutdown_only):
 
     a = Actor.remote()
     ray.get(a.foo.remote())
-    time.sleep(2)
+    time.sleep(1)
 
     message = global_state_accessor.get_all_heartbeat()
     heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(message)
