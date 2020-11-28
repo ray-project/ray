@@ -30,6 +30,9 @@ namespace rpc {
 #define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(NodeInfoGcsService, HANDLER)
 
+#define HEARTBEAT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(HeartbeatInfoGcsService, HANDLER)
+
 #define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER)
 
@@ -196,10 +199,6 @@ class NodeInfoGcsServiceHandler {
                                      ReportHeartbeatReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllHeartbeat(const GetAllHeartbeatRequest &request,
-                                     GetAllHeartbeatReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
                                          ReportResourceUsageReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
@@ -253,8 +252,6 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllHeartbeat);
     NODE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
     NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
@@ -270,6 +267,38 @@ class NodeInfoGrpcService : public GrpcService {
   NodeInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
   NodeInfoGcsServiceHandler &service_handler_;
+};
+
+class HeartbeatInfoGcsServiceHandler {
+ public:
+  virtual ~HeartbeatInfoGcsServiceHandler() = default;
+  virtual void HandleReportHeartbeat(const ReportHeartbeatRequest &request,
+                                     ReportHeartbeatReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+};
+/// The `GrpcService` for `HeartbeatInfoGcsService`.
+class HeartbeatInfoGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit HeartbeatInfoGrpcService(boost::asio::io_service &io_service,
+                                    HeartbeatInfoGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    HEARTBEAT_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
+  }
+
+ private:
+  /// The grpc async service object.
+  HeartbeatInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  HeartbeatInfoGcsServiceHandler &service_handler_;
 };
 
 class ObjectInfoGcsServiceHandler {
@@ -523,6 +552,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
+using HeartbeatInfoHandler = HeartbeatInfoGcsServiceHandler;
 using ObjectInfoHandler = ObjectInfoGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using StatsHandler = StatsGcsServiceHandler;

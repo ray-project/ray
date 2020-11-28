@@ -198,14 +198,6 @@ message ReportHeartbeatReply {
   GcsStatus status = 1;
 }
 
-message GetAllHeartbeatRequest {
-}
-
-message GetAllHeartbeatReply {
-  GcsStatus status = 1;
-  HeartbeatBatchTableData heartbeat_data = 2;
-}
-
 message ReportResourceUsageRequest {
   ResourcesData resources = 1;
 }
@@ -281,11 +273,7 @@ service NodeInfoGcsService {
   rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
-  // Report heartbeat of a node to GCS Service.
-  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
   // Get newest heartbeat of all nodes from GCS Service.
-  rpc GetAllHeartbeat(GetAllHeartbeatRequest) returns (GetAllHeartbeatReply);
-  // Report resource usage of a node to GCS Service.
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
@@ -302,6 +290,12 @@ service NodeInfoGcsService {
   // Get available resources of all nodes.
   rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
       returns (GetAllAvailableResourcesReply);
+}
+
+// Service for heartbeat info access.
+service HeartbeatInfoGcsService {
+  // Report heartbeat of a node to GCS Service.
+  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
 }
 
 message GetObjectLocationsRequest {
