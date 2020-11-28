@@ -158,6 +158,25 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   ASSERT_EQ(n_rej, 2);
 }
 
+TEST(SchedulingQueueTest, TestCancelQueuedTask) {
+  NormalSchedulingQueue *queue = new NormalSchedulingQueue();
+  ASSERT_TRUE(queue->TaskQueueEmpty());
+  int n_ok = 0;
+  int n_rej = 0;
+  auto fn_ok = [&n_ok]() { n_ok++; };
+  auto fn_rej = [&n_rej]() { n_rej++; };
+  queue->Add(-1, -1, fn_ok, fn_rej);
+  queue->Add(-1, -1, fn_ok, fn_rej);
+  queue->Add(-1, -1, fn_ok, fn_rej);
+  queue->Add(-1, -1, fn_ok, fn_rej);
+  queue->Add(-1, -1, fn_ok, fn_rej);
+  ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
+  ASSERT_FALSE(queue->TaskQueueEmpty());
+  queue->ScheduleRequests();
+  ASSERT_EQ(n_ok, 4);
+  ASSERT_EQ(n_rej, 0);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
