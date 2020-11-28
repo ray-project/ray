@@ -900,21 +900,23 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   }
 
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
-  int num_idle_or_starting = state.idle.size();
+  // The number of available workers that can be used for this task spec.
+  int num_usable_workers = state.idle.size();
   for (auto &entry : state.starting_worker_processes) {
-    num_idle_or_starting += entry.second;
+    num_usable_workers += entry.second;
   }
-  int running_size = 0;
+  // The number of workers total regardless of suitability for this task.
+  int num_workers_total = 0;
   for (const auto &worker : GetAllRegisteredWorkers()) {
     if (!worker->IsDead()) {
-      running_size++;
+      num_workers_total++;
     }
   }
-  auto num_to_add =
-      std::min<int64_t>(num_workers_soft_limit_ - running_size, backlog_size);
-  if (num_idle_or_starting < num_to_add) {
-    int64_t num_needed = num_to_add - num_idle_or_starting;
-    RAY_LOG(DEBUG) << "Prestarting " << num_to_add << " workers given task backlog size "
+  auto desired_usable_workers =
+      std::min<int64_t>(num_workers_soft_limit_ - num_workers_total, backlog_size);
+  if (num_usable_workers < desired_usable_workers) {
+    int64_t num_needed = desired_usable_workers - num_usable_workers;
+    RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and soft limit " << num_workers_soft_limit_;
     for (int i = 0; i < num_needed; i++) {
       StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
