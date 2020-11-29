@@ -1961,11 +1961,11 @@ bool NodeManager::PrepareBundle(
     resource_map[self_node_id_].SetLoadResources(local_queues_.GetTotalResourceLoad());
   }
   // Invoke the scheduling policy.
-  auto reserve_resource_success =
+  auto local_resource_enough =
       scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
 
   auto bundle_state = std::make_shared<BundleState>();
-  if (reserve_resource_success) {
+  if (local_resource_enough) {
     // Register states.
     auto it = bundle_state_map_.find(bundle_id);
     // Same bundle cannot be rescheduled.
@@ -1974,10 +1974,8 @@ bool NodeManager::PrepareBundle(
     // Prepare resources. This shouldn't create formatted placement group resources
     // because that'll be done at the commit phase.
     bundle_state->acquired_resources =
-        local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
-    resource_map[self_node_id_].PrepareBundleResources(
-        bundle_spec.PlacementGroupId(), bundle_spec.Index(),
-        bundle_spec.GetRequiredResources());
+        local_available_resources_.Acquire(bundle_spec.GetRequiredResources());        
+    resource_map[self_node_id_].Acquire(bundle_spec.GetRequiredResources());
 
     // Register bundle state.
     bundle_state->state = CommitState::PREPARED;
@@ -2004,18 +2002,15 @@ void NodeManager::CommitBundle(
   const auto &bundle_state = it->second;
   bundle_state->state = CommitState::COMMITTED;
   const auto &acquired_resources = bundle_state->acquired_resources;
-  local_available_resources_.CommitImplicitBundleResourceIds(
-      bundle_spec.PlacementGroupId(), bundle_spec.Index());
-  for (auto resource : acquired_resources.AvailableResources()) {
-    local_available_resources_.CommitBundleResourceIds(bundle_spec.PlacementGroupId(),
-                                                       bundle_spec.Index(),
-                                                       resource.first, resource.second);
+
+  const auto &bundle_resource_labels = bundle_spec.GetAllPlacementGroupResourceLabels();
+  for (const auto &resource: bundle_resource_labels) {
+    local_available_resources_.AddOrUpdateResource(resource.first, resource.second);
   }
 
-  resource_map[self_node_id_].CommitBundleResources(bundle_spec.PlacementGroupId(),
-                                                    bundle_spec.Index(),
-                                                    bundle_spec.GetRequiredResources());
-  RAY_CHECK(bundle_state->acquired_resources.AvailableResources().size() > 0)
+  resource_map[self_node_id_].AddOrUpdateResource(ResourceSet(bundle_resource_labels));
+
+  RAY_CHECK(acquired_resources.AvailableResources().size() > 0)
       << "Prepare should've been failed if there were no acquireable resources.";
 }
 
@@ -3346,14 +3341,17 @@ bool NodeManager::ReturnBundleResources(const BundleSpecification &bundle_spec) 
   }
   bundle_state_map_.erase(it);
 
-  // Return resources.
   const auto &resource_set = bundle_spec.GetRequiredResources();
-  for (const auto &resource : resource_set.GetResourceMap()) {
-    local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
-                                                     bundle_spec.Index(), resource.first);
-  }
-  cluster_resource_map_[self_node_id_].ReturnBundleResources(
-      bundle_spec.PlacementGroupId(), bundle_spec.Index());
+  const auto &placement_group_resource_labels = bundle_spec.GetAllPlacementGroupResourceLabels();
+
+  // Return resources to local_available_resources_.
+  local_available_resources_.Release(ResourceIdSet(resource_set));
+  local_available_resources_.Acquire(ResourceSet(placement_group_resource_labels));
+
+  // Return resources to SchedulingResources.
+  cluster_resource_map_[self_node_id_].Release(resource_set);
+  cluster_resource_map_[self_node_id_].Acquire(ResourceSet(placement_group_resource_labels));
+
   return true;
 }
 

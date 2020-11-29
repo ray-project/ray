@@ -27,6 +27,10 @@
 
 namespace ray {
 
+/// Implict resource value for placement group create and actor(placement group specified) scheduler.
+constexpr double kPlacementGroupImplicitResourceValue = 1000;
+constexpr double kPlacementGroupImplicitRequiredResource = 0.0001;
+
 typedef std::function<void(const ResourceIdSet &)> ScheduleBundleCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
@@ -78,22 +82,29 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// Returns the spillback bundle callback, or nullptr.
   const SpillbackBundleCallback &OnSpillback() const { return on_spillback_; }
 
+  /// Get all placement group bundle resource labels.
+  const std::unordered_map<std::string, double> &GetAllPlacementGroupResourceLabels() const { return bundle_resource_labels_; }
+
   std::string DebugString() const;
 
  private:
   void ComputeResources();
+  void ComputeBundleResourceLabels();
 
   /// Field storing unit resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
   /// instead of keeping shared pointers here.
   std::shared_ptr<ResourceSet> unit_resource_;
 
+  /// Store all bundle resource labels, e.g., CPU -> CPU_group_i, CPU_group_YYY_i, PlacementGroup_implicit_i_YYY.
+  std::unordered_map<std::string, double> bundle_resource_labels_;
+
   mutable ScheduleBundleCallback on_schedule_ = nullptr;
 
   mutable SpillbackBundleCallback on_spillback_ = nullptr;
 };
 
-/// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
+/// Format a placement group resource, e.g., CPU -> CPU_group_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index = -1);
