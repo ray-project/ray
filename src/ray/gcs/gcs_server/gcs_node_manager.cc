@@ -22,77 +22,6 @@
 namespace ray {
 namespace gcs {
 
-GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
-    boost::asio::io_service &io_service,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::function<void(const NodeID &)> on_node_death_callback)
-    : gcs_table_storage_(std::move(gcs_table_storage)),
-      on_node_death_callback_(std::move(on_node_death_callback)),
-      num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
-      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
-      detect_timer_(io_service),
-      gcs_pub_sub_(std::move(gcs_pub_sub)) {}
-
-void GcsNodeManager::NodeFailureDetector::Start() {
-  if (!is_started_) {
-    Tick();
-    is_started_ = true;
-  }
-}
-
-void GcsNodeManager::NodeFailureDetector::AddNode(const ray::NodeID &node_id) {
-  heartbeats_.emplace(node_id, num_heartbeats_timeout_);
-}
-
-void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(const NodeID &node_id) {
-  auto iter = heartbeats_.find(node_id);
-  if (iter == heartbeats_.end()) {
-    // Ignore this heartbeat as the node is not registered.
-    // TODO(Shanly): Maybe we should reply the raylet with an error. So the raylet can
-    // crash itself as soon as possible.
-    return;
-  }
-
-  iter->second = num_heartbeats_timeout_;
-}
-
-/// A periodic timer that checks for timed out clients.
-void GcsNodeManager::NodeFailureDetector::Tick() {
-  DetectDeadNodes();
-  ScheduleTick();
-}
-
-void GcsNodeManager::NodeFailureDetector::DetectDeadNodes() {
-  for (auto it = heartbeats_.begin(); it != heartbeats_.end();) {
-    auto current = it++;
-    current->second = current->second - 1;
-    if (current->second == 0) {
-      auto node_id = current->first;
-      RAY_LOG(WARNING) << "Node timed out: " << node_id;
-      heartbeats_.erase(current);
-      if (on_node_death_callback_) {
-        on_node_death_callback_(node_id);
-      }
-    }
-  }
-}
-
-void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
-  auto heartbeat_period = boost::posix_time::milliseconds(
-      RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
-  detect_timer_.expires_from_now(heartbeat_period);
-  detect_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      // `operation_aborted` is set when `detect_timer_` is canceled or destroyed.
-      // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
-      return;
-    }
-    RAY_CHECK(!error) << "Checking heartbeat failed with error: " << error.message();
-    Tick();
-  });
-}
-
 //////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::GcsNodeManager(
     boost::asio::io_service &main_io_service,
@@ -101,34 +30,11 @@ GcsNodeManager::GcsNodeManager(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager)
     : main_io_service_(main_io_service),
-      node_failure_detector_(new NodeFailureDetector(
-          node_failure_detector_io_service, gcs_table_storage, gcs_pub_sub,
-          [this](const NodeID &node_id) {
-            // Post this to main event loop to avoid potential concurrency issues.
-            main_io_service_.post([this, node_id] {
-              if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
-                node->set_state(rpc::GcsNodeInfo::DEAD);
-                node->set_timestamp(current_sys_time_ms());
-                AddDeadNodeToCache(node);
-                auto on_done = [this, node_id, node](const Status &status) {
-                  auto on_done = [this, node_id, node](const Status &status) {
-                    RAY_CHECK_OK(gcs_pub_sub_->Publish(
-                        NODE_CHANNEL, node_id.Hex(), node->SerializeAsString(), nullptr));
-                  };
-                  RAY_CHECK_OK(
-                      gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
-                };
-                RAY_CHECK_OK(
-                    gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
-              }
-            });
-          })),
-      node_failure_detector_service_(node_failure_detector_io_service),
-      heartbeat_timer_(main_io_service),
+      resources_timer_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage),
       gcs_resource_manager_(gcs_resource_manager) {
-  SendBatchedHeartbeat();
+  SendBatchedResourceUsage();
 }
 
 void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -192,39 +98,27 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
-                                           rpc::ReportHeartbeatReply *reply,
+void GcsNodeManager::HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
+                                           rpc::ReportResourceUsageReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.heartbeat().client_id());
-  auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat_data->CopyFrom(request.heartbeat());
+  NodeID node_id = NodeID::FromBinary(request.resources().client_id());
+  auto resources_data = std::make_shared<rpc::ResourcesData>();
+  resources_data->CopyFrom(request.resources());
 
   UpdateNodeHeartbeat(node_id, request);
 
   // Update node realtime resources.
-  UpdateNodeRealtimeResources(node_id, *heartbeat_data);
+  UpdateNodeRealtimeResources(node_id, *resources_data);
 
-  if (!RayConfig::instance().light_heartbeat_enabled() ||
-      heartbeat_data->should_global_gc() || heartbeat_data->resources_total_size() > 0 ||
-      heartbeat_data->resources_available_changed() ||
-      heartbeat_data->resource_load_changed()) {
-    heartbeat_buffer_[node_id] = *heartbeat_data;
+  if (!RayConfig::instance().light_report_resource_usage_enabled_() ||
+      resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
+      resources_data->resources_available_changed() ||
+      resources_data->resource_load_changed()) {
+    resources_buffer_[node_id] = *resources_data;
   }
 
-  // Note: To avoid heartbeats being delayed by main thread, make sure heartbeat is always
-  // handled by its own IO service.
-  node_failure_detector_service_.post(
-      [this, node_id] { node_failure_detector_->HandleHeartbeat(node_id); });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::REPORT_HEARTBEAT_REQUEST];
-}
-
-// TODO(WangTao): Implenent this to handle resource usage report. Basically move resources
-// related operations in `HandleReportHeartbeat`.
-void GcsNodeManager::HandleReportResourceUsage(
-    const rpc::ReportResourceUsageRequest &request, rpc::ReportResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 // TODO(WangTao): Implement this. Basically copy from `HandleGetAllHeartbeat`.
@@ -364,9 +258,9 @@ void GcsNodeManager::HandleGetAllAvailableResources(
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
-void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &request,
-                                           rpc::GetAllHeartbeatReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
+void GcsNodeManager::HandleGetAllResourceUsage(
+    const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   if (!node_heartbeats_.empty()) {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
     absl::flat_hash_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
@@ -406,7 +300,7 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
       auto placement_group_load_proto = batch->mutable_placement_group_load();
       placement_group_load_proto->CopyFrom(*placement_group_load.get());
     }
-    reply->mutable_heartbeat_data()->CopyFrom(*batch);
+    reply->mutable_resources_data()->CopyFrom(*batch);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -414,26 +308,26 @@ void GcsNodeManager::HandleGetAllHeartbeat(const rpc::GetAllHeartbeatRequest &re
 }
 
 void GcsNodeManager::UpdateNodeHeartbeat(const NodeID node_id,
-                                         const rpc::ReportHeartbeatRequest &request) {
+                                         const rpc::ReportResourceUsageRequest &request) {
   auto iter = node_heartbeats_.find(node_id);
-  if (!RayConfig::instance().light_heartbeat_enabled() ||
+  if (!RayConfig::instance().light_report_resource_usage_enabled_() ||
       iter == node_heartbeats_.end()) {
-    auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
-    heartbeat_data->CopyFrom(request.heartbeat());
-    node_heartbeats_[node_id] = *heartbeat_data;
+    auto resources_data = std::make_shared<rpc::ResourcesData>();
+    resources_data->CopyFrom(request.resources());
+    node_heartbeats_[node_id] = *resources_data;
   } else {
-    if (request.heartbeat().resources_total_size() > 0) {
-      (*iter->second.mutable_resources_total()) = request.heartbeat().resources_total();
+    if (request.resources().resources_total_size() > 0) {
+      (*iter->second.mutable_resources_total()) = request.resources().resources_total();
     }
-    if (request.heartbeat().resources_available_changed()) {
+    if (request.resources().resources_available_changed()) {
       (*iter->second.mutable_resources_available()) =
-          request.heartbeat().resources_available();
+          request.resources().resources_available();
     }
-    if (request.heartbeat().resource_load_changed()) {
-      (*iter->second.mutable_resource_load()) = request.heartbeat().resource_load();
+    if (request.resources().resource_load_changed()) {
+      (*iter->second.mutable_resource_load()) = request.resources().resource_load();
     }
     (*iter->second.mutable_resource_load_by_shape()) =
-        request.heartbeat().resource_load_by_shape();
+        request.resources().resource_load_by_shape();
   }
 }
 
@@ -454,11 +348,6 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
     alive_nodes_.emplace(node_id, node);
     // Add an empty resources for this node.
     RAY_CHECK(cluster_resources_.emplace(node_id, rpc::ResourceMap()).second);
-    // Register this node to the `node_failure_detector_` which will start monitoring it.
-    // Note: To avoid heartbeats being delayed by main thread, make sure node addition is
-    // always handled by its own IO service.
-    node_failure_detector_service_.post(
-        [this, node_id] { node_failure_detector_->AddNode(node_id); });
 
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
@@ -480,7 +369,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     alive_nodes_.erase(iter);
     // Remove from cluster resources.
     cluster_resources_.erase(node_id);
-    heartbeat_buffer_.erase(node_id);
+    resources_buffer_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -508,8 +397,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      // Call `AddNode` for this node to make sure it is tracked by the failure
-      // detector.
       AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
     } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
       dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
@@ -527,19 +414,13 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-void GcsNodeManager::StartNodeFailureDetector() {
-  // Note: To avoid heartbeats being delayed by main thread, make sure detector start is
-  // always handled by its own IO service.
-  node_failure_detector_service_.post([this] { node_failure_detector_->Start(); });
-}
-
 void GcsNodeManager::UpdateNodeRealtimeResources(
-    const NodeID &node_id, const rpc::HeartbeatTableData &heartbeat) {
-  if (!RayConfig::instance().light_heartbeat_enabled() ||
+    const NodeID &node_id, const rpc::ResourcesData &resource_data) {
+  if (!RayConfig::instance().light_report_resource_usage_enabled_() ||
       gcs_resource_manager_->GetClusterResources().count(node_id) == 0 ||
-      heartbeat.resources_available_changed()) {
+      resource_data.resources_available_changed()) {
     gcs_resource_manager_->UpdateResources(
-        node_id, ResourceSet(MapFromProtobuf(heartbeat.resources_available())));
+        node_id, ResourceSet(MapFromProtobuf(resource_data.resources_available())));
   }
 }
 
@@ -560,31 +441,31 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
   sorted_dead_node_list_.emplace_back(node_id, node->timestamp());
 }
 
-void GcsNodeManager::SendBatchedHeartbeat() {
-  if (!heartbeat_buffer_.empty()) {
-    auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
-    for (auto &heartbeat : heartbeat_buffer_) {
-      batch->add_batch()->Swap(&heartbeat.second);
+void GcsNodeManager::SendBatchedResourceUsage() {
+  if (!resources_buffer_.empty()) {
+    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
+    for (auto &resources : resources_buffer_) {
+      batch->add_batch()->Swap(&resources.second);
     }
     stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
 
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
-    heartbeat_buffer_.clear();
+    resources_buffer_.clear();
   }
 
-  auto heartbeat_period = boost::posix_time::milliseconds(
-      RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
-  heartbeat_timer_.expires_from_now(heartbeat_period);
-  heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
+  auto resources_period = boost::posix_time::milliseconds(
+      RayConfig::instance().raylet_report_resources_period_milliseconds());
+  resources_timer_.expires_from_now(resources_period);
+  resources_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::asio::error::operation_aborted) {
-      // `operation_aborted` is set when `heartbeat_timer_` is canceled or destroyed.
+      // `operation_aborted` is set when `resources_timer_` is canceled or destroyed.
       // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
       return;
     }
-    RAY_CHECK(!error) << "Sending batched heartbeat failed with error: "
+    RAY_CHECK(!error) << "Sending batched resource usage failed with error: "
                       << error.message();
-    SendBatchedHeartbeat();
+    SendBatchedResourceUsage();
   });
 }
 
@@ -596,7 +477,7 @@ std::string GcsNodeManager::DebugString() const {
          << counts_[CountType::UNREGISTER_NODE_REQUEST]
          << ", GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
-         << ", ReportHeartbeat request count: "
+         << ", ReportResourceUsage request count: "
          << counts_[CountType::REPORT_HEARTBEAT_REQUEST]
          << ", GetHeartbeat request count: " << counts_[CountType::GET_HEARTBEAT_REQUEST]
          << ", GetAllHeartbeat request count: "

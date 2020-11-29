@@ -762,7 +762,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
       heartbeat_batch_table_data.ParseFromString(data);
       subscribe(heartbeat_batch_table_data);
     };
-    return client_impl_->GetGcsPubSub().Subscribe(HEARTBEAT_BATCH_CHANNEL, "",
+    return client_impl_->GetGcsPubSub().Subscribe(RESOURCES_BATCH_CHANNEL, "",
                                                   on_subscribe, done);
   };
   return subscribe_batch_heartbeat_operation_(done);
