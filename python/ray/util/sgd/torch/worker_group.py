@@ -175,7 +175,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
                 url=address,
                 world_rank=i + starting_rank,
                 world_size=world_size,
-                timeout=timedelta(self._timeout_s))
+                timeout=timedelta(seconds=self._timeout_s))
             for i, worker in enumerate(self.remote_workers)
         ]
         return remote_pgroup_setups
