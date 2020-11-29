@@ -211,7 +211,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   auto lease_client = GetOrConnectLeaseClient(remote_address);
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.
-  int backlog_size = report_worker_backlog_ ? 0 : 1;
+  int backlog_size = report_worker_backlog_ ? 0 : -1;
   lease_client->RequestWorkerLease(
       actor->GetCreationTaskSpecification(),
       [this, node_id, actor, node](const Status &status,
