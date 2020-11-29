@@ -1,24 +1,18 @@
 import copy
-import os
-from typing import Any, Dict, IO, List, Union, Tuple
-
+import logging
 import math
+import os
+from typing import Any, Dict, List, Union
+
+from kubernetes import watch
 import yaml
 
 from ray.autoscaler._private.kubernetes import core_api, custom_objects_api
-from ray.autoscaler._private.constants import RAY_HOME
-from ray.utils import open_log
 
 RAY_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
 
-RAY_CONFIG_FILE = "ray_cluster_config.yaml"
-CLUSTER_CONFIG_PATH = os.path.join(RAY_HOME, RAY_CONFIG_FILE)
-
-LOG_DIR_NAME = "ray-operator-logs"
-LOG_DIR = os.path.join(RAY_HOME, LOG_DIR_NAME)
-ERR_NAME, OUT_NAME = "ray-operator.err", "ray-operator.out"
-ERR_PATH = os.path.join(LOG_DIR, ERR_NAME)
-OUT_PATH = os.path.join(LOG_DIR, OUT_NAME)
+RAY_CONFIG_DIR = os.path.expanduser("~/ray_cluster_configs")
+CONFIG_SUFFIX = "_config.yaml"
 
 CONFIG_FIELDS = {
     "targetUtilizationFraction": "target_utilization_fraction",
@@ -42,12 +36,28 @@ PROVIDER_CONFIG = {
     "namespace": RAY_NAMESPACE
 }
 
+root_logger = logging.getLogger("ray")
+root_logger.setLevel(logging.getLevelName("DEBUG"))
 
-def prepare_ray_cluster_config():
-    cluster_resource = get_cluster_cr()
-    config = cr_to_config(cluster_resource)
-    with open(CLUSTER_CONFIG_PATH, "w") as file:
+
+def config_path(cluster):
+    file_name = cluster + CONFIG_SUFFIX
+    return os.path.join(RAY_CONFIG_DIR, file_name)
+
+
+def write_config(config, config_path):
+    with open(config_path, "w") as file:
         yaml.dump(config, file)
+
+
+def cluster_cr_stream():
+    w = watch.Watch(
+        custom_objects_api().list_namespaced_custom_object,
+        namespace=RAY_NAMESPACE,
+        group="cluster.ray.io",
+        version="v1",
+        plural="rayclusters")
+    return w.stream
 
 
 def get_cluster_cr():
@@ -133,11 +143,3 @@ def get_ray_head_pod_ip(config: Dict[str, Any]) -> str:
     assert (len(pods)) == 1
     head_pod = pods.pop()
     return head_pod.status.pod_ip
-
-
-def get_logs() -> Tuple[IO, IO]:
-    try:
-        os.makedirs(LOG_DIR)
-    except OSError:
-        pass
-    return open_log(ERR_PATH), open_log(OUT_PATH)

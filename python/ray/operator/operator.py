@@ -18,51 +18,110 @@ kubectl create namespace raytest
 kubectl -n raytest create configmap ray-operator-configmap --from-file=python/ray/autoscaler/kubernetes/operator_configs/test_cluster_config.yaml
 kubectl -n raytest apply -f python/ray/autoscaler/kubernetes/operator_configs/operator_config.yaml
 """ # noqa
+import logging
+import threading
 
 import yaml
 
-from ray._private.services import address
-from ray.autoscaler._private.commands import create_or_update_cluster
-from ray.monitor import Monitor
-from ray.operator.util import (
-    CLUSTER_CONFIG_PATH,
-    get_ray_head_pod_ip,
-    prepare_ray_cluster_config,
-)
-from ray.ray_constants import (DEFAULT_PORT, LOGGER_FORMAT,
-                               REDIS_DEFAULT_PASSWORD)
-from ray.ray_logging import setup_logger
+from ray._private import services
+from ray.autoscaler._private import commands
+from ray import monitor
+from ray.operator import operator_utils
+from ray import ray_constants
+
+
+class RayCluster():
+    def __init__(self, config):
+        self.config = config
+        self.name = self.config["cluster_name"]
+        self.config_path = operator_utils.config_path(self.name)
+
+        self.setup_logging()
+
+        self.thread = threading.Thread(name=self.name)
+        self.thread.start(target=self.create_or_update)
+
+    def setup_logging(self):
+        self.handler = logging.StreamHandler()
+        self.handler.addFilter(lambda rec: rec.threadName == self.name)
+        logging_format = ":".join([self.name, ray_constants.LOGGER_FORMAT])
+        self.handler.setFormatter(logging.Formatter(logging_format))
+        operator_utils.root_logger.addHandler(self.handler)
+
+    def create_or_update(self):
+        self.start_head()
+        self.start_monitor()
+
+    def start_head(self):
+        self.write_config()
+        self.config = commands.create_or_update_cluster(
+            self.config_path,
+            override_min_workers=None,
+            override_max_workers=None,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            no_config_cache=True)
+        self.write_config()
+
+    def write_config(self):
+        with open(self.config_path, "w") as file:
+            yaml.dump(self.config, file)
+
+    def start_monitor(self):
+        ray_head_pod_ip = commands.get_head_node_ip(self.config_path)
+        # TODO: Add support for user-specified redis port and password
+        redis_address = services.address(ray_head_pod_ip,
+                                         ray_constants.DEFAULT_PORT)
+        self.mtr = monitor.Monitor(redis_address, self.config_path,
+                                   ray_constants.REDIS_DEFAULT_PASSWORD)
+        self.mtr.run()
+
+    def update(self):
+        self.mtr.stop()
+        self.thread.join()
+        self.thread = threading.Thread(name=self.name)
+        self.thread.start(target=self.create_or_update)
+
+    def __del__(self):
+        self.mtr.stop()
+        self.thread.join()
+        self.thread = threading.Thread(name=self.name)
+        self.thread.start(target=self.teardown)
+        self.thread.join()
+        operator_utils.root_logger.removeHandler(self.handler)
+
+    def teardown(self):
+        commands.teardown_cluster(
+            self.config_path,
+            workers_only=False,
+            override_cluster_name=None,
+            keep_min_workers=False)
+
+
+ray_clusters = {}
+
+
+def cluster_action(cluster_config, event_type):
+    cluster_name = cluster_config["cluster_name"]
+    if event_type == "ADDED":
+        ray_clusters[cluster_name] = RayCluster(cluster_config)
+    elif event_type == "MODIFIED":
+        ray_clusters[cluster_name].update()
+    elif event_type == "DELETED":
+        del ray_clusters[cluster_name]
+    else:
+        raise ValueError(f"Event type '{event_type}' unrecognized.")
 
 
 def main():
-    prepare_ray_cluster_config()
-
-    config = create_or_update_cluster(
-        CLUSTER_CONFIG_PATH,
-        override_min_workers=None,
-        override_max_workers=None,
-        no_restart=False,
-        restart_only=False,
-        yes=True,
-        no_config_cache=True)
-    with open(CLUSTER_CONFIG_PATH, "w") as file:
-        yaml.dump(config, file)
-
-    ray_head_pod_ip = get_ray_head_pod_ip(config)
-    # TODO: Add support for user-specified redis port and password
-    redis_address = address(ray_head_pod_ip, DEFAULT_PORT)
-    monitor = Monitor(redis_address, CLUSTER_CONFIG_PATH,
-                      REDIS_DEFAULT_PASSWORD)
-    monitor.run()
-    # stderr_file, stdout_file = get_logs()
-    """start_monitor(
-        redis_address,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        autoscaling_config=CLUSTER_CONFIG_PATH,
-        redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)"""
+    stream = operator_utils.cluster_cr_stream()
+    for event in stream:
+        cluster_cr = event["object"]
+        event_type = event["type"]
+        cluster_config = operator_utils.cr_to_config(cluster_cr)
+        cluster_action(cluster_config, event_type)
 
 
 if __name__ == "__main__":
-    setup_logger("DEBUG", LOGGER_FORMAT)
     main()

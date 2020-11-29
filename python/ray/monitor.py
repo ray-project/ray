@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 import os
 import time
+import threading
 import traceback
 import json
 
@@ -85,7 +86,11 @@ class Monitor:
             This is used to receive notifications about failed components.
     """
 
-    def __init__(self, redis_address, autoscaling_config, redis_password=None):
+    def __init__(self,
+                 redis_address,
+                 autoscaling_config,
+                 redis_password=None,
+                 prefix_cluster_info=False):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
@@ -107,12 +112,15 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         if autoscaling_config:
-            self.autoscaler = StandardAutoscaler(autoscaling_config,
-                                                 self.load_metrics)
+            self.autoscaler = StandardAutoscaler(
+                autoscaling_config, self.load_metrics, prefix_cluster_info)
             self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None
             self.autoscaling_config = None
+
+        self._stop_trigger = threading.Event()
+        self._stopped = threading.Event()
 
     def __del__(self):
         """Destruct the monitor object."""
@@ -261,9 +269,21 @@ class Monitor:
             # Process a round of messages.
             self.process_messages()
 
+            # Break if stop method has been invoked.
+            if self._stop_trigger.is_set():
+                break
+
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
+
+        self._stopped.set()
+
+    def stop(self):
+        """Stop monitoring loop."""
+        logger.info("Monitor: Stopped monitoring loop.")
+        self._stop_trigger.set()
+        self._stopped.wait()
 
     def destroy_autoscaler_workers(self):
         """Cleanup the autoscaler, in case of an exception in the run() method.
