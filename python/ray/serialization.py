@@ -219,10 +219,10 @@ class SerializationContext:
             raise DeserializationError()
         return obj
 
-    def _deserialize_msgpack_data(self, data, metadata):
+    def _deserialize_msgpack_data(self, data, metadata_fields):
         msgpack_data, pickle5_data = split_buffer(data)
 
-        if metadata == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
+        if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(pickle5_data)
         else:
             python_objects = []
