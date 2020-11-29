@@ -18,6 +18,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -58,8 +59,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "max_seq_len": 20,
     # Size of the LSTM cell.
     "lstm_cell_size": 256,
-    # Whether to feed a_{t-1}, r_{t-1} to LSTM.
-    "lstm_use_prev_action_reward": False,
+    # Whether to feed a_{t-1} to LSTM (one-hot encoded if discrete).
+    "lstm_use_prev_action": False,
+    # Whether to feed r_{t-1} to LSTM.
+    "lstm_use_prev_reward": False,
     # Experimental (only works with `_use_trajectory_view_api`=True):
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
@@ -87,6 +90,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Custom preprocessors are deprecated. Please use a wrapper class around
     # your environment instead to preprocess observations.
     "custom_preprocessor": None,
+
+    # Deprecated keys:
+    # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
+    "lstm_use_prev_action_reward": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable

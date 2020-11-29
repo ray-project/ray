@@ -285,6 +285,7 @@ Papers
    multiprocessing.rst
    joblib.rst
    iter.rst
+   xgboost-ray.rst
    dask-on-ray.rst
    mars-on-ray.rst
 
