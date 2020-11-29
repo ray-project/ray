@@ -6,9 +6,9 @@ import sys
 import numpy as np
 import time
 
-from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
-                             TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
-                             AUTO_RESULT_KEYS)
+from ray.tune.result import (DEFAULT_METRIC, EPISODE_REWARD_MEAN,
+                             MEAN_ACCURACY, MEAN_LOSS, TRAINING_ITERATION,
+                             TIME_TOTAL_S, TIMESTEPS_TOTAL, AUTO_RESULT_KEYS)
 from ray.tune.trial import Trial
 from ray.tune.utils import unflattened_lookup
 
@@ -134,6 +134,10 @@ class TuneReporterBase(ProgressReporter):
             self._metric = metric
         if mode:
             self._mode = mode
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
         return True
 

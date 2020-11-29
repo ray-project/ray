@@ -1,13 +1,13 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-# The GPU option is nvidia/cuda:10.1-cudnn8-runtime-ubuntu18.04
+# The GPU option is nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04
 ARG BASE_IMAGE="ubuntu:focal"
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ARG AUTOSCALER="autoscaler"
 ENV TZ=America/Los_Angeles
-# TODO(ilr) $HOME seems to point to result in "" instead of "/root"
-ENV PATH "/root/anaconda3/bin:$PATH"
+# TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
+ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.7.7
 

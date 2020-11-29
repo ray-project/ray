@@ -2065,6 +2065,36 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
         self._test_metrics(result2, "mean_loss", "min")
 
+    def _testAnonymousMetricEndToEnd(self, scheduler_cls, searcher=None):
+        def train(config):
+            return config["value"]
+
+        out = tune.run(
+            train,
+            mode="max",
+            num_samples=1,
+            config={"value": tune.uniform(-2., 2.)},
+            scheduler=scheduler_cls(),
+            search_alg=searcher)
+
+        self.assertTrue(bool(out.best_trial))
+
+    def testAnonymousMetricEndToEndFIFO(self):
+        self._testAnonymousMetricEndToEnd(FIFOScheduler)
+
+    def testAnonymousMetricEndToEndASHA(self):
+        self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
+
+    def testAnonymousMetricEndToEndBOHB(self):
+        from ray.tune.suggest.bohb import TuneBOHB
+        self._testAnonymousMetricEndToEnd(HyperBandForBOHB, TuneBOHB())
+
+    def testAnonymousMetricEndToEndMedian(self):
+        self._testAnonymousMetricEndToEnd(MedianStoppingRule)
+
+    def testAnonymousMetricEndToEndPBT(self):
+        self._testAnonymousMetricEndToEnd(PopulationBasedTraining)
+
 
 if __name__ == "__main__":
     import pytest

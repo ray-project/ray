@@ -122,10 +122,12 @@ class Worker:
         # Index of the current session. This number will
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
-        # Functions to run to process the values returned by ray.get. Each
-        # postprocessor must take two arguments ("object_refs", and "values").
-        self._post_get_hooks = []
+        # If this is set, the next .remote call should drop into the
+        # debugger, at the specified breakpoint ID.
         self.debugger_breakpoint = ""
+        # If this is set, ray.get calls invoked on the object ID returned
+        # by the worker should drop into the debugger at the specified 
+        # breakpoint ID.
         self.debugger_get_breakpoint = b""
 
     @property
@@ -477,21 +479,6 @@ per worker process.
 
 _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
-
-
-def print_failed_task(task_status):
-    """Print information about failed tasks.
-
-    Args:
-        task_status (Dict): A dictionary containing the name, operationid, and
-            error message for a failed task.
-    """
-    logger.error(f"""
-      Error: Task failed
-        Function Name: {task_status["function_name"]}
-        Task ID: {task_status["operationid"]}
-        Error Message: \n{task_status["error_message"]}
-    """)
 
 
 def init(
@@ -855,7 +842,6 @@ def shutdown(_exiting_interpreter=False):
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
-    global_worker._post_get_hooks = []
 
 
 atexit.register(shutdown, True)
@@ -1182,11 +1168,6 @@ def connect(node,
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    # TODO (Alex): `current_logging_job` tracks the current job so that we know
-    # when to switch log files. If all logging functionaility was moved to c++,
-    # the functionaility in `_raylet.pyx::switch_worker_log_if_necessary` could
-    # be moved to `CoreWorker::SetCurrentTaskId()`.
-    worker.current_logging_job_id = None
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
@@ -1345,7 +1326,7 @@ def show_in_dashboard(message, key="", dtype="text"):
     worker.core_worker.set_webui_display(key.encode(), message_encoded)
 
 
-# Global varaible to make sure we only send out the warning once
+# Global variable to make sure we only send out the warning once.
 blocking_get_inside_async_warned = False
 
 
@@ -1413,10 +1394,6 @@ def get(object_refs, *, timeout=None):
                     raise value.as_instanceof_cause()
                 else:
                     raise value
-
-        # Run post processors.
-        for post_processor in worker._post_get_hooks:
-            values = post_processor(object_refs, values)
 
         if is_individual_id:
             values = values[0]
@@ -1565,6 +1542,8 @@ def get_actor(name):
     Raises:
         ValueError if the named actor does not exist.
     """
+    if not name:
+        raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
     handle = worker.core_worker.get_named_actor_handle(name)

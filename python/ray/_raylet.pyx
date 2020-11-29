@@ -292,13 +292,14 @@ cdef prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             metadata = serialized_arg.metadata
+            metadata_fields = metadata.split(b",")
             if language != Language.PYTHON:
-                if metadata[0:1] not in [
+                if metadata_fields[0] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
                         ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
                     raise Exception("Can't transfer {} data to {}".format(
-                        metadata, language))
+                        metadata_fields[0], language))
             size = serialized_arg.total_bytes
 
             # TODO(edoakes): any objects containing ObjectRefs are spilled to
@@ -615,17 +616,19 @@ cdef c_vector[c_string] spill_objects_handler(
 
 
 cdef void restore_spilled_objects_handler(
+        const c_vector[CObjectID]& object_ids_to_restore,
         const c_vector[c_string]& object_urls) nogil:
     with gil:
         urls = []
         size = object_urls.size()
         for i in range(size):
             urls.append(object_urls[i])
+        object_refs = VectorToObjectRefs(object_ids_to_restore)
         try:
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
-                external_storage.restore_spilled_objects(urls)
+                external_storage.restore_spilled_objects(object_refs, urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
@@ -1536,7 +1539,7 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
             cpython.Py_DECREF(py_future)
             return
 
-        if isinstance(result, RayError):
+        if isinstance(result, RayTaskError):
             ray.worker.last_task_error_raise_time = time.time()
             py_future.set_exception(result.as_instanceof_cause())
         else:

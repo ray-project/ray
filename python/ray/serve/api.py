@@ -191,6 +191,8 @@ class Client:
         if not isinstance(config_options, (BackendConfig, dict)):
             raise TypeError(
                 "config_options must be a BackendConfig or dictionary.")
+        if isinstance(config_options, dict):
+            config_options = BackendConfig.parse_obj(config_options)
         ray.get(
             self._controller.update_backend_config.remote(
                 backend_tag, config_options))

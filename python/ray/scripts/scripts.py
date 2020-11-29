@@ -68,7 +68,7 @@ logging_options = [
         default="auto",
         help=("Use color logging. "
               "Auto enables color logging if stdout is a TTY.")),
-    click.option("-v", "--verbose", count=True)
+    click.option("-v", "--verbose", default=None, count=True)
 ]
 
 

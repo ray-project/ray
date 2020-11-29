@@ -178,27 +178,27 @@ WORKER_PROCESS_TYPE_RESTORE_WORKER = (
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
-# The object metadata field uses the following format: The first character
-# indicates the type of object (CROSS_LANGUAGE, PYTHON, RAW, ACTOR_HANDLE)
-# according to the variables below. After that comes an optional debug string
-# that starts with the DEBUG_PREFIX.
+# The object metadata field uses the following format: It is a comma
+# separated list of fields. The first field is mandatory and is the
+# type of the object (see types below) or an integer, which is interpreted
+# as an error value.
 
 # A constant used as object metadata to indicate the object is cross language.
-OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"X"
+OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
 # A constant used as object metadata to indicate the object is python specific.
-OBJECT_METADATA_TYPE_PYTHON = b"P"
+OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 # A constant used as object metadata to indicate the object is raw bytes.
-OBJECT_METADATA_TYPE_RAW = b"R"
+OBJECT_METADATA_TYPE_RAW = b"RAW"
 
 # A constant used as object metadata to indicate the object is an actor handle.
 # This value should be synchronized with the Java definition in
 # ObjectSerializer.java
 # TODO(fyrestone): Serialize the ActorHandle via the custom type feature
 # of XLANG.
-OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"A"
+OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
 
 # A constant indicating the debugging part of the metadata (see above).
-OBJECT_METADATA_DEBUG_PREFIX = b"D"
+OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
@@ -215,3 +215,6 @@ MACH_PAGE_SIZE_BYTES = 4096
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
 MAX_INT64_VALUE = 9223372036854775807
+
+# Object Spilling related constants
+DEFAULT_OBJECT_PREFIX = "ray_spilled_object"
