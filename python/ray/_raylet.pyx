@@ -1371,7 +1371,7 @@ cdef class CoreWorker:
                 data_sizes.push_back(serialized_object.total_bytes)
                 metadata = serialized_object.metadata
                 if ray.worker.global_worker.debugger_get_breakpoint:
-                    metadata += (ray_constants.OBJECT_METADATA_DEBUG_PREFIX
+                    metadata += (b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX
                         + ray.worker.global_worker.debugger_get_breakpoint.encode())
                     # Reset debugging context of this worker.
                     ray.worker.global_worker.debugger_get_breakpoint = b""

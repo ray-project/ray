@@ -324,10 +324,12 @@ class Worker:
             object_refs, self.current_task_id, timeout_ms)
         debugger_breakpoint = b""
         for (data, metadata) in data_metadata_pairs:
-            if metadata and len(metadata) >= 2 and (
-                    metadata[1:2] == ray_constants.OBJECT_METADATA_DEBUG_PREFIX
-            ):
-                debugger_breakpoint = metadata[2:]
+            if metadata:
+                metadata_fields = metadata.split(b",")
+                if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
+                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):
+                    debugger_breakpoint = metadata_fields[1][
+                        len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
         return self.deserialize_objects(data_metadata_pairs,
                                         object_refs), debugger_breakpoint
 
