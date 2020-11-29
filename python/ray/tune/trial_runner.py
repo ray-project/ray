@@ -19,6 +19,7 @@ from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
+from ray.tune.utils.util import profile
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -360,7 +361,12 @@ class TrialRunner:
                     trials=self._trials,
                     trial=next_trial)
         elif self.trial_executor.get_running_trials():
-            self._process_events()  # blocking
+            with warn_if_slow(
+                    "_process_events", threshold=2.0) as events_timer:
+                with profile() as events_trace:
+                    self._process_events()  # blocking
+            if events_timer.too_slow:
+                events_trace.print_summary()
         else:
             self.trial_executor.on_no_available_trials(self)
 
@@ -453,11 +459,13 @@ class TrialRunner:
             self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
             trial = self._scheduler_alg.choose_trial_to_run(self)
-            logger.debug("Running trial {}".format(trial))
+            if trial:
+                logger.debug("Running trial {}".format(trial))
         return trial
 
     def _process_events(self):
-        failed_trial = self.trial_executor.get_next_failed_trial()
+        with warn_if_slow("get_next_failed_trial"):
+            failed_trial = self.trial_executor.get_next_failed_trial()
         if failed_trial:
             error_msg = (
                 "{} (IP: {}) detected as stale. This is likely because the "
@@ -478,14 +486,14 @@ class TrialRunner:
                         trials=self._trials,
                         trial=trial)
             elif trial.is_saving:
-                with warn_if_slow("process_trial_save") as profile:
+                with warn_if_slow("process_trial_save") as _profile:
                     self._process_trial_save(trial)
                 with warn_if_slow("callbacks.on_trial_save"):
                     self._callbacks.on_trial_save(
                         iteration=self._iteration,
                         trials=self._trials,
                         trial=trial)
-                if profile.too_slow and trial.sync_on_checkpoint:
+                if _profile.too_slow and trial.sync_on_checkpoint:
                     # TODO(ujvl): Suggest using DurableTrainable once
                     #  API has converged.
 
