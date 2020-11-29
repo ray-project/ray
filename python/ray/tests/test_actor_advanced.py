@@ -1040,7 +1040,8 @@ def test_get_actor_no_input(ray_start_regular_shared):
 
 
 def test_actor_resource_demand(shutdown_only):
-    cluster = ray.init(num_cpus=3, ignore_reinit_error=True)
+    ray.shutdown()
+    cluster = ray.init(num_cpus=3)
     global_state_accessor = GlobalStateAccessor(
         cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()
