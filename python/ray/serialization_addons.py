@@ -72,6 +72,5 @@ def register_pytorch_serializer(serialization_context):
 
 
 def apply(serialization_context):
-    if (os.environ.get("RAY_DISABLE_PYTORCH_SERIALIZER") != "1"
-            and os.environ.get("RLLIB_TEST_NO_TORCH_IMPORT") != "1"):
+    if os.environ.get("RAY_DISABLE_PYTORCH_SERIALIZER") != "1":
         register_pytorch_serializer(serialization_context)
