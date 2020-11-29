@@ -1717,6 +1717,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
+  // Prestart optimization is only needed when multi-tenancy is on.
+  if (RayConfig::instance().enable_multi_tenancy() &&
+      RayConfig::instance().enable_worker_prestart()) {
+    auto task_spec = task.GetTaskSpecification();
+    worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
+  }
+
   if (new_scheduler_enabled_) {
     auto task_spec = task.GetTaskSpecification();
     cluster_task_manager_->QueueTask(task, reply, [send_reply_callback]() {
