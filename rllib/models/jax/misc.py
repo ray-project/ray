@@ -1,5 +1,5 @@
 import time
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_jax
 
@@ -19,7 +19,6 @@ class SlimFC:
                  initializer: Optional[Callable] = None,
                  activation_fn: Optional[str] = None,
                  use_bias: bool = True,
-                 #bias_init: float = 0.0,
                  prng_key: Optional[jax.random.PRNGKey] = None,
                  name: Optional[str] = None):
         """Initializes a SlimFC instance.
@@ -63,20 +62,4 @@ class SlimFC:
         out = self._dense.apply(self._params, x)
         if self.activation_fn:
             out = self.activation_fn(out)
-        return out
-
-
-
-class AppendBiasLayer(nn.Module):
-    """Simple bias appending layer for free_log_std."""
-
-    def __init__(self, num_bias_vars):
-        super().__init__()
-        self.log_std = torch.nn.Parameter(
-            torch.as_tensor([0.0] * num_bias_vars))
-        self.register_parameter("log_std", self.log_std)
-
-    def forward(self, x):
-        out = torch.cat(
-            [x, self.log_std.unsqueeze(0).repeat([len(x), 1])], axis=1)
         return out

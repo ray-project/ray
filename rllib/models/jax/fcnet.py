@@ -17,8 +17,8 @@ class FullyConnectedNetwork(JAXModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super().__init__(obs_space, action_space, num_outputs,
-                         model_config, name)
+        super().__init__(obs_space, action_space, num_outputs, model_config,
+                         name)
 
         self.key = jax.random.PRNGKey(time.time_ns())
 
@@ -41,10 +41,11 @@ class FullyConnectedNetwork(JAXModelV2):
 
         # Create layers 0 to second-last.
         for size in hiddens[:-1]:
-            self._hidden_layers.append(SlimFC(
-                in_size=prev_layer_size,
-                out_size=size,
-                activation_fn=activation))
+            self._hidden_layers.append(
+                SlimFC(
+                    in_size=prev_layer_size,
+                    out_size=size,
+                    activation_fn=activation))
             prev_layer_size = size
 
         # The last layer is adjusted to be of size num_outputs, but it's a
@@ -77,7 +78,6 @@ class FullyConnectedNetwork(JAXModelV2):
 
         # Layer to add the log std vars to the state-dependent means.
         if self.free_log_std and self._logits:
-            #self._append_free_log_std = AppendBiasLayer(num_outputs)
             raise ValueError("`free_log_std` not supported for JAX yet!")
 
         self._value_branch_separate = None
@@ -96,15 +96,12 @@ class FullyConnectedNetwork(JAXModelV2):
             self._value_branch_separate = vf_layers
 
         self._value_branch = SlimFC(
-            in_size=prev_layer_size,
-            out_size=1,
-            activation_fn=None)
+            in_size=prev_layer_size, out_size=1, activation_fn=None)
         # Holds the current "base" output (before logits layer).
         self._features = None
         # Holds the last input, in case value branch is separate.
         self._last_flat_in = None
 
-    #@jax.jit
     @override(JAXModelV2)
     def forward(self, input_dict, state, seq_lens):
         self._last_flat_in = input_dict["obs_flat"]

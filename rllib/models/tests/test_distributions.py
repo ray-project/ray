@@ -94,7 +94,7 @@ class TestDistributions(unittest.TestCase):
         inputs = inputs_space.sample()
 
         for fw, sess in framework_iterator(
-            session=True, frameworks=("jax", "tf", "tf2", "torch")):
+                session=True, frameworks=("jax", "tf", "tf2", "torch")):
             # Create the correct distribution object.
             cls = JAXCategorical if fw == "jax" else Categorical if \
                 fw != "torch" else TorchCategorical

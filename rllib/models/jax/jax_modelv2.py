@@ -1,9 +1,8 @@
 import gym
-from typing import List
 
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.typing import ModelConfigDict
 
 
 @PublicAPI
@@ -26,19 +25,3 @@ class JAXModelV2(ModelV2):
             model_config,
             name,
             framework="jax")
-
-    #@override(ModelV2)
-    #def variables(self, as_dict: bool = False) -> List[TensorType]:
-    #    if as_dict:
-    #        return self.state_dict()
-    #    return list(self.parameters())
-
-    #@override(ModelV2)
-    #def trainable_variables(self, as_dict: bool = False) -> List[TensorType]:
-    #    if as_dict:
-    #        return {
-    #            k: v
-    #            for k, v in self.variables(as_dict=True).items()
-    #            if v.requires_grad
-    #        }
-    #    return [v for v in self.variables() if v.requires_grad]

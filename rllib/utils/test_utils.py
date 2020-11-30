@@ -68,8 +68,7 @@ def framework_iterator(config=None,
                 "framework_iterator skipping tf2.x (tf version is < 2.0)!")
             continue
         elif fw == "jax" and not jax:
-            logger.warning(
-                "framework_iterator skipping JAX (not installed)!")
+            logger.warning("framework_iterator skipping JAX (not installed)!")
             continue
         assert fw in ["tf2", "tf", "tfe", "torch", "jax", None]
 
