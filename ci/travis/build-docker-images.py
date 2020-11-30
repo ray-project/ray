@@ -141,7 +141,7 @@ def copy_wheels():
     shutil.copy(source, ray_dep_dst)
 
 
-def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
+def build_or_pull_base_images(is_docker_affected: bool) -> bool:
     """Returns images to tag and build"""
     DOCKER_CLIENT.api.pull(repository="rayproject/base-deps", tag="nightly")
 
@@ -304,15 +304,14 @@ def push_readmes():
 
 if __name__ == "__main__":
     print("RUNNING WITH: ", sys.version)
-    if os.environ.get("TRAVIS") == "true":
-        is_docker_affected = _docker_affected()
-        if _merge_build() or is_docker_affected:
-            DOCKER_CLIENT = docker.from_env()
-            copy_wheels()
-            freshly_built = build_or_pull_base_images(is_docker_affected)
-            build_ray()
-            build_ray_ml()
-            push_and_tag_images(freshly_built)
-            # TODO(ilr) Re-Enable Push READMEs by using a normal password
-            # (not auth token :/)
-            # push_readmes()
+    is_docker_affected = _docker_affected()
+    if _merge_build() or is_docker_affected:
+        DOCKER_CLIENT = docker.from_env()
+        copy_wheels()
+        freshly_built = build_or_pull_base_images(is_docker_affected)
+        build_ray()
+        build_ray_ml()
+        push_and_tag_images(freshly_built)
+        # TODO(ilr) Re-Enable Push READMEs by using a normal password
+        # (not auth token :/)
+        # push_readmes()
