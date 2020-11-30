@@ -36,7 +36,7 @@ jobs:
     - name: Sanity check minikube
       run: |
         kubectl get nodes
-        kubectl get pods --all
+        kubectl get pods --all-namespaces
         docker ps
     - name: Prepare caching
       id: info
