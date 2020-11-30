@@ -114,37 +114,15 @@ def get_pinned_object(pinned_id):
     return ray.get(pinned_id)
 
 
-class profile:
-    def __init__(self):
-        import cProfile
-        self.pr = cProfile.Profile()
-
-    def __enter__(self):
-        self.pr.enable()
-        return self
-
-    def __exit__(self, type, value, traceback):
-        import pstats, io
-        self.pr.disable()
-        s = io.StringIO()
-        ps = pstats.Stats(self.pr, stream=s)
-        self.stats = ps
-
-    def print_summary(self):
-        self.stats.sort_stats("cumtime").print_stats(0.1)
-        print(self.stats.stream.getvalue())
-        self.stats.stream.truncate(0)
-
-
 class warn_if_slow:
-    """Prints a warning if a given operation is slower than 100ms.
+    """Prints a warning if a given operation is slower than 500ms.
 
     Example:
         >>> with warn_if_slow("some_operation"):
         ...    ray.get(something)
     """
 
-    DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.3))
+    DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
 
     def __init__(self, name, threshold=None):
         self.name = name

@@ -25,7 +25,7 @@ from ray.tune.utils import warn_if_slow
 
 logger = logging.getLogger(__name__)
 
-RAY_STATE_REFRESH_PERIOD = 10  # Refresh resources every 1 s
+RAY_STATE_REFRESH_PERIOD = 10  # Refresh resources every 10 s
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds

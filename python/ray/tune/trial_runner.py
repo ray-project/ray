@@ -361,12 +361,8 @@ class TrialRunner:
                     trials=self._trials,
                     trial=next_trial)
         elif self.trial_executor.get_running_trials():
-            with warn_if_slow(
-                    "_process_events", threshold=2.0) as events_timer:
-                with profile() as events_trace:
-                    self._process_events()  # blocking
-            if events_timer.too_slow:
-                events_trace.print_summary()
+            with warn_if_slow("process_events", threshold=1.0):
+                self._process_events()  # blocking
         else:
             self.trial_executor.on_no_available_trials(self)
 
