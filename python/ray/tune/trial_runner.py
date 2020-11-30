@@ -19,7 +19,6 @@ from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
-from ray.tune.utils.util import profile
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -361,7 +360,7 @@ class TrialRunner:
                     trials=self._trials,
                     trial=next_trial)
         elif self.trial_executor.get_running_trials():
-            with warn_if_slow("process_events", threshold=1.0):
+            with warn_if_slow("process_events"):
                 self._process_events()  # blocking
         else:
             self.trial_executor.on_no_available_trials(self)
