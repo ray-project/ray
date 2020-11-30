@@ -16,6 +16,7 @@ from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
 from ray.rllib.agents.ppo.appo_tf_policy import make_appo_model, \
     postprocess_trajectory
+from ray.rllib.agents.ppo.ppo_tf_policy import view_requirements_fn
 from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin, \
     KLCoeffMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
@@ -337,4 +338,5 @@ AsyncPPOTorchPolicy = build_torch_policy(
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
         ValueNetworkMixin
     ],
+    view_requirements_fn=view_requirements_fn,
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])

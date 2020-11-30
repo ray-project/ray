@@ -195,7 +195,8 @@ def postprocess_ppo_gae(
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
         # Input dict is provided to us automatically via the policy-defined
-        # "view". It's a single-timestep (last one in trajectory) input_dict.
+        # "view". It's a single-timestep input_dict (at very end of
+        # trajectory).
         if policy.config["_use_trajectory_view_api"]:
             last_r = policy._value(**sample_batch["_value_input_dict"])
         # TODO: (sven) Remove once trajectory view API is all-algo default.
@@ -215,7 +216,9 @@ def postprocess_ppo_gae(
         last_r,
         policy.config["gamma"],
         policy.config["lambda"],
-        use_gae=policy.config["use_gae"])
+        use_gae=policy.config["use_gae"],
+        use_critic=policy.config["use_critic"])
+
     return batch
 
 

@@ -507,8 +507,8 @@ class DynamicTFPolicy(TFPolicy):
                 dummy_batch[k] = fake_array(v)
             dummy_batch = SampleBatch(dummy_batch)
 
-        # Postprocessing might depend on variable init, so run it first here.
-        self._sess.run(tf1.global_variables_initializer())
+        ## Postprocessing might depend on variable init, so run it first here.
+        #self._sess.run(tf1.global_variables_initializer())
 
         batch_for_postproc = UsageTrackingDict(dummy_batch)
         batch_for_postproc.count = dummy_batch.count
@@ -542,22 +542,18 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.PREV_REWARDS: self._prev_reward_input,
                     SampleBatch.CUR_OBS: self._obs_input,
                 })
-            else:
-                train_batch = UsageTrackingDict({
-                    SampleBatch.CUR_OBS: self._obs_input,
-                })
 
-                for k, v in postprocessed_batch.items():
-                    if k in train_batch:
-                        continue
-                    elif v.dtype == np.object:
-                        continue  # can't handle arbitrary objects in TF
-                    elif k == "seq_lens" or k.startswith("state_in_"):
-                        continue
-                    shape = (None, ) + v.shape[1:]
-                    dtype = np.float32 if v.dtype == np.float64 else v.dtype
-                    placeholder = tf1.placeholder(dtype, shape=shape, name=k)
-                    train_batch[k] = placeholder
+            for k, v in postprocessed_batch.items():
+                if k in train_batch:
+                    continue
+                elif v.dtype == np.object:
+                    continue  # can't handle arbitrary objects in TF
+                elif k == "seq_lens" or k.startswith("state_in_"):
+                    continue
+                shape = (None, ) + v.shape[1:]
+                dtype = np.float32 if v.dtype == np.float64 else v.dtype
+                placeholder = tf1.placeholder(dtype, shape=shape, name=k)
+                train_batch[k] = placeholder
 
             for i, si in enumerate(self._state_inputs):
                 train_batch["state_in_{}".format(i)] = si
@@ -647,35 +643,6 @@ class DynamicTFPolicy(TFPolicy):
 
         # Initialize again after loss init.
         self._sess.run(tf1.global_variables_initializer())
-
-        # Add new columns automatically to view-reqs.
-        if self.config["_use_trajectory_view_api"] and \
-                auto_remove_unneeded_view_reqs:
-            # Add those needed for postprocessing and training.
-            all_accessed_keys = train_batch.accessed_keys | \
-                                batch_for_postproc.accessed_keys
-            # Tag those only needed for post-processing.
-            for key in batch_for_postproc.accessed_keys:
-                if key not in train_batch.accessed_keys:
-                    self.view_requirements[key].used_for_training = False
-                    if key in self._loss_input_dict:
-                        del self._loss_input_dict[key]
-            # Remove those not needed at all (leave those that are needed
-            # by Sampler to properly execute sample collection).
-            for key in list(self.view_requirements.keys()):
-                if key not in all_accessed_keys and key not in [
-                    SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                    SampleBatch.UNROLL_ID, SampleBatch.DONES] and \
-                        key not in self.model.inference_view_requirements:
-                    del self.view_requirements[key]
-                    if key in self._loss_input_dict:
-                        del self._loss_input_dict[key]
-
-        self._loss_input_dict_no_rnn = {
-            k: v
-            for k, v in self._loss_input_dict.items()
-            if v not in self._state_inputs and v != self._seq_lens
-        }
 
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)

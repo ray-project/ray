@@ -160,7 +160,8 @@ class SampleBatch:
         """
         return SampleBatch(
             {k: np.array(v, copy=True)
-             for (k, v) in self.data.items()}, _seq_lens=self.seq_lens)
+             for (k, v) in self.data.items()},
+            _seq_lens=self.seq_lens)
 
     @PublicAPI
     def rows(self) -> Dict[str, TensorType]:

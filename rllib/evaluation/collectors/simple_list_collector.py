@@ -60,7 +60,7 @@ class _AgentCollector:
         # each time a (non-initial!) observation is added.
         self.count = 0
 
-    def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
+    def add_init_obs(self, episode_id: EpisodeID, agent_index: int,
                      env_id: EnvID, t: int, init_obs: TensorType,
                      view_requirements: Dict[str, ViewRequirement]) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
@@ -68,8 +68,8 @@ class _AgentCollector:
         Args:
             episode_id (EpisodeID): Unique ID for the episode we are adding the
                 initial observation for.
-            agent_id (AgentID): Unique ID for the agent we are adding the
-                initial observation for.
+            agent_index (int): Unique int index (starting from 0) for the agent
+                within its episode.
             env_id (EnvID): The environment index (in a vectorized setup).
             t (int): The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
@@ -82,13 +82,13 @@ class _AgentCollector:
                 single_row={
                     SampleBatch.OBS: init_obs,
                     SampleBatch.EPS_ID: episode_id,
-                    SampleBatch.AGENT_INDEX: agent_id,
+                    SampleBatch.AGENT_INDEX: agent_index,
                     "env_id": env_id,
                     "t": t,
                 })
         self.buffers[SampleBatch.OBS].append(init_obs)
         self.buffers[SampleBatch.EPS_ID].append(episode_id)
-        self.buffers[SampleBatch.AGENT_INDEX].append(agent_id)
+        self.buffers[SampleBatch.AGENT_INDEX].append(agent_index)
         self.buffers["env_id"].append(env_id)
         self.buffers["t"].append(t)
 
@@ -159,6 +159,9 @@ class _AgentCollector:
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
+
+            #shift = view_req.data_rel_pos - \
+            #    (1 if data_col == SampleBatch.OBS else 0)
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
 
@@ -490,7 +493,7 @@ class _SimpleListCollector(_SampleCollector):
         self.agent_collectors[agent_key] = _AgentCollector(view_reqs)
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
-            agent_id=agent_id,
+            agent_index=episode._agent_index(agent_id),
             env_id=env_id,
             t=t,
             init_obs=init_obs,
@@ -598,9 +601,10 @@ class _SimpleListCollector(_SampleCollector):
                 continue
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
             policy = self.policy_map[pid]
-            pre_batch = collector.build(
-                policy.view_requirements,
-                policy.model.inference_view_requirements)
+            model_view_reqs = policy.model.inference_view_requirements if \
+                getattr(policy, "model", None) else policy.view_requirements
+            pre_batch = collector.build(policy.view_requirements,
+                                        model_view_reqs)
             pre_batches[agent_id] = (policy, pre_batch)
 
         # Apply reward clipping before calling postprocessing functions.
