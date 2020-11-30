@@ -55,7 +55,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                              std::shared_ptr<ObjectDirectoryInterface> object_directory,
                              RestoreSpilledObjectCallback restore_spilled_object,
                              SpillObjectsCallback spill_objects_callback)
-    : self_node_id_(self_node_id),
+    : main_service_(&main_service),
+      self_node_id_(self_node_id),
       config_(config),
       object_directory_(std::move(object_directory)),
       object_store_internal_(config, spill_objects_callback),
@@ -66,9 +67,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service, config_.rpc_service_threads_number),
-      restore_spilled_object_(restore_spilled_object) {
+      restore_spilled_object_(restore_spilled_object),
+      pull_retry_timer_(main_service_,
+                        boost::posix_time::seconds(config.pull_timeout_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
-  main_service_ = &main_service;
 
   const auto &object_is_local = [this](const ObjectID &object_id) {
     return local_objects_.count(object_id) != 0;
@@ -87,6 +89,13 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
+
+  pull_retry_timer_.async_wait([this](const boost::system::error_code& e) {
+                                 RAY_CHECK(!e) << "The raylet's object manager has failed unexpectedly with error: " << e << ". Please file a bug report on here: https://github.com/ray-project/ray/issues";
+
+                                 Tick();
+                               }
+    );
 
   if (plasma::plasma_store_runner) {
     store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
@@ -803,5 +812,7 @@ void ObjectManager::RecordMetrics() const {
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
   stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
 }
+
+void PullManager::Tick() { pull_manager_->Tick(); }
 
 }  // namespace ray

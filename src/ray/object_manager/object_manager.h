@@ -280,6 +280,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// Record metrics.
   void RecordMetrics() const;
 
+  void Tick();
+
  private:
   friend class TestObjectManager;
 
@@ -453,6 +455,9 @@ class ObjectManager : public ObjectManagerInterface,
       remote_object_manager_clients_;
 
   const RestoreSpilledObjectCallback restore_spilled_object_;
+
+  /// Pull manager retry timer .
+  std::unique_ptr<boost::asio::deadline_timer> pull_retry_timer_;
 
   /// Object push manager.
   std::unique_ptr<PushManager> push_manager_;
