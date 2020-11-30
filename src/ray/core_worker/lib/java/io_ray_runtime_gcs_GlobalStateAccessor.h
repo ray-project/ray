@@ -123,6 +123,17 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(JNIEn
                                                                            jobject,
                                                                            jlong);
 
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeWaitPlacementGroupReady
+ * Signature: (J)Z
+ */
+JNIEXPORT jboolean JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeWaitPlacementGroupReady(JNIEnv *,
+                                                                          jobject,
+                                                                          jbyteArray,
+                                                                          jlong);
+
 #ifdef __cplusplus
 }
 #endif
