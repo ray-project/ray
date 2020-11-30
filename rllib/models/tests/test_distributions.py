@@ -5,6 +5,7 @@ from scipy.stats import beta, norm
 import tree
 import unittest
 
+from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
     DiagGaussian, GumbelSoftmax, MultiActionDistribution, MultiCategorical, \
     SquashedGaussian
@@ -88,9 +89,10 @@ class TestDistributions(unittest.TestCase):
 
         inputs = inputs_space.sample()
 
-        for fw, sess in framework_iterator(session=True):
+        for fw, sess in framework_iterator(session=True, frameworks=("jax", "tf", "tf2", "torch")):
             # Create the correct distribution object.
-            cls = Categorical if fw != "torch" else TorchCategorical
+            cls = JAXCategorical if fw == "jax" else Categorical if \
+                fw != "torch" else TorchCategorical
             categorical = cls(inputs, {})
 
             # Do a stability test using extreme NN outputs to see whether

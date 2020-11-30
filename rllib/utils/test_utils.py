@@ -65,7 +65,7 @@ def framework_iterator(config=None,
             logger.warning(
                 "framework_iterator skipping tf2.x (tf version is < 2.0)!")
             continue
-        assert fw in ["tf2", "tf", "tfe", "torch", None]
+        assert fw in ["tf2", "tf", "tfe", "torch", "jax", None]
 
         # Do we need a test session?
         sess = None
