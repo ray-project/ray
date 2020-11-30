@@ -9,7 +9,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 class TestMBMPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)#TODO
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
