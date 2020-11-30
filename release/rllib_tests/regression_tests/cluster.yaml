@@ -4,7 +4,7 @@ min_workers: 0
 max_workers: 0
 
 docker:
-    image: anyscale/ray-ml:latest-gpu
+    image: rayproject/ray-ml:nightly-gpu
     container_name: ray_container
     pull_before_run: False
 
@@ -22,13 +22,6 @@ auth:
 head_node:
     InstanceType: p3.16xlarge
     ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
-
-    # Set primary volume to 25 GiB
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 100
-
 
 # List of shell commands to run to set up nodes.
 setup_commands:

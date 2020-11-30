@@ -4,7 +4,7 @@ min_workers: 0
 max_workers: 0
 
 docker:
-    image: anyscale/ray:latest-gpu
+    image: rayproject/ray-ml:nightly-gpu
     container_name: ray_container
     pull_before_run: False
 
@@ -32,7 +32,7 @@ head_node:
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    - apt-get install -y libglib2.0-0
+    - apt-get install -y libglib2.0-0 curl unzip
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
