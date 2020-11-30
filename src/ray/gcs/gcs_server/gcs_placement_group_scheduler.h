@@ -18,6 +18,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -87,17 +88,17 @@ class ScheduleContext {
  public:
   ScheduleContext(std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
                   const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations,
-                  const GcsNodeManager &node_manager)
+                  const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources)
       : node_to_bundles_(std::move(node_to_bundles)),
         bundle_locations_(bundle_locations),
-        node_manager_(node_manager) {}
+        cluster_resources_(cluster_resources) {}
 
   // Key is node id, value is the number of bundles on the node.
   const std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles_;
   // The locations of existing bundles for this placement group.
   const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
-
-  const GcsNodeManager &node_manager_;
+  // The available resources of all nodes.
+  const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources_;
 };
 
 class GcsScheduleStrategy {
@@ -106,6 +107,18 @@ class GcsScheduleStrategy {
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context) = 0;
+
+ protected:
+  /// Judge whether the remaining resources are sufficient for allocate.
+  ///
+  /// \param available_resources Total available resources.
+  /// \param allocated_resources Allocated resources.
+  /// \param to_allocate_resources Resources to be allocated.
+  /// \return True if allocated_resources + to_allocate_resources > available_resources.
+  /// False otherwise.
+  bool IsAvailableResourceSufficient(const ResourceSet &available_resources,
+                                     const ResourceSet &allocated_resources,
+                                     const ResourceSet &to_allocate_resources) const;
 };
 
 /// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
@@ -221,9 +234,9 @@ class LeaseStatusTracker {
   /// \return Location of bundles that succeed to prepare resources on a node.
   const std::shared_ptr<BundleLocations> &GetPreparedBundleLocations() const;
 
-  /// This method returns bundle locations that succeed to commit resources.
+  /// This method returns bundle locations that failed to commit resources.
   ///
-  /// \return Location of bundles that succeed to commit resources on a node.
+  /// \return Location of bundles that failed to commit resources on a node.
   const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
 
   /// Return the leasing state.
@@ -345,10 +358,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param io_context The main event loop.
   /// \param placement_group_info_accessor Used to flush placement_group info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
+  /// \param gcs_resource_manager The resource manager which is used when scheduling.
+  /// \param lease_client_factory Factory to create remote lease client.
   GcsPlacementGroupScheduler(
       boost::asio::io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      const GcsNodeManager &gcs_node_manager,
+      const GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
       ReserveResourceClientFactoryFn lease_client_factory = nullptr);
 
   virtual ~GcsPlacementGroupScheduler() = default;
@@ -489,6 +504,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
+
+  /// Reference of GcsResourceManager.
+  GcsResourceManager &gcs_resource_manager_;
 
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<NodeID, std::shared_ptr<ResourceReserveInterface>>
