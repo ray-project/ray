@@ -463,7 +463,8 @@ cdef execute_task(
                 try:
                     with ray.worker._changeproctitle(title, next_title):
                         if debugger_breakpoint != b"":
-                            ray.util.pdb.set_trace(breakpoint_uuid=debugger_breakpoint)
+                            ray.util.pdb.set_trace(
+                                breakpoint_uuid=debugger_breakpoint)
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
                 except KeyboardInterrupt as e:
@@ -1371,8 +1372,11 @@ cdef class CoreWorker:
                 data_sizes.push_back(serialized_object.total_bytes)
                 metadata = serialized_object.metadata
                 if ray.worker.global_worker.debugger_get_breakpoint:
-                    metadata += (b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX
-                        + ray.worker.global_worker.debugger_get_breakpoint.encode())
+                    breakpoint = (
+                        ray.worker.global_worker.debugger_get_breakpoint())
+                    metadata += (
+                        b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
+                        breakpoint.encode())
                     # Reset debugging context of this worker.
                     ray.worker.global_worker.debugger_get_breakpoint = b""
                 metadatas.push_back(string_to_buffer(metadata))

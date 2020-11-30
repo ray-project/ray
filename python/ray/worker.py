@@ -126,7 +126,7 @@ class Worker:
         # debugger, at the specified breakpoint ID.
         self.debugger_breakpoint = ""
         # If this is set, ray.get calls invoked on the object ID returned
-        # by the worker should drop into the debugger at the specified 
+        # by the worker should drop into the debugger at the specified
         # breakpoint ID.
         self.debugger_get_breakpoint = b""
 
@@ -328,8 +328,8 @@ class Worker:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
                         ray_constants.OBJECT_METADATA_DEBUG_PREFIX):
-                    debugger_breakpoint = metadata_fields[1][
-                        len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
+                    debugger_breakpoint = metadata_fields[1][len(
+                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
         return self.deserialize_objects(data_metadata_pairs,
                                         object_refs), debugger_breakpoint
 
