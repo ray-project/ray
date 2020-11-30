@@ -10,10 +10,10 @@ env:
 
 jobs:
   build:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+    name: minikube
+    runs-on: ubuntu-18.04
     env:
-      PYTHON: ${{ matrix.python-version }}
+      PYTHON: 3.8
       TRAVIS_COMMIT: ${{ github.sha }}
     steps:
     - name: Pre-checkout system configuration
