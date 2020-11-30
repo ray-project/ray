@@ -251,6 +251,7 @@ def test_multi_node_churn(enable_test_module, disable_aiohttp_cache,
     duration = timedelta(seconds=30)
     while datetime.now() < t_st + duration:
         get_index()
+        time.sleep(2)
 
 
 if __name__ == "__main__":
