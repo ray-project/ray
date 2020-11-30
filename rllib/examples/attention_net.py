@@ -39,6 +39,7 @@ if __name__ == "__main__":
 
     config = {
         "env": args.env,
+        # This env_config is only used for the RepeatAfterMeEnv env.
         "env_config": {
             "repeat_delay": 2,
         },
@@ -57,8 +58,8 @@ if __name__ == "__main__":
                 "num_transformer_units": 1,
                 "attn_dim": 64,
                 "num_heads": 2,
-                "memory_inference": 50,
-                "memory_training": 50,
+                "memory_inference": 100,
+                "memory_training": 100,
                 "head_dim": 32,
                 "ff_hidden_dim": 32,
             },
