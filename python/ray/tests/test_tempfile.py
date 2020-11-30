@@ -88,6 +88,9 @@ def test_raylet_tempfiles(shutdown_only):
         return True
 
     wait_for_condition(check_all_log_file_exists)
+    # Get the list of log files again since the previous one
+    # might have the stale information.
+    log_files = set(os.listdir(node.get_logs_dir_path()))
     assert log_files_expected.issubset(log_files)
     assert log_files.issuperset(log_files_expected)
 
