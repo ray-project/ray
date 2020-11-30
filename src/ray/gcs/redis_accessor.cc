@@ -499,8 +499,8 @@ RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
 
 Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
                                            const StatusCallback &callback) {
-  ClientTable &client_table = client_impl_->client_table();
-  Status status = client_table.Connect(local_node_info);
+  NodeTable &node_table = client_impl_->node_table();
+  Status status = node_table.Connect(local_node_info);
   if (callback != nullptr) {
     callback(Status::OK());
   }
@@ -508,47 +508,47 @@ Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
 }
 
 Status RedisNodeInfoAccessor::UnregisterSelf() {
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.Disconnect();
+  NodeTable &node_table = client_impl_->node_table();
+  return node_table.Disconnect();
 }
 
 const NodeID &RedisNodeInfoAccessor::GetSelfId() const {
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.GetLocalClientId();
+  NodeTable &node_table = client_impl_->node_table();
+  return node_table.GetLocalNodeId();
 }
 
 const GcsNodeInfo &RedisNodeInfoAccessor::GetSelfInfo() const {
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.GetLocalClient();
+  NodeTable &node_table = client_impl_->node_table();
+  return node_table.GetLocalNode();
 }
 
 Status RedisNodeInfoAccessor::AsyncRegister(const GcsNodeInfo &node_info,
                                             const StatusCallback &callback) {
-  ClientTable::WriteCallback on_done = nullptr;
+  NodeTable::WriteCallback on_done = nullptr;
   if (callback != nullptr) {
     on_done = [callback](RedisGcsClient *client, const NodeID &id,
                          const GcsNodeInfo &data) { callback(Status::OK()); };
   }
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.MarkConnected(node_info, on_done);
+  NodeTable &node_table = client_impl_->node_table();
+  return node_table.MarkConnected(node_info, on_done);
 }
 
 Status RedisNodeInfoAccessor::AsyncUnregister(const NodeID &node_id,
                                               const StatusCallback &callback) {
-  ClientTable::WriteCallback on_done = nullptr;
+  NodeTable::WriteCallback on_done = nullptr;
   if (callback != nullptr) {
     on_done = [callback](RedisGcsClient *client, const NodeID &id,
                          const GcsNodeInfo &data) { callback(Status::OK()); };
   }
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.MarkDisconnected(node_id, on_done);
+  NodeTable &node_table = client_impl_->node_table();
+  return node_table.MarkDisconnected(node_id, on_done);
 }
 
 Status RedisNodeInfoAccessor::AsyncSubscribeToNodeChange(
     const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.SubscribeToNodeChange(subscribe, done);
+  NodeTable &node_table = client_impl_->node_table();
+  return node_table.SubscribeToNodeChange(subscribe, done);
 }
 
 Status RedisNodeInfoAccessor::AsyncGetAll(
@@ -565,15 +565,15 @@ Status RedisNodeInfoAccessor::AsyncGetAll(
     }
     callback(Status::OK(), result);
   };
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.Lookup(on_done);
+  NodeTable &node_table = client_impl_->node_table();
+  return node_table.Lookup(on_done);
 }
 
 boost::optional<GcsNodeInfo> RedisNodeInfoAccessor::Get(const NodeID &node_id,
                                                         bool filter_dead_nodes) const {
   GcsNodeInfo node_info;
-  ClientTable &client_table = client_impl_->client_table();
-  bool found = client_table.GetClient(node_id, &node_info);
+  NodeTable &node_table = client_impl_->node_table();
+  bool found = node_table.GetNode(node_id, &node_info);
   boost::optional<GcsNodeInfo> optional_node;
   if (found) {
     optional_node = std::move(node_info);
@@ -582,13 +582,13 @@ boost::optional<GcsNodeInfo> RedisNodeInfoAccessor::Get(const NodeID &node_id,
 }
 
 const std::unordered_map<NodeID, GcsNodeInfo> &RedisNodeInfoAccessor::GetAll() const {
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.GetAllClients();
+  NodeTable &node_table = client_impl_->node_table();
+  return node_table.GetAllNodes();
 }
 
 bool RedisNodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.IsRemoved(node_id);
+  NodeTable &node_table = client_impl_->node_table();
+  return node_table.IsRemoved(node_id);
 }
 Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<HeartbeatTableData> &data_ptr, const StatusCallback &callback) {
@@ -598,7 +598,7 @@ Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
                          const HeartbeatTableData &data) { callback(Status::OK()); };
   }
 
-  NodeID node_id = NodeID::FromBinary(data_ptr->client_id());
+  NodeID node_id = NodeID::FromBinary(data_ptr->node_id());
   HeartbeatTable &heartbeat_table = client_impl_->heartbeat_table();
   return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
 }

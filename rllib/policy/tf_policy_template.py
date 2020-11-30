@@ -9,10 +9,13 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils import add_mixins
+from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
+
+tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
@@ -251,9 +254,16 @@ def build_tf_policy(
         @override(TFPolicy)
         def optimizer(self):
             if optimizer_fn:
-                return optimizer_fn(self, self.config)
+                optimizers = optimizer_fn(self, self.config)
             else:
-                return base.optimizer(self)
+                optimizers = base.optimizer(self)
+            optimizers = force_list(optimizers)
+            if getattr(self, "exploration", None):
+                optimizers = self.exploration.get_exploration_optimizer(
+                    optimizers)
+            # TODO: (sven) Allow tf-eager policy to have more than 1 optimizer.
+            #  Just like torch Policy does.
+            return optimizers[0] if optimizers else None
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):

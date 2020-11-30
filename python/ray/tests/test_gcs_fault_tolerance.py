@@ -21,7 +21,7 @@ def increase(x):
     return x + 1
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
+@pytest.mark.skipif(new_scheduler_enabled(), reason="notimpl")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
@@ -47,7 +47,6 @@ def test_gcs_server_restart(ray_start_regular):
     assert result == 2
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
@@ -71,7 +70,6 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     assert len(unready) == 0
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
@@ -132,7 +130,6 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     wait_for_condition(condition, timeout=10)
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
