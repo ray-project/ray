@@ -54,7 +54,6 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
-
   pull_manager_.CancelPull(obj1);
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
 }
@@ -76,7 +75,8 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   client_ids.insert(NodeID::FromRandom());
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
 
-  // The behavior is supposed to be to always restore the spilled object if possible (even if it exists elsewhere in the cluster).
+  // The behavior is supposed to be to always restore the spilled object if possible (even
+  // if it exists elsewhere in the cluster).
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
@@ -115,7 +115,8 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
 
-  // We need to call OnLocationChange at least once, to population the list of nodes with the object.
+  // We need to call OnLocationChange at least once, to population the list of nodes with
+  // the object.
   pull_manager_.OnLocationChange(obj1, client_ids, "");
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
@@ -124,7 +125,8 @@ TEST_F(PullManagerTest, TestRetryTimer) {
     pull_manager_.Tick();
   }
 
-  // We should make a pull request every tick (even if it's a duplicate to a node we're already pulling from).
+  // We should make a pull request every tick (even if it's a duplicate to a node we're
+  // already pulling from).
   ASSERT_EQ(num_send_pull_request_calls_, 128);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
