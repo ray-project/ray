@@ -132,7 +132,10 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
         assert session_or_none is not None
 
     def make_wrapper(fn):
-        if session_or_none:
+        # Static-graph mode: Create placeholders and make a session call each
+        # time the wrapped function is called. Return this session call's
+        # outputs.
+        if session_or_none is not None:
             args_placeholders = []
             kwargs_placeholders = {}
             symbolic_out = [None]
@@ -183,6 +186,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                 return ret
 
             return call
+        # Eager mode (call function as is).
         else:
             return fn
 
