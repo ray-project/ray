@@ -186,13 +186,17 @@ def request_resources(num_cpus: Optional[int] = None,
     """Command the autoscaler to scale to accommodate the specified requests.
 
     The cluster will immediately attempt to scale to accommodate the requested
-    resources, bypassing normal upscaling speed constraints. This does not
-    take into account existing resource usage (i.e., the target cluster size is
-    calculated regardless of existing utilization).
+    resources, bypassing normal upscaling speed constraints. This takes into
+    account existing resource usage.
+    
+    For example, suppose you call ``request_resources(num_cpus=100)`` and
+    there are 45 currently running tasks. Then, enough nodes will be added so
+    up to 100 tasks can run concurrently. It does **not** add enough nodes so
+    that 145 tasks can run.
 
-    This call is only a hint to the autoscaler. The actual result cluster size
-    may be slightly larger or smaller than expected depending on the internal
-    bin packing algorithm and max worker count restrictions.
+    This call is only a hint to the autoscaler. The actual resulting cluster
+    size may be slightly larger or smaller than expected depending on the
+    internal bin packing algorithm and max worker count restrictions.
 
     Args:
         num_cpus (int): Scale the cluster to ensure this number of CPUs are
