@@ -403,11 +403,13 @@ class NodeInfoAccessor {
  public:
   virtual ~NodeInfoAccessor() = default;
 
-  /// Register local node to GCS synchronously.
+  /// Register local node to GCS asynchronously.
   ///
   /// \param node_info The information of node to register to GCS.
+  /// \param callback Callback that will be called when registration is complete.
   /// \return Status
-  virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info) = 0;
+  virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
+                              const StatusCallback &callback) = 0;
 
   /// Cancel registration of local node to GCS synchronously.
   ///
@@ -544,6 +546,11 @@ class NodeInfoAccessor {
   /// Resend heartbeat when GCS restarts from a failure.
   virtual void AsyncReReportHeartbeat() = 0;
 
+  /// Return resources in last report. Used by light heartbeat.
+  std::shared_ptr<SchedulingResources> &GetLastHeartbeatResources() {
+    return last_heartbeat_resources_;
+  }
+
   /// Get newest heartbeat of all nodes from GCS asynchronously. Only used when light
   /// heartbeat enabled.
   ///
@@ -589,6 +596,12 @@ class NodeInfoAccessor {
 
  protected:
   NodeInfoAccessor() = default;
+
+ private:
+  /// Cache which stores resources in last heartbeat used to check if they are changed.
+  /// Used by light heartbeat.
+  std::shared_ptr<SchedulingResources> last_heartbeat_resources_ =
+      std::make_shared<SchedulingResources>();
 };
 
 /// \class ErrorInfoAccessor

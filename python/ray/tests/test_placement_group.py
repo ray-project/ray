@@ -1162,14 +1162,13 @@ ray.shutdown()
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
-@pytest.mark.skip("This test is flaky.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
             num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
-def test_create_placement_group_after_gcs_server_restarts(
+def test_create_placement_group_after_gcs_server_restart(
         ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2)
@@ -1201,7 +1200,6 @@ def test_create_placement_group_after_gcs_server_restarts(
     assert table["state"] == "PENDING"
 
 
-@pytest.mark.skip("This test is flaky.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
@@ -1226,7 +1224,6 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     assert ray.get(actor_2.method.remote(1)) == 3
 
 
-@pytest.mark.skip("This test is flaky.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(

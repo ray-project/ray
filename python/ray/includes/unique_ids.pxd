@@ -119,6 +119,8 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         CActorID ActorId() const
 
+        CJobID JobId() const
+
     cdef cppclass CObjectID" ray::ObjectID"(CBaseID[CObjectID]):
 
         @staticmethod

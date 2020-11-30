@@ -341,7 +341,8 @@ ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
+Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
+                                                  const StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id
                  << ", address is = " << local_node_info.node_manager_address();
@@ -350,22 +351,20 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
 
-  auto operation = [this, request, local_node_info,
-                    node_id](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().RegisterNode(
-        request, [this, node_id, local_node_info, done_callback](
-                     const Status &status, const rpc::RegisterNodeReply &reply) {
-          if (status.ok()) {
-            local_node_info_.CopyFrom(local_node_info);
-            local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
-          }
-          RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
-                         << ", node id = " << node_id;
-          done_callback();
-        });
-  };
+  client_impl_->GetGcsRpcClient().RegisterNode(
+      request, [this, node_id, local_node_info, callback](
+                   const Status &status, const rpc::RegisterNodeReply &reply) {
+        if (status.ok()) {
+          local_node_info_.CopyFrom(local_node_info);
+          local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
+        }
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
+                       << ", node id = " << node_id;
+      });
 
-  sequencer_.Post(node_id, operation);
   return Status::OK();
 }
 
@@ -626,9 +625,42 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
   absl::MutexLock lock(&mutex_);
   if (cached_heartbeat_.has_heartbeat()) {
     RAY_LOG(INFO) << "Rereport heartbeat.";
+    FillHeartbeatRequest(cached_heartbeat_);
     client_impl_->GetGcsRpcClient().ReportHeartbeat(
         cached_heartbeat_,
         [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
+  }
+}
+
+void ServiceBasedNodeInfoAccessor::FillHeartbeatRequest(
+    rpc::ReportHeartbeatRequest &heartbeat) {
+  if (RayConfig::instance().light_heartbeat_enabled()) {
+    SchedulingResources cached_resources =
+        SchedulingResources(*GetLastHeartbeatResources());
+
+    auto heartbeat_data = heartbeat.mutable_heartbeat();
+    heartbeat_data->clear_resources_total();
+    for (const auto &resource_pair :
+         cached_resources.GetTotalResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    heartbeat_data->clear_resources_available();
+    heartbeat_data->set_resources_available_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetAvailableResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    heartbeat_data->clear_resource_load();
+    heartbeat_data->set_resource_load_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetLoadResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+          resource_pair.second;
+    }
   }
 }
 

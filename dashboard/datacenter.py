@@ -240,12 +240,12 @@ class DataOrganizer:
         actor_process_stats = None
         actor_process_gpu_stats = None
         if pid:
-            for process_stats in node_physical_stats.get("workers"):
+            for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
                     actor_process_stats = process_stats
                     break
 
-            for gpu_stats in node_physical_stats.get("gpus"):
+            for gpu_stats in node_physical_stats.get("gpus", []):
                 for process in gpu_stats.get("processes", []):
                     if process["pid"] == pid:
                         actor_process_gpu_stats = gpu_stats

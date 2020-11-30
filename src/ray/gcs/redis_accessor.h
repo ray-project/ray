@@ -299,7 +299,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   virtual ~RedisNodeInfoAccessor() {}
 
-  Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
+  Status RegisterSelf(const GcsNodeInfo &local_node_info,
+                      const StatusCallback &callback) override;
 
   Status UnregisterSelf() override;
 
